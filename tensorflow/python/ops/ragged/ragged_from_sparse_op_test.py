@@ -12,57 +12,76 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.from_sparse."""
+"""Tests for RaggedTensor.from_sparse."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
+from tensorflow.python.ops.ragged import RaggedTensor
 from tensorflow.python.platform import googletest
 
 
-class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedTensorToSparseOpTest(ragged_test_util.RaggedTensorTestCase):
 
   def testDocStringExample(self):
     st = sparse_tensor.SparseTensor(
         indices=[[0, 0], [0, 1], [0, 2], [1, 0], [3, 0]],
         values=[1, 2, 3, 4, 5],
         dense_shape=[4, 3])
-    rt = ragged.from_sparse(st)
+    rt = RaggedTensor.from_sparse(st)
 
-    with self.test_session():
-      self.assertEqual(rt.eval().tolist(), [[1, 2, 3], [4], [], [5]])
+    self.assertRaggedEqual(rt, [[1, 2, 3], [4], [], [5]])
 
   def testEmpty(self):
     st = sparse_tensor.SparseTensor(
         indices=array_ops.zeros([0, 2], dtype=dtypes.int64),
         values=[],
         dense_shape=[4, 3])
-    rt = ragged.from_sparse(st)
+    rt = RaggedTensor.from_sparse(st)
 
-    with self.test_session():
-      self.assertEqual(rt.eval().tolist(), [[], [], [], []])
+    self.assertRaggedEqual(rt, [[], [], [], []])
 
   def testBadSparseTensorRank(self):
     st1 = sparse_tensor.SparseTensor(indices=[[0]], values=[0], dense_shape=[3])
+    self.assertRaisesRegexp(ValueError, r'rank\(st_input\) must be 2',
+                            RaggedTensor.from_sparse, st1)
+
     st2 = sparse_tensor.SparseTensor(
         indices=[[0, 0, 0]], values=[0], dense_shape=[3, 3, 3])
-    st3 = sparse_tensor.SparseTensor(
-        indices=array_ops.placeholder(dtypes.int64),
-        values=[0],
-        dense_shape=array_ops.placeholder(dtypes.int64))
     self.assertRaisesRegexp(ValueError, r'rank\(st_input\) must be 2',
-                            ragged.from_sparse, st1)
-    self.assertRaisesRegexp(ValueError, r'rank\(st_input\) must be 2',
-                            ragged.from_sparse, st2)
-    self.assertRaisesRegexp(ValueError, r'rank\(st_input\) must be 2',
-                            ragged.from_sparse, st3)
+                            RaggedTensor.from_sparse, st2)
+
+    if not context.executing_eagerly():
+      st3 = sparse_tensor.SparseTensor(
+          indices=array_ops.placeholder(dtypes.int64),
+          values=[0],
+          dense_shape=array_ops.placeholder(dtypes.int64))
+      self.assertRaisesRegexp(ValueError, r'rank\(st_input\) must be 2',
+                              RaggedTensor.from_sparse, st3)
+
+  def testGoodPartialSparseTensorRank(self):
+    if not context.executing_eagerly():
+      st1 = sparse_tensor.SparseTensor(
+          indices=[[0, 0]],
+          values=[0],
+          dense_shape=array_ops.placeholder(dtypes.int64))
+      st2 = sparse_tensor.SparseTensor(
+          indices=array_ops.placeholder(dtypes.int64),
+          values=[0],
+          dense_shape=[4, 3])
+
+      # Shouldn't throw ValueError
+      RaggedTensor.from_sparse(st1)
+      RaggedTensor.from_sparse(st2)
 
   def testNonRaggedSparseTensor(self):
     # "index_suffix" means the value of the innermost dimension of the index
@@ -73,22 +92,21 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
     # index_suffix of first index is not zero.
     st1 = sparse_tensor.SparseTensor(
         indices=[[0, 1], [0, 2], [2, 0]], values=[1, 2, 3], dense_shape=[3, 3])
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r'.*SparseTensor is not right-ragged'):
+      self.evaluate(RaggedTensor.from_sparse(st1))
     # index_suffix of an index that starts a new row is not zero.
     st2 = sparse_tensor.SparseTensor(
         indices=[[0, 0], [0, 1], [2, 1]], values=[1, 2, 3], dense_shape=[3, 3])
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r'.*SparseTensor is not right-ragged'):
+      self.evaluate(RaggedTensor.from_sparse(st2))
     # index_suffix of an index that continues a row skips a cell.
     st3 = sparse_tensor.SparseTensor(
         indices=[[0, 1], [0, 1], [0, 3]], values=[1, 2, 3], dense_shape=[3, 3])
-    rt1 = ragged.from_sparse(st1)
-    rt2 = ragged.from_sparse(st2)
-    rt3 = ragged.from_sparse(st3)
-    with self.test_session():
-      self.assertRaisesRegexp(errors.InvalidArgumentError,
-                              r'.*SparseTensor is not right-ragged', rt1.eval)
-      self.assertRaisesRegexp(errors.InvalidArgumentError,
-                              r'.*SparseTensor is not right-ragged', rt2.eval)
-      self.assertRaisesRegexp(errors.InvalidArgumentError,
-                              r'.*SparseTensor is not right-ragged', rt3.eval)
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 r'.*SparseTensor is not right-ragged'):
+      self.evaluate(RaggedTensor.from_sparse(st3))
 
 
 if __name__ == '__main__':

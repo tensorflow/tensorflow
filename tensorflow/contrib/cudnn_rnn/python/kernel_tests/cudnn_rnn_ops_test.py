@@ -18,24 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import itertools
 import os
 import unittest
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -56,714 +62,989 @@ CUDNN_RNN_TANH_PARAMS_PER_LAYER = cudnn_rnn_ops.CUDNN_RNN_TANH_PARAMS_PER_LAYER
 CUDNN_RNN_RELU_PARAMS_PER_LAYER = cudnn_rnn_ops.CUDNN_RNN_RELU_PARAMS_PER_LAYER
 
 
-def _CreateModel(rnn_mode,
-                 num_layers,
-                 num_units,
-                 input_size,
-                 input_mode="linear_input",
-                 direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION,
-                 dtype=dtypes.float32,
-                 dropout=0.):
-  del input_mode
-  if rnn_mode == cudnn_rnn_ops.CUDNN_LSTM:
-    model_fn = cudnn_rnn_ops.CudnnLSTM
-  elif rnn_mode == cudnn_rnn_ops.CUDNN_GRU:
-    model_fn = cudnn_rnn_ops.CudnnGRU
-  elif rnn_mode == cudnn_rnn_ops.CUDNN_RNN_TANH:
-    model_fn = cudnn_rnn_ops.CudnnRNNTanh
-  elif rnn_mode == cudnn_rnn_ops.CUDNN_RNN_RELU:
-    model_fn = cudnn_rnn_ops.CudnnRNNRelu
+def RunLSTM(sess,
+            num_units,
+            input_size,
+            batch_size,
+            time,
+            num_layers=1,
+            is_training=True,
+            dropout=0.,
+            num_dirs=True,
+            dtype=dtypes.float32):
+  # TODO(jamesqin): add multi-layer tests.
+  # TODO(jamesqin): add multi-dir tests
+  assert num_layers == 1
+  assert num_dirs == 1
+  if is_training and not np.isclose(dropout, 0):
+    raise ValueError("dropout can not be 0. when test training.")
+
+  # set graph level random seed and numpy random seed.
+  random_seed.set_random_seed(0)
+  np.random.seed(0)
+
+  inputs = variable_scope.get_variable(
+      "inputs",
+      initializer=np.random.rand(time, batch_size,
+                                 input_size).astype(dtype.as_numpy_dtype),
+      dtype=dtype)
+  initial_h_op = variable_scope.get_variable(
+      "initial_h_op",
+      initializer=np.random.rand(batch_size,
+                                 num_units).astype(dtype.as_numpy_dtype),
+      dtype=dtype)
+  initial_c_op = variable_scope.get_variable(
+      "initial_c_op",
+      initializer=np.random.rand(batch_size,
+                                 num_units).astype(dtype.as_numpy_dtype),
+      dtype=dtype)
+
+  initializer = init_ops.random_uniform_initializer(
+      -0.01, 0.01, dtype=dtype, seed=19980904)
+
+  with variable_scope.variable_scope("test", initializer=initializer):
+    w = variable_scope.get_variable(
+        "rnn/lstm_cell/kernel",
+        shape=[input_size + num_units, num_units * 4],
+        dtype=dtype)
+    b = variable_scope.get_variable(
+        "rnn/lstm_cell/bias", shape=[num_units * 4], dtype=dtype)
+
+    # canonical lstm. must set forget_bias to 0. to align with cudnn lstm.
+    cell = rnn_cell_impl.LSTMCell(num_units, forget_bias=0., reuse=True)
+    outputs_op, state_tuple_op = rnn.dynamic_rnn(
+        cell,
+        inputs,
+        initial_state=rnn_cell_impl.LSTMStateTuple(
+            h=initial_h_op, c=initial_c_op),
+        dtype=dtype,
+        time_major=True,
+        scope=None)
+
+  # Convert to cudnn opaque param.
+  format_converter = cudnn_rnn_ops.CudnnParamsFormatConverterLSTM(
+      num_layers, num_units, input_size)
+  opaque_params = format_converter.tf_canonical_to_opaque([w, b])
+
+  cu_initial_h_op = array_ops.expand_dims(initial_h_op, axis=0)
+  cu_initial_c_op = array_ops.expand_dims(initial_c_op, axis=0)
+  cu_outputs_op, cu_h_op, cu_c_op = cudnn_rnn_ops._cudnn_rnn(
+      inputs,
+      cu_initial_h_op,
+      cu_initial_c_op,
+      opaque_params,
+      dropout=dropout,
+      is_training=is_training,
+      rnn_mode=cudnn_rnn_ops.CUDNN_LSTM)
+  # Remove the trivial 1st dimension.
+  cu_state_tuple_op = rnn_cell_impl.LSTMStateTuple(
+      c=array_ops.squeeze(cu_c_op, axis=0),
+      h=array_ops.squeeze(cu_h_op, axis=0))
+
+  if is_training:
+    (inp_grad_op, hgrad_op,
+     cgrad_op, wgrad_op, bgrad_op) = gradients_impl.gradients(
+         outputs_op, [inputs, initial_h_op, initial_c_op, w, b])
+
+    (cu_inp_grad_op, cu_hgrad_op,
+     cu_cgrad_op, opaque_grad_op) = gradients_impl.gradients(
+         cu_outputs_op,
+         [inputs, cu_initial_h_op, cu_initial_c_op, opaque_params])
+    # Remove the trivial 1st dimension
+    cu_hgrad_op = array_ops.squeeze(cu_hgrad_op, axis=0)
+    # Remove the trivial 1st dimension
+    cu_cgrad_op = array_ops.squeeze(cu_cgrad_op, axis=0)
+
+    cu_wgrad_op, cu_bgrad_op = format_converter.opaque_to_tf_canonical(
+        opaque_grad_op)
+    cu_wgrad_op = cu_wgrad_op[0]
+    cu_bgrad_op = cu_bgrad_op[0]
+    # cudnn lstm has 2 biases each gate. When converting to tf canonical format,
+    # the two biases are summed into one. Thus here bias gradient should be
+    # halved when comparing with tf lstm.
+    cu_bgrad_op *= 0.5
+
+  init_op = variables.global_variables_initializer()
+  sess.run(init_op)
+
+  if is_training:
+    outputs, state_tuple, inp_grad, state_grad, wgrad, bgrad = sess.run([
+        outputs_op, state_tuple_op, inp_grad_op,
+        (hgrad_op, cgrad_op), wgrad_op, bgrad_op
+    ])
+    (cu_outputs, cu_state_tuple, cu_inp_grad, cu_state_grad, cu_wgrad,
+     cu_bgrad) = sess.run([
+         cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
+         (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op
+     ])
+
+    logging.vlog(1, "outputs: %s" % outputs)
+    logging.vlog(1, "cu_outputs: %s" % cu_outputs)
+    logging.vlog(1, "state_tuple: %s" % str(state_tuple))
+    logging.vlog(1, "cu_state_tuple: %s" % str(cu_state_tuple))
+    logging.vlog(1, "inp_grad: %s" % inp_grad)
+    logging.vlog(1, "cu_inp_grad: %s" % cu_inp_grad)
+    logging.vlog(1, "state_grad: %s" % str(state_grad))
+    logging.vlog(1, "cu_state_grad: %s" % str(cu_state_grad))
+    logging.vlog(1, "wgrad: %s" % str(wgrad))
+    logging.vlog(1, "bgrad: %s" % str(bgrad))
+    logging.vlog(1, "cu_wgrad: %s" % str(cu_wgrad))
+    logging.vlog(1, "cu_bgrad: %s" % str(cu_bgrad))
+    return (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad,
+            cu_inp_grad, state_grad, cu_state_grad, wgrad, bgrad, cu_wgrad,
+            cu_bgrad)
   else:
-    raise ValueError("Invalid rnn_mode: %s" % rnn_mode)
-  return model_fn(
-      num_layers,
-      num_units,
-      input_size,
-      direction=direction,
-      dtype=dtype,
-      dropout=dropout)
+    outputs, state_tuple = sess.run([outputs_op, state_tuple_op])
+    cu_outputs, cu_state_tuple = sess.run([cu_outputs_op, cu_state_tuple_op])
+
+    logging.vlog(1, "outputs: %s" % outputs)
+    logging.vlog(1, "cu_outputs: %s" % cu_outputs)
+    logging.vlog(1, "state_tuple: %s" % str(state_tuple))
+    logging.vlog(1, "cu_state_tuple: %s" % str(cu_state_tuple))
+  return outputs, cu_outputs, state_tuple, cu_state_tuple
 
 
-def _CreateParamsSavable(params,
-                         model,
-                         base_variable_scope=None,
-                         name="params_canonical"):
-  """Create a RNNParamsSaveable for the weight and bias parameters.
+# Basic set of RNN configs to test. They can be further extended in relevant
+# test (e.g. adding num_dirs).
+NAMED_RNN_TESTCASES = ({
+    "testcase_name": "xsmall",
+    "num_units": 1,
+    "input_size": 1,
+    "batch_size": 1,
+    "time": 1,
+    "num_layers": 1,
+}, {
+    "testcase_name": "small",
+    "num_units": 4,
+    "input_size": 4,
+    "batch_size": 4,
+    "time": 4,
+    "num_layers": 1,
+}, {
+    "testcase_name": "medium",
+    "num_units": 128,
+    "input_size": 64,
+    "batch_size": 8,
+    "time": 16,
+    "num_layers": 1,
+}, {
+    "testcase_name": "large",
+    "num_units": 128,
+    "input_size": 128,
+    "batch_size": 16,
+    "time": 32,
+    "num_layers": 1,
+})
+
+
+def ExpandNamedTestCases(inputs, *remove_keys, **extra_configs):
+  """Expands testcase with new config dimensions.
+
+  Example:
+    inputs = (
+      {'testcase_name': 'test1', 'gender': 'male'}
+      {'testcase_name': 'test2', 'gender': 'female'}
+    )
+    remove_keys:  empty
+    extra_configs = {
+      'age': [40, 80]
+      'height': [5, 6]
+    }
+
+    Returns:
+      (
+        {'testcase_name': 'test1_age_40_height_5','gender': 'male', 'age':
+        40,'height': 5}
+        {'testcase_name': 'test1_age_40_height_6', 'gender': 'male', 'age': 40,
+        'height': 6}
+        {'testcase_name': 'test1_age_80_height_5', 'gender': 'male', 'age': 80,
+        'height': 5}
+        {'testcase_name': 'test1_age_80_height_6', 'gender': 'male', 'age': 80,
+        'height': 6}
+
+        {'testcase_name': 'test2_age_40_height_5', 'gender': 'female', 'age':
+        40,
+        'height': 5}
+        {'testcase_name': 'test2_age_40_height_6', 'gender': 'female', 'age':
+        40,
+        'height': 6}
+        {'testcase_name': 'test2_age_80_height_5', 'gender': 'female', 'age':
+        80,
+        'height': 5}
+        {'testcase_name': 'test2_age_80_height_6', 'gender': 'female', 'age':
+        80,
+        'height': 6}
+      )
 
   Args:
-    params: a Variable for weight and bias parameters.
-    model: a CudnnRNN model.
-    base_variable_scope: a string, prefix of names of saved variables.
-    name: a string, name of the RNNParamsSaveable object.
+    inputs: A list of dictionary, each being a testcase.
+    *remove_keys: A list of keys into testcase which are not needed in new
+      testcases.
+    **extra_configs: A dict of new test dimension and applicable values in that
+      dimension.
+
   Returns:
-    a RNNParamsSaveable object.
+    A list of dictionary with expanded test cases.
   """
-  if model._rnn_mode == CUDNN_LSTM:
-    fn = cudnn_rnn_ops.CudnnLSTMSaveable
-  elif model._rnn_mode == CUDNN_GRU:
-    fn = cudnn_rnn_ops.CudnnGRUSaveable
-  elif model._rnn_mode == CUDNN_RNN_TANH:
-    fn = cudnn_rnn_ops.CudnnRNNTanhSaveable
-  elif model._rnn_mode == CUDNN_RNN_RELU:
-    fn = cudnn_rnn_ops.CudnnRNNReluSaveable
-  params_saveable = fn(
-      params,
-      model.num_layers,
-      model.num_units,
-      model.input_size,
-      model.input_mode,
-      model.direction,
-      scope=base_variable_scope,
-      name=name)
-  ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, params_saveable)
-  return params_saveable
+  res = []
+  ordered_extra_configs = collections.OrderedDict(extra_configs)
+  keys = ordered_extra_configs.keys()
+  # A list of list of configs.
+  # The outer loop is iterating keys, the innner is values of one key.
+  combined_kv = [[(k, v) for v in ordered_extra_configs[k]] for k in keys]
+  logging.info("combined_kv: %s", combined_kv)
+
+  for inp in inputs:
+    # Each inp is a dict
+    for config in itertools.product(*combined_kv):
+      new_inp = dict(inp)
+      # config is a list in the form of [(k_i, v_j), (k_p, v_q), ...]
+      suffix = ["%s_%s" % (p[0], str(p[1])) for p in config]
+      suffix = "_".join(suffix)
+      new_inp["testcase_name"] += "_" + suffix
+      for k, v in config:
+        new_inp[k] = v
+      # Remove not used keys from the new test case.
+      if remove_keys:
+        if not isinstance(remove_keys, (list, tuple)):
+          remove_keys = [remove_keys]
+        for k in remove_keys:
+          new_inp.pop(k, None)
+      logging.info("new_inp: %s", new_inp)
+      res.append(new_inp)
+  # Dedup, necessary if `remove_keys` is set.
+  return [dict(t) for t in {tuple(d.items()) for d in res}]
 
 
-def _MinLSTMParamSize(num_layers,
-                      num_units,
-                      input_size,
-                      direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION):
-  if direction == cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION:
-    first_layer_weights = 4 * num_units * (num_units + input_size)
-    higher_layer_weights = 8 * (num_layers - 1) * num_units * num_units
-    all_biases = 8 * num_layers * num_units
-    return first_layer_weights + higher_layer_weights + all_biases
-  elif direction == cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION:
-    first_layer_weights = 4 * num_units * (num_units + input_size)
-    higher_layer_weights = (num_layers - 1) * (
-        4 * 2 * num_units * num_units + 4 * num_units**2)
-    all_biases = 8 * num_layers * num_units
-    return 2 * (first_layer_weights + higher_layer_weights + all_biases)
+class CudnnLSTMTest(TensorFlowTestCase, parameterized.TestCase):
+
+  def _test_training_helper(self,
+                            num_units,
+                            input_size,
+                            batch_size,
+                            time,
+                            num_layers,
+                            dtype,
+                            rtol=2e-6,
+                            atol=2e-6):
+    with self.session(use_gpu=True) as sess:
+      (outputs, cu_outputs, state_tuple, cu_state_tuple, inp_grad, cu_inp_grad,
+       state_grad, cu_state_grad, wgrad, bgrad, cu_wgrad, cu_bgrad) = RunLSTM(
+           sess, num_units, input_size, batch_size, time, num_layers)
+
+      self.assertAllClose(outputs, cu_outputs, rtol=rtol, atol=atol)
+      for s, cu_s in zip(state_tuple, cu_state_tuple):
+        self.assertAllClose(s, cu_s, rtol=rtol, atol=atol)
+      for sg, cu_sg in zip(state_grad, cu_state_grad):
+        self.assertAllClose(sg, cu_sg, rtol=rtol, atol=atol)
+      self.assertAllClose(inp_grad, cu_inp_grad, rtol=rtol, atol=atol)
+      self.assertAllClose(bgrad, cu_bgrad, rtol=rtol, atol=atol)
+      self.assertAllClose(wgrad, cu_wgrad, rtol=rtol, atol=atol)
+
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_training(self, num_units, input_size, batch_size, time, num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    self._test_training_helper(num_units, input_size, batch_size, time,
+                               num_layers, dtypes.float32)
+
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_training_fp16(self, num_units, input_size, batch_size, time,
+                         num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    self._test_training_helper(
+        num_units,
+        input_size,
+        batch_size,
+        time,
+        num_layers,
+        dtypes.float16,
+        rtol=5e-3,
+        atol=5e-4)
+
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_inference(self, num_units, input_size, batch_size, time, num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    with self.session(use_gpu=True) as sess:
+      (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
+          sess,
+          num_units,
+          input_size,
+          batch_size,
+          time,
+          num_layers,
+          is_training=False)
+
+      self.assertAllClose(outputs, cu_outputs)
+      # h
+      self.assertAllClose(state_tuple.h, cu_state_tuple.h)
+      # c
+      self.assertAllClose(state_tuple.c, cu_state_tuple.c)
+
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_inference_fp16(self, num_units, input_size, batch_size, time,
+                          num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    with self.session(use_gpu=True) as sess:
+      (outputs, cu_outputs, state_tuple, cu_state_tuple) = RunLSTM(
+          sess,
+          num_units,
+          input_size,
+          batch_size,
+          time,
+          num_layers,
+          is_training=False,
+          dtype=dtypes.float16)
+
+      rtol, atol = 5e-3, 5e-4
+      self.assertAllClose(outputs, cu_outputs, rtol=rtol, atol=atol)
+      # h
+      self.assertAllClose(
+          state_tuple.h, cu_state_tuple.h, rtol=rtol, atol=atol)
+      # c
+      self.assertAllClose(
+          state_tuple.c, cu_state_tuple.c, rtol=rtol, atol=atol)
+
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_inference_with_dropout(self, num_units, input_size, batch_size, time,
+                                  num_layers):
+    """Validates that dropout does not affect Cudnn Rnn inference."""
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    # Hand-picked dropouts are used below (0. and 1.)
+    with ops.Graph().as_default() as g:
+      with self.session(use_gpu=True, graph=g) as sess:
+        # 1st time w/o dropout.
+        (_, cu_outputs, _, cu_state_tuple) = RunLSTM(
+            sess,
+            num_units,
+            input_size,
+            batch_size,
+            time,
+            num_layers,
+            is_training=False,
+            dropout=0.)
+
+    with ops.Graph().as_default() as g:
+      with self.session(use_gpu=True, graph=g) as sess:
+        (_, cu_outputs2, _, cu_state_tuple2) = RunLSTM(
+            sess,
+            num_units,
+            input_size,
+            batch_size,
+            time,
+            num_layers,
+            is_training=False,
+            dropout=1.)
+
+    self.assertAllClose(cu_outputs, cu_outputs2)
+    # h
+    self.assertAllClose(cu_state_tuple.h, cu_state_tuple2.h)
+    # c
+    self.assertAllClose(cu_state_tuple.c, cu_state_tuple2.c)
+
+
+def RunGRU(sess,
+           num_units,
+           input_size,
+           batch_size,
+           time,
+           num_layers=1,
+           is_training=True,
+           dropout=0.,
+           num_dirs=True,
+           dtype=dtypes.float32):
+  # TODO(jamesqin): add multi-layer tests.
+  # TODO(jamesqin): add multi-dir tests
+  assert num_layers == 1
+  assert num_dirs == 1
+  if is_training and not np.isclose(dropout, 0):
+    raise ValueError("dropout can not be 0. when test training.")
+
+  # set graph level random seed and numpy random seed.
+  random_seed.set_random_seed(0)
+  np.random.seed(0)
+
+  inputs = variable_scope.get_variable(
+      "inputs",
+      initializer=np.random.rand(time, batch_size,
+                                 input_size).astype(dtype.as_numpy_dtype),
+      dtype=dtype)
+  initial_h_op = variable_scope.get_variable(
+      "initial_h_op",
+      initializer=np.random.rand(batch_size,
+                                 num_units).astype(dtype.as_numpy_dtype),
+      dtype=dtype)
+
+  initializer = init_ops.random_uniform_initializer(
+      -0.01, 0.01, dtype=dtype, seed=19980904)
+  with variable_scope.variable_scope("test", initializer=initializer):
+    gate_kernel = variable_scope.get_variable(
+        "rnn/cudnn_compatible_gru_cell/gates/kernel",
+        shape=[input_size + num_units, num_units * 2],
+        dtype=dtype)
+    gate_bias = variable_scope.get_variable(
+        "rnn/cudnn_compatible_gru_cell/gates/bias",
+        shape=[num_units * 2],
+        dtype=dtype)
+    candidate_inp_kernel = variable_scope.get_variable(
+        "rnn/cudnn_compatible_gru_cell/candidate/input_projection/kernel",
+        shape=[input_size, num_units],
+        dtype=dtype)
+    candidate_inp_bias = variable_scope.get_variable(
+        "rnn/cudnn_compatible_gru_cell/candidate/input_projection/bias",
+        shape=[num_units],
+        dtype=dtype)
+    candidate_hid_kernel = variable_scope.get_variable(
+        "rnn/cudnn_compatible_gru_cell/candidate/hidden_projection/kernel",
+        shape=[num_units, num_units],
+        dtype=dtype)
+    candidate_hid_bias = variable_scope.get_variable(
+        "rnn/cudnn_compatible_gru_cell/candidate/hidden_projection/bias",
+        shape=[num_units],
+        dtype=dtype)
+
+    cell = cudnn_rnn_ops.CudnnCompatibleGRUCell(num_units, reuse=True)
+    outputs_op, h_op = rnn.dynamic_rnn(
+        cell,
+        inputs,
+        initial_state=initial_h_op,
+        dtype=dtype,
+        time_major=True,
+        scope=None)
+
+  ws = [gate_kernel, candidate_inp_kernel, candidate_hid_kernel]
+  bs = [gate_bias, candidate_inp_bias, candidate_hid_bias]
+  # Convert to cudnn opaque param.
+  format_converter = cudnn_rnn_ops.CudnnParamsFormatConverterGRU(
+      num_layers, num_units, input_size)
+  opaque_params = format_converter.tf_canonical_to_opaque(ws + bs)
+
+  cu_initial_h_op = array_ops.expand_dims(initial_h_op, axis=0)
+  cu_outputs_op, cu_h_op, _ = cudnn_rnn_ops._cudnn_rnn(
+      inputs,
+      cu_initial_h_op,
+      array_ops.zeros_like(cu_initial_h_op),  # not used
+      opaque_params,
+      dropout=dropout,
+      is_training=is_training,
+      rnn_mode=cudnn_rnn_ops.CUDNN_GRU)
+
+  if is_training:
+    (inp_grad_op, hgrad_op, gk_grad_op, cik_grad_op, chk_grad_op, gb_grad_op,
+     cib_grad_op, chb_grad_op) = gradients_impl.gradients(
+         outputs_op, [inputs, initial_h_op] + ws + bs)
+
+    (cu_inp_grad_op, cu_hgrad_op, opaque_grad_op) = gradients_impl.gradients(
+        cu_outputs_op, [inputs, cu_initial_h_op, opaque_params])
+    # Remove the trivial 1st dimension
+    cu_hgrad_op = array_ops.squeeze(cu_hgrad_op, axis=0)
+
+    cu_wgrad_op, cu_bgrad_op = format_converter.opaque_to_tf_canonical(
+        opaque_grad_op)
+    (cu_gk_grad_op, cu_cik_grad_op, cu_chk_grad_op) = cu_wgrad_op
+    (cu_gb_grad_op, cu_cib_grad_op, cu_chb_grad_op) = cu_bgrad_op
+    # cudnn gru has 2 biases for reset and update gates. When converting to tf
+    # canonical format, the two biases are summed into one.  Thus here relevant
+    # bias gradient should be halved before comparing with tf gru.
+    cu_gb_grad_op *= 0.5
+
+  init_op = variables.global_variables_initializer()
+  sess.run(init_op)
+
+  if is_training:
+    outputs, h, inp_grad, hgrad, wgrad, bgrad = sess.run([
+        outputs_op, h_op, inp_grad_op, hgrad_op,
+        (gk_grad_op, cik_grad_op, chk_grad_op),
+        (gb_grad_op, cib_grad_op, chb_grad_op)
+    ])
+    (cu_outputs, cu_h, cu_inp_grad, cu_hgrad, cu_wgrad, cu_bgrad) = sess.run([
+        cu_outputs_op, cu_h_op, cu_inp_grad_op, cu_hgrad_op,
+        (cu_gk_grad_op, cu_cik_grad_op, cu_chk_grad_op),
+        (cu_gb_grad_op, cu_cib_grad_op, cu_chb_grad_op)
+    ])
+    # Remove the trivial 1st dimension
+    cu_h = np.squeeze(cu_h, axis=0)
+
+    logging.vlog(1, "outputs: %s" % outputs)
+    logging.vlog(1, "cu_outputs: %s" % cu_outputs)
+    logging.vlog(1, "h: %s" % h)
+    logging.vlog(1, "cu_h: %s" % h)
+    logging.vlog(1, "inp_grad: %s" % inp_grad)
+    logging.vlog(1, "cu_inp_grad: %s" % cu_inp_grad)
+    logging.vlog(1, "hgrad: %s" % hgrad)
+    logging.vlog(1, "cu_hgrad: %s" % cu_hgrad)
+    logging.vlog(1, "wgrad: %s" % str(wgrad))
+    logging.vlog(1, "bgrad: %s" % str(bgrad))
+    logging.vlog(1, "cu_wgrad: %s" % str(cu_wgrad))
+    logging.vlog(1, "cu_bgrad: %s" % str(cu_bgrad))
+    return (outputs, cu_outputs, h, cu_h, inp_grad, cu_inp_grad, hgrad,
+            cu_hgrad, wgrad, bgrad, cu_wgrad, cu_bgrad)
   else:
-    raise ValueError("%s direction is not supported.")
+    outputs, h = sess.run([outputs_op, h_op])
+    cu_outputs, cu_h = sess.run([cu_outputs_op, cu_h_op])
+    # Remove the trivial 1st dimension.
+    cu_h = np.squeeze(cu_h, axis=0)
+
+    logging.vlog(1, "outputs: %s" % outputs)
+    logging.vlog(1, "cu_outputs: %s" % cu_outputs)
+    logging.vlog(1, "h: %s" % h)
+    logging.vlog(1, "cu_h: %s" % h)
+  return outputs, cu_outputs, h, cu_h
 
 
-class CudnnRNNTestSaveRestore(TensorFlowTestCase):
+class CudnnGRUTest(TensorFlowTestCase, parameterized.TestCase):
 
-  def _CompareWeights(self, lhs, rhs):
-    self.assertEqual(len(lhs), len(rhs))
-    for lw, rw in zip(lhs, rhs):
-      self.assertAllEqual(lw, rw)
+  def _test_training_helper(self,
+                            num_units,
+                            input_size,
+                            batch_size,
+                            time,
+                            num_layers,
+                            dtype,
+                            rtol=2e-6,
+                            atol=2e-6):
+    with self.session(use_gpu=True) as sess:
+      (outputs, cu_outputs, h, cu_h, inp_grad, cu_inp_grad, hgrad,
+       cu_hgrad, wgrad, bgrad, cu_wgrad, cu_bgrad) = RunGRU(
+           sess, num_units, input_size, batch_size, time, num_layers)
 
-  def _CompareBiases(self, lhs, rhs, rnn_mode, num_layers, direction):
-    self.assertEqual(len(lhs), len(rhs))
-    if rnn_mode == CUDNN_LSTM:
-      num_params_per_layer = CUDNN_LSTM_PARAMS_PER_LAYER
-    elif rnn_mode == CUDNN_GRU:
-      num_params_per_layer = CUDNN_GRU_PARAMS_PER_LAYER
-    elif rnn_mode == CUDNN_RNN_TANH:
-      num_params_per_layer = CUDNN_RNN_TANH_PARAMS_PER_LAYER
-    else:
-      num_params_per_layer = CUDNN_RNN_RELU_PARAMS_PER_LAYER
-    num_dirs = 1 if direction == CUDNN_RNN_UNIDIRECTION else 2
-    num_params_per_layer *= num_dirs
-    self.assertEqual(num_params_per_layer * num_layers, len(lhs))
+      self.assertAllClose(outputs, cu_outputs, rtol=rtol, atol=atol)
+      self.assertAllClose(h, cu_h, rtol=rtol, atol=atol)
+      self.assertAllClose(hgrad, cu_hgrad, rtol=rtol, atol=atol)
+      self.assertAllClose(inp_grad, cu_inp_grad, rtol=rtol, atol=atol)
+      for bg, cu_bg in zip(bgrad, cu_bgrad):
+        self.assertAllClose(bg, cu_bg, rtol=rtol, atol=atol)
+      for wg, cu_wg in zip(wgrad, cu_wgrad):
+        self.assertAllClose(wg, cu_wg, rtol=rtol, atol=atol)
 
-    for i in range(num_layers):
-      layer_lhs = lhs[i * num_params_per_layer: (i+1) * num_params_per_layer]
-      layer_rhs = rhs[i * num_params_per_layer: (i+1) * num_params_per_layer]
-      if direction == CUDNN_RNN_UNIDIRECTION:
-        self._CompareSingleLayerBiases(layer_lhs, layer_rhs)
-      else:
-        size = len(layer_lhs)
-        fw_lhs, bw_lhs = layer_lhs[:size//2], layer_lhs[size//2:]
-        fw_rhs, bw_rhs = layer_rhs[:size//2], layer_rhs[size//2:]
-        self._CompareSingleLayerBiases(fw_lhs, fw_rhs)
-        self._CompareSingleLayerBiases(bw_lhs, bw_rhs)
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_training(self, num_units, input_size, batch_size, time, num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    self._test_training_helper(num_units, input_size, batch_size, time,
+                               num_layers, dtypes.float32)
 
-  def _CompareSingleLayerBiases(self, lhs, rhs):
-    self.assertEqual(len(lhs), len(rhs))
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_training_fp16(self, num_units, input_size, batch_size, time,
+                         num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    self._test_training_helper(
+        num_units,
+        input_size,
+        batch_size,
+        time,
+        num_layers,
+        dtypes.float16,
+        rtol=5e-3,
+        atol=5e-4)
 
-    lf_lhs, rt_lhs = lhs[:len(lhs)//2], lhs[len(lhs)//2:]
-    lf_rhs, rt_rhs = rhs[:len(rhs)//2], rhs[len(rhs)//2:]
-    self.assertEqual(len(lf_lhs), len(rt_lhs))
-    self.assertEqual(len(lf_rhs), len(rt_rhs))
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_inference(self, num_units, input_size, batch_size, time, num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    with self.session(use_gpu=True) as sess:
+      (outputs, cu_outputs, h, cu_h) = RunGRU(
+          sess,
+          num_units,
+          input_size,
+          batch_size,
+          time,
+          num_layers,
+          is_training=False)
+      self.assertAllClose(outputs, cu_outputs)
+      self.assertAllClose(h, cu_h)
 
-    sum_lhs, sum_rhs = [], []
-    for lf, rt in zip(lf_lhs, rt_lhs):
-      sum_lhs.append(lf + rt)
-    for lf, rt in zip(lf_rhs, rt_rhs):
-      sum_rhs.append(lf + rt)
-    self.assertEqual(len(sum_lhs), len(sum_rhs))
-    for lf, rt in zip(sum_lhs, sum_rhs):
-      self.assertAllEqual(lf, rt)
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_inference_fp16(self, num_units, input_size, batch_size, time,
+                          num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    with self.session(use_gpu=True) as sess:
+      (outputs, cu_outputs, h, cu_h) = RunGRU(
+          sess,
+          num_units,
+          input_size,
+          batch_size,
+          time,
+          num_layers,
+          is_training=False,
+          dtype=dtypes.float16)
 
-  def _testSaveRestoreVariable(self, rnn_mode, direction, dtype):
-    num_layers = 2
-    num_units = 7
-    input_size = 3
-    with ops.Graph().as_default():
-      model = _CreateModel(
-          rnn_mode,
-          num_layers=num_layers,
-          num_units=num_units,
-          input_size=input_size,
-          direction=direction,
-          dtype=dtype)
-      random_seed.set_random_seed(1234)
-      params_size_t = model.params_size()
-      params = variables.VariableV1(
-          random_ops.random_uniform([params_size_t], dtype=dtype),
-          dtype=dtype,
-          validate_shape=False)
-      saveable = _CreateParamsSavable(params, model)
-      weights, biases = saveable.format_converter._opaque_to_cu_canonical(
-          saveable._variables)
-      reset_params = state_ops.assign(
-          params,
-          array_ops.zeros([params_size_t], dtype=dtype),
-          validate_shape=False)
-      save_path = os.path.join(self.get_temp_dir(),
-                               "save-restore-variable-test")
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
-      # Passing graph explicitly, otherwise an old sess would be reused.
-      with self.test_session(
-          use_gpu=True, graph=ops.get_default_graph()) as sess:
-        sess.run(variables.global_variables_initializer())
-        val = saver.save(sess, save_path)
-        self.assertEqual(save_path, val)
+      rtol, atol = 5e-3, 5e-4
+      self.assertAllClose(outputs, cu_outputs, rtol=rtol, atol=atol)
+      self.assertAllClose(h, cu_h, rtol=rtol, atol=atol)
 
-        weights_v, biases_v = sess.run([weights, biases])
+  @parameterized.named_parameters(*NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_inference_with_dropout(self, num_units, input_size, batch_size, time,
+                                  num_layers):
+    """Validates that dropout does not affect Cudnn Rnn inference."""
+    # Hand-picked dropouts are used below (0. and 1.)
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    with ops.Graph().as_default() as g:
+      with self.session(use_gpu=True, graph=g) as sess:
+        # 1st time w/o dropout.
+        (_, cu_outputs, _, cu_h) = RunGRU(
+            sess,
+            num_units,
+            input_size,
+            batch_size,
+            time,
+            num_layers,
+            is_training=False,
+            dropout=0.)
 
-        sess.run(reset_params)
-        saver.restore(sess, save_path)
-        weights_v_restored, biases_v_restored = sess.run([weights, biases])
+    with ops.Graph().as_default() as g:
+      with self.session(use_gpu=True, graph=g) as sess:
+        (_, cu_outputs2, _, cu_h2) = RunGRU(
+            sess,
+            num_units,
+            input_size,
+            batch_size,
+            time,
+            num_layers,
+            is_training=False,
+            dropout=1.)
 
-        self._CompareWeights(weights_v, weights_v_restored)
-        self._CompareBiases(biases_v, biases_v_restored, rnn_mode, num_layers,
-                            direction)
+    self.assertAllClose(cu_outputs, cu_outputs2)
+    self.assertAllClose(cu_h[0], cu_h2[0])
 
-  def _testSaveRestoreTwoVariables(self, rnn_mode, direction, dtype):
-    num_layers = 2
-    num_units = 7
-    input_size = 3
-    with ops.Graph().as_default():
-      model = _CreateModel(
-          rnn_mode,
-          num_layers=num_layers,
-          num_units=num_units,
-          input_size=input_size,
-          direction=direction,
-          dtype=dtype)
-      random_seed.set_random_seed(1234)
-      params_size_t = model.params_size()
-      names = ["rnn_1", "rnn_2"]
-      param_vars = [
-          variables.VariableV1(
-              random_ops.random_uniform([params_size_t], dtype=dtype),
-              dtype=dtype,
-              validate_shape=False) for name in names
-      ]
-      saveables = []
-      for name, params in zip(names, param_vars):
-        saveables.append(_CreateParamsSavable(params, model, name, name))
-      weights1, biases1 = saveables[0].format_converter._opaque_to_cu_canonical(
-          saveables[0]._variables)
-      weights2, biases2 = saveables[1].format_converter._opaque_to_cu_canonical(
-          saveables[1]._variables)
-      reset_params = [
-          state_ops.assign(
-              params,
-              array_ops.zeros([params_size_t], dtype=dtype),
-              validate_shape=False) for params in param_vars
-      ]
-      save_path = os.path.join(self.get_temp_dir(),
-                               "save-restore-variable-test")
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
-      # Passing graph explicitly, otherwise an old sess would be reused.
-      with self.test_session(use_gpu=True,
-                             graph=ops.get_default_graph()) as sess:
-        sess.run(variables.global_variables_initializer())
-        val = saver.save(sess, save_path)
-        self.assertEqual(save_path, val)
-        weights1_v, biases1_v = sess.run([weights1, biases1])
-        weights2_v, biases2_v = sess.run([weights2, biases2])
 
-        sess.run(reset_params)
-        saver.restore(sess, save_path)
-        weights1_v_restored, biases1_v_restored = sess.run([weights1, biases1])
-        weights2_v_restored, biases2_v_restored = sess.run([weights2, biases2])
+class CudnnParamsFormatConverterTest(TensorFlowTestCase,
+                                     parameterized.TestCase):
+  """Class for testing various format converters."""
 
-        self._CompareWeights(weights1_v, weights1_v_restored)
-        self._CompareWeights(weights2_v, weights2_v_restored)
-        self._CompareBiases(biases1_v, biases1_v_restored, rnn_mode, num_layers,
-                            direction)
-        self._CompareBiases(biases2_v, biases2_v_restored, rnn_mode, num_layers,
-                            direction)
+  def _test_lstm_helper(self, num_units, input_size, num_layers, direction):
+    with self.session(use_gpu=True) as sess:
+      random_seed.set_random_seed(0)
+      np.random.seed(0)
 
-  def _testSaveRestoreOutput(self, rnn_mode, direction, dtype):
-    with ops.Graph().as_default():
-      num_layers = 2
-      num_units = 7
-      input_size = 7
-      seq_length = 10
-      batch_size = 5
-      dir_count = 1 if direction == cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION else 2
-      model = _CreateModel(
-          rnn_mode,
+      num_dirs = 1 if direction == cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION else 2
+      format_converter = cudnn_rnn_ops.CudnnParamsFormatConverterLSTM(
+          num_layers, num_units, input_size, direction=direction)
+
+      ws, bs = [], []
+      for _ in range(num_layers * num_dirs):
+        w = constant_op.constant(
+            np.random.rand(input_size + num_units, 4 * num_units),
+            dtype=dtypes.float32)
+        b = constant_op.constant(
+            np.random.rand(4 * num_units), dtype=dtypes.float32)
+        ws.append(w)
+        bs.append(b)
+
+      opaque_params = format_converter.tf_canonical_to_opaque(ws + bs)
+      opaque_params_size = cudnn_rnn_ops.cudnn_rnn_opaque_params_size(
+          cudnn_rnn_ops.CUDNN_LSTM,
           num_layers,
           num_units,
           input_size,
-          direction=direction,
-          dtype=dtype)
-      params_size_t = model.params_size()
-      params = variables.VariableV1(
-          array_ops.ones([params_size_t], dtype=dtype),
-          validate_shape=False,
-          dtype=dtype)
-      _CreateParamsSavable(params, model)
-      save_path = os.path.join(self.get_temp_dir(), "save-restore-output-test")
+          direction=direction)
+
+      ws_r, bs_r = format_converter.opaque_to_tf_canonical(opaque_params)
+
+      # Test tf_canonical_to_opaque() followed by opaque_to_tf_canonical()
+      # returns the original input.
+      ws, ws_r, bs, bs_r = sess.run([ws, ws_r, bs, bs_r])
+      for w, w_r in zip(ws, ws_r):
+        self.assertAllClose(w, w_r)
+      for b, b_r in zip(bs, bs_r):
+        self.assertAllClose(b, b_r)
+
+      # Test opaque_params size lower bound
+      opaque_params_size_v = sess.run(opaque_params_size)
+      min_params_size = sum(x.size for x in ws) + np.sum(x.size for x in bs)
+      logging.info("min_parm_size: %d vs actual_opaque_param_size: %d",
+                   min_params_size, opaque_params_size_v)
+      self.assertLessEqual(min_params_size, opaque_params_size_v)
+
+  @parameterized.named_parameters((c["testcase_name"], c["num_units"],
+                                   c["input_size"], c["num_layers"])
+                                  for c in NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_lstm(self, num_units, input_size, num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    self._test_lstm_helper(num_units, input_size, num_layers,
+                           cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+
+  @parameterized.named_parameters((c["testcase_name"], c["num_units"],
+                                   c["input_size"], c["num_layers"])
+                                  for c in NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_lstm_bidi(self, num_units, input_size, num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    self._test_lstm_helper(num_units, input_size, num_layers,
+                           cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION)
+
+  def _test_gru_helper(self, num_units, input_size, num_layers, direction):
+    with self.session(use_gpu=True) as sess:
+      random_seed.set_random_seed(0)
+      np.random.seed(0)
+
+      num_dirs = 1 if direction == cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION else 2
+      format_converter = cudnn_rnn_ops.CudnnParamsFormatConverterGRU(
+          num_layers, num_units, input_size, direction=direction)
+
+      ws, bs = [], []
+      for _ in range(num_layers * num_dirs):
+        gate_kernel = constant_op.constant(
+            np.random.rand(input_size + num_units, num_units * 2),
+            dtype=dtypes.float32)
+        gate_bias = constant_op.constant(
+            np.random.rand(num_units * 2), dtype=dtypes.float32)
+        candidate_inp_kernel = constant_op.constant(
+            np.random.rand(input_size, num_units), dtype=dtypes.float32)
+        candidate_inp_bias = constant_op.constant(
+            np.random.rand(num_units), dtype=dtypes.float32)
+        candidate_hid_kernel = constant_op.constant(
+            np.random.rand(num_units, num_units), dtype=dtypes.float32)
+        candidate_hid_bias = constant_op.constant(
+            np.random.rand(num_units), dtype=dtypes.float32)
+        ws.extend([gate_kernel, candidate_inp_kernel, candidate_hid_kernel])
+        bs.extend([gate_bias, candidate_inp_bias, candidate_hid_bias])
+
+      opaque_params = format_converter.tf_canonical_to_opaque(ws + bs)
+      opaque_params_size = cudnn_rnn_ops.cudnn_rnn_opaque_params_size(
+          cudnn_rnn_ops.CUDNN_GRU,
+          num_layers,
+          num_units,
+          input_size,
+          direction=direction)
+
+      ws_r, bs_r = format_converter.opaque_to_tf_canonical(opaque_params)
+
+      # Test tf_canonical_to_opaque() followed by opaque_to_tf_canonical()
+      # returns the original input.
+      ws, ws_r, bs, bs_r = sess.run([ws, ws_r, bs, bs_r])
+      for w, w_r in zip(ws, ws_r):
+        self.assertAllClose(w, w_r)
+      for b, b_r in zip(bs, bs_r):
+        self.assertAllClose(b, b_r)
+
+      # Test opaque_params size lower bound
+      opaque_params_size_v = sess.run(opaque_params_size)
+      min_params_size = sum(x.size for x in ws) + sum(x.size for x in bs)
+      logging.info("min_parm_size: %d vs actual_opaque_param_size: %d",
+                   min_params_size, opaque_params_size_v)
+      self.assertLessEqual(min_params_size, opaque_params_size_v)
+
+  @parameterized.named_parameters((c["testcase_name"], c["num_units"],
+                                   c["input_size"], c["num_layers"])
+                                  for c in NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_gru(self, num_units, input_size, num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    self._test_gru_helper(num_units, input_size, num_layers,
+                          cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+
+  @parameterized.named_parameters((c["testcase_name"], c["num_units"],
+                                   c["input_size"], c["num_layers"])
+                                  for c in NAMED_RNN_TESTCASES)
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_gru_bidi(self, num_units, input_size, num_layers):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    self._test_gru_helper(num_units, input_size, num_layers,
+                          cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION)
+
+
+class CudnnRnnSaveRestoreTest(TensorFlowTestCase, parameterized.TestCase):
+  """Class for testing various Cudnn Rnn SaveableObjects."""
+
+  def _create_opaque_param(self,
+                           rnn_mode,
+                           num_units,
+                           input_size,
+                           num_layers,
+                           direction,
+                           name=None):
+    param_size_t = cudnn_rnn_ops.cudnn_rnn_opaque_params_size(
+        rnn_mode, num_layers, num_units, input_size, direction=direction)
+    init_val = random_ops.random_uniform([param_size_t])
+    return variable_scope.get_variable(
+        name or "opaque_param", initializer=init_val, validate_shape=False)
+
+  def _create_saveable(self, opaque_param, rnn_mode, num_units, input_size,
+                       num_layers, direction):
+    if rnn_mode == CUDNN_LSTM:
+      fn = cudnn_rnn_ops.CudnnLSTMSaveable
+    elif rnn_mode == CUDNN_GRU:
+      fn = cudnn_rnn_ops.CudnnGRUSaveable
+    elif rnn_mode == CUDNN_RNN_TANH:
+      fn = cudnn_rnn_ops.CudnnRNNTanhSaveable
+    elif rnn_mode == CUDNN_RNN_RELU:
+      fn = cudnn_rnn_ops.CudnnRNNReluSaveable
+    saveable = fn(
+        opaque_param, num_layers, num_units, input_size, direction=direction)
+    return saveable
+
+  def _compare_weights(self, lhs, rhs):
+    self.assertLen(rhs, len(lhs))
+    for lw, rw in zip(lhs, rhs):
+      self.assertAllEqual(lw, rw)
+
+  def _compare_biases(self, lhs, rhs):
+    self.assertLen(rhs, len(lhs))
+    for lf, rt in zip(lhs, rhs):
+      self.assertAllEqual(lf, rt)
+
+  @parameterized.named_parameters(
+      ExpandNamedTestCases(
+          NAMED_RNN_TESTCASES, "time", "batch_size", **{
+              "rnn_mode": [
+                  CUDNN_LSTM, CUDNN_GRU, CUDNN_RNN_RELU, CUDNN_RNN_TANH
+              ],
+              "direction": [CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION]
+          }))
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_save_restore_variable(self, rnn_mode, num_units, input_size,
+                                 num_layers, direction):
+    # Verify the restored opaque param, once converted to tf_canonical format,
+    # is the same as the tf canonicals of the pre-restored param.
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    with self.session(use_gpu=True) as sess:
+      opaque_param = self._create_opaque_param(rnn_mode, num_units, input_size,
+                                               num_layers, direction)
+      saveable = self._create_saveable(opaque_param, rnn_mode, num_units,
+                                       input_size, num_layers, direction)
+      ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+      weights_op, biases_op = saveable.format_converter.opaque_to_tf_canonical(
+          saveable._variables)
+
+      save_path = os.path.join(self.get_temp_dir(), "save_restore_var_test")
       saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
 
-      np.random.seed(1234)
-      has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
-      input_data = constant_op.constant(
-          np.random.randn(seq_length, batch_size, input_size), dtype=dtype)
-      input_h = constant_op.constant(
-          np.random.randn(num_layers * dir_count, batch_size, num_units),
-          dtype=dtype)
-      if has_input_c:
-        input_c = constant_op.constant(
-            np.random.randn(num_layers * dir_count, batch_size, num_units),
-            dtype=dtype)
-        outputs = model(
-            input_data=input_data,
-            input_h=input_h,
-            input_c=input_c,
-            params=params,
-            is_training=False)
-      else:
-        outputs = model(
-            input_data=input_data,
-            input_h=input_h,
-            params=params,
-            is_training=False)
-      total_sum = sum(map(math_ops.reduce_sum, outputs))
-      # Passing graph explicitly, otherwise an old sess would be reused.
-      with self.test_session(
-          use_gpu=True, graph=ops.get_default_graph()) as sess:
-        sess.run(variables.global_variables_initializer())
-        total_sum_v = sess.run(total_sum)
-        val = saver.save(sess, save_path)
-        self.assertEqual(save_path, val)
-      # Passing graph explicitly, otherwise an old sess would be reused.
-      with self.test_session(
-          use_gpu=True, graph=ops.get_default_graph()) as sess:
-        reset_params = state_ops.assign(
-            params,
-            array_ops.zeros([params_size_t], dtype=dtype),
-            validate_shape=False)
-        sess.run(reset_params)
+      init_op = variables.global_variables_initializer()
+      reset_op = state_ops.assign(opaque_param,
+                                  array_ops.zeros_like(opaque_param))
+      sess.run(init_op)
+      self.assertEqual(save_path, saver.save(sess, save_path))
+
+      # Get the tf canonical vals before reset-restore
+      weights, biases = sess.run([weights_op, biases_op])
+
+      # Reset the opaque param value
+      sess.run(reset_op)
+      # Assert reset happened.
+      weights_z, biases_z = sess.run([weights_op, biases_op])
+      for w in weights_z:
+        self.assertAllClose(w, np.zeros_like(w))
+      for b in biases_z:
+        self.assertAllClose(b, np.zeros_like(b))
+
+      # Restore opaque param value from checkpoint.
+      saver.restore(sess, save_path)
+      weights_r, biases_r = sess.run([weights_op, biases_op])
+      self._compare_weights(weights, weights_r)
+      self._compare_biases(biases, biases_r)
+
+  @parameterized.named_parameters(
+      ExpandNamedTestCases(
+          NAMED_RNN_TESTCASES, "time", "batch_size", **{
+              "rnn_mode": [
+                  CUDNN_LSTM, CUDNN_GRU, CUDNN_RNN_RELU, CUDNN_RNN_TANH
+              ],
+              "direction": [CUDNN_RNN_UNIDIRECTION, CUDNN_RNN_BIDIRECTION]
+          }))
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def test_save_restore_multi_variables(self, rnn_mode, num_units, input_size,
+                                        num_layers, direction):
+    # Verify the restored opaque param, once converted to tf_canonical format,
+    # is the same as the tf canonicals of the pre-restored param.
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+    with self.session(use_gpu=True) as sess:
+      opaque_params = []
+      saveables = []
+      num_opaque_params = 2
+      for i in range(num_opaque_params):
+        opaque_params.append(
+            self._create_opaque_param(
+                rnn_mode,
+                num_units,
+                input_size,
+                num_layers,
+                direction,
+                name="opaque_param_%d" % i))
+        saveable = self._create_saveable(opaque_params[i], rnn_mode, num_units,
+                                         input_size, num_layers, direction)
+        ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
+        saveables.append(saveable)
+
+      weights_ops, biases_ops = [], []
+      for i in range(num_opaque_params):
+        weights_op, biases_op = (
+            saveables[i].format_converter.opaque_to_tf_canonical(
+                saveables[i]._variables))
+        weights_ops.append(weights_op)
+        biases_ops.append(biases_op)
+
+      save_path = os.path.join(self.get_temp_dir(), "save_restore_var_test")
+      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
+
+      init_op = variables.global_variables_initializer()
+      reset_ops = []
+      for i in range(num_opaque_params):
+        reset_ops.append(
+            state_ops.assign(opaque_params[i],
+                             array_ops.zeros_like(opaque_params[i])))
+      sess.run(init_op)
+      self.assertEqual(save_path, saver.save(sess, save_path))
+
+      # Get the tf canonical vals before reset-restore
+      for i in range(num_opaque_params):
+        weights, biases = sess.run([weights_ops[i], biases_ops[i]])
+
+        # Reset the opaque param value
+        sess.run(reset_ops[i])
+
+        # Assert reset happened.
+        weights_z, biases_z = sess.run([weights_ops[i], biases_ops[i]])
+        for w in weights_z:
+          self.assertAllClose(w, np.zeros_like(w))
+        for b in biases_z:
+          self.assertAllClose(b, np.zeros_like(b))
+
+        # Restore opaque param value from checkpoint.
         saver.restore(sess, save_path)
-        total_sum_v_restored = sess.run(total_sum)
-        self.assertAllClose(total_sum_v, total_sum_v_restored, atol=1e-5)
-
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
-  def testSaveRestore(self):
-    rnn_modes = [
-        cudnn_rnn_ops.CUDNN_LSTM, cudnn_rnn_ops.CUDNN_GRU,
-        cudnn_rnn_ops.CUDNN_RNN_TANH, cudnn_rnn_ops.CUDNN_RNN_RELU
-    ]
-    directions = [
-        cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION,
-        cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION
-    ]
-    dtype_list = [dtypes.float32, dtypes.float64]
-    for rnn_mode, direction, dtype in itertools.product(rnn_modes, directions,
-                                                        dtype_list):
-      self._testSaveRestoreVariable(rnn_mode, direction, dtype)
-      self._testSaveRestoreTwoVariables(rnn_mode, direction, dtype)
-      self._testSaveRestoreOutput(rnn_mode, direction, dtype)
-
-
-class CudnnRNNTestParamsSize(TensorFlowTestCase):
-
-  def _testOneLSTMParamsSize(self, num_layers, num_units, input_size,
-                             direction):
-    logging.info("Testing one lstm param size with config: %s", locals())
-    min_params_size = _MinLSTMParamSize(num_layers, num_units, input_size,
-                                        direction)
-    model = _CreateModel(
-        cudnn_rnn_ops.CUDNN_LSTM,
-        num_layers,
-        num_units,
-        input_size,
-        direction=direction)
-    params_size = model.params_size()
-    with self.test_session(use_gpu=True, graph=ops.get_default_graph()) as sess:
-      params_size_v = sess.run(params_size)
-      self.assertLessEqual(min_params_size, params_size_v)
-
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
-  def testLSTMParamsSize(self):
-    test_configs = [
-        [4, 200, 200],
-        [4, 200, 300],
-        [4, 200, 100],
-        [1, 100, 200],
-        [2, 200, 100],
-        [3, 200, 400],
-    ]
-    directions = [
-        cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION,
-        cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION
-    ]
-    for (config, direction) in itertools.product(test_configs, directions):
-      num_layers, num_units, input_size = config
-      with ops.Graph().as_default():
-        self._testOneLSTMParamsSize(num_layers, num_units, input_size,
-                                    direction)
-
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
-  def testLSTMParamsSizeShape(self):
-    with self.assertRaisesRegexp(
-        ValueError, "Shape must be rank 0 but is rank 1"):
-      model = _CreateModel(
-          cudnn_rnn_ops.CUDNN_LSTM,
-          constant_op.constant([4]), 200, 200,
-          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
-      _ = model.params_size()
-    with self.assertRaisesRegexp(
-        ValueError, "Shape must be rank 0 but is rank 1"):
-      model = _CreateModel(
-          cudnn_rnn_ops.CUDNN_LSTM,
-          4, constant_op.constant([200]), 200,
-          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
-      _ = model.params_size()
-    with self.assertRaisesRegexp(
-        ValueError, "Shape must be rank 0 but is rank 1"):
-      model = _CreateModel(
-          cudnn_rnn_ops.CUDNN_LSTM,
-          4, 200, constant_op.constant([200]),
-          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
-      _ = model.params_size()
-
-
-class CudnnRNNTestInference(TensorFlowTestCase):
-
-  def _testOneSimpleInference(self, rnn_mode, num_layers, num_units, input_size,
-                              batch_size, seq_length, dir_count, dropout,
-                              expected, tolerance):
-    random_seed.set_random_seed(5678)
-    model = _CreateModel(
-        rnn_mode,
-        num_layers,
-        num_units,
-        input_size,
-        input_mode="auto_select",
-        direction=(cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION if dir_count == 1
-                   else cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION),
-        dropout=dropout)
-    has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
-    params_size_t = model.params_size()
-    input_data = array_ops.ones([seq_length, batch_size, input_size])
-    input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
-    params = variables.VariableV1(
-        array_ops.ones([params_size_t]), validate_shape=False)
-    if has_input_c:
-      input_c = array_ops.ones([num_layers * dir_count, batch_size, num_units])
-      output, output_h, output_c = model(
-          input_data=input_data,
-          input_h=input_h,
-          input_c=input_c,
-          params=params,
-          is_training=False)
-    else:
-      output, output_h = model(
-          input_data=input_data,
-          input_h=input_h,
-          params=params,
-          is_training=False)
-    output_sum = math_ops.reduce_sum(output)
-    output_h_sum = math_ops.reduce_sum(output_h)
-    total_sum = output_sum + output_h_sum
-    if has_input_c:
-      output_c_sum = math_ops.reduce_sum(output_c)
-      total_sum += output_c_sum
-    with self.test_session(use_gpu=True, graph=ops.get_default_graph()) as sess:
-      sess.run(variables.global_variables_initializer())
-      total_sum_v = sess.run([total_sum])
-
-      self.assertAllClose(
-          total_sum_v[0], expected, atol=tolerance, rtol=tolerance)
-
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
-  def testSimpleInference(self):
-    test_configs = [
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,
-            "expected": 231833.22,
-            "tolerance": 1e-2,
-            "shape": {
-                "num_layers": 4,
-                "num_units": 200,
-                "input_size": 200,
-                "batch_size": 20,
-                "seq_length": 10,
-                "dir_count": 1,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_GRU,
-            "expected": 56000,
-            "tolerance": 1e-2,
-            "shape": {
-                "num_layers": 4,
-                "num_units": 200,
-                "input_size": 200,
-                "batch_size": 20,
-                "seq_length": 10,
-                "dir_count": 1,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_TANH,
-            "expected": 56000,
-            "tolerance": 1e-2,
-            "shape": {
-                "num_layers": 4,
-                "num_units": 200,
-                "input_size": 200,
-                "batch_size": 20,
-                "seq_length": 10,
-                "dir_count": 1,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_RELU,
-            "expected": 130688,
-            "tolerance": 1e-2,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 8,
-                "input_size": 4,
-                "batch_size": 4,
-                "seq_length": 2,
-                "dir_count": 1,
-            },
-        },
-    ]
-    # Cudnn scales result for dropout during training, therefore dropout has no
-    # impact for inference results.
-    # (lstm, gru, rnn_tanh are saturated in the test. rnn_relu case is most
-    # demonstrative of the dropout-invariant nature of CudnnRnn.)
-    dropouts = [0., 0.5, 1.]
-    for (config, dropout) in itertools.product(test_configs, dropouts):
-      rnn_mode = config["rnn_mode"]
-      expected = config["expected"]
-      tolerance = config["tolerance"]
-      shape = config["shape"]
-      with ops.Graph().as_default():
-        self._testOneSimpleInference(
-            rnn_mode, shape["num_layers"], shape["num_units"],
-            shape["input_size"], shape["batch_size"], shape["seq_length"],
-            shape["dir_count"], dropout, expected, tolerance)
-
-
-class CudnnRNNTestTraining(TensorFlowTestCase):
-
-  def _testOneSimpleTraining(self, rnn_mode, num_layers, num_units, input_size,
-                             batch_size, seq_length, dir_count, dropout, dtype,
-                             delta, tolerance):
-    # Gradient checking runs two forward ops with almost the same input. Need to
-    # make sure the drop patterns across the two runs are the same.
-    logging.info("Training test with config: %s", locals())
-    old_env_state = os.environ.get("TF_CUDNN_RESET_RND_GEN_STATE", str(False))
-    os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = str(True)
-    has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
-    random_seed.set_random_seed(5678)
-    direction = (cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION if dir_count == 1
-                 else cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION)
-    model = _CreateModel(
-        rnn_mode,
-        num_layers,
-        num_units,
-        input_size,
-        direction=direction,
-        dtype=dtype,
-        dropout=dropout)
-    params_size_t = model.params_size()
-    input_data = variables.VariableV1(
-        random_ops.random_uniform(
-            [seq_length, batch_size, input_size], dtype=dtype),
-        dtype=dtype)
-    input_h = variables.VariableV1(
-        random_ops.random_uniform(
-            [num_layers * dir_count, batch_size, num_units], dtype=dtype),
-        dtype=dtype)
-    params = variables.VariableV1(
-        random_ops.random_uniform([params_size_t], dtype=dtype),
-        validate_shape=False,
-        dtype=dtype)
-    if has_input_c:
-      input_c = variables.VariableV1(
-          random_ops.random_uniform(
-              [num_layers * dir_count, batch_size, num_units], dtype=dtype),
-          dtype=dtype)
-
-      output, output_h, output_c = model(
-          input_data=input_data,
-          input_h=input_h,
-          input_c=input_c,
-          params=params)
-    else:
-      output, output_h = model(
-          input_data=input_data, input_h=input_h, params=params)
-    output_sum = math_ops.reduce_sum(output)
-    output_h_sum = math_ops.reduce_sum(output_h)
-    total_sum = output_sum + output_h_sum
-    if has_input_c:
-      output_c_sum = math_ops.reduce_sum(output_c)
-      total_sum += output_c_sum
-
-    with self.test_session(use_gpu=True, graph=ops.get_default_graph()) as sess:
-      params_size_v = sess.run(params_size_t)
-      inputs_and_shapes = [
-          (input_data, [seq_length, batch_size, input_size]),
-          (input_h, [num_layers * dir_count, batch_size, num_units]),
-          (params, [params_size_v]),
-      ]
-      if has_input_c:
-        inputs_and_shapes.append(
-            (input_c, [num_layers * dir_count, batch_size, num_units]),)
-      sess.run(variables.global_variables_initializer())
-      all_inputs = [entry[0] for entry in inputs_and_shapes]
-      all_shapes = [entry[1] for entry in inputs_and_shapes]
-
-      err = gradient_checker.compute_gradient_error(
-          all_inputs, all_shapes, total_sum, [1], delta=delta)
-
-      self.assertLess(err, tolerance)
-      os.environ["TF_CUDNN_RESET_RND_GEN_STATE"] = old_env_state
-
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
-  def DISABLED_testSimpleTraining(self):
-    # TODO(jamesqin): fix b/117989214
-    test_configs = [
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,
-            "dtype": dtypes.float64,
-            "delta": 1e-4,
-            "tolerance": 5e-6,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 3,
-                "input_size": 4,
-                "batch_size": 3,
-                "seq_length": 4,
-                "dir_count": 1,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_GRU,
-            "dtype": dtypes.float64,
-            "delta": 1e-4,
-            "tolerance": 5e-6,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 3,
-                "input_size": 4,
-                "batch_size": 3,
-                "seq_length": 4,
-                "dir_count": 1,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_TANH,
-            "dtype": dtypes.float64,
-            "delta": 1e-4,
-            "tolerance": 5e-6,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 3,
-                "input_size": 4,
-                "batch_size": 3,
-                "seq_length": 4,
-                "dir_count": 1,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_RELU,
-            "dtype": dtypes.float64,
-            "delta": 1e-4,
-            "tolerance": 5e-6,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 3,
-                "input_size": 4,
-                "batch_size": 3,
-                "seq_length": 4,
-                "dir_count": 1,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,
-            "dtype": dtypes.float32,
-            "tolerance": 1.5e-2,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 3,
-                "input_size": 4,
-                "batch_size": 3,
-                "seq_length": 4,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_GRU,
-            "dtype": dtypes.float32,
-            "tolerance": 4e-3,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 3,
-                "input_size": 4,
-                "batch_size": 3,
-                "seq_length": 4,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_TANH,
-            "dtype": dtypes.float32,
-            "tolerance": 5e-3,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 3,
-                "input_size": 4,
-                "batch_size": 3,
-                "seq_length": 4,
-            },
-        },
-        {
-            "rnn_mode": cudnn_rnn_ops.CUDNN_RNN_RELU,
-            "dtype": dtypes.float32,
-            "tolerance": 5e-1,
-            "shape": {
-                "num_layers": 2,
-                "num_units": 3,
-                "input_size": 4,
-                "batch_size": 3,
-                "seq_length": 4,
-            },
-        },
-    ]
-    dropouts = [0., 0.5, 1.]
-    dir_counts = [1]
-    for config, dropout, dir_count in itertools.product(test_configs, dropouts,
-                                                        dir_counts):
-      rnn_mode = config["rnn_mode"]
-      dtype = config.get("dtype", dtypes.float32)
-      delta = config.get("delta", 1e-3)
-      tolerance = config["tolerance"]
-      shape = config["shape"]
-      with ops.Graph().as_default():
-        self._testOneSimpleTraining(rnn_mode, shape["num_layers"],
-                                    shape["num_units"], shape["input_size"],
-                                    shape["batch_size"], shape["seq_length"],
-                                    dir_count, dropout, dtype, delta, tolerance)
+        weights_r, biases_r = sess.run([weights_ops[i], biases_ops[i]])
+        self._compare_weights(weights, weights_r)
+        self._compare_biases(biases, biases_r)
 
 
 if __name__ == "__main__":

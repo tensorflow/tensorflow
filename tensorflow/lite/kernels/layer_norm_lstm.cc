@@ -55,7 +55,7 @@ constexpr int kCellToForgetWeightsTensor = 10;  // Optional
 constexpr int kCellToOutputWeightsTensor = 11;  // Optional
 
 // Layer norm weights tensors of size {n_cell}, representing a diagonal matrix.
-constexpr int kInputLayerNormWeightsTensor = 12;
+constexpr int kInputLayerNormWeightsTensor = 12;  // Optional
 constexpr int kForgetLayerNormWeightsTensor = 13;
 constexpr int kCellLayerNormWeightsTensor = 14;
 constexpr int kOutputLayerNormWeightsTensor = 15;
@@ -118,7 +118,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* input_to_input_weights =
       GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
-  if (input_to_input_weights != nullptr) {
+  const bool use_cifg = (input_to_input_weights == nullptr);
+  if (!use_cifg) {
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[1], n_input);
@@ -138,7 +139,9 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kRecurrentToInputWeightsTensor);
-  if (recurrent_to_input_weights != nullptr) {
+  if (use_cifg) {
+    TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights, nullptr);
+  } else {
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->data[0],
                       n_cell);
@@ -160,15 +163,6 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->data[0], n_cell);
   TF_LITE_ENSURE_EQ(context, recurrent_to_cell_weights->dims->data[1],
                     n_output);
-
-  // We make sure the input-gate's parameters are either both present (regular
-  // LSTM) or not at all (CIFG-LSTM).
-  const bool cifg_weights_all_or_none =
-      ((input_to_input_weights != nullptr) &&
-       (recurrent_to_input_weights != nullptr)) ||
-      ((input_to_input_weights == nullptr) &&
-       (recurrent_to_input_weights == nullptr));
-  TF_LITE_ENSURE(context, cifg_weights_all_or_none == true);
 
   const TfLiteTensor* cell_to_input_weights =
       GetOptionalInputTensor(context, node, kCellToInputWeightsTensor);
@@ -192,7 +186,6 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   }
 
   // Making sure the peephole weights are there all or none.
-  const bool use_cifg = (input_to_input_weights == nullptr);
   const bool peephole_weights_all_or_none =
       ((cell_to_input_weights != nullptr || use_cifg) &&
        (cell_to_forget_weights != nullptr) &&
@@ -204,10 +197,14 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   // Making sure layer norm weights are not null and have the right dimension.
   const TfLiteTensor* input_layer_norm_weights =
-      GetInput(context, node, kInputLayerNormWeightsTensor);
-  TF_LITE_ENSURE(context, input_layer_norm_weights != nullptr);
-  TF_LITE_ENSURE_EQ(context, input_layer_norm_weights->dims->size, 1);
-  TF_LITE_ENSURE_EQ(context, input_layer_norm_weights->dims->data[0], n_cell);
+      GetOptionalInputTensor(context, node, kInputLayerNormWeightsTensor);
+  if (use_cifg) {
+    TF_LITE_ENSURE_EQ(context, input_layer_norm_weights, nullptr);
+  } else {
+    TF_LITE_ENSURE(context, input_layer_norm_weights != nullptr);
+    TF_LITE_ENSURE_EQ(context, input_layer_norm_weights->dims->size, 1);
+    TF_LITE_ENSURE_EQ(context, input_layer_norm_weights->dims->data[0], n_cell);
+  }
 
   const TfLiteTensor* forget_layer_norm_weights =
       GetInput(context, node, kForgetLayerNormWeightsTensor);
@@ -978,6 +975,9 @@ TfLiteStatus EvalFloat(
       (projection_weights == nullptr) ? nullptr : projection_weights->data.f;
   const float* projection_bias_ptr =
       (projection_bias == nullptr) ? nullptr : projection_bias->data.f;
+  const float* input_layer_norm_weight_ptr =
+      (input_layer_norm_weights == nullptr) ? nullptr
+                                            : input_layer_norm_weights->data.f;
 
   // Required tensors, pointers are non-null.
   const float* input_ptr_batch = input->data.f;
@@ -990,7 +990,6 @@ TfLiteStatus EvalFloat(
       recurrent_to_cell_weights->data.f;
   const float* recurrent_to_output_weights_ptr =
       recurrent_to_output_weights->data.f;
-  const float* input_layer_norm_weight_ptr = input_layer_norm_weights->data.f;
   const float* forget_layer_norm_weight_ptr = forget_layer_norm_weights->data.f;
   const float* cell_layer_norm_weight_ptr = cell_layer_norm_weights->data.f;
   const float* output_layer_norm_weight_ptr = output_layer_norm_weights->data.f;
@@ -1115,6 +1114,9 @@ TfLiteStatus EvalHybrid(
       (projection_weights == nullptr) ? 1.0f : projection_weights->params.scale;
   const float* projection_bias_ptr =
       (projection_bias == nullptr) ? nullptr : projection_bias->data.f;
+  const float* input_layer_norm_weight_ptr =
+      (input_layer_norm_weights == nullptr) ? nullptr
+                                            : input_layer_norm_weights->data.f;
 
   // Required tensors, pointers are non-null.
   const float* input_ptr_batch = input->data.f;
@@ -1141,7 +1143,6 @@ TfLiteStatus EvalHybrid(
       reinterpret_cast<int8_t*>(recurrent_to_output_weights->data.uint8);
   const float recurrent_to_output_weights_scale =
       recurrent_to_output_weights->params.scale;
-  const float* input_layer_norm_weight_ptr = input_layer_norm_weights->data.f;
   const float* forget_layer_norm_weight_ptr = forget_layer_norm_weights->data.f;
   const float* cell_layer_norm_weight_ptr = cell_layer_norm_weights->data.f;
   const float* output_layer_norm_weight_ptr = output_layer_norm_weights->data.f;
@@ -1221,7 +1222,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
 
   const TfLiteTensor* input_layer_norm_weights =
-      GetInput(context, node, kInputLayerNormWeightsTensor);
+      GetOptionalInputTensor(context, node, kInputLayerNormWeightsTensor);
   const TfLiteTensor* forget_layer_norm_weights =
       GetInput(context, node, kForgetLayerNormWeightsTensor);
   const TfLiteTensor* cell_layer_norm_weights =

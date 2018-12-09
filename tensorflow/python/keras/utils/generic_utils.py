@@ -319,14 +319,16 @@ class Progbar(object):
           will be displayed as-is. All others will be averaged
           by the progbar before display.
       interval: Minimum visual progress update interval (in seconds).
+      unit_name: Display name for step counts (usually "step" or "sample").
   """
 
   def __init__(self, target, width=30, verbose=1, interval=0.05,
-               stateful_metrics=None):
+               stateful_metrics=None, unit_name='step'):
     self.target = target
     self.width = width
     self.verbose = verbose
     self.interval = interval
+    self.unit_name = unit_name
     if stateful_metrics:
       self.stateful_metrics = set(stateful_metrics)
     else:
@@ -425,12 +427,12 @@ class Progbar(object):
 
         info = ' - ETA: %s' % eta_format
       else:
-        if time_per_unit >= 1:
-          info += ' %.0fs/step' % time_per_unit
+        if time_per_unit >= 1 or time_per_unit == 0:
+          info += ' %.0fs/%s' % (time_per_unit, self.unit_name)
         elif time_per_unit >= 1e-3:
-          info += ' %.0fms/step' % (time_per_unit * 1e3)
+          info += ' %.0fms/%s' % (time_per_unit * 1e3, self.unit_name)
         else:
-          info += ' %.0fus/step' % (time_per_unit * 1e6)
+          info += ' %.0fus/%s' % (time_per_unit * 1e6, self.unit_name)
 
       for k in self._values_order:
         info += ' - %s:' % k

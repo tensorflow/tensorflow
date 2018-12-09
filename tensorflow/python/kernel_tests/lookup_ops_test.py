@@ -37,6 +37,7 @@ from tensorflow.python.training import server_lib
 
 class HashTableOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testHashTable(self):
     with self.cached_session():
       default_val = -1
@@ -52,15 +53,16 @@ class HashTableOpTest(test.TestCase):
       output = table.lookup(input_string)
       self.assertAllEqual([3], output.get_shape())
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
       exported_keys_tensor, exported_values_tensor = table.export()
 
       self.assertItemsEqual([b"brain", b"salad", b"surgery"],
-                            exported_keys_tensor.eval())
-      self.assertItemsEqual([0, 1, 2], exported_values_tensor.eval())
+                            self.evaluate(exported_keys_tensor))
+      self.assertItemsEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
+  @test_util.run_deprecated_v1
   def testHashTableFindHighRank(self):
     with self.cached_session():
       default_val = -1
@@ -76,9 +78,10 @@ class HashTableOpTest(test.TestCase):
           [["brain", "salad"], ["tank", "tarkus"]])
       output = table.lookup(input_string)
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([[0, 1], [-1, -1]], result)
 
+  @test_util.run_deprecated_v1
   def testHashTableInitWithPythonArrays(self):
     with self.cached_session():
       default_val = -1
@@ -94,9 +97,10 @@ class HashTableOpTest(test.TestCase):
       input_string = constant_op.constant(["brain", "salad", "tank"])
       output = table.lookup(input_string)
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
+  @test_util.run_deprecated_v1
   def testHashTableInitWithNumPyArrays(self):
     with self.cached_session():
       default_val = -1
@@ -111,9 +115,10 @@ class HashTableOpTest(test.TestCase):
       input_string = constant_op.constant(["brain", "salad", "tank"])
       output = table.lookup(input_string)
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
+  @test_util.run_deprecated_v1
   def testMultipleHashTables(self):
     with self.cached_session() as sess:
       default_val = -1
@@ -137,11 +142,12 @@ class HashTableOpTest(test.TestCase):
       output2 = table2.lookup(input_string)
       output3 = table3.lookup(input_string)
 
-      out1, out2, out3 = sess.run([output1, output2, output3])
+      out1, out2, out3 = self.evaluate([output1, output2, output3])
       self.assertAllEqual([0, 1, -1], out1)
       self.assertAllEqual([0, 1, -1], out2)
       self.assertAllEqual([0, 1, -1], out3)
 
+  @test_util.run_deprecated_v1
   def testHashTableWithTensorDefault(self):
     with self.cached_session():
       default_val = constant_op.constant(-1, dtypes.int64)
@@ -154,9 +160,10 @@ class HashTableOpTest(test.TestCase):
       input_string = constant_op.constant(["brain", "salad", "tank"])
       output = table.lookup(input_string)
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
+  @test_util.run_deprecated_v1
   def testHashTableWithSparseTensorInput(self):
     with self.cached_session() as sess:
       default_val = constant_op.constant(-1, dtypes.int64)
@@ -174,12 +181,13 @@ class HashTableOpTest(test.TestCase):
           constant_op.constant(sp_shape, dtypes.int64))
       output = table.lookup(input_tensor)
 
-      out_indices, out_values, out_shape = sess.run(output)
+      out_indices, out_values, out_shape = self.evaluate(output)
 
       self.assertAllEqual([0, 1, -1], out_values)
       self.assertAllEqual(sp_indices, out_indices)
       self.assertAllEqual(sp_shape, out_shape)
 
+  @test_util.run_deprecated_v1
   def testSignatureMismatch(self):
     with self.cached_session():
       default_val = -1
@@ -210,6 +218,7 @@ class HashTableOpTest(test.TestCase):
             lookup_ops.KeyValueTensorInitializer(["a"], [1], [dtypes.string],
                                                  dtypes.int64), default_val)
 
+  @test_util.run_deprecated_v1
   def testNotInitialized(self):
     with self.cached_session():
       default_val = -1
@@ -221,8 +230,9 @@ class HashTableOpTest(test.TestCase):
       output = table.lookup(input_string)
 
       with self.assertRaisesOpError("Table not initialized"):
-        output.eval()
+        self.evaluate(output)
 
+  @test_util.run_deprecated_v1
   def testInitializeTwice(self):
     with self.cached_session():
       default_val = -1
@@ -235,6 +245,7 @@ class HashTableOpTest(test.TestCase):
       with self.assertRaisesOpError("Table already initialized"):
         table.initializer.run()
 
+  @test_util.run_deprecated_v1
   def testInitializationWithInvalidDimensions(self):
     with self.cached_session():
       default_val = -1
@@ -245,6 +256,7 @@ class HashTableOpTest(test.TestCase):
         lookup_ops.HashTable(
             lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
+  @test_util.run_deprecated_v1
   def testMultipleSessions(self):
     # Start a server
     server = server_lib.Server(
@@ -274,6 +286,7 @@ class HashTableOpTest(test.TestCase):
       table.initializer.run()
       self.assertAllEqual(3, table.size().eval())
 
+  @test_util.run_deprecated_v1
   def testHashTableInt32String(self):
     with self.cached_session():
       default_val = "n/a"
@@ -286,7 +299,7 @@ class HashTableOpTest(test.TestCase):
       input_tensor = constant_op.constant([0, 1, -1])
       output = table.lookup(input_tensor)
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([b"brain", b"salad", b"n/a"], result)
 
 
@@ -298,6 +311,7 @@ class IndexTableFromFile(test.TestCase):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
+  @test_util.run_deprecated_v1
   def test_string_index_table_from_file(self):
     vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
     with self.cached_session():
@@ -306,10 +320,11 @@ class IndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_string_index_table_from_multicolumn_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab1.txt", values=("brain\t300", "salad\t20", "surgery\t1"))
@@ -322,10 +337,11 @@ class IndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_string_index_table_from_multicolumn_file_custom_delimiter(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab1.txt", values=("brain 300", "salad 20", "surgery 1"))
@@ -339,10 +355,11 @@ class IndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_string_index_table_from_file_tensor_filename(self):
     vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
     with self.cached_session():
@@ -352,12 +369,13 @@ class IndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
       self.assertEqual(1,
                        len(ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)))
 
+  @test_util.run_deprecated_v1
   def test_string_index_table_from_file_placeholder_filename(self):
     vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
     with self.cached_session():
@@ -367,14 +385,15 @@ class IndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
 
       feed_dict = {vocabulary_placeholder.name: vocabulary_file}
       lookup_ops.tables_initializer().run(feed_dict=feed_dict)
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
       self.assertEqual(0,
                        len(ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)))
 
+  @test_util.run_deprecated_v1
   def test_int32_index_table_from_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab2.txt", values=("42", "1", "-1000"))
@@ -387,10 +406,11 @@ class IndexTableFromFile(test.TestCase):
           constant_op.constant((1, -1000, 11), dtype=dtypes.int32))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_int64_index_table_from_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab3.txt", values=("42", "1", "-1000"))
@@ -403,10 +423,11 @@ class IndexTableFromFile(test.TestCase):
           constant_op.constant((1, -1000, 11), dtype=dtypes.int64))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_index_table_from_file_with_default_value(self):
     default_value = -42
     vocabulary_file = self._createVocabFile("f2i_vocab4.txt")
@@ -416,10 +437,11 @@ class IndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, default_value), ids.eval())
+      self.assertAllEqual((1, 2, default_value), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_index_table_from_file_with_oov_buckets(self):
     vocabulary_file = self._createVocabFile("f2i_vocab5.txt")
     with self.cached_session():
@@ -429,7 +451,7 @@ class IndexTableFromFile(test.TestCase):
           constant_op.constant(["salad", "surgery", "tarkus", "toccata"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(
           (
@@ -437,7 +459,7 @@ class IndexTableFromFile(test.TestCase):
               2,  # From vocabulary file.
               867,  # 3 + fingerprint("tarkus") mod 300.
               860),  # 3 + fingerprint("toccata") mod 300.
-          ids.eval())
+          self.evaluate(ids))
 
   def test_index_table_from_file_fails_with_empty_vocabulary_file_name(self):
     self.assertRaises(
@@ -468,6 +490,7 @@ class IndexTableFromFile(test.TestCase):
         vocabulary_file=vocabulary_file,
         vocab_size=0)
 
+  @test_util.run_deprecated_v1
   def test_index_table_from_file_with_vocab_size_too_small(self):
     vocabulary_file = self._createVocabFile("f2i_vocab6.txt")
     with self.cached_session():
@@ -476,11 +499,12 @@ class IndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, -1, -1), ids.eval())
+      self.assertAllEqual((1, -1, -1), self.evaluate(ids))
       self.assertEqual(2, table.size().eval())
 
+  @test_util.run_deprecated_v1
   def test_index_table_from_file_with_vocab_size_too_large(self):
     vocabulary_file = self._createVocabFile("f2i_vocab7.txt")
     with self.cached_session():
@@ -489,6 +513,7 @@ class IndexTableFromFile(test.TestCase):
       self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                               "Invalid vocab_size", table.initializer.run)
 
+  @test_util.run_deprecated_v1
   def test_index_table_from_file_with_vocab_size(self):
     vocabulary_file = self._createVocabFile("f2i_vocab8.txt")
 
@@ -504,9 +529,9 @@ class IndexTableFromFile(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, -1), ids.eval())
+      self.assertAllEqual((1, 2, -1), self.evaluate(ids))
       self.assertEqual(3, table.size().eval())
 
   def test_index_table_from_file_with_invalid_hashers(self):
@@ -577,6 +602,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
       table = lookup_ops.HashTable(init, default_value=-1)
       table.initializer.run()
 
+  @test_util.run_deprecated_v1
   def test_int32(self):
     with ops.Graph().as_default(), self.cached_session():
       init = lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
@@ -590,6 +616,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
 class IndexTableFromTensor(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def test_index_table_from_tensor_with_tensor_init(self):
     table = lookup_ops.index_table_from_tensor(
         vocabulary_list=("brain", "salad", "surgery"), num_oov_buckets=1)
@@ -606,6 +633,7 @@ class IndexTableFromTensor(test.TestCase):
     ids = table.lookup(constant_op.constant(("salad", "surgery", "tarkus")))
     self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_int32_index_table_from_tensor_with_tensor_init(self):
     with self.cached_session():
       table = lookup_ops.index_table_from_tensor(
@@ -614,10 +642,11 @@ class IndexTableFromTensor(test.TestCase):
           constant_op.constant((1, -1000, 11), dtype=dtypes.int32))
 
       with self.assertRaises(errors_impl.FailedPreconditionError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_int64_index_table_from_tensor_with_tensor_init(self):
     with self.cached_session():
       table = lookup_ops.index_table_from_tensor(
@@ -626,10 +655,11 @@ class IndexTableFromTensor(test.TestCase):
           constant_op.constant((1, -1000, 11), dtype=dtypes.int64))
 
       with self.assertRaises(errors_impl.FailedPreconditionError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, 3), ids.eval())
+      self.assertAllEqual((1, 2, 3), self.evaluate(ids))
 
+  @test_util.run_deprecated_v1
   def test_index_table_from_tensor_with_default_value(self):
     default_value = -42
     with self.cached_session():
@@ -639,9 +669,9 @@ class IndexTableFromTensor(test.TestCase):
       ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
 
       with self.assertRaises(errors_impl.FailedPreconditionError):
-        ids.eval()
+        self.evaluate(ids)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((1, 2, default_value), ids.eval())
+      self.assertAllEqual((1, 2, default_value), self.evaluate(ids))
 
   def test_index_table_from_tensor_missing_vocabulary_list(self):
     with self.cached_session():
@@ -650,13 +680,14 @@ class IndexTableFromTensor(test.TestCase):
         lookup_ops.index_table_from_tensor(
             vocabulary_list=None, num_oov_buckets=1)
 
+  @test_util.run_deprecated_v1
   def test_index_table_from_tensor_empty_vocabulary_list(self):
     with self.cached_session():
       table = lookup_ops.index_table_from_tensor(
           vocabulary_list=np.array([], dtype=np.str_), num_oov_buckets=1)
       ids = table.lookup(constant_op.constant(["salad", "surgery", "brain"]))
       with self.assertRaises(errors_impl.OpError):
-        ids.eval()
+        self.evaluate(ids)
       with self.assertRaisesRegexp(
           errors_impl.OpError, "keys and values cannot be empty"):
         lookup_ops.tables_initializer().run()
@@ -686,6 +717,7 @@ class IndexToStringTableFromFileTest(test.TestCase):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_table(self):
     vocabulary_path = self._createVocabFile("i2f_vocab1.txt")
     # vocabulary_file supports string and tensor
@@ -698,11 +730,12 @@ class IndexToStringTableFromFileTest(test.TestCase):
         features = table.lookup(
             constant_op.constant([0, 1, 2, 3], dtypes.int64))
         with self.assertRaises(errors_impl.OpError):
-          features.eval()
+          self.evaluate(features)
         lookup_ops.tables_initializer().run()
         self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                            features.eval())
+                            self.evaluate(features))
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_table_from_multicolumn_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab1.txt", values=("brain\t300", "salad\t20", "surgery\t1"))
@@ -713,11 +746,12 @@ class IndexToStringTableFromFileTest(test.TestCase):
           value_column_index=0)
       features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
       with self.assertRaises(errors_impl.OpError):
-        features.eval()
+        self.evaluate(features)
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                          features.eval())
+                          self.evaluate(features))
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_table_from_multicolumn_file_custom_delimiter(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab1.txt", values=("brain 300", "salad 20", "surgery 1"))
@@ -729,11 +763,12 @@ class IndexToStringTableFromFileTest(test.TestCase):
           delimiter=" ")
       features = table.lookup(constant_op.constant([0, 1, 2, 3], dtypes.int64))
       with self.assertRaises(errors_impl.OpError):
-        features.eval()
+        self.evaluate(features)
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                          features.eval())
+                          self.evaluate(features))
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_table_with_default_value(self):
     default_value = b"NONE"
     vocabulary_file = self._createVocabFile("f2i_vocab2.txt")
@@ -742,11 +777,12 @@ class IndexToStringTableFromFileTest(test.TestCase):
           vocabulary_file=vocabulary_file, default_value=default_value)
       features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
       with self.assertRaises(errors_impl.OpError):
-        features.eval()
+        self.evaluate(features)
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", b"surgery", default_value),
-                          features.eval())
+                          self.evaluate(features))
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_table_with_vocab_size_too_small(self):
     default_value = b"NONE"
     vocabulary_file = self._createVocabFile("f2i_vocab2.txt")
@@ -757,11 +793,12 @@ class IndexToStringTableFromFileTest(test.TestCase):
           default_value=default_value)
       features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
       with self.assertRaises(errors_impl.OpError):
-        features.eval()
+        self.evaluate(features)
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", default_value, default_value),
-                          features.eval())
+                          self.evaluate(features))
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_table_with_vocab_size_too_large(self):
     vocabulary_file = self._createVocabFile("f2i_vocab6.txt")
     with self.cached_session():
@@ -770,11 +807,12 @@ class IndexToStringTableFromFileTest(test.TestCase):
       features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
 
       with self.assertRaises(errors_impl.OpError):
-        features.eval()
+        self.evaluate(features)
       init = lookup_ops.tables_initializer()
       self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                               "Invalid vocab_size", init.run)
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_table_with_vocab_size(self):
     vocabulary_file = self._createVocabFile("f2i_vocab7.txt")
     with self.cached_session():
@@ -783,13 +821,15 @@ class IndexToStringTableFromFileTest(test.TestCase):
       features = table.lookup(constant_op.constant([1, 2, 4], dtypes.int64))
 
       with self.assertRaises(errors_impl.OpError):
-        features.eval()
+        self.evaluate(features)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((b"salad", b"surgery", b"UNK"), features.eval())
+      self.assertAllEqual((b"salad", b"surgery", b"UNK"),
+                          self.evaluate(features))
 
 
 class IndexToStringTableFromTensorTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_table_from_tensor(self):
     with self.cached_session():
       vocabulary_list = constant_op.constant(["brain", "salad", "surgery"])
@@ -799,12 +839,13 @@ class IndexToStringTableFromTensorTest(test.TestCase):
       indices = constant_op.constant([0, 1, 2, 3], dtypes.int64)
       features = table.lookup(indices)
       with self.assertRaises(errors_impl.OpError):
-        features.eval()
+        self.evaluate(features)
       lookup_ops.tables_initializer().run()
 
       self.assertAllEqual((b"brain", b"salad", b"surgery", b"UNK"),
-                          features.eval())
+                          self.evaluate(features))
 
+  @test_util.run_deprecated_v1
   def test_duplicate_entries(self):
     with self.cached_session():
       vocabulary_list = constant_op.constant(["hello", "hello"])
@@ -813,8 +854,9 @@ class IndexToStringTableFromTensorTest(test.TestCase):
       indices = constant_op.constant([0, 1, 4], dtypes.int64)
       features = table.lookup(indices)
       lookup_ops.tables_initializer().run()
-      self.assertAllEqual((b"hello", b"hello", b"UNK"), features.eval())
+      self.assertAllEqual((b"hello", b"hello", b"UNK"), self.evaluate(features))
 
+  @test_util.run_deprecated_v1
   def test_index_to_string_with_default_value(self):
     default_value = b"NONE"
     with self.cached_session():
@@ -824,11 +866,11 @@ class IndexToStringTableFromTensorTest(test.TestCase):
       indices = constant_op.constant([1, 2, 4], dtypes.int64)
       features = table.lookup(indices)
       with self.assertRaises(errors_impl.OpError):
-        features.eval()
+        self.evaluate(features)
 
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((b"salad", b"surgery", default_value),
-                          features.eval())
+                          self.evaluate(features))
 
 
 class InitializeTableFromFileOpTest(test.TestCase):
@@ -854,6 +896,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
     result = self.evaluate(output)
     self.assertAllEqual([0, 1, -1], result)
 
+  @test_util.run_deprecated_v1
   def testInitializeInt64Table(self):
     vocabulary_file = self._createVocabFile(
         "one_column_int64.txt", values=("42", "1", "-1000"))
@@ -870,9 +913,10 @@ class InitializeTableFromFileOpTest(test.TestCase):
       output = table.lookup(
           constant_op.constant((42, 1, 11), dtype=dtypes.int64))
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
+  @test_util.run_deprecated_v1
   def testInitializeIndexTable(self):
     vocabulary_file = self._createVocabFile("one_column_2.txt")
 
@@ -889,9 +933,10 @@ class InitializeTableFromFileOpTest(test.TestCase):
       input_values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
       output = table.lookup(input_values)
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([b"brain", b"salad", b"surgery", b"UNK"], result)
 
+  @test_util.run_deprecated_v1
   def testMultiColumn(self):
     vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns.txt")
     with open(vocabulary_file, "w") as f:
@@ -911,9 +956,10 @@ class InitializeTableFromFileOpTest(test.TestCase):
       input_string = constant_op.constant(["brain", "salad", "surgery"])
       output = table.lookup(input_string)
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([1, 5, 6], result)
 
+  @test_util.run_deprecated_v1
   def testInvalidDataTypeInMultiColumn(self):
     vocabulary_file = os.path.join(self.get_temp_dir(), "three_columns.txt")
     with open(vocabulary_file, "w") as f:
@@ -944,6 +990,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
                                            key_index, dtypes.string,
                                            value_index), default_value)
 
+  @test_util.run_deprecated_v1
   def testInvalidIndex(self):
     vocabulary_file = self._createVocabFile("one_column_4.txt")
     with self.cached_session():
@@ -958,6 +1005,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       with self.assertRaisesOpError("Invalid number of columns"):
         table.initializer.run()
 
+  @test_util.run_deprecated_v1
   def testInitializeSameTableWithMultipleNodes(self):
     vocabulary_file = self._createVocabFile("one_column_5.txt")
 
@@ -994,7 +1042,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       output2 = table2.lookup(input_string)
       output3 = table3.lookup(input_string)
 
-      out1, out2, out3 = sess.run([output1, output2, output3])
+      out1, out2, out3 = self.evaluate([output1, output2, output3])
       self.assertAllEqual([0, 1, -1], out1)
       self.assertAllEqual([0, 1, -1], out2)
       self.assertAllEqual([0, 1, -1], out3)
@@ -1009,6 +1057,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
                 dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
             default_value)
 
+  @test_util.run_deprecated_v1
   def testInitializeWithVocabSize(self):
     with self.cached_session():
       default_value = -1
@@ -1055,6 +1104,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       table3.initializer.run()
       self.assertEquals(vocab_size, table3.size().eval())
 
+  @test_util.run_deprecated_v1
   def testFeedVocabularyName(self):
     vocabulary_file = self._createVocabFile("feed_vocabulary.txt")
 
@@ -1078,9 +1128,10 @@ class InitializeTableFromFileOpTest(test.TestCase):
       input_string = constant_op.constant(["brain", "salad", "tank"])
       output = table.lookup(input_string)
 
-      result = output.eval()
+      result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
+  @test_util.run_deprecated_v1
   def testInvalidFilenames(self):
     vocabulary_file = self._createVocabFile("filename_shape.txt")
 
@@ -1105,6 +1156,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
                 dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
             default_value)
 
+  @test_util.run_deprecated_v1
   def testIdToStringTable(self):
     vocab_file = self._createVocabFile("feat_to_id_1.txt")
     with self.cached_session():
@@ -1119,9 +1171,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
       input_values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
 
       out = table.lookup(input_values)
-      self.assertAllEqual([b"brain", b"salad", b"surgery", b"UNK"], out.eval())
+      self.assertAllEqual([b"brain", b"salad", b"surgery", b"UNK"],
+                          self.evaluate(out))
       self.assertEquals(vocab_size, table.size().eval())
 
+  @test_util.run_deprecated_v1
   def testStringToIdTable(self):
     vocab_file = self._createVocabFile("feat_to_id_2.txt")
     with self.cached_session():
@@ -1135,9 +1189,10 @@ class InitializeTableFromFileOpTest(test.TestCase):
       input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
 
       out = table.lookup(input_string)
-      self.assertAllEqual([0, 1, 2, -1], out.eval())
+      self.assertAllEqual([0, 1, 2, -1], self.evaluate(out))
       self.assertEquals(vocab_size, table.size().eval())
 
+  @test_util.run_deprecated_v1
   def testInt64ToIdTable(self):
     vocab_file = self._createVocabFile(
         "feat_to_id_3.txt", values=("42", "1", "-1000"))
@@ -1152,7 +1207,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
 
       out = table.lookup(
           constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int64))
-      self.assertAllEqual((0, 1, 2, -1), out.eval())
+      self.assertAllEqual((0, 1, 2, -1), self.evaluate(out))
       self.assertEquals(vocab_size, table.size().eval())
 
 
@@ -1164,6 +1219,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
+  @test_util.run_deprecated_v1
   def testStringIdTableWithHashBuckets(self):
     vocab_file = self._createVocabFile("feat_to_id_1.txt")
     with self.cached_session():
@@ -1181,9 +1237,10 @@ class IdTableWithHashBucketsTest(test.TestCase):
       input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
 
       out = table.lookup(input_string)
-      self.assertAllEqual([0, 1, 2, 3], out.eval())
+      self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
       self.assertEquals(vocab_size + oov_buckets, table.size().eval())
 
+  @test_util.run_deprecated_v1
   def testInt32IdTableWithHashBuckets(self):
     vocab_file = self._createVocabFile("feat_to_id_2.txt", ("42", "1", "-1000"))
     with self.cached_session():
@@ -1203,9 +1260,10 @@ class IdTableWithHashBucketsTest(test.TestCase):
       values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int32)
 
       out = table.lookup(values)
-      self.assertAllEqual([0, 1, 2, 3], out.eval())
+      self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
       self.assertEquals(vocab_size + oov_buckets, table.size().eval())
 
+  @test_util.run_deprecated_v1
   def testInt64IdTableWithHashBuckets(self):
     vocab_file = self._createVocabFile("feat_to_id_3.txt", ("42", "1", "-1000"))
     with self.cached_session():
@@ -1223,9 +1281,10 @@ class IdTableWithHashBucketsTest(test.TestCase):
       values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int64)
 
       out = table.lookup(values)
-      self.assertAllEqual([0, 1, 2, 3], out.eval())
+      self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
       self.assertEquals(vocab_size + oov_buckets, table.size().eval())
 
+  @test_util.run_deprecated_v1
   def testStringIdTableWithOnlyHashBucket(self):
     with self.cached_session():
       oov_buckets = 5
@@ -1244,9 +1303,10 @@ class IdTableWithHashBucketsTest(test.TestCase):
               1,  # fingerprint("salad") mod 5.
               4  # fingerprint("surgery") mod 5
           ],
-          out.eval())
+          self.evaluate(out))
       self.assertEquals(oov_buckets, table.size().eval())
 
+  @test_util.run_deprecated_v1
   def testInt32IdTableWithOnlyHashBucket(self):
     with self.cached_session():
       oov_buckets = 5
@@ -1266,7 +1326,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
               4,  # fingerprint("1") mod 5.
               2  # fingerprint("-1000") mod 5
           ],
-          out.eval())
+          self.evaluate(out))
       self.assertEquals(oov_buckets, table.size().eval())
 
   def testFloat64IdTableWithOnlyHashBucket(self):
@@ -1281,6 +1341,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
         lookup_ops.IdTableWithHashBuckets(
             None, num_oov_buckets=5, key_dtype=dtypes.bool)
 
+  @test_util.run_deprecated_v1
   def testIdTableWithHashBucketsWithMultipleInitializers(self):
     vocab_file = self._createVocabFile("feat_to_id_4.txt")
     with self.cached_session() as sess:
@@ -1311,7 +1372,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       out1 = table1.lookup(input_string)
       out2 = table2.lookup(input_string)
 
-      out1, out2 = sess.run([out1, out2])
+      out1, out2 = self.evaluate([out1, out2])
       self.assertAllEqual([5, 0, 1, 2, 5], out1)
       self.assertAllEqual([5, 0, 1, 2, 3], out2)
       self.assertEquals(vocab_size + oov_buckets, table1.size().eval())
@@ -1321,6 +1382,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
           "table2_Lookup/hash_bucket": "StringToHashBucketStrong",
       }, sess.graph)
 
+  @test_util.run_deprecated_v1
   def testIdTableWithHashBucketsInitializationAcrossSessions(self):
     vocab_file = self._createVocabFile("feat_to_id_5.txt")
     shared_name = "across-sessions"
@@ -1342,7 +1404,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
 
       out1 = table1.lookup(input_string_1)
 
-      self.assertAllEqual([0, 1, 2, 3], out1.eval())
+      self.assertAllEqual([0, 1, 2, 3], self.evaluate(out1))
       self.assertEquals(vocab_size + oov_buckets, table1.size().eval())
 
     with self.cached_session():
@@ -1363,9 +1425,10 @@ class IdTableWithHashBucketsTest(test.TestCase):
 
       out2 = table2.lookup(input_string_2)
 
-      self.assertAllEqual([3, 1, 3], out2.eval())
+      self.assertAllEqual([3, 1, 3], self.evaluate(out2))
       self.assertEquals(vocab_size + oov_buckets, table2.size().eval())
 
+  @test_util.run_deprecated_v1
   def testIdTableWithHashBucketsWithMultipleInitializersDifferentDefault(self):
     vocab_file = self._createVocabFile("feat_to_id_6.txt")
     with self.cached_session() as sess:
@@ -1394,12 +1457,13 @@ class IdTableWithHashBucketsTest(test.TestCase):
       out1 = table1.lookup(input_string_1)
       out2 = table2.lookup(input_string_2)
 
-      out1, out2 = sess.run([out1, out2])
+      out1, out2 = self.evaluate([out1, out2])
       self.assertAllEqual([0, 1, 2, -1], out1)
       self.assertAllEqual([-2, 1, -2], out2)
       self.assertEquals(vocab_size + oov_buckets, table1.size().eval())
       self.assertEquals(vocab_size + oov_buckets, table2.size().eval())
 
+  @test_util.run_deprecated_v1
   def testSparseTensor(self):
     vocab_file = self._createVocabFile("feat_to_id_7.txt")
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
@@ -1428,6 +1492,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
       self.assertAllEqual(input_shape, sp_ids_shape)
 
+  @test_util.run_deprecated_v1
   def testInt32SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
@@ -1456,6 +1521,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
       self.assertAllEqual(input_shape, sp_ids_shape)
 
+  @test_util.run_deprecated_v1
   def testInt64SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]

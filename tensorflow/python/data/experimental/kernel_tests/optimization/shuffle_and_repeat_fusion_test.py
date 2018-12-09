@@ -21,28 +21,27 @@ from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class ShuffleAndRepeatFusionTest(test_base.DatasetTestBase):
 
   def testShuffleAndRepeatFusion(self):
     dataset = dataset_ops.Dataset.range(10).apply(
         optimization.assert_next(["ShuffleAndRepeat"])).shuffle(10).repeat(2)
-    options = dataset_ops.Options()
-    options.experimental_shuffle_and_repeat_fusion = True
-    dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      for _ in range(2):
-        results = []
-        for _ in range(10):
-          results.append(sess.run(get_next))
-        self.assertAllEqual([x for x in range(10)], sorted(results))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    for _ in range(2):
+      results = []
+      for _ in range(10):
+        results.append(self.evaluate(get_next()))
+      self.assertAllEqual([x for x in range(10)], sorted(results))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":

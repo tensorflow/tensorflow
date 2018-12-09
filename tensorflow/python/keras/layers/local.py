@@ -23,8 +23,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -154,7 +154,6 @@ class LocallyConnected1D(Layer):
     self.bias_constraint = constraints.get(bias_constraint)
     self.implementation = implementation
     self.input_spec = InputSpec(ndim=3)
-    self._can_use_graph_functions = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -430,7 +429,6 @@ class LocallyConnected2D(Layer):
     self.bias_constraint = constraints.get(bias_constraint)
     self.implementation = implementation
     self.input_spec = InputSpec(ndim=4)
-    self._can_use_graph_functions = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):

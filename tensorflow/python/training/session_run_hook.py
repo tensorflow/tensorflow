@@ -186,7 +186,7 @@ class SessionRunHook(object):
     pass
 
 
-@tf_export("train.SessionRunArgs")
+@tf_export(v1=["train.SessionRunArgs"])
 class SessionRunArgs(
     collections.namedtuple("SessionRunArgs",
                            ["fetches", "feed_dict", "options"])):
@@ -211,7 +211,7 @@ class SessionRunArgs(
     return super(SessionRunArgs, cls).__new__(cls, fetches, feed_dict, options)
 
 
-@tf_export("train.SessionRunContext")
+@tf_export(v1=["train.SessionRunContext"])
 class SessionRunContext(object):
   """Provides information about the `session.run()` call being made.
 
@@ -263,7 +263,7 @@ class SessionRunContext(object):
     self._stop_requested = True
 
 
-@tf_export("train.SessionRunValues")
+@tf_export(v1=["train.SessionRunValues"])
 class SessionRunValues(
     collections.namedtuple("SessionRunValues",
                            ["results", "options", "run_metadata"])):

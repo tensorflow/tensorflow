@@ -43,6 +43,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertTrue(
         all(subscribe._is_subscribed_identity(x) for x in container))
 
+  @test_util.run_deprecated_v1
   def testSideEffect(self):
     a = constant_op.constant(1)
     b = constant_op.constant(1)
@@ -66,15 +67,16 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertTrue(c.op in d.op.control_inputs)
 
     with self.cached_session() as sess:
-      c_out = sess.run([c])
-      n_out = sess.run([n])
-      d_out = sess.run([d])
+      c_out = self.evaluate([c])
+      n_out = self.evaluate([n])
+      d_out = self.evaluate([d])
 
     self.assertEqual(n_out, [-2])
     self.assertEqual(c_out, [2])
     self.assertEqual(d_out, [42])
     self.assertEqual(shared, [2, 2, 2])
 
+  @test_util.run_deprecated_v1
   def testSupportedTypes(self):
     """Confirm that supported types are correctly detected and handled."""
 
@@ -120,6 +122,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
       subscribe.subscribe(c.name,
                           lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
+  @test_util.run_deprecated_v1
   def testCaching(self):
     """Confirm caching of control output is recalculated between calls."""
     a = constant_op.constant(1)
@@ -145,13 +148,14 @@ class SubscribeTest(test_util.TensorFlowTestCase):
                             lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
     with self.cached_session() as sess:
-      c_out = sess.run([c])
-      d_out = sess.run([d])
+      c_out = self.evaluate([c])
+      d_out = self.evaluate([d])
 
     self.assertEqual(c_out, [42])
     self.assertEqual(d_out, [11])
     self.assertEqual(shared, {2: 1, 1: 1})
 
+  @test_util.run_deprecated_v1
   def testIsSubscribedIdentity(self):
     """Confirm subscribed identity ops are correctly detected."""
     a = constant_op.constant(1)
@@ -165,6 +169,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertFalse(subscribe._is_subscribed_identity(idop))
     self.assertTrue(subscribe._is_subscribed_identity(c_sub))
 
+  @test_util.run_deprecated_v1
   def testSubscribeExtend(self):
     """Confirm side effect are correctly added for different input types."""
     a = constant_op.constant(1)
@@ -205,11 +210,12 @@ class SubscribeTest(test_util.TensorFlowTestCase):
 
     # Expect the three side effect graphs to have been evaluated.
     with self.cached_session() as sess:
-      sess.run([c_sub])
+      self.evaluate([c_sub])
     self.assertIn('graph1', shared)
     self.assertIn('graph2', shared)
     self.assertIn('graph3', shared)
 
+  @test_util.run_v1_only('b/120545219')
   def testSubscribeVariable(self):
     """Confirm that variables can be subscribed."""
     v1 = variables.VariableV1(0.0)
@@ -229,25 +235,26 @@ class SubscribeTest(test_util.TensorFlowTestCase):
 
     with self.cached_session() as sess:
       # Initialize the variables first.
-      sess.run([v1.initializer])
-      sess.run([v2.initializer])
+      self.evaluate([v1.initializer])
+      self.evaluate([v2.initializer])
 
       # Expect the side effects to be triggered when evaluating the add op as
       # it will read the value of the variable.
-      sess.run([add])
+      self.evaluate([add])
       self.assertEqual(1, len(shared))
 
       # Expect the side effect not to be triggered when evaluating the assign
       # op as it will not access the 'read' output of the variable.
-      sess.run([assign_v1])
+      self.evaluate([assign_v1])
       self.assertEqual(1, len(shared))
 
-      sess.run([add])
+      self.evaluate([add])
       self.assertEqual(2, len(shared))
 
       # Make sure the values read from the variable match the expected ones.
       self.assertEqual([0.0, 3.0], shared)
 
+  @test_util.run_v1_only('b/120545219')
   def testResourceType(self):
     """Confirm that subscribe correctly handles tensors with 'resource' type."""
     tensor_array = tensor_array_ops.TensorArray(
@@ -273,9 +280,10 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertFalse(subscribe._is_subscribed_identity(tensor_array.handle))
 
     with self.cached_session() as sess:
-      sess.run([reader])
+      self.evaluate([reader])
     self.assertEqual(0, len(shared))
 
+  @test_util.run_deprecated_v1
   def testMultipleOutputs(self):
     """Handle subscriptions to multiple outputs from the same op."""
     sparse_tensor_1 = sparse_tensor.SparseTensor(
@@ -304,11 +312,12 @@ class SubscribeTest(test_util.TensorFlowTestCase):
                         lambda t: script_ops.py_func(sub, [t], [t.dtype]))
 
     with self.cached_session() as sess:
-      sess.run([neg])
+      self.evaluate([neg])
 
     # All three ops have been processed.
     self.assertEqual(3, len(shared))
 
+  @test_util.run_deprecated_v1
   def test_subscribe_tensors_on_different_devices(self):
     """Side effect ops are added with the same device of the subscribed op."""
     c1 = constant_op.constant(10)
@@ -335,6 +344,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertEqual(add.device, add_sub.device)
     self.assertEqual(mul.device, mul_sub.device)
 
+  @test_util.run_v1_only('b/120545219')
   def test_subscribe_tensors_within_control_flow_context(self):
     """Side effect ops are added with the same control flow context."""
     c1 = constant_op.constant(10)
@@ -375,7 +385,7 @@ class SubscribeTest(test_util.TensorFlowTestCase):
     self.assertIsNot(context(subscriptions[0]), context(subscriptions[1]))
 
     with self.cached_session() as sess:
-      sess.run(cond)
+      self.evaluate(cond)
 
     self.assertEqual(3, len(results))
 

@@ -45,6 +45,7 @@ from tensorflow.contrib.training.python.training import hparam
 from tensorflow.core.framework import variable_pb2
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.estimator import estimator as estimator_lib
@@ -298,9 +299,9 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
       host_calls['host_call'] = host_call
     _OutfeedHostCall.validate(host_calls)
 
-    training_hooks = list(training_hooks or [])
-    evaluation_hooks = list(evaluation_hooks or [])
-    prediction_hooks = list(prediction_hooks or [])
+    training_hooks = tuple(training_hooks or [])
+    evaluation_hooks = tuple(evaluation_hooks or [])
+    prediction_hooks = tuple(prediction_hooks or [])
 
     for hook in training_hooks + evaluation_hooks + prediction_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
@@ -335,7 +336,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
-    hooks = list(hooks or [])
+    hooks = tuple(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
         mode=self.mode,
@@ -412,12 +413,15 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                enqueue_ops,
                dequeue_ops,
                run_infeed_loop_on_coordinator=True,
-               rendezvous=None):
+               rendezvous=None,
+               master=None,
+               session_config=None):
     self._master_job = ctx.master_job
     self._enqueue_ops = enqueue_ops
     self._dequeue_ops = dequeue_ops
     self._rendezvous = rendezvous
-
+    self._master = master
+    self._session_config = session_config
     self._run_infeed_loop_on_coordinator = run_infeed_loop_on_coordinator
     self._initial_infeed_sleep_secs = (
         ctx.config.tpu_config.initial_infeed_sleep_secs)
@@ -429,11 +433,10 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
     self._iterations_per_loop_var = _create_or_get_iterations_per_loop()
+    self._init_ops = []
     if self._should_initialize_tpu:
-      self._init_ops = [tpu.initialize_system(job=self._master_job)]
       self._finalize_ops = [tpu.shutdown_system(job=self._master_job)]
     else:
-      self._init_ops = []
       self._finalize_ops = []
 
     summary_writer_init_ops = contrib_summary.summary_writer_initializer_op()
@@ -475,11 +478,17 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     return _OpQueueContext(name=name, target=target, args=args)
 
   def after_create_session(self, session, coord):
-    logging.info('Init TPU system')
-    start = time.time()
+    if self._should_initialize_tpu:
+      logging.info('Init TPU system')
+      start = time.time()
+      with ops.Graph().as_default():
+        with tf_session.Session(
+            self._master, config=self._session_config) as sess:
+          sess.run(tpu.initialize_system(job=self._master_job))
+      logging.info('Initialized TPU in %d seconds', time.time() - start)
+
     session.run(self._init_ops,
                 options=config_pb2.RunOptions(timeout_in_ms=5 * 60 * 1000))
-    logging.info('Initialized TPU in %d seconds', time.time() - start)
 
     self._infeed_controller = self._create_infeed_controller(
         name='InfeedController', target=self._run_infeed, args=(session,))
@@ -521,13 +530,16 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
 class TPUInfeedOutfeedSessionHookForPrediction(TPUInfeedOutfeedSessionHook):
 
-  def __init__(self, ctx, enqueue_ops, dequeue_ops, rendezvous=None):
+  def __init__(self, ctx, enqueue_ops, dequeue_ops, rendezvous=None,
+               master=None, session_config=None):
     super(TPUInfeedOutfeedSessionHookForPrediction, self).__init__(
         ctx,
         enqueue_ops,
         dequeue_ops,
         run_infeed_loop_on_coordinator=False,
-        rendezvous=rendezvous)
+        rendezvous=rendezvous,
+        master=master,
+        session_config=session_config)
 
   def _create_infeed_controller(self, name, target, args):
     return _OpSignalOnceQueueContext(name=name, target=target, args=args)
@@ -2169,7 +2181,6 @@ class TPUEstimator(estimator_lib.Estimator):
                                builder,
                                input_receiver_fn_map,
                                checkpoint_path,
-                               strip_default_attrs,
                                save_variables=True,
                                mode=model_fn_lib.ModeKeys.PREDICT,
                                export_tags=None,
@@ -2184,7 +2195,6 @@ class TPUEstimator(estimator_lib.Estimator):
         builder,
         input_receiver_fn_map,
         checkpoint_path,
-        strip_default_attrs,
         save_variables,
         mode=mode,
         export_tags=export_tags,
@@ -2201,7 +2211,6 @@ class TPUEstimator(estimator_lib.Estimator):
           builder,
           input_receiver_fn_map,
           checkpoint_path,
-          strip_default_attrs,
           save_variables=False,
           mode=mode,
           export_tags=export_tags,
@@ -2225,7 +2234,7 @@ class TPUEstimator(estimator_lib.Estimator):
     def computation():
       """Compute tpu tensors used in export_outputs.
 
-      Passed to rewrite_for_inference so that model_fn will be called under
+      Passed to rewrite so that model_fn will be called under
       the rewriting contexts. Only tpu tensors are returned, but export_outputs
       and scaffold are captured.
 
@@ -2234,7 +2243,7 @@ class TPUEstimator(estimator_lib.Estimator):
          outside_compilation.
       """
       # We should only call model fn once and it should be inside `computation`
-      # so that building the graph will happen under `rewrite_for_inference`.
+      # so that building the graph will happen under `rewrite`.
       mode = model_fn_lib.ModeKeys.PREDICT
       estimator_spec = self._call_model_fn(features, labels, mode, config)
 
@@ -2251,7 +2260,7 @@ class TPUEstimator(estimator_lib.Estimator):
       capture.capture((estimator_spec, tensors_dict, tensors))
       return tpu_tensors
 
-    tpu_tensors_on_cpu = tpu.rewrite_for_inference(computation)
+    tpu_tensors_on_cpu = tpu.rewrite(computation)
     estimator_spec, tensors_dict, tensors = capture.get()
 
     # Reconstruct `tensors`, but with `tpu_tensors` replaced with
@@ -2564,6 +2573,8 @@ class TPUEstimator(estimator_lib.Estimator):
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
                   rendezvous=self._rendezvous[mode],
+                  master=self._config.master,
+                  session_config=self._session_config,
               ),
               InstallSignalHandlerHook()
           ])
@@ -2666,8 +2677,10 @@ class TPUEstimator(estimator_lib.Estimator):
                   eval_update_ops + host_ops,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
-                  rendezvous=self._rendezvous[mode]),
-          ] + input_hooks
+                  rendezvous=self._rendezvous[mode],
+                  master=self._config.evaluation_master,
+                  session_config=self._session_config,
+              )] + input_hooks
 
           if eval_hooks:
             hooks.extend(eval_hooks)
@@ -2738,7 +2751,9 @@ class TPUEstimator(estimator_lib.Estimator):
         hooks = [
             _StoppingPredictHook(scalar_stopping_signal),
             TPUInfeedOutfeedSessionHookForPrediction(
-                ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode]),
+                ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode],
+                master=self._config.master,
+                session_config=self._session_config),
         ] + input_hooks
 
         if prediction_hooks:
@@ -2783,7 +2798,7 @@ def _export_output_to_tensors(export_output):
   elif isinstance(export_output, export_output_lib.RegressionOutput):
     return [export_output.value]
   elif isinstance(export_output, export_output_lib.PredictOutput):
-    return export_output.outputs.values()
+    return list(export_output.outputs.values())
   else:
     raise ValueError(
         '`export_output` must be have type `ClassificationOutput`, '
@@ -3059,7 +3074,7 @@ class _Inputs(object):
   @staticmethod
   def from_input_fn(return_values):
     """Returns an `_Inputs` instance according to `input_fn` return value."""
-    if isinstance(return_values, dataset_ops.Dataset):
+    if isinstance(return_values, dataset_ops.DatasetV2):
       dataset = return_values
       return _Inputs(dataset=dataset)
 
@@ -3084,7 +3099,7 @@ class _Inputs(object):
 
     The initializer must be run before calling `features_and_labels`.
     """
-    self._iterator = self._dataset.make_initializable_iterator()
+    self._iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return self._iterator.initializer
 
   def features_and_labels(self):

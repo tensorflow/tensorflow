@@ -1,22 +1,21 @@
 path: "tensorflow.data.Dataset"
 tf_class {
-  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.Dataset\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "output_classes"
-    mtype: "<class \'abc.abstractproperty\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "output_shapes"
-    mtype: "<class \'abc.abstractproperty\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "output_types"
-    mtype: "<class \'abc.abstractproperty\'>"
+    mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "apply"
@@ -47,10 +46,6 @@ tf_class {
     argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
-    name: "from_sparse_tensor_slices"
-    argspec: "args=[\'sparse_tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "from_tensor_slices"
     argspec: "args=[\'tensors\'], varargs=None, keywords=None, defaults=None"
   }
@@ -65,14 +60,6 @@ tf_class {
   member_method {
     name: "list_files"
     argspec: "args=[\'file_pattern\', \'shuffle\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "make_initializable_iterator"
-    argspec: "args=[\'self\', \'shared_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "make_one_shot_iterator"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "map"
@@ -101,10 +88,6 @@ tf_class {
   member_method {
     name: "repeat"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "shard"
-    argspec: "args=[\'self\', \'num_shards\', \'index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "shuffle"

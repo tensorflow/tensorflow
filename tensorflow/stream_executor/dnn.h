@@ -29,7 +29,9 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/dnn.pb.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -48,19 +50,6 @@ class ScratchAllocator;
 
 namespace dnn {
 
-// Describes how an input or output layer's data is formatted.
-// Specify int64 so there's no padding in BatchDescriptor.
-enum class DataLayout : int64 {
-  kYXDepthBatch = 0,  // Same as dist_belief::DF_DEPTH_MAJOR.
-  kYXBatchDepth,      // Same as dist_belief::DF_BATCH_MAJOR.
-  kBatchYXDepth,      // Same as run_brain output, and tensorflow's layout.
-  kBatchDepthYX,      // cuDNN's NCHW layout, data laid out as image, feature
-                      // maps, rows, columns.
-  kBatchDepthYX4,     // cuDNN's NCHW_VECT_C layout, data laid out the same as
-                      // kBatchDepthYX but each element is a vector of 4 feature
-                      // maps.
-};
-
 // Specifies an index to use when accessing specific spatial dimensions.
 enum class DimIndex : int {
   X = 0,
@@ -73,8 +62,27 @@ inline int64 GetDim(absl::Span<const int64> data, DimIndex dim) {
   return data.rbegin()[static_cast<int64>(dim)];
 }
 
+inline void SetDim(absl::Span<int64> data, DimIndex dim, int64 value) {
+  data.rbegin()[static_cast<int64>(dim)] = value;
+}
+
 inline void SetDim(std::vector<int64>* data, DimIndex dim, int64 value) {
-  data->rbegin()[static_cast<int64>(dim)] = value;
+  return SetDim(absl::MakeSpan(*data), dim, value);
+}
+
+// tensorflow::int64 is not the same type as tensorflow::protobuf_int64 in
+// open-source. Wrapper function that gives an int64 array slice view of a
+// repeated int64 protobuf field.
+inline absl::Span<const int64> AsInt64Slice(
+    const tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>& v) {
+  return absl::Span<const int64>(reinterpret_cast<const int64*>(v.data()),
+                                 v.size());
+}
+
+inline absl::Span<int64> AsInt64Slice(
+    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* v) {
+  return absl::Span<int64>(reinterpret_cast<int64*>(v->mutable_data()),
+                           v->size());
 }
 
 // Returns a string representation of the given data layout.
@@ -85,14 +93,6 @@ enum class QuantizedActivationMode {
   k8Bit = 1,
   k16Bit = 2,
   k32Bit = 4,
-};
-
-// Specifies the data type used by an operation.
-enum class DataType {
-  kFloat = 0,
-  kDouble = 1,
-  kHalf = 2,
-  kInt8 = 3,
 };
 
 // A helper class to convert C/C++ types to the proper enums.
@@ -113,6 +113,10 @@ struct ToDataType<Eigen::half> {
 template <>
 struct ToDataType<int8> {
   static constexpr DataType value = DataType::kInt8;
+};
+template <>
+struct ToDataType<int32> {
+  static constexpr DataType value = DataType::kInt32;
 };
 
 // Specifies the types of a RNN model.
@@ -245,15 +249,15 @@ class BatchDescriptor {
   string ToShortString() const;
 
   // Accessors.
-  int64 count() const { return count_; }
-  int64 feature_map_count() const { return feature_map_count_; }
-  int64 height() const { return GetDim(spatial_size_, DimIndex::Y); }
-  int64 width() const { return GetDim(spatial_size_, DimIndex::X); }
-  int64 spatial_dim(DimIndex dim) const { return GetDim(spatial_size_, dim); }
-  int ndims() const { return ndims_; }
+  int64 count() const { return tensor_.dimensions(0); }
+  int64 feature_map_count() const { return tensor_.dimensions(1); }
+  int64 height() const { return GetDim(spatial_size(), DimIndex::Y); }
+  int64 width() const { return GetDim(spatial_size(), DimIndex::X); }
+  int64 spatial_dim(DimIndex dim) const { return GetDim(spatial_size(), dim); }
+  int ndims() const { return spatial_size().size(); }
   float value_max() const { return value_max_; }
   float value_min() const { return value_min_; }
-  DataLayout layout() const { return layout_; }
+  DataLayout layout() const { return tensor_.data_layout(); }
   QuantizedActivationMode quantized_activation_mode() const {
     return quantized_activation_mode_;
   }
@@ -267,23 +271,23 @@ class BatchDescriptor {
 
   // Named-argument helpers for avoiding user error during construction.
   BatchDescriptor& set_count(int64 value) {
-    count_ = value;
+    tensor_.set_dimensions(0, value);
     return *this;
   }
   BatchDescriptor& set_feature_map_count(int64 value) {
-    feature_map_count_ = value;
+    tensor_.set_dimensions(1, value);
     return *this;
   }
   BatchDescriptor& set_height(int64 value) {
-    SetDim(&spatial_size_, DimIndex::Y, value);
+    SetDim(spatial_size(), DimIndex::Y, value);
     return *this;
   }
   BatchDescriptor& set_width(int64 value) {
-    SetDim(&spatial_size_, DimIndex::X, value);
+    SetDim(spatial_size(), DimIndex::X, value);
     return *this;
   }
   BatchDescriptor& set_spatial_dim(DimIndex dim, int64 value) {
-    SetDim(&spatial_size_, dim, value);
+    SetDim(spatial_size(), dim, value);
     return *this;
   }
   BatchDescriptor& set_value_max(float value) {
@@ -295,7 +299,7 @@ class BatchDescriptor {
     return *this;
   }
   BatchDescriptor& set_layout(DataLayout layout) {
-    layout_ = layout;
+    tensor_.set_data_layout(layout);
     return *this;
   }
   BatchDescriptor& set_quantized_activation_mode(
@@ -334,29 +338,18 @@ class BatchDescriptor {
       port::ArraySlice<dnn::BatchDescriptor> inputs);
 
  private:
-  int64 count_;
-  int64 feature_map_count_;
-  // Stored as: ..., y, x.
-  std::vector<int64> spatial_size_;
+  absl::Span<const int64> spatial_size() const {
+    return AsInt64Slice(tensor_.dimensions()).subspan(2);
+  }
+
+  absl::Span<int64> spatial_size() {
+    return AsInt64Slice(tensor_.mutable_dimensions()).subspan(2);
+  }
+
+  TensorDescriptorProto tensor_;
   float value_max_;
   float value_min_;
-  DataLayout layout_;
-  int ndims_;
   QuantizedActivationMode quantized_activation_mode_;
-};
-
-// Describes how a filter is laid out in the memory.
-// Specify int64 so there's no padding in FilterDescriptor.
-enum class FilterLayout : int64 {
-  kOutputInputYX = 0,  // cuDNN's default filter layout, laid out as:
-                       // (major) output feature maps >> input feature maps >>
-                       // rows >> columns (minor).
-  kOutputYXInput,      // major to minor:
-                       //   (output features, row, columns, input features)
-  kOutputInputYX4,  // laid out the same as kOutputInputYX but each element is a
-                    // vector of 4 feature maps.
-  kInputYXOutput,   // Same as dist_belief's default filter layout.
-  kYXInputOutput,   // Same as tensorflow's default filter layout.
 };
 
 // Returns a string representation of the given filter layout.
@@ -398,30 +391,30 @@ class FilterDescriptor {
 
   // Named-argument helpers for avoiding user error during construction.
   FilterDescriptor& set_output_feature_map_count(int64 value) {
-    output_feature_map_count_ = value;
+    tensor_.set_dimensions(0, value);
     return *this;
   }
   FilterDescriptor& set_input_feature_map_count(int64 value) {
-    input_feature_map_count_ = value;
+    tensor_.set_dimensions(1, value);
     return *this;
   }
   FilterDescriptor& set_input_filter_height(int64 value) {
-    SetDim(&input_filter_dims_, DimIndex::Y, value);
+    SetDim(input_filter_dims(), DimIndex::Y, value);
     return *this;
   }
   FilterDescriptor& set_input_filter_width(int64 value) {
-    SetDim(&input_filter_dims_, DimIndex::X, value);
+    SetDim(input_filter_dims(), DimIndex::X, value);
     return *this;
   }
   FilterDescriptor& set_layout(FilterLayout layout) {
-    layout_ = layout;
+    tensor_.set_filter_layout(layout);
     return *this;
   }
   FilterDescriptor& set_spatial_dim(DimIndex dim, int64 value) {
-    SetDim(&input_filter_dims_, dim, value);
+    SetDim(input_filter_dims(), dim, value);
     return *this;
   }
-  int ndims() const { return ndims_; }
+  int ndims() const { return input_filter_dims().size(); }
 
   void CloneFrom(const FilterDescriptor& other);
 
@@ -434,32 +427,32 @@ class FilterDescriptor {
 
   // Returns the number of biases required as parameters for a convolution
   // using this filter descriptor.
-  int64 bias_count() const { return output_feature_map_count_; }
+  int64 bias_count() const { return output_feature_map_count(); }
 
-  int64 output_feature_map_count() const { return output_feature_map_count_; }
-  int64 input_feature_map_count() const { return input_feature_map_count_; }
+  int64 output_feature_map_count() const { return tensor_.dimensions(0); }
+  int64 input_feature_map_count() const { return tensor_.dimensions(1); }
   int64 input_filter_height() const {
-    return GetDim(input_filter_dims_, DimIndex::Y);
+    return GetDim(input_filter_dims(), DimIndex::Y);
   }
   int64 input_filter_width() const {
-    return GetDim(input_filter_dims_, DimIndex::X);
+    return GetDim(input_filter_dims(), DimIndex::X);
   }
   int64 input_filter_dim(DimIndex dim) const {
-    return GetDim(input_filter_dims_, dim);
+    return GetDim(input_filter_dims(), dim);
   }
 
-  FilterLayout layout() const { return layout_; }
+  FilterLayout layout() const { return tensor_.filter_layout(); }
+
   absl::Span<const int64> input_filter_dims() const {
-    return input_filter_dims_;
+    return AsInt64Slice(tensor_.dimensions()).subspan(2);
   }
 
  private:
-  int64 output_feature_map_count_;
-  int64 input_feature_map_count_;
-  // Stored as: ..., y, x.
-  std::vector<int64> input_filter_dims_;
-  int ndims_;
-  FilterLayout layout_;
+  absl::Span<int64> input_filter_dims() {
+    return AsInt64Slice(tensor_.mutable_dimensions()).subspan(2);
+  }
+
+  TensorDescriptorProto tensor_;
 };
 
 // Describes how padding should be aligned when the total number of pad
@@ -500,6 +493,11 @@ std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment);
 //   cells between each filter element in the "y dimension".
 // - horizontal_dilation_rate: there will be (horizontal_dilation_rate - 1)
 //   skipped cells between each filter element in the "x dimension".
+// - convolution_not_crosscor: By default (convolution_not_crosscor == false),
+//   we perform cross correlation rather than convolution. With the flag set,
+//   we perform convolution. Convolution and cross correlation are related by
+//   rotating the filter by 180 degrees (or equivalently flipping all spatial
+//   dimensions).
 class ConvolutionDescriptor {
  public:
   // By default construction, there is no zero-padding and the filter stride is
@@ -513,84 +511,102 @@ class ConvolutionDescriptor {
   string ToShortString() const;
 
   ConvolutionDescriptor& set_zero_padding_height(int64 value) {
-    SetDim(&zero_padding_, DimIndex::Y, value);
+    SetDim(padding(), DimIndex::Y, value);
     return *this;
   }
   ConvolutionDescriptor& set_zero_padding_width(int64 value) {
-    SetDim(&zero_padding_, DimIndex::X, value);
+    SetDim(padding(), DimIndex::X, value);
     return *this;
   }
   ConvolutionDescriptor& set_zero_padding(DimIndex dim, int64 value) {
-    SetDim(&zero_padding_, dim, value);
+    SetDim(padding(), dim, value);
     return *this;
   }
   ConvolutionDescriptor& set_vertical_filter_stride(int64 value) {
-    SetDim(&filter_strides_, DimIndex::Y, value);
+    SetDim(strides(), DimIndex::Y, value);
     return *this;
   }
   ConvolutionDescriptor& set_horizontal_filter_stride(int64 value) {
-    SetDim(&filter_strides_, DimIndex::X, value);
+    SetDim(strides(), DimIndex::X, value);
     return *this;
   }
   ConvolutionDescriptor& set_filter_stride(DimIndex dim, int64 value) {
-    SetDim(&filter_strides_, dim, value);
+    SetDim(strides(), dim, value);
     return *this;
   }
   ConvolutionDescriptor& set_vertical_dilation_rate(int64 value) {
-    SetDim(&dilation_rates_, DimIndex::Y, value);
+    SetDim(dilations(), DimIndex::Y, value);
     return *this;
   }
   ConvolutionDescriptor& set_horizontal_dilation_rate(int64 value) {
-    SetDim(&dilation_rates_, DimIndex::X, value);
+    SetDim(dilations(), DimIndex::X, value);
     return *this;
   }
   ConvolutionDescriptor& set_dilation_rate(DimIndex dim, int64 value) {
-    SetDim(&dilation_rates_, dim, value);
+    SetDim(dilations(), dim, value);
     return *this;
   }
   ConvolutionDescriptor& set_group_count(int group_count) {
-    group_count_ = group_count;
+    proto_.set_group_count(group_count);
     return *this;
   }
-  int64 zero_padding_height() const {
-    return GetDim(zero_padding_, DimIndex::Y);
+  ConvolutionDescriptor& set_convolution_not_crosscorr(bool conv) {
+    proto_.set_convolution_mode(conv ? ConvolutionMode::CONVOLUTION
+                                     : ConvolutionMode::CROSS_CORRELATION);
+    return *this;
   }
-  int64 zero_padding_width() const {
-    return GetDim(zero_padding_, DimIndex::X);
-  }
+  int64 zero_padding_height() const { return GetDim(padding(), DimIndex::Y); }
+  int64 zero_padding_width() const { return GetDim(padding(), DimIndex::X); }
   int64 vertical_filter_stride() const {
-    return GetDim(filter_strides_, DimIndex::Y);
+    return GetDim(strides(), DimIndex::Y);
   }
   int64 horizontal_filter_stride() const {
-    return GetDim(filter_strides_, DimIndex::X);
+    return GetDim(strides(), DimIndex::X);
   }
   int64 vertical_dilation_rate() const {
-    return GetDim(dilation_rates_, DimIndex::Y);
+    return GetDim(dilations(), DimIndex::Y);
   }
   int64 horizontal_dilation_rate() const {
-    return GetDim(dilation_rates_, DimIndex::X);
+    return GetDim(dilations(), DimIndex::X);
   }
 
-  int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
-  int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
-  int dilation_rate(DimIndex dim) const { return GetDim(dilation_rates_, dim); }
+  int zero_padding(DimIndex dim) const { return GetDim(padding(), dim); }
+  int filter_stride(DimIndex dim) const { return GetDim(strides(), dim); }
+  int dilation_rate(DimIndex dim) const { return GetDim(dilations(), dim); }
   // TODO(timshen): remove this function. No users of this class is setting a
   // non-default pad alignment.
   PadAlignment pad_alignment() const { return PadAlignment::kDefault; }
-  int group_count() const { return group_count_; }
-  int ndims() const { return ndims_; }
+  int group_count() const { return proto_.group_count(); }
+  int ndims() const { return padding().size(); }
+  bool convolution_not_crosscorr() const {
+    return proto_.convolution_mode() == ConvolutionMode::CONVOLUTION;
+  }
 
-  absl::Span<const int64> strides() const { return filter_strides_; }
-  absl::Span<const int64> dilations() const { return dilation_rates_; }
-  absl::Span<const int64> padding() const { return zero_padding_; }
+  absl::Span<const int64> strides() const {
+    return AsInt64Slice(proto_.strides());
+  }
+
+  absl::Span<const int64> dilations() const {
+    return AsInt64Slice(proto_.dilations());
+  }
+
+  absl::Span<const int64> padding() const {
+    return AsInt64Slice(proto_.paddings());
+  }
 
  private:
-  // Stored as: .. y, x.
-  std::vector<int64> zero_padding_;
-  std::vector<int64> filter_strides_;
-  std::vector<int64> dilation_rates_;
-  int group_count_;
-  int ndims_;
+  absl::Span<int64> strides() { return AsInt64Slice(proto_.mutable_strides()); }
+
+  absl::Span<int64> dilations() {
+    return AsInt64Slice(proto_.mutable_dilations());
+  }
+
+  absl::Span<int64> padding() {
+    return AsInt64Slice(proto_.mutable_paddings());
+  }
+
+  ConvolutionDescriptorProto proto_;
+
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.
   // int64 upscale_input_x;
@@ -714,21 +730,23 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc(Index a, bool use_tensor_ops)
-      : algo_(a), tensor_ops_enabled_(use_tensor_ops) {
-    DCHECK_NE(a, -1);
+  AlgorithmDesc(Index a, bool use_tensor_ops) {
+    proto_.set_algo_id(a);
+    proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
+                                        : AlgorithmProto::DEFAULT_MATH);
   }
-  bool tensor_ops_enabled() const { return tensor_ops_enabled_; }
-  Index algo_id() const { return algo_; }
+  bool tensor_ops_enabled() const {
+    return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
+  }
+  Index algo_id() const { return proto_.algo_id(); }
   bool operator==(const AlgorithmDesc& other) const {
-    return this->algo_ == other.algo_ &&
-           this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
+    return algo_id() == other.algo_id() &&
+           tensor_ops_enabled() == other.tensor_ops_enabled();
   }
   uint64 hash() const;
 
  private:
-  Index algo_;
-  bool tensor_ops_enabled_;
+  AlgorithmProto proto_;
 };
 
 // Describes the result from a perf experiment.
@@ -870,24 +888,6 @@ class NormalizeDescriptor {
   float beta_;
   bool wrap_around_;
   int32 segment_size_;
-};
-
-// Describes a kind of non-linearity (threshold-like mathematical function).
-enum class ActivationMode {
-  kNone = 0,
-  kSigmoid,
-  // Rectified linear activation: f(x) = x < 0 ? 0 : x
-  kRelu,
-  // Rectified linear activation, where upper maximum is 6.0.
-  kRelu6,
-  // Rectified linear activation, where upper maximum specified by
-  // BatchDescriptor::value_max().
-  kReluX,
-  kTanh,
-  // Like ReluX, but passes all values in the range [-X,X].
-  kBandPass,
-
-  kNumActivationModes,  // Always in the end.
 };
 
 // Returns a string representation of the given activation mode.

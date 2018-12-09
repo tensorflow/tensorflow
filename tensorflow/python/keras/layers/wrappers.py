@@ -23,8 +23,8 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -389,6 +389,10 @@ class Bidirectional(Wrapper):
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
+    if getattr(layer, 'zero_output_for_mask', None) is not None:
+      # Force the zero_output_for_mask to be True if it presents.
+      layer.zero_output_for_mask = True
+
     self.forward_layer = copy.copy(layer)
     config = layer.get_config()
     config['go_backwards'] = not config['go_backwards']

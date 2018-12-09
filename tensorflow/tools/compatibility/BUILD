@@ -14,6 +14,18 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "ast_edits_test",
+    srcs = ["ast_edits_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ast_edits",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
+)
+
 py_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
@@ -39,14 +51,32 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_library(
+    name = "reorders_v2",
+    srcs = ["reorders_v2.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "tf_upgrade_v2_lib",
+    srcs = ["tf_upgrade_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ast_edits",
+        ":renames_v2",
+        ":reorders_v2",
+    ],
+)
+
 py_binary(
     name = "tf_upgrade_v2",
-    srcs = [
-        "renames_v2.py",
-        "tf_upgrade_v2.py",
-    ],
+    srcs = ["tf_upgrade_v2_main.py"],
+    main = "tf_upgrade_v2_main.py",
     srcs_version = "PY2AND3",
-    deps = [":ast_edits"],
+    deps = [
+        ":ast_edits",
+        ":tf_upgrade_v2_lib",
+    ],
 )
 
 py_test(
@@ -55,8 +85,11 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":tf_upgrade_v2",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/tools/common:public_api",
+        "//tensorflow/tools/common:traverse",
         "@six_archive//:six",
     ],
 )
@@ -100,16 +133,26 @@ py_test(
 genrule(
     name = "generate_upgraded_file_v2",
     testonly = 1,
-    srcs = ["testdata/test_file_v1_10.py"],
+    srcs = ["testdata/test_file_v1_12.py"],
     outs = [
         "test_file_v2_0.py",
         "report_v2.txt",
     ],
     cmd = ("$(location :tf_upgrade_v2)" +
-           " --infile $(location testdata/test_file_v1_10.py)" +
+           " --infile $(location testdata/test_file_v1_12.py)" +
            " --outfile $(location test_file_v2_0.py)" +
            " --reportfile $(location report_v2.txt)"),
     tools = [":tf_upgrade_v2"],
+)
+
+py_test(
+    name = "test_file_v1_12",
+    size = "small",
+    srcs = ["testdata/test_file_v1_12.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 py_test(
@@ -128,6 +171,6 @@ exports_files(
         "tf_upgrade.py",
         "renames_v2.py",
         "testdata/test_file_v0_11.py",
-        "testdata/test_file_v1_10.py",
+        "testdata/test_file_v1_12.py",
     ],
 )

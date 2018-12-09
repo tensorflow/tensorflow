@@ -46,6 +46,10 @@ class UniqueNameTracker(data_structures.CheckpointableDataStructure):
     self._maybe_initialize_checkpointable()
     self._name_counts = {}
 
+  @property
+  def _values(self):
+    return [dep.ref for dep in self._checkpoint_dependencies]
+
   def track(self, checkpointable, base_name):
     """Add a dependency on `checkpointable`.
 

@@ -26,8 +26,8 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 # imports for backwards namespace compatibility
 # pylint: disable=unused-import
 from tensorflow.python.keras.layers.pooling import AveragePooling1D
@@ -120,7 +120,6 @@ class Conv(Layer):
         name=name,
         activity_regularizer=regularizers.get(activity_regularizer),
         **kwargs)
-    self._can_use_graph_functions = True
     self.rank = rank
     self.filters = filters
     self.kernel_size = conv_utils.normalize_tuple(
@@ -1916,7 +1915,6 @@ class UpSampling1D(Layer):
     super(UpSampling1D, self).__init__(**kwargs)
     self.size = int(size)
     self.input_spec = InputSpec(ndim=3)
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -1983,7 +1981,6 @@ class UpSampling2D(Layer):
                        'or `"bilinear"`.')
     self.interpolation = interpolation
     self.input_spec = InputSpec(ndim=4)
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -2054,7 +2051,6 @@ class UpSampling3D(Layer):
     self.size = conv_utils.normalize_tuple(size, 3, 'size')
     self.input_spec = InputSpec(ndim=5)
     super(UpSampling3D, self).__init__(**kwargs)
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -2109,7 +2105,6 @@ class ZeroPadding1D(Layer):
 
   def __init__(self, padding=1, **kwargs):
     super(ZeroPadding1D, self).__init__(**kwargs)
-    self._can_use_graph_functions = True
     self.padding = conv_utils.normalize_tuple(padding, 2, 'padding')
     self.input_spec = InputSpec(ndim=3)
 
@@ -2175,7 +2170,6 @@ class ZeroPadding2D(Layer):
 
   def __init__(self, padding=(1, 1), data_format=None, **kwargs):
     super(ZeroPadding2D, self).__init__(**kwargs)
-    self._can_use_graph_functions = True
     self.data_format = conv_utils.normalize_data_format(data_format)
     if isinstance(padding, int):
       self.padding = ((padding, padding), (padding, padding))
@@ -2280,7 +2274,6 @@ class ZeroPadding3D(Layer):
 
   def __init__(self, padding=(1, 1, 1), data_format=None, **kwargs):
     super(ZeroPadding3D, self).__init__(**kwargs)
-    self._can_use_graph_functions = True
     self.data_format = conv_utils.normalize_data_format(data_format)
     if isinstance(padding, int):
       self.padding = ((padding, padding), (padding, padding), (padding,
@@ -2375,7 +2368,6 @@ class Cropping1D(Layer):
     super(Cropping1D, self).__init__(**kwargs)
     self.cropping = conv_utils.normalize_tuple(cropping, 2, 'cropping')
     self.input_spec = InputSpec(ndim=3)
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -2475,7 +2467,6 @@ class Cropping2D(Layer):
                        '((top_crop, bottom_crop), (left_crop, right_crop)). '
                        'Found: ' + str(cropping))
     self.input_spec = InputSpec(ndim=4)
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -2609,7 +2600,6 @@ class Cropping3D(Layer):
           ' (left_dim3_crop, right_dim2_crop)). '
           'Found: ' + str(cropping))
     self.input_spec = InputSpec(ndim=5)
-    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

@@ -24,12 +24,14 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedTileOpTest(ragged_test_util.RaggedTensorTestCase,
+                       parameterized.TestCase):
 
   @parameterized.parameters([
       #=========================================================================
@@ -170,6 +172,15 @@ class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           rt_input=[[[[1], [2]], [[3]]], [[]], [[[4, 5]]]],
           multiples=[1, 1, 1, 0],
           expected=[[[[], []], [[]]], [[]], [[[]]]]),
+      #=========================================================================
+      # multiple=1
+      #=========================================================================
+      dict(
+          descr='rank=4, multiples=1 (no repeats)',
+          rt_input=[[[[1], [2]], [[3], [4]]], [[[5], [6]]]],
+          multiples=[1, 1, 1, 1],
+          expected=[[[[1], [2]], [[3], [4]]],
+                    [[[5], [6]]]]),
 
   ])  # pyformat: disable
   def testRaggedTile(self,
@@ -178,7 +189,7 @@ class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                      multiples,
                      expected,
                      ragged_rank=None):
-    rt = ragged_factory_ops.constant(rt_input, ragged_rank)
+    rt = ragged.constant(rt_input, ragged_rank)
 
     expected_shape = [
         None if dim is None else dim * multiple
@@ -192,23 +203,21 @@ class RaggedTileOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         const_multiples, shape=[len(multiples)])
 
     for multiples_tensor in (const_multiples, non_const_multiples):
-      tiled = ragged_array_ops.tile(rt, multiples_tensor)
+      tiled = ragged.tile(rt, multiples_tensor)
       self.assertEqual(tiled.ragged_rank, rt.ragged_rank)
       self.assertEqual(tiled.shape.ndims, rt.shape.ndims)
       if multiples_tensor is const_multiples:
         self.assertEqual(tiled.shape.as_list(), expected_shape)
-      with self.test_session():
-        self.assertEqual(tiled.eval().tolist(), expected)
+      self.assertRaggedEqual(tiled, expected)
 
   def testRaggedTileWithTensorInput(self):
     # When the input is a `Tensor`, ragged_tile just delegates to tf.tile.
     dt = constant_op.constant([[1, 2], [3, 4]])
-    tiled = ragged_array_ops.tile(dt, [3, 2])
+    tiled = ragged.tile(dt, [3, 2])
     expected = [[1, 2, 1, 2], [3, 4, 3, 4],
                 [1, 2, 1, 2], [3, 4, 3, 4],
                 [1, 2, 1, 2], [3, 4, 3, 4]]  # pyformat: disable
-    with self.test_session():
-      self.assertEqual(tiled.eval().tolist(), expected)
+    self.assertRaggedEqual(tiled, expected)
 
 
 if __name__ == '__main__':

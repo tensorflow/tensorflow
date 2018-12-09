@@ -24,6 +24,7 @@ from tensorflow.python.framework import auto_control_deps as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -46,6 +47,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(), 4.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondMustRun(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -67,6 +69,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondMustRunSeparateRead(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -90,6 +93,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       one.eval(feed_dict={p: True})
       self.assertAllEqual(v.read_value().eval(), 6.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondNested(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -124,6 +128,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True, q: True}), 7.0)
       self.assertAllEqual(val.eval(feed_dict={p: True, q: False}), 8.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondOneBranch(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -144,6 +149,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondOneBranchUpdateBefore(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -165,6 +171,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondOneBranchUpdateAfter(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)

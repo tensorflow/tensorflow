@@ -31,6 +31,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -38,7 +39,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _parse_saved_model(export_dir):
+def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 
   Args:
@@ -82,6 +83,11 @@ def _parse_saved_model(export_dir):
                    constants.SAVED_MODEL_FILENAME_PB))
 
 
+# TODO(b/120594573): Make this symbol also available as private, so that
+# tensorflow_transform and tensorflow_estimator do not break.
+_parse_saved_model = parse_saved_model
+
+
 def _get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
   """Gets the asset tensors, if defined in the meta graph def to load.
 
@@ -99,22 +105,29 @@ def _get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
   collection_def = meta_graph_def_to_load.collection_def
 
   asset_tensor_dict = {}
-  if constants.ASSETS_KEY in collection_def:
-    # Location of the assets for SavedModel.
-    assets_directory = os.path.join(
-        compat.as_bytes(export_dir),
-        compat.as_bytes(constants.ASSETS_DIRECTORY))
+  asset_protos = []
+
+  if meta_graph_def_to_load.asset_file_def:
+    asset_protos = meta_graph_def_to_load.asset_file_def
+  elif constants.ASSETS_KEY in collection_def:
     assets_any_proto = collection_def[constants.ASSETS_KEY].any_list.value
-    # Process each asset and add it to the asset tensor dictionary.
     for asset_any_proto in assets_any_proto:
       asset_proto = meta_graph_pb2.AssetFileDef()
       asset_any_proto.Unpack(asset_proto)
-      tensor_name = asset_proto.tensor_info.name
-      if import_scope:
-        tensor_name = "%s/%s" % (import_scope, tensor_name)
-      asset_tensor_dict[tensor_name] = os.path.join(
-          compat.as_bytes(assets_directory),
-          compat.as_bytes(asset_proto.filename))
+      asset_protos.append(asset_proto)
+
+  # Location of the assets for SavedModel.
+  assets_directory = os.path.join(
+      compat.as_bytes(export_dir), compat.as_bytes(constants.ASSETS_DIRECTORY))
+  # Process each asset and add it to the asset tensor dictionary.
+  for asset_proto in asset_protos:
+    tensor_name = asset_proto.tensor_info.name
+    if import_scope:
+      tensor_name = "%s/%s" % (import_scope, tensor_name)
+    asset_tensor_dict[tensor_name] = os.path.join(
+        compat.as_bytes(assets_directory),
+        compat.as_bytes(asset_proto.filename))
+
   return asset_tensor_dict
 
 
@@ -134,23 +147,53 @@ def _get_main_op_tensor(
     RuntimeError: If the collection def corresponding to the main op key has
         other than exactly one tensor.
   """
+  # TODO(kathywu): Rename this method to _get_op_from_collection when
+  # dependency from SavedModelEstimator is removed.
   collection_def = meta_graph_def_to_load.collection_def
-  main_op_tensor = None
+  init_op = None
   if init_op_key in collection_def:
-    main_ops = collection_def[init_op_key].node_list.value
-    if len(main_ops) != 1:
-      raise RuntimeError("Expected exactly one SavedModel main op. "
-                         "Found: {}".format(main_ops))
-    main_op_tensor = ops.get_collection(init_op_key)[0]
-  return main_op_tensor
+    init_op_list = collection_def[init_op_key].node_list.value
+    if len(init_op_list) != 1:
+      raise RuntimeError("Expected exactly one SavedModel init op. "
+                         "Found: {}".format(init_op_list))
+    init_op = ops.get_collection(init_op_key)[0]
+  return init_op
 
 
-@tf_export(
+def _get_op_from_collection(meta_graph_def, op_key):
+  return _get_main_op_tensor(meta_graph_def, op_key)
+
+
+def _get_op_from_signature_def(meta_graph_def, op_signature_key, import_scope):
+  """Retrieve op stored in the imported meta graph's signature def."""
+  if op_signature_key in meta_graph_def.signature_def:
+    return signature_def_utils.load_op_from_signature_def(
+        meta_graph_def.signature_def[op_signature_key], op_signature_key,
+        import_scope)
+  else:
+    return None
+
+
+def get_init_op(meta_graph_def, import_scope=None):
+  return (_get_op_from_signature_def(
+      meta_graph_def, constants.INIT_OP_SIGNATURE_KEY, import_scope) or
+          _get_op_from_collection(meta_graph_def, constants.MAIN_OP_KEY) or
+          _get_op_from_collection(meta_graph_def, constants.LEGACY_INIT_OP_KEY))
+
+
+def get_train_op(meta_graph_def, import_scope=None):
+  train_op = _get_op_from_signature_def(
+      meta_graph_def, constants.TRAIN_OP_SIGNATURE_KEY, import_scope)
+  if train_op is None:
+    train_op = _get_op_from_collection(meta_graph_def, constants.TRAIN_OP_KEY)
+  return train_op
+
+
+@tf_export(v1=[
+    "saved_model.contains_saved_model",
     "saved_model.maybe_saved_model_directory",
-    v1=[
-        "saved_model.maybe_saved_model_directory",
-        "saved_model.loader.maybe_saved_model_directory"
-    ])
+    "saved_model.loader.maybe_saved_model_directory"
+])
 @deprecation.deprecated_endpoints(
     "saved_model.loader.maybe_saved_model_directory")
 def maybe_saved_model_directory(export_dir):
@@ -171,6 +214,25 @@ def maybe_saved_model_directory(export_dir):
   txt_path = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
   pb_path = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
+
+
+@tf_export("saved_model.contains_saved_model", v1=[])
+def contains_saved_model(export_dir):
+  """Checks whether the provided export directory could contain a SavedModel.
+
+  Note that the method does not load any data by itself. If the method returns
+  `false`, the export directory definitely does not contain a SavedModel. If the
+  method returns `true`, the export directory may contain a SavedModel but
+  provides no guarantee that it can be loaded.
+
+  Args:
+    export_dir: Absolute string path to possible export location. For example,
+                '/my/foo/model'.
+
+  Returns:
+    True if the export directory contains SavedModel files, False otherwise.
+  """
+  return maybe_saved_model_directory(export_dir)
 
 
 @tf_export(v1=["saved_model.load", "saved_model.loader.load"])
@@ -219,7 +281,7 @@ class SavedModelLoader(object):
     """
     self._export_dir = export_dir
     self._variables_path = saved_model_utils.get_variables_path(export_dir)
-    self._saved_model = _parse_saved_model(export_dir)
+    self._saved_model = parse_saved_model(export_dir)
 
   @property
   def export_dir(self):
@@ -334,11 +396,9 @@ class SavedModelLoader(object):
       asset_tensors_dictionary = _get_asset_tensors(
           self._export_dir, meta_graph_def, import_scope=import_scope)
 
-      main_op_tensor = (
-          _get_main_op_tensor(meta_graph_def, constants.MAIN_OP_KEY) or
-          _get_main_op_tensor(meta_graph_def, constants.LEGACY_INIT_OP_KEY))
-      if main_op_tensor is not None:
-        sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
+      init_op = get_init_op(meta_graph_def, import_scope)
+      if init_op is not None:
+        sess.run(fetches=[init_op], feed_dict=asset_tensors_dictionary)
 
   def load(self, sess, tags, import_scope=None, **saver_kwargs):
     """Load the MetaGraphDef graph and restore variable values into the session.

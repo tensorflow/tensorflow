@@ -12,81 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Implementation of Cluster Resolvers for TF_CONFIG Environment Variables."""
-
+"""Stub file for TFConfigClusterResolver to maintain backwards compatibility."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-import os
+# This file (and all files in this directory in general) is a backwards
+# compatibility shim that exists to re-export ClusterResolvers such that
+# existing OSS code will not be broken.
 
-from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import ClusterResolver
-from tensorflow.python.training.server_lib import ClusterSpec
+# pylint: disable=unused-import
+from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import TFConfigClusterResolver
+# pylint: enable=unused-import
 
-_TF_CONFIG_ENV = 'TF_CONFIG'
-_SESSION_MASTER_KEY = 'session_master'
+from tensorflow.python.util.all_util import remove_undocumented
 
+_allowed_symbols = [
+    'TFConfigClusterResolver',
+]
 
-class TFConfigClusterResolver(ClusterResolver):
-  """Implementation of a ClusterResolver which reads the TF_CONFIG EnvVar."""
+remove_undocumented(__name__, _allowed_symbols)
 
-  def _load_tf_config(self):
-    return json.loads(os.environ.get(_TF_CONFIG_ENV, '{}'))
-
-  def cluster_spec(self):
-    """Returns a ClusterSpec based on the TF_CONFIG environment variable.
-
-    Returns:
-      A ClusterSpec with information from the TF_CONFIG environment variable.
-    """
-    tf_config = self._load_tf_config()
-    if 'cluster' not in tf_config:
-      return ClusterSpec({})
-    return ClusterSpec(tf_config['cluster'])
-
-  def master(self, task_type=None, task_index=0):
-    """Returns the master address to use when creating a TensorFlow session.
-
-    Args:
-      task_type: (String, optional) Overrides and sets the task_type of the
-        master.
-      task_index: (Integer, optional) Overrides and sets the task id of the
-        master.
-
-    Returns:
-      The address of the master.
-
-    Raises:
-      RuntimeError: If the task_type or task_id is not specified and the
-        `TF_CONFIG` environment variable does not contain a task section.
-    """
-
-    # If `session_master` is set, just use that.
-    tf_config = self._load_tf_config()
-    if _SESSION_MASTER_KEY in tf_config:
-      return tf_config[_SESSION_MASTER_KEY]
-
-    if 'rpc_layer' in tf_config:
-      rpclayer = '%s://' % tf_config['rpc_layer']
-    else:
-      rpclayer = ''
-
-    # Return an empty string if we are the only job in the ClusterSpec.
-    cluster_spec = self.cluster_spec()
-    if (not cluster_spec.jobs or
-        (len(cluster_spec.jobs) == 1 and
-         len(cluster_spec.job_tasks(cluster_spec.jobs[0])) == 1)):
-      return ''
-
-    # We try to auto-detect the task type and id, but uses the user-supplied one
-    # where available
-    if not task_type:
-      if 'task' not in tf_config:
-        raise RuntimeError('You must either specify a `task_type`, or your '
-                           'TF_CONFIG must contain a `task` section.')
-      task_type = tf_config['task']['type']
-      task_index = tf_config['task']['index']
-
-    return rpclayer + cluster_spec.task_address(task_type, task_index)

@@ -59,7 +59,7 @@ TEST_F(HloDceTest, NoDeadCode) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
@@ -110,7 +110,7 @@ TEST_F(HloDceTest, DeadParameters) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       live_param->shape(), HloOpcode::kNegate, live_param));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(5, computation->instruction_count());
@@ -150,7 +150,7 @@ TEST_F(HloDceTest, ControlDependencies) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Add a control dependency between two instructions.
@@ -175,7 +175,7 @@ TEST_F(HloDceTest, ControlDependencies) {
 
 // Tests that a dead call instruction is removed.
 TEST_F(HloDceTest, DeadInstructionWithCalledComputation) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(F32, {});
 
   // Called computation for the call instruction.
@@ -323,7 +323,7 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
 }
 
 TEST_F(HloDceTest, RemoveDeadSubcomputation) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   HloComputation::Builder subcomp_builder("reduction_subcomp");

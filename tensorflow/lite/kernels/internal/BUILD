@@ -234,8 +234,6 @@ cc_library(
 cc_library(
     name = "optimized",
     hdrs = [
-        "optimized/cblas_conv.h",
-        "optimized/cblas_reference.h",
         "optimized/eigen_spatial_convolutions.h",
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
@@ -256,7 +254,6 @@ cc_test(
     name = "tensor_test",
     srcs = ["tensor_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
     deps = [
@@ -289,7 +286,6 @@ cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
     deps = [
@@ -317,6 +313,7 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
+        "reference/integer_ops/dequantize.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],
@@ -564,7 +561,6 @@ cc_test(
     }),
     linkstatic = 1,
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -578,7 +574,6 @@ cc_test(
 cc_test(
     name = "depthwiseconv_float_test",
     srcs = ["depthwiseconv_float_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -593,7 +588,6 @@ cc_test(
     srcs = ["depthwiseconv_quantized_test.cc"],
     shard_count = 2,
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -609,7 +603,6 @@ cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -625,7 +618,6 @@ cc_test(
     name = "resize_nearest_neighbor_test",
     srcs = ["resize_nearest_neighbor_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -643,7 +635,6 @@ cc_test(
     srcs = [
         "softmax_quantized_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":optimized_base",
         ":quantization_util",
@@ -661,7 +652,6 @@ cc_test(
         "logsoftmax_quantized_test.cc",
     ],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -677,7 +667,6 @@ cc_test(
 cc_test(
     name = "log_quantized_test",
     srcs = ["log_quantized_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":optimized_base",
         ":reference_base",
@@ -705,7 +694,6 @@ cc_library(
 cc_test(
     name = "batch_to_space_nd_test",
     srcs = ["batch_to_space_nd_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":optimized_base",
         "@com_google_googletest//:gtest_main",

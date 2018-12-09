@@ -285,6 +285,14 @@ Status Node::input_node(int idx, const Node** const_n) const {
   return Status::OK();
 }
 
+Status Node::input_tensor(int idx, OutputTensor* t) const {
+  const Edge* e;
+  TF_RETURN_IF_ERROR(input_edge(idx, &e));
+  DCHECK(e != nullptr);
+  *t = OutputTensor(e->src(), e->src_output());
+  return Status::OK();
+}
+
 // InputTensor
 
 bool InputTensor::operator==(const InputTensor& other) const {
@@ -537,6 +545,22 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   dst->MaybeCopyOnWrite();
   (*dst->props_->node_def.mutable_input())[dst_index] =
       strings::StrCat(new_src->name(), ":", new_src_index);
+  return Status::OK();
+}
+
+Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
+  if (dst->type_string() != "While") {
+    return errors::Internal(
+        "dst argument to AddWhileEdgeHack should be a While op, got: ",
+        dst->DebugString());
+  }
+  TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
+  int dst_index = dst->in_edges().size();
+  TF_RETURN_IF_ERROR(IsValidInputTensor(dst, dst_index));
+  AddEdge(new_src, new_src_index, dst, dst_index);
+  dst->MaybeCopyOnWrite();
+  dst->props_->node_def.add_input(
+      strings::StrCat(new_src->name(), ":", new_src_index));
   return Status::OK();
 }
 

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -42,10 +43,12 @@ class GrpcRemoteWorker : public WorkerInterface {
  public:
   explicit GrpcRemoteWorker(SharedGrpcChannelPtr channel,
                             ::grpc::CompletionQueue* completion_queue,
+                            thread::ThreadPool* callback_threadpool,
                             WorkerCacheLogger* logger)
       : channel_(std::move(channel)),
         stub_(channel_),
         cq_(completion_queue),
+        callback_threadpool_(callback_threadpool),
         getstatus_(Method(GrpcWorkerMethod::kGetStatus)),
         createworkersession_(Method(GrpcWorkerMethod::kCreateWorkerSession)),
         deleteworkersession_(Method(GrpcWorkerMethod::kDeleteWorkerSession)),
@@ -258,13 +261,15 @@ class GrpcRemoteWorker : public WorkerInterface {
                     protobuf::Message* response, const ::grpc::string& method,
                     StatusCallback done, CallOptions* call_opts = nullptr) {
     new RPCState<protobuf::Message>(&stub_, cq_, method, *request, response,
-                                    std::move(done), call_opts);
+                                    std::move(done), call_opts,
+                                    callback_threadpool_);
   }
   void IssueRequest(const protobuf::Message* request, TensorResponse* response,
                     const ::grpc::string& method, StatusCallback done,
                     CallOptions* call_opts = nullptr) {
     new RPCState<TensorResponse>(&stub_, cq_, method, *request, response,
-                                 std::move(done), call_opts);
+                                 std::move(done), call_opts,
+                                 callback_threadpool_);
   }
 
   // Helper function for initializing the RpcMethod objects below.
@@ -273,6 +278,7 @@ class GrpcRemoteWorker : public WorkerInterface {
   SharedGrpcChannelPtr channel_;
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
+  thread::ThreadPool* callback_threadpool_;
 
   const ::grpc::string getstatus_;
   const ::grpc::string createworkersession_;
@@ -298,8 +304,10 @@ class GrpcRemoteWorker : public WorkerInterface {
 
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
+                                     thread::ThreadPool* callback_threadpool,
                                      WorkerCacheLogger* logger) {
-  return new GrpcRemoteWorker(std::move(channel), completion_queue, logger);
+  return new GrpcRemoteWorker(std::move(channel), completion_queue,
+                              callback_threadpool, logger);
 }
 
 }  // namespace tensorflow

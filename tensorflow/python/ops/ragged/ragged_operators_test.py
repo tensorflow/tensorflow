@@ -20,78 +20,71 @@ from __future__ import print_function
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
-  # @TODO(edloper): Test right-handed versions of operators once we add
-  # broadcasting support for elementwise ops.
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase):
 
   def testOrderingOperators(self):
     x = ragged.constant([[1, 5], [3]])
     y = ragged.constant([[4, 5], [1]])
-    with self.test_session():
-      self.assertEqual((x > y).eval().tolist(), [[False, False], [True]])
-      self.assertEqual((x >= y).eval().tolist(), [[False, True], [True]])
-      self.assertEqual((x < y).eval().tolist(), [[True, False], [False]])
-      self.assertEqual((x <= y).eval().tolist(), [[True, True], [False]])
-
-  def assertEqual(self, a, b):
-    if a != b:
-      print('%30s %s' % (b, a))
+    self.assertRaggedEqual((x > y), [[False, False], [True]])
+    self.assertRaggedEqual((x >= y), [[False, True], [True]])
+    self.assertRaggedEqual((x < y), [[True, False], [False]])
+    self.assertRaggedEqual((x <= y), [[True, True], [False]])
 
   def testArithmeticOperators(self):
     x = ragged.constant([[1.0, -2.0], [8.0]])
     y = ragged.constant([[4.0, 4.0], [2.0]])
-    with self.test_session():
-      self.assertEqual(abs(x).eval().tolist(), [[1.0, 2.0], [8.0]])
+    self.assertRaggedEqual(abs(x), [[1.0, 2.0], [8.0]])
 
-      self.assertEqual((-x).eval().tolist(), [[-1.0, 2.0], [-8.0]])
+    self.assertRaggedEqual((-x), [[-1.0, 2.0], [-8.0]])
 
-      self.assertEqual((x + y).eval().tolist(), [[5.0, 2.0], [10.0]])
-      self.assertEqual((3.0 + y).eval().tolist(), [[7.0, 7.0], [5.0]])
-      self.assertEqual((x + 3.0).eval().tolist(), [[4.0, 1.0], [11.0]])
+    self.assertRaggedEqual((x + y), [[5.0, 2.0], [10.0]])
+    self.assertRaggedEqual((3.0 + y), [[7.0, 7.0], [5.0]])
+    self.assertRaggedEqual((x + 3.0), [[4.0, 1.0], [11.0]])
 
-      self.assertEqual((x - y).eval().tolist(), [[-3.0, -6.0], [6.0]])
-      self.assertEqual((3.0 - y).eval().tolist(), [[-1.0, -1.0], [1.0]])
-      self.assertEqual((x + 3.0).eval().tolist(), [[4.0, 1.0], [11.0]])
+    self.assertRaggedEqual((x - y), [[-3.0, -6.0], [6.0]])
+    self.assertRaggedEqual((3.0 - y), [[-1.0, -1.0], [1.0]])
+    self.assertRaggedEqual((x + 3.0), [[4.0, 1.0], [11.0]])
 
-      self.assertEqual((x * y).eval().tolist(), [[4.0, -8.0], [16.0]])
-      self.assertEqual((3.0 * y).eval().tolist(), [[12.0, 12.0], [6.0]])
-      self.assertEqual((x * 3.0).eval().tolist(), [[3.0, -6.0], [24.0]])
+    self.assertRaggedEqual((x * y), [[4.0, -8.0], [16.0]])
+    self.assertRaggedEqual((3.0 * y), [[12.0, 12.0], [6.0]])
+    self.assertRaggedEqual((x * 3.0), [[3.0, -6.0], [24.0]])
 
-      self.assertEqual((x / y).eval().tolist(), [[0.25, -0.5], [4.0]])
-      self.assertEqual((y / x).eval().tolist(), [[4.0, -2.0], [0.25]])
-      self.assertEqual((2.0 / y).eval().tolist(), [[0.5, 0.5], [1.0]])
-      self.assertEqual((x / 2.0).eval().tolist(), [[0.5, -1.0], [4.0]])
+    self.assertRaggedEqual((x / y), [[0.25, -0.5], [4.0]])
+    self.assertRaggedEqual((y / x), [[4.0, -2.0], [0.25]])
+    self.assertRaggedEqual((2.0 / y), [[0.5, 0.5], [1.0]])
+    self.assertRaggedEqual((x / 2.0), [[0.5, -1.0], [4.0]])
 
-      self.assertEqual((x // y).eval().tolist(), [[0.0, -1.0], [4.0]])
-      self.assertEqual((y // x).eval().tolist(), [[4.0, -2.0], [0.0]])
-      self.assertEqual((2.0 // y).eval().tolist(), [[0.0, 0.0], [1.0]])
-      self.assertEqual((x // 2.0).eval().tolist(), [[0.0, -1.0], [4.0]])
+    self.assertRaggedEqual((x // y), [[0.0, -1.0], [4.0]])
+    self.assertRaggedEqual((y // x), [[4.0, -2.0], [0.0]])
+    self.assertRaggedEqual((2.0 // y), [[0.0, 0.0], [1.0]])
+    self.assertRaggedEqual((x // 2.0), [[0.0, -1.0], [4.0]])
 
-      self.assertEqual((x % y).eval().tolist(), [[1.0, 2.0], [0.0]])
-      self.assertEqual((y % x).eval().tolist(), [[0.0, -0.0], [2.0]])
-      self.assertEqual((2.0 % y).eval().tolist(), [[2.0, 2.0], [0.0]])
-      self.assertEqual((x % 2.0).eval().tolist(), [[1.0, 0.0], [0.0]])
+    self.assertRaggedEqual((x % y), [[1.0, 2.0], [0.0]])
+    self.assertRaggedEqual((y % x), [[0.0, -0.0], [2.0]])
+    self.assertRaggedEqual((2.0 % y), [[2.0, 2.0], [0.0]])
+    self.assertRaggedEqual((x % 2.0), [[1.0, 0.0], [0.0]])
 
   def testLogicalOperators(self):
     a = ragged.constant([[True, True], [False]])
     b = ragged.constant([[True, False], [False]])
-    with self.test_session():
-      self.assertEqual((~a).eval().tolist(), [[False, False], [True]])
+    self.assertRaggedEqual((~a), [[False, False], [True]])
 
-      self.assertEqual((a & b).eval().tolist(), [[True, False], [False]])
-      self.assertEqual((a & True).eval().tolist(), [[True, True], [False]])
-      self.assertEqual((True & b).eval().tolist(), [[True, False], [False]])
+    self.assertRaggedEqual((a & b), [[True, False], [False]])
+    self.assertRaggedEqual((a & True), [[True, True], [False]])
+    self.assertRaggedEqual((True & b), [[True, False], [False]])
 
-      self.assertEqual((a | b).eval().tolist(), [[True, True], [False]])
-      self.assertEqual((a | False).eval().tolist(), [[True, True], [False]])
-      self.assertEqual((False | b).eval().tolist(), [[True, False], [False]])
+    self.assertRaggedEqual((a | b), [[True, True], [False]])
+    self.assertRaggedEqual((a | False), [[True, True], [False]])
+    self.assertRaggedEqual((False | b), [[True, False], [False]])
 
-      self.assertEqual((a ^ b).eval().tolist(), [[False, True], [False]])
-      self.assertEqual((a ^ True).eval().tolist(), [[False, False], [True]])
-      self.assertEqual((True ^ b).eval().tolist(), [[False, True], [True]])
+    self.assertRaggedEqual((a ^ b), [[False, True], [False]])
+    self.assertRaggedEqual((a ^ True), [[False, False], [True]])
+    self.assertRaggedEqual((True ^ b), [[False, True], [True]])
 
   def testDummyOperators(self):
     a = ragged.constant([[True, True], [False]])

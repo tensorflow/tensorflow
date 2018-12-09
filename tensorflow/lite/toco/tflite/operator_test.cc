@@ -151,6 +151,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                    OperatorType::kZerosLike);
   CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);
   CheckSimpleOperator<RangeOperator>("RANGE", OperatorType::kRange);
+  CheckSimpleOperator<FillOperator>("FILL", OperatorType::kFill);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -307,6 +308,14 @@ TEST_F(OperatorTest, CustomSplit) {
   op.num_split = 123;
   auto output_toco_op =
       SerializeAndDeserialize(GetOperator("SPLIT", OperatorType::kSplit), op);
+  EXPECT_EQ(op.num_split, output_toco_op->num_split);
+}
+
+TEST_F(OperatorTest, CustomSplitV) {
+  TensorFlowSplitVOperator op;
+  op.num_split = 123;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SPLIT_V", OperatorType::kSplitV), op);
   EXPECT_EQ(op.num_split, output_toco_op->num_split);
 }
 
@@ -517,6 +526,21 @@ TEST_F(OperatorTest, BuiltinUnpack) {
   EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
+TEST_F(OperatorTest, BuiltinLeakyRelu) {
+  LeakyReluOperator op;
+  op.alpha = 3;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("LEAKY_RELU", OperatorType::kLeakyRelu), op);
+  EXPECT_EQ(op.alpha, output_toco_op->alpha);
+}
+
+TEST_F(OperatorTest, BuiltinSquaredDifference) {
+  SquaredDifferenceOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SQUARED_DIFFERENCE", OperatorType::kSquaredDifference), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
 TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
   CTCBeamSearchDecoderOperator op;
   op.beam_width = 3;
@@ -590,6 +614,14 @@ TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
   // While the RFFT op is available on desktop, it is not in the kernel
   // set available on mobile and should be excluded.
   EXPECT_FALSE(ShouldExportAsFlexOp(true, "RFFT"));
+}
+
+TEST_F(OperatorTest, BuiltinMirrorPad) {
+  MirrorPadOperator op;
+  op.mode = MirrorPadMode::kReflect;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("MIRROR_PAD", OperatorType::kMirrorPad), op);
+  EXPECT_EQ(op.mode, output_toco_op->mode);
 }
 
 }  // namespace

@@ -28,6 +28,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
@@ -47,7 +48,7 @@ def _time_resampling(
           initial_dist=init_dist,
           seed=142))
 
-  get_next = dataset.make_one_shot_iterator().get_next()
+  get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
   with test_obj.test_session() as sess:
     start_time = time.time()
@@ -63,6 +64,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.named_parameters(
       ("InitialDistributionKnown", True),
       ("InitialDistributionUnknown", False))
+  @test_util.run_deprecated_v1
   def testDistribution(self, initial_known):
     classes = np.random.randint(5, size=(20000,))  # Uniformly sampled
     target_dist = [0.9, 0.05, 0.05, 0.0, 0.0]
@@ -71,12 +73,12 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices(classes).shuffle(
         200, seed=21).map(lambda c: (c, string_ops.as_string(c))).repeat()
 
-    get_next = dataset.apply(
+    get_next = dataset_ops.make_one_shot_iterator(dataset.apply(
         resampling.rejection_resample(
             target_dist=target_dist,
             initial_dist=initial_dist,
             class_func=lambda c, _: c,
-            seed=27)).make_one_shot_iterator().get_next()
+            seed=27))).get_next()
 
     with self.cached_session() as sess:
       returned = []
@@ -97,6 +99,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.named_parameters(
       ("OnlyInitial", True),
       ("NotInitial", False))
+  @test_util.run_deprecated_v1
   def testEdgeCasesSampleFromInitialDataset(self, only_initial_dist):
     init_dist = [0.5, 0.5]
     target_dist = [0.5, 0.5] if only_initial_dist else [0.0, 1.0]
@@ -114,7 +117,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
             target_dist=target_dist,
             initial_dist=init_dist))
 
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       returned = []
@@ -122,6 +125,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
         while True:
           returned.append(sess.run(get_next))
 
+  @test_util.run_deprecated_v1
   def testRandomClasses(self):
     init_dist = [0.25, 0.25, 0.25, 0.25]
     target_dist = [0.0, 0.0, 0.0, 1.0]
@@ -145,7 +149,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
             target_dist=target_dist,
             initial_dist=init_dist))
 
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       returned = []

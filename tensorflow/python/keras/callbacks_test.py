@@ -36,7 +36,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import adam
 
 try:
@@ -404,6 +403,7 @@ class KerasCallbacksTest(test.TestCase):
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
 
+  @test_util.run_v1_only('b/120545219')
   def test_ReduceLROnPlateau(self):
     with self.cached_session():
       np.random.seed(1337)
@@ -675,6 +675,7 @@ class KerasCallbacksTest(test.TestCase):
       self.assertEqual(len(loss), 1)
       self.assertEqual(loss[0], np.inf)
 
+  @test_util.run_v1_only('b/120545219')
   def test_TensorBoard(self):
     np.random.seed(1337)
 
@@ -778,78 +779,7 @@ class KerasCallbacksTest(test.TestCase):
           data_generator(True), len(x_train), epochs=2, callbacks=cbks)
       assert os.path.exists(temp_dir)
 
-  def test_TensorBoard_histogram_freq_must_have_validation_data(self):
-    np.random.seed(1337)
-    tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
-
-    with self.cached_session():
-      filepath = os.path.join(tmpdir, 'logs')
-
-      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-          train_samples=TRAIN_SAMPLES,
-          test_samples=TEST_SAMPLES,
-          input_shape=(INPUT_DIM,),
-          num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
-
-      def data_generator(train):
-        if train:
-          max_batch_index = len(x_train) // BATCH_SIZE
-        else:
-          max_batch_index = len(x_test) // BATCH_SIZE
-        i = 0
-        while 1:
-          if train:
-            # simulate multi-input/output models
-            yield (x_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE],
-                   y_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE])
-          else:
-            yield (x_test[i * BATCH_SIZE: (i + 1) * BATCH_SIZE],
-                   y_test[i * BATCH_SIZE: (i + 1) * BATCH_SIZE])
-          i += 1
-          i %= max_batch_index
-
-      inp = keras.Input((INPUT_DIM,))
-      hidden = keras.layers.Dense(2, activation='relu')(inp)
-      hidden = keras.layers.Dropout(0.1)(hidden)
-      output = keras.layers.Dense(NUM_CLASSES, activation='softmax')(hidden)
-      model = keras.models.Model(inputs=inp, outputs=output)
-      model.compile(loss='categorical_crossentropy',
-                    optimizer='sgd',
-                    metrics=['accuracy'])
-
-      # we must generate new callbacks for each test, as they aren't stateless
-      def callbacks_factory(histogram_freq):
-        return [keras.callbacks.TensorBoard(
-            log_dir=filepath,
-            histogram_freq=histogram_freq,
-            write_images=True, write_grads=True,
-            batch_size=5)]
-
-      # fit w/o validation data should raise ValueError if histogram_freq > 0
-      cbs = callbacks_factory(histogram_freq=1)
-      with self.assertRaises(ValueError):
-        model.fit(
-            x_train, y_train, batch_size=BATCH_SIZE, callbacks=cbs, epochs=3)
-
-      for cb in cbs:
-        cb.on_train_end()
-
-      # fit generator without validation data should raise ValueError if
-      # histogram_freq > 0
-      cbs = callbacks_factory(histogram_freq=1)
-      with self.assertRaises(ValueError):
-        model.fit_generator(
-            data_generator(True), len(x_train), epochs=2, callbacks=cbs)
-
-      for cb in cbs:
-        cb.on_train_end()
-
-      # Make sure file writer cache is clear to avoid failures during cleanup.
-      writer_cache.FileWriterCache.clear()
-
+  @test_util.run_v1_only('b/120545219')
   def test_TensorBoard_multi_input_output(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -921,6 +851,7 @@ class KerasCallbacksTest(test.TestCase):
                           callbacks=callbacks_factory(histogram_freq=1))
       assert os.path.isdir(filepath)
 
+  @test_util.run_v1_only('b/120545219')
   def test_Tensorboard_histogram_summaries_in_test_function(self):
 
     class FileWriterStub(object):
@@ -996,8 +927,9 @@ class KerasCallbacksTest(test.TestCase):
           epochs=3,
           verbose=0)
 
-      self.assertAllEqual(tsb.writer.steps_seen, [0, 0.5, 1, 1.5, 2, 2.5])
+      self.assertAllEqual(tsb.writer.steps_seen, [0, 1, 2, 3, 4, 5])
 
+  @test_util.run_v1_only('b/120545219')
   def test_Tensorboard_histogram_summaries_with_generator(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -1129,6 +1061,7 @@ class KerasCallbacksTest(test.TestCase):
 
       assert os.path.exists(temp_dir)
 
+  @test_util.run_deprecated_v1
   def test_Tensorboard_batch_logging(self):
 
     class FileWriterStub(object):
@@ -1163,6 +1096,7 @@ class KerasCallbacksTest(test.TestCase):
     self.assertEqual(tb_cbk.writer.summary_values, [0., 1., 2., 3., 4.])
     self.assertEqual(tb_cbk.writer.summary_tags, ['batch_acc'] * 5)
 
+  @test_util.run_deprecated_v1
   def test_Tensorboard_epoch_and_batch_logging(self):
 
     class FileWriterStub(object):
@@ -1234,6 +1168,7 @@ class KerasCallbacksTest(test.TestCase):
 
     self.assertTrue(os.path.exists(temp_dir))
 
+  @test_util.run_deprecated_v1
   def test_TensorBoard_update_freq(self):
 
     class FileWriterStub(object):
@@ -1325,6 +1260,7 @@ class KerasCallbacksTest(test.TestCase):
             callbacks=cbks,
             epochs=1)
 
+  @test_util.run_deprecated_v1
   def test_fit_generator_with_callback(self):
 
     class TestCallback(keras.callbacks.Callback):

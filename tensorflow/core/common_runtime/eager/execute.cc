@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/lib/core/errors.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
@@ -192,7 +193,7 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
 }
 
 Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
-  DeviceTypeVector final_devices;
+  PrioritizedDeviceTypeVector final_devices;
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
       ctx->prioritized_device_type_list(), ndef, &final_devices));
   if (final_devices.empty()) {
@@ -202,7 +203,7 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
                             " :\n", KernelsRegisteredForOp(ndef.op()));
   }
   for (Device* d : *ctx->devices()) {
-    if (d->device_type() == final_devices[0].type_string()) {
+    if (d->device_type() == final_devices[0].first.type_string()) {
       *device = d;
       return Status::OK();
     }
@@ -262,7 +263,8 @@ Status EagerLocalExecute(EagerOperation* op,
     // Note that it is not ideal, but currently ok, to set this
     // attribute after computing the kernel cache key above.
     if (op->is_function() && device != nullptr &&
-        device->device_type() == "TPU") {
+        (device->device_type() == "TPU" || device->device_type() == "XLA_GPU" ||
+         device->device_type() == "XLA_CPU")) {
       op->MutableAttrs()->Set(kXlaCompileAttr, true);
     }
 
@@ -283,7 +285,8 @@ Status EagerLocalExecute(EagerOperation* op,
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }
-    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
+    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory(),
+                                 ctx->GetCollectiveExecutorHandle());
     status = KernelAndDevice::Init(ndef, flr, ctx->runner(), kernel);
     if (!status.ok()) {
       delete kernel;
@@ -827,8 +830,11 @@ Status ExecuteSend(EagerContext* ctx, tensorflow::Device* device,
                    TensorHandle* h, StringPiece wire_id,
                    const string& recv_device) {
   const tensorflow::AttrTypeMap* types;
-  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp("_Send", &types));
-  tensorflow::EagerOperation op(ctx, "_Send", types);
+  bool is_function = false;
+  TF_RETURN_IF_ERROR(
+      tensorflow::AttrTypeMapForOp("_Send", &types, &is_function));
+  DCHECK(!is_function);
+  tensorflow::EagerOperation op(ctx, "_Send", /*is_function=*/false, types);
 
   op.AddInput(h);
 
@@ -855,8 +861,11 @@ Status ExecuteRecv(EagerContext* ctx, tensorflow::Device* device,
                    const string& send_device, int64 send_device_incarnation,
                    TensorHandle** result) {
   const tensorflow::AttrTypeMap* types;
-  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp("_Recv", &types));
-  tensorflow::EagerOperation op(ctx, "_Recv", types);
+  bool is_function = false;
+  TF_RETURN_IF_ERROR(
+      tensorflow::AttrTypeMapForOp("_Recv", &types, &is_function));
+  DCHECK(!is_function);
+  tensorflow::EagerOperation op(ctx, "_Recv", /*is_function=*/false, types);
 
   op.SetDevice(device);
 

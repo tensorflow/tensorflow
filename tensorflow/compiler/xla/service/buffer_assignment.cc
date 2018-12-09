@@ -746,8 +746,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allow_input_output_aliasing, bool allocate_buffers_for_constants,
     BufferLiveness::Colorer colorer, ReuseAllocationFunction reuse_checker) {
-  BufferAssigner assigner(allow_input_output_aliasing,
-                          allocate_buffers_for_constants, std::move(colorer),
+  BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
                           std::move(reuse_checker));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),
@@ -1434,33 +1433,40 @@ BufferAssigner::MergeColocatedBufferSets(
            computation == module->entry_computation();
   };
 
+  std::vector<bool> set_can_be_merged(colocated_buffer_sets.size(), true);
+
+  // Do not merge if one of the sets includes live outs, entry parameters or
+  // constants.
+  //
+  // Buffer liveness does not report the correct live range for entry
+  // parameter and live out buffers so we have to special case them here.  On
+  // backends that support constant buffer allocations, constant buffers are
+  // assigned globals in readonly storage so we can't merge colocated buffer
+  // sets containing constants with colocated buffer sets containing writing
+  // instructions or other constants.
+  //
+  // Moreover (on the CPU/GPU backends) the entry parameter buffers belong to
+  // the caller of the executable so we can't write to entry parameters
+  // either, and the argument for not merging constants also applies to entry
+  // parameters.
+  for (int64 i = 0; i < colocated_buffer_sets.size(); ++i) {
+    for (auto& buffer : colocated_buffer_sets[i]) {
+      if (buffer_liveness.MaybeLiveOut(*buffer) ||
+          is_entry_parameter(*buffer) ||
+          buffer->instruction()->opcode() == HloOpcode::kConstant) {
+        set_can_be_merged[i] = false;
+        break;
+      }
+    }
+  }
+
   // Returns true if the two colocated buffer sets (specified by their indices
   // into the colocated_buffer_sets) can be merged into a single set.
   auto cannot_merge_buffer_sets = [&colocated_buffer_sets, &buffer_liveness,
                                    &buffer_size,
-                                   &is_entry_parameter](int64 i, int64 j) {
-    // Do not merge if one of the sets includes live outs, entry parameters or
-    // constants.
-    //
-    // Buffer liveness does not report the correct live range for entry
-    // parameter and live out buffers so we have to special case them here.  On
-    // backends that support constant buffer allocations, constant buffers are
-    // assigned globals in readonly storage so we can't merge colocated buffer
-    // sets containing constants with colocated buffer sets containing writing
-    // instructions or other constants.
-    //
-    // Moreover (on the CPU/GPU backends) the entry parameter buffers belong to
-    // the caller of the executable so we can't write to entry parameters
-    // either, and the argument for not merging constants also applies to entry
-    // parameters.
-    for (int64 key : {i, j}) {
-      for (auto& buffer : colocated_buffer_sets[key]) {
-        if (buffer_liveness.MaybeLiveOut(*buffer) ||
-            is_entry_parameter(*buffer) ||
-            buffer->instruction()->opcode() == HloOpcode::kConstant) {
-          return true;
-        }
-      }
+                                   &set_can_be_merged](int64 i, int64 j) {
+    if (!set_can_be_merged[i] || !set_can_be_merged[j]) {
+      return true;
     }
 
     // Colocated sets satisfy the invariant that all buffers within a set have

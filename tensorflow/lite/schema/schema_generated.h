@@ -148,6 +148,9 @@ struct SqueezeOptionsT;
 struct SplitOptions;
 struct SplitOptionsT;
 
+struct SplitVOptions;
+struct SplitVOptionsT;
+
 struct StridedSliceOptions;
 struct StridedSliceOptionsT;
 
@@ -226,6 +229,9 @@ struct LogicalOrOptionsT;
 struct OneHotOptions;
 struct OneHotOptionsT;
 
+struct AbsOptions;
+struct AbsOptionsT;
+
 struct LogicalAndOptions;
 struct LogicalAndOptionsT;
 
@@ -252,6 +258,15 @@ struct FloorModOptionsT;
 
 struct RangeOptions;
 struct RangeOptionsT;
+
+struct LeakyReluOptions;
+struct LeakyReluOptionsT;
+
+struct SquaredDifferenceOptions;
+struct SquaredDifferenceOptionsT;
+
+struct MirrorPadOptions;
+struct MirrorPadOptionsT;
 
 struct OperatorCode;
 struct OperatorCodeT;
@@ -500,11 +515,16 @@ enum BuiltinOperator {
   BuiltinOperator_FLOOR_MOD = 95,
   BuiltinOperator_RANGE = 96,
   BuiltinOperator_RESIZE_NEAREST_NEIGHBOR = 97,
+  BuiltinOperator_LEAKY_RELU = 98,
+  BuiltinOperator_SQUARED_DIFFERENCE = 99,
+  BuiltinOperator_MIRROR_PAD = 100,
+  BuiltinOperator_ABS = 101,
+  BuiltinOperator_SPLIT_V = 102,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_RESIZE_NEAREST_NEIGHBOR
+  BuiltinOperator_MAX = BuiltinOperator_SPLIT_V
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[97] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[102] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -602,7 +622,12 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[97] {
     BuiltinOperator_FILL,
     BuiltinOperator_FLOOR_MOD,
     BuiltinOperator_RANGE,
-    BuiltinOperator_RESIZE_NEAREST_NEIGHBOR
+    BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+    BuiltinOperator_LEAKY_RELU,
+    BuiltinOperator_SQUARED_DIFFERENCE,
+    BuiltinOperator_MIRROR_PAD,
+    BuiltinOperator_ABS,
+    BuiltinOperator_SPLIT_V
   };
   return values;
 }
@@ -707,6 +732,11 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "FLOOR_MOD",
     "RANGE",
     "RESIZE_NEAREST_NEIGHBOR",
+    "LEAKY_RELU",
+    "SQUARED_DIFFERENCE",
+    "MIRROR_PAD",
+    "ABS",
+    "SPLIT_V",
     nullptr
   };
   return names;
@@ -793,11 +823,16 @@ enum BuiltinOptions {
   BuiltinOptions_FloorModOptions = 72,
   BuiltinOptions_RangeOptions = 73,
   BuiltinOptions_ResizeNearestNeighborOptions = 74,
+  BuiltinOptions_LeakyReluOptions = 75,
+  BuiltinOptions_SquaredDifferenceOptions = 76,
+  BuiltinOptions_MirrorPadOptions = 77,
+  BuiltinOptions_AbsOptions = 78,
+  BuiltinOptions_SplitVOptions = 79,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_ResizeNearestNeighborOptions
+  BuiltinOptions_MAX = BuiltinOptions_SplitVOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[75] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[80] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -873,7 +908,12 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[75] {
     BuiltinOptions_UnidirectionalSequenceLSTMOptions,
     BuiltinOptions_FloorModOptions,
     BuiltinOptions_RangeOptions,
-    BuiltinOptions_ResizeNearestNeighborOptions
+    BuiltinOptions_ResizeNearestNeighborOptions,
+    BuiltinOptions_LeakyReluOptions,
+    BuiltinOptions_SquaredDifferenceOptions,
+    BuiltinOptions_MirrorPadOptions,
+    BuiltinOptions_AbsOptions,
+    BuiltinOptions_SplitVOptions
   };
   return values;
 }
@@ -955,6 +995,11 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "FloorModOptions",
     "RangeOptions",
     "ResizeNearestNeighborOptions",
+    "LeakyReluOptions",
+    "SquaredDifferenceOptions",
+    "MirrorPadOptions",
+    "AbsOptions",
+    "SplitVOptions",
     nullptr
   };
   return names;
@@ -1263,6 +1308,26 @@ template<> struct BuiltinOptionsTraits<RangeOptions> {
 
 template<> struct BuiltinOptionsTraits<ResizeNearestNeighborOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_ResizeNearestNeighborOptions;
+};
+
+template<> struct BuiltinOptionsTraits<LeakyReluOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_LeakyReluOptions;
+};
+
+template<> struct BuiltinOptionsTraits<SquaredDifferenceOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SquaredDifferenceOptions;
+};
+
+template<> struct BuiltinOptionsTraits<MirrorPadOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_MirrorPadOptions;
+};
+
+template<> struct BuiltinOptionsTraits<AbsOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_AbsOptions;
+};
+
+template<> struct BuiltinOptionsTraits<SplitVOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SplitVOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1888,6 +1953,46 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_ResizeNearestNeighborOptions ?
       reinterpret_cast<const ResizeNearestNeighborOptionsT *>(value) : nullptr;
   }
+  LeakyReluOptionsT *AsLeakyReluOptions() {
+    return type == BuiltinOptions_LeakyReluOptions ?
+      reinterpret_cast<LeakyReluOptionsT *>(value) : nullptr;
+  }
+  const LeakyReluOptionsT *AsLeakyReluOptions() const {
+    return type == BuiltinOptions_LeakyReluOptions ?
+      reinterpret_cast<const LeakyReluOptionsT *>(value) : nullptr;
+  }
+  SquaredDifferenceOptionsT *AsSquaredDifferenceOptions() {
+    return type == BuiltinOptions_SquaredDifferenceOptions ?
+      reinterpret_cast<SquaredDifferenceOptionsT *>(value) : nullptr;
+  }
+  const SquaredDifferenceOptionsT *AsSquaredDifferenceOptions() const {
+    return type == BuiltinOptions_SquaredDifferenceOptions ?
+      reinterpret_cast<const SquaredDifferenceOptionsT *>(value) : nullptr;
+  }
+  MirrorPadOptionsT *AsMirrorPadOptions() {
+    return type == BuiltinOptions_MirrorPadOptions ?
+      reinterpret_cast<MirrorPadOptionsT *>(value) : nullptr;
+  }
+  const MirrorPadOptionsT *AsMirrorPadOptions() const {
+    return type == BuiltinOptions_MirrorPadOptions ?
+      reinterpret_cast<const MirrorPadOptionsT *>(value) : nullptr;
+  }
+  AbsOptionsT *AsAbsOptions() {
+    return type == BuiltinOptions_AbsOptions ?
+      reinterpret_cast<AbsOptionsT *>(value) : nullptr;
+  }
+  const AbsOptionsT *AsAbsOptions() const {
+    return type == BuiltinOptions_AbsOptions ?
+      reinterpret_cast<const AbsOptionsT *>(value) : nullptr;
+  }
+  SplitVOptionsT *AsSplitVOptions() {
+    return type == BuiltinOptions_SplitVOptions ?
+      reinterpret_cast<SplitVOptionsT *>(value) : nullptr;
+  }
+  const SplitVOptionsT *AsSplitVOptions() const {
+    return type == BuiltinOptions_SplitVOptions ?
+      reinterpret_cast<const SplitVOptionsT *>(value) : nullptr;
+  }
 };
 
 bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions type);
@@ -2085,6 +2190,35 @@ inline const char *EnumNameCombinerType(CombinerType e) {
   return EnumNamesCombinerType()[index];
 }
 
+enum MirrorPadMode {
+  MirrorPadMode_REFLECT = 0,
+  MirrorPadMode_SYMMETRIC = 1,
+  MirrorPadMode_MIN = MirrorPadMode_REFLECT,
+  MirrorPadMode_MAX = MirrorPadMode_SYMMETRIC
+};
+
+inline const MirrorPadMode (&EnumValuesMirrorPadMode())[2] {
+  static const MirrorPadMode values[] = {
+    MirrorPadMode_REFLECT,
+    MirrorPadMode_SYMMETRIC
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesMirrorPadMode() {
+  static const char * const names[] = {
+    "REFLECT",
+    "SYMMETRIC",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameMirrorPadMode(MirrorPadMode e) {
+  const size_t index = static_cast<int>(e);
+  return EnumNamesMirrorPadMode()[index];
+}
+
 enum CustomOptionsFormat {
   CustomOptionsFormat_FLEXBUFFERS = 0,
   CustomOptionsFormat_MIN = CustomOptionsFormat_FLEXBUFFERS,
@@ -2113,7 +2247,7 @@ inline const char *EnumNameCustomOptionsFormat(CustomOptionsFormat e) {
 
 struct CustomQuantizationT : public flatbuffers::NativeTable {
   typedef CustomQuantization TableType;
-  std::vector<int8_t> custom;
+  std::vector<uint8_t> custom;
   CustomQuantizationT() {
   }
 };
@@ -2123,8 +2257,8 @@ struct CustomQuantization FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum {
     VT_CUSTOM = 4
   };
-  const flatbuffers::Vector<int8_t> *custom() const {
-    return GetPointer<const flatbuffers::Vector<int8_t> *>(VT_CUSTOM);
+  const flatbuffers::Vector<uint8_t> *custom() const {
+    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -2140,7 +2274,7 @@ struct CustomQuantization FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct CustomQuantizationBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_custom(flatbuffers::Offset<flatbuffers::Vector<int8_t>> custom) {
+  void add_custom(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> custom) {
     fbb_.AddOffset(CustomQuantization::VT_CUSTOM, custom);
   }
   explicit CustomQuantizationBuilder(flatbuffers::FlatBufferBuilder &_fbb)
@@ -2157,7 +2291,7 @@ struct CustomQuantizationBuilder {
 
 inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int8_t>> custom = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> custom = 0) {
   CustomQuantizationBuilder builder_(_fbb);
   builder_.add_custom(custom);
   return builder_.Finish();
@@ -2165,10 +2299,10 @@ inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(
 
 inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantizationDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<int8_t> *custom = nullptr) {
+    const std::vector<uint8_t> *custom = nullptr) {
   return tflite::CreateCustomQuantization(
       _fbb,
-      custom ? _fbb.CreateVector<int8_t>(*custom) : 0);
+      custom ? _fbb.CreateVector<uint8_t>(*custom) : 0);
 }
 
 flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(flatbuffers::FlatBufferBuilder &_fbb, const CustomQuantizationT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4935,6 +5069,60 @@ inline flatbuffers::Offset<SplitOptions> CreateSplitOptions(
 
 flatbuffers::Offset<SplitOptions> CreateSplitOptions(flatbuffers::FlatBufferBuilder &_fbb, const SplitOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SplitVOptionsT : public flatbuffers::NativeTable {
+  typedef SplitVOptions TableType;
+  int32_t num_splits;
+  SplitVOptionsT()
+      : num_splits(0) {
+  }
+};
+
+struct SplitVOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SplitVOptionsT NativeTableType;
+  enum {
+    VT_NUM_SPLITS = 4
+  };
+  int32_t num_splits() const {
+    return GetField<int32_t>(VT_NUM_SPLITS, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_NUM_SPLITS) &&
+           verifier.EndTable();
+  }
+  SplitVOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SplitVOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SplitVOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SplitVOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SplitVOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_num_splits(int32_t num_splits) {
+    fbb_.AddElement<int32_t>(SplitVOptions::VT_NUM_SPLITS, num_splits, 0);
+  }
+  explicit SplitVOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SplitVOptionsBuilder &operator=(const SplitVOptionsBuilder &);
+  flatbuffers::Offset<SplitVOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SplitVOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SplitVOptions> CreateSplitVOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t num_splits = 0) {
+  SplitVOptionsBuilder builder_(_fbb);
+  builder_.add_num_splits(num_splits);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SplitVOptions> CreateSplitVOptions(flatbuffers::FlatBufferBuilder &_fbb, const SplitVOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct StridedSliceOptionsT : public flatbuffers::NativeTable {
   typedef StridedSliceOptions TableType;
   int32_t begin_mask;
@@ -6247,6 +6435,46 @@ inline flatbuffers::Offset<OneHotOptions> CreateOneHotOptions(
 
 flatbuffers::Offset<OneHotOptions> CreateOneHotOptions(flatbuffers::FlatBufferBuilder &_fbb, const OneHotOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct AbsOptionsT : public flatbuffers::NativeTable {
+  typedef AbsOptions TableType;
+  AbsOptionsT() {
+  }
+};
+
+struct AbsOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef AbsOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  AbsOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(AbsOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<AbsOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const AbsOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct AbsOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit AbsOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  AbsOptionsBuilder &operator=(const AbsOptionsBuilder &);
+  flatbuffers::Offset<AbsOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<AbsOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<AbsOptions> CreateAbsOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  AbsOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<AbsOptions> CreateAbsOptions(flatbuffers::FlatBufferBuilder &_fbb, const AbsOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct LogicalAndOptionsT : public flatbuffers::NativeTable {
   typedef LogicalAndOptions TableType;
   LogicalAndOptionsT() {
@@ -6633,6 +6861,154 @@ inline flatbuffers::Offset<RangeOptions> CreateRangeOptions(
 
 flatbuffers::Offset<RangeOptions> CreateRangeOptions(flatbuffers::FlatBufferBuilder &_fbb, const RangeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct LeakyReluOptionsT : public flatbuffers::NativeTable {
+  typedef LeakyReluOptions TableType;
+  float alpha;
+  LeakyReluOptionsT()
+      : alpha(0.0f) {
+  }
+};
+
+struct LeakyReluOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef LeakyReluOptionsT NativeTableType;
+  enum {
+    VT_ALPHA = 4
+  };
+  float alpha() const {
+    return GetField<float>(VT_ALPHA, 0.0f);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<float>(verifier, VT_ALPHA) &&
+           verifier.EndTable();
+  }
+  LeakyReluOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(LeakyReluOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<LeakyReluOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const LeakyReluOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct LeakyReluOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_alpha(float alpha) {
+    fbb_.AddElement<float>(LeakyReluOptions::VT_ALPHA, alpha, 0.0f);
+  }
+  explicit LeakyReluOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  LeakyReluOptionsBuilder &operator=(const LeakyReluOptionsBuilder &);
+  flatbuffers::Offset<LeakyReluOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<LeakyReluOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<LeakyReluOptions> CreateLeakyReluOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    float alpha = 0.0f) {
+  LeakyReluOptionsBuilder builder_(_fbb);
+  builder_.add_alpha(alpha);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<LeakyReluOptions> CreateLeakyReluOptions(flatbuffers::FlatBufferBuilder &_fbb, const LeakyReluOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct SquaredDifferenceOptionsT : public flatbuffers::NativeTable {
+  typedef SquaredDifferenceOptions TableType;
+  SquaredDifferenceOptionsT() {
+  }
+};
+
+struct SquaredDifferenceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SquaredDifferenceOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  SquaredDifferenceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SquaredDifferenceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SquaredDifferenceOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SquaredDifferenceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SquaredDifferenceOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit SquaredDifferenceOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SquaredDifferenceOptionsBuilder &operator=(const SquaredDifferenceOptionsBuilder &);
+  flatbuffers::Offset<SquaredDifferenceOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SquaredDifferenceOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SquaredDifferenceOptions> CreateSquaredDifferenceOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  SquaredDifferenceOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SquaredDifferenceOptions> CreateSquaredDifferenceOptions(flatbuffers::FlatBufferBuilder &_fbb, const SquaredDifferenceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct MirrorPadOptionsT : public flatbuffers::NativeTable {
+  typedef MirrorPadOptions TableType;
+  MirrorPadMode mode;
+  MirrorPadOptionsT()
+      : mode(MirrorPadMode_REFLECT) {
+  }
+};
+
+struct MirrorPadOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef MirrorPadOptionsT NativeTableType;
+  enum {
+    VT_MODE = 4
+  };
+  MirrorPadMode mode() const {
+    return static_cast<MirrorPadMode>(GetField<int8_t>(VT_MODE, 0));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_MODE) &&
+           verifier.EndTable();
+  }
+  MirrorPadOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(MirrorPadOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<MirrorPadOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const MirrorPadOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct MirrorPadOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_mode(MirrorPadMode mode) {
+    fbb_.AddElement<int8_t>(MirrorPadOptions::VT_MODE, static_cast<int8_t>(mode), 0);
+  }
+  explicit MirrorPadOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  MirrorPadOptionsBuilder &operator=(const MirrorPadOptionsBuilder &);
+  flatbuffers::Offset<MirrorPadOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<MirrorPadOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<MirrorPadOptions> CreateMirrorPadOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    MirrorPadMode mode = MirrorPadMode_REFLECT) {
+  MirrorPadOptionsBuilder builder_(_fbb);
+  builder_.add_mode(mode);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<MirrorPadOptions> CreateMirrorPadOptions(flatbuffers::FlatBufferBuilder &_fbb, const MirrorPadOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -6988,6 +7364,21 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const ResizeNearestNeighborOptions *builtin_options_as_ResizeNearestNeighborOptions() const {
     return builtin_options_type() == BuiltinOptions_ResizeNearestNeighborOptions ? static_cast<const ResizeNearestNeighborOptions *>(builtin_options()) : nullptr;
   }
+  const LeakyReluOptions *builtin_options_as_LeakyReluOptions() const {
+    return builtin_options_type() == BuiltinOptions_LeakyReluOptions ? static_cast<const LeakyReluOptions *>(builtin_options()) : nullptr;
+  }
+  const SquaredDifferenceOptions *builtin_options_as_SquaredDifferenceOptions() const {
+    return builtin_options_type() == BuiltinOptions_SquaredDifferenceOptions ? static_cast<const SquaredDifferenceOptions *>(builtin_options()) : nullptr;
+  }
+  const MirrorPadOptions *builtin_options_as_MirrorPadOptions() const {
+    return builtin_options_type() == BuiltinOptions_MirrorPadOptions ? static_cast<const MirrorPadOptions *>(builtin_options()) : nullptr;
+  }
+  const AbsOptions *builtin_options_as_AbsOptions() const {
+    return builtin_options_type() == BuiltinOptions_AbsOptions ? static_cast<const AbsOptions *>(builtin_options()) : nullptr;
+  }
+  const SplitVOptions *builtin_options_as_SplitVOptions() const {
+    return builtin_options_type() == BuiltinOptions_SplitVOptions ? static_cast<const SplitVOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -7313,6 +7704,26 @@ template<> inline const RangeOptions *Operator::builtin_options_as<RangeOptions>
 
 template<> inline const ResizeNearestNeighborOptions *Operator::builtin_options_as<ResizeNearestNeighborOptions>() const {
   return builtin_options_as_ResizeNearestNeighborOptions();
+}
+
+template<> inline const LeakyReluOptions *Operator::builtin_options_as<LeakyReluOptions>() const {
+  return builtin_options_as_LeakyReluOptions();
+}
+
+template<> inline const SquaredDifferenceOptions *Operator::builtin_options_as<SquaredDifferenceOptions>() const {
+  return builtin_options_as_SquaredDifferenceOptions();
+}
+
+template<> inline const MirrorPadOptions *Operator::builtin_options_as<MirrorPadOptions>() const {
+  return builtin_options_as_MirrorPadOptions();
+}
+
+template<> inline const AbsOptions *Operator::builtin_options_as<AbsOptions>() const {
+  return builtin_options_as_AbsOptions();
+}
+
+template<> inline const SplitVOptions *Operator::builtin_options_as<SplitVOptions>() const {
+  return builtin_options_as_SplitVOptions();
 }
 
 struct OperatorBuilder {
@@ -8932,6 +9343,32 @@ inline flatbuffers::Offset<SplitOptions> CreateSplitOptions(flatbuffers::FlatBuf
       _num_splits);
 }
 
+inline SplitVOptionsT *SplitVOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SplitVOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SplitVOptions::UnPackTo(SplitVOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = num_splits(); _o->num_splits = _e; };
+}
+
+inline flatbuffers::Offset<SplitVOptions> SplitVOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SplitVOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSplitVOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SplitVOptions> CreateSplitVOptions(flatbuffers::FlatBufferBuilder &_fbb, const SplitVOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SplitVOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _num_splits = _o->num_splits;
+  return tflite::CreateSplitVOptions(
+      _fbb,
+      _num_splits);
+}
+
 inline StridedSliceOptionsT *StridedSliceOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new StridedSliceOptionsT();
   UnPackTo(_o, _resolver);
@@ -9593,6 +10030,29 @@ inline flatbuffers::Offset<OneHotOptions> CreateOneHotOptions(flatbuffers::FlatB
       _axis);
 }
 
+inline AbsOptionsT *AbsOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new AbsOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void AbsOptions::UnPackTo(AbsOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<AbsOptions> AbsOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const AbsOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateAbsOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<AbsOptions> CreateAbsOptions(flatbuffers::FlatBufferBuilder &_fbb, const AbsOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const AbsOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateAbsOptions(
+      _fbb);
+}
+
 inline LogicalAndOptionsT *LogicalAndOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new LogicalAndOptionsT();
   UnPackTo(_o, _resolver);
@@ -9804,6 +10264,81 @@ inline flatbuffers::Offset<RangeOptions> CreateRangeOptions(flatbuffers::FlatBuf
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const RangeOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   return tflite::CreateRangeOptions(
       _fbb);
+}
+
+inline LeakyReluOptionsT *LeakyReluOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new LeakyReluOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void LeakyReluOptions::UnPackTo(LeakyReluOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = alpha(); _o->alpha = _e; };
+}
+
+inline flatbuffers::Offset<LeakyReluOptions> LeakyReluOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const LeakyReluOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateLeakyReluOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<LeakyReluOptions> CreateLeakyReluOptions(flatbuffers::FlatBufferBuilder &_fbb, const LeakyReluOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const LeakyReluOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _alpha = _o->alpha;
+  return tflite::CreateLeakyReluOptions(
+      _fbb,
+      _alpha);
+}
+
+inline SquaredDifferenceOptionsT *SquaredDifferenceOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SquaredDifferenceOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SquaredDifferenceOptions::UnPackTo(SquaredDifferenceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<SquaredDifferenceOptions> SquaredDifferenceOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SquaredDifferenceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSquaredDifferenceOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SquaredDifferenceOptions> CreateSquaredDifferenceOptions(flatbuffers::FlatBufferBuilder &_fbb, const SquaredDifferenceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SquaredDifferenceOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateSquaredDifferenceOptions(
+      _fbb);
+}
+
+inline MirrorPadOptionsT *MirrorPadOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new MirrorPadOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void MirrorPadOptions::UnPackTo(MirrorPadOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = mode(); _o->mode = _e; };
+}
+
+inline flatbuffers::Offset<MirrorPadOptions> MirrorPadOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MirrorPadOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateMirrorPadOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<MirrorPadOptions> CreateMirrorPadOptions(flatbuffers::FlatBufferBuilder &_fbb, const MirrorPadOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const MirrorPadOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _mode = _o->mode;
+  return tflite::CreateMirrorPadOptions(
+      _fbb,
+      _mode);
 }
 
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -10360,6 +10895,26 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const ResizeNearestNeighborOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_LeakyReluOptions: {
+      auto ptr = reinterpret_cast<const LeakyReluOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      auto ptr = reinterpret_cast<const SquaredDifferenceOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_MirrorPadOptions: {
+      auto ptr = reinterpret_cast<const MirrorPadOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_AbsOptions: {
+      auto ptr = reinterpret_cast<const AbsOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_SplitVOptions: {
+      auto ptr = reinterpret_cast<const SplitVOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -10674,6 +11229,26 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const ResizeNearestNeighborOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_LeakyReluOptions: {
+      auto ptr = reinterpret_cast<const LeakyReluOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      auto ptr = reinterpret_cast<const SquaredDifferenceOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_MirrorPadOptions: {
+      auto ptr = reinterpret_cast<const MirrorPadOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_AbsOptions: {
+      auto ptr = reinterpret_cast<const AbsOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_SplitVOptions: {
+      auto ptr = reinterpret_cast<const SplitVOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -10976,6 +11551,26 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const ResizeNearestNeighborOptionsT *>(value);
       return CreateResizeNearestNeighborOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_LeakyReluOptions: {
+      auto ptr = reinterpret_cast<const LeakyReluOptionsT *>(value);
+      return CreateLeakyReluOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      auto ptr = reinterpret_cast<const SquaredDifferenceOptionsT *>(value);
+      return CreateSquaredDifferenceOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_MirrorPadOptions: {
+      auto ptr = reinterpret_cast<const MirrorPadOptionsT *>(value);
+      return CreateMirrorPadOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_AbsOptions: {
+      auto ptr = reinterpret_cast<const AbsOptionsT *>(value);
+      return CreateAbsOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_SplitVOptions: {
+      auto ptr = reinterpret_cast<const SplitVOptionsT *>(value);
+      return CreateSplitVOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -11276,6 +11871,26 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_ResizeNearestNeighborOptions: {
       value = new ResizeNearestNeighborOptionsT(*reinterpret_cast<ResizeNearestNeighborOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_LeakyReluOptions: {
+      value = new LeakyReluOptionsT(*reinterpret_cast<LeakyReluOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      value = new SquaredDifferenceOptionsT(*reinterpret_cast<SquaredDifferenceOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_MirrorPadOptions: {
+      value = new MirrorPadOptionsT(*reinterpret_cast<MirrorPadOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_AbsOptions: {
+      value = new AbsOptionsT(*reinterpret_cast<AbsOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SplitVOptions: {
+      value = new SplitVOptionsT(*reinterpret_cast<SplitVOptionsT *>(u.value));
       break;
     }
     default:
@@ -11652,6 +12267,31 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_ResizeNearestNeighborOptions: {
       auto ptr = reinterpret_cast<ResizeNearestNeighborOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_LeakyReluOptions: {
+      auto ptr = reinterpret_cast<LeakyReluOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      auto ptr = reinterpret_cast<SquaredDifferenceOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_MirrorPadOptions: {
+      auto ptr = reinterpret_cast<MirrorPadOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_AbsOptions: {
+      auto ptr = reinterpret_cast<AbsOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SplitVOptions: {
+      auto ptr = reinterpret_cast<SplitVOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -72,11 +72,11 @@ class FuzzSession {
   // By convention, the graph should have inputs named "input1", ...
   // "inputN", and one output node, named "output".
   // Users of FuzzSession should override this method to create their graph.
-  virtual void BuildGraph(const Scope& scope) {}
+  virtual void BuildGraph(const Scope& scope) = 0;
 
   // Implements the logic that converts an opaque byte buffer
   // from the fuzzer to Tensor inputs to the graph.  Users must override.
-  virtual void FuzzImpl(const uint8_t* data, size_t size) {}
+  virtual void FuzzImpl(const uint8_t* data, size_t size) = 0;
 
   // Initializes the FuzzSession.  Not safe for multithreading.
   // Separate init function because the call to virtual BuildGraphDef

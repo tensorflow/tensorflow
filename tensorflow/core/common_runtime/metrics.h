@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_
 
-#include "absl/time/time.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-void UpdateGraphExecutionTime(const absl::Duration time);
+void UpdateGraphExecTime(const uint64 running_time_usecs);
 
 }  // namespace tensorflow
 

@@ -1237,7 +1237,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 //           * def has all attrs specified (e.g. using AddDefaultsToNodeDef()).
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
-    DeviceTypeVector* device_types);
+    PrioritizedDeviceTypeVector* device_types);
 
 // Returns a message with a description of the kernels registered for op
 // `op_name`.
@@ -1527,6 +1527,7 @@ T* OpKernelContext::op_device_context() {
 
 template <typename T>
 T* OpKernelContext::input_device_context(int index) {
+  DCHECK_NE(params_->input_device_contexts, nullptr);
   DCHECK_GE(index, 0);
   DCHECK_LT(index, params_->input_device_contexts->size());
   static_assert(std::is_base_of<DeviceContext, T>::value,
@@ -1535,6 +1536,7 @@ T* OpKernelContext::input_device_context(int index) {
 }
 
 inline DeviceContext* OpKernelContext::input_device_context(int index) {
+  DCHECK_NE(params_->input_device_contexts, nullptr);
   DCHECK_GE(index, 0);
   DCHECK_LT(index, params_->input_device_contexts->size());
   return (*params_->input_device_contexts)[index];

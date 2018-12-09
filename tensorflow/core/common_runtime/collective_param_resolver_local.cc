@@ -511,7 +511,7 @@ void CollectiveParamResolverLocal::FindInstanceRec(
         if (irec->is_init) {
           exit_outside_locks = true;
         } else {
-          irec->init_waiters.push_back([this, gr, cp, done](InstanceRec* irec) {
+          irec->init_waiters.push_back([this, done](InstanceRec* irec) {
             CallbackWithStatus(done, irec);
           });
           return;
@@ -696,7 +696,7 @@ void CollectiveParamResolverLocal::CompleteInstanceSource(InstanceRec* ir,
         if (ir->source_rank >= 0) {
           ir->status = errors::Internal("Instance ", cp->instance.instance_key,
                                         " already has source ", ir->source_rank,
-                                        ", recevied second claim from ",
+                                        ", received second claim from ",
                                         cp->default_rank);
         } else {
           ir->source_rank = cp->default_rank;

@@ -150,12 +150,58 @@ TEST_F(LiteralUtilTest, R3ToString) {
   const auto literal =
       LiteralUtil::CreateR3({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
   const string expected = R"(s32[3,2,1] {
-{ { 1 },
-  { 2 } },
-{ { 3 },
-  { 4 } },
-{ { 5 },
-  { 6 } }
+{
+  {1},
+  {2}
+},
+{
+  {3},
+  {4}
+},
+{
+  {5},
+  {6}
+}
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, R6ToString) {
+  const auto literal =
+      LiteralUtil::CreateFromDimensions(S32, {2, 2, 1, 1, 1, 2});
+  const string expected = R"(s32[2,2,1,1,1,2] {
+{ /*i0=0*/
+{ /*i1=0*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+},
+{ /*i1=1*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+}
+},
+{ /*i0=1*/
+{ /*i1=0*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+},
+{ /*i1=1*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+}
+}
 })";
   EXPECT_EQ(expected, literal.ToString());
 }
@@ -190,12 +236,16 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(2, 3, 2));
   string result = literal.ToString();
   const string expected = R"(f32[2,3,2] {
-{ { 1, 2 },
+{
+  { 1, 2 },
   { 3, 4 },
-  { 5, 6 } },
-{ { 7, 8 },
+  { 5, 6 }
+},
+{
+  { 7, 8 },
   { 9, 10 },
-  { 11, 12 } }
+  { 11, 12 }
+}
 })";
   EXPECT_EQ(expected, result);
 }
@@ -247,18 +297,18 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(1, 2, 3, 2));
   string result = literal.ToString();
   const string expected = R"(f32[1,2,3,2] {
-  {  /*i0=0*/
-    {  /*i1=0*/
-      {1, 2},
-      {1001, 1002},
-      {2001, 2002}
-    },
-    {  /*i1=1*/
-      {1, 2},
-      {1001, 1002},
-      {2001, 2002}
-    }
-  }
+{ /*i0=0*/
+{ /*i1=0*/
+  { 1, 2 },
+  { 1001, 1002 },
+  { 2001, 2002 }
+},
+{ /*i1=1*/
+  { 1, 2 },
+  { 1001, 1002 },
+  { 2001, 2002 }
+}
+}
 })";
   EXPECT_EQ(expected, result);
 }
@@ -268,30 +318,30 @@ TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
               ElementsAre(2, 2, 3, 3));
   string result = literal_r4_2x2x3x3_dim0major_.ToString();
   const string expected = R"(f32[2,2,3,3] {
-  {  /*i0=0*/
-    {  /*i1=0*/
-      {1, 2, 3},
-      {4, 5, 6},
-      {7, 8, 9}
-    },
-    {  /*i1=1*/
-      {11, 12, 13},
-      {14, 15, 16},
-      {17, 18, 19}
-    }
-  },
-  {  /*i0=1*/
-    {  /*i1=0*/
-      {101, 102, 103},
-      {104, 105, 106},
-      {107, 108, 109}
-    },
-    {  /*i1=1*/
-      {201, 202, 203},
-      {204, 205, 206},
-      {207, 208, 209}
-    }
-  }
+{ /*i0=0*/
+{ /*i1=0*/
+  { 1, 2, 3 },
+  { 4, 5, 6 },
+  { 7, 8, 9 }
+},
+{ /*i1=1*/
+  { 11, 12, 13 },
+  { 14, 15, 16 },
+  { 17, 18, 19 }
+}
+},
+{ /*i0=1*/
+{ /*i1=0*/
+  { 101, 102, 103 },
+  { 104, 105, 106 },
+  { 107, 108, 109 }
+},
+{ /*i1=1*/
+  { 201, 202, 203 },
+  { 204, 205, 206 },
+  { 207, 208, 209 }
+}
+}
 })";
   EXPECT_EQ(expected, result);
 }
@@ -1327,13 +1377,26 @@ TEST_F(LiteralUtilTest, BitcastConvertBetweenInvalidTypes) {
       absl::StrContains(status.error_message(), "bit widths are different"));
 }
 
+// Sets the layout of the given ShapeProto to the default.
+void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
+  CHECK(ShapeUtil::IsArrayPrimitiveType(shape_proto->element_type()));
+  shape_proto->mutable_layout()->set_format(DENSE);
+  auto* minor_to_major =
+      shape_proto->mutable_layout()->mutable_minor_to_major();
+  minor_to_major->Resize(shape_proto->dimensions_size(), 0);
+  const int64 size = minor_to_major->size();
+  for (int64 i = 0; i < size; ++i) {
+    minor_to_major->Set(i, size - 1 - i);
+  }
+}
+
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
   LiteralProto p;
   p.mutable_shape()->set_element_type(PRED);
   for (int len = 0; len < 25; ++len) {
     p.mutable_shape()->clear_dimensions();
     p.mutable_shape()->add_dimensions(len);
-    LayoutUtil::SetToDefaultLayout(p.mutable_shape());
+    SetDefaultLayoutOnProto(p.mutable_shape());
     p.clear_preds();
     for (int i = 0; i < len; ++i) {
       p.add_preds((i % 2) == (len % 2));
@@ -1359,7 +1422,7 @@ TEST_F(LiteralUtilTest, ToProto_f16) {
   EXPECT_EQ(4, m.data<half>().size());
 
   LiteralProto p = m.ToProto();
-  EXPECT_EQ(4, ShapeUtil::ElementsIn(p.shape()));
+  EXPECT_EQ(4, ShapeUtil::ElementsIn(Shape(p.shape())));
   EXPECT_EQ(8, p.f16s().size());
   const char* d = p.f16s().data();
   EXPECT_EQ(d[0], 0);
@@ -1382,7 +1445,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   p.mutable_shape()->set_element_type(F16);
   p.mutable_shape()->clear_dimensions();
   p.mutable_shape()->add_dimensions(4);
-  LayoutUtil::SetToDefaultLayout(p.mutable_shape());
+  SetDefaultLayoutOnProto(p.mutable_shape());
   p.clear_f16s();
   p.set_f16s(half_vals, 8);
   TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
@@ -1404,7 +1467,7 @@ TEST_F(LiteralUtilTest, CopyFromProto_u16) {
   p.mutable_shape()->set_element_type(U16);
   p.mutable_shape()->clear_dimensions();
   p.mutable_shape()->add_dimensions(4);
-  LayoutUtil::SetToDefaultLayout(p.mutable_shape());
+  SetDefaultLayoutOnProto(p.mutable_shape());
   p.clear_u16s();
   p.set_u16s(uint16_vals, 8);
   TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
@@ -1537,9 +1600,9 @@ TEST_F(LiteralUtilTest, DecomposeTuple) {
   Literal nested_tuple = LiteralUtil::MakeTuple(
       {&tuple_elements[0], &tuple_elements[1], &nil_literal});
 
-  EXPECT_FALSE(ShapeUtil::IsNil(nested_tuple.shape()));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(nested_tuple.shape()));
   std::vector<Literal> elements = nested_tuple.DecomposeTuple();
-  EXPECT_TRUE(ShapeUtil::IsNil(nested_tuple.shape()));
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(nested_tuple.shape()));
 
   ASSERT_EQ(elements.size(), 3);
 
@@ -1590,7 +1653,7 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
   EXPECT_EQ(literal.Get<double>({1}, /*shape_index=*/{2, 1}), 44.0);
 
   for (const Literal& element : elements) {
-    EXPECT_TRUE(ShapeUtil::IsNil(element.shape()));
+    EXPECT_TRUE(ShapeUtil::IsEmptyTuple(element.shape()));
   }
 }
 
@@ -1706,7 +1769,7 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
 TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
   // Proto contains a shape, but no values.
   LiteralProto proto;
-  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3});
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3}).ToProto();
   Status status = Literal::CreateFromProto(proto).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.error_message(),
@@ -1727,7 +1790,7 @@ TEST_F(LiteralUtilTest, InvalidProtoNoShape) {
 TEST_F(LiteralUtilTest, InvalidProtoWrongContainer) {
   // Proto contains values in wrong container.
   LiteralProto proto;
-  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3});
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3}).ToProto();
   proto.add_preds(false);
   proto.add_preds(true);
   proto.add_preds(false);
@@ -1740,7 +1803,7 @@ TEST_F(LiteralUtilTest, InvalidProtoWrongContainer) {
 TEST_F(LiteralUtilTest, InvalidProtoTooFewValues) {
   // Proto contains too few values.
   LiteralProto proto;
-  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {42, 2});
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {42, 2}).ToProto();
   proto.add_f32s(1.0);
   proto.add_f32s(2.0);
   proto.add_f32s(3.0);
@@ -1753,7 +1816,7 @@ TEST_F(LiteralUtilTest, InvalidProtoTooFewValues) {
 TEST_F(LiteralUtilTest, InvalidProtoTooManyValues) {
   // Proto contains too many values.
   LiteralProto proto;
-  *proto.mutable_shape() = ShapeUtil::MakeShape(S32, {2});
+  *proto.mutable_shape() = ShapeUtil::MakeShape(S32, {2}).ToProto();
   proto.add_s32s(42);
   proto.add_s32s(-10);
   proto.add_s32s(100);
@@ -1766,8 +1829,8 @@ TEST_F(LiteralUtilTest, InvalidProtoTooManyValues) {
 TEST_F(LiteralUtilTest, InvalidProtoMissingLayout) {
   // Proto shape missing layout.
   LiteralProto proto;
-  *proto.mutable_shape() = ShapeUtil::MakeShape(PRED, {2, 2});
-  LayoutUtil::ClearLayout(proto.mutable_shape());
+  *proto.mutable_shape() = ShapeUtil::MakeShape(PRED, {2, 2}).ToProto();
+  proto.mutable_shape()->clear_layout();
   proto.add_preds(true);
   proto.add_preds(false);
   proto.add_preds(true);
@@ -1780,11 +1843,13 @@ TEST_F(LiteralUtilTest, InvalidProtoMissingLayout) {
 TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
   // Proto has the too few tuple elements.
   LiteralProto proto;
-  *proto.mutable_shape() = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})});
+  *proto.mutable_shape() =
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})})
+          .ToProto();
   LiteralProto* element0 = proto.add_tuple_literals();
   *element0->mutable_shape() =
-      ShapeUtil::GetTupleElementShape(proto.shape(), 0);
+      ShapeUtil::GetTupleElementShape(Shape(proto.shape()), 0).ToProto();
   element0->add_preds(false);
   element0->add_preds(true);
 
@@ -1796,19 +1861,21 @@ TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
 TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
   // Proto has the too many tuple elements.
   LiteralProto proto;
-  *proto.mutable_shape() = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})});
+  *proto.mutable_shape() =
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})})
+          .ToProto();
   LiteralProto* element0 = proto.add_tuple_literals();
   *element0->mutable_shape() =
-      ShapeUtil::GetTupleElementShape(proto.shape(), 0);
+      ShapeUtil::GetTupleElementShape(Shape(proto.shape()), 0).ToProto();
   element0->add_preds(false);
   element0->add_preds(true);
   LiteralProto* element1 = proto.add_tuple_literals();
   *element1->mutable_shape() =
-      ShapeUtil::GetTupleElementShape(proto.shape(), 1);
+      ShapeUtil::GetTupleElementShape(Shape(proto.shape()), 1).ToProto();
   element1->add_f32s(42.0);
   LiteralProto* element2 = proto.add_tuple_literals();
-  *element2->mutable_shape() = ShapeUtil::MakeShape(F32, {});
+  *element2->mutable_shape() = ShapeUtil::MakeShape(F32, {}).ToProto();
   element2->add_f32s(123.0);
 
   Status status = Literal::CreateFromProto(proto).status();

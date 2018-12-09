@@ -27,10 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -42,11 +43,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 namespace {
 
+namespace m = xla::match;
 using ::testing::ElementsAre;
 
 class LayoutAssignmentTest : public HloTestBase {
@@ -328,11 +328,10 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   //  %tuple.1 = Tuple(%copy) layout=({0,1})
   //  %tuple.2 = Tuple(%tuple.0, %tuple.1) layout=(({1,0}), ({0,1}))
   //
-  EXPECT_TRUE(
-      AlgebraicSimplifier(/*is_layout_sensitive=*/true,
-                          [](const Shape&, const Shape&) { return false; })
-          .Run(m.get())
-          .ValueOrDie());
+  AlgebraicSimplifierOptions options(
+      [](const Shape&, const Shape&) { return false; });
+  options.set_is_layout_sensitive(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
   HloInstruction* root = m->entry_computation()->root_instruction();
   // Verify layout of the root and the root's operands.
   EXPECT_TRUE(ShapeUtil::Equal(result_shape, root->shape()));
@@ -343,7 +342,8 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
 
   // Verify the structure of the HLO graph.
   EXPECT_THAT(root,
-              op::Tuple(op::Tuple(constant), op::Tuple(op::Copy(constant))));
+              GmockMatch(m::Tuple(m::Tuple(m::Op().Is(constant)),
+                                  m::Tuple(m::Copy(m::Op().Is(constant))))));
 }
 
 TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
@@ -947,9 +947,11 @@ TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {1, 0});
-  EXPECT_THAT(root, op::Add(op::Parameter(),
-                            op::Slice(AllOf(op::Copy(op::Parameter(1)),
-                                            op::ShapeWithLayout(shape_copy)))));
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Add(
+          m::Parameter(),
+          m::Slice(m::Copy(m::Parameter(1)).WithShapeEqualTo(&shape_copy)))));
 }
 
 TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
@@ -977,10 +979,11 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {1, 0});
   EXPECT_THAT(root,
-              op::Add(op::Parameter(),
-                      op::DynamicSlice(AllOf(op::Copy(op::Parameter(1)),
-                                             op::ShapeWithLayout(shape_copy)),
-                                       op::Parameter(2))));
+              GmockMatch(m::Add(
+                  m::Parameter(),
+                  m::DynamicSlice(
+                      m::Copy(m::Parameter(1)).WithShapeEqualTo(&shape_copy),
+                      m::Parameter(2)))));
 }
 
 TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
@@ -1008,11 +1011,12 @@ TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {3, 5}, {1, 0});
-  EXPECT_THAT(root,
-              op::Add(op::Parameter(),
-                      op::Concatenate(AllOf(op::Copy(op::Parameter(1)),
-                                            op::ShapeWithLayout(shape_copy)),
-                                      op::Parameter(2))));
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Add(
+          m::Parameter(),
+          m::Concatenate(m::Copy(m::Parameter(1)).WithShapeEqualTo(&shape_copy),
+                         m::Parameter(2)))));
 }
 
 TEST_F(LayoutAssignmentTest,
@@ -1039,7 +1043,8 @@ TEST_F(LayoutAssignmentTest,
           .ConsumeValueOrDie();
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Convolution(op::Parameter(0), op::Parameter(1)));
+  EXPECT_THAT(root,
+              GmockMatch(m::Convolution(m::Parameter(0), m::Parameter(1))));
 }
 
 TEST_F(LayoutAssignmentTest, PropagatingLayoutFromResultToOperand) {
@@ -1063,8 +1068,9 @@ TEST_F(LayoutAssignmentTest, PropagatingLayoutFromResultToOperand) {
   HloInstruction* root =
       compiled_module->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithLayout(F32, {4, 5}, {0, 1});
-  EXPECT_THAT(root, op::Slice(AllOf(op::Copy(op::Parameter(0)),
-                                    op::ShapeWithLayout(shape_copy))));
+  EXPECT_THAT(root,
+              GmockMatch(m::Slice(
+                  m::Copy(m::Parameter(0)).WithShapeEqualTo(&shape_copy))));
 }
 
 TEST_F(LayoutAssignmentTest, TupleCopyOnLayoutMismatch) {
@@ -1150,7 +1156,7 @@ ENTRY %CustomCallWithNotLayoutConstrained (p: f32[42,2,3]) -> f32[1,2,3,4] {
     AssignLayouts(m.get(), &computation_layout);
 
     HloInstruction* root = m->entry_computation()->root_instruction();
-    ASSERT_THAT(root, op::CustomCall(op::Parameter()));
+    ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Parameter())));
     ExpectLayoutIs(root->shape(), {3, 2, 0, 1});
     ExpectLayoutIs(root->operand(0)->shape(), {0, 2, 1});
   }
@@ -1166,7 +1172,7 @@ ENTRY %CustomCallWithNotLayoutConstrained (p: f32[42,2,3]) -> f32[1,2,3,4] {
     AssignLayouts(m.get(), &computation_layout);
 
     HloInstruction* root = m->entry_computation()->root_instruction();
-    ASSERT_THAT(root, op::CustomCall(op::Parameter()));
+    ASSERT_THAT(root, GmockMatch(m::CustomCall(m::Parameter())));
     ExpectLayoutIs(root->shape(), {0, 2, 3, 1});
     ExpectLayoutIs(root->operand(0)->shape(), {0, 1, 2});
   }
@@ -1197,7 +1203,7 @@ ENTRY %CustomCallWithLayoutConstraints (p0: f32[4,4], p1: f32[2,3]) -> f32[1,2,3
   // The custom call should be partially encapsulated in kCopy instructions
   // because of the layout mismatches.
   ASSERT_THAT(m->entry_computation()->root_instruction(),
-              op::Copy(op::CustomCall(op::Copy(), op::Parameter())));
+              GmockMatch(m::Copy(m::CustomCall(m::Copy(), m::Parameter()))));
 
   const HloInstruction* custom_call =
       m->entry_computation()->root_instruction()->operand(0);
@@ -1223,7 +1229,7 @@ ENTRY %CustomCallLayoutConstrainedZeroOperands () -> f32[1,2,3,4] {
   AssignLayouts(m.get(), &computation_layout);
 
   ASSERT_THAT(m->entry_computation()->root_instruction(),
-              op::Copy(op::CustomCall()));
+              GmockMatch(m::Copy(m::CustomCall())));
 
   const HloInstruction* custom_call =
       m->entry_computation()->root_instruction()->operand(0);
@@ -1257,7 +1263,7 @@ ENTRY %CustomCallLayoutConstrainedTupleOperand (p0: f32[4,4], p1: f32[2,3]) -> f
   ExpectLayoutIs(root->shape(), {2, 1, 0, 3});
 
   ASSERT_THAT(m->entry_computation()->root_instruction(),
-              op::Copy(op::CustomCall(op::Tuple())));
+              GmockMatch(m::Copy(m::CustomCall(m::Tuple()))));
 
   const HloInstruction* custom_call =
       m->entry_computation()->root_instruction()->operand(0);

@@ -134,7 +134,7 @@ def model_fn(features, labels, mode):
     return tf.estimator.EstimatorSpec(mode, loss=loss)
 
   if mode == tf.estimator.ModeKeys.TRAIN:
-    train_op = tf.train.GradientDescentOptimizer(0.2).minimize(loss_fn())
+    train_op = tf.train.GradientDescentOptimizer(0.2).minimize(loss)
     return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
 ```
 
@@ -248,18 +248,16 @@ Let's use the same example for multi-worker. We'll start a cluster with 3
 workers doing synchronous all-reduce training. In the following code snippet, we
 start multi-worker training using `tf.estimator.train_and_evaluate`:
 
-
 ```python
 def model_main():
-  estimator = ...
   distribution = tf.contrib.distribute.CollectiveAllReduceStrategy(
       num_gpus_per_worker=2)
   config = tf.estimator.RunConfig(train_distribute=distribution)
+  estimator = tf.estimator.Estimator(model_fn=model_fn, config=config)
   train_spec = tf.estimator.TrainSpec(input_fn=input_fn)
   eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn)
   tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 ```
-
 
 **Note**: You don't have to set "TF\_CONFIG" manually if you use our provided
 Kubernetes template.
@@ -327,13 +325,13 @@ start training.
 On your laptop, you can run
 
 ```python
-estimator = ...
 distribution = tf.contrib.distribute.CollectiveAllReduceStrategy(
     num_gpus_per_worker=2)
 config = tf.estimator.RunConfig(
     experimental_distribute=tf.contrib.distribute.DistributeConfig(
         train_distribute=distribution,
         remote_cluster={"worker": ["host1:port", "host2:port", "host3:port"]}))
+estimator = tf.estimator.Estimator(model_fn=model_fn, config=config)
 train_spec = tf.estimator.TrainSpec(input_fn=input_fn)
 eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn)
 tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)

@@ -13,10 +13,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "SessionLog"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "Summary"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -25,43 +21,23 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "SummaryWriter"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TaggedRunMetadata"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member_method {
-    name: "audio"
-    argspec: "args=[\'name\', \'tensor\', \'sample_rate\', \'max_outputs\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
+    name: "create_file_writer"
+    argspec: "args=[\'logdir\', \'max_queue\', \'flush_millis\', \'filename_suffix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "get_summary_description"
-    argspec: "args=[\'node_def\'], varargs=None, keywords=None, defaults=None"
+    name: "flush"
+    argspec: "args=[\'writer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
-    name: "histogram"
-    argspec: "args=[\'name\', \'values\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "image"
-    argspec: "args=[\'name\', \'tensor\', \'max_outputs\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "merge"
-    argspec: "args=[\'inputs\', \'collections\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "merge_all"
-    argspec: "args=[\'key\', \'scope\', \'name\'], varargs=None, keywords=None, defaults=[\'summaries\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "scalar"
-    argspec: "args=[\'name\', \'tensor\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "tensor_summary"
-    argspec: "args=[\'name\', \'tensor\', \'summary_description\', \'collections\', \'summary_metadata\', \'family\', \'display_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "text"
-    argspec: "args=[\'name\', \'tensor\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    name: "import_event"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

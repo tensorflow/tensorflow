@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
@@ -42,12 +43,12 @@ class ReverseSequenceTest(test.TestCase):
       ans = array_ops.reverse_sequence(
           x, batch_axis=batch_axis, seq_axis=seq_axis, seq_lengths=seq_lengths)
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertAllClose(tf_ans, truth, atol=1e-10)
         self.assertShapeEqual(truth, ans)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
   def _testBothReverseSequence(self,
                                x,
@@ -107,6 +108,7 @@ class ReverseSequenceTest(test.TestCase):
   def testComplex128Basic(self):
     self._testBasic(np.complex128)
 
+  @test_util.run_deprecated_v1
   def testFloatReverseSequenceGrad(self):
     x = np.asarray(
         [[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]],
@@ -133,6 +135,7 @@ class ReverseSequenceTest(test.TestCase):
     print("ReverseSequence gradient error = %g" % err)
     self.assertLess(err, 1e-8)
 
+  @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     t = array_ops.reverse_sequence(
         array_ops.placeholder(

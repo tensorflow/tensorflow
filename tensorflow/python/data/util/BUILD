@@ -93,7 +93,25 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "options",
+    srcs = ["options.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "options_test",
+    size = "small",
+    srcs = ["options_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":options",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
@@ -50,7 +51,7 @@ class GatherTest(test.TestCase):
           params = constant_op.constant(params_np)
           indices_tf = constant_op.constant(indices)
           gather_t = array_ops.gather(params, indices_tf)
-          gather_val = gather_t.eval()
+          gather_val = self.evaluate(gather_t)
           np_val = params_np[indices]
           self.assertAllEqual(np_val, gather_val)
           self.assertEqual(np_val.shape, gather_t.get_shape())
@@ -65,7 +66,7 @@ class GatherTest(test.TestCase):
           params = constant_op.constant(params_np)
           indices = constant_op.constant(2)
           gather_t = array_ops.gather(params, indices, axis=axis)
-          gather_val = gather_t.eval()
+          gather_val = self.evaluate(gather_t)
           self.assertAllEqual(np.take(params_np, 2, axis=axis), gather_val)
           expected_shape = data.shape[:axis] + data.shape[axis + 1:]
           self.assertEqual(expected_shape, gather_t.get_shape())
@@ -81,12 +82,13 @@ class GatherTest(test.TestCase):
           # The indices must be in bounds for any axis.
           indices = constant_op.constant([0, 1, 0, 2])
           gather_t = array_ops.gather(params, indices, axis=axis)
-          gather_val = gather_t.eval()
+          gather_val = self.evaluate(gather_t)
           self.assertAllEqual(np.take(params_np, [0, 1, 0, 2], axis=axis),
                               gather_val)
           expected_shape = data.shape[:axis] + (4,) + data.shape[axis + 1:]
           self.assertEqual(expected_shape, gather_t.get_shape())
 
+  @test_util.run_deprecated_v1
   def testHigherRank(self):
     # We check that scalar and empty indices shapes work as well
     shape = (2, 1, 3, 2)
@@ -142,9 +144,13 @@ class GatherTest(test.TestCase):
               source_slice = ((slice(None),) * outer_dims + (source_index,) +
                               (slice(None),) * inner_dims)
               correct_params_grad[dest_slice] += gather_grad[source_slice]
-            self.assertAllClose(correct_params_grad, params_grad.eval(),
-                                atol=2e-6, rtol=2e-6)
+            self.assertAllClose(
+                correct_params_grad,
+                self.evaluate(params_grad),
+                atol=2e-6,
+                rtol=2e-6)
 
+  @test_util.run_deprecated_v1
   def testString(self):
     params = np.array([[b"asdf", b"zxcv"], [b"qwer", b"uiop"]])
     with self.cached_session():
@@ -153,6 +159,7 @@ class GatherTest(test.TestCase):
       self.assertAllEqual([b"asdf", b"qwer"],
                           array_ops.gather(params, 0, axis=1).eval())
 
+  @test_util.run_deprecated_v1
   def testUInt32AndUInt64(self):
     for unsigned_type in (dtypes.uint32, dtypes.uint64):
       params = self._buildParams(
@@ -162,12 +169,14 @@ class GatherTest(test.TestCase):
                             array_ops.gather(params, 1, axis=0).eval())
         self.assertAllEqual([1, 7], array_ops.gather(params, 0, axis=1).eval())
 
+  @test_util.run_deprecated_v1
   def testUnknownIndices(self):
     params = constant_op.constant([[0, 1, 2]])
     indices = array_ops.placeholder(dtypes.int32)
     gather_t = array_ops.gather(params, indices)
     self.assertEqual(None, gather_t.get_shape())
 
+  @test_util.run_deprecated_v1
   def testUnknownAxis(self):
     params = constant_op.constant([[0, 1, 2]])
     indices = constant_op.constant([[0, 0], [0, 0]])
@@ -201,6 +210,7 @@ class GatherTest(test.TestCase):
       with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
         array_ops.gather(params, [[7]], axis=1).eval()
 
+  @test_util.run_deprecated_v1
   def testBadAxis(self):
     with self.session(use_gpu=True):
       params = [0, 1, 2]
@@ -217,6 +227,7 @@ class GatherTest(test.TestCase):
           array_ops.gather(params_ph, indices, axis=bad_axis).eval(
               feed_dict={params_ph: params})
 
+  @test_util.run_deprecated_v1
   def testEmptySlices(self):
     with self.session(use_gpu=True):
       for dtype in _TEST_TYPES:

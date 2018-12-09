@@ -1141,7 +1141,7 @@ class NNAPIDelegateKernel {
 TfLiteDelegate* NnApiDelegate() {
   static TfLiteDelegate delegate = {
       .data_ = nullptr,
-      .flags = kTfLiteDelegateFlagsAllowDynamicTensors,
+      .flags = kTfLiteDelegateFlagsNone,
       .Prepare = [](TfLiteContext* context,
                     TfLiteDelegate* delegate) -> TfLiteStatus {
         // Do not check nodes_ if NN API is unavailable.
