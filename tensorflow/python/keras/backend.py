@@ -1583,35 +1583,87 @@ def batch_dot(x, y, axes=None):
                       ' with axes=' + str(axes) + '. x.shape[%d] != '
                       'y.shape[%d] (%d != %d).' % (axes[0], axes[1], d1, d2))
 
-  # bring the dimensions to be reduced to axis 1
-  if a0 != 1:
+  # Backup ndims. Need them later.
+  orig_x_ndim = x_ndim
+  orig_y_ndim = y_ndim
+
+  # If rank is 2, expand to 3.
+  if x_ndim == 2:
+    x = array_ops.expand_dims(x, 1)
+    a0 += 1
+    x_ndim += 1
+  if y_ndim == 2:
+    y = array_ops.expand_dims(y, 2)
+    y_ndim += 1
+
+  # Bring x's dimension to be reduced to last axis.
+  if a0 != x_ndim - 1:
     pattern = list(range(x_ndim))
-    for i in range(a0, 1, -1):
-      pattern[i] = pattern[i - 1]
-    pattern[1] = a0
-    x = permute_dimensions(x, pattern)
+    for i in range(a0, x_ndim -1):
+      pattern[i] = pattern[i + 1]
+    pattern[-1] = a0
+    x = array_ops.transpose(x, pattern)
+
+  # Bring y's dimension to be reduced to axis 1.
   if a1 != 1:
-    pattern = list(range(y_ndim))
+    pattern= list(range(y_ndim))
     for i in range(a1, 1, -1):
       pattern[i] = pattern[i - 1]
     pattern[1] = a1
-    y = permute_dimensions(y, pattern)
+    y = array_ops.transpose(y, pattern)
 
-  # reshape to closest broadcastable shape
-  x_shape = array_ops.shape(x)
-  y_shape = array_ops.shape(y)
+  # Normalize both inputs to rank 3.
+  if x_ndim > 3:
+    # Squash middle dimensions of x.
+    x_shape = array_ops.shape(x)
+    x_mid_dims = x_shape[1:-1]
+    x_squashed_dim = array_ops.reduce_prod(x_mid_dims)
+    x_batch_size = x_shape[0]
+    x_squashed_shape = array_ops.stack([x_shape[0],
+                                        x_squashed_dim,
+                                        x_shape[-1]])
+    x = array_ops.reshape(x, x_squashed_shape)
+    x_squashed = True
+  else:
+    x_squashed = False
 
-  new_x_shape = concatenate([x_shape, ones_like(y_shape[2:])], 0)
-  new_y_shape = concatenate([y_shape[:2], ones_like(x_shape[2:]),
-                             y_shape[2:]], 0)
+  if y_ndim > 3:
+    # Squash trailing dimensions of y.
+    y_shape = shape(y)
+    y_trail_dims = y_shape[2:]
+    y_squashed_dim = array_ops.reduce_prod(y_trail_dims)
+    y_squashed_shape = tf.stack([y_shape[0],
+                                 y_shape[1],
+                                 y_squashed_dim])
+    y = tf.reshape(y, y_squashed_shape)
+    y_squashed = True
+  else:
+    y_squashed = False
 
-  x = reshape(x, new_x_shape)
-  y = reshape(y, new_y_shape)
+  result = tf.matmul(x, y)
 
-  result = math_ops.reduce_sum(x * y, 1)
+  # If inputs were squashed, reshape the matmul result.
+  output_shape = array_ops.shape(result)
+  do_reshape = False
 
-  if ndim(result) == 1:
-    result = expand_dims(result, -1)
+  if x_squashed:
+    output_shape = array_ops.concat([output_shape[:1],
+                                     x_mid_dims,
+                                     output_shape[-1:]], 0)
+    do_reshape = True
+
+  if y_squashed:
+    output_shape = array_ops.concat([output_shape[:-1],
+                                     y_trail_dims], 0)
+
+  if do_reshape:
+    result = array_ops.reshape(result, output_shape)
+
+  # If the inputs were originally rank 2, remove the added 1 dim.
+  if orig_x_ndim == 2:
+    result = array_ops.squeeze(result, 1)
+  elif orig_y_ndim == 2:
+    result = tf.squeeze(result, -1)
 
   return result
 
