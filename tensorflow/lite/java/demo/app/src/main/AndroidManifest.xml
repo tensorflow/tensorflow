@@ -23,6 +23,7 @@
     <uses-feature android:name="android.hardware.camera" />
     <uses-feature android:name="android.hardware.camera.autofocus" />
 
+    <!-- Kept in the manifest too so this project can be built with Bazel. -->
     <uses-sdk android:minSdkVersion="21" />
 
     <application android:allowBackup="true"

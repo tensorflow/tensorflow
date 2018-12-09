@@ -1,8 +1,21 @@
 apply plugin: 'com.android.application'
 
+buildscript {
+    repositories {
+        // Gradle 4.1 and higher include support for Google's Maven repo using
+        // the google() method. And you need to include this repo to download
+        // Android Gradle plugin 3.0.0 or higher.
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.2.1'
+    }
+}
+
 android {
     compileSdkVersion 26
-    buildToolsVersion "26.0.1"
+    buildToolsVersion '28.0.3'
     defaultConfig {
         applicationId "android.example.com.tflitecamerademo"
         // Required by Camera2 API.
@@ -10,11 +23,6 @@ android {
         targetSdkVersion 26
         versionCode 1
         versionName "1.0"
-
-        // Remove this block.
-        jackOptions {
-            enabled true
-        }
     }
     lintOptions {
         abortOnError false
@@ -44,22 +52,24 @@ allprojects {
     repositories {
         // Uncomment if you want to use a local repo.
         // mavenLocal()
+        google()
         jcenter()
+        mavenCentral()
     }
 }
 
-
+ext.supportLibraryVersion = '26.1.0'
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile 'com.android.support:appcompat-v7:25.2.0'
-    compile 'com.android.support.constraint:constraint-layout:1.0.2'
-    compile 'com.android.support:design:25.2.0'
-    compile 'com.android.support:support-annotations:25.3.1'
-    compile 'com.android.support:support-v13:25.2.0'
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation "com.android.support:appcompat-v7:$supportLibraryVersion"
+    implementation "com.android.support.constraint:constraint-layout:1.1.3"
+    implementation "com.android.support:design:$supportLibraryVersion"
+    implementation "com.android.support:support-annotations:$supportLibraryVersion"
+    implementation "com.android.support:support-v13:$supportLibraryVersion"
 
     // Build off of nightly TensorFlow Lite
-    compile 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    implementation "org.tensorflow:tensorflow-lite:0.0.0-nightly"
     // Use local TensorFlow library
     // compile 'org.tensorflow:tensorflow-lite-local:0.0.0'
 }
@@ -69,7 +79,6 @@ def modelFloatDownloadUrl = "http://download.tensorflow.org/models/mobilenet_v1_
 def modelQuantDownloadUrl = "http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz"
 def localCacheFloat = "build/intermediates/mobilenet_v1_1.0_224.tgz"
 def localCacheQuant = "build/intermediates/mmobilenet_v1_1.0_224_quant.tgz"
-
 
 task downloadModelFloat(type: DownloadUrlTask) {
     doFirst {
