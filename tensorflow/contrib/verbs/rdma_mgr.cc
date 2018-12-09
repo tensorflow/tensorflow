@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/contrib/verbs/grpc_verbs_client.h"
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
+#include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
@@ -256,6 +257,21 @@ void MRDeleter(ibv_mr* mr) {
   }
 }
 
+// TODO: This is to fix the bug of "local protection error when doing rdma send"
+//       Bug caused by commit 33170cc. The new design of Allocator/SubAllocator is
+//       good but not working correctly with this part.
+//       Waiting to migrate all the "cpu_allocator()" to "ProcessState::singleton()",
+//       and this patch will nolonger be needed.
+class BFCRdmaAllocatorFactory : public AllocatorFactory {
+ public:
+  Allocator* CreateAllocator() { return ProcessState::singleton()->GetCPUAllocator(port::kNUMANoAffinity); }
+
+  SubAllocator* CreateSubAllocator(int numa_node) {
+    return new BasicCPUAllocator(numa_node, ProcessState::singleton()->GetCPUAllocatorVisitor(), ProcessState::singleton()->GetCPUFreeVisitor());
+  }
+};
+REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocatorFactory);
+
 void RdmaMgr::InitAllocators() {
   static std::once_flag flag;
   std::call_once(
@@ -277,9 +293,15 @@ void RdmaMgr::InitAllocators() {
   ProcessState::singleton()->AddCPUFreeVisitor(free_visitor);
 
 #if GOOGLE_CUDA
+  GPUProcessState::singleton()->AddCUDAHostAllocVisitor(0, alloc_visitor);
+  GPUProcessState::singleton()->AddCUDAHostFreeVisitor(0, free_visitor);
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
-    int32_t bus_id = TryToReadNumaNode(rdma_adapter_->context_->device) + 1;
+
+    // TODO: This is to fix the 'invalid use of member in static member function bug'.
+    //       Waiting for better implementation.
+    // int32_t bus_id = TryToReadNumaNode(rdma_adapter_->context_->device) + 1;
+    int32_t bus_id = 0;
 
     SubAllocator::Visitor cuda_alloc_visitor = [](void* ptr, int gpu_id,
                                                   size_t num_bytes) {
@@ -288,9 +310,6 @@ void RdmaMgr::InitAllocators() {
     };
     GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
                                                      cuda_alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(bus_id,
-                                                          alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(bus_id, free_visitor);
     LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
   }
 #endif  // GOOGLE_CUDA

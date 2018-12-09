@@ -74,6 +74,9 @@ class ProcessState {
   // REQUIRES: must be called before GetCPUAllocator.
   void AddCPUFreeVisitor(SubAllocator::Visitor v);
 
+  const std::vector<SubAllocator::Visitor>& GetCPUAllocatorVisitor();
+  const std::vector<SubAllocator::Visitor>& GetCPUFreeVisitor();
+
   typedef std::unordered_map<const void*, MemDesc> MDMap;
 
  protected:

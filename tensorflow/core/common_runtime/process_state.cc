@@ -147,4 +147,13 @@ void ProcessState::TestOnlyReset() {
   gtl::STLDeleteElements(&cpu_al_);
 }
 
+const std::vector<SubAllocator::Visitor>& ProcessState::GetCPUAllocatorVisitor()
+{
+  return cpu_alloc_visitors_;
+}
+const std::vector<SubAllocator::Visitor>& ProcessState::GetCPUFreeVisitor()
+{
+  return cpu_free_visitors_;
+}
+
 }  // namespace tensorflow
