@@ -54,7 +54,8 @@ TEST_F(HloExecutionProfileTest, Basic) {
   HloCostAnalysis cost_analysis(shape_size_function);
   HloProfileIndexMap profile_index_map(*hlo_module);
   std::unique_ptr<HloProfilePrinterData> profile_printer =
-      CreateHloProfilePrinterData(profile_index_map, cost_analysis);
+      CreateHloProfilePrinterData(profile_index_map, cost_analysis,
+                                  hlo_module->entry_computation()->name());
   HloExecutionProfile execution_profile(profile_printer.get(),
                                         &profile_index_map);
 

@@ -25,6 +25,7 @@ from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -52,6 +53,7 @@ class FunctionDefToGraphTest(test.TestCase):
     fdef.signature.name = "_whats_in_a_name"
     return fdef
 
+  @test_util.run_deprecated_v1
   def testInputsAndOutputs(self):
     fdef = self._build_function_def()
     g = function_def_to_graph.function_def_to_graph(fdef)
@@ -186,6 +188,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
     self.assertEqual(g.node[0].attr["shape"].shape.unknown_rank, False)
     self.assertFalse("shape" in g.node[2].attr)
 
+  @test_util.run_deprecated_v1
   def testFunctionCallsFromFunction(self):
     x = constant_op.constant(5.0)
     y = constant_op.constant(10.0)
@@ -238,7 +241,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
     op = func_graph.get_operation_by_name("y")
     self.assertEqual(len(op.control_inputs), 2)
     self.assertEqual(op.control_inputs[0].name, "x")
-    self.assertEqual(op.control_inputs[1].name, "placeholder")
+    self.assertEqual(op.control_inputs[1].name, "inp")
 
 
 if __name__ == "__main__":

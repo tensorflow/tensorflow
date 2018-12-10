@@ -67,109 +67,111 @@ tensorflow::Status TRTOptimizationPass::Init(
     TF_RETURN_IF_ERROR(GetPrecisionMode(
         Uppercase(params.at("precision_mode").s()), &precision_mode_));
   }
+  if (params.count("use_calibration")) {
+    use_calibration_ = params.at("use_calibration").b();
+  }
   return tensorflow::Status::OK();
 }
 
 void TRTOptimizationPass::PrintDebugInfo(
     tensorflow::grappler::Cluster* cluster,
     const tensorflow::grappler::GrapplerItem& item) {
-  VLOG(1) << "Cluster = " << cluster;
+  LOG(INFO) << "Cluster = " << cluster;
   string offset("  ");
   string offset2 = StrCat(offset, offset);
   string offset3 = StrCat(offset2, offset);
   string offset4 = StrCat(offset2, offset2);
   if (cluster) {
-    VLOG(1) << offset << "type             = " << cluster->type();
-    VLOG(1) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
+    LOG(INFO) << offset << "type             = " << cluster->type();
+    LOG(INFO) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
     const auto dev_names = cluster->GetDeviceNames();
     if (dev_names.size()) {
-      VLOG(1) << offset << " Device names:";
+      LOG(INFO) << offset << " Device names:";
       for (const auto s : dev_names) {
-        VLOG(1) << offset2 << s;
+        LOG(INFO) << offset2 << s;
       }
     }
     std::unordered_map<string, uint64> peak_mem;
     auto status = cluster->GetPeakMemoryUsage(&peak_mem);
     if (status == tensorflow::Status::OK()) {
-      VLOG(1) << offset << "Peak Memory Usage :";
+      LOG(INFO) << offset << "Peak Memory Usage :";
       for (auto s : peak_mem) {
-        VLOG(1) << offset2 << s.first << " = " << s.second;
+        LOG(INFO) << offset2 << s.first << " = " << s.second;
       }
     }
 
     const auto dev_props = cluster->GetDevices();
     if (dev_props.size()) {
-      VLOG(1) << offset << "Device properties:";
+      LOG(INFO) << offset << "Device properties:";
       for (auto k : dev_props) {
-        VLOG(1) << offset2 << k.first;
+        LOG(INFO) << offset2 << k.first;
         const auto& dt = k.second;
-        VLOG(1) << offset3 << "type          = " << dt.type();
-        VLOG(1) << offset3 << "vendor        = " << dt.vendor();
-        VLOG(1) << offset3 << "model         = " << dt.model();
-        VLOG(1) << offset3 << "frequency     = " << dt.frequency();
-        VLOG(1) << offset3 << "num cores     = " << dt.num_cores();
-        VLOG(1) << offset3 << "num registers = " << dt.num_registers();
-        VLOG(1) << offset3 << "L1 cache size = " << dt.l1_cache_size();
-        VLOG(1) << offset3 << "L2 cache size = " << dt.l2_cache_size();
-        VLOG(1) << offset3 << "L3 cache size = " << dt.l3_cache_size();
-        VLOG(1) << offset3 << "SHMem per SMP = "
-                << dt.shared_memory_size_per_multiprocessor();
-        VLOG(1) << offset3 << "memory size   = " << dt.memory_size();
-        VLOG(1) << offset3 << "bandwidth     = " << dt.bandwidth();
+        LOG(INFO) << offset3 << "type          = " << dt.type();
+        LOG(INFO) << offset3 << "vendor        = " << dt.vendor();
+        LOG(INFO) << offset3 << "model         = " << dt.model();
+        LOG(INFO) << offset3 << "frequency     = " << dt.frequency();
+        LOG(INFO) << offset3 << "num cores     = " << dt.num_cores();
+        LOG(INFO) << offset3 << "num registers = " << dt.num_registers();
+        LOG(INFO) << offset3 << "L1 cache size = " << dt.l1_cache_size();
+        LOG(INFO) << offset3 << "L2 cache size = " << dt.l2_cache_size();
+        LOG(INFO) << offset3 << "L3 cache size = " << dt.l3_cache_size();
+        LOG(INFO) << offset3 << "SHMem per SMP = "
+                  << dt.shared_memory_size_per_multiprocessor();
+        LOG(INFO) << offset3 << "memory size   = " << dt.memory_size();
+        LOG(INFO) << offset3 << "bandwidth     = " << dt.bandwidth();
         if (dt.environment_size()) {
-          VLOG(1) << offset3 << "environment   :";
+          LOG(INFO) << offset3 << "environment   :";
           for (const auto e : dt.environment()) {
-            VLOG(1) << offset4 << e.first << " = " << e.second;
+            LOG(INFO) << offset4 << e.first << " = " << e.second;
           }
         }
       }
     }
   }
-  VLOG(1) << "item: " << item.id;
+  LOG(INFO) << "item: " << item.id;
   if (item.feed.size()) {
-    VLOG(1) << offset << "Feeds  :";
+    LOG(INFO) << offset << "Feeds  :";
     for (const auto& f : item.feed) {
       const auto& shape = f.second.shape();
-      VLOG(1) << offset2 << f.first << " = shaped " << shape.DebugString();
+      LOG(INFO) << offset2 << f.first << " = shaped " << shape.DebugString();
     }
   } else {
-    VLOG(1) << offset << "No Feeds";
+    LOG(INFO) << offset << "No Feeds";
   }
   if (item.fetch.size()) {
-    VLOG(1) << offset << "Fetches  :";
+    LOG(INFO) << offset << "Fetches  :";
     for (const auto& f : item.fetch) {
-      VLOG(1) << offset2 << f;
+      LOG(INFO) << offset2 << f;
     }
   } else {
-    VLOG(1) << offset << "No Fetches";
+    LOG(INFO) << offset << "No Fetches";
   }
 
   if (item.init_ops.size()) {
-    VLOG(1) << offset << "init ops  :";
+    LOG(INFO) << offset << "init ops  :";
     for (const auto& f : item.init_ops) {
-      VLOG(1) << offset2 << f;
+      LOG(INFO) << offset2 << f;
     }
   } else {
-    VLOG(1) << offset << "No init ops";
+    LOG(INFO) << offset << "No init ops";
   }
-  VLOG(1) << "Save Op = " << item.save_op;
-  VLOG(1) << "Restore Op = " << item.restore_op;
-  VLOG(1) << "save_restore_loc_tensor = " << item.save_restore_loc_tensor;
+  LOG(INFO) << "Save Op = " << item.save_op;
+  LOG(INFO) << "Restore Op = " << item.restore_op;
+  LOG(INFO) << "save_restore_loc_tensor = " << item.save_restore_loc_tensor;
   if (item.keep_ops.size()) {
-    VLOG(1) << offset << "keep ops  :";
+    LOG(INFO) << offset << "keep ops  :";
     for (const auto& f : item.keep_ops) {
-      VLOG(1) << offset2 << f;
+      LOG(INFO) << offset2 << f;
     }
   } else {
-    VLOG(1) << offset << "No keep ops";
+    LOG(INFO) << offset << "No keep ops";
   }
-  VLOG(3) << item.graph.DebugString();
   for (const auto dev : cluster->GetDeviceSet()->devices()) {
     const auto& pname = dev->parsed_name();
-    VLOG(1) << "Device name= " << dev->name()
-            << " parsedname job= " << pname.job << " id= " << pname.id
-            << " has_id: " << pname.has_id << " has_job: " << pname.has_job
-            << "has_type: " << pname.has_type << " type =" << pname.type;
+    LOG(INFO) << "Device name= " << dev->name()
+              << " parsedname job= " << pname.job << " id= " << pname.id
+              << " has_id: " << pname.has_id << " has_job: " << pname.has_job
+              << "has_type: " << pname.has_type << " type =" << pname.type;
   }
 }
 
@@ -188,8 +190,8 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     *optimized_graph = item.graph;
     return tensorflow::Status::OK();
   }
-  if (VLOG_IS_ON(1)) {
-    VLOG(2) << CurrentStackTrace();
+  if (VLOG_IS_ON(3)) {
+    LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
   int max_dim = -1;
@@ -223,6 +225,12 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   tensorflow::tensorrt::convert::ConversionParams cp;
 
+  if (use_calibration_ && precision_mode_ != INT8MODE) {
+    LOG(ERROR) << "Calibration with FP32 or FP16 is not implemented. "
+               << "Falling back to use_calibration = False.";
+    use_calibration_ = false;
+  }
+
   std::vector<string> nodes_to_preserve;
   for (const auto& n : item.NodesToPreserve()) {
     auto tokens = str_util::Split(n, ":");
@@ -251,8 +259,8 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   cp.is_dyn_op = is_dynamic_op_;
   cp.cached_engine_batches = batches_;
   cp.max_cached_engines = max_cached_batches_;
+  cp.use_calibration = use_calibration_;
   auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(cp);
-  VLOG(2) << optimized_graph->DebugString();
   VLOG(1) << "Returning from " << name_;
   return status;
 }

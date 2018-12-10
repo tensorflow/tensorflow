@@ -49,7 +49,7 @@ class GatherTreeTest(test.TestCase):
         parent_ids=parent_ids,
         max_sequence_lengths=max_sequence_lengths,
         end_token=end_token)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(expected_result, beams.eval())
 
   def testBadParentValuesOnCPU(self):
@@ -93,7 +93,7 @@ class GatherTreeTest(test.TestCase):
           parent_ids=parent_ids,
           max_sequence_lengths=max_sequence_lengths,
           end_token=end_token)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(expected_result, beams.eval())
 
   def testGatherTreeBatch(self):
@@ -103,7 +103,7 @@ class GatherTreeTest(test.TestCase):
     max_sequence_lengths = [0, 1, 2, 4, 7, 8, 9, 10, 11, 0]
     end_token = 5
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       step_ids = np.random.randint(
           0, high=end_token + 1, size=(max_time, batch_size, beam_width))
       parent_ids = np.random.randint(

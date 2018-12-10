@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -67,6 +68,7 @@ class KerasActivationsTest(test.TestCase):
     expected = _ref_softmax(test_values[0, 0])
     self.assertAllClose(result[0, 0], expected, rtol=1e-05)
 
+  @test_util.run_deprecated_v1
   def test_selu(self):
     x = keras.backend.placeholder(ndim=2)
     f = keras.backend.function([x], [keras.activations.selu(x)])
@@ -124,6 +126,7 @@ class KerasActivationsTest(test.TestCase):
     expected = sigmoid(test_values)
     self.assertAllClose(result, expected, rtol=1e-05)
 
+  @test_util.run_deprecated_v1
   def test_hard_sigmoid(self):
     def ref_hard_sigmoid(x):
       x = (x * 0.2) + 0.5
@@ -147,6 +150,7 @@ class KerasActivationsTest(test.TestCase):
     # No negative values in test values...
     self.assertAllClose(result, test_values, rtol=1e-05)
 
+  @test_util.run_deprecated_v1
   def test_elu(self):
     with self.cached_session():
       x = keras.backend.placeholder(ndim=2)
@@ -167,6 +171,16 @@ class KerasActivationsTest(test.TestCase):
       f = keras.backend.function([x], [exp])
       result = f([test_values])[0]
     expected = np.tanh(test_values)
+    self.assertAllClose(result, expected, rtol=1e-05)
+
+  def test_exponential(self):
+    with self.cached_session():
+      test_values = np.random.random((2, 5))
+      x = keras.backend.placeholder(ndim=2)
+      exp = keras.activations.exponential(x)
+      f = keras.backend.function([x], [exp])
+      result = f([test_values])[0]
+    expected = np.exp(test_values)
     self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_linear(self):

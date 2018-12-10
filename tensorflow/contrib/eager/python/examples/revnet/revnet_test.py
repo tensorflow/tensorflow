@@ -127,6 +127,8 @@ class RevNetTest(tf.test.TestCase):
 
   def test_compute_gradients_defun(self):
     """Test `compute_gradients` function with defun."""
+    # TODO(apassos): make cond support returning None to let this happen with
+    # tf.function.
     compute_gradients = tfe.defun(self.model.compute_gradients)
     _, saved_hidden = self.model(self.x)
     grads, _ = compute_gradients(saved_hidden=saved_hidden, labels=self.t)
@@ -235,6 +237,7 @@ class RevNetBenchmark(tf.test.Benchmark):
       device, data_format = device_and_format
       model = revnet.RevNet(config=config)
       if defun:
+        # TODO(apassos): reenable after cond lets you return None
         model.call = tfe.defun(model.call)
       batch_size = 64
       num_burn = 5
@@ -282,7 +285,7 @@ class RevNetBenchmark(tf.test.Benchmark):
         model = revnet.RevNet(config=config)
         optimizer = tf.train.GradientDescentOptimizer(0.1)
         if defun:
-          model.call = tfe.defun(model.call)
+          model.call = tfe.function(model.call)
 
         num_burn = 3
         num_iters = 10

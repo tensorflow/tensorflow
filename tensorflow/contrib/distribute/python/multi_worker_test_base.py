@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import copy
+import json
+import os
 import threading
 import numpy as np
 
@@ -38,7 +41,6 @@ from tensorflow.python.estimator import run_config
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-
 
 ASSIGNED_PORTS = set()
 lock = threading.Lock()
@@ -207,12 +209,10 @@ class MultiWorkerTestBase(test.TestCase):
     self._lock = threading.Lock()
 
   @contextlib.contextmanager
-  def test_session(self, graph=None, config=None, target=None):
+  def session(self, graph=None, config=None, target=None):
     """Create a test session with master target set to the testing cluster.
 
-    This overrides the base class' method, removes arguments that are not needed
-    by the multi-node case and creates a test session that connects to the local
-    testing cluster.
+    Creates a test session that connects to the local testing cluster.
 
     Args:
       graph: Optional graph to use during the returned session.
@@ -224,9 +224,44 @@ class MultiWorkerTestBase(test.TestCase):
       A Session object that should be used as a context manager to surround
       the graph building and execution code in a test case.
     """
-    if self.id().endswith('.test_session'):
-      self.skipTest('Not a test.')
+    config = self._create_config(config)
 
+    if target is None:
+      target = self._default_target
+    with session.Session(graph=graph, config=config, target=target) as sess:
+      yield sess
+
+  @contextlib.contextmanager
+  # TODO(b/117573461): Overwrite self.evaluate() to use this function.
+  def cached_session(self, graph=None, config=None, target=None):
+    """Create a test session with master target set to the testing cluster.
+
+    Creates a test session that connects to the local testing cluster.
+    The session is only created once per test and then reused.
+
+    Args:
+      graph: Optional graph to use during the returned session.
+      config: An optional config_pb2.ConfigProto to use to configure the
+        session.
+      target: the target of session to connect to.
+
+    Yields:
+      A Session object that should be used as a context manager to surround
+      the graph building and execution code in a test case. Note that the
+      session will live until the end of the test.
+    """
+    config = self._create_config(config)
+
+    if target is None:
+      target = self._default_target
+    if getattr(self._thread_local, 'cached_session', None) is None:
+      self._thread_local.cached_session = session.Session(
+          graph=None, config=config, target=target)
+    sess = self._thread_local.cached_session
+    with sess.graph.as_default(), sess.as_default():
+      yield sess
+
+  def _create_config(self, config):
     if config is None:
       config = config_pb2.ConfigProto(allow_soft_placement=True)
     else:
@@ -237,18 +272,7 @@ class MultiWorkerTestBase(test.TestCase):
     config.graph_options.rewrite_options.constant_folding = (
         rewriter_config_pb2.RewriterConfig.OFF)
 
-    if target is None:
-      target = self._default_target
-    if graph is None:
-      if getattr(self._thread_local, 'cached_session', None) is None:
-        self._thread_local.cached_session = session.Session(
-            graph=None, config=config, target=target)
-      sess = self._thread_local.cached_session
-      with sess.graph.as_default(), sess.as_default():
-        yield sess
-    else:
-      with session.Session(graph=graph, config=config, target=target) as sess:
-        yield sess
+    return config
 
   def _run_client(self, client_fn, task_type, task_id, num_gpus, *args,
                   **kwargs):
@@ -281,3 +305,101 @@ class MultiWorkerTestBase(test.TestCase):
     for t in threads:
       t.join()
     self.assertEqual(self._result, len(threads))
+
+
+class MockOsEnv(collections.Mapping):
+  """A class that allows per-thread TF_CONFIG."""
+
+  def __init__(self, *args):
+    self._dict = dict()
+    self._thread_local = threading.local()
+    super(MockOsEnv, self).__init__(*args)
+
+  def get(self, key, default=None):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    if key == 'TF_CONFIG':
+      return dict.get(self._thread_local.dict, key, default)
+    else:
+      return dict.get(self._dict, key, default)
+
+  def __getitem__(self, key):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    if key == 'TF_CONFIG':
+      return dict.__getitem__(self._thread_local.dict, key)
+    else:
+      return dict.__getitem__(self._dict, key)
+
+  def __setitem__(self, key, val):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    if key == 'TF_CONFIG':
+      return dict.__setitem__(self._thread_local.dict, key, val)
+    else:
+      return dict.__setitem__(self._dict, key, val)
+
+  def __iter__(self):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    for x in self._thread_local.dict.items():
+      yield x
+    for x in self._dict.items():
+      yield x
+
+  def __len__(self):
+    if not hasattr(self._thread_local, 'dict'):
+      self._thread_local.dict = dict()
+    return self._thread_local.dict.__len__() + self._dict.__len__()
+
+
+class IndependentWorkerTestBase(test.TestCase):
+  """Testing infra for independent workers."""
+
+  def setUp(self):
+    self._mock_os_env = MockOsEnv()
+    self._mock_context = test.mock.patch.object(os, 'environ',
+                                                self._mock_os_env)
+    super(IndependentWorkerTestBase, self).setUp()
+    self._mock_context.__enter__()
+
+  def tearDown(self):
+    self._mock_context.__exit__(None, None, None)
+    super(IndependentWorkerTestBase, self).tearDown()
+
+  def _task_thread(self, task_fn, tf_config, *args, **kwargs):
+    os.environ['TF_CONFIG'] = json.dumps(tf_config)
+    task_fn(*args, **kwargs)
+
+  def _run_task_in_thread(self, task_fn, cluster_spec, task_type, task_id,
+                          *args, **kwargs):
+    if task_type:
+      tf_config = {
+          'cluster': cluster_spec,
+          'task': {
+              'type': task_type,
+              'index': task_id
+          }
+      }
+    else:
+      tf_config = {
+          'cluster': cluster_spec,
+      }
+    t = threading.Thread(
+        target=self._task_thread,
+        args=(task_fn, tf_config) + args,
+        kwargs=kwargs)
+    t.start()
+    return t
+
+  def run_multiple_tasks_in_threads(self, task_fn, cluster_spec, *args,
+                                    **kwargs):
+    # The task_fn should create std_server by itself.
+    threads = {}
+    for task_type in cluster_spec.keys():
+      threads[task_type] = []
+      for task_id in range(len(cluster_spec[task_type])):
+        t = self._run_task_in_thread(task_fn, cluster_spec, task_type, task_id,
+                                     *args, **kwargs)
+        threads[task_type].append(t)
+    return threads

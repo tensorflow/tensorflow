@@ -39,8 +39,7 @@ limitations under the License.
 //     resource variables).
 //
 // The result is incorrect around loops because we ignore edges from
-// NextIteration to Merge, but that should be fine because we don't cluster
-// these edges.  For instance, in:
+// NextIteration to Merge.  For instance, in:
 //
 // Init -----> Merge <-------+
 //               |           |
@@ -55,20 +54,19 @@ limitations under the License.
 //
 // we won't put (Read, Write) in the returned set.  This is fine if
 // auto-clustering can only cluster the Read->Write edge, but it is a problem if
-// it clusters the Write->NextIteration->Merge->Read edges instead.  The same
-// problem is present for the functional version of the loop above.  We rely on
-// auto-clustering to not cluster control flow edges like NextIteration->Merge.
-// This is enough to avoid the explicit-control-flow problem shown above.  One
-// way to think about this is that we only care about cases where two nodes, A
-// and B, would normally have been put in the same cluster but cannot legally be
-// in the same cluster because of resourcevar-dependencies.  If A and B would
+// it clusters the Write->NextIteration->Merge->Read edges instead.  So we rely
+// on auto-clustering to not cluster NextIteration->Merge edges.  The same
+// problem is present for the functional version of the loop above and we also
+// rely on auto-clustering not clustering functional while loops containing
+// resource operations.
+//
+// One way to think about this is that we only care about cases where two nodes,
+// A and B, would normally have been put in the same cluster but cannot legally
+// be in the same cluster because of resourcevar-dependencies.  If A and B would
 // normally have been put in the same cluster then all paths between A and B
 // would have to be clusterable (otherwise we'd have introduced a cycle).  Ergo
 // there could not have been a NextIteration->Merge edge between A and B since
 // we don't cluster these edges.
-//
-// We also rely on auto-clustering to not cluster functional control flow nodes
-// that contain resource operations.
 //
 // IMPLEMENTATION
 // --------------
@@ -152,13 +150,12 @@ Status XlaResourceOpKindForNode(
 // can be represented by an XLA cluster and needs no special handling around
 // auto-jit.
 bool IsEdgeSafe(XlaResourceOpKind from, XlaResourceOpKind to) {
-  // XLA clusters forces all reads to happen before all writes, which means the
-  // kinds of edges it can faithfully represent are: Read->Write, Read->Modify,
-  // Modify->Write, Read->Read, Write->Write.
-  //
-  // TODO(b/112856632): We can, in theory, support Read->Read and Write->Write
-  // dependencies.
-  return from == XlaResourceOpKind::kRead && to == XlaResourceOpKind::kWrite;
+  // XLA clusters force all reads to happen before all writes.  Moreover the set
+  // of reads are executed as one atomic operation, and the set of writes are as
+  // another atomic operation.  This means we can faithfully represent the
+  // following edges: Read->*, *->Write.
+
+  return from == XlaResourceOpKind::kRead || to == XlaResourceOpKind::kWrite;
 }
 
 using ResourceOp = std::pair<int, XlaResourceOpKind>;

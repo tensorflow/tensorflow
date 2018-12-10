@@ -45,10 +45,6 @@ struct ConstantFoldingOptions {
   // optimization.
   int64 max_constant_size_in_bytes = 10 * 1024 * 1024;
 
-  // If disable_memory_output_type_check is true, we will disable output memory
-  // type check for constant node replacement.
-  bool disable_memory_output_type_check = false;
-
   // A generator for the name suffix of constant folded nodes. A
   // default id generator that monotonically increases is used if nullptr is
   // passed.

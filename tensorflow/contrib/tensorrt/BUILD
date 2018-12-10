@@ -29,6 +29,10 @@ load(
     "if_tensorrt",
 )
 
+exports_files(glob([
+    "test/testdata/*",
+]))
+
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
@@ -312,16 +316,53 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":trt_conversion",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
+tf_cuda_cc_test(
+    name = "convert_nodes_test",
+    size = "medium",
+    srcs = ["convert/convert_nodes_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_logging",
+        ":trt_conversion",
+        ":trt_plugins",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_tensorrt//:nv_infer",
     ]),
 )
@@ -454,8 +495,9 @@ cuda_py_tests(
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
+        "test/quantization_test.py",
         "test/rank_two_test.py",
-        "test/unary_test.py",
+        "test/reshape_transpose_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],
@@ -466,6 +508,49 @@ cuda_py_tests(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+)
+
+cuda_py_tests(
+    name = "tf_trt_integration_test_no_oss",
+    srcs = [
+        "test/unary_test.py",
+    ],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/117274186): re-enable in OSS after crash fixed
+        "no_pip",  # TODO(b/117274186): re-enable in OSS after crash fixed
+        "no_windows",
+        "nomac",
+    ],
+)
+
+cuda_py_test(
+    name = "quantization_mnist_test",
+    srcs = ["test/quantization_mnist_test.py"],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/keras:keras",
+        "//tensorflow/python/estimator:estimator",
+    ],
+    data = [
+        "test/testdata/checkpoint",
+        "test/testdata/model.ckpt-46900.data-00000-of-00001",
+        "test/testdata/model.ckpt-46900.index",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+        "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
     ],

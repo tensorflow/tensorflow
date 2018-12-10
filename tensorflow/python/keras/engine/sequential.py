@@ -25,6 +25,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
@@ -119,6 +120,10 @@ class Sequential(Model):
       return layers[1:]
     return layers[:]
 
+  @property
+  def _static_graph_friendly(self):
+    return all(layer._static_graph_friendly for layer in self.layers)
+
   @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
     """Adds a layer instance on top of the layer stack.
@@ -146,7 +151,7 @@ class Sequential(Model):
         assert len(layer._inbound_nodes[-1].output_tensors) == 1
         set_inputs = True
       else:
-        batch_shape, dtype = get_input_shape_and_dtype(layer)
+        batch_shape, dtype = training_utils.get_input_shape_and_dtype(layer)
         if batch_shape:
           # Instantiate an input layer.
           x = Input(
@@ -208,20 +213,16 @@ class Sequential(Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
+  @base_layer.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
     else:
       if input_shape is None:
         raise ValueError('You must provide an `input_shape` argument.')
+      input_shape = tuple(input_shape)
       self._build_input_shape = input_shape
-      shape = input_shape
-      for layer in self.layers:
-        if not layer.built:
-          with ops.name_scope(layer._name_scope()):
-            layer.build(shape)
-          layer.built = True
-        shape = layer.compute_output_shape(shape)
+      super(Sequential, self).build(input_shape)
     self.built = True
 
   def call(self, inputs, training=None, mask=None):
@@ -233,8 +234,8 @@ class Sequential(Model):
     return outputs
 
   def _call_and_compute_mask(self, inputs, training=None, mask=None):
-    if not self.built:
-      self.build(inputs.shape)
+    if not self.built and self._is_graph_network:
+      self._init_graph_network(self.inputs, self.outputs, name=self.name)
 
     x = inputs
     for layer in self.layers:
@@ -247,6 +248,11 @@ class Sequential(Model):
       if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
         x, mask = layer._call_and_compute_mask(x, **kwargs)
       else:
+        if not layer.built:
+          # Build layer if applicable.
+          with ops.name_scope(layer._name_scope()):
+            layer._maybe_build(x)
+          layer.built = True
         x = layer.call(x, **kwargs)
         if layer.supports_masking:
           mask = layer.compute_mask(x, mask)
@@ -308,6 +314,10 @@ class Sequential(Model):
     else:
       return (proba > 0.5).astype('int32')
 
+  def save(self, filepath, overwrite=True, include_optimizer=True):
+    from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
+    save_model(self, filepath, overwrite, include_optimizer)
+
   def get_config(self):
     layer_configs = []
     for layer in self.layers:
@@ -340,39 +350,13 @@ class Sequential(Model):
       model.add(layer)
     if not model.inputs and build_input_shape:
       model.build(build_input_shape)
+    if not model._is_graph_network:
+      # Still needs to be built when passed input data.
+      model.built = False
     return model
 
-
-def get_input_shape_and_dtype(layer):
-  """Retrieve input shape and input dtype of layer if applicable.
-
-  Args:
-    layer: Layer (or model) instance.
-
-  Returns:
-    Tuple (input_shape, input_dtype). Both could be None if the layer
-      does not have a defined input shape.
-
-  Raises:
-    ValueError: in case an empty Sequential or Graph Network is passed.
-  """
-  if ((isinstance(layer, Model) and layer._is_graph_network)
-      or isinstance(layer, Sequential)):
-    # We were passed a model as first layer.
-    # This requires a specific way to figure out the
-    # input shape and dtype.
-    if not layer.layers:
-      raise ValueError('Cannot add an empty model '
-                       'to a `Sequential` model.')
-    # In case of nested models: recover the first layer
-    # of the deepest model to infer input shape and dtype.
-    layer = layer.layers[0]
-    while ((isinstance(layer, Model) and layer._is_graph_network)
-           or isinstance(layer, Sequential)):
-      layer = layer.layers[0]
-
-  if hasattr(layer, '_batch_input_shape'):
-    batch_shape = layer._batch_input_shape
-    dtype = layer.dtype
-    return batch_shape, dtype
-  return None, None
+  @property
+  def input_spec(self):
+    if self.layers and hasattr(self.layers[0], 'input_spec'):
+      return self.layers[0].input_spec
+    return None

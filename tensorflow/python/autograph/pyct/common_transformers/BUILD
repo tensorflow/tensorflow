@@ -34,6 +34,7 @@ py_test(
     name = "anf_test",
     srcs = ["anf_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],
     deps = [
         ":common_transformers",
         "//tensorflow/python:client_testlib",

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
-#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -119,6 +118,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Exit",
                                           "Exp",
                                           "Expm1",
+                                          "FakeQuantWithMinMaxVars",
+                                          "FakeQuantWithMinMaxArgs",
                                           "Fill",
                                           "Floor",
                                           "FloorDiv",
@@ -161,6 +162,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "PreventGradient",
                                           "Prod",
                                           "Polygamma",
+                                          "QuantizeAndDequantizeV2",
+                                          "QuantizeAndDequantizeV3",
                                           "Pow",
                                           "Real",
                                           "RealDiv",
@@ -1965,9 +1968,9 @@ class DataLayoutOptimizer : GraphProcessor {
   // Expand all nodes which is in NHWC, but supports NCHW or is layout agnostic.
   Status Expand() {
     int node_size_original = graph_->node_size();
-    std::unordered_map<const NodeDef*, std::vector<int>> frames;
-    int num_frames;
-    TF_RETURN_IF_ERROR(IdentifyFrames(*graph_, &frames, &num_frames));
+
+    FrameView frame_view;
+    TF_RETURN_IF_ERROR(frame_view.InferFromGraph(*graph_));
 
     // This is the first pass where we expand the nodes which support NCHW.
     std::set<string> ops_format_supported = GetOpsFormatSupported();
@@ -1979,7 +1982,7 @@ class DataLayoutOptimizer : GraphProcessor {
       if (ops_format_supported.find(graph_->node(i).op()) !=
           ops_format_supported.end()) {
         auto node = graph_->mutable_node(i);
-        bool is_in_frame = !frames[node].empty();
+        bool is_in_frame = frame_view.IsInFrame(*node);
         OptimizeContext opt_cxt(graph_, node, node_map_, graph_properties_,
                                 virtual_placer_, nodes_to_preserve_,
                                 is_in_frame);
@@ -2029,7 +2032,7 @@ class DataLayoutOptimizer : GraphProcessor {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
             ops_format_agnostic.end()) {
           auto node = graph_->mutable_node(i);
-          bool is_in_frame = !frames[node].empty();
+          bool is_in_frame = frame_view.IsInFrame(*node);
           OptimizeContext opt_cxt(graph_, node, node_map_, graph_properties_,
                                   virtual_placer_, nodes_to_preserve_,
                                   is_in_frame);
@@ -2188,6 +2191,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     *output = item.graph;
     return status;
   }
+  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   TuningConfig config;
   config.no_gemm = true;

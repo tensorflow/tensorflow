@@ -53,7 +53,15 @@ tf_module {
     argspec: "args=[\'string_tensor\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
+    name: "unicode_encode"
+    argspec: "args=[\'input\', \'output_encoding\', \'errors\', \'replacement_char\', \'name\'], varargs=None, keywords=None, defaults=[\'replace\', \'65533\', \'None\'], "
+  }
+  member_method {
     name: "unicode_script"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "unicode_transcode"
+    argspec: "args=[\'input\', \'input_encoding\', \'output_encoding\', \'errors\', \'replacement_char\', \'replace_control_characters\', \'name\'], varargs=None, keywords=None, defaults=[\'replace\', \'65533\', \'False\', \'None\'], "
   }
 }

@@ -23,7 +23,7 @@ import contextlib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.jit.ops import xla_ops
-from tensorflow.contrib.tpu.python.tpu import tpu_function
+from tensorflow.compiler.jit.ops import xla_ops_grad  # pylint: disable=unused-import
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
@@ -35,6 +35,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 _XLA_COMPILE_ATTR = '_xla_compile_id'
 _MAX_WARNING_LINES = 5
@@ -179,14 +180,11 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
     if external_control_inputs:
       # Use an identity to pull control inputs as data inputs. Note that we
       # ignore ops which don't have outputs. TODO(phawkins): fix that.
-      with ops.control_dependencies(None):
-        self.Enter()
-        external_control_inputs = [
-            array_ops.identity(x.outputs[0]).op
-            for x in external_control_inputs
-            if x.outputs
-        ]
-        self.Exit()
+      external_control_inputs = [
+          array_ops.identity(x.outputs[0]).op
+          for x in external_control_inputs
+          if x.outputs
+      ]
       # pylint: disable=protected-access
       op._add_control_inputs(external_control_inputs)
       # pylint: enable=protected-access
@@ -266,13 +264,13 @@ def _compile_internal(computation, inputs=None):
   inputs = [ops.convert_to_tensor(x) for x in inputs]
   input_arity = len(inputs)
 
-  arg_error = tpu_function.check_function_argument_count(
+  arg_error = check_function_argument_count(
       computation, input_arity, infeed_queue=None)
   if arg_error is not None:
     raise TypeError(
         'Supplied computation cannot be called with the specified inputs. You '
         'specified %d inputs: %s, but the computation needs %s' %
-        (input_arity, str([i.name for i in inputs[0]]), arg_error))
+        (input_arity, str([i.name for i in inputs]), arg_error))
 
   cluster_name = ops.get_default_graph().unique_name('cluster')
   pivot = control_flow_ops.no_op(name=cluster_name + '/pivot')
@@ -606,8 +604,8 @@ class _ModelFnWrapper(object):
 def estimator_model_fn(target_model_fn=None):
   """estimator_model_fn decorates a model_fn to be compiled for execution.
 
-  Currently only it only works with `TPUEstimator`. If you need to use it with
-  base `Estimator`, please add `tf.enable_resource_variables()` at beginning of
+  Currently it only works with `TPUEstimator`. If you need to use it with base
+  `Estimator`, please add `tf.enable_resource_variables()` at the beginning of
   your program.
 
   Example 1, decorating model_fn:
@@ -645,3 +643,51 @@ def estimator_model_fn(target_model_fn=None):
     return tf_decorator.make_decorator(function, _ModelFnWrapper(function))
 
   return decorated(target_model_fn) if target_model_fn else decorated
+
+
+def check_function_argument_count(func, input_arity, infeed_queue):
+  """Validate the number of input arguments to an XLA function.
+
+  Args:
+    func: the Python function that will be called to generate the body of an XLA
+      computation graph.
+    input_arity: the number of explicit arguments supplied by the caller.
+    infeed_queue: if not None, the infeed queue that will supply
+      additional arguments to the function.
+
+  Returns:
+    None if function can be called with the supplied number of
+      arguments, or an error string if it cannot.
+  """
+  def format_error(complaint, quantity):
+    return '%s %d argument%s' % (complaint, quantity, ''
+                                 if quantity == 1 else 's')
+
+  num_args_supplied = input_arity
+  if infeed_queue is not None:
+    num_args_supplied += infeed_queue.number_of_tuple_elements
+  arg_spec = tf_inspect.getargspec(func)
+  num_func_args = len(arg_spec.args)
+  if arg_spec.defaults is None:
+    num_func_defaults = 0
+  else:
+    num_func_defaults = len(arg_spec.defaults)
+  min_func_args = num_func_args - num_func_defaults
+  if num_args_supplied < min_func_args:
+    # The required number of arguments is not enough to call the function.
+    if num_func_defaults == 0 and arg_spec.varargs is None:
+      return format_error('exactly', num_func_args)
+    else:
+      return format_error('at least', min_func_args)
+  if arg_spec.varargs is None and num_args_supplied > num_func_args:
+    # The required number of arguments is too many to call the function.
+    if num_func_defaults == 0:
+      return format_error('exactly', num_func_args)
+    else:
+      return format_error('at most', num_func_args)
+  # Reaching here means either
+  # 1) There are varargs, func can accept any number of arguments greater than
+  # the minimum.
+  # 2) Number of supplied arguments falls in range of acceptable argument count
+  # of func.
+  return None

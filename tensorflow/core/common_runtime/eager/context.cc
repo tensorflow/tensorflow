@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include "tensorflow/core/common_runtime/collective_executor_mgr.h"
+#include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
+#include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -30,18 +33,6 @@ bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
     return val;
   }
   return default_val;
-}
-
-std::unique_ptr<thread::ThreadPool> EagerThreadPool(
-    const SessionOptions& opts) {
-  SessionOptions opts_copy(opts);
-  if (opts_copy.config.inter_op_parallelism_threads() == 0) {
-    // Eager defaults to a single thread when no threads are specified.
-    opts_copy.config.set_inter_op_parallelism_threads(1);
-  }
-
-  return std::unique_ptr<thread::ThreadPool>(
-      NewThreadPoolFromSessionOptions(opts_copy));
 }
 
 }  // namespace
@@ -61,7 +52,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
     : policy_(default_policy),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
-      thread_pool_(EagerThreadPool(opts)),
+      thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
           device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_, {},
           thread_pool_.get())),
@@ -70,7 +61,9 @@ EagerContext::EagerContext(const SessionOptions& opts,
       async_default_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
-      use_send_tensor_rpc_(false) {
+      use_send_tensor_rpc_(false),
+      pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
+          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", true)) {
   if (device_mgr_owned) {
     local_device_manager_.reset(device_mgr);
     local_unowned_device_manager_ = nullptr;
@@ -81,6 +74,13 @@ EagerContext::EagerContext(const SessionOptions& opts,
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
+
+  std::unique_ptr<DeviceResolverInterface> drl(
+      new DeviceResolverLocal(local_device_mgr()));
+  std::unique_ptr<ParamResolverInterface> cprl(new CollectiveParamResolverLocal(
+      local_device_mgr(), drl.get(), "/job:localhost/replica:0/task:0"));
+  collective_executor_mgr_.reset(new CollectiveExecutorMgr(
+      opts.config, local_device_mgr(), std::move(drl), std::move(cprl)));
 }
 
 void EagerContext::InitDeviceMapAndAsync() {

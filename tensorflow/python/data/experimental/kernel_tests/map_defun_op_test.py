@@ -22,11 +22,12 @@ import time
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import map_defun
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
@@ -39,7 +40,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunSimple(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def simple_fn(x):
       return x * 2 + 3
 
@@ -51,7 +52,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunMismatchedTypes(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def fn(x):
       return math_ops.cast(x, dtypes.float64)
 
@@ -64,7 +65,7 @@ class MapDefunTest(test_base.DatasetTestBase):
   def testMapDefunReduceDim(self):
     # Tests where the output has a different rank from the input
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def fn(x):
       return array_ops.gather(x, 0)
 
@@ -76,7 +77,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunMultipleOutputs(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def fn(x):
       return (x, math_ops.cast(x * 2 + 3, dtypes.float64))
 
@@ -89,7 +90,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunShapeInference(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def fn(x):
       return x
 
@@ -100,7 +101,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunPartialShapeInference(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def fn(x):
       return x
 
@@ -110,7 +111,10 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunRaisesErrorOnRuntimeShapeMismatch(self):
 
-    @function.Defun(dtypes.int32, dtypes.int32)
+    @function.defun(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.int32),
+        tensor_spec.TensorSpec(None, dtypes.int32)
+    ])
     def fn(x, y):
       return x, y
 
@@ -126,7 +130,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunRaisesDefunError(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def fn(x):
       with ops.control_dependencies([check_ops.assert_equal(x, 0)]):
         return array_ops.identity(x)
@@ -138,7 +142,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunCancelledCorrectly(self):
 
-    @function.Defun(dtypes.int64)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([5], dtypes.int64)])
     def defun(x):
       # x has leading dimension 5, this will raise an error
       return array_ops.gather(x, 10)
@@ -154,7 +158,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunWithUnspecifiedOutputShape(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def simple_fn(x):
       res = x * 2 + 3
       return (res, res + 1, res + 2)
@@ -171,7 +175,8 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunWithDifferentOutputShapeEachRun(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
     def simple_fn(x):
       return x * 2 + 3
 
@@ -184,7 +189,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunWithWrongOutputShape(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
     def simple_fn(x):
       return x * 2 + 3
 
@@ -196,7 +201,8 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunWithInvalidInput(self):
 
-    @function.Defun(dtypes.int32)
+    @function.defun(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)])
     def simple_fn(x):
       return x * 2
 
@@ -212,12 +218,12 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def _assert_op_cancelled(self, sess, map_defun_op):
     with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
-      sess.run(map_defun_op)
+      self.evaluate(map_defun_op)
 
   def testMapDefunWithParentCancellation(self):
     # Checks that a cancellation of the parent graph is threaded through to
     # MapDefunOp correctly.
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def simple_fn(x):
       del x
       queue = data_flow_ops.FIFOQueue(10, dtypes.int32, ())
@@ -238,7 +244,7 @@ class MapDefunTest(test_base.DatasetTestBase):
   def testMapDefunWithCapturedInputs(self):
     c = constant_op.constant(2)
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def fn(x):
       return x + c
 
@@ -254,10 +260,10 @@ class MapDefunBenchmark(test.Benchmark):
     with session.Session() as sess:
       # Warm up the session
       for _ in range(5):
-        sess.run(op)
+        self.evaluate(op)
       start = time.time()
       for _ in range(num_iters):
-        sess.run(op)
+        self.evaluate(op)
       end = time.time()
       mean_us = (end - start) * 1e6 / num_iters
       self.report_benchmark(
@@ -269,7 +275,7 @@ class MapDefunBenchmark(test.Benchmark):
   def benchmarkDefunVsMapFn(self):
     """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""
 
-    @function.Defun(dtypes.int32)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def defun(x):
       return array_ops.identity(x)
 

@@ -172,7 +172,7 @@ class CachedTypeCheck {
     auto* type = Py_TYPE(o);
 
     {
-      mutex_lock l(type_to_sequence_map_mu_);
+      tf_shared_lock l(type_to_sequence_map_mu_);
       auto it = type_to_sequence_map_.find(type);
       if (it != type_to_sequence_map_.end()) {
         return it->second;
@@ -195,7 +195,12 @@ class CachedTypeCheck {
       mutex_lock l(type_to_sequence_map_mu_);
       if (type_to_sequence_map_.size() < kMaxItemsInCache) {
         Py_INCREF(type);
-        type_to_sequence_map_.insert({type, check_result});
+        auto insert_result = type_to_sequence_map_.insert({type, check_result});
+        if (!insert_result.second) {
+          // The type was added to the cache by a concurrent thread after we
+          // looked it up above.
+          Py_DECREF(type);
+        }
       }
     }
 
@@ -825,18 +830,16 @@ PyObject* IsNamedtuple(PyObject* o, bool strict) {
 }
 
 PyObject* SameNamedtuples(PyObject* o1, PyObject* o2) {
-  PyObject* f1 = PyObject_GetAttrString(o1, "_fields");
-  PyObject* f2 = PyObject_GetAttrString(o2, "_fields");
+  Safe_PyObjectPtr f1 = make_safe(PyObject_GetAttrString(o1, "_fields"));
+  Safe_PyObjectPtr f2 = make_safe(PyObject_GetAttrString(o2, "_fields"));
   if (f1 == nullptr || f2 == nullptr) {
-    Py_XDECREF(f1);
-    Py_XDECREF(f2);
     PyErr_SetString(
         PyExc_RuntimeError,
         "Expected namedtuple-like objects (that have _fields attr)");
     return nullptr;
   }
 
-  if (PyObject_RichCompareBool(f1, f2, Py_NE)) {
+  if (PyObject_RichCompareBool(f1.get(), f2.get(), Py_NE)) {
     Py_RETURN_FALSE;
   }
 

@@ -73,6 +73,17 @@ bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
+bool IsCastLike(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kCastLikeOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "Angle", "Bucketize", "Cast", "CompareAndBitpack", "Dequantize",
+          "HistogramFixedWidth", "Imag", "IsFinite", "IsInf", "IsNan",
+          "Quantize", "QuantizeDownAndShrinkRange", "QuantizeV2",
+          "QuantizedInstanceNorm", "QuantizedRelu", "QuantizedRelu6",
+          "QuantizedReluX", "Real", "Requantize"}));
+  return kCastLikeOps->count(node.op()) > 0;
+}
+
 bool IsCheckNumerics(const NodeDef& node) {
   return node.op() == "CheckNumerics";
 }
@@ -195,11 +206,18 @@ bool IsExit(const NodeDef& node) {
 
 bool IsExp(const NodeDef& node) { return node.op() == "Exp"; }
 
+bool IsFakeParam(const NodeDef& node) { return node.op() == "FakeParam"; }
+
 bool IsFill(const NodeDef& node) { return node.op() == "Fill"; }
 
 bool IsFloorDiv(const NodeDef& node) { return node.op() == "FloorDiv"; }
 
 bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
+
+bool IsFusedBatchNorm(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "FusedBatchNorm" || op == "FusedBatchNormV2";
+}
 
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
@@ -216,9 +234,6 @@ bool IsHistogramSummary(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
-  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
-    return true;
-  }
   return op == "Identity" || op == "RefIdentity";
 }
 
@@ -227,11 +242,20 @@ bool IsIdentityN(const NodeDef& node) {
   return op == "IdentityN";
 }
 
+bool IsIdentityNSingleInput(const NodeDef& node) {
+  return IsIdentityN(node) && node.attr().count("T") != 0 &&
+         node.attr().at("T").list().type_size() == 1;
+}
+
 bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }
 
 bool IsIgammac(const NodeDef& node) { return node.op() == "Igammac"; }
 
 bool IsImag(const NodeDef& node) { return node.op() == "Imag"; }
+
+bool IsImmutableConst(const NodeDef& node) {
+  return node.op() == "ImmutableConst";
+}
 
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
 
@@ -298,6 +322,10 @@ bool IsPad(const NodeDef& node) {
   return op == "Pad" || op == "PadV2";
 }
 
+bool IsPartitionedCall(const NodeDef& node) {
+  return node.op() == "PartitionedCall";
+}
+
 bool IsPlaceholder(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
@@ -339,6 +367,8 @@ bool IsReduction(const NodeDef& node) {
   return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
          op == "Mean" || op == "Any" || op == "All";
 }
+
+bool IsRelu(const NodeDef& node) { return node.op() == "Relu"; }
 
 bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 
@@ -414,6 +444,10 @@ bool IsStackPushOp(const NodeDef& node) {
 }
 bool IsStackPopOp(const NodeDef& node) {
   return node.op() == "StackPop" || node.op() == "StackPopV2";
+}
+
+bool IsStatefulPartitionedCall(const NodeDef& node) {
+  return node.op() == "StatefulPartitionedCall";
 }
 
 bool IsStopGradient(const NodeDef& node) {
@@ -517,14 +551,15 @@ bool MaybeHasRefInput(const NodeDef& node) {
   return false;
 }
 
-bool IsFreeOfSideEffect(const NodeDef& node) {
+bool IsFreeOfSideEffect(const NodeDef& node,
+                        const OpRegistryInterface* op_registry) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
     return false;
   }
   const OpDef* op_def = nullptr;
   const string& op_name = node.op();
-  Status status = OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -541,7 +576,15 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
   if (node.op().find("Queue") != string::npos) {
     return false;
   }
+  // Sending a tensor via a network is a side effect.
+  if (IsSend(node)) {
+    return false;
+  }
   return !ModifiesInputsInPlace(node);
+}
+
+bool IsFreeOfSideEffect(const NodeDef& node) {
+  return IsFreeOfSideEffect(node, OpRegistry::Global());
 }
 
 bool ModifiesInputsInPlace(const NodeDef& node) {
@@ -630,8 +673,15 @@ bool IsValuePreserving(const NodeDef& node) {
       CHECK_NOTNULL((new gtl::FlatSet<string>{
           "InvertPermutation",
           "Reverse",
+          "ReverseV2",
           "Roll",
           "Transpose",
+          "DepthToSpace",
+          "SpaceToDepth",
+          "BatchToSpace",
+          "BatchToSpaceND",
+          "SpaceToBatch",
+          "SpaceToBatchND",
       }));
   return IsValueAndOrderPreserving(node) ||
          kValuePreservingOps->count(node.op()) > 0;

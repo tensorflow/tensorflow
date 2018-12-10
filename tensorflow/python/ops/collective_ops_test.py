@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import test
 
@@ -32,7 +33,7 @@ class CollectiveOpTest(test.TestCase):
   def _testCollectiveReduce(self, t0, t1, expected, set_graph_key):
     group_key = 1
     instance_key = 1
-    with self.test_session(
+    with self.session(
         config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)
@@ -49,23 +50,26 @@ class CollectiveOpTest(test.TestCase):
     self.assertAllClose(results[0], expected, rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[1], expected, rtol=1e-5, atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testCollectiveReduce(self):
     self._testCollectiveReduce([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
                                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
                                [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2], True)
 
+  @test_util.run_deprecated_v1
   def testCollectiveAutoGraphKey(self):
     self._testCollectiveReduce([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
                                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
                                [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2], False)
 
+  @test_util.run_deprecated_v1
   def testCollectiveReduceScalar(self):
     self._testCollectiveReduce(0.1, 0.3, 0.2, True)
 
   def _testCollectiveBroadcast(self, t0):
     group_key = 1
     instance_key = 1
-    with self.test_session(
+    with self.session(
         config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)
@@ -81,6 +85,7 @@ class CollectiveOpTest(test.TestCase):
     self.assertAllClose(results[0], t0, rtol=1e-5, atol=1e-5)
     self.assertAllClose(results[1], t0, rtol=1e-5, atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testCollectiveBroadcast(self):
     self._testCollectiveBroadcast([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1])
 

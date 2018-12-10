@@ -21,7 +21,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/strings/str_cat.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -72,6 +72,222 @@ Status CheckFeedFetchNameConflicts(const string& kind,
       return errors::InvalidArgument("conflicting ", kind, " name: ", name,
                                      " and ", name_data);
     }
+  }
+  return Status::OK();
+}
+
+// For graph `g`, copy all function call nodes' FunctionDef from `lookup_fld` to
+// `fld`. This is to ensure that `fld` can instantiate FunctionDef of graph `g`.
+Status CopyAssociatedFunctions(Graph* g,
+                               const FunctionLibraryDefinition* lookup_fld,
+                               FunctionLibraryDefinition* fld) {
+  for (Node* n : g->op_nodes()) {
+    for (const auto& associated_function :
+         GetAssociatedFunctions(*n, lookup_fld)) {
+      switch (associated_function.type()) {
+        case AssociatedFunctionInfo::kFunctionCallNode: {
+          const FunctionDef* fdef =
+              lookup_fld->Find(associated_function.func_name());
+          if (!fdef) {
+            return errors::Internal(
+                "Cannot find function ", associated_function.func_name(),
+                " for function call node ", n->DebugString());
+          }
+          TF_RETURN_IF_ERROR(fld->AddFunctionDef(*fdef));
+          break;
+        }
+        case AssociatedFunctionInfo::kSymbolicGradient:
+        case AssociatedFunctionInfo::kFunctionAttr:
+          break;
+      }
+    }
+  }
+  return Status::OK();
+}
+
+// For graph `g`, replaces _Arg nodes whose "index" attribute is in
+// `const_input_index_to_node` with Const nodes.
+Status ReplaceArgUsageWithConstNode(
+    Graph* g,
+    const std::unordered_map<int, const Node*>& const_input_index_to_node) {
+  // Collect all _Arg nodes.
+  std::unordered_map<int, Node*> arg_nodes;
+  for (Node* n : g->op_nodes()) {
+    if (n->type_string() == FunctionLibraryDefinition::kArgOp) {
+      int index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      arg_nodes[index] = n;
+    }
+  }
+
+  for (const auto& iter : const_input_index_to_node) {
+    int arg_index = iter.first;
+    Node* const_node = g->CopyNode(iter.second);
+    Node* arg_node = arg_nodes[arg_index];
+
+    // Collect all usages of the _Arg node.
+    struct OutEdgeInfo {
+      int dst_node_id, dst_input;
+    };
+    std::vector<OutEdgeInfo> usages;
+    for (const Edge* e : arg_node->out_edges()) {
+      if (e->IsControlEdge()) {
+        continue;
+      }
+      usages.push_back({e->dst()->id(), e->dst_input()});
+    }
+
+    for (int i = 0; i < usages.size(); i++) {
+      // Make a copy of `usage_node`, and change its input to const node.
+      Node* usage_node = g->FindNodeId(usages[i].dst_node_id);
+      NodeDef replace_def = usage_node->def();
+      *replace_def.mutable_input(usages[i].dst_input) = const_node->name();
+      TF_ASSIGN_OR_RETURN(Node * replace_node,
+                          ReplaceNode(g, usage_node, replace_def));
+      const Edge* usage_edge;
+      TF_RETURN_IF_ERROR(
+          replace_node->input_edge(usages[i].dst_input, &usage_edge));
+      g->RemoveEdge(usage_edge);
+      g->AddEdge(const_node, 0, replace_node, usages[i].dst_input);
+
+      // Later entries in `usages` might have `usage_node` as dst node, but
+      // `usage_node` is removed. Replace such entries with `replace_node`.
+      for (int j = i + 1; j < usages.size(); j++) {
+        if (usages[j].dst_node_id == usages[i].dst_node_id) {
+          usages[j].dst_node_id = replace_node->id();
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
+// For a node's function attr (e.g. then/else branch for "If" nodes), rewrites
+// the function to replace _Arg nodes in `const_input_index_to_node` with Const
+// inputs.
+Status PropagateConstIntoFuncAttr(
+    Node* n, const string& attr_name,
+    const std::unordered_map<int, const Node*>& const_input_index_to_node,
+    const FunctionLibraryDefinition* lookup_fld,
+    FunctionLibraryDefinition* fld) {
+  // Instantiate the function.
+  NameAttrList func_attr;
+  TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), attr_name, &func_attr));
+  const FunctionDef* fdef = lookup_fld->Find(func_attr.name());
+  if (!fdef) {
+    return errors::Internal("Cannot find function ", func_attr.name(),
+                            " for node ", n->name());
+  }
+  FunctionBody* fbody;
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+      *fdef, AttrSlice(&func_attr.attr()), lookup_fld,
+      [lookup_fld](const string& op, const OpDef** sig) {
+        return lookup_fld->LookUpOpDef(op, sig);
+      },
+      &fbody));
+  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+
+  // Rewrite _Arg usages with Const node.
+  Graph* func_graph = fbody->graph;
+  TF_RETURN_IF_ERROR(
+      ReplaceArgUsageWithConstNode(func_graph, const_input_index_to_node));
+
+  // Save rewritten function.
+  FunctionDef replace_fdef;
+  string new_func_name =
+      fld->UniqueFunctionName(absl::StrCat(func_attr.name(), "_const_"));
+  TF_RETURN_IF_ERROR(
+      GraphToFunctionDef(*func_graph, new_func_name, &replace_fdef));
+  TF_RETURN_IF_ERROR(fld->AddFunctionDef(replace_fdef));
+
+  // Change the node to use rewritten function.
+  func_attr.set_name(new_func_name);
+  n->ClearAttr(attr_name);
+  n->AddAttr(attr_name, func_attr);
+
+  // Copy associated functions.
+  TF_RETURN_IF_ERROR(CopyAssociatedFunctions(func_graph, lookup_fld, fld));
+
+  return Status::OK();
+}
+
+// For an "If" node in graph `g`, if it has Const node inputs, rewrite its
+// then/else branch function to replace _Arg nodes with those Const inputs.
+Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
+                                const FunctionLibraryDefinition* lookup_fld,
+                                FunctionLibraryDefinition* fld) {
+  // Notice that first input for If node is predicate; other inputs are function
+  // inputs.
+  std::unordered_map<int, const Node*> const_input_index_to_node;
+  for (int i = 1; i < if_node->num_inputs(); i++) {
+    const Node* input_node;
+    TF_RETURN_IF_ERROR(if_node->input_node(i, &input_node));
+    if (input_node->type_string() == "Const") {
+      const_input_index_to_node[i - 1] = input_node;
+    }
+  }
+  if (const_input_index_to_node.empty()) {
+    return Status::OK();
+  }
+
+  // Rewrite "then_branch" and "else_branch" function, replace usage of those
+  // _Arg nodes with corresponding const node.
+  for (const auto& attr_name :
+       std::vector<string>{"then_branch", "else_branch"}) {
+    TF_RETURN_IF_ERROR(PropagateConstIntoFuncAttr(
+        if_node, attr_name, const_input_index_to_node, lookup_fld, fld));
+  }
+
+  return Status::OK();
+}
+
+// For a "While" node in graph `g`, if it has Const node inputs, rewrite its
+// cond/body function to replace _Arg nodes with those Const inputs.
+Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
+                                   const FunctionLibraryDefinition* lookup_fld,
+                                   FunctionLibraryDefinition* fld) {
+  // For "While" node, we should only replace _Arg nodes which are loop
+  // invariants. For such _Arg nodes, the return value's input will come
+  // directly from the corresponding arg.
+  std::unordered_map<int, const Node*> const_input_index_to_node;
+  NameAttrList body_attr;
+  TF_RETURN_IF_ERROR(GetNodeAttr(while_node->def(), "body", &body_attr));
+  const FunctionDef* body_func = lookup_fld->Find(body_attr.name());
+  if (!body_func) {
+    return errors::Internal("Cannot find body function ", body_attr.name(),
+                            " for While node ", while_node->name());
+  }
+  for (int i = 0; i < while_node->num_inputs(); i++) {
+    const Node* input_node;
+    TF_RETURN_IF_ERROR(while_node->input_node(i, &input_node));
+    if (input_node->type_string() != "Const") {
+      continue;
+    }
+
+    // Check if i-th retval's input comes from i-th arg directly.
+    const OpDef_ArgDef& output_arg = body_func->signature().output_arg(i);
+    auto output_arg_input = body_func->ret().find(output_arg.name());
+    if (output_arg_input == body_func->ret().end()) {
+      return errors::Internal("Cannot find input for output arg ",
+                              output_arg.name(), " in function ",
+                              body_attr.name());
+    }
+    const OpDef_ArgDef& input_arg = body_func->signature().input_arg(i);
+    if (output_arg_input->second != input_arg.name()) {
+      continue;
+    }
+
+    const_input_index_to_node[i] = input_node;
+  }
+  if (const_input_index_to_node.empty()) {
+    return Status::OK();
+  }
+
+  // Rewrite "cond" and "body" function, replace usage of those _Arg nodes with
+  // corresponding const node.
+  for (const auto& attr_name : std::vector<string>{"cond", "body"}) {
+    TF_RETURN_IF_ERROR(PropagateConstIntoFuncAttr(
+        while_node, attr_name, const_input_index_to_node, lookup_fld, fld));
   }
   return Status::OK();
 }
@@ -294,7 +510,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
   return Status::OK();
 }
 
-void AddDtypeToKernalDefConstraint(absl::string_view name, DataType dtype,
+void AddDtypeToKernelDefConstraint(absl::string_view name, DataType dtype,
                                    KernelDef* kdef) {
   for (KernelDef::AttrConstraint& constraint : *kdef->mutable_constraint()) {
     if (constraint.name() == name) {
@@ -330,8 +546,8 @@ uint32 GetXLARandomSeed() {
 
 // TODO(b/77601805): add tests for associated function related stuff.
 bool HasAssociatedFunction(const NodeDef& node_def,
-                           FunctionLibraryRuntime* flr) {
-  if (flr->GetFunctionLibraryDefinition()->Contains(node_def.op())) {
+                           const FunctionLibraryDefinition* fld) {
+  if (fld->Contains(node_def.op())) {
     return true;
   }
 
@@ -351,10 +567,10 @@ bool HasAssociatedFunction(const NodeDef& node_def,
 }
 
 std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
-    const Node& node, FunctionLibraryRuntime* flr) {
+    const Node& node, const FunctionLibraryDefinition* fld) {
   std::vector<AssociatedFunctionInfo> results;
   const string& op = node.type_string();
-  if (flr->GetFunctionLibraryDefinition()->Contains(op)) {
+  if (fld->Contains(op)) {
     // This is a function call node.
     AttrValueMap attrs(node.attrs().begin(), node.attrs().end());
     results.emplace_back(AssociatedFunctionInfo::FunctionCall(op, attrs));
@@ -438,6 +654,99 @@ Status RewriteAssociatedFunction(
     }
   }
 
+  return Status::OK();
+}
+
+Status CachedFunctionHandles::GetOrInstantiate(
+    const string& func_name, AttrSlice attrs,
+    FunctionLibraryRuntime::Handle* handle) {
+  string canonicalized_name = Canonicalize(func_name, attrs);
+  auto iter = handles_.find(canonicalized_name);
+  if (iter != handles_.end()) {
+    *handle = iter->second;
+    return Status::OK();
+  }
+
+  TF_RETURN_IF_ERROR(flr_->Instantiate(func_name, attrs, handle));
+  handles_[canonicalized_name] = *handle;
+  return Status::OK();
+}
+
+Status CachedFunctionHandles::ReleaseAllHandles() {
+  Status result;
+  for (auto iter : handles_) {
+    result.Update(flr_->ReleaseHandle(iter.second));
+  }
+  handles_.clear();
+  return result;
+}
+
+xla::StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
+  // Create the replacement node.
+  Status s;
+  Node* new_node = g->AddNode(node_def, &s);
+  if (!s.ok()) {
+    return s;
+  }
+
+  // Record original node's output edges and remove them first. This is to avoid
+  // multiple producers for dst nodes' input.
+  std::vector<OutEdgeInfo> out_edge_info;
+  std::vector<const Edge*> out_edges;
+  for (const Edge* edge : n->out_edges()) {
+    out_edges.push_back(edge);
+    out_edge_info.push_back(
+        {edge->dst(), edge->src_output(), edge->dst_input()});
+  }
+  for (const Edge* edge : out_edges) {
+    g->RemoveEdge(edge);
+  }
+
+  // Add original node's input and output edges to the replacement node.
+  for (const Edge* in_edge : n->in_edges()) {
+    g->AddEdge(in_edge->src(), in_edge->src_output(), new_node,
+               in_edge->dst_input());
+  }
+  for (const OutEdgeInfo& out_edge : out_edge_info) {
+    g->AddEdge(new_node, out_edge.src_output, out_edge.dst, out_edge.dst_input);
+  }
+
+  // Remove the original node.
+  g->RemoveNode(n);
+
+  return new_node;
+}
+
+xla::StatusOr<Node*> BuildIdentityNode(
+    Graph* graph, const string& node_name, DataType dtype, const Node* input,
+    absl::optional<string> requested_device) {
+  // Create identity node.
+  NodeDef ndef;
+  ndef.set_name(node_name);
+  ndef.set_op("Identity");
+  if (input) {
+    ndef.add_input(input->name());
+  }
+  if (requested_device) {
+    ndef.set_device(*requested_device);
+  }
+  AddNodeAttr("T", dtype, &ndef);
+  Status s;
+  Node* id_node = graph->AddNode(ndef, &s);
+  TF_RETURN_IF_ERROR(s);
+  return id_node;
+}
+
+Status PropagateConstIntoFunctionalNodes(
+    Graph* g, const FunctionLibraryDefinition* lookup_fld,
+    FunctionLibraryDefinition* fld) {
+  for (Node* n : g->op_nodes()) {
+    if (n->type_string() == "If") {
+      TF_RETURN_IF_ERROR(PropagateConstIntoIfNode(g, n, lookup_fld, fld));
+    } else if (n->type_string() == "While") {
+      TF_RETURN_IF_ERROR(PropagateConstIntoWhileNode(g, n, lookup_fld, fld));
+    }
+  }
   return Status::OK();
 }
 

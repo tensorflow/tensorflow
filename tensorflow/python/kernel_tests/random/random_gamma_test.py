@@ -26,6 +26,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -43,19 +44,21 @@ class RandomGammaTest(test.TestCase):
   def _Sampler(self, num, alpha, beta, dtype, use_gpu, seed=None):
 
     def func():
-      with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
+      with self.session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.random_gamma(
             [num], alpha, beta=beta, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
 
+  @test_util.run_deprecated_v1
   def testMomentsFloat32(self):
     self._testMoments(dtypes.float32)
 
+  @test_util.run_deprecated_v1
   def testMomentsFloat64(self):
     self._testMoments(dtypes.float64)
 
@@ -208,6 +211,7 @@ class RandomGammaTest(test.TestCase):
         sy = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=345)
         self.assertAllEqual(sx(), sy())
 
+  @test_util.run_deprecated_v1
   def testNoCSE(self):
     """CSE = constant subexpression eliminator.
 
@@ -216,12 +220,13 @@ class RandomGammaTest(test.TestCase):
     """
     for dtype in dtypes.float16, dtypes.float32, dtypes.float64:
       for use_gpu in [False, True]:
-        with self.test_session(use_gpu=use_gpu):
+        with self.cached_session(use_gpu=use_gpu):
           rnd1 = random_ops.random_gamma([24], 2.0, dtype=dtype)
           rnd2 = random_ops.random_gamma([24], 2.0, dtype=dtype)
           diff = rnd2 - rnd1
           self.assertGreater(np.linalg.norm(diff.eval()), 0.1)
 
+  @test_util.run_deprecated_v1
   def testShape(self):
     # Fully known shape.
     rnd = random_ops.random_gamma([150], 2.0)
@@ -253,6 +258,7 @@ class RandomGammaTest(test.TestCase):
     rnd = random_ops.random_gamma([50], array_ops.placeholder(dtypes.float32))
     self.assertIs(None, rnd.get_shape().ndims)
 
+  @test_util.run_deprecated_v1
   def testPositive(self):
     n = int(10e3)
     for dt in [dtypes.float16, dtypes.float32, dtypes.float64]:

@@ -45,7 +45,7 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.tools import saved_model_utils
 
 # Set of ops to blacklist.
-_OP_BLACKLIST = set(['WriteFile', 'ReadFile'])
+_OP_BLACKLIST = set(['WriteFile', 'ReadFile', 'PrintV2'])
 
 
 def _show_tag_sets(saved_model_dir):

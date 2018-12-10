@@ -44,7 +44,7 @@ class DynamicDecodeRNNTest(test.TestCase):
     cell_depth = 10
     max_out = max(sequence_length)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       if time_major:
         inputs = np.random.randn(max_time, batch_size,
                                  input_depth).astype(np.float32)
@@ -126,7 +126,7 @@ class DynamicDecodeRNNTest(test.TestCase):
     cell_depth = 10
     max_out = max(sequence_length)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
 

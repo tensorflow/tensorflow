@@ -118,13 +118,7 @@ class ReducePrecisionInsertion : public HloModulePass {
     // equivalent behavior can be obtained by adding ReducePrecision
     // instructions after the instructions that pull the F32 arrays out of
     // the tuples.
-    //
-    // TODO(b/64093391): Remove the IsScalar check once this won't cause
-    // failures on the GPU backend if the ReducePrecision instruction ends up
-    // inserted between a scalar constant and the init_value argument of a
-    // Reduce operation.
-    return shape.element_type() == PrimitiveType::F32 &&
-           !ShapeUtil::IsScalar(shape);
+    return shape.element_type() == PrimitiveType::F32;
   }
 
   // Is this instruction one such that following or preceding it with a new

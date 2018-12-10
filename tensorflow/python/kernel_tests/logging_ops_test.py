@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import sys
+import tempfile
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -35,9 +37,9 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
-
 class LoggingOpsTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAssertDivideByZero(self):
     with self.cached_session() as sess:
       epsilon = ops.convert_to_tensor(1e-20)
@@ -51,7 +53,7 @@ class LoggingOpsTest(test.TestCase):
               math_ops.less(epsilon, y), ["Divide-by-zero"])
       ]):
         out = math_ops.div(z, y)
-      self.assertAllEqual(2.0, out.eval())
+      self.assertAllEqual(2.0, self.evaluate(out))
       # assert(epsilon < x)
       # z / x
       #
@@ -62,7 +64,7 @@ class LoggingOpsTest(test.TestCase):
       ]):
         out = math_ops.div(z, x)
       with self.assertRaisesOpError("less than x"):
-        out.eval()
+        self.evaluate(out)
 
 
 class PrintV2Test(test.TestCase):
@@ -272,6 +274,30 @@ class PrintV2Test(test.TestCase):
       self.assertTrue((expected + "\n") in printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
+  def testPrintTensorsToFile(self):
+    tmpfile_name = tempfile.mktemp(".printv2_test")
+    tensor_0 = math_ops.range(0, 10)
+    print_op_0 = logging_ops.print_v2(tensor_0,
+                                      output_stream="file://"+tmpfile_name)
+    self.evaluate(print_op_0)
+    tensor_1 = math_ops.range(11, 20)
+    print_op_1 = logging_ops.print_v2(tensor_1,
+                                      output_stream="file://"+tmpfile_name)
+    self.evaluate(print_op_1)
+    try:
+      f = open(tmpfile_name, "r")
+      line_0 = f.readline()
+      expected_0 = "[0 1 2 ... 7 8 9]"
+      self.assertTrue(expected_0 in line_0)
+      line_1 = f.readline()
+      expected_1 = "[11 12 13 ... 17 18 19]"
+      self.assertTrue(expected_1 in line_1)
+      f.close()
+      os.remove(tmpfile_name)
+    except IOError as e:
+      self.fail(e)
+
+  @test_util.run_in_graph_and_eager_modes()
   def testInvalidOutputStreamRaisesError(self):
     with self.cached_session():
       tensor = math_ops.range(10)
@@ -280,12 +306,14 @@ class PrintV2Test(test.TestCase):
             tensor, output_stream="unknown")
         self.evaluate(print_op)
 
+  @test_util.run_deprecated_v1
   def testPrintOpName(self):
     with self.cached_session():
       tensor = math_ops.range(10)
       print_op = logging_ops.print_v2(tensor, name="print_name")
       self.assertEqual(print_op.name, "print_name")
 
+  @test_util.run_deprecated_v1
   def testNoDuplicateFormatOpGraphModeAfterExplicitFormat(self):
     with self.cached_session():
       tensor = math_ops.range(10)
@@ -305,6 +333,19 @@ class PrintV2Test(test.TestCase):
         with self.captureWritesToStream(sys.stderr) as printed:
           logging_ops.print_v2(tensor)
         self.assertTrue((expected + "\n") in printed.contents())
+
+  def testPrintsOrderedInDefun(self):
+    with context.eager_mode():
+
+      @function.defun
+      def prints():
+        logging_ops.print_v2("A")
+        logging_ops.print_v2("B")
+        logging_ops.print_v2("C")
+
+      with self.captureWritesToStream(sys.stderr) as printed:
+        prints()
+      self.assertTrue(("A\nB\nC\n") in printed.contents())
 
   @test_util.run_in_graph_and_eager_modes()
   def testPrintInDefunWithoutExplicitEvalOfPrint(self):
@@ -341,6 +382,7 @@ class PrintGradientTest(test.TestCase):
     inp_printed = logging_ops.Print(inp, ["hello"])
     self.assertEqual(inp.get_shape(), inp_printed.get_shape())
 
+  @test_util.run_deprecated_v1
   def testPrintGradient(self):
     with self.cached_session():
       inp = constant_op.constant(2.0, shape=[100, 32], name="in")
@@ -349,8 +391,8 @@ class PrintGradientTest(test.TestCase):
       wx_print = logging_ops.Print(wx, [w, w, w])
       wx_grad = gradients_impl.gradients(wx, w)[0]
       wx_print_grad = gradients_impl.gradients(wx_print, w)[0]
-      wxg = wx_grad.eval()
-      wxpg = wx_print_grad.eval()
+      wxg = self.evaluate(wx_grad)
+      wxpg = self.evaluate(wx_print_grad)
     self.assertAllEqual(wxg, wxpg)
 
 

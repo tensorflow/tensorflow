@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test as test_lib
@@ -39,6 +41,7 @@ def _add_test(test, test_name, fn):
 
 class TensordotTest(test_lib.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def test_invalid_shape(self):
     a = [[1, 2], [3, 4]]
     b = [[1, 2], [3, 4], [5, 6]]
@@ -62,6 +65,7 @@ class TensordotTest(test_lib.TestCase):
                 axes_ph: (a_axes, b_axes)
             })
 
+  @test_util.run_v1_only("b/120545219")
   def test_invalid_axes(self):
     a = [[1, 2], [3, 4]]
     b = [[1, 2], [3, 4]]
@@ -99,11 +103,12 @@ class TensordotTest(test_lib.TestCase):
 
         tf_a = array_ops.ones((3, 3), dtype=dtypes.float32)
         tf_b = constant_op.constant([2, 3, 1], dtype=dtypes.float32)[None, None]
-        tf_ans = math_ops.tensordot(tf_a, tf_b, axes_value).eval()
+        tf_ans = math_ops.tensordot(tf_a, tf_b, axes_value)
 
         self.assertAllEqual(tf_ans.shape, np_ans.shape)
         self.assertAllEqual(tf_ans, np_ans)
 
+  @test_util.run_v1_only("b/120545219")
   def test_partial_shape_inference(self):
     for axes in ([1], [0]), 1:
       a = array_ops.placeholder(dtypes.float32)
@@ -165,7 +170,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
     for _ in range(num_trials):
       a_np, b_np, a_dims_np, b_dims_np = _generate_random_tensors_and_dims()
       np_ans = np.tensordot(a_np, b_np, axes=(a_dims_np, b_dims_np))
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         if dynamic_shape_:
           a = array_ops.placeholder(dtype_)
           b = array_ops.placeholder(dtype_)
@@ -178,7 +183,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
                   axes: (a_dims_np, b_dims_np)
               })
         else:
-          tf_ans = math_ops.tensordot(a_np, b_np, (a_dims_np, b_dims_np)).eval()
+          tf_ans = math_ops.tensordot(a_np, b_np, (a_dims_np, b_dims_np))
       self.assertAllClose(tf_ans, np_ans, rtol=tol, atol=tol)
       self.assertAllEqual(tf_ans.shape, np_ans.shape)
 
@@ -201,14 +206,14 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
       all_axes.append(a_np.ndim - 1)
     for axes in all_axes:
       np_ans = np.tensordot(a_np, b_np, axes=axes)
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         if dynamic_shape_:
           a = array_ops.placeholder(dtype_)
           b = array_ops.placeholder(dtype_)
           c = math_ops.tensordot(a, b, axes=axes)
           tf_ans = sess.run(c, feed_dict={a: a_np, b: b_np})
         else:
-          tf_ans = math_ops.tensordot(a_np, b_np, axes=axes).eval()
+          tf_ans = math_ops.tensordot(a_np, b_np, axes=axes)
       self.assertAllClose(tf_ans, np_ans, rtol=tol, atol=tol)
       self.assertAllEqual(tf_ans.shape, np_ans.shape)
 
@@ -220,7 +225,8 @@ if __name__ == "__main__":
     for rank_a in 1, 2, 4, 5:
       for rank_b in 1, 2, 4, 5:
         for num_dims in range(0, min(rank_a, rank_b) + 1):
-          for dynamic_shape in False, True:
+          # TF2 does not support placeholders under eager so we skip it
+          for dynamic_shape in set([False, not tf2.enabled()]):
             for testcase in _get_tensordot_tests(dtype, rank_a, rank_b,
                                                  num_dims, dynamic_shape):
               name = "%s_%s_%s_%s_%s_%s" % (testcase.__name__, dtype.__name__,

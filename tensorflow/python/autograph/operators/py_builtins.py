@@ -120,8 +120,8 @@ def _tf_tensor_list_len(s):
 def _tf_tensor_len(s):
   """Overload of len_ for Tensor arguments."""
   # Statically shaped tensors: length is known ahead of time.
-  if s.shape.ndims and s.shape[0].value is not None:
-    return s.shape[0].value
+  if s.shape.ndims and s.shape.dims[0].value is not None:
+    return s.shape.dims[0].value
 
   # Static shape of unknown dimensions: use dynamic shape but statically
   # chech that it's a scalar.
@@ -133,7 +133,7 @@ def _tf_tensor_len(s):
     raise ValueError(
         'len requires a non-scalar tensor, got one of shape {}'.format(shape))
 
-  if shape.shape[0].value is not None:
+  if shape.shape.dims[0].value is not None:
     return array_ops.shape(s)[0]
 
   # Fully dynamic shape: use ops.
@@ -174,6 +174,7 @@ def _tf_py_func_print(objects, kwargs):
     override_kwargs['flush'] = True
 
   def print_wrapper(*vals):
+    vals = tuple(v.numpy() if tensor_util.is_tensor(v) else v for v in vals)
     if six.PY3:
       # TensorFlow doesn't seem to generate Unicode when passing strings to
       # py_func. This causes the print to add a "b'" wrapper to the output,
@@ -193,6 +194,7 @@ def range_(start_or_stop, stop=UNDEFINED, step=UNDEFINED):
 
 
 def _tf_range(start_or_stop, stop, step):
+  """Overload of range_ that generates a TF range tensor."""
   # Note: for static inputs (e.g. constants), tf.range errors out at graph
   # construction time, instead of returning an empty tensor. Preventing the
   # graph construction error aligns the semantics with Python.
@@ -216,10 +218,10 @@ def _py_range(start_or_stop, stop, step):
   return range(start_or_stop)
 
 
-SUPPORTED_BUILTINS = set((abs, float, int, len, print, range))
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range)
 
 if six.PY2:
-  SUPPORTED_BUILTINS.add(xrange)
+  SUPPORTED_BUILTINS += (xrange,)
 
 BUILTIN_FUINCTIONS_MAP = {
     'abs': abs_,
@@ -228,5 +230,6 @@ BUILTIN_FUINCTIONS_MAP = {
     'len': len_,
     'print': print_,
     'range': range_,
+    # TODO(mdan): This might make more sense as tf.data.range.
     'xrange': range_,
 }

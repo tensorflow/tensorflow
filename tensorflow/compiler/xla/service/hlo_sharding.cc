@@ -469,6 +469,9 @@ absl::optional<HloSharding> HloSharding::ExtractSingleSharding() const {
   if (!IsTuple()) {
     return *this;
   }
+  if (tuple_elements_.empty()) {
+    return absl::nullopt;
+  }
   for (int64 i = 1; i < tuple_elements_.size(); ++i) {
     if (tuple_elements_[0] != tuple_elements_[i]) {
       return absl::nullopt;

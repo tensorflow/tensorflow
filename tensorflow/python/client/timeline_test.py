@@ -57,12 +57,13 @@ class TimelineTest(test.TestCase):
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
 
+  @test_util.run_deprecated_v1
   def testTimelineCpu(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
     run_metadata = config_pb2.RunMetadata()
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       const1 = constant_op.constant(1.0, name='const1')
       const2 = constant_op.constant(2.0, name='const2')
       result = math_ops.add(const1, const2) + const1 * const2
@@ -93,7 +94,7 @@ class TimelineTest(test.TestCase):
         trace_level=config_pb2.RunOptions.FULL_TRACE)
     run_metadata = config_pb2.RunMetadata()
 
-    with self.test_session(force_gpu=True) as sess:
+    with self.session(force_gpu=True) as sess:
       const1 = constant_op.constant(1.0, name='const1')
       const2 = constant_op.constant(2.0, name='const2')
       result = math_ops.add(const1, const2) + const1 * const2
@@ -147,7 +148,7 @@ class TimelineTest(test.TestCase):
         num2 = variables.Variable(2.0, name='num2')
       with ops.device('/cpu:2'):
         result = num1 + num2 + num1 * num2
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       sess.run(result, options=run_options, run_metadata=run_metadata)
 
     self.assertTrue(run_metadata.HasField('step_stats'))
@@ -176,7 +177,7 @@ class TimelineTest(test.TestCase):
         num2 = variables.Variable(2.0, name='num2')
       with ops.device('/cpu:2'):
         result = num1 + num2 + num1 * num2
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       sess.run(result, options=run_options, run_metadata=run_metadata)
     self.assertTrue(run_metadata.HasField('step_stats'))
     step_stats = run_metadata.step_stats

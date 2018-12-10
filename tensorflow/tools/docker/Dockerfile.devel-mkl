@@ -1,9 +1,9 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 LABEL maintainer="Clayne Robison <clayne.b.robison@intel.com>"
 
 # These parameters can be overridden by parameterized_docker_build.sh
-ARG TF_BUILD_VERSION=r1.11
+ARG TF_BUILD_VERSION=r1.12
 ARG PYTHON="python"
 ARG PYTHON3_DEV=""
 ARG WHL_DIR="/tmp/pip"
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
-        libpng12-dev \
+        libpng-dev \
         libzmq3-dev \
         libssl-dev \
         pkg-config \
@@ -115,6 +115,7 @@ RUN export TAG_PREFIX="v" && \
     fi
 
 RUN yes "" | ${PYTHON} configure.py
+RUN cp .bazelrc /root/.bazelrc
 
 ENV CI_BUILD_PYTHON ${PYTHON}
 
@@ -125,7 +126,8 @@ ENV CI_BUILD_PYTHON ${PYTHON}
 # --copt=-march="avx" \
 # For haswell, broadwell, or skylake
 # --copt=-march="avx2" \
-COPY .bazelrc /root/.bazelrc
+COPY .bazelrc /root/.mkl.bazelrc
+RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
 
 RUN tensorflow/tools/ci_build/builds/configured CPU \
     bazel --bazelrc=/root/.bazelrc build -c opt \

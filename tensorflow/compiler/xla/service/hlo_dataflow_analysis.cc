@@ -126,7 +126,7 @@ bool HloDataflowAnalysis::ValueIsDefinedAt(const HloInstruction* instruction,
 
 const HloValue& HloDataflowAnalysis::GetValueDefinedAt(
     const HloInstruction* instruction, const ShapeIndex& index) const {
-  CHECK(ValueIsDefinedAt(instruction, index));
+  CHECK(ValueIsDefinedAt(instruction, index)) << instruction->ToString();
   return GetUniqueValueAt(instruction, index);
 }
 
@@ -466,6 +466,21 @@ bool HloDataflowAnalysis::UpdateDomainValueSet(HloInstruction* domain) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateAddDependencyValueSet(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand.
+  CHECK_EQ(add_dependency->opcode(), HloOpcode::kAddDependency);
+  const InstructionValueSet& operand_set =
+      GetInstructionValueSet(add_dependency->operand(0));
+  InstructionValueSet& add_dependency_set =
+      GetInstructionValueSet(add_dependency);
+  if (operand_set != add_dependency_set) {
+    add_dependency_set = operand_set;
+    return true;
+  }
+  return false;
+}
+
 bool HloDataflowAnalysis::UpdateGetTupleElementValueSet(HloInstruction* gte) {
   CHECK_EQ(gte->opcode(), HloOpcode::kGetTupleElement);
   bool changed = false;
@@ -622,6 +637,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
     HloInstruction* instruction) {
   // Recompute from operands.
   switch (instruction->opcode()) {
+    case HloOpcode::kAddDependency:
+      return UpdateAddDependencyValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
     case HloOpcode::kDomain:
@@ -795,6 +812,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_all_values();
           }
           break;
+        case HloOpcode::kAddDependency:
         case HloOpcode::kWhile:
         case HloOpcode::kCall:
         case HloOpcode::kConditional:
@@ -1048,6 +1066,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
 
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
+      user->opcode() == HloOpcode::kScatter ||
       user->opcode() == HloOpcode::kWhile) {
     // We eliminated other users in BufferLiveness::live_range_strictly_before,
     // so here we just need to check that the use is at operand index 0.

@@ -130,9 +130,7 @@ TEST(ResourceOperationSafetyAnalysisTest, ReadModify) {
   std::vector<std::pair<int, int>> incompatible_pairs;
   TF_ASSERT_OK(ComputeIncompatiblePairs(root.graph(), &incompatible_pairs));
 
-  EXPECT_EQ(incompatible_pairs.size(), 1);
-  std::pair<int, int> read_modify_pair = {read->id(), modify->id()};
-  EXPECT_EQ(incompatible_pairs[0], read_modify_pair);
+  EXPECT_EQ(incompatible_pairs.size(), 0);
 }
 
 TEST(ResourceOperationSafetyAnalysisTest, ModifyRead) {
@@ -162,9 +160,7 @@ TEST(ResourceOperationSafetyAnalysisTest, ModifyWrite) {
   std::vector<std::pair<int, int>> incompatible_pairs;
   TF_ASSERT_OK(ComputeIncompatiblePairs(root.graph(), &incompatible_pairs));
 
-  EXPECT_EQ(incompatible_pairs.size(), 1);
-  std::pair<int, int> modify_write_pair = {modify->id(), write->id()};
-  EXPECT_EQ(incompatible_pairs[0], modify_write_pair);
+  EXPECT_EQ(incompatible_pairs.size(), 0);
 }
 
 TEST(ResourceOperationSafetyAnalysisTest, WriteModify) {
@@ -196,11 +192,7 @@ TEST(ResourceOperationSafetyAnalysisTest, ReadModifyWrite) {
   std::vector<std::pair<int, int>> incompatible_pairs;
   TF_ASSERT_OK(ComputeIncompatiblePairs(root.graph(), &incompatible_pairs));
 
-  EXPECT_EQ(incompatible_pairs.size(), 2);
-  std::pair<int, int> modify_write_pair = {modify->id(), write->id()};
-  std::pair<int, int> read_modify_pair = {read->id(), modify->id()};
-  EXPECT_EQ(incompatible_pairs[0], read_modify_pair);
-  EXPECT_EQ(incompatible_pairs[1], modify_write_pair);
+  EXPECT_EQ(incompatible_pairs.size(), 0);
 }
 
 TEST(ResourceOperationSafetyAnalysisTest, WriteModifyRead) {
@@ -239,14 +231,12 @@ TEST(ResourceOperationSafetyAnalysisTest, WriteReadModify) {
   std::vector<std::pair<int, int>> incompatible_pairs;
   TF_ASSERT_OK(ComputeIncompatiblePairs(root.graph(), &incompatible_pairs));
 
-  ASSERT_EQ(incompatible_pairs.size(), 3);
+  ASSERT_EQ(incompatible_pairs.size(), 2);
 
   std::pair<int, int> write_modify_pair = {write->id(), modify->id()};
   std::pair<int, int> write_read_pair = {write->id(), read->id()};
-  std::pair<int, int> read_modify_pair = {read->id(), modify->id()};
-  EXPECT_EQ(incompatible_pairs[0], read_modify_pair);
-  EXPECT_EQ(incompatible_pairs[1], write_read_pair);
-  EXPECT_EQ(incompatible_pairs[2], write_modify_pair);
+  EXPECT_EQ(incompatible_pairs[0], write_read_pair);
+  EXPECT_EQ(incompatible_pairs[1], write_modify_pair);
 }
 
 FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
@@ -307,9 +297,7 @@ TEST(ResourceOperationSafetyAnalysisTest, ReadCall) {
   std::vector<std::pair<int, int>> incompatible_pairs;
   TF_ASSERT_OK(ComputeIncompatiblePairs(root.graph(), &incompatible_pairs));
 
-  ASSERT_EQ(incompatible_pairs.size(), 1);
-  std::pair<int, int> read_call_edge = {read->id(), call->id()};
-  EXPECT_EQ(incompatible_pairs[0], read_call_edge);
+  EXPECT_EQ(incompatible_pairs.size(), 0);
 }
 
 TEST(ResourceOperationSafetyAnalysisTest, CallWrite) {
@@ -329,9 +317,7 @@ TEST(ResourceOperationSafetyAnalysisTest, CallWrite) {
   std::vector<std::pair<int, int>> incompatible_pairs;
   TF_ASSERT_OK(ComputeIncompatiblePairs(root.graph(), &incompatible_pairs));
 
-  ASSERT_EQ(incompatible_pairs.size(), 1);
-  std::pair<int, int> call_write_edge = {call->id(), write->id()};
-  EXPECT_EQ(incompatible_pairs[0], call_write_edge);
+  EXPECT_EQ(incompatible_pairs.size(), 0);
 }
 
 TEST(ResourceOperationSafetyAnalysisTest, WriteCall) {
@@ -429,18 +415,14 @@ TEST(ResourceOperationSafetyAnalysisTest, ChainOfOps) {
   std::vector<std::pair<int, int>> incompatible_pairs;
   TF_ASSERT_OK(ComputeIncompatiblePairs(root.graph(), &incompatible_pairs));
 
-  ASSERT_EQ(incompatible_pairs.size(), 5);
+  ASSERT_EQ(incompatible_pairs.size(), 3);
   std::pair<int, int> write_0_read_0_pair = {write_0->id(), read_0->id()};
   std::pair<int, int> write_0_read_1_pair = {write_0->id(), read_1->id()};
   std::pair<int, int> write_1_read_1_pair = {write_1->id(), read_1->id()};
-  std::pair<int, int> write_0_write_1_pair = {write_0->id(), write_1->id()};
-  std::pair<int, int> read_0_read_1_pair = {read_0->id(), read_1->id()};
 
   EXPECT_EQ(incompatible_pairs[0], write_0_read_0_pair);
-  EXPECT_EQ(incompatible_pairs[1], write_0_write_1_pair);
-  EXPECT_EQ(incompatible_pairs[2], write_0_read_1_pair);
-  EXPECT_EQ(incompatible_pairs[3], read_0_read_1_pair);
-  EXPECT_EQ(incompatible_pairs[4], write_1_read_1_pair);
+  EXPECT_EQ(incompatible_pairs[1], write_0_read_1_pair);
+  EXPECT_EQ(incompatible_pairs[2], write_1_read_1_pair);
 }
 
 TEST(ResourceOperationSafetyAnalysisTest, DagOfOps) {

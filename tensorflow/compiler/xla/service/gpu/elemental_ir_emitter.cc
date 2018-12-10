@@ -161,6 +161,16 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
   PrimitiveType lhs_input_type = op->operand(0)->shape().element_type();
   PrimitiveType rhs_input_type = op->operand(1)->shape().element_type();
   PrimitiveType output_type = op->shape().element_type();
+  HloOpcode opcode = op->opcode();
+
+  if (hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max() &&
+      (opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum)) {
+    return llvm_ir::EmitCallToIntrinsic(
+        opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maxnum
+                                      : llvm::Intrinsic::minnum,
+        {lhs_value, rhs_value}, {lhs_value->getType()}, b_);
+  }
+
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
       return EmitLibdeviceMathCall("__nv_fmod", {lhs_value, rhs_value},
@@ -358,13 +368,6 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         const HloInstruction* operand = hlo->operand(0);
         const Window& window = hlo->window();
 
-        // TODO(b/31410564): Implement dilation for reduce-window.
-        if (window_util::HasDilation(window)) {
-          return Unimplemented(
-              "Dilation for reduce-window not implemented on GPU. "
-              "See b/31410564.");
-        }
-
         PrimitiveType operand_element_type = operand->shape().element_type();
         llvm::Value* accum_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
             llvm_ir::PrimitiveTypeToIrType(operand_element_type, module_),
@@ -397,9 +400,24 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = NSWMul(
               index[i], index_typed_const(window.dimensions(i).stride()));
+          input_index[i] = NSWSub(
+              NSWAdd(stridden_index,
+                     NSWMul(window_index[i],
+                            index_typed_const(
+                                window.dimensions(i).window_dilation()))),
+              index_typed_const(window.dimensions(i).padding_low()));
+
+          // We need to verify that we are not in the dilated base area.
+          llvm::Value* dilation_condition = ICmpEQ(
+              SRem(input_index[i],
+                   index_typed_const(window.dimensions(i).base_dilation())),
+              index_typed_const(0));
+          in_bounds = And(in_bounds, dilation_condition);
+
+          // Apply base dilation to the index.
           input_index[i] =
-              NSWSub(NSWAdd(stridden_index, window_index[i]),
-                     index_typed_const(window.dimensions(i).padding_low()));
+              SDiv(input_index[i],
+                   index_typed_const(window.dimensions(i).base_dilation()));
 
           // We must check whether 0 ≤ input_index[i] < bound, as otherwise
           // we are in the pad and so can skip the computation. This

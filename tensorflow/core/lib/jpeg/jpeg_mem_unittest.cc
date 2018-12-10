@@ -22,18 +22,19 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/casts.h"
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
-#include "tensorflow/core/lib/core/casts.h"
 
 namespace tensorflow {
 namespace jpeg {
 namespace {
 
+using absl::bit_cast;
 const char kTestData[] = "tensorflow/core/lib/jpeg/testdata/";
 
 int ComputeSumAbsoluteDifference(const uint8* a, const uint8* b, int width,

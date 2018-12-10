@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
-#include "tensorflow/core/lib/core/casts.h"
 
 namespace xla {
 
@@ -160,9 +160,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Unimplemented("unhandled HLO ops for HloEvaluator: %s.",
                          HloOpcodeString(hlo_instruction->opcode()));
   }
-
-  // TODO(b/35950897): many of the stl functions used in the handlers are not
-  // overloaded for every XLA primitive type.
 
   template <typename NativeT,
             typename std::enable_if<std::is_unsigned<NativeT>::value>::type* =
@@ -596,7 +593,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleDivide(HloInstruction* divide) {
+  Status HandleDivide(HloInstruction* divide) override {
     return HandleDivide<ElementwiseT>(divide);
   }
 
@@ -1072,65 +1069,65 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
       // Convolve input feature with kernel.
       do {
+        // Find corresponding spatial dimension index for input (lhs).
+        int64 lhs_linear_spatial_index = 0;
+        int64 rhs_linear_spatial_index = 0;
+        for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
+          // Spatial dimension number for input (lhs) and output.
+          const int64 input_spatial_dim = dnums.input_spatial_dimensions(ki);
+          const int64 output_spatial_dim = dnums.output_spatial_dimensions(ki);
+
+          // Calculate lhs (input) index without taking base dilation into
+          // account.
+          const auto& window_dim = window.dimensions(ki);
+          const int64 undilated_index =
+              out_index[output_spatial_dim] * window_dim.stride() -
+              window_dim.padding_low() +
+              rhs_spatial_index[ki] * window_dim.window_dilation();
+          // Skip if the lhs (input) index is to be dilated.  As an
+          // optimization, skip this mod if there's no dilation.
+          if (window_dim.base_dilation() > 1 &&
+              undilated_index % window_dim.base_dilation() != 0) {
+            goto cnt;
+          }
+
+          // Calculate the actual lhs (input) index after dilation.  As an
+          // optimization, skip this integer divide if there's no dilation.
+          int64 lhs_spatial_index;
+          if (window_dim.base_dilation() > 1) {
+            lhs_spatial_index = undilated_index / window_dim.base_dilation();
+          } else {
+            lhs_spatial_index = undilated_index;
+          }
+
+          // Skip if input index is not in bounds.
+          if (!(lhs_spatial_index >= 0 &&
+                lhs_spatial_index < lhs_shape.dimensions(input_spatial_dim))) {
+            goto cnt;
+          }
+
+          lhs_linear_spatial_index +=
+              lhs_spatial_index * lhs_dim_multipliers[input_spatial_dim];
+          rhs_linear_spatial_index +=
+              (window_dim.window_reversal()
+                   ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
+                   : rhs_spatial_index[ki]) *
+              rhs_dim_multipliers[dnums.kernel_spatial_dimensions(ki)];
+        }
+
         for (int64 rhs_iz = 0; rhs_iz < input_feature_group_size; ++rhs_iz) {
           const int64 iz =
               feature_group_index * input_feature_group_size + rhs_iz;
 
-          int64 lhs_linear_index = 0;
+          int64 lhs_linear_index = lhs_linear_spatial_index;
           lhs_linear_index += out_index[output_batch_dim] *
                               lhs_dim_multipliers[input_batch_dim];
           lhs_linear_index += iz * lhs_dim_multipliers[input_z_dim];
 
-          int64 rhs_linear_index = 0;
+          int64 rhs_linear_index = rhs_linear_spatial_index;
           rhs_linear_index += out_index[output_z_dim] *
                               rhs_dim_multipliers[kernel_output_z_dim];
           rhs_linear_index += rhs_iz * rhs_dim_multipliers[kernel_input_z_dim];
-
-          // Find corresponding spatial dimension index for input (lhs).
-          for (int64 ki = 0; ki < rhs_spatial_index.size(); ++ki) {
-            // Spatial dimension number for input (lhs) and output.
-            const int64 input_spatial_dim = dnums.input_spatial_dimensions(ki);
-            const int64 output_spatial_dim =
-                dnums.output_spatial_dimensions(ki);
-
-            // Calculate lhs (input) index without taking base dilation into
-            // account.
-            const auto& window_dim = window.dimensions(ki);
-            const int64 undilated_index =
-                out_index[output_spatial_dim] * window_dim.stride() -
-                window_dim.padding_low() +
-                rhs_spatial_index[ki] * window_dim.window_dilation();
-            // Skip if the lhs (input) index is to be dilated.  As an
-            // optimization, skip this mod if there's no dilation.
-            if (window_dim.base_dilation() > 1 &&
-                undilated_index % window_dim.base_dilation() != 0) {
-              goto cnt;
-            }
-
-            // Calculate the actual lhs (input) index after dilation.  As an
-            // optimization, skip this integer divide if there's no dilation.
-            int64 lhs_spatial_index;
-            if (window_dim.base_dilation() > 1) {
-              lhs_spatial_index = undilated_index / window_dim.base_dilation();
-            } else {
-              lhs_spatial_index = undilated_index;
-            }
-            lhs_linear_index +=
-                lhs_spatial_index * lhs_dim_multipliers[input_spatial_dim];
-
-            // Skip if input index is not in bounds.
-            if (!(lhs_spatial_index >= 0 &&
-                  lhs_spatial_index <
-                      lhs_shape.dimensions(input_spatial_dim))) {
-              goto cnt;
-            }
-
-            rhs_linear_index +=
-                (window_dim.window_reversal()
-                     ? ((window_dim.size() - 1) - rhs_spatial_index[ki])
-                     : rhs_spatial_index[ki]) *
-                rhs_dim_multipliers[dnums.kernel_spatial_dimensions(ki)];
-          }
 
           result_val +=
               static_cast<ElementwiseT>(lhs_literal_data[lhs_linear_index]) *
@@ -1556,10 +1553,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           const auto& row_data = row_to_sort.data<NativeT>();
 
           std::vector<NativeT> result_data(row_data.begin(), row_data.end());
-          std::sort(result_data.begin(), result_data.end(),
-                    [](const NativeT& a, const NativeT& b) {
-                      return SafeLess<NativeT>(a, b);
-                    });
+          std::stable_sort(result_data.begin(), result_data.end(),
+                           [](const NativeT& a, const NativeT& b) {
+                             return SafeLess<NativeT>(a, b);
+                           });
           Literal sorted_row(ShapeUtil::MakeShape(keys->shape().element_type(),
                                                   {sort_dim_elements}));
           sorted_row.PopulateR1(absl::Span<const NativeT>(result_data));
@@ -2442,7 +2439,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         parent_->evaluated_[reduce_precision],
         ElementWiseUnaryOp(reduce_precision, [reduce_precision](
                                                  ElementwiseT elem) {
-          uint32_t value_as_int = tensorflow::bit_cast<uint32_t>(elem);
+          uint32_t value_as_int = absl::bit_cast<uint32_t>(elem);
           const uint32_t mantissa_bits = reduce_precision->mantissa_bits();
           const uint32_t exponent_bits = reduce_precision->exponent_bits();
 
@@ -2515,7 +2512,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             value_as_int = x_underflows ? x_signed_zero : value_as_int;
           }
 
-          float reduced_result = tensorflow::bit_cast<float>(value_as_int);
+          float reduced_result = absl::bit_cast<float>(value_as_int);
           if (std::isnan(elem)) {
             reduced_result = mantissa_bits > 0
                                  ? elem
@@ -2546,12 +2543,14 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   template <typename NativeT,
             typename std::enable_if<
-                std::is_same<NativeT, float>::value ||
-                std::is_same<NativeT, int32>::value ||
-                std::is_same<NativeT, uint32>::value>::type* = nullptr>
+                std::is_integral<NativeT>::value ||
+                std::is_floating_point<NativeT>::value>::type* = nullptr>
   Status HandleIota(HloInstruction* instruction) {
     auto* iota = Cast<HloIotaInstruction>(instruction);
-    std::vector<NativeT> data(iota->shape().dimensions(iota->iota_dimension()));
+    // Avoid using std::vector since std::vector<bool> does not convert to
+    // absl::Span<bool>.
+    absl::InlinedVector<NativeT, 1> data(
+        iota->shape().dimensions(iota->iota_dimension()));
     std::iota(data.begin(), data.end(), 0);
     auto result = LiteralUtil::CreateR1<NativeT>(data);
 
@@ -2568,9 +2567,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
   template <typename NativeT,
             typename std::enable_if<
-                !(std::is_same<NativeT, float>::value ||
-                  std::is_same<NativeT, int32>::value ||
-                  std::is_same<NativeT, uint32>::value)>::type* = nullptr>
+                !(std::is_integral<NativeT>::value ||
+                  std::is_floating_point<NativeT>::value)>::type* = nullptr>
   Status HandleIota(HloInstruction* iota) {
     return InvalidArgument("Unsupported type for iota");
   }
@@ -2613,8 +2611,17 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       std::vector<int64> base_index(rank);
       bool out_of_bound = false;
       for (int64 i = 0; i < rank; ++i) {
-        base_index[i] = window_count_index[i] * window.dimensions(i).stride() +
-                        window_index[i] - window.dimensions(i).padding_low();
+        base_index[i] =
+            window_count_index[i] * window.dimensions(i).stride() +
+            window_index[i] * window.dimensions(i).window_dilation() -
+            window.dimensions(i).padding_low();
+        // We are not in the base area if the dilation placed us out of bounds.
+        if (base_index[i] % window.dimensions(i).base_dilation() != 0) {
+          out_of_bound = true;
+          break;
+        }
+        // Apply the dilation to the base area.
+        base_index[i] /= window.dimensions(i).base_dilation();
         if (base_index[i] < 0 || base_index[i] >= base_shape.dimensions(i)) {
           out_of_bound = true;
           break;
@@ -2713,17 +2720,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const auto shape = instruction->shape();
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast
-    // is removed.
-    if (!(ShapeUtil::SameDimensions(shape, rhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
-          ShapeUtil::HumanString(rhs->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
@@ -2747,19 +2745,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
     const auto* ehs = instruction->operand(2);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit
-    // broadcast is removed.
-    if (!(ShapeUtil::SameDimensions(shape, lhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()) &&
-          ShapeUtil::SameDimensions(rhs->shape(), ehs->shape()))) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
-          ShapeUtil::HumanString(rhs->shape()),
-          ShapeUtil::HumanString(ehs->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, lhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(rhs->shape(), ehs->shape()));
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);

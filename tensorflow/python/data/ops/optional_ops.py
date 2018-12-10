@@ -19,13 +19,17 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Optional(object):
   """Wraps a nested structure of tensors that may/may not be present at runtime.
 
@@ -142,6 +146,7 @@ class _OptionalImpl(Optional):
     return self._value_structure
 
 
+@tf_export("data.experimental.OptionalStructure")
 class OptionalStructure(structure.Structure):
   """Represents an optional potentially containing a structured value."""
 
@@ -164,17 +169,41 @@ class OptionalStructure(structure.Structure):
   def _to_tensor_list(self, value):
     return [value._variant_tensor]  # pylint: disable=protected-access
 
+  def _to_batched_tensor_list(self, value):
+    raise NotImplementedError(
+        "Unbatching for `tf.data.experimental.Optional` objects.")
+
   def _from_tensor_list(self, flat_value):
     if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant or
         not flat_value[0].shape.is_compatible_with(tensor_shape.scalar())):
       raise ValueError(
           "OptionalStructure corresponds to a single tf.variant scalar.")
+    return self._from_compatible_tensor_list(flat_value)
+
+  def _from_compatible_tensor_list(self, flat_value):
     # pylint: disable=protected-access
     return _OptionalImpl(flat_value[0], self._value_structure)
 
   @staticmethod
   def from_value(value):
     return OptionalStructure(value.value_structure)
+
+  def _to_legacy_output_types(self):
+    return self
+
+  def _to_legacy_output_shapes(self):
+    return self
+
+  def _to_legacy_output_classes(self):
+    return self
+
+  def _batch(self, batch_size):
+    raise NotImplementedError(
+        "Batching for `tf.data.experimental.Optional` objects.")
+
+  def _unbatch(self):
+    raise NotImplementedError(
+        "Unbatching for `tf.data.experimental.Optional` objects.")
 
 
 # pylint: disable=protected-access

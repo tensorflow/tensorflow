@@ -19,55 +19,52 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
-class AdvancedActivationsTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class AdvancedActivationsTest(keras_parameterized.TestCase):
 
   def test_leaky_relu(self):
-    with self.cached_session():
-      for alpha in [0., .5, -1.]:
-        testing_utils.layer_test(keras.layers.LeakyReLU,
-                                 kwargs={'alpha': alpha},
-                                 input_shape=(2, 3, 4))
+    for alpha in [0., .5, -1.]:
+      testing_utils.layer_test(keras.layers.LeakyReLU,
+                               kwargs={'alpha': alpha},
+                               input_shape=(2, 3, 4))
 
   def test_prelu(self):
-    with self.cached_session():
-      testing_utils.layer_test(keras.layers.PReLU, kwargs={},
-                               input_shape=(2, 3, 4))
+    testing_utils.layer_test(keras.layers.PReLU, kwargs={},
+                             input_shape=(2, 3, 4))
 
   def test_prelu_share(self):
-    with self.cached_session():
-      testing_utils.layer_test(keras.layers.PReLU,
-                               kwargs={'shared_axes': 1},
-                               input_shape=(2, 3, 4))
+    testing_utils.layer_test(keras.layers.PReLU,
+                             kwargs={'shared_axes': 1},
+                             input_shape=(2, 3, 4))
 
   def test_elu(self):
-    with self.cached_session():
-      for alpha in [0., .5, -1.]:
-        testing_utils.layer_test(keras.layers.ELU,
-                                 kwargs={'alpha': alpha},
-                                 input_shape=(2, 3, 4))
+    for alpha in [0., .5, -1.]:
+      testing_utils.layer_test(keras.layers.ELU,
+                               kwargs={'alpha': alpha},
+                               input_shape=(2, 3, 4))
 
   def test_thresholded_relu(self):
-    with self.cached_session():
-      testing_utils.layer_test(keras.layers.ThresholdedReLU,
-                               kwargs={'theta': 0.5},
-                               input_shape=(2, 3, 4))
+    testing_utils.layer_test(keras.layers.ThresholdedReLU,
+                             kwargs={'theta': 0.5},
+                             input_shape=(2, 3, 4))
 
   def test_softmax(self):
-    with self.cached_session():
-      testing_utils.layer_test(keras.layers.Softmax,
-                               kwargs={'axis': 1},
-                               input_shape=(2, 3, 4))
+    testing_utils.layer_test(keras.layers.Softmax,
+                             kwargs={'axis': 1},
+                             input_shape=(2, 3, 4))
 
   def test_relu(self):
-    with self.cached_session():
-      testing_utils.layer_test(keras.layers.ReLU,
-                               kwargs={'max_value': 10},
-                               input_shape=(2, 3, 4))
-      x = keras.backend.ones((3, 4))
+    testing_utils.layer_test(keras.layers.ReLU,
+                             kwargs={'max_value': 10},
+                             input_shape=(2, 3, 4))
+    x = keras.backend.ones((3, 4))
+    if not context.executing_eagerly():
       # Test that we use `leaky_relu` when appropriate in graph mode.
       self.assertTrue(
           'LeakyRelu' in keras.layers.ReLU(negative_slope=0.2)(x).name)
@@ -79,10 +76,9 @@ class AdvancedActivationsTest(test.TestCase):
   def test_relu_with_invalid_arg(self):
     with self.assertRaisesRegexp(
         ValueError, 'max_value of Relu layer cannot be negative value: -10'):
-      with self.cached_session():
-        testing_utils.layer_test(keras.layers.ReLU,
-                                 kwargs={'max_value': -10},
-                                 input_shape=(2, 3, 4))
+      testing_utils.layer_test(keras.layers.ReLU,
+                               kwargs={'max_value': -10},
+                               input_shape=(2, 3, 4))
     with self.assertRaisesRegexp(
         ValueError,
         'negative_slope of Relu layer cannot be negative value: -2'):
