@@ -379,8 +379,8 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(ConfigsToTest()):
       print("Testing DepthwiseConv2DFilterGradCompare,", index, "th config:",
-            input_size, "*", filter_size, "stride:", stride, "padding:",
-            padding)
+            input_size, "*", filter_size, "producing output", output_size,
+            "stride:", stride, "padding:", padding)
       self._CompareBackpropFilter(input_size, filter_size, output_size,
                                   stride, padding)
 
