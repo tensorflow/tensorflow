@@ -6,13 +6,13 @@ This module is under active development.
 
 ## Installing TF-TRT
 
-Currently Tensorflow nightly builds include TF-TRT by default,
+Currently TensorFlow nightly builds include TF-TRT by default,
 which means you don't need to install TF-TRT separately.
 You can pull the latest TF containers from docker hub or
 install the latest TF pip package to get access to the latest TF-TRT.
 
 If you want to use TF-TRT on NVIDIA Jetson platform, you can find
-the download links for the relevant Tensorflow pip packages here:
+the download links for the relevant TensorFlow pip packages here:
 https://docs.nvidia.com/deeplearning/dgx/index.html#installing-frameworks-for-jetson
 
 ## Installing TensorRT
@@ -42,7 +42,7 @@ and verified models, explains best practices with troubleshooting guides.
 
 TF-TRT includes both Python tests and C++ unit tests.
 Most of Python tests are located in the test directory
-and they can be executed uring `bazel test` or directly
+and they can be executed using `bazel test` or directly
 with the Python command. Most of the C++ unit tests are
 used to test the conversion functions that convert each TF op to
 a number of TensorRT layers.
