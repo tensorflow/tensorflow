@@ -97,6 +97,8 @@ tf_py_test(
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
     ],
 )

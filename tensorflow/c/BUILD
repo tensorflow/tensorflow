@@ -176,6 +176,34 @@ tf_gpu_library(
 )
 
 tf_gpu_library(
+    name = "env",
+    srcs = [
+        "env.cc",
+    ],
+    hdrs = [
+        "env.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = select({
+        "//tensorflow:android": [
+            ":c_api",
+            ":tf_status_helper",
+            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:platform_env",
+            "//tensorflow/core:lib",
+        ],
+        "//conditions:default": [
+            ":c_api",
+            ":tf_status_helper",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:platform_env",
+            "//tensorflow/core:lib",
+        ],
+    }) + [":c_api_internal"],
+)
+
+tf_gpu_library(
     name = "kernels",
     srcs = [
         "kernels.cc",
@@ -188,10 +216,14 @@ tf_gpu_library(
     deps = select({
         "//tensorflow:android": [
             ":c_api",
+            ":c_api_internal",
+            ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api",
+            ":c_api_internal",
+            ":tf_status_helper",
             "//tensorflow/core:framework",
         ],
     }),
@@ -328,6 +360,27 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
+)
+
+tf_gpu_cc_test(
+    name = "env_test",
+    size = "small",
+    srcs = ["env_test.cc"],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    tags = ["noasan"],
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":c_api",
+        ":env",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_gpu_cc_test(

@@ -170,6 +170,8 @@ slice_sets:
              type: string
            dockerfile_exclusive_name:
              type: string
+           dockerfile_subdirectory:
+             type: string
            partials:
              type: list
              schema:
@@ -353,8 +355,9 @@ def gather_slice_list_items(slices, key):
 def find_first_slice_value(slices, key):
   """For a list of slices, get the first value for a certain key."""
   for s in slices:
-    if key in s:
+    if key in s and s[key] is not None:
       return s[key]
+  return None
 
 
 def assemble_tags(spec, cli_args, enabled_releases, all_partials):
@@ -389,6 +392,8 @@ def assemble_tags(spec, cli_args, enabled_releases, all_partials):
         used_partials = gather_slice_list_items(slices, 'partials')
         used_tests = gather_slice_list_items(slices, 'tests')
         test_runtime = find_first_slice_value(slices, 'test_runtime')
+        dockerfile_subdirectory = find_first_slice_value(
+            slices, 'dockerfile_subdirectory')
         dockerfile_contents = merge_partials(spec['header'], used_partials,
                                              all_partials)
 
@@ -398,6 +403,7 @@ def assemble_tags(spec, cli_args, enabled_releases, all_partials):
             'is_dockerfiles': release['is_dockerfiles'],
             'upload_images': release['upload_images'],
             'cli_args': tag_args,
+            'dockerfile_subdirectory': dockerfile_subdirectory or '',
             'partials': used_partials,
             'tests': used_tests,
             'test_runtime': test_runtime,
@@ -416,8 +422,7 @@ def merge_partials(header, used_partials, all_partials):
 def upload_in_background(hub_repository, dock, image, tag):
   """Upload a docker image (to be used by multiprocessing)."""
   image.tag(hub_repository, tag=tag)
-  for line in list(dock.images.push(hub_repository, tag=tag, stream=True)):
-    print(line)
+  print(dock.images.push(hub_repository, tag=tag))
 
 
 def mkdir_p(path):
@@ -525,13 +530,15 @@ def main(argv):
         continue
 
       # Write releases marked "is_dockerfiles" into the Dockerfile directory
-      if FLAGS.construct_dockerfiles:
-        path = os.path.join(FLAGS.dockerfile_dir, tag + '.Dockerfile')
-        if tag_def['is_dockerfiles']:
-          eprint('>> Writing {}...'.format(path))
-          if not FLAGS.dry_run:
-            with open(path, 'w') as f:
-              f.write(tag_def['dockerfile_contents'])
+      if FLAGS.construct_dockerfiles and tag_def['is_dockerfiles']:
+        path = os.path.join(FLAGS.dockerfile_dir,
+                            tag_def['dockerfile_subdirectory'],
+                            tag + '.Dockerfile')
+        eprint('>> Writing {}...'.format(path))
+        if not FLAGS.dry_run:
+          mkdir_p(os.path.dirname(path))
+          with open(path, 'w') as f:
+            f.write(tag_def['dockerfile_contents'])
 
       # Don't build any images for dockerfile-only releases
       if not FLAGS.build_images:

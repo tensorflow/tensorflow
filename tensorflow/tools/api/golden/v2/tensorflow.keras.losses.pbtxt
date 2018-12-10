@@ -1,6 +1,14 @@
 path: "tensorflow.keras.losses"
 tf_module {
   member {
+    name: "BinaryCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MeanAbsoluteError"
     mtype: "<type \'type\'>"
   }

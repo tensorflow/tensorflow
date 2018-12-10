@@ -31,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
@@ -48,8 +49,8 @@ class ScanTest(test_base.DatasetTestBase):
     start = array_ops.placeholder(dtypes.int32, shape=[])
     step = array_ops.placeholder(dtypes.int32, shape=[])
     take = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = self._counting_dataset(
-        start, make_scan_fn(step)).take(take).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(self._counting_dataset(
+        start, make_scan_fn(step)).take(take))
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -67,9 +68,9 @@ class ScanTest(test_base.DatasetTestBase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFibonacci(self):
-    iterator = dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
-        scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1]))
-    ).make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(
+        dataset_ops.Dataset.from_tensors(1).repeat(None).apply(
+            scan_ops.scan([0, 1], lambda a, _: ([a[1], a[0] + a[1]], a[1]))))
 
     if context.executing_eagerly():
       next_element = iterator.get_next
@@ -98,9 +99,8 @@ class ScanTest(test_base.DatasetTestBase):
     start = array_ops.placeholder(dtypes.int32, shape=[])
     step = array_ops.placeholder(dtypes.int32, shape=[])
     take = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = self._counting_dataset(
-        _sparse(start),
-        make_scan_fn(step)).take(take).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(self._counting_dataset(
+        _sparse(start), make_scan_fn(step)).take(take))
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -134,7 +134,7 @@ class ScanTest(test_base.DatasetTestBase):
     self.assertIs(None, dataset.output_shapes[0][1].ndims)
     self.assertEqual([], dataset.output_shapes[1].as_list())
 
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -169,6 +169,21 @@ class ScanTest(test_base.DatasetTestBase):
         "output value."):
       dataset.apply(
           scan_ops.scan(constant_op.constant(1, dtype=dtypes.int32), _scan_fn))
+
+  def testPreserveCardinality(self):
+
+    def scan_fn(state, val):
+
+      def py_fn(_):
+        raise StopIteration()
+
+      return state, script_ops.py_func(py_fn, [val], dtypes.int64)
+
+    dataset = dataset_ops.Dataset.from_tensors(0).apply(
+        scan_ops.scan(constant_op.constant(1), scan_fn))
+    get_next = self.getNext(dataset)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":

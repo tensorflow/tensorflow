@@ -22,6 +22,7 @@ import time
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import create_local_cluster
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -88,6 +89,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
   def _run(self, train_op, sess):
     sess.run(train_op)
 
+  @test_util.run_v1_only("b/120545219")
   def test2Workers(self):
     num_workers = 2
     replicas_to_aggregate = 2
@@ -178,6 +180,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
                         sessions[1].run(var_1_g_1))
 
   # 3 workers and one of them is backup.
+  @test_util.run_v1_only("b/120545219")
   def test3Workers1Backup(self):
     num_workers = 3
     replicas_to_aggregate = 2
@@ -266,6 +269,7 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
                                  "apply_gradient should be called"):
       hook.begin()
 
+  @test_util.run_v1_only("b/120545219")
   def testCanCreatedBeforeMinimizeCalled(self):
     """This behavior is required to be integrated with Estimators."""
     opt = training.SyncReplicasOptimizer(
@@ -278,6 +282,7 @@ class SyncReplicasOptimizerHookTest(test.TestCase):
     opt.minimize(v, global_step=global_step)
     hook.begin()
 
+  @test_util.run_v1_only("b/120545219")
   def testFetchVariableList(self):
     opt = training.SyncReplicasOptimizer(
         opt=adam.AdamOptimizer(0.01),

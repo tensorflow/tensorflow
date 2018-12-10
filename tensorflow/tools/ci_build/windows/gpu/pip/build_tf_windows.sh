@@ -67,7 +67,7 @@ EXTRA_BUILD_FLAGS=""
 #                        ensure performance
 # --test_core_only       Use tensorflow/python/... as test target
 # --test_contrib_only    Use tensorflow/contrib/... as test target
-for ARG in "$@"; do
+while [[ $# -gt 0 ]]; do
   case "$ARG" in
     --tf_nightly) TF_NIGHTLY=1 ;;
     --skip_test) SKIP_TEST=1 ;;
@@ -91,6 +91,7 @@ for ARG in "$@"; do
       ;;
     *)
   esac
+  shift
 done
 
 if [[ "$RELEASE_BUILD" == 1 ]]; then

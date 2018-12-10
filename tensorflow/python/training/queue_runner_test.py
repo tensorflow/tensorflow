@@ -41,7 +41,7 @@ _MockOp = collections.namedtuple("MockOp", ["name"])
 
 class QueueRunnerTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testBasic(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -62,7 +62,7 @@ class QueueRunnerTest(test.TestCase):
       # The variable should be 3.
       self.assertEqual(3, self.evaluate(var))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTwoOps(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -132,7 +132,7 @@ class QueueRunnerTest(test.TestCase):
       with self.assertRaisesRegexp(errors_impl.OutOfRangeError, "is closed"):
         self.evaluate(dequeue1)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testRespectCoordShouldStop(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -221,7 +221,7 @@ class QueueRunnerTest(test.TestCase):
       new_threads = qr.create_threads(sess, coord=coord)
       self.assertEqual([], new_threads)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testThreads(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.

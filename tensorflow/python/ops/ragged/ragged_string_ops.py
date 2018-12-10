@@ -23,7 +23,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops.ragged import ragged_conversion_ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import tf_export
 
@@ -65,16 +64,16 @@ def unicode_encode(input, output_encoding, errors="replace",
     ```
   """
   with ops.name_scope(name, "UnicodeEncode", [input]):
-    input_tensor = ragged_factory_ops.convert_to_tensor_or_ragged_tensor(input)
+    input_tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(input)
     if input_tensor.shape.ndims is None:
       raise ValueError("Rank of input_tensor must be statically known.")
     if ragged_tensor.is_ragged(input_tensor):
-      if input_tensor.inner_values.shape.ndims > 1:
-        # If the inner_values of our ragged tensor is multi-dimensional, we can
+      if input_tensor.flat_values.shape.ndims > 1:
+        # If the flat_values of our ragged tensor is multi-dimensional, we can
         # process it separately and our output will have the same nested splits
         # as our input.
-        return input_tensor.with_inner_values(
-            unicode_encode(input_tensor.inner_values, output_encoding, errors,
+        return input_tensor.with_flat_values(
+            unicode_encode(input_tensor.flat_values, output_encoding, errors,
                            replacement_char))
       elif input_tensor.ragged_rank > 1:
         # Recursively process the values of the ragged tensor.
@@ -82,7 +81,7 @@ def unicode_encode(input, output_encoding, errors="replace",
             unicode_encode(input_tensor.values, output_encoding, errors,
                            replacement_char))
       else:
-        # Our ragged tensor is of the correct shape (rank 1 inner_values tensor
+        # Our ragged tensor is of the correct shape (rank 1 flat_values tensor
         # with ragged_rank of 1) so we can process it as normal.
         return gen_string_ops.unicode_encode(
             input_values=input_tensor.values,
@@ -110,10 +109,10 @@ def unicode_encode(input, output_encoding, errors="replace",
         # Our input tensor is rank 1, so we create a ragged tensor with an added
         # dimension to create the correct input shape & type, and then remove
         # the additional dimension from the output and return the string scalar.
-        ragged_input_tensor = ragged_factory_ops.from_row_splits(
+        ragged_input_tensor = ragged_tensor.RaggedTensor.from_row_splits(
             input_tensor,
-            array_ops.stack([0, array_ops.shape(input_tensor,
-                                                out_type=dtypes.int64)[0]]))
+            array_ops.stack(
+                [0, array_ops.shape(input_tensor, out_type=dtypes.int64)[0]]))
         output_tensor = unicode_encode(ragged_input_tensor, output_encoding,
                                        errors, replacement_char)
         return array_ops.reshape(output_tensor, [])

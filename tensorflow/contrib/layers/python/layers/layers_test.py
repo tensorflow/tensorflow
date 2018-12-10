@@ -1459,13 +1459,6 @@ class DropoutTest(test.TestCase):
 
 class FlattenTest(test.TestCase):
 
-  def testInvalidRank(self):
-    with ops.Graph().as_default() as g, self.session(g):
-      inputs = array_ops.placeholder(dtype=dtypes.float32)
-      inputs.set_shape(tensor_shape.TensorShape((5,)))
-      with self.assertRaisesRegexp(ValueError, 'incompatible with the layer'):
-        _layers.flatten(inputs)
-
   def testUnknownLastDim(self):
     with ops.Graph().as_default() as g, self.session(g):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
@@ -1501,6 +1494,12 @@ class FlattenTest(test.TestCase):
       self.assertEqual(output.get_shape().num_elements(),
                        images.get_shape().num_elements())
       self.assertEqual(output.get_shape()[0], images.get_shape()[0])
+
+  def testFlatten0D(self):
+    with self.cached_session():
+      scalars = random_ops.random_uniform((5,), seed=1, name='scalars')
+      output = _layers.flatten(scalars)
+      self.assertEqual(output.shape, (5, 1))
 
   def testFlattenBatchSize(self):
     height, width = 3, 3

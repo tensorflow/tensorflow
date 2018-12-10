@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #endif
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -147,6 +148,11 @@ class EagerContext {
   bool LogMemory() { return log_memory_; }
 
   Rendezvous* GetRendezvous() { return rendezvous_; }
+  std::unique_ptr<CollectiveExecutor::Handle> GetCollectiveExecutorHandle() {
+    return std::unique_ptr<CollectiveExecutor::Handle>(
+        new CollectiveExecutor::Handle(
+            collective_executor_mgr_->FindOrCreate(0), true /*inherit_ref*/));
+  }
 
   const tensorflow::DeviceMgr* local_device_mgr() const {
     return (local_device_manager_ != nullptr) ? local_device_manager_.get()
@@ -272,6 +278,8 @@ class EagerContext {
   const bool log_memory_;
 
   Env* const env_;
+
+  std::unique_ptr<CollectiveExecutorMgrInterface> collective_executor_mgr_;
 
 #ifndef __ANDROID__
   void CloseRemoteContexts();

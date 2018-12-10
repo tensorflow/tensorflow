@@ -88,6 +88,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/timeseries:timeseries_pip",
     "//tensorflow/contrib/tpu",
     "//tensorflow/examples/tutorials/mnist:package",
+    "//tensorflow/lite/python:interpreter_test_data",
+    "//tensorflow/lite/python:tflite_convert",
+    "//tensorflow/lite/toco/python:toco_from_protos",
     # "//tensorflow/python/autograph/converters:converters",
     # "//tensorflow/python/autograph/core:core",
     "//tensorflow/python/autograph/core:test_lib",
@@ -110,6 +113,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
+    "//tensorflow/python/ops/ragged:ragged_test_util",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
@@ -124,7 +128,7 @@ COMMON_PIP_DEPS = [
 py_binary(
     name = "simple_console_for_windows",
     srcs = ["simple_console_for_windows.py"],
-    data = COMMON_PIP_DEPS,
+    data = COMMON_PIP_DEPS + ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -211,7 +215,6 @@ filegroup(
         "grpc",
         [
             "@grpc//:LICENSE",
-            "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
     ) + if_ngraph([
@@ -228,15 +231,9 @@ sh_binary(
     data = select({
         "//tensorflow:windows": [
             ":simple_console_for_windows",
-            "//tensorflow/lite/python:interpreter_test_data",
-            "//tensorflow/lite/python:tflite_convert",
-            "//tensorflow/lite/toco/python:toco_from_protos",
         ],
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
-            "//tensorflow/lite/python:interpreter_test_data",
-            "//tensorflow/lite/python:tflite_convert",
-            "//tensorflow/lite/toco/python:toco_from_protos",
         ],
     }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )

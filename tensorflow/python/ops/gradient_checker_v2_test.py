@@ -21,7 +21,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.eager import context
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -37,13 +37,17 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
+def _random_complex(shape, dtype):
+  data = np.random.random_sample(shape).astype(dtype.as_numpy_dtype)
+  if dtype.is_complex:
+    data.imag = np.random.random_sample(shape)
+  return data
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class GradientCheckerTest(test.TestCase):
 
   def testAddSimple(self):
-    # if context.executing_eagerly():
-    #   return
-    np.random.seed(1)  # Fix seed to avoid flakiness
     size = (2, 3)
     x1 = constant_op.constant(2.0, shape=size, name="x1")
     x2 = constant_op.constant(3.0, shape=size, name="x2")
@@ -53,7 +57,6 @@ class GradientCheckerTest(test.TestCase):
     assert error < 1e-4
 
   def testAddCustomized(self):
-    np.random.seed(3)  # Fix seed to avoid flakiness
     size = (2, 3)
     x1 = constant_op.constant(
         2.0, shape=size, dtype=dtypes.float64, name="x1")
@@ -66,7 +69,6 @@ class GradientCheckerTest(test.TestCase):
     assert error < 1e-10
 
   def testGather(self):
-    np.random.seed(4)  # Fix seed to avoid flakiness
     def f(params):
       index_values = [1, 3]
       indices = constant_op.constant(index_values, name="i")
@@ -81,7 +83,6 @@ class GradientCheckerTest(test.TestCase):
     assert error < 1e-4
 
   def testNestedGather(self):
-    np.random.seed(5)  # Fix seed to avoid flakiness
     def f(params):
       index_values = [1, 3, 5, 6]
       indices = constant_op.constant(index_values, name="i")
@@ -99,33 +100,37 @@ class GradientCheckerTest(test.TestCase):
     assert error < 1e-4
 
   def testComplexMul(self):
-    if not context.executing_eagerly():
-      return
     c = constant_op.constant(5 + 7j, dtype=dtypes.complex64)
     def f(x):
       return c * x
-    x = constant_op.constant(11 - 13j, dtype=dtypes.complex64)
+    x_shape = c.shape
+    x_dtype = c.dtype
+    x = constant_op.constant(_random_complex(x_shape, x_dtype))
     analytical, numerical = gradient_checker.compute_gradient(
-        f, [x], delta=0.1)
+        f, [x])
     correct = np.array([[5, 7], [-7, 5]])
     self.assertAllEqual(correct, analytical[0])
     self.assertAllClose(correct, numerical[0], rtol=1e-4)
+    x = constant_op.constant(_random_complex(x_shape, x_dtype))
     self.assertLess(
         gradient_checker.max_error(*gradient_checker.compute_gradient(
-            f, [x], delta=0.1)), 2e-4)
+            f, [x])), 3e-4)
 
   def testComplexConj(self):
     def f(x):
       return math_ops.conj(x)
-    x = constant_op.constant(11 - 13j, dtype=dtypes.complex64)
+    x_shape = ()
+    x_dtype = dtypes.complex64
+    x = constant_op.constant(_random_complex(x_shape, x_dtype))
     analytical, numerical = gradient_checker.compute_gradient(
-        f, [x], delta=0.1)
+        f, [x])
     correct = np.array([[1, 0], [0, -1]])
     self.assertAllEqual(correct, analytical[0])
     self.assertAllClose(correct, numerical[0], rtol=2e-5)
+    x = constant_op.constant(_random_complex(x_shape, x_dtype))
     self.assertLess(
         gradient_checker.max_error(*gradient_checker.compute_gradient(
-            f, [x], delta=0.1)), 2e-5)
+            f, [x])), 2e-5)
 
   def testEmptySucceeds(self):
     def f(x):
@@ -139,8 +144,6 @@ class GradientCheckerTest(test.TestCase):
     self.assertEqual(error, 0)
 
   def testEmptyFails(self):
-    # if not context.executing_eagerly():
-    #   return
     @custom_gradient.custom_gradient
     def id_bad_grad(x):
       y = array_ops.identity(x)
@@ -176,6 +179,19 @@ class GradientCheckerTest(test.TestCase):
     # raise AssertionError, since NaN is not < 1.0.
     with self.assertRaisesRegexp(AssertionError, "False is not true"):
       self.assertTrue(error < 1.0)
+
+  def testGradGrad(self):
+
+    def f(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.square(x)
+        z = math_ops.square(y)
+      return tape.gradient(z, x)
+
+    analytical, numerical = gradient_checker.compute_gradient(f, [2.0])
+    self.assertAllEqual([[[48.]]], analytical)
+    self.assertAllClose([[[48.]]], numerical, rtol=1e-4)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -265,8 +281,6 @@ class MiniMNISTTest(test.TestCase):
     return err
 
   def testInputGradient(self):
-    # if context.executing_eagerly():
-    #   return
     self.assertLess(self._BuildAndTestMiniMNIST(0, "input"), 1e-8)
 
   def testHiddenWeightGradient(self):

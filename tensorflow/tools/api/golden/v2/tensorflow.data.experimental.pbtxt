@@ -13,6 +13,18 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DatasetStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "INFINITE_CARDINALITY"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "NestedStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "OptimizationOptions"
     mtype: "<type \'type\'>"
   }
@@ -21,11 +33,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OptionalStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RandomDataset"
     mtype: "<type \'type\'>"
   }
   member {
     name: "Reducer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseTensorStructure"
     mtype: "<type \'type\'>"
   }
   member {
@@ -41,24 +61,36 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Structure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TFRecordWriter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TensorStructure"
     mtype: "<type \'type\'>"
   }
   member {
     name: "ThreadingOptions"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "UNKNOWN_CARDINALITY"
+    mtype: "<type \'int\'>"
+  }
   member_method {
     name: "Counter"
     argspec: "args=[\'start\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
-    name: "assume_finite"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "bucket_by_sequence_length"
     argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "cardinality"
+    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "choose_from_datasets"

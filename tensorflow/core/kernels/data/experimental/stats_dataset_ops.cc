@@ -78,6 +78,8 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
       return "LatencyStatsDatasetOp::Dataset";
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -185,6 +187,8 @@ class BytesProducedStatsDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "BytesProducedStatsDatasetOp::Dataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

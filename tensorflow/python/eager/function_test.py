@@ -428,20 +428,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(value), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.also_run_as_tf_function
   def testInitScopeTensorInitializationInFunction(self):
 
     @def_function.function
     def tensor_init():
       with ops.init_scope():
         const = constant_op.constant(2.0)
+      # Note: this variable bypasses tf.function's variable creation
+      # requirements by bypassing variable_creator_scope by using
+      # ResourceVariable instead of Variable.
       self.v = resource_variable_ops.ResourceVariable(const)
       return self.v.read_value()
 
     value = tensor_init()
-    if not context.executing_eagerly():
-      self.evaluate(variables.global_variables_initializer())
-    self.assertEqual(self.evaluate(value), 2.0)
+    self.assertAllEqual(value, 2.0)
 
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
@@ -962,6 +963,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   # construction. Eager's configuration is controlled in `__main__`.
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 4}))
+  @test_util.run_v1_only('b/120545219')
   def testDeviceAnnotationsRespected(self):
 
     def multi_device_fn():
@@ -1000,6 +1002,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 2}))
+  @test_util.run_v1_only('b/120545219')
   def testCallingGraphFunctionOnDifferentDevice(self):
 
     def func():

@@ -232,7 +232,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         fetches = distribution.unwrap(
             distribution.call_for_each_replica(model_fn, args=inputs))
         if update_ops_in_cross_replica_mode:
-          fetches += ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+          fetches += tuple(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
         return control_flow_ops.group(fetches)
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
@@ -443,7 +443,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             step_fn, iterator, iterations=2,
             initial_loop_values=initial_loop_values)
 
-        self.assertEqual({key1: [value1]}, ctx.non_tensor_outputs)
+        self.assertEqual({key1: (value1,)}, ctx.non_tensor_outputs)
         self._verify_loss_output(
             initial_loss(),
             loss_output=ctx.last_step_outputs["replica_loss_reduced"],

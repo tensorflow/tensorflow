@@ -107,6 +107,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(network.updates), 5)
     self.assertEqual(len(network.get_updates_for(x4)), 2)
 
+  @test_util.run_v1_only('b/120545219')
   def test_get_updates_bn(self):
     x1 = input_layer_lib.Input(shape=(1,))
     layer = keras.layers.BatchNormalization()
@@ -833,7 +834,7 @@ class TopologyConstructionTest(test.TestCase):
       output_val_2 = m2.predict(x_val)
       self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_explicit_training_argument(self):
     with self.cached_session():
       a = keras.layers.Input(shape=(2,))

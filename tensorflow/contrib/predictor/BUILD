@@ -42,6 +42,7 @@ py_library(
     name = "saved_model_predictor",
     srcs = ["saved_model_predictor.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//learning/brain/contrib/learn/tpu:__subpackages__"],
     deps = [
         ":base_predictor",
         "//tensorflow/contrib/saved_model:saved_model_py",

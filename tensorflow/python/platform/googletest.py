@@ -142,7 +142,7 @@ def StatefulSessionAvailable():
   return False
 
 
-@tf_export('test.StubOutForTesting')
+@tf_export(v1=['test.StubOutForTesting'])
 class StubOutForTesting(object):
   """Support class for stubbing methods out for unit testing.
 

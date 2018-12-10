@@ -18,44 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.signal import shape_ops
-from tensorflow.python.ops.signal import util_ops
 from tensorflow.python.util.tf_export import tf_export
-
-
-def _shuffle_to_front(input_tensor, k):
-  """Shuffles the last `k` indices of `input_tensor` to the front.
-
-  Transposes `input_tensor` to have the last `k` indices at the front. The input
-  may have arbitrary rank and unknown shape.
-
-  Args:
-    input_tensor: A `Tensor` of arbitrary rank and unknown shape.
-    k: A scalar `Tensor` specifying how many indices to shuffle.
-
-  Returns:
-    A transposed version of `input_tensor` with `k` indices shuffled to the
-    front.
-
-  Raises:
-    ValueError: If `input_tensor` is not at least rank `k` or `k` is not scalar.
-  """
-  k = ops.convert_to_tensor(k, name="k")
-  k.shape.with_rank(0)
-  k_static = tensor_util.constant_value(k)
-  if k_static is not None:
-    input_tensor.shape.with_rank_at_least(k_static)
-
-  rank = array_ops.rank(input_tensor)
-  outer_indices, inner_indices = array_ops.split(math_ops.range(rank),
-                                                 [rank - k, k])
-  permutation = array_ops.concat([inner_indices, outer_indices], 0)
-
-  return array_ops.transpose(input_tensor, perm=permutation)
 
 
 @tf_export("signal.overlap_and_add")
@@ -80,8 +48,8 @@ def overlap_and_add(signal, frame_step, name=None):
     frames of `signal`'s inner-most two dimensions.
 
   Raises:
-    ValueError: If `signal`'s rank is less than 2, `frame_step` is not a scalar
-      integer or `frame_step` is greater than `frame_length`.
+    ValueError: If `signal`'s rank is less than 2, or `frame_step` is not a
+      scalar integer.
   """
   with ops.name_scope(name, "overlap_and_add", [signal, frame_step]):
     signal = ops.convert_to_tensor(signal, name="signal")
@@ -97,56 +65,91 @@ def overlap_and_add(signal, frame_step, name=None):
     # All dimensions that are not part of the overlap-and-add. Can be empty for
     # rank 2 inputs.
     outer_dimensions = signal_shape[:-2]
+    outer_rank = array_ops.size(outer_dimensions)
 
-    # If frame_length and frame_step are known at graph construction time, check
-    # frame_step is less than or equal to frame_length.
-    frame_step_static = tensor_util.constant_value(frame_step)
-    if (frame_step_static is not None and signal.shape.ndims is not None and
-        signal.shape.dims[-1].value is not None):
-      if frame_step_static > signal.shape.dims[-1].value:
-        raise ValueError(
-            "frame_step (%d) must be less than or equal to "
-            "frame_length (%d)" % (
-                frame_step_static, signal.shape.dims[-1].value))
-      # If frame_length is equal to frame_step, there's no overlap so just
-      # reshape the tensor.
-      if frame_step_static == signal.shape.dims[-1].value:
-        return array_ops.reshape(signal, array_ops.concat(
-            [outer_dimensions, [-1]], 0))
+    def full_shape(inner_shape):
+      return array_ops.concat([outer_dimensions, inner_shape], 0)
 
-    signal_rank = array_ops.rank(signal)
-    frames = signal_shape[-2]
     frame_length = signal_shape[-1]
+    frames = signal_shape[-2]
 
-    subframe_length = util_ops.gcd(frame_length, frame_step)
-    subframe_step = frame_step // subframe_length
-    subframes_per_frame = frame_length // subframe_length
-    output_size = frame_step * (frames - 1) + frame_length
-    output_subframes = output_size // subframe_length
+    # Compute output length.
+    output_length = frame_length + frame_step * (frames - 1)
 
-    # To avoid overlap-adding sample-by-sample, we overlap-add at the "subframe"
-    # level, where a subframe is gcd(frame_length, frame_step). Reshape signal
-    # from [..., frames, frame_length] into [..., subframes, subframe_length].
-    subframe_shape = array_ops.concat(
-        [outer_dimensions, [-1, subframe_length]], 0)
-    subframe_signal = array_ops.reshape(signal, subframe_shape)
+    # If frame_length is equal to frame_step, there's no overlap so just
+    # reshape the tensor.
+    frame_step_static = tensor_util.constant_value(frame_step)
+    if (frame_step_static is not None and signal.shape.dims is not None and
+        frame_step_static == signal.shape.dims[-1].value):
+      output_shape = full_shape([output_length])
+      return array_ops.reshape(signal, output_shape, name="fast_path")
 
-    # Now we shuffle the last [subframes, subframe_length] dimensions to the
-    # front.
-    # TODO(rjryan): Add an axis argument to unsorted_segment_sum so we can
-    # avoid this pair of transposes.
-    subframe_signal = _shuffle_to_front(subframe_signal, 2)
+    # The following code is documented using this example:
+    #
+    # frame_step = 2
+    # signal.shape = (3, 5)
+    # a b c d e
+    # f g h i j
+    # k l m n o
 
-    # Use unsorted_segment_sum to add overlapping subframes together.
-    segment_ids = array_ops.reshape(shape_ops.frame(
-        math_ops.range(output_subframes), subframes_per_frame, subframe_step,
-        pad_end=False), [-1])
-    result = math_ops.unsorted_segment_sum(subframe_signal, segment_ids,
-                                           num_segments=output_subframes)
+    # Compute the number of segments, per frame.
+    segments = -(-frame_length // frame_step)  # Divide and round up.
 
-    # result is a [subframes, subframe_length, ...outer_dimensions] tensor. We
-    # return a [...outer_dimensions, output_size] tensor with a transpose and
-    # reshape.
-    result_shape = array_ops.concat([outer_dimensions, [output_size]], 0)
-    return array_ops.reshape(_shuffle_to_front(result, signal_rank - 2),
-                             result_shape)
+    # Pad the frame_length dimension to a multiple of the frame step.
+    # Pad the frames dimension by `segments` so that signal.shape = (6, 6)
+    # a b c d e 0
+    # f g h i j 0
+    # k l m n o 0
+    # 0 0 0 0 0 0
+    # 0 0 0 0 0 0
+    # 0 0 0 0 0 0
+    paddings = [[0, segments], [0, segments * frame_step - frame_length]]
+    outer_paddings = array_ops.zeros([outer_rank, 2], dtypes.int32)
+    paddings = array_ops.concat([outer_paddings, paddings], 0)
+    signal = array_ops.pad(signal, paddings)
+
+    # Reshape so that signal.shape = (3, 6, 2)
+    # ab cd e0
+    # fg hi j0
+    # kl mn o0
+    # 00 00 00
+    # 00 00 00
+    # 00 00 00
+    shape = full_shape([frames + segments, segments, frame_step])
+    signal = array_ops.reshape(signal, shape)
+
+    # Transpose dimensions so that signal.shape = (3, 6, 2)
+    # ab fg kl 00 00 00
+    # cd hi mn 00 00 00
+    # e0 j0 o0 00 00 00
+    perm = array_ops.concat(
+        [math_ops.range(outer_rank), outer_rank + [1, 0, 2]], 0)
+    signal = array_ops.transpose(signal, perm)
+
+    # Reshape so that signal.shape = (18, 2)
+    # ab fg kl 00 00 00 cd hi mn 00 00 00 e0 j0 o0 00 00 00
+    shape = full_shape([(frames + segments) * segments, frame_step])
+    signal = array_ops.reshape(signal, shape)
+
+    # Truncate so that signal.shape = (15, 2)
+    # ab fg kl 00 00 00 cd hi mn 00 00 00 e0 j0 o0
+    signal = signal[..., :(frames + segments - 1) * segments, :]
+
+    # Reshape so that signal.shape = (3, 5, 2)
+    # ab fg kl 00 00
+    # 00 cd hi mn 00
+    # 00 00 e0 j0 o0
+    shape = full_shape([segments, (frames + segments - 1), frame_step])
+    signal = array_ops.reshape(signal, shape)
+
+    # Now, reduce over the columns, to achieve the desired sum.
+    signal = math_ops.reduce_sum(signal, -3)
+
+    # Flatten the array.
+    shape = full_shape([(frames + segments - 1) * frame_step])
+    signal = array_ops.reshape(signal, shape)
+
+    # Truncate to final length.
+    signal = signal[..., :output_length]
+
+    return signal

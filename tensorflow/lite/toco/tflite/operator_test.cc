@@ -616,6 +616,14 @@ TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
   EXPECT_FALSE(ShouldExportAsFlexOp(true, "RFFT"));
 }
 
+TEST_F(OperatorTest, BuiltinMirrorPad) {
+  MirrorPadOperator op;
+  op.mode = MirrorPadMode::kReflect;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("MIRROR_PAD", OperatorType::kMirrorPad), op);
+  EXPECT_EQ(op.mode, output_toco_op->mode);
+}
+
 }  // namespace
 }  // namespace tflite
 

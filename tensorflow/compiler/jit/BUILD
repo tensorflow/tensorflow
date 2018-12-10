@@ -86,6 +86,7 @@ cc_library(
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":create_xla_launch_op",  # buildcleaner: keep
         ":flags",
         ":jit_compilation_passes",
         ":xla_device",
@@ -105,6 +106,7 @@ cc_library(
     srcs = ["xla_gpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":create_xla_launch_op",  # buildcleaner: keep
         ":jit_compilation_passes",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_ops",
@@ -114,6 +116,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

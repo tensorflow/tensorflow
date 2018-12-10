@@ -51,11 +51,12 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                          std::shared_ptr<std::vector<Tensor>>, StatusCallback)>;
 
   explicit MapAndBatchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx),
-        op_version_(ctx->def().op() == "MapAndBatchDataset" ? 1 : 2) {
+      : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
   }
 
  protected:
@@ -68,29 +69,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("batch_size must be greater than zero."));
 
     int64 num_parallel_calls;
-    switch (op_version_) {
-      case 1:
-        int64 num_parallel_batches;
-        OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_batches",
-                                                &num_parallel_batches));
-        num_parallel_calls = num_parallel_batches * batch_size;
-        OP_REQUIRES(ctx, num_parallel_batches > 0,
-                    errors::InvalidArgument(
-                        "num_parallel_batches must be greater than zero."));
-        break;
-      case 2:
-        OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
-                                                &num_parallel_calls));
-        OP_REQUIRES(ctx,
-                    num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
-                    errors::InvalidArgument(
-                        "num_parallel_calls must be greater than zero."));
-        break;
-      default:
-        OP_REQUIRES(ctx, false,
-                    errors::Unimplemented("Unsupported operation version %d.",
-                                          op_version_));
-    }
+    OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
+                                            &num_parallel_calls));
+    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
+                errors::InvalidArgument(
+                    "num_parallel_calls must be greater than zero."));
 
     bool drop_remainder;
     OP_REQUIRES_OK(ctx,
@@ -146,7 +129,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     *output = new Dataset(ctx, input, func_, batch_size, num_parallel_calls,
                           drop_remainder, output_types_, output_shapes_,
                           std::move(captured_func), &ctx->eigen_cpu_device(),
-                          std::move(map_func));
+                          std::move(map_func), preserve_cardinality_);
   }
 
  private:
@@ -159,7 +142,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             const std::vector<PartialTensorShape>& output_shapes,
             std::unique_ptr<CapturedFunction> captured_func,
             const Eigen::ThreadPoolDevice* device,
-            MapAndBatchIteratorFunction map_func)
+            MapAndBatchIteratorFunction map_func, bool preserve_cardinality)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
@@ -170,7 +153,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           output_shapes_(output_shapes),
           captured_func_(std::move(captured_func)),
           device_(device),
-          map_func_(std::move(map_func)) {
+          map_func_(std::move(map_func)),
+          preserve_cardinality_(preserve_cardinality) {
       input_->Ref();
     }
 
@@ -193,6 +177,15 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return "MapAndBatchDatasetOp::Dataset";
+    }
+
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / batch_size_ +
+             (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
     }
 
    protected:
@@ -224,6 +217,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       b->BuildAttrValue(func_, &f);
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+      AttrValue preserve_cardinality_attr;
+      b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
 
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
@@ -233,7 +228,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
            std::make_pair(4, drop_remainder_node)},  // Single tensor inputs.
           {std::make_pair(1, other_arguments)},      // Tensor list inputs.
           {std::make_pair("f", f),
-           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+           std::make_pair("Targuments", other_arguments_types_attr),
+           std::make_pair("preserve_cardinality",
+                          preserve_cardinality_attr)},  // Attrs
           output));
       return Status::OK();
     }
@@ -423,6 +420,15 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         std::shared_ptr<std::vector<Tensor>> return_values =
             std::make_shared<std::vector<Tensor>>();
         auto done = [this, ctx, result, return_values, offset](Status status) {
+          if (dataset()->preserve_cardinality_ &&
+              errors::IsOutOfRange(status)) {
+            // To guarantee that the transformation preserves the cardinality of
+            // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
+            // former may be interpreted by a caller as the end of sequence.
+            status = errors::InvalidArgument(
+                "Function invocation produced OutOfRangeError: ",
+                status.error_message());
+          }
           result->UpdateStatus(status, offset);
           if (status.ok()) {
             Status allocate_status =
@@ -449,8 +455,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 // TODO(mrry): Add a version of DoParallelConcat that allows us
                 // to move `tensor` where possible, to speed up string tensor
                 // batching.
-                Status copy_status = ::tensorflow::functor::DoParallelConcat(
-                    *dataset()->device_, tensor, offset, batch);
+                Status copy_status =
+                    batch_util::CopyElementToSlice(tensor, batch, offset);
                 if (!copy_status.ok()) {
                   result->UpdateStatus(copy_status, offset);
                   break;
@@ -535,11 +541,14 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                            bool* end_of_sequence) {
         mutex_lock l(result->mu);
         if (result->num_elements == 0) {
-          *end_of_sequence = true;
-          return Status::OK();
+          if (result->status.ok() || errors::IsOutOfRange(result->status)) {
+            *end_of_sequence = true;
+            return Status::OK();
+          } else {
+            *end_of_sequence = false;
+            return result->status;
+          }
         }
-        // `f` may deliberately raise `errors::OutOfRange` to indicate that we
-        // should terminate the iteration early.
         if (!result->status.ok() && !errors::IsOutOfRange(result->status)) {
           // Deallocate tensors allocated for the output.
           result->output.clear();
@@ -569,7 +578,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         } else {
           *out_tensors = std::move(result->output);
         }
-        *end_of_sequence = result->num_elements == 0;
+        *end_of_sequence = false;
         return Status::OK();
       }
 
@@ -802,12 +811,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const std::unique_ptr<CapturedFunction> captured_func_;
     const Eigen::ThreadPoolDevice* device_;  // not owned
     const MapAndBatchIteratorFunction map_func_;
+    const bool preserve_cardinality_;
   };
 
-  const int op_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
+  bool preserve_cardinality_;
 };
 
 REGISTER_KERNEL_BUILDER(

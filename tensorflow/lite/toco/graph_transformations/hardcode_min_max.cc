@@ -208,12 +208,32 @@ bool HardcodeMinMaxForSelect(Model* model, Operator* op) {
   if (output_array.minmax) {
     return false;
   }
-  const auto& input_array_1 = model->GetArray(op->inputs[1]);
-  if (!input_array_1.minmax) {
+
+  auto& input_array_1 = model->GetArray(op->inputs[1]);
+  auto& input_array_2 = model->GetArray(op->inputs[2]);
+
+  if (!input_array_1.minmax && !input_array_2.minmax) {
     return false;
   }
-  const auto& input_array_2 = model->GetArray(op->inputs[2]);
-  if (!input_array_2.minmax) {
+
+  // Propagate up if one input is quantized and the other is constant.
+  if (!input_array_1.minmax &&
+      IsConstantParameterArray(*model, op->inputs[1])) {
+    auto& minmax_1 = input_array_1.GetOrCreateMinMax();
+    const auto& minmax_2 = input_array_2.GetMinMax();
+    minmax_1.min = minmax_2.min;
+    minmax_1.max = minmax_2.max;
+  }
+
+  if (!input_array_2.minmax &&
+      IsConstantParameterArray(*model, op->inputs[2])) {
+    auto& minmax_2 = input_array_2.GetOrCreateMinMax();
+    const auto& minmax_1 = input_array_1.GetMinMax();
+    minmax_2.min = minmax_1.min;
+    minmax_2.max = minmax_1.max;
+  }
+
+  if (!input_array_1.minmax || !input_array_2.minmax) {
     return false;
   }
 

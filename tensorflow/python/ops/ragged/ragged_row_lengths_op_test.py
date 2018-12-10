@@ -20,12 +20,16 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedRowLengthsOp(test_util.TensorFlowTestCase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedRowLengthsOp(ragged_test_util.RaggedTensorTestCase,
+                         parameterized.TestCase):
 
   @parameterized.parameters([
       # Docstring Example
@@ -36,24 +40,6 @@ class RaggedRowLengthsOp(test_util.TensorFlowTestCase, parameterized.TestCase):
           rt_input=[[[3, 1, 4], [1]], [], [[5, 9], [2]], [[6]], []],
           axis=2,
           expected=[[3, 1], [], [2, 1], [1], []]),
-
-      # 1D tensor
-      dict(
-          rt_input=[1, 2, 3, 4, 5],
-          ragged_rank=0,
-          axis=0,
-          expected=5),
-
-      # 2D Tensor (0 ragged dimensions)
-      dict(
-          rt_input=[[1, 2], [3, 4], [5, 6], [7, 8]],
-          ragged_rank=0,
-          expected=[2, 2, 2, 2]),
-      dict(
-          rt_input=[[1, 2], [3, 4], [5, 6], [7, 8]],
-          ragged_rank=0,
-          axis=0,
-          expected=4),
 
       # 2D Tensor (1 ragged dimension)
       dict(
@@ -78,24 +64,6 @@ class RaggedRowLengthsOp(test_util.TensorFlowTestCase, parameterized.TestCase):
           ragged_rank=1,
           axis=0,
           expected=0),
-
-      # 3D Tensor (0 ragged dimensions)
-      dict(
-          rt_input=[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]],
-          ragged_rank=0,
-          axis=0,
-          expected=2),
-      dict(
-          rt_input=[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]],
-          ragged_rank=0,
-          axis=1,
-          expected=[3, 3]),
-      dict(
-          rt_input=[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]],
-          ragged_rank=0,
-          axis=2,
-          expected=[[2, 2, 2], [2, 2, 2]],
-          expected_ragged_rank=0),
 
       # 3D Tensor (1 ragged dimension)
       dict(
@@ -143,7 +111,6 @@ class RaggedRowLengthsOp(test_util.TensorFlowTestCase, parameterized.TestCase):
           expected=[[2, 3, 0], [4, 1]],
           expected_ragged_rank=1),
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
   def testRowLengths(self,
                      rt_input,
                      expected,
@@ -151,34 +118,28 @@ class RaggedRowLengthsOp(test_util.TensorFlowTestCase, parameterized.TestCase):
                      ragged_rank=None,
                      expected_ragged_rank=None):
     rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
-    lengths = ragged.row_lengths(rt, axis)
-    with self.test_session():
-      self.assertEqual(lengths.eval().tolist(), expected)
-      if expected_ragged_rank is not None:
-        if isinstance(lengths, ragged.RaggedTensor):
-          self.assertEqual(lengths.ragged_rank, expected_ragged_rank)
-        else:
-          self.assertEqual(0, expected_ragged_rank)
+    lengths = rt.row_lengths(axis)
+    self.assertRaggedEqual(lengths, expected)
+    if expected_ragged_rank is not None:
+      if isinstance(lengths, ragged.RaggedTensor):
+        self.assertEqual(lengths.ragged_rank, expected_ragged_rank)
+      else:
+        self.assertEqual(0, expected_ragged_rank)
 
   @parameterized.parameters([
-      dict(
-          rt_input=10,
-          exception=ValueError,
-          message='rt_input may not be a scalar.'),
-      dict(
-          rt_input=[10, 20],
-          axis=1,
-          exception=ValueError,
-          message='axis=1 out of bounds: expected -1<=axis<1.'),
-      dict(
+      dict(  # axis=2 out of bounds: expected -2<=axis<2.
+          rt_input=[[10, 20], [30]],
+          axis=2,
+          exception=(ValueError, errors.InvalidArgumentError)),
+      dict(  # axis=-3 out of bounds: expected -2<=axis<2.
           rt_input=[[2, 3, 0], [4, 1, 2]],
           axis=-3,
-          exception=ValueError,
-          message='axis=-3 out of bounds: expected -2<=axis<2.'),
+          exception=(ValueError, errors.InvalidArgumentError)),
   ])
-  def testErrors(self, rt_input, exception, message, axis=1):
+  def testErrors(self, rt_input, exception, message=None, axis=1):
+    rt = ragged.constant(rt_input)
     with self.assertRaisesRegexp(exception, message):
-      ragged.row_lengths(rt_input, axis)
+      rt.row_lengths(axis)
 
 
 if __name__ == '__main__':

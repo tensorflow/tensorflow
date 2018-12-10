@@ -37,6 +37,9 @@ _CORNER_CASES = {
     'train.NanLossDuringTrainingError': {
         'message': {}
     },
+    'estimator.NanLossDuringTrainingError': {
+        'message': {}
+    },
 }
 
 # Python 2 vs. 3 differences

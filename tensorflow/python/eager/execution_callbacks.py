@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import functools
 
 import numpy as np
@@ -28,8 +29,13 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import execute
 from tensorflow.python.platform import tf_logging as logging
 
-_DEFAULT_CALLBACK_ACTION = "raise"
-_VALID_CALLBACK_ACTIONS = (None, "ignore", "print", "raise", "warn")
+IGNORE = "ignore"
+PRINT = "print"
+RAISE = "raise"
+WARN = "warn"
+
+_DEFAULT_CALLBACK_ACTION = RAISE
+_VALID_CALLBACK_ACTIONS = (None, IGNORE, PRINT, RAISE, WARN)
 
 
 # TODO(cais): Consider moving this exception class to errors_impl.py.
@@ -335,3 +341,38 @@ def seterr(inf_or_nan=None):
           functools.partial(inf_nan_callback, action=inf_or_nan))
 
   return old_settings
+
+
+@contextlib.contextmanager
+def errstate(inf_or_nan=None):
+  """Context manager setting error state.
+
+  Example:
+  ```
+  c = tf.log(0.)  # -inf
+
+  with errstate(inf_or_nan="raise"):
+    tf.log(0.)  # <-- Raises InfOrNanError.
+  ```
+
+  Args:
+    inf_or_nan: Set action for infinity (`inf`) and NaN (`nan`) values.
+      Possible values: `{IGNORE, PRINT, RAISE, WARN}`.
+      `IGNORE`: take no action when `inf` values appear.
+      `PRINT`: print a warning to `stdout`.
+      `RAISE`: raise an `InfOrNanError`.
+      `WARN`: print a warning using `tf.logging.warn`.
+      A value of `None` leads to no change in the action of the condition.
+
+  Yields:
+    None.
+
+  Raises:
+    ValueError: If the value of any keyword arguments is invalid.
+  """
+  if not context.executing_eagerly():
+    yield
+  else:
+    old_settings = seterr(inf_or_nan=inf_or_nan)
+    yield
+    seterr(**old_settings)

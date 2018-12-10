@@ -440,7 +440,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           item.graph)
           .ToProto();
 
-  GrapplerItem trimmed_item(item, std::move(trimmed_graph));
+  GrapplerItem trimmed_item = item.WithGraph(std::move(trimmed_graph));
 
   VLOG(1) << absl::Substitute(
       "Deleted $0 unreachable functions from the graph (library size = $1)",
@@ -524,8 +524,18 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // can't perform non-differentiable rewrites.
       if (differentiable_functions.find(func_name) !=
           differentiable_functions.end()) {
-        func_item.allowed_optimizations.non_differentiable_rewrites = false;
+        func_item.allowed_optimizations().non_differentiable_rewrites = false;
       }
+
+      // Function item is allowed to use all devices from the main graph.
+      Status added_devices = func_item.AddDevices(item);
+      if (!added_devices.ok()) {
+        VLOG(3) << added_devices.error_message();
+      }
+
+      // We can safely inline nested function calls with side-effectful ops into
+      // the function body (see function_optimizer.cc for details).
+      func_item.allowed_optimizations().inline_ops_with_side_effects = true;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;

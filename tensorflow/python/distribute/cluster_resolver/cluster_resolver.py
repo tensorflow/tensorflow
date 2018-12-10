@@ -92,7 +92,11 @@ class ClusterResolver(object):
     raise NotImplementedError()
 
   @abc.abstractmethod
-  def num_accelerators_per_worker(self, session_config=None):
+  def num_accelerators(self,
+                       task_type=None,
+                       task_index=None,
+                       accelerator_type='GPU',
+                       config_proto=None):
     """Returns the number of accelerator cores per worker.
 
     This returns the number of accelerator cores (such as GPUs and TPUs)
@@ -100,8 +104,19 @@ class ClusterResolver(object):
     should return 0. This method will query the master for this information
     if it is not otherwise known.
 
+    Optionally, we allow callers to specify the task_type, task_index, and
+    rpc_layer, if they want to target a specific TensorFlow process to query
+    the number of accelerators. This is to support heterogenous environments,
+    where the number of accelerators cores per host is different.
+
     Args:
-      session_config: (Optional) Configuration for starting a new session to
+      task_type: (Optional) The type of the TensorFlow task of the machine we
+        want to query.
+      task_index: (Optional) The index of the TensorFlow task of the machine we
+        want to query.
+      accelerator_type: (Optional) The type of accelerator we are trying to
+        query (defaults to 'GPU').
+      config_proto: (Optional) Configuration for starting a new session to
         query how many accelerator cores it has.
     """
     raise NotImplementedError()
@@ -116,7 +131,7 @@ class SimpleClusterResolver(ClusterResolver):
   """Simple implementation of ClusterResolver that accepts a ClusterSpec."""
 
   def __init__(self, cluster_spec, master='', task_type=None, task_index=None,
-               environment='', num_accelerators_per_worker=0,
+               environment='', num_accelerators=0,
                rpc_layer=None):
     """Creates a SimpleClusterResolver from a ClusterSpec."""
     super(SimpleClusterResolver, self).__init__()
@@ -124,7 +139,7 @@ class SimpleClusterResolver(ClusterResolver):
     self._task_type = task_type
     self._task_index = task_index
     self._environment = environment
-    self._num_accelerators_per_worker = num_accelerators_per_worker
+    self._num_accelerators = num_accelerators
     self._rpc_layer = rpc_layer
 
     if not isinstance(cluster_spec, ClusterSpec):
@@ -180,17 +195,27 @@ class SimpleClusterResolver(ClusterResolver):
   def environment(self):
     return self._environment
 
-  def num_accelerators_per_worker(self, session_config=None):
+  def num_accelerators(self,
+                       task_type=None,
+                       task_index=None,
+                       accelerator_type='GPU',
+                       config_proto=None):
     """Returns the number of accelerator cores per worker.
 
+    The SimpleClusterResolver does not do automatic detection of accelerators,
+    so a TensorFlow session will never be created, and thus all arguments are
+    unused and we simply return whatever was passed in when this object was
+    initialized.
+
     Args:
-      session_config: Unused. The SimpleClusterResolver does not do automatic
-        detection of accelerators, so a TensorFlow session will never be
-        created, and thus a `session_config` is never necessary here, and will
-        be ignored.
+      task_type: Unused.
+      task_index: Unused.
+      accelerator_type: Unused.
+      config_proto: Unused.
     """
-    del session_config
-    return self._num_accelerators_per_worker
+    # Unused
+    del task_type, task_index, accelerator_type, config_proto
+    return self._num_accelerators
 
   @property
   def rpc_layer(self):
@@ -361,9 +386,13 @@ class UnionClusterResolver(ClusterResolver):
   def environment(self):
     return self._cluster_resolvers[0].environment
 
-  def num_accelerators_per_worker(self, session_config=None):
-    return self._cluster_resolvers[0].num_accelerators_per_worker(
-        session_config)
+  def num_accelerators(self,
+                       task_type=None,
+                       task_index=None,
+                       accelerator_type='GPU',
+                       config_proto=None):
+    return self._cluster_resolvers[0].num_accelerators(
+        task_type, task_index, accelerator_type, config_proto)
 
   @property
   def rpc_layer(self):

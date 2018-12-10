@@ -255,6 +255,18 @@ py_library(
     ],
 )
 
+py_test(
+    name = "execution_callbacks_test",
+    srcs = ["execution_callbacks_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":execution_callbacks",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
 py_library(
     name = "graph_only_ops",
     srcs = ["graph_only_ops.py"],

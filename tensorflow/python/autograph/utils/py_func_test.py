@@ -32,13 +32,13 @@ class PyFuncTest(test.TestCase):
       return a + b + c
 
     with self.cached_session() as sess:
-      result = py_func.wrap_py_func(test_fn, dtypes.int64,
+      result = py_func.wrap_py_func(test_fn, dtypes.int32,
                                     (1, constant_op.constant(1), 1))
       self.assertEqual(3, self.evaluate(result))
-      result = py_func.wrap_py_func(test_fn, dtypes.int64, (1, 1, 1))
+      result = py_func.wrap_py_func(test_fn, dtypes.int32, (1, 1, 1))
       self.assertEqual(3, self.evaluate(result))
       result = py_func.wrap_py_func(
-          test_fn, dtypes.int64,
+          test_fn, dtypes.int32,
           (constant_op.constant(1), 1, constant_op.constant(1)))
       self.assertEqual(3, self.evaluate(result))
 
@@ -53,9 +53,9 @@ class PyFuncTest(test.TestCase):
       return a * b.foo
 
     with self.cached_session() as sess:
-      result = py_func.wrap_py_func(test_fn, dtypes.int64, (7, TestClass()))
+      result = py_func.wrap_py_func(test_fn, dtypes.int32, (7, TestClass()))
       self.assertEqual(35, self.evaluate(result))
-      result = py_func.wrap_py_func(test_fn, dtypes.int64,
+      result = py_func.wrap_py_func(test_fn, dtypes.int32,
                                     (constant_op.constant(7), TestClass()))
       self.assertEqual(35, self.evaluate(result))
 
@@ -70,12 +70,12 @@ class PyFuncTest(test.TestCase):
       return a * b.foo + c * d.foo
 
     with self.cached_session() as sess:
-      result = py_func.wrap_py_func(test_fn, dtypes.int64, (7, TestClass(5)), {
+      result = py_func.wrap_py_func(test_fn, dtypes.int32, (7, TestClass(5)), {
           'c': 11,
           'd': TestClass(13)
       })
       self.assertEqual(178, self.evaluate(result))
-      result = py_func.wrap_py_func(test_fn, dtypes.int64,
+      result = py_func.wrap_py_func(test_fn, dtypes.int32,
                                     (constant_op.constant(7), TestClass(5)), {
                                         'c': constant_op.constant(11),
                                         'd': TestClass(13)
