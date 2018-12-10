@@ -1,6 +1,4 @@
 
-TfLite_RPI_APPS_DEBUG := false
-
 # Find where we're running from, so we can store generated files here.
 ifeq ($(origin MAKEFILE_DIR), undefined)
 	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
@@ -206,7 +204,11 @@ $(OBJDIR)%.o: %.c
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
+ifeq ($(TfLite_RPI_APPS),true)
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(LABEL_IMAGE_BINARY) $(CAMERA_BINARY) $(BENCHMARK_BINARY)
+else
+all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)
+endif
 
 # The target that's compiled for micro-controllers
 micro: $(LIB_PATH)

@@ -19,4 +19,5 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../../../../.."
 
-CC_PREFIX=arm-linux-gnueabihf- make -j 3 -f tensorflow/contrib/lite/tools/make/Makefile TARGET=rpi TARGET_ARCH=armv7l
+CC_PREFIX=arm-linux-gnueabihf- make -j 3 -f tensorflow/contrib/lite/tools/make/Makefile TARGET=rpi TARGET_ARCH=armv7l \
+    -lv4l2 -ljpeg TfLite_RPI_APPS=true TfLite_RPI_APPS_DEBUG=false
