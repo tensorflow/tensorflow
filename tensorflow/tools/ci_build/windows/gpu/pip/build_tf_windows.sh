@@ -136,7 +136,7 @@ fi
 create_python_test_dir "${PY_TEST_DIR}"
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" \
-  --gpu "${EXTRA_PIP_FLAGS}"
+  --gpu ${EXTRA_PIP_FLAGS}
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0
