@@ -60,6 +60,8 @@ FunctionPass *mlir::createSimplifyAffineStructuresPass() {
   return new SimplifyAffineStructures();
 }
 
+/// Performs basic integer set simplifications. Checks if it's empty, and
+/// replaces it with the canonical empty set if it is.
 static IntegerSet simplifyIntegerSet(IntegerSet set) {
   FlatAffineConstraints fac(set);
   if (fac.isEmpty())

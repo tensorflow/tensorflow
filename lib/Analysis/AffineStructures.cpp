@@ -772,8 +772,9 @@ findConstraintWithNonZeroAt(const FlatAffineConstraints &constraints,
 
 // Normalizes the coefficient values across all columns in 'rowIDx' by their
 // GCD in equality or inequality contraints as specified by 'isEq'.
+template <bool isEq>
 static void normalizeConstraintByGCD(FlatAffineConstraints *constraints,
-                                     unsigned rowIdx, bool isEq) {
+                                     unsigned rowIdx) {
   auto at = [&](unsigned colIdx) -> int64_t {
     return isEq ? constraints->atEq(rowIdx, colIdx)
                 : constraints->atIneq(rowIdx, colIdx);
@@ -788,6 +789,15 @@ static void normalizeConstraintByGCD(FlatAffineConstraints *constraints,
       isEq ? constraints->atEq(rowIdx, j) = v
            : constraints->atIneq(rowIdx, j) = v;
     }
+  }
+}
+
+void FlatAffineConstraints::normalizeConstraintsByGCD() {
+  for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
+    normalizeConstraintByGCD</*isEq=*/true>(this, i);
+  }
+  for (unsigned i = 0, e = getNumInequalities(); i < e; ++i) {
+    normalizeConstraintByGCD</*isEq=*/false>(this, i);
   }
 }
 
@@ -809,7 +819,7 @@ bool FlatAffineConstraints::hasConsistentState() const {
 /// Checks all rows of equality/inequality constraints for trivial
 /// contradictions (for example: 1 == 0, 0 >= 1), which may have surfaced
 /// after elimination. Returns 'true' if an invalid constraint is found;
-/// 'false'otherwise.
+/// 'false' otherwise.
 bool FlatAffineConstraints::hasInvalidConstraint() const {
   assert(hasConsistentState());
   auto check = [&](bool isEq) -> bool {
@@ -925,20 +935,32 @@ void FlatAffineConstraints::removeIdRange(unsigned idStart, unsigned idLimit) {
   // No resize necessary. numReservedCols remains the same.
 }
 
-// Performs variable elimination on all identifiers, runs the GCD test on
-// all equality constraint rows, and checks the constraint validity.
-// Returns 'true' if the GCD test fails on any row, or if any invalid
-// constraint is detected. Returns 'false' otherwise.
+// Checks for emptiness of the set by eliminating identifiers successively and
+// using the GCD test (on all equality constraints) and checking for trivially
+// invalid constraints. Returns 'true' if the constaint system is found to be
+// empty; false otherwise.
 bool FlatAffineConstraints::isEmpty() const {
-  if (isEmptyByGCDTest())
+  if (isEmptyByGCDTest() || hasInvalidConstraint())
     return true;
+
   auto tmpCst = clone();
-  if (tmpCst->gaussianEliminateIds(0, numIds) < numIds) {
-    for (unsigned i = 0, e = tmpCst->getNumIds(); i < e; i++)
+  for (unsigned i = 0, e = tmpCst->getNumIds(); i < e; i++) {
+    // We check emptiness through trivial checks after eliminating each ID to
+    // detect emptiness early. Since the checks isEmptyByGCDTest() and
+    // hasInvalidConstraint() are linear time and single sweep on the constraint
+    // buffer, this appears reasonable - but can optimize in the future.
+    if (tmpCst->gaussianEliminateId(0)) {
+      if (tmpCst->hasInvalidConstraint() || tmpCst->isEmptyByGCDTest())
+        return true;
+    } else {
       tmpCst->FourierMotzkinEliminate(0);
+      // If the variable couldn't be eliminated by Gaussian, FM wouldn't have
+      // modified the equalities in any way. So no need to again run GCD test.
+      // Check for trivial invalid constraints.
+      if (tmpCst->hasInvalidConstraint())
+        return true;
+    }
   }
-  if (tmpCst->hasInvalidConstraint())
-    return true;
   return false;
 }
 
@@ -974,7 +996,7 @@ bool FlatAffineConstraints::isEmptyByGCDTest() const {
 }
 
 /// Tightens inequalities given that we are dealing with integer spaces. This is
-/// similar to the GCD test but applied to inequalities. The constant term can
+/// analogous to the GCD test but applied to inequalities. The constant term can
 /// be reduced to the preceding multiple of the GCD of the coefficients, i.e.,
 ///  64*i - 100 >= 0  =>  64*i - 128 >= 0 (since 'i' is an integer). This is a
 /// fast method - linear in the number of coefficients.
@@ -994,13 +1016,6 @@ void FlatAffineConstraints::GCDTightenInequalities() {
           gcdI * mlir::floorDiv(atIneq(i, numCols - 1), gcdI);
     }
   }
-}
-
-// Eliminates a single identifier at 'position' from equality and inequality
-// constraints. Returns 'true' if the identifier was eliminated.
-// Returns 'false' otherwise.
-bool FlatAffineConstraints::gaussianEliminateId(unsigned position) {
-  return gaussianEliminateIds(position, position + 1) == 1;
 }
 
 // Eliminates all identifer variables in column range [posStart, posLimit).
@@ -1025,7 +1040,8 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
       // No pivot row in equalities with non-zero at 'pivotCol'.
       if (!findConstraintWithNonZeroAt(*this, pivotCol, /*isEq=*/false,
                                        pivotRow)) {
-        // If inequalities are also non-zero in 'pivotCol' it can be eliminated.
+        // If inequalities are also non-zero in 'pivotCol', it can be
+        // eliminated.
         continue;
       }
       break;
@@ -1035,14 +1051,14 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
     for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
       eliminateFromConstraint(this, i, pivotRow, pivotCol, posStart,
                               /*isEq=*/true);
-      normalizeConstraintByGCD(this, i, /*isEq=*/true);
+      normalizeConstraintByGCD</*isEq=*/true>(this, i);
     }
 
     // Eliminate identifier at 'pivotCol' from each inequality row.
     for (unsigned i = 0, e = getNumInequalities(); i < e; ++i) {
       eliminateFromConstraint(this, i, pivotRow, pivotCol, posStart,
                               /*isEq=*/false);
-      normalizeConstraintByGCD(this, i, /*isEq=*/false);
+      normalizeConstraintByGCD</*isEq=*/false>(this, i);
     }
     removeEquality(pivotRow);
   }
@@ -1289,7 +1305,7 @@ bool FlatAffineConstraints::getDimensionBounds(unsigned pos, unsigned num,
       return false;
     (*lbs)[i] = AffineMap::getConstantMap(lb.getValue(), context);
     (*ubs)[i] = AffineMap::getConstantMap(ub.getValue(), context);
-    projectOut(i, 1);
+    projectOut(i);
   }
   return true;
 }
@@ -1564,7 +1580,7 @@ void FlatAffineConstraints::print(raw_ostream &os) const {
 void FlatAffineConstraints::dump() const { print(llvm::errs()); }
 
 void FlatAffineConstraints::removeDuplicates() {
-  // TODO: remove redundant constraints.
+  // TODO(mlir-team): remove redundant constraints.
 }
 
 void FlatAffineConstraints::clearAndCopyFrom(
@@ -1647,9 +1663,6 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   assert(pos < getNumIds() && "invalid position");
   assert(hasConsistentState());
 
-  // A fast linear time tightening.
-  GCDTightenInequalities();
-
   // Check if this identifier can be eliminated through a substitution.
   for (unsigned r = 0, e = getNumEqualities(); r < e; r++) {
     if (atEq(r, pos) != 0) {
@@ -1662,6 +1675,9 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
       return;
     }
   }
+
+  // A fast linear time tightening.
+  GCDTightenInequalities();
 
   // Check if the identifier appears at all in any of the inequalities.
   unsigned r, e;
@@ -1800,14 +1816,19 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
 }
 
 void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
-  // 'pos' can be at most getNumCols() - 2.
   if (num == 0)
     return;
+
+  // 'pos' can be at most getNumCols() - 2.
   assert(pos <= getNumCols() - 2 && "invalid position");
   assert(pos + num < getNumCols() && "invalid range");
-  for (unsigned i = 0; i < num; i++) {
+
+  for (unsigned i = 0; i < num; i++)
     FourierMotzkinEliminate(pos);
-  }
+
+  // Fast/trivial simplifications.
+  normalizeConstraintsByGCD();
+  GCDTightenInequalities();
 }
 
 void FlatAffineConstraints::projectOut(MLValue *id) {

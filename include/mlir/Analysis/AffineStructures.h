@@ -202,7 +202,11 @@ class IntegerValueSet {
   // This will lead to a single equality in 'set'.
   explicit IntegerValueSet(const AffineValueMap &avm);
 
-  /// Returns true if this integer set is empty.
+  /// Returns true if this integer set is determined to be empty. Emptiness is
+  /// checked by by eliminating identifiers successively (through either
+  /// Gaussian or Fourier-Motzkin) while using the GCD test and a trivial
+  /// constraint check. Returns 'true' if the constaint system is found to be
+  /// empty; false otherwise.
   bool isEmpty() const;
 
   bool getNumDims() const { return set.getNumDims(); }
@@ -319,24 +323,6 @@ public:
   // returns true, no integer solution to the equality constraints can exist.
   bool isEmptyByGCDTest() const;
 
-  /// Tightens inequalities given that we are dealing with integer spaces. This
-  /// is similar to the GCD test but applied to inequalities. The constant term
-  /// can be reduced to the preceding multiple of the GCD of the coefficients,
-  /// i.e.,
-  ///  64*i - 100 >= 0  =>  64*i - 128 >= 0 (since 'i' is an integer). This is a
-  /// fast method (linear in the number of coefficients).
-  void GCDTightenInequalities();
-
-  // Eliminates a single identifier at 'position' from equality and inequality
-  // constraints. Returns 'true' if the identifier was eliminated.
-  // Returns 'false' otherwise.
-  bool gaussianEliminateId(unsigned position);
-
-  // Eliminates identifiers from equality and inequality constraints
-  // in column range [posStart, posLimit).
-  // Returns the number of variables eliminated.
-  unsigned gaussianEliminateIds(unsigned posStart, unsigned posLimit);
-
   // Clones this object.
   std::unique_ptr<FlatAffineConstraints> clone() const;
 
@@ -445,21 +431,13 @@ public:
   /// if the composition fails (when vMap is a semi-affine map).
   bool composeMap(AffineValueMap *vMap, unsigned pos = 0);
 
-  /// Eliminates identifier at the specified position using Fourier-Motzkin
-  /// variable elimination. If the result of the elimination is integer exact,
-  /// *isResultIntegerExact is set to true. If 'darkShadow' is set to true, a
-  /// potential under approximation (subset) of the rational shadow / exact
-  /// integer shadow is computed.
-  // See implementation comments for more details.
-  void FourierMotzkinEliminate(unsigned pos, bool darkShadow = false,
-                               bool *isResultIntegerExact = nullptr);
-
   /// Projects out (aka eliminates) 'num' identifiers starting at position
   /// 'pos'. The resulting constraint system is the shadow along the dimensions
   /// that still exist. This method may not always be integer exact.
   // TODO(bondhugula): deal with integer exactness when necessary - can return a
   // value to mark exactness for example.
   void projectOut(unsigned pos, unsigned num);
+  inline void projectOut(unsigned pos) { return projectOut(pos, 1); }
 
   /// Projects out the identifier that is associate with MLValue *.
   void projectOut(MLValue *id);
@@ -538,8 +516,8 @@ public:
                           SmallVectorImpl<AffineMap> *ubs,
                           MLIRContext *context);
 
-  /// Returns true if the set is hyper-rectangular on the specified contiguous
-  /// set of identifiers.
+  /// Returns true if the set can be trivially detected as being
+  /// hyper-rectangular on the specified contiguous set of identifiers.
   bool isHyperRectangular(unsigned pos, unsigned num) const;
 
   // More expensive ones.
@@ -559,6 +537,39 @@ private:
   /// after elimination. Returns 'true' if an invalid constraint is found;
   /// 'false'otherwise.
   bool hasInvalidConstraint() const;
+
+  // Eliminates a single identifier at 'position' from equality and inequality
+  // constraints. Returns 'true' if the identifier was eliminated, and false
+  // otherwise.
+  inline bool gaussianEliminateId(unsigned position) {
+    return gaussianEliminateIds(position, position + 1) == 1;
+  }
+
+  // Eliminates identifiers from equality and inequality constraints
+  // in column range [posStart, posLimit).
+  // Returns the number of variables eliminated.
+  unsigned gaussianEliminateIds(unsigned posStart, unsigned posLimit);
+
+  /// Eliminates identifier at the specified position using Fourier-Motzkin
+  /// variable elimination, but uses Gaussian elimination if there is an
+  /// equality involving that identifier. If the result of the elimination is
+  /// integer exact, *isResultIntegerExact is set to true. If 'darkShadow' is
+  /// set to true, a potential under approximation (subset) of the rational
+  /// shadow / exact integer shadow is computed.
+  // See implementation comments for more details.
+  void FourierMotzkinEliminate(unsigned pos, bool darkShadow = false,
+                               bool *isResultIntegerExact = nullptr);
+
+  /// Tightens inequalities given that we are dealing with integer spaces. This
+  /// is similar to the GCD test but applied to inequalities. The constant term
+  /// can be reduced to the preceding multiple of the GCD of the coefficients,
+  /// i.e.,
+  ///  64*i - 100 >= 0  =>  64*i - 128 >= 0 (since 'i' is an integer). This is a
+  /// fast method (linear in the number of coefficients).
+  void GCDTightenInequalities();
+
+  /// Normalized each constraints by the GCD of its coefficients.
+  void normalizeConstraintsByGCD();
 
   /// Removes identifiers in column range [idStart, idLimit), and copies any
   /// remaining valid data into place, updates member variables, and resizes

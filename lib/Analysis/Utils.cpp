@@ -225,9 +225,6 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
                             regionCst->getNumSymbolIds(),
                         regionCst->getNumLocalIds());
 
-  // Tighten the set.
-  regionCst->GCDTightenInequalities();
-
   // Set all identifiers appearing after the first 'rank' identifiers as
   // symbolic identifiers - so that the ones correspoding to the memref
   // dimensions are the dimensional identifiers for the memref region.

@@ -44,17 +44,17 @@
 
 // Set for test case: test_gaussian_elimination_non_empty_set4
 #set4 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
-                             d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0,
-			     d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0,
-			     d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
+                            d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0,
+                            d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0,
+                            d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
 
 // Add invalid constraints to previous non-empty set to make it empty.
 // Set for test case: test_gaussian_elimination_empty_set5
 #set5 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
                              d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0,
-			     d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0,
-			     d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
-			     d0 - 1 == 0, d0 + 2 == 0)
+                             d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0,
+                             d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
+                             d0 - 1 == 0, d0 + 2 == 0)
 
 mlfunc @test() {
   for %n0 = 0 to 127 {
@@ -200,11 +200,14 @@ mlfunc @test_empty_set(%N : index) {
         "foo"() : () -> ()
       }
       // Same as above but with a combination of multiple identifiers. 4*d0 +
-      // 8*d1 here is a multiple of 4, and so can't lie between 9 and 11.
+      // 8*d1 here is a multiple of 4, and so can't lie between 9 and 11. GCD
+      // tightening will tighten constraints to 4*d0 + 8*d1 >= 12 and 4*d0 +
+      // 8*d1 <= 8; hence infeasible.
       // CHECK: if [[SET_EMPTY_2D]](%i2, %i3)
       if (d0, d1) : (4*d0 + 8*d1 - 9 >= 0, -4*d0 - 8*d1 + 11 >=  0)(%k, %l) {
         "foo"() : () -> ()
       }
+      // Same as above but with equalities added into the mix.
       // CHECK: if [[SET_EMPTY_3D]](%i2, %i2, %i3)
       if (d0, d1, d2) : (d0 - 4*d2 == 0, d0 + 8*d1 - 9 >= 0, -d0 - 8*d1 + 11 >=  0)(%k, %k, %l) {
         "foo"() : () -> ()
