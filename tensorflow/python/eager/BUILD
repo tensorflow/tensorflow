@@ -1,7 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
@@ -96,7 +96,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "tensor_test",
     srcs = ["tensor_test.py"],
     additional_deps = [
@@ -107,7 +107,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "backprop_test",
     srcs = ["backprop_test.py"],
     additional_deps = [
@@ -128,7 +128,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "core_test",
     srcs = ["core_test.py"],
     additional_deps = [
@@ -145,7 +145,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "function_argument_naming_test",
     size = "medium",
     srcs = ["function_argument_naming_test.py"],
@@ -159,7 +159,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "function_defun_collection_test",
     size = "medium",
     srcs = ["function_defun_collection_test.py"],
@@ -174,7 +174,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "function_gradients_test",
     size = "medium",
     srcs = ["function_gradients_test.py"],
@@ -191,7 +191,7 @@ gpu_py_test(
     shard_count = 5,
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "function_test",
     size = "medium",
     srcs = ["function_test.py"],
@@ -267,7 +267,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "graph_only_ops_test",
     srcs = ["graph_only_ops_test.py"],
     additional_deps = [
@@ -340,7 +340,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     additional_deps = [
@@ -379,7 +379,7 @@ py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "ops_test",
     srcs = ["ops_test.py"],
     additional_deps = [
@@ -430,7 +430,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "memory_test",
     size = "medium",
     srcs = ["memory_test.py"],

@@ -7,7 +7,7 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 tf_py_test(
     name = "batch_test",
@@ -309,7 +309,7 @@ tf_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "iterator_test",
     size = "medium",
     srcs = ["iterator_test.py"],
@@ -397,7 +397,7 @@ tf_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "multi_device_iterator_test",
     size = "medium",
     srcs = ["multi_device_iterator_test.py"],
@@ -421,7 +421,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "optional_test",
     size = "small",
     srcs = ["optional_test.py"],

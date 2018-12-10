@@ -8,7 +8,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "all_reduce",
@@ -93,7 +93,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "device_util_test",
     srcs = ["device_util_test.py"],
     additional_deps = [
@@ -251,7 +251,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "input_ops_test",
     srcs = ["input_ops_test.py"],
     additional_deps = [

@@ -4,7 +4,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_test(
@@ -26,7 +26,7 @@ py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "copy_to_device_test",
     size = "small",
     srcs = ["copy_to_device_test.py"],
@@ -445,7 +445,7 @@ py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "prefetch_to_device_test",
     size = "small",
     srcs = ["prefetch_to_device_test.py"],

@@ -19,8 +19,8 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
-load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
@@ -457,7 +457,7 @@ py_library(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "trt_convert_test",
     srcs = ["python/trt_convert_test.py"],
     additional_deps = [
@@ -482,7 +482,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
         "test/base_test.py",
@@ -513,7 +513,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "tf_trt_integration_test_no_oss",
     srcs = [
         "test/unary_test.py",
@@ -532,7 +532,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "quantization_mnist_test",
     srcs = ["test/quantization_mnist_test.py"],
     additional_deps = [
