@@ -98,10 +98,3 @@ class RaggedTensorValue(object):
         values_as_list[self._row_splits[i]:self._row_splits[i + 1]]
         for i in range(len(self._row_splits) - 1)
     ]
-
-  def value_rowids(self, name=None):
-    del name
-    row_lengths = self._row_splits[1:] - self._row_splits[:-1]
-    nrows = self._row_splits.shape[-1] - 1
-    indices = np.arange(nrows)
-    return np.repeat(indices, repeats=row_lengths, axis=0)
