@@ -135,6 +135,7 @@ class CoreLayersTest(test.TestCase):
           kwargs={'dims': (1, 4, 2)}, input_shape=(3, 2, 4))
 
   @tf_test_util.run_in_graph_and_eager_modes
+  @tf_test_util.run_v1_only('b/120545219')
   def test_flatten(self):
     testing_utils.layer_test(
         keras.layers.Flatten, kwargs={}, input_shape=(3, 2, 4))
@@ -150,6 +151,7 @@ class CoreLayersTest(test.TestCase):
     self.assertAllClose(outputs, target_outputs)
 
   @tf_test_util.run_in_graph_and_eager_modes
+  @tf_test_util.run_v1_only('b/120545219')
   def test_flatten_scalar_channels(self):
     testing_utils.layer_test(
         keras.layers.Flatten, kwargs={}, input_shape=(3,))
