@@ -54,7 +54,7 @@ class SSAValue;
 // TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
 bool replaceAllMemRefUsesWith(const MLValue *oldMemRef, MLValue *newMemRef,
-                              ArrayRef<MLValue *> extraIndices = {},
+                              ArrayRef<SSAValue *> extraIndices = {},
                               AffineMap indexRemap = AffineMap::Null(),
                               ArrayRef<SSAValue *> extraOperands = {},
                               const Statement *domStmtFilter = nullptr);

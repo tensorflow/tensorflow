@@ -65,7 +65,7 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 // extended to add additional indices at any position.
 bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
                                     MLValue *newMemRef,
-                                    ArrayRef<MLValue *> extraIndices,
+                                    ArrayRef<SSAValue *> extraIndices,
                                     AffineMap indexRemap,
                                     ArrayRef<SSAValue *> extraOperands,
                                     const Statement *domStmtFilter) {
