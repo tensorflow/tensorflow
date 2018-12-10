@@ -374,15 +374,31 @@ _BINARY_ELEMENTWISE_OPS = [
     math_ops.truncatemod,
 ]
 
+
+def _ragged_gather_v1(params, indices, validate_indices=None, name=None,
+                      axis=0):
+  return ragged_array_ops.gather(params=params, indices=indices,
+                                 validate_indices=validate_indices,
+                                 axis=axis, name=name)
+
+
+def _ragged_expand_dims_v1(input, axis=None, name=None, dim=None):  # pylint: disable=redefined-builtin
+  if dim is not None:
+    axis = dim
+  return ragged_array_ops.expand_dims(input=input, axis=axis, name=name)
+
+
 # (original_op, ragged_op, ragged_args)
 _RAGGED_DISPATCH_OPS = [
     (array_ops.batch_gather, ragged_array_ops.batch_gather,
      ['params', 'indices']),
-    (array_ops.concat, ragged_array_ops.concat, ['values']),
+    (array_ops.concat, ragged_array_ops.concat, ['[values]']),
+    (array_ops.expand_dims, _ragged_expand_dims_v1, ['input']),
     (array_ops.expand_dims_v2, ragged_array_ops.expand_dims, ['input']),
+    (array_ops.gather, _ragged_gather_v1, ['params', 'indices']),
     (array_ops.gather_v2, ragged_array_ops.gather, ['params', 'indices']),
     (array_ops.gather_nd, ragged_array_ops.gather_nd, ['params', 'indices']),
-    (array_ops.stack, ragged_array_ops.stack, ['values']),
+    (array_ops.stack, ragged_array_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_array_ops.where, ['condition', 'x', 'y']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,

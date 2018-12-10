@@ -269,28 +269,32 @@ def segment_max(data, segment_ids, num_segments, name=None):
 
 
 def segment_mean(data, segment_ids, num_segments, name=None):
-  # For docs, see: _RAGGED_SEGMENT_DOCSTRING
+  """For docs, see: _RAGGED_SEGMENT_DOCSTRING."""
   with ops.name_scope(name, 'RaggedSegmentMean',
                       [data, segment_ids, num_segments]):
     total = segment_sum(data, segment_ids, num_segments)
     ones = ragged_tensor.RaggedTensor.from_nested_row_splits(
         array_ops.ones_like(data.flat_values), data.nested_row_splits)
     count = segment_sum(ones, segment_ids, num_segments)
-    return ragged_tensor.RaggedTensor.from_nested_row_splits(
-        total.flat_values / count.flat_values, total.nested_row_splits)
+    if ragged_tensor.is_ragged(total):
+      return total.with_flat_values(total.flat_values / count.flat_values)
+    else:
+      return total / count
 
 
 def segment_sqrt_n(data, segment_ids, num_segments, name=None):
-  # For docs, see: _RAGGED_SEGMENT_DOCSTRING
+  """For docs, see: _RAGGED_SEGMENT_DOCSTRING."""
   with ops.name_scope(name, 'RaggedSegmentSqrtN',
                       [data, segment_ids, num_segments]):
     total = segment_sum(data, segment_ids, num_segments)
     ones = ragged_tensor.RaggedTensor.from_nested_row_splits(
         array_ops.ones_like(data.flat_values), data.nested_row_splits)
     count = segment_sum(ones, segment_ids, num_segments)
-    return ragged_tensor.RaggedTensor.from_nested_row_splits(
-        total.flat_values / math_ops.sqrt(count.flat_values),
-        total.nested_row_splits)
+    if ragged_tensor.is_ragged(total):
+      return total.with_flat_values(
+          total.flat_values / math_ops.sqrt(count.flat_values))
+    else:
+      return total / math_ops.sqrt(count)
 
 
 def _set_ragged_segment_docstring(func, combination, combined):
@@ -465,10 +469,10 @@ def _ragged_reduce_aggregate(reduce_op,
         return _ragged_reduce_aggregate(reduce_op, unsorted_segment_op,
                                         inner_reduced, axis[:-1], keepdims)
 
-    axis = ragged_util.get_positive_axis(axis, rt_input.shape.ndims)
-
     rt_input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         rt_input, name='rt_input')
+
+    axis = ragged_util.get_positive_axis(axis, rt_input.shape.ndims)
 
     if axis == 0:
       # out[i_1, i_2, ..., i_N] = sum_{j} rt_input[j, i_1, i_2, ..., i_N]
