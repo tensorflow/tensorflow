@@ -21,8 +21,6 @@ from __future__ import print_function
 import os
 import sys
 
-import numpy
-
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -32,12 +30,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import input_layer
-from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import merge
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -50,10 +44,9 @@ from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 
 
-class _ModelWithOptimizer(training.Model):
+class _ModelWithOptimizer(util.Checkpoint):
 
   def __init__(self):
-    super(_ModelWithOptimizer, self).__init__()
     self.dense = core.Dense(1)
     self.optimizer = adam.AdamOptimizer(0.01)
 
@@ -63,7 +56,7 @@ class _ModelWithOptimizer(training.Model):
   def call(self, x, y):
     with backprop.GradientTape() as tape:
       loss = math_ops.reduce_mean((self.dense(x) - y) ** 2.)
-    trainable_variables = self.trainable_variables
+    trainable_variables = self.dense.trainable_variables
     gradients = tape.gradient(loss, trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, trainable_variables))
     return {"loss": loss}
@@ -179,10 +172,10 @@ class SaveTest(test.TestCase):
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
     model = _ModelWithOptimizer()
-    first_loss = model(x, y)
+    first_loss = model.call(x, y)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(model, save_dir, model.call)
-    second_loss = model(x, y)
+    second_loss = model.call(x, y)
     self.assertNotEqual(first_loss, second_loss)
     self.assertAllClose(
         second_loss,
@@ -197,7 +190,7 @@ class SaveTest(test.TestCase):
     model = _ModelWithOptimizer()
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
-    model(x, y)
+    model.call(x, y)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(model, save_dir)
     self.assertIn("loss",
@@ -217,24 +210,39 @@ class SaveTest(test.TestCase):
     model = _ModelWithOptimizer()
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
-    model(x, y)
+    model.call(x, y)
     model.second_function = def_function.function(lambda: 1.)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     with self.assertRaisesRegexp(ValueError, "call.*second_function"):
       save.save(model, save_dir)
 
-  def test_subclassed_no_signature(self):
+  def test_no_signature(self):
 
-    class Subclassed(training.Model):
+    class Model(util.Checkpoint):
 
       def call(self, inputs):
         return inputs * 2.
 
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    model = Subclassed()
+    model = Model()
     with self.assertRaisesRegexp(
         ValueError, "no @tf.function-decorated methods"):
       save.save(model, save_dir)
+
+  def test_find_default_save_function(self):
+
+    class ObjWithDefaultSignature(util.Checkpoint):
+
+      @def_function.function(input_signature=[tensor_spec.TensorSpec(
+          shape=None, dtype=dtypes.float32)])
+      def _default_save_signature(self, x):
+        return x + x + 1
+
+    obj = ObjWithDefaultSignature()
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(obj, save_dir)
+    self.assertAllClose(
+        {"output_0": 7.}, _import_and_infer(save_dir, {"x": 3.}))
 
   def test_docstring(self):
 
@@ -275,46 +283,6 @@ class SaveTest(test.TestCase):
           node for node in func.definition.node_def if node.op == "Complex"]
       self.assertNotIn("T", complex_node.attr)
       self.assertNotIn("Tout", complex_node.attr)
-
-  def test_export_functional_keras_model(self):
-    x = input_layer.Input((4,), name="x")
-    y = core.Dense(4, name="out")(x)
-    model = training.Model(x, y)
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    save.save(model, save_dir)
-    self.assertAllClose(
-        {"out": model(array_ops.ones([1, 4]))},
-        _import_and_infer(save_dir, {"x": [[1., 1., 1., 1.]]}))
-
-  @test_util.run_v1_only("b/120545219")
-  def test_export_functional_keras_model_after_fit(self):
-    x = input_layer.Input((1,))
-    y = core.Dense(1, name="y")(x)
-    model = training.Model(x, y)
-    model.compile(optimizer="sgd", loss="mse")
-    model.fit(x=numpy.array([[1.]]),
-              y=numpy.array([2.]), epochs=2)
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    save.save(model, save_dir)
-    self.assertAllClose(
-        {"y": model(constant_op.constant([[1.], [2.]]))},
-        _import_and_infer(save_dir, {"input_1": [[1.], [2.]]}))
-
-  def test_export_multi_input_functional_keras_model(self):
-    x1 = input_layer.Input((2,), name="x1")
-    x2 = input_layer.Input((2,), name="x2")
-    y1 = core.Dense(4)(merge.Add()([x1, x2]))
-    y2 = core.Dense(4)(merge.Multiply()([x1, x2]))
-    model = training.Model([x1, x2], [y1, y2])
-    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    save.save(model, save_dir)
-    outputs = model([array_ops.ones([1, 2]), 2. * array_ops.ones([1, 2])])
-    self.assertAllClose(
-        {"dense": outputs[0], "dense_1": outputs[1]},
-        _import_and_infer(
-            save_dir,
-            {"x1": [[1., 1.]],
-             "x2": [[2., 2.]]}))
 
 
 class AssetTests(test.TestCase):
@@ -376,7 +344,7 @@ class MemoryTests(test.TestCase):
   def test_no_reference_cycles(self):
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
-    self._model(x, y)
+    self._model.call(x, y)
     if sys.version_info[0] < 3:
       # TODO(allenl): debug reference cycles in Python 2.x
       self.skipTest("This test only works in Python 3+. Reference cycles are "
