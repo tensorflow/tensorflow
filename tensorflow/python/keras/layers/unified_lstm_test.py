@@ -161,17 +161,20 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
         existing_loss = loss_value
 
   @parameterized.named_parameters(
-      ('_non_tan_activation', 'relu', 0, False, True, None),
-      ('_use_recurrent_dropout', 'tanh', 0.1, False, True, None),
-      ('_unroll', 'tanh', 0, True, True, None),
-      ('_not_use_bias', 'tanh', 0, False, False, None),
-      ('_use_bias_regularizer', 'tanh', 0, False, True, 'l2')
+      ('non_tan_activation', 'relu', 'sigmoid', 0, False, True, None),
+      ('non_sigmoid_recur_activation', 'tanh', 'relu', 0, False, True, None),
+      ('use_recurrent_dropout', 'tanh', 'sigmoid', 0.1, False, True, None),
+      ('unroll', 'tanh', 'sigmoid', 0, True, True, None),
+      ('not_use_bias', 'tanh', 'sigmoid', 0, False, False, None),
+      ('use_bias_regularizer', 'tanh', 'sigmoid', 0, False, True, 'l2')
   )
   @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_could_use_defun_backend(self, activation, recurrent_dropout,
-                                   unroll, use_bias, bias_regularizer):
+  def test_could_use_defun_backend(self, activation, recurrent_activation,
+                                   recurrent_dropout, unroll, use_bias,
+                                   bias_regularizer):
     layer = UnifiedLSTM(1,
                         activation=activation,
+                        recurrent_activation=recurrent_activation,
                         recurrent_dropout=recurrent_dropout,
                         unroll=unroll,
                         use_bias=use_bias,
@@ -270,22 +273,22 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
     with test_util.device(use_gpu=False):
-      # Note that CuDNN use 'sigmoid' as activation. Force the CPU
-      # implementation to use 'sigmoid' so that it will generate same output as
-      # CuDNN implementation.
-      layer = UnifiedLSTM(rnn_state_size, recurrent_activation='sigmoid')
+      layer = UnifiedLSTM(rnn_state_size)
       output = layer(inputs)
       cpu_model = keras.models.Model(inputs, output)
       weights = cpu_model.get_weights()
       y_1 = cpu_model.predict(x_train)
 
     with test_util.device(use_gpu=True):
-      layer = UnifiedLSTM(rnn_state_size, recurrent_activation='sigmoid')
+      layer = UnifiedLSTM(rnn_state_size)
       output = layer(inputs)
       gpu_model = keras.models.Model(inputs, output)
       gpu_model.set_weights(weights)
       y_2 = gpu_model.predict(x_train)
 
+    # Note that CuDNN uses 'sigmoid' as activation, so the unified LSTM uses
+    # 'sigmoid' as default. Construct the canonical LSTM with sigmoid to achieve
+    # the same output.
     with test_util.device(use_gpu=True):
       layer = keras.layers.LSTM(rnn_state_size, recurrent_activation='sigmoid')
       output = layer(inputs)
