@@ -28,6 +28,7 @@ from tensorflow.contrib.opt.python.training.external_optimizer import *
 from tensorflow.contrib.opt.python.training.lars_optimizer import *
 from tensorflow.contrib.opt.python.training.ggt import *
 from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
+from tensorflow.contrib.opt.python.training.sparse_adam_optimizer import *
 from tensorflow.contrib.opt.python.training.model_average_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
@@ -51,6 +52,7 @@ _allowed_symbols = [
     'ExternalOptimizerInterface',
     'LARSOptimizer',
     'LazyAdamOptimizer',
+    'SparseAdamOptimizer',
     'NadamOptimizer',
     'MovingAverageOptimizer',
     'MomentumWOptimizer',

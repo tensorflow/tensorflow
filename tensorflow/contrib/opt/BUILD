@@ -23,6 +23,7 @@ py_library(
         "python/training/ggt.py",
         "python/training/lars_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
+        "python/training/sparse_adam_optimizer.py",
         "python/training/matrix_functions.py",
         "python/training/model_average_optimizer.py",
         "python/training/moving_average_optimizer.py",
