@@ -900,7 +900,6 @@ def tf_cuda_cc_test(
         linkopts = linkopts,
         args = args,
         kernels = kernels,
-        linkopts = linkopts,
     )
 
 register_extension_info(
