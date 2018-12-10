@@ -13,6 +13,7 @@
 // limitations under the License.
 // =============================================================================
 #include "tensorflow/contrib/tensor_forest/kernels/v4/leaf_model_operators.h"
+#include "tensorflow/contrib/tensor_forest/kernels/v4/stat_utils.h"
 
 namespace tensorflow {
 namespace tensorforest {
@@ -158,6 +159,10 @@ void RegressionLeafModelOperator::ExportModel(
         stat.weight_sum();
     leaf->mutable_vector()->add_value()->set_float_value(new_val);
   }
+  const float total_variance = TotalVariance(stat);
+  decision_trees::Value v;
+  v.set_float_value(total_variance);
+  leaf->mutable_additional_data()->Add()->PackFrom(v);
 }
 
 }  // namespace tensorforest

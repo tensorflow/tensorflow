@@ -100,6 +100,7 @@ cc_library(
     deps = [
         ":input_target",
         ":params",
+        ":stat_utils",
     ] + if_static(
         [
             "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
