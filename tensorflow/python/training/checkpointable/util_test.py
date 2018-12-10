@@ -44,7 +44,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import momentum
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base
@@ -198,17 +197,6 @@ class InterfaceTests(test.TestCase):
         x=CallsFunctionalStuffOtherMRO())
     with self.assertRaises(NotImplementedError):
       checkpoint_reversed.save(prefix)
-
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
-  def test_object_graph_no_attributes(self):
-    root = tracking.Checkpointable()
-    root.v = resource_variable_ops.ResourceVariable(1.)
-    root.opt = momentum.MomentumOptimizer(0.01, 0.5)
-    root.opt.minimize(root.v.read_value)
-    object_graph = checkpointable_utils.make_object_graph_without_attributes(
-        root)
-    # Four objects: Root, v, opt, and a slot variable for v
-    self.assertEqual(4, len(object_graph.nodes))
 
 
 class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
@@ -628,6 +616,7 @@ class CheckpointingTests(test.TestCase):
 
   # pylint: disable=cell-var-from-loop
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testWithDefun(self):
     num_training_steps = 2
     checkpoint_directory = self.get_temp_dir()

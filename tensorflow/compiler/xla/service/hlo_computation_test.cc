@@ -20,19 +20,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
-namespace op = xla::testing::opcode_matchers;
-
 namespace xla {
 
 namespace {
 
+namespace m = match;
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
@@ -261,7 +261,7 @@ TEST_F(HloComputationTest, DeepCopyArray) {
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
 
-  EXPECT_THAT(copy, op::Copy(constant));
+  EXPECT_THAT(copy, GmockMatch(m::Copy(m::Op().Is(constant))));
 }
 
 TEST_F(HloComputationTest, DeepCopyTuple) {
@@ -278,8 +278,9 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
   auto computation = module->AddEntryComputation(builder.Build());
   auto tuple_copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
 
-  EXPECT_THAT(tuple_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
-                                    op::Copy(op::GetTupleElement(tuple))));
+  EXPECT_THAT(tuple_copy, GmockMatch(m::Tuple(
+                              m::Copy(m::GetTupleElement(m::Op().Is(tuple))),
+                              m::Copy(m::GetTupleElement(m::Op().Is(tuple))))));
   EXPECT_EQ(0, tuple_copy->operand(0)->operand(0)->tuple_index());
   EXPECT_EQ(1, tuple_copy->operand(1)->operand(0)->tuple_index());
 }
@@ -297,7 +298,7 @@ TEST_F(HloComputationTest, DeepCopyArrayAtIndices) {
     ShapeTree<bool> indices_to_copy(constant->shape(), /*init_value=*/true);
     EXPECT_THAT(computation->DeepCopyInstruction(constant, &indices_to_copy)
                     .ValueOrDie(),
-                op::Copy(constant));
+                GmockMatch(m::Copy(m::Op().Is(constant))));
   }
 
   {
@@ -330,10 +331,11 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
             .ValueOrDie();
 
-    EXPECT_THAT(deep_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
-                                     op::Copy(op::GetTupleElement(tuple))));
-    EXPECT_THAT(deep_copy, op::Tuple(copies_added.element({0}),
-                                     copies_added.element({1})));
+    EXPECT_THAT(deep_copy, GmockMatch(m::Tuple(
+                               m::Copy(m::GetTupleElement(m::Op().Is(tuple)))
+                                   .Is(copies_added.element({0})),
+                               m::Copy(m::GetTupleElement(m::Op().Is(tuple)))
+                                   .Is(copies_added.element({1})))));
   }
 
   {
@@ -346,8 +348,9 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
             .ValueOrDie();
 
-    EXPECT_THAT(deep_copy, op::Tuple(op::GetTupleElement(tuple),
-                                     op::GetTupleElement(tuple)));
+    EXPECT_THAT(deep_copy,
+                GmockMatch(m::Tuple(m::GetTupleElement(m::Op().Is(tuple)),
+                                    m::GetTupleElement(m::Op().Is(tuple)))));
     EXPECT_TRUE(copies_added.element({}) == nullptr);
     EXPECT_TRUE(copies_added.element({0}) == nullptr);
     EXPECT_TRUE(copies_added.element({1}) == nullptr);
@@ -363,8 +366,9 @@ TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
         computation->DeepCopyInstruction(tuple, &indices_to_copy, &copies_added)
             .ValueOrDie();
 
-    EXPECT_THAT(deep_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
-                                     op::GetTupleElement(tuple)));
+    EXPECT_THAT(deep_copy, GmockMatch(m::Tuple(
+                               m::Copy(m::GetTupleElement(m::Op().Is(tuple))),
+                               m::GetTupleElement(m::Op().Is(tuple)))));
     EXPECT_TRUE(copies_added.element({}) == nullptr);
     EXPECT_TRUE(copies_added.element({0}) != nullptr);
     EXPECT_TRUE(copies_added.element({1}) == nullptr);
@@ -381,7 +385,7 @@ TEST_F(HloComputationTest, DeepCopyToken) {
   auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
 
   // No copy should be added.
-  EXPECT_THAT(copy, op::AfterAll());
+  EXPECT_THAT(copy, GmockMatch(m::AfterAll()));
 }
 
 TEST_F(HloComputationTest, DeepCopyTokenTuple) {
@@ -399,8 +403,9 @@ TEST_F(HloComputationTest, DeepCopyTokenTuple) {
 
   // Only the array (second tuple element) should be copied. The token is passed
   // through transparently.
-  EXPECT_THAT(copy, op::Tuple(op::GetTupleElement(tuple),
-                              op::Copy(op::GetTupleElement(tuple))));
+  EXPECT_THAT(copy, GmockMatch(m::Tuple(
+                        m::GetTupleElement(m::Op().Is(tuple)),
+                        m::Copy(m::GetTupleElement(m::Op().Is(tuple))))));
 }
 
 TEST_F(HloComputationTest, CycleDetection) {
@@ -443,13 +448,15 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(4, computation->instruction_count());
-  EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Negate(m::Op().Is(constant))));
   EXPECT_EQ(negate, computation->root_instruction());
 
   ASSERT_IS_OK(computation->RemoveInstructionAndUnusedOperands(dead_add));
 
   EXPECT_EQ(2, computation->instruction_count());
-  EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Negate(m::Op().Is(constant))));
   EXPECT_EQ(negate, computation->root_instruction());
 }
 

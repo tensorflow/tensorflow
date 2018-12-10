@@ -35,11 +35,14 @@ namespace grappler {
 // nodes, and potentially a set of nodes to feed.
 struct GrapplerItem {
   GrapplerItem() = default;
-  GrapplerItem(const GrapplerItem& other, GraphDef&& graph_def)
-      : GrapplerItem(other, &graph_def) {}
-  // Swaps *graph_def with an empty GraphDef.
-  GrapplerItem(const GrapplerItem& other, GraphDef* graph_def);
+  GrapplerItem(const GrapplerItem& other) = default;
+  GrapplerItem(GrapplerItem&& other) = default;
+  GrapplerItem& operator=(const GrapplerItem& other) = default;
+  GrapplerItem& operator=(GrapplerItem&& other) = default;
   virtual ~GrapplerItem() = default;
+
+  // Create a copy of this GrapplerItem with graph swapped with the argument.
+  GrapplerItem WithGraph(GraphDef&& graph) const;
 
   string id;  // A unique id for this item
 
@@ -83,6 +86,12 @@ struct GrapplerItem {
     // Is it allowed to add nodes to the graph that do not have registered
     // gradient function.
     bool non_differentiable_rewrites = true;
+
+    // By default we are allowed to prune ops with side-effects from the main
+    // graph if they are not in transitive fanin of the fetch nodes. If we are
+    // optimizing a graph that was instantiated by a function definition, we
+    // must keep all side effects intact.
+    bool prune_ops_with_side_effects = true;
   };
 
   const std::unordered_set<string>& devices() const;

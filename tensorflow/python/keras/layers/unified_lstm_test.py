@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import shutil
 import time
 
 from absl.testing import parameterized
@@ -26,6 +28,8 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -52,9 +56,9 @@ _graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
 _config = config_pb2.ConfigProto(graph_options=_graph_options)
 
 
+@test_util.run_v1_only('b/120545219')
 class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_unifiedLSTM(self):
     input_shape = 10
     rnn_state_size = 8
@@ -99,7 +103,6 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
 
-  @test_util.run_deprecated_v1
   def test_unifiedLSTM_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal
@@ -157,6 +160,190 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
 
+  @parameterized.named_parameters(
+      ('non_tan_activation', 'relu', 'sigmoid', 0, False, True, None),
+      ('non_sigmoid_recur_activation', 'tanh', 'relu', 0, False, True, None),
+      ('use_recurrent_dropout', 'tanh', 'sigmoid', 0.1, False, True, None),
+      ('unroll', 'tanh', 'sigmoid', 0, True, True, None),
+      ('not_use_bias', 'tanh', 'sigmoid', 0, False, False, None),
+      ('use_bias_regularizer', 'tanh', 'sigmoid', 0, False, True, 'l2')
+  )
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_could_use_defun_backend(self, activation, recurrent_activation,
+                                   recurrent_dropout, unroll, use_bias,
+                                   bias_regularizer):
+    layer = UnifiedLSTM(1,
+                        activation=activation,
+                        recurrent_activation=recurrent_activation,
+                        recurrent_dropout=recurrent_dropout,
+                        unroll=unroll,
+                        use_bias=use_bias,
+                        bias_regularizer=bias_regularizer)
+    self.assertFalse(layer.could_use_cudnn)
+
+  def test_unified_lstm_feature_parity_with_canonical_lstm(self):
+    with context.eager_mode():
+      # Run this test under eager only due to b/120160788 for model.set_weights.
+      input_shape = 10
+      rnn_state_size = 8
+      timestep = 4
+      batch = 20
+
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=rnn_state_size)
+      y_train = keras.utils.to_categorical(y_train, rnn_state_size)
+
+      inputs = keras.layers.Input(
+          shape=[timestep, input_shape], dtype=dtypes.float32)
+      lstm_layer = keras.layers.LSTM(rnn_state_size,
+                                     recurrent_activation='sigmoid')
+      output = lstm_layer(inputs)
+      lstm_model = keras.models.Model(inputs, output)
+      weights = lstm_model.get_weights()
+      y_1 = lstm_model.predict(x_train)
+      lstm_model.compile('rmsprop', 'mse')
+      lstm_model.fit(x_train, y_train)
+      y_2 = lstm_model.predict(x_train)
+
+      with test_util.device(use_gpu=True):
+        cudnn_layer = keras.layers.UnifiedLSTM(rnn_state_size,
+                                               recurrent_activation='sigmoid')
+        cudnn_model = keras.models.Model(inputs, cudnn_layer(inputs))
+      cudnn_model.set_weights(weights)
+      y_3 = cudnn_model.predict(x_train)
+      cudnn_model.compile('rmsprop', 'mse')
+      cudnn_model.fit(x_train, y_train)
+      y_4 = cudnn_model.predict(x_train)
+
+      self.assertAllClose(y_1, y_3)
+      self.assertAllClose(y_2, y_4)
+
+  @parameterized.named_parameters(
+      # test_name, use_bias, bias_initializer, activation
+      ('normal', True, 'zeros'),
+      ('no_bias', False, 'zeros'),
+      ('random_bias', True, 'random_uniform'),
+  )
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_unified_lstm_model_save_load(self, use_bias, bias_initializer):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    batch = 10
+    timestep = 3
+    input_dim = 5
+    units = 2
+
+    x = np.random.random((batch, timestep, input_dim))
+
+    def build_model():
+      inputs = keras.layers.Input(
+          shape=[timestep, input_dim], dtype=dtypes.float32)
+      layer = keras.layers.UnifiedLSTM(
+          units,
+          use_bias=use_bias,
+          bias_initializer=bias_initializer)
+      output = layer(inputs)
+      return keras.models.Model(inputs, output), layer
+
+    model, layer = build_model()
+    y_ref = model.predict(x)
+    model.save_weights(h5_path)
+
+    cloned_model, new_layer = build_model()
+    cloned_model.load_weights(h5_path)
+    y = cloned_model.predict(x)
+
+    self.assertAllClose(y, y_ref)
+    self.assertAllClose(layer.get_weights(), new_layer.get_weights())
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_unified_lstm_output_on_multiple_kernel(self):
+    input_shape = 10
+    rnn_state_size = 8
+    timestep = 4
+    batch = 100
+
+    x_train = np.random.random((batch, timestep, input_shape))
+
+    inputs = keras.layers.Input(
+        shape=[timestep, input_shape], dtype=dtypes.float32)
+    with test_util.device(use_gpu=False):
+      layer = UnifiedLSTM(rnn_state_size)
+      output = layer(inputs)
+      cpu_model = keras.models.Model(inputs, output)
+      weights = cpu_model.get_weights()
+      y_1 = cpu_model.predict(x_train)
+
+    with test_util.device(use_gpu=True):
+      layer = UnifiedLSTM(rnn_state_size)
+      output = layer(inputs)
+      gpu_model = keras.models.Model(inputs, output)
+      gpu_model.set_weights(weights)
+      y_2 = gpu_model.predict(x_train)
+
+    # Note that CuDNN uses 'sigmoid' as activation, so the unified LSTM uses
+    # 'sigmoid' as default. Construct the canonical LSTM with sigmoid to achieve
+    # the same output.
+    with test_util.device(use_gpu=True):
+      layer = keras.layers.LSTM(rnn_state_size, recurrent_activation='sigmoid')
+      output = layer(inputs)
+      canonical_model = keras.models.Model(inputs, output)
+      # Remove the extra cudnn bias since canonical lstm will not use it.
+      canonical_model.set_weights(weights[:3])
+      y_3 = canonical_model.predict(x_train)
+
+    self.assertAllClose(y_1, y_2)
+    self.assertAllClose(y_2, y_3)
+
+  @parameterized.named_parameters(
+      # test_name, time_major, go_backwards
+      ('normal', False, False),
+      ('time_major', True, False),
+      ('go_backwards', False, True),
+      ('both', True, True),
+  )
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_time_major_and_go_backward(self, time_major, go_backwards):
+    input_shape = 10
+    rnn_state_size = 8
+    timestep = 4
+    batch = 100
+
+    x_train = np.random.random((batch, timestep, input_shape))
+
+    def build_model(layer_cls):
+      inputs = keras.layers.Input(
+          shape=[timestep, input_shape], dtype=dtypes.float32)
+      layer = layer_cls(rnn_state_size,
+                        recurrent_activation='sigmoid',
+                        time_major=time_major,
+                        return_sequences=True,
+                        go_backwards=go_backwards)
+      if time_major:
+        converted_input = keras.layers.Lambda(
+            lambda t: array_ops.transpose(t, [1, 0, 2]))(inputs)
+        outputs = layer(converted_input)
+        outputs = keras.layers.Lambda(
+            lambda t: array_ops.transpose(t, [1, 0, 2]))(outputs)
+      else:
+        outputs = layer(inputs)
+      return keras.models.Model(inputs, outputs)
+
+    lstm_model = build_model(keras.layers.LSTM)
+    y_ref = lstm_model.predict(x_train)
+    weights = lstm_model.get_weights()
+
+    unified_lstm_model = build_model(keras.layers.UnifiedLSTM)
+    unified_lstm_model.set_weights(weights)
+    y = unified_lstm_model.predict(x_train)
+
+    self.assertAllClose(y, y_ref)
+
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_keras_model_with_lstm(self):
     input_shape = 10
@@ -183,6 +370,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     model.compile('rmsprop', loss='mse')
     model.fit(x_train, y_train, epochs=epoch)
     model.evaluate(x_train, y_train)
+    model.predict(x_train)
 
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_return_sequences_LSTM(self):
@@ -506,6 +694,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     model.train_on_batch([main_inputs] + initial_state, targets)
 
 
+@test_util.run_v1_only('b/120545219')
 class LSTMLayerGraphOnlyTest(test.TestCase):
 
   def test_statefulness_LSTM(self):
@@ -591,7 +780,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
 
-class UnifiedLSTMPerformanceTest(test.TestCase):
+class UnifiedLSTMPerformanceTest(test.Benchmark):
 
   def _measure_performance(self, test_config, model, x_train, y_train):
     batch = test_config['batch']
@@ -667,11 +856,11 @@ class UnifiedLSTMPerformanceTest(test.TestCase):
                  'Normal LSTM', sec_per_epoch)
     return sec_per_epoch
 
-  @test_util.run_in_graph_and_eager_modes(config=_config, use_gpu=True)
-  def test_performance_with_standard_cudnn_impl(self):
+  def _benchmark_performance_with_standard_cudnn_impl(self):
     if not test.is_gpu_available():
       self.skipTest('performance test will only run on GPU')
 
+    mode = 'eager' if context.executing_eagerly() else 'graph'
     batch = 64
     num_batch = 10
     test_config = {
@@ -691,34 +880,42 @@ class UnifiedLSTMPerformanceTest(test.TestCase):
         num_classes=test_config['output_shape'])
     y_train = keras.utils.to_categorical(y_train, test_config['output_shape'])
 
-    cudnn_duration = self._time_performance_run_cudnn_lstm(
+    cudnn_sec_per_epoch = self._time_performance_run_cudnn_lstm(
         test_config, x_train, y_train)
-    unified_lstm_gpu_duration = self._time_performance_run_unifed_lstm_gpu(
+    unified_lstm_sec_per_epoch = self._time_performance_run_unifed_lstm_gpu(
         test_config, x_train, y_train)
-    normal_lstm_duration = self._time_performance_run_normal_lstm(
+    normal_lstm_sec_per_epoch = self._time_performance_run_normal_lstm(
         test_config, x_train, y_train)
 
-    cudnn_vs_unified = cudnn_duration / unified_lstm_gpu_duration
-    unified_vs_normal = normal_lstm_duration / unified_lstm_gpu_duration
+    cudnn_vs_unified = cudnn_sec_per_epoch / unified_lstm_sec_per_epoch
+    unified_vs_normal = normal_lstm_sec_per_epoch / unified_lstm_sec_per_epoch
 
-    # TODO(scottzhu): reeanble the test after moving it to benchmark test suite.
-    # The current test has performance flakiness issue.
+    self.report_benchmark(name='keras_cudnn_lstm_' + mode,
+                          wall_time=cudnn_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
+    self.report_benchmark(name='keras_unified_lstm_' + mode,
+                          wall_time=unified_lstm_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
+    self.report_benchmark(name='keras_canonical_lstm_' + mode,
+                          wall_time=normal_lstm_sec_per_epoch,
+                          iters=test_config['epoch'],
+                          extras=test_config)
+
     logging.info('Expect the performance of Unified LSTM is within 80% of '
                  'CuDNN LSTM, got {0:.2f}%'.format(cudnn_vs_unified * 100))
     logging.info('Expect the performance of Unified LSTM is more than 5 times'
                  ' of normal LSTM, got {0:.2f}'.format(unified_vs_normal))
 
-    # Assert the performance diff should be within 80% of the native cudnn.
-    # self.assertGreaterEqual(
-    #     cudnn_vs_unified, 0.80,
-    #     'Expect the performance of Unified LSTM is within 80% of CuDNN LSTM, '
-    #     'but got {0:.2f}%'.format(cudnn_vs_unified * 100))
-    # # Assert the performance diff between CPU impl and GPU impl should be more
-    # # than 5 times.
-    # self.assertGreaterEqual(
-    #     unified_vs_normal, 5,
-    #     'Expect the performance of Unified LSTM is more than 5 times of '
-    #     'normal LSTM, but got {0:.2f}'.format(unified_vs_normal))
+  def benchmark_performance_graph(self):
+    with context.graph_mode(), session_lib.Session(config=_config):
+      self._benchmark_performance_with_standard_cudnn_impl()
+
+  def benchmark_performance_eager(self):
+    with context.eager_mode():
+      self._benchmark_performance_with_standard_cudnn_impl()
+
 
 if __name__ == '__main__':
   test.main()

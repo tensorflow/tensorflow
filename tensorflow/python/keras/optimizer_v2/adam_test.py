@@ -52,6 +52,52 @@ def adam_update_numpy(param,
   return param_t, m_t, v_t
 
 
+def adam_update_numpy_amsgrad(param,
+                              g_t,
+                              t,
+                              m,
+                              v,
+                              vhat,
+                              lr=0.001,
+                              beta1=0.9,
+                              beta2=0.999,
+                              epsilon=1e-7):
+  lr_t = lr * np.sqrt(1 - beta2**(t + 1)) / (1 - beta1**(t + 1))
+
+  m_t = beta1 * m + (1 - beta1) * g_t
+  v_t = beta2 * v + (1 - beta2) * g_t * g_t
+  vhat_t = np.maximum(vhat, v_t)
+
+  param_t = param - lr_t * m_t / (np.sqrt(vhat_t) + epsilon)
+  return param_t, m_t, v_t, vhat_t
+
+
+def adam_sparse_update_numpy_amsgrad(param,
+                                     indices,
+                                     g_t,
+                                     t,
+                                     m,
+                                     v,
+                                     vhat,
+                                     lr=0.001,
+                                     beta1=0.9,
+                                     beta2=0.999,
+                                     epsilon=1e-7):
+  m_t, v_t, vhat_t, param_t = (np.copy(m), np.copy(v), np.copy(vhat),
+                               np.copy(param))
+  lr_t = lr * np.sqrt(1 - beta2**(t + 1)) / (1 - beta1**(t + 1))
+  m_t_slice = beta1 * m[indices] + (1 - beta1) * g_t
+  v_t_slice = beta2 * v[indices] + (1 - beta2) * g_t * g_t
+  m_t[indices] = m_t_slice
+  v_t[indices] = v_t_slice
+  v_hat_t = np.maximum(vhat_t, v_t)
+  v_hat_t_slice = v_hat_t[indices]
+  param_t_slice = param[indices] - (
+      lr_t * (m_t_slice / (np.sqrt(v_hat_t_slice) + epsilon)))
+  param_t[indices] = param_t_slice
+  return param_t, m_t, v_t, vhat_t
+
+
 def get_beta_accumulators(opt, dtype):
   local_step = math_ops.cast(opt.iterations + 1, dtype)
   beta_1_t = math_ops.cast(opt._get_hyper("beta_1"), dtype)
@@ -212,6 +258,100 @@ class AdamOptimizerTest(test.TestCase):
     with context.eager_mode():
       self.doTestBasic(use_callable_params=True)
 
+  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  def testBasicWithAmsgrad(self):
+    for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
+      with self.session(graph=ops.Graph()):
+        # Initialize variables for numpy implementation.
+        m0, v0, v0hat, m1, v1, v1hat = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+        grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+        var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+        grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
+
+        var0 = resource_variable_ops.ResourceVariable(
+            var0_np, name="var0_%d" % i)
+        var1 = resource_variable_ops.ResourceVariable(
+            var1_np, name="var1_%d" % i)
+        grads0 = constant_op.constant(grads0_np)
+        grads1 = constant_op.constant(grads1_np)
+
+        opt = adam.Adam(amsgrad=True)
+        if not context.executing_eagerly():
+          update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+
+        self.evaluate(variables.global_variables_initializer())
+        # Run 3 steps of Adam
+        for t in range(3):
+          beta_1_power, beta_2_power = get_beta_accumulators(opt, dtype)
+          self.assertAllCloseAccordingToType(0.9**(t + 1),
+                                             self.evaluate(beta_1_power))
+          self.assertAllCloseAccordingToType(0.999**(t + 1),
+                                             self.evaluate(beta_2_power))
+          if not context.executing_eagerly():
+            self.evaluate(update)
+          else:
+            opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+
+          var0_np, m0, v0, v0hat = adam_update_numpy_amsgrad(
+              var0_np, grads0_np, t, m0, v0, v0hat)
+          var1_np, m1, v1, v1hat = adam_update_numpy_amsgrad(
+              var1_np, grads1_np, t, m1, v1, v1hat)
+
+          # Validate updated params
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testSparseWithAmsgrad(self):
+    # dtypes.half does not work on gpu + eager.
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        m0 = np.array([[0.0], [0.0]])
+        v0 = np.array([[0.0], [0.0]])
+        v0hat = np.array([[0.0], [0.0]])
+        indices_np = np.array([1])
+        indices = constant_op.constant(indices_np, dtype=dtypes.int32)
+        var0_np = np.array([[1.0], [2.0]], dtype=dtype.as_numpy_dtype)
+        repeated_index_update_var = variables.Variable(var0_np, dtype=dtype)
+        aggregated_update_var = variables.Variable(var0_np, dtype=dtype)
+        grads0_np = np.array([[0.2]], dtype=dtype.as_numpy_dtype)
+        grad_repeated_index = ops.IndexedSlices(
+            constant_op.constant([0.1, 0.1], shape=[2, 1], dtype=dtype),
+            constant_op.constant([1, 1]), constant_op.constant([2, 1]))
+        grad_aggregated = ops.IndexedSlices(grads0_np, indices,
+                                            constant_op.constant([2, 1]))
+        opt_repeated = adam.Adam(amsgrad=True)
+        opt_aggregated = adam.Adam(amsgrad=True)
+        if not context.executing_eagerly():
+          repeated_update = opt_repeated.apply_gradients(
+              [(grad_repeated_index, repeated_index_update_var)])
+          aggregated_update = opt_aggregated.apply_gradients(
+              [(grad_aggregated, aggregated_update_var)])
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllClose(
+            self.evaluate(aggregated_update_var),
+            self.evaluate(repeated_index_update_var))
+        for t in range(3):
+          if not context.executing_eagerly():
+            self.evaluate(repeated_update)
+            self.evaluate(aggregated_update)
+          else:
+            opt_repeated.apply_gradients(
+                [(grad_repeated_index, repeated_index_update_var)])
+            opt_aggregated.apply_gradients(
+                [(grad_aggregated, aggregated_update_var)])
+
+          var0_np, m0, v0, v0hat = adam_sparse_update_numpy_amsgrad(
+              var0_np, indices_np, grads0_np, t, m0, v0, v0hat)
+
+          # Validate updated params
+          self.assertAllCloseAccordingToType(
+              var0_np, self.evaluate(aggregated_update_var))
+          self.assertAllCloseAccordingToType(
+              self.evaluate(aggregated_update_var),
+              self.evaluate(repeated_index_update_var))
+
   @test_util.run_deprecated_v1
   def testBasicWithLearningRateDecay(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
@@ -352,11 +492,6 @@ class AdamOptimizerTest(test.TestCase):
       self.assertEqual(5, len(set(opt.variables())))
       self.assertEqual(
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
-
-  def testAmsgradWithError(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 "Amsgrad is currently not supported"):
-      adam.Adam(learning_rate=1., beta_1=0.9, beta_2=0.99, amsgrad=True)
 
   def testSetWeightsFromV1AdamWithoutMinimize(self):
     keras_v1_adam = optimizers.Adam()

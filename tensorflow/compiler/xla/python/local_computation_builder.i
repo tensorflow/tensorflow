@@ -1029,6 +1029,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::XrtAllocationTuple::size;
 %unignore xla::swig::CompiledLocalComputation;
 %unignore xla::swig::CompiledLocalComputation::Execute;
+%unignore xla::swig::CompiledLocalComputation::ExecutePerReplica;
 %unignore xla::swig::CompiledXrtComputation;
 %unignore xla::swig::CompiledXrtComputation::Execute;
 %unignore xla::swig::LocalComputation;

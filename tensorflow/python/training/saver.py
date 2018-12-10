@@ -14,7 +14,11 @@
 # ==============================================================================
 
 # pylint: disable=invalid-name
-"""Save and restore variables."""
+"""Save and restore variables.
+
+Symbols in this file are deprecated. See replacements in
+tensorflow/python/training/checkpointable and tensorflow/python/training/saving.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,7 +29,6 @@ import time
 import uuid
 
 import numpy as np
-import six
 
 from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -42,16 +45,15 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import saveable_object
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
@@ -67,31 +69,6 @@ get_checkpoint_mtimes = checkpoint_management.get_checkpoint_mtimes
 remove_checkpoint = checkpoint_management.remove_checkpoint
 
 
-# Op names which identify variable reads which should be saved.
-_VARIABLE_OPS = set(["Variable",
-                     "VariableV2",
-                     "AutoReloadVariable",
-                     "VarHandleOp",
-                     "ReadVariableOp"])
-
-
-def _set_cpu0(device_string):
-  """Creates a new device string based on `device_string` but using /CPU:0.
-
-  If the device is already on /CPU:0, this is a no-op.
-
-  Args:
-    device_string: A device string.
-
-  Returns:
-    A device string.
-  """
-  parsed_device = pydev.DeviceSpec.from_string(device_string)
-  parsed_device.device_type = "CPU"
-  parsed_device.device_index = 0
-  return parsed_device.to_string()
-
-
 class BaseSaverBuilder(object):
   """Base class for Savers.
 
@@ -101,64 +78,9 @@ class BaseSaverBuilder(object):
   SaveSpec = saveable_object.SaveSpec
   SaveableObject = saveable_object.SaveableObject
 
-  class VariableSaveable(SaveableObject):
-    """SaveableObject implementation that handles Variables."""
-
-    def __init__(self, var, slice_spec, name):
-      spec = BaseSaverBuilder.SaveSpec(var, slice_spec, name, dtype=var.dtype)
-      super(BaseSaverBuilder.VariableSaveable, self).__init__(var, [spec], name)
-
-    def restore(self, restored_tensors, restored_shapes):
-      restored_tensor = restored_tensors[0]
-      if restored_shapes is not None:
-        restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
-      return state_ops.assign(
-          self.op,
-          restored_tensor,
-          validate_shape=restored_shapes is None and
-          self.op.get_shape().is_fully_defined())
-
-  class ResourceVariableSaveable(SaveableObject):
-    """SaveableObject implementation that handles ResourceVariables."""
-
-    def __init__(self, var, slice_spec, name):
-      self._var_device = var.device
-      self._var_shape = var.shape
-      if isinstance(var, ops.Tensor):
-        self.handle_op = var.op.inputs[0]
-        tensor = var
-      elif isinstance(var, resource_variable_ops.ResourceVariable):
-
-        def _read_variable_closure(v):
-          def f():
-            with ops.device(v.device):
-              x = v.read_value()
-              # To allow variables placed on non-CPU devices to be checkpointed,
-              # we copy them to CPU on the same machine first.
-              with ops.device("/device:CPU:0"):
-                return array_ops.identity(x)
-          return f
-
-        self.handle_op = var.handle
-        tensor = _read_variable_closure(var)
-      else:
-        raise ValueError(
-            "Saveable is neither a resource variable nor a read operation."
-            " Got: %s" % repr(var))
-      spec = BaseSaverBuilder.SaveSpec(tensor, slice_spec, name,
-                                       dtype=var.dtype)
-      super(BaseSaverBuilder.ResourceVariableSaveable, self).__init__(
-          var, [spec], name)
-
-    def restore(self, restored_tensors, restored_shapes):
-      restored_tensor = restored_tensors[0]
-      if restored_shapes is not None:
-        restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
-      # Copy the restored tensor to the variable's device.
-      with ops.device(self._var_device):
-        restored_tensor = array_ops.identity(restored_tensor)
-        return resource_variable_ops.shape_safe_assign_variable_handle(
-            self.handle_op, self._var_shape, restored_tensor)
+  # Aliases for code which was moved but still has lots of users.
+  VariableSaveable = saveable_object_util.ReferenceVariableSaveable
+  ResourceVariableSaveable = saveable_object_util.ResourceVariableSaveable
 
   def __init__(self, write_version=saver_pb2.SaverDef.V2):
     self._write_version = write_version
@@ -224,7 +146,11 @@ class BaseSaverBuilder(object):
     del restore_sequentially
     all_tensors = []
     for saveable in saveables:
-      with ops.device(_set_cpu0(saveable.device) if saveable.device else None):
+      if saveable.device:
+        device = saveable_object_util.set_cpu0(saveable.device)
+      else:
+        device = None
+      with ops.device(device):
         all_tensors.extend(
             self.restore_op(filename_tensor, saveable, preferred_shard))
     return all_tensors
@@ -336,7 +262,7 @@ class BaseSaverBuilder(object):
     last_device = None
     for shard, (device, saveables) in enumerate(per_device):
       last_device = device
-      with ops.device(_set_cpu0(device)):
+      with ops.device(saveable_object_util.set_cpu0(device)):
         sharded_filename = self.sharded_filename(tmp_checkpoint_prefix, shard,
                                                  num_shards_tensor)
         sharded_prefixes.append(sharded_filename)
@@ -344,7 +270,7 @@ class BaseSaverBuilder(object):
 
     with ops.control_dependencies([x.op for x in sharded_saves]):
       # Co-locates the merge step with the last device.
-      with ops.device(_set_cpu0(last_device)):
+      with ops.device(saveable_object_util.set_cpu0(last_device)):
         # V2 format write path consists of a metadata merge step.  Once merged,
         # attempts to delete the temporary directory, "<user-fed prefix>_temp".
         merge_step = gen_io_ops.merge_v2_checkpoints(
@@ -459,10 +385,6 @@ class BaseSaverBuilder(object):
                 name="restore_shard"))
     return control_flow_ops.group(*sharded_restores, name="restore_all")
 
-  @staticmethod
-  def _IsVariable(v):
-    return isinstance(v, ops.Tensor) and v.op.type in _VARIABLE_OPS
-
   def _GroupByDevices(self, saveables):
     """Group Variable tensor slices per device.
 
@@ -489,220 +411,6 @@ class BaseSaverBuilder(object):
                          "on the same device: %s" % saveable.name)
       per_device[canonical_device.pop()].append(saveable)
     return sorted(per_device.items(), key=lambda t: t[0])
-
-  @staticmethod
-  def OpListToDict(op_list, convert_variable_to_tensor=True):
-    """Create a dictionary of names to operation lists.
-
-    Args:
-      op_list: A list, tuple, or set of Variables or SaveableObjects.
-      convert_variable_to_tensor: Whether or not to convert single Variables
-        with no slice info into Tensors.
-
-    Returns:
-      A dictionary of names to the operations that must be saved under
-      that name.  Variables with save_slice_info are grouped together under the
-      same key in no particular order.
-
-    Raises:
-      TypeError: If the type of op_list or its elements is not supported.
-      ValueError: If at least two saveables share the same name.
-    """
-    if not isinstance(op_list, (list, tuple, set)):
-      raise TypeError("Variables to save should be passed in a dict or a "
-                      "list: %s" % op_list)
-    # When ResourceVariables are converted to Tensors, read ops are added to the
-    # graph. Sorting the op_list ensures that the resulting graph is always
-    # constructed in a deterministic way:
-    op_list = sorted(op_list, key=lambda x: x.name)
-    names_to_saveables = {}
-    # pylint: disable=protected-access
-    for var in op_list:
-      if isinstance(var, BaseSaverBuilder.SaveableObject):
-        names_to_saveables[var.name] = var
-      elif isinstance(var, variables.PartitionedVariable):
-        if var.name in names_to_saveables:
-          raise ValueError("At least two variables have the same name: %s" %
-                           var.name)
-        names_to_saveables[var.name] = var
-      elif isinstance(var, variables.Variable) and var._save_slice_info:
-        name = var._save_slice_info.full_name
-        if name in names_to_saveables:
-          if not isinstance(names_to_saveables[name], list):
-            raise ValueError("Mixing slices and non-slices with the same name: "
-                             "%s" % name)
-          names_to_saveables[name].append(var)
-        else:
-          names_to_saveables[name] = [var]
-      elif (isinstance(var, checkpointable.CheckpointableBase)
-            and not isinstance(var, variables.Variable)):
-        checkpointable_saveables = [
-            (factory() if callable(factory) else factory)
-            for factory in var._gather_saveables_for_checkpoint().values()]
-        names_to_saveables.update(
-            BaseSaverBuilder.OpListToDict(checkpointable_saveables))
-      else:
-        if context.executing_eagerly():
-          if not isinstance(var, resource_variable_ops.ResourceVariable):
-            raise ValueError(
-                "Can only save/restore ResourceVariables when eager execution "
-                "is enabled, type: %s." % type(var))
-          set_var = names_to_saveables.setdefault(var._shared_name, var)
-          if set_var is not var:
-            raise ValueError(
-                ("Two different ResourceVariable objects with the same "
-                 "shared_name '%s' were passed to the Saver. This likely means "
-                 "that they were created in different Graphs or isolation "
-                 "contexts, and may not be checkpointed together.") %
-                (var._shared_name,))
-        else:
-          if convert_variable_to_tensor:
-            if isinstance(var, resource_variable_ops.ResourceVariable):
-              var = var._graph_element  # pylint: disable=protected-access
-            else:
-              var = ops.internal_convert_to_tensor(var, as_ref=True)
-            if not BaseSaverBuilder._IsVariable(var):
-              raise TypeError("Variable to save is not a Variable: %s" % var)
-          if var.op.type == "ReadVariableOp":
-            name = var.op.inputs[0].op.name
-          else:
-            name = var.op.name
-          if name in names_to_saveables:
-            raise ValueError("At least two variables have the same name: %s" %
-                             name)
-          names_to_saveables[name] = var
-
-      # pylint: enable=protected-access
-    return names_to_saveables
-
-  @staticmethod
-  def SaveableObjectsForOp(op, name):
-    """Create `SaveableObject`s from an operation.
-
-    Args:
-      op: A variable, operation, or SaveableObject to coerce into a
-        SaveableObject.
-      name: A string name for the SaveableObject.
-
-    Yields:
-      `SaveableObject`s which together save/restore `op`.
-
-    Raises:
-      TypeError: If `name` is not a string.
-      ValueError: For operations with no known conversion to SaveableObject.
-    """
-    if not isinstance(name, six.string_types):
-      raise TypeError(
-          "names_to_saveables must be a dict mapping string names to "
-          "checkpointable operations. Name is not a string: %s" % name)
-    if isinstance(op, BaseSaverBuilder.SaveableObject):
-      yield op
-    elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
-      if isinstance(op, variables.PartitionedVariable):
-        op = list(op)
-      # A set of slices.
-      slice_name = None
-      # pylint: disable=protected-access
-      for variable in op:
-        if not isinstance(variable, variables.Variable):
-          raise ValueError("Slices must all be Variables: %s" % variable)
-        if not variable._save_slice_info:
-          raise ValueError("Slices must all be slices: %s" % variable)
-        if slice_name is None:
-          slice_name = variable._save_slice_info.full_name
-        elif slice_name != variable._save_slice_info.full_name:
-          raise ValueError(
-              "Slices must all be from the same tensor: %s != %s" %
-              (slice_name, variable._save_slice_info.full_name))
-        if variable.op.type in ["Variable", "VariableV2",
-                                "AutoReloadVariable"]:
-          yield BaseSaverBuilder.VariableSaveable(
-              variable, variable._save_slice_info.spec, name)
-        else:
-          yield BaseSaverBuilder.ResourceVariableSaveable(
-              variable, variable._save_slice_info.spec, name)
-      # pylint: enable=protected-access
-    elif isinstance(op, checkpointable.CheckpointableBase) and not isinstance(
-        op, variables.Variable):
-      # pylint: disable=protected-access
-      for attr, factory in op._gather_saveables_for_checkpoint().items():
-        if attr == checkpointable.VARIABLE_VALUE_KEY:
-          # Keep original name for classes masquerading as variables.
-          full_name = name
-        else:
-          full_name = name + "_" + attr
-        op = (factory(full_name) if callable(factory) else factory)
-        for op in BaseSaverBuilder.SaveableObjectsForOp(op, op.name):
-          yield op
-      # pylint: enable=protected-access
-    else:
-      # A variable or tensor.
-      if context.executing_eagerly():
-        if not isinstance(op, resource_variable_ops.ResourceVariable):
-          raise ValueError("Can only save/restore ResourceVariable eager "
-                           "mode is enabled, type: %s." % type(op))
-        yield BaseSaverBuilder.ResourceVariableSaveable(op, "", name)
-      else:
-        if isinstance(op, resource_variable_ops.ResourceVariable):
-          variable = op._graph_element  # pylint: disable=protected-access
-        else:
-          variable = ops.internal_convert_to_tensor(op, as_ref=True)
-        if not BaseSaverBuilder._IsVariable(variable):
-          raise TypeError("names_to_saveables must be a dict mapping string "
-                          "names to Tensors/Variables. Not a variable: %s" %
-                          variable)
-        if variable.op.type in ["Variable", "VariableV2",
-                                "AutoReloadVariable"]:
-          yield BaseSaverBuilder.VariableSaveable(variable, "", name)
-        else:
-          yield BaseSaverBuilder.ResourceVariableSaveable(
-              variable, "", name)
-
-  def _ValidateAndSliceInputs(self, names_to_saveables):
-    """Returns the variables and names that will be used for a Saver.
-
-    Args:
-      names_to_saveables: A dict (k, v) where k is the name of an operation and
-         v is an operation to save or a BaseSaverBuilder.Saver.
-
-    Returns:
-      A list of BaseSaverBuilder.SaveableObject objects.
-
-    Raises:
-      TypeError: If any of the keys are not strings or any of the
-        values are not one of Tensor or Variable or a checkpointable operation.
-      ValueError: If the same operation is given in more than one value
-        (this also applies to slices of SlicedVariables).
-    """
-    if not isinstance(names_to_saveables, dict):
-      names_to_saveables = BaseSaverBuilder.OpListToDict(names_to_saveables)
-
-    saveables = []
-    seen_ops = set()
-    for name, op in sorted(names_to_saveables.items(),
-                           # Avoid comparing ops, sort only by name.
-                           key=lambda x: x[0]):
-      for converted_saveable_object in self.SaveableObjectsForOp(op, name):
-        self._AddSaveable(saveables, seen_ops, converted_saveable_object)
-    return saveables
-
-  def _AddSaveable(self, saveables, seen_ops, saveable):
-    """Adds the saveable to the saveables list.
-
-    Args:
-      saveables: List to append the SaveableObject to.
-      seen_ops: Set of the ops of the saveables already processed.  Used to
-        check that each saveable is only saved once.
-      saveable: The saveable.
-
-    Raises:
-      ValueError: If the saveable has already been processed.
-    """
-    if saveable.op in seen_ops:
-      raise ValueError("The same saveable will be restored with two names: %s" %
-                       saveable.name)
-    saveables.append(saveable)
-    seen_ops.add(saveable.op)
 
   def build(self,
             names_to_saveables,
@@ -775,7 +483,8 @@ class BaseSaverBuilder(object):
       raise ValueError("save and restore operations need to be built together "
                        " when eager execution is not enabled.")
 
-    saveables = self._ValidateAndSliceInputs(names_to_saveables)
+    saveables = saveable_object_util.validate_and_slice_inputs(
+        names_to_saveables)
     if max_to_keep is None:
       max_to_keep = 0
 
@@ -1668,6 +1377,37 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
   NOTE: Restarting training from saved `meta_graph` only works if the
   device assignments have not changed.
 
+  Example 2:
+  Variables, placeholders, and independent operations can also be stored, as
+  shown in the following example.
+
+  ```Python
+  # Saving contents and operations.
+  v1 = tf.placeholder(tf.float32, name="v1")
+  v2 = tf.placeholder(tf.float32, name="v2")
+  v3 = tf.mul(v1, v2)
+  vx = tf.Variable(10.0, name="vx")
+  v4 = tf.add(v3, vx, name="v4")
+  saver = tf.train.Saver([vx])
+  sess = tf.Session()
+  sess.run(tf.initialize_all_variables())
+  sess.run(vx.assign(tf.add(vx, vx)))
+  result = sess.run(v4, feed_dict={v1:12.0, v2:3.3})
+  print(result)
+  saver.save(sess, "./model_ex1")
+  ```
+
+  Later this model can be restored and contents loaded.
+
+  ```Python
+  # Restoring variables and running operations.
+  saver = tf.train.import_meta_graph("./model_ex1.meta")
+  sess = tf.Session()
+  saver.restore(sess, "./model_ex1")
+  result = sess.run("v4:0", feed_dict={"v1:0": 12.0, "v2:0": 3.3})
+  print(result)
+  ```
+
   Args:
     meta_graph_or_file: `MetaGraphDef` protocol buffer or filename (including
       the path) containing a `MetaGraphDef`.
@@ -1910,7 +1650,7 @@ def saver_from_object_based_checkpoint(
   if builder is None:
     builder = BulkSaverBuilder()
 
-  saveables = builder._ValidateAndSliceInputs(var_list)  # pylint: disable=protected-access
+  saveables = saveable_object_util.validate_and_slice_inputs(var_list)
   current_names = set()
   for saveable in saveables:
     for spec in saveable.specs:

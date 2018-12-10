@@ -323,12 +323,12 @@ class CallTreeTransformer(converter.Base):
 
       # 1. super() calls - these are preserved. The class conversion mechanism
       # will ensure that they return the correct value.
-      if ast_util.matches(node, 'super(_)'):
+      if ast_util.matches(node, parser.parse_expression('super(_)')):
         return node
 
       # 2. super().method calls - these are preserved as well, when the
       # conversion processes the entire class.
-      if (ast_util.matches(node, 'super(_)._(_)') and
+      if (ast_util.matches(node, parser.parse_expression('super(_)._(_)')) and
           self.ctx.info.owner_type is not None):
         return node
 

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.client import device_lib
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.training import server_lib
@@ -167,7 +166,3 @@ class KubernetesClusterResolver(ClusterResolver):
     on internal systems.
     """
     return ''
-
-  def num_accelerators_per_worker(self, session_config=None):
-    local_devices = device_lib.list_local_devices(session_config)
-    return len([d for d in local_devices if d.device_type == 'GPU'])

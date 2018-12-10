@@ -132,6 +132,8 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "Min",
       "Relu6",
       "Square",
+      "ExpandDims",
+      "Squeeze",
   };
   bool is_supported_op_type =
       (candidate_ops.count(node->type_string()) ||
@@ -584,6 +586,14 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
         }
       }
     }
+  }
+  // We don't support segments with no inputs. Fall back to native TF here to
+  // avoid crash later. Constant folding should've folded the ops that make up
+  // these segments.
+  if (inputs.empty()) {
+    return tensorflow::errors::Internal(
+        "Segment has no inputs (possible "
+        "constfold failure)");
   }
 
   const bool calibrate_int8 =

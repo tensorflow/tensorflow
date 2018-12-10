@@ -2546,13 +2546,11 @@ class UnifiedLSTM(LSTM):
   Arguments:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
-        Default: hyperbolic tangent (`tanh`). If you pass `None`, no activation
-          is applied
-        (ie. "linear" activation: `a(x) = x`).
+      Default: hyperbolic tangent (`tanh`). If you pass `None`, no activation
+      is applied (ie. "linear" activation: `a(x) = x`).
     recurrent_activation: Activation function to use for the recurrent step.
-        Default: hard sigmoid (`hard_sigmoid`). If you pass `None`, no
-          activation is applied
-        (ie. "linear" activation: `a(x) = x`).
+      Default: sigmoid (`sigmoid`). If you pass `None`, no activation is
+      applied (ie. "linear" activation: `a(x) = x`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix, used for
       the linear transformation of the inputs..
@@ -2602,7 +2600,7 @@ class UnifiedLSTM(LSTM):
   def __init__(self,
                units,
                activation='tanh',
-               recurrent_activation='hard_sigmoid',
+               recurrent_activation='sigmoid',
                use_bias=True,
                kernel_initializer='glorot_uniform',
                recurrent_initializer='orthogonal',
@@ -2661,24 +2659,11 @@ class UnifiedLSTM(LSTM):
     ]
     self._num_constants = None
     self._num_inputs = None
+    self._dropout_mask = None
     self.could_use_cudnn = (
-        activation == 'tanh' and dropout == 0 and not unroll and use_bias and
-        unit_forget_bias)
-
-  def build(self, input_shape):
-    super(UnifiedLSTM, self).build(input_shape)
-    if self.could_use_cudnn:
-      # Add a new set of bias for CuDNN implementation only. Standard LSTM only
-      # has bias for recurrent kernel, while CuDNN LSTM has an extra set for
-      # input gate as well.
-      self.cudnn_bias = self.add_weight(
-          shape=(self.units * 4,),
-          name='cudnn_bias',
-          use_resource=True,
-          initializer=self.bias_initializer,
-          regularizer=self.bias_regularizer,
-          constraint=self.bias_constraint)
-    self.built = True
+        activation == 'tanh' and recurrent_activation == 'sigmoid' and
+        recurrent_dropout == 0 and not unroll and use_bias and
+        bias_regularizer is None)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # LSTM does not support constants. Ignore it during process.
@@ -2718,9 +2703,17 @@ class UnifiedLSTM(LSTM):
       # both normal and CuDNN implementations.
       if self.go_backwards:
         # Reverse time axis.
-        inputs = K.reverse(inputs, 1)
+        inputs = K.reverse(inputs, 0 if self.time_major else 1)
 
-      combined_bias = array_ops.concat([self.cudnn_bias, self.cell.bias], 0)
+      if 0 < self.dropout < 1:
+        if self._dropout_mask is None:
+          self._dropout_mask = _generate_dropout_mask(
+              array_ops.ones_like(inputs),
+              self.dropout,
+              training=training,
+              count=4)
+
+        inputs *= self._dropout_mask[0]
 
       # Each time a defun function is called, we will give a unique identifiable
       # API name, so that the grappler won't get confused when it sees multiple
@@ -2746,23 +2739,23 @@ class UnifiedLSTM(LSTM):
         if context.num_gpus() > 0:
           last_output, outputs, new_h, new_c, runtime = defun_cudnn_lstm(
               inputs, initial_state[0], initial_state[1], self.cell.kernel,
-              self.cell.recurrent_kernel, combined_bias, self.time_major)
+              self.cell.recurrent_kernel, self.cell.bias, self.time_major)
         else:
           last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(
               inputs, initial_state[0], initial_state[1], self.cell.kernel,
-              self.cell.recurrent_kernel, combined_bias, self.activation,
+              self.cell.recurrent_kernel, self.cell.bias, self.activation,
               self.recurrent_activation, self.time_major)
       else:
         # Call the normal LSTM impl and register the CuDNN impl function. The
         # grappler will kick in during session execution to optimize the graph.
         last_output, outputs, new_h, new_c, runtime = defun_standard_lstm(
             inputs, initial_state[0], initial_state[1], self.cell.kernel,
-            self.cell.recurrent_kernel, combined_bias, self.activation,
+            self.cell.recurrent_kernel, self.cell.bias, self.activation,
             self.recurrent_activation, self.time_major)
 
         function.register(defun_cudnn_lstm, inputs, initial_state[0],
                           initial_state[1], self.cell.kernel,
-                          self.cell.recurrent_kernel, combined_bias,
+                          self.cell.recurrent_kernel, self.cell.bias,
                           self.time_major)
       states = [new_h, new_c]
 
@@ -2789,8 +2782,6 @@ class UnifiedLSTM(LSTM):
     if self.trainable:
       weights = []
       weights += self.cell.trainable_weights
-      if getattr(self, 'cudnn_bias', None) is not None:
-        weights += [self.cudnn_bias]
       return weights
     return []
 
@@ -2799,8 +2790,6 @@ class UnifiedLSTM(LSTM):
     if not self.trainable:
       weights = []
       weights += self.cell.non_trainable_weights
-      if getattr(self, 'cudnn_bias', None) is not None:
-        weights += [self.cudnn_bias]
       return weights
     return []
 
@@ -2819,8 +2808,6 @@ class UnifiedLSTM(LSTM):
   def get_weights(self):
     weights = []
     weights += self.cell.weights
-    if getattr(self, 'cudnn_bias', None) is not None:
-      weights += [self.cudnn_bias]
     return K.batch_get_value(weights)
 
   def set_weights(self, weights):
@@ -2828,16 +2815,36 @@ class UnifiedLSTM(LSTM):
     cell_weights = weights[:len(self.cell.weights)]
     if cell_weights:
       tuples.append((self.cell.weights, cell_weights))
-    if getattr(self, 'cudnn_bias', None) is not None:
-      cudnn_bias_weights = weights[len(self.cell.weights):]
-      if cudnn_bias_weights:
-        tuples.append((self.cudnn_bias, cudnn_bias_weights))
     K.batch_set_value(tuples)
 
 
-def _canonical_to_params(weights, biases, shape):
-  """Utility function convert variable to CuDNN compatible parameter."""
-  weights = [array_ops.reshape(x, shape) for x in weights]
+def _canonical_to_params(weights, biases, shape, transpose_weights=False):
+  """Utility function convert variable to CuDNN compatible parameter.
+
+  Note that Keras weights for kernels are different from the CuDNN format. Eg.:
+
+  ```
+    Keras                 CuDNN
+    [[0, 1, 2],  <--->  [[0, 2, 4],
+     [3, 4, 5]]          [1, 3, 5]]
+  ```
+
+  If the input weights need to be in a unified format, then set
+  `transpose_weights=True` to convert the weights.
+
+  Args:
+    weights: list of weights for the individual kernels and recurrent kernels.
+    biases: list of biases for individual gate.
+    shape: the shape for the converted variables that will be feed to CuDNN.
+    transpose_weights: boolean, whether to transpose the weights.
+
+  Returns:
+    The converted weights that can be feed to CuDNN ops as param.
+  """
+  def convert(w):
+    return array_ops.transpose(w) if transpose_weights else w
+
+  weights = [array_ops.reshape(convert(x), shape) for x in weights]
   biases = [array_ops.reshape(x, shape) for x in biases]
   return array_ops.concat(weights + biases, axis=0)
 
@@ -2884,9 +2891,6 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
   input_shape = K.int_shape(inputs)
   timesteps = input_shape[0] if time_major else input_shape[1]
 
-  # Only use the second half of the bias weights.
-  _, real_bias = array_ops.split(bias, 2)
-
   def step(cell_inputs, cell_states):
     """Step function that will be used by Keras RNN backend."""
     h_tm1 = cell_states[0]  # previous memory state
@@ -2894,7 +2898,7 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
 
     z = K.dot(cell_inputs, kernel)
     z += K.dot(h_tm1, recurrent_kernel)
-    z = K.bias_add(z, real_bias)
+    z = K.bias_add(z, bias)
 
     z0, z1, z2, z3 = array_ops.split(z, 4, axis=1)
 
@@ -2927,18 +2931,24 @@ def cudnn_lstm(inputs, input_h, input_c, kernel, recurrent_kernel, bias,
 
   weights = array_ops.split(kernel, 4, axis=1)
   weights += array_ops.split(recurrent_kernel, 4, axis=1)
+  # CuDNN has an extra set of bias for inputs, we disable them (setting to 0),
+  # so that mathematically it is same as the canonical LSTM implementation.
+  full_bias = array_ops.concat((array_ops.zeros_like(bias), bias), 0)
+
   params = _canonical_to_params(
       weights=weights,
-      biases=array_ops.split(bias, 8),
-      shape=constant_op.constant([-1]))
+      biases=array_ops.split(full_bias, 8),
+      shape=constant_op.constant([-1]),
+      transpose_weights=True)
 
   outputs, h, c, _ = gen_cudnn_rnn_ops.cudnn_rnn(
-      inputs, input_h=input_h, input_c=input_c, params=params)
+      inputs, input_h=input_h, input_c=input_c, params=params, is_training=True)
+  last_output = outputs[-1]
   if not time_major:
     outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
   h = h[0]
   c = c[0]
-  last_output = outputs[:, -1, :]
+
   return last_output, outputs, h, c, constant_op.constant(
       'cudnn', dtype=dtypes.string, name='runtime')
 

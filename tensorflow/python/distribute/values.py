@@ -1186,7 +1186,7 @@ class PerReplicaDataset(object):
       dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
           self._dataset, self._devices)
     else:
-      dataset_iterator = self._dataset.make_initializable_iterator()
+      dataset_iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return PerReplicaDataIterator(
         dataset_iterator,
         self._devices,
@@ -1311,7 +1311,8 @@ class MultiWorkerDataset(object):
     iterators = []
     for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators.append((worker, dataset.make_initializable_iterator()))
+        iterators.append(
+            (worker, dataset_ops.make_initializable_iterator(dataset)))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
 

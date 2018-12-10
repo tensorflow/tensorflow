@@ -180,7 +180,7 @@ class MirroredStrategyVariableCreatorStackTest(
         variable_scope.variable_creator_scope(main_thread_creator):
       result = distribution.extended.call_for_each_replica(model_fn)
       result = distribution.unwrap(result)
-      expected = ["main_thread:thread_0", "main_thread:thread_1"]
+      expected = ("main_thread:thread_0", "main_thread:thread_1")
       self.assertEqual(expected, result)
 
 

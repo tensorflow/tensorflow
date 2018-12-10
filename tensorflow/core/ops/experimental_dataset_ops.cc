@@ -71,6 +71,11 @@ REGISTER_OP("ExperimentalCSVDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ExperimentalDatasetCardinality")
+    .Input("input_dataset: variant")
+    .Output("cardinality: int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalDatasetToTFRecord")
     .Input("input_dataset: variant")
     .Input("filename: string")
@@ -169,6 +174,7 @@ REGISTER_OP("ExperimentalMapAndBatchDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Use index from the end to retrieve the Input shapes,
       // so that to avoid guessing the length of "other_arguments".
@@ -193,6 +199,7 @@ REGISTER_OP("ExperimentalMapDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalMatchingFilesDataset")
@@ -272,6 +279,7 @@ REGISTER_OP("ExperimentalScanDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalSetStatsAggregatorDataset")
@@ -420,6 +428,7 @@ REGISTER_OP("ExperimentalNumaMapAndBatchDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Use index from the end to retrieve the Input shapes,
       // so that to avoid guessing the length of "other_arguments".

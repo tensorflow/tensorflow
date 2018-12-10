@@ -584,7 +584,7 @@ namespace {
 // Parses shapes with simple recursive descent structure -- consumes from the
 // front of s and passes that view recursively as required.
 StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
-  *s = StripLeadingAsciiWhitespace(*s);
+  *s = absl::StripLeadingAsciiWhitespace(*s);
 
   if (absl::ConsumePrefix(s, "(")) {  // Tuple.
     std::vector<Shape> shapes;
@@ -597,7 +597,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
-      *s = StripLeadingAsciiWhitespace(*s);
+      *s = absl::StripLeadingAsciiWhitespace(*s);
       must_end = !absl::ConsumePrefix(s, ",");
     }
     return ShapeUtil::MakeTupleShape(shapes);

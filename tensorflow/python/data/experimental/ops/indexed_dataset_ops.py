@@ -22,9 +22,9 @@ import abc
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 
 
@@ -94,11 +94,7 @@ class IndexedDataset(dataset_ops.Dataset):
         ged_ops.experimental_materialized_index_dataset_handle(
             container=container,
             shared_name=shared_name,
-            output_types=nest.flatten(
-                sparse.as_dense_types(self.output_types, self.output_classes)),
-            output_shapes=nest.flatten(
-                sparse.as_dense_types(self.output_shapes,
-                                      self.output_classes))))
+            **dataset_ops.flat_structure(self)))
 
     with ops.colocate_with(materialized_resource):
       materializer = ged_ops.experimental_indexed_dataset_materialize(
@@ -106,38 +102,6 @@ class IndexedDataset(dataset_ops.Dataset):
     return MaterializedIndexedDataset(materialized_resource, materializer,
                                       self.output_classes, self.output_types,
                                       self.output_shapes)
-
-  @abc.abstractproperty
-  def output_types(self):
-    """Returns the type of each component of an element of this IndexedDataset.
-
-    Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
-      of an element of this IndexedDataset.
-    """
-    raise NotImplementedError("IndexedDataset.output_types")
-
-  @abc.abstractproperty
-  def output_classes(self):
-    """Returns the class of each component of an element of this IndexedDataset.
-
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
-
-    Returns:
-      A nested structure of Python `type` objects corresponding to each
-      component of an element of this IndexedDataset.
-    """
-    raise NotImplementedError("IndexedDataset.output_classes")
-
-  @abc.abstractproperty
-  def output_shapes(self):
-    """Returns the shape of each component of an element of this IndexedDataset.
-
-    Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
-      component of an element of this IndexedDataset.
-    """
-    raise NotImplementedError("IndexedDataset.output_shapes")
 
   @abc.abstractmethod
   def _as_variant_tensor(self):
@@ -161,16 +125,8 @@ class IdentityIndexedDataset(IndexedDataset):
     self._size = ops.convert_to_tensor(size, dtype=dtypes.uint64, name="size")
 
   @property
-  def output_types(self):
-    return dtypes.uint64
-
-  @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.uint64, [])
 
   def _as_variant_tensor(self):
     return ged_ops.experimental_identity_indexed_dataset(self._size)

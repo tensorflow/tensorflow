@@ -314,7 +314,50 @@ CompiledLocalComputation::CompiledLocalComputation(
     std::unique_ptr<LocalExecutable> executable)
     : executable_(std::move(executable)) {}
 
-StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::Execute(
+StatusOr<LocalShapedBuffer*> CompiledLocalComputation::Execute(
+    absl::Span<LocalShapedBuffer* const> argument_handles) {
+  LocalClient* client = GetOrCreateLocalClient();
+  StatusOr<int> device_ordinal_status = client->ReplicaNumberToDeviceOrdinal(0);
+  StatusOr<ScopedShapedBuffer> result_buffer_status;
+  if (!device_ordinal_status.ok()) {
+    result_buffer_status = device_ordinal_status.status();
+  } else {
+    const int device_ordinal = device_ordinal_status.ValueOrDie();
+    VLOG(3) << "Replica 0 mapped to device ordinal for execution: "
+            << device_ordinal;
+
+    std::vector<const ShapedBuffer*> argument_buffers;
+    argument_buffers.reserve(argument_handles.size());
+    for (auto& handle : argument_handles) {
+      argument_buffers.push_back(handle->shaped_buffer());
+    }
+
+    DeviceAssignment device_assignment =
+        client->backend()
+            .computation_placer()
+            ->AssignDevices(1, /*computation_count=*/1)
+            .ConsumeValueOrDie();
+
+    ExecutableRunOptions options;
+    options.set_device_ordinal(device_ordinal);
+    options.set_allocator(client->backend().memory_allocator());
+    options.set_intra_op_thread_pool(
+        client->backend().eigen_intra_op_thread_pool_device());
+    options.set_device_assignment(&device_assignment);
+
+    result_buffer_status = executable_->Run(argument_buffers, options);
+  }
+
+  if (!result_buffer_status.ok()) {
+    return InternalError(
+        "Failed running replica 0 (other replicas may have failed as well): "
+        "%s.",
+        result_buffer_status.status().ToString());
+  }
+  return new LocalShapedBuffer(std::move(result_buffer_status).ValueOrDie());
+}
+
+StatusOr<LocalShapedBufferTuple*> CompiledLocalComputation::ExecutePerReplica(
     absl::Span<const std::vector<LocalShapedBuffer*>> argument_handles) {
   LocalClient* client = GetOrCreateLocalClient();
   const int num_replicas = GetReplicaCount();

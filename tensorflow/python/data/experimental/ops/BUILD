@@ -5,6 +5,16 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 py_library(
+    name = "cardinality",
+    srcs = ["cardinality.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:tensor_util",
+    ],
+)
+
+py_library(
     name = "counter",
     srcs = ["counter.py"],
     srcs_version = "PY2AND3",
@@ -25,16 +35,6 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
-    ],
-)
-
-py_library(
-    name = "has_indefinite_repeat",
-    srcs = ["has_indefinite_repeat.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -70,8 +70,7 @@ py_library(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -230,6 +229,8 @@ py_library(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -268,7 +269,7 @@ py_library(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -303,6 +304,7 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -433,13 +435,13 @@ py_library(
     name = "dataset_ops",
     deps = [
         ":batching",
+        ":cardinality",
         ":counter",
         ":enumerate_ops",
         ":error_ops",
         ":filter_for_shard_ops",
         ":get_single_element",
         ":grouping",
-        ":has_indefinite_repeat",
         ":indexed_dataset_ops",
         ":interleave_ops",
         ":map_defun",

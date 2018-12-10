@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
+from tensorflow.tools.compatibility import reorders_v2
 
 
 class TFAPIChangeSpec(ast_edits.APIChangeSpec):
@@ -33,6 +34,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "dimension": "axis",
         },
         "tf.argmax": {
+            "dimension": "axis",
+        },
+        "tf.arg_min": {
+            "dimension": "axis",
+        },
+        "tf.arg_max": {
+            "dimension": "axis",
+        },
+        "tf.math.argmin": {
+            "dimension": "axis",
+        },
+        "tf.math.argmax": {
             "dimension": "axis",
         },
         "tf.image.crop_and_resize": {
@@ -50,6 +63,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.batch_to_space": {
             "block_size": "block_shape",
         },
+        "tf.space_to_batch": {
+            "block_size": "block_shape",
+        },
+        "tf.nn.space_to_batch": {
+            "block_size": "block_shape",
+        },
         "tf.constant": {
             "verify_shape": "verify_shape_is_now_always_true",
         },
@@ -61,6 +80,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.linalg.l2_normalize": {
             "dim": "axis",
+        },
+        "tf.linalg.norm": {
+            "keep_dims": "keepdims",
+        },
+        "tf.norm": {
+            "keep_dims": "keepdims",
+        },
+        "tf.load_file_system_library": {
+            "library_filename": "library_location",
         },
         "tf.math.count_nonzero": {
             "input_tensor": "input",
@@ -95,6 +123,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.separable_conv2d": {
             "rate": "dilations"
         },
+        "tf.nn.depthwise_conv2d": {
+            "rate": "dilations"
+        },
         "tf.nn.softmax": {
             "dim": "axis"
         },
@@ -113,14 +144,35 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.sparse.concat": {
             "concat_dim": "axis",
+            "expand_nonconcat_dim": "expand_nonconcat_dims",
         },
         "tf.sparse_concat": {
             "concat_dim": "axis",
+            "expand_nonconcat_dim": "expand_nonconcat_dims",
         },
         "tf.sparse.split": {
             "split_dim": "axis",
         },
-        "tf.max_pool_with_argmax": {
+        "tf.sparse_split": {
+            "split_dim": "axis",
+        },
+        "tf.sparse.reduce_max": {
+            "reduction_axes": "axis",
+            "keep_dims": "keepdims",
+        },
+        "tf.sparse_reduce_max": {
+            "reduction_axes": "axis",
+            "keep_dims": "keepdims",
+        },
+        "tf.sparse.reduce_sum": {
+            "reduction_axes": "axis",
+            "keep_dims": "keepdims",
+        },
+        "tf.sparse_reduce_sum": {
+            "reduction_axes": "axis",
+            "keep_dims": "keepdims",
+        },
+        "tf.nn.max_pool_with_argmax": {
             "Targmax": "output_dtype",
         },
         "tf.multinomial": {
@@ -128,6 +180,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.random.multinomial": {
             "output_dtype": "dtype",
+        },
+        "tf.reverse_sequence": {
+            "seq_dim": "seq_axis",
+            "batch_dim": "batch_axis",
         },
         "tf.nn.batch_norm_with_global_normalization": {
             "t": "input",
@@ -146,6 +202,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.ones_like": {
             "tensor": "input",
+        },
+        "tf.nn.conv2d_transpose": {
+            "value": "input",
+            "filter": "filters",
         },
         "tf.nn.conv3d_transpose": {
             "value": "input",
@@ -283,6 +343,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.squeeze": {
             "squeeze_dims": "axis",
         },
+        "tf.nn.weighted_moments": {
+            "keep_dims": "keepdims"
+        },
     }
 
     # pylint: disable=line-too-long
@@ -293,6 +356,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.manual_symbol_renames = {
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
+        "tf.space_to_batch_nd":
+            "tf.space_to_batch",
+        "tf.nn.space_to_batch":
+            "tf.space_to_batch",
         "tf.extract_image_patches":
             "tf.image.extract_image_patches",
         "tf.gfile.Copy":
@@ -417,6 +484,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sparse.concat",
         "tf.sparse_split":
             "tf.sparse.split",
+        "tf.sparse_matmul":
+            "tf.linalg.matmul",
+        "tf.sparse_reduce_sum":
+            "tf.sparse.reduce_sum",
+        "tf.sparse_reduce_max":
+            "tf.sparse.reduce_max",
         "tf.random.stateless_multinomial":
             "tf.random.stateless_categorical",
         "tf.string_to_hash_bucket":
@@ -467,6 +540,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.string",
         "tf.lite.constants.QUANTIZED_UINT8":
             "tf.uint8",
+        "tf.arg_max":
+            "tf.argmax",
+        "tf.arg_min":
+            "tf.argmin",
+        # tf.nn.ctc_loss is still available in 2.0 but behavior
+        # changed significantly.
+        "tf.nn.ctc_loss":
+            "tf.compat.v1.nn.ctc_loss",
     }
     # pylint: enable=line-too-long
 
@@ -477,176 +558,93 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Variables that should be changed to functions.
     self.change_to_function = {}
 
+    # pylint: disable=line-too-long
+    # This list should just contain names of functions that had
+    # their arguments reordered. After adding a function name to the list
+    # run the following to update reorders_v2.py:
+    # bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
+    # bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+    # pylint: enable=line-too-long
+    self.reordered_function_names = {
+        "tf.io.serialize_sparse",
+        "tf.io.serialize_many_sparse",
+        "tf.argmax",
+        "tf.argmin",
+        "tf.batch_to_space",
+        "tf.nn.space_to_batch",
+        "tf.boolean_mask",
+        "tf.convert_to_tensor",
+        "tf.nn.moments",
+        "tf.nn.convolution",
+        "tf.nn.crelu",
+        "tf.nn.weighted_moments",
+        "tf.nn.pool",
+        "tf.nn.separable_conv2d",
+        "tf.nn.depthwise_conv2d",
+        "tf.multinomial",
+        "tf.random.multinomial",
+        "tf.pad",
+        "tf.quantize_v2",
+        "tf.feature_column.categorical_column_with_vocabulary_file",
+        "tf.shape",
+        "tf.size",
+        "tf.random.poisson",
+        "tf.sparse.add",
+        "tf.sparse_add",
+        "tf.sparse.concat",
+        "tf.sparse_concat",
+        "tf.sparse.segment_mean",
+        "tf.sparse.segment_sqrt_n",
+        "tf.sparse.segment_sum",
+        "tf.sparse_matmul",
+        "tf.sparse.reduce_max",
+        "tf.sparse_reduce_max",
+        "tf.io.decode_csv",
+        "tf.strings.substr",
+        "tf.strings.reduce_join",
+        "tf.strings.length",
+        "tf.transpose",
+        "tf.tuple",
+        "tf.parse_example",
+        "tf.parse_single_example",
+        "tf.io.parse_example",
+        "tf.io.parse_single_example",
+        "tf.while_loop",
+        "tf.reduce_all",
+        "tf.math.reduce_all",
+        "tf.reduce_any",
+        "tf.math.reduce_any",
+        "tf.reduce_min",
+        "tf.math.reduce_min",
+        "tf.reduce_max",
+        "tf.math.reduce_max",
+        "tf.reduce_sum",
+        "tf.math.reduce_sum",
+        "tf.reduce_mean",
+        "tf.math.reduce_mean",
+        "tf.reduce_prod",
+        "tf.math.reduce_prod",
+        "tf.reduce_logsumexp",
+        "tf.math.reduce_logsumexp",
+        "tf.reduce_join",
+        "tf.confusion_matrix",
+        "tf.math.confusion_matrix",
+        "tf.math.in_top_k",
+        "tf.nn.depth_to_space",
+        "tf.nn.embedding_lookup",
+        "tf.nn.embedding_lookup_sparse",
+        "tf.nn.in_top_k",
+        "tf.nn.space_to_depth",
+        "tf.linalg.norm",
+        "tf.norm",
+        "tf.reverse_sequence",
+        "tf.sparse_split",
+    }
+
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
-    # IMPORTANT: order here should correspond to OLD argument order.
-    # We just prepend "arg_name=" to all arguments in function calls.
-    self.function_reorders = {
-        "tf.io.serialize_sparse": ["sp_input", "name", "out_type"],
-        "tf.io.serialize_many_sparse": ["sp_input", "name", "out_type"],
-        "tf.argmax": ["input", "axis", "name", "axis", "output_type"],
-        "tf.argmin": ["input", "axis", "name", "axis", "output_type"],
-        "tf.batch_to_space": ["input", "crops", "block_size", "name"],
-        "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
-        "tf.convert_to_tensor": ["value", "dtype", "name", "preferred_dtype"],
-        "tf.nn.moments": ["x", "axes", "shift", "keepdims", "name"],
-        "tf.nn.convolution": [
-            "input", "filter", "padding", "strides", "dilation_rate", "name",
-            "data_format"
-        ],
-        "tf.nn.crelu": ["features", "name", "axis"],
-        "tf.nn.pool": [
-            "input", "window_shape", "pooling_type", "padding", "dilation_rate",
-            "strides", "name", "data_format"
-        ],
-        "tf.nn.depthwise_conv2d": [
-            "input", "filter", "strides", "padding", "rate", "name",
-            "data_format"
-        ],
-        "tf.multinomial": [
-            "logits", "num_samples", "seed", "name", "output_dtype"
-        ],
-        "tf.random.multinomial": [
-            "logits", "num_samples", "seed", "name", "output_dtype"
-        ],
-        "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
-        "tf.quantize_v2": [
-            "input", "min_range", "max_range", "T", "mode", "name", "round_mode"
-        ],
-        "tf.feature_column.categorical_column_with_vocabulary_file": [
-            "key", "vocabulary_file", "vocabulary_size", "num_oov_buckets",
-            "default_value", "dtype"
-        ],
-        "tf.shape": ["input", "name", "out_type"],
-        "tf.size": ["input", "name", "out_type"],
-        "tf.random.poisson": ["lam", "shape", "dtype", "seed", "name"],
-        "tf.sparse.add": ["a", "b", "thresh"],
-        "tf.sparse_add": ["a", "b", "thresh"],
-        "tf.sparse.concat": [
-            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
-        ],
-        "tf.sparse_concat": [
-            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
-        ],
-        "tf.sparse.segment_mean": [
-            "data", "indices", "segment_ids", "name", "num_segments"
-        ],
-        "tf.sparse.segment_sqrt_n": [
-            "data", "indices", "segment_ids", "name", "num_segments"
-        ],
-        "tf.sparse.segment_sum": [
-            "data", "indices", "segment_ids", "name", "num_segments"
-        ],
-        "tf.io.decode_csv": [
-            "records",
-            "record_defaults",
-            "field_delim",
-            "use_quote_delim",
-            "name",
-            "na_value",
-            "select_cols",
-        ],
-        "tf.strings.substr": ["input", "pos", "len", "name", "unit"],
-        "tf.strings.reduce_join": [
-            "input", "axis", "keep_dims", "separator", "name",
-            "reduction_indices"
-        ],
-        "tf.strings.length": ["input", "name", "unit"],
-        "tf.transpose": ["a", "perm", "name", "conjugate"],
-        "tf.tuple": ["tensors", "name", "control_inputs"],
-        "tf.parse_example": [
-            "serialized", "features", "name", "example_names"
-        ],
-        "tf.parse_single_example": [
-            "serialized", "features", "name", "example_names"
-        ],
-        "tf.io.parse_example": [
-            "serialized", "features", "name", "example_names"
-        ],
-        "tf.io.parse_single_example": [
-            "serialized", "features", "name", "example_names"
-        ],
-        "tf.while_loop": [
-            "cond", "body", "loop_vars", "shape_invariants",
-            "parallel_iterations", "back_prop", "swap_memory", "name",
-            "maximum_iterations", "return_same_structure"
-        ],
-        "tf.reduce_all": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_all": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_any": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_any": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_min": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_min": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_max": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_max": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_sum": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_sum": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_mean": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_mean": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_prod": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_prod": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_logsumexp": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.math.reduce_logsumexp": [
-            "input_tensor", "axis", "keepdims", "name", "reduction_indices",
-            "keep_dims"
-        ],
-        "tf.reduce_join": [
-            "input", "axis", "keep_dims", "separator", "name",
-            "reduction_indices"
-        ],
-        "tf.confusion_matrix": [
-            "labels", "predictions", "num_classes", "dtype", "name", "weights"
-        ],
-        "tf.math.confusion_matrix": [
-            "labels", "predictions", "num_classes", "dtype", "name", "weights"
-        ]
-    }
+    self.function_reorders = reorders_v2.reorders
 
     # Specially handled functions.
     self.function_handle = {
@@ -694,30 +692,60 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         " they may already have been correct)."
     )
 
+    deprecate_partition_strategy_comment = (
+        "WARNING: `partition_strategy` has been removed from `%s` "
+        " The 'div' strategy is used by default.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
-        "tf.assert_greater": assert_return_type_comment,
-        "tf.assert_equal": assert_return_type_comment,
-        "tf.assert_less": assert_return_type_comment,
-        "tf.assert_rank": assert_rank_comment,
-        "tf.debugging.assert_equal": assert_return_type_comment,
-        "tf.debugging.assert_greater": assert_return_type_comment,
-        "tf.debugging.assert_greater_equal": assert_return_type_comment,
-        "tf.debugging.assert_integer": assert_return_type_comment,
-        "tf.debugging.assert_less": assert_return_type_comment,
-        "tf.debugging.assert_less_equal": assert_return_type_comment,
-        "tf.debugging.assert_near": assert_return_type_comment,
-        "tf.debugging.assert_negative": assert_return_type_comment,
-        "tf.debugging.assert_non_negative": assert_return_type_comment,
-        "tf.debugging.assert_non_positive": assert_return_type_comment,
-        "tf.debugging.assert_none_equal": assert_return_type_comment,
-        "tf.debugging.assert_positive": assert_return_type_comment,
-        "tf.debugging.assert_rank": assert_rank_comment,
-        "tf.debugging.assert_rank_at_least": assert_rank_comment,
-        "tf.debugging.assert_rank_in": assert_rank_comment,
-        "tf.flags": "tf.flags has been removed, please use the argparse or absl"
-                    " module if you need command line parsing.",
+        "tf.assert_greater":
+            assert_return_type_comment,
+        "tf.assert_equal":
+            assert_return_type_comment,
+        "tf.assert_less":
+            assert_return_type_comment,
+        "tf.assert_rank":
+            assert_rank_comment,
+        "tf.cond": "tf.cond no longer takes 'strict'. "
+                   "Now 'strict' defaults to True."
+                   "fn1/fn2 arguments are replaced by true_fn/false_fn.",
+        "tf.debugging.assert_equal":
+            assert_return_type_comment,
+        "tf.debugging.assert_greater":
+            assert_return_type_comment,
+        "tf.debugging.assert_greater_equal":
+            assert_return_type_comment,
+        "tf.debugging.assert_integer":
+            assert_return_type_comment,
+        "tf.debugging.assert_less":
+            assert_return_type_comment,
+        "tf.debugging.assert_less_equal":
+            assert_return_type_comment,
+        "tf.debugging.assert_near":
+            assert_return_type_comment,
+        "tf.debugging.assert_negative":
+            assert_return_type_comment,
+        "tf.debugging.assert_non_negative":
+            assert_return_type_comment,
+        "tf.debugging.assert_non_positive":
+            assert_return_type_comment,
+        "tf.debugging.assert_none_equal":
+            assert_return_type_comment,
+        "tf.debugging.assert_positive":
+            assert_return_type_comment,
+        "tf.debugging.assert_rank":
+            assert_rank_comment,
+        "tf.debugging.assert_rank_at_least":
+            assert_rank_comment,
+        "tf.debugging.assert_rank_in":
+            assert_rank_comment,
+        "tf.device": "tf.device no longer takes function as an argument. "
+                     "'devide_name_or_function' argument has been renamed to "
+                     "'device_name'.",
+        "tf.flags":
+            "tf.flags has been removed, please use the argparse or absl"
+            " module if you need command line parsing.",
         "tf.train.exponential_decay":
             decay_function_comment,
         "tf.train.piecewise_constant_decay":
@@ -752,24 +780,63 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             default_loss_reduction_changed,
         "tf.estimator.BaselineRegressor":
             default_loss_reduction_changed,
+        "tf.hessians": "tf.hessians no longer takes "
+                       "'colocate_gradients_with_ops' argument. Also, "
+                       "arguments have been reordered so that 'name' is the "
+                       "last argument.",
         "tf.nn.conv1d":
-        "WARNING: use_cudnn_on_gpu argument has been removed and \"value\" was "
-        "renamed to \"input\"",
+            "WARNING: use_cudnn_on_gpu argument has been removed and \"value\""
+            " was renamed to \"input\"",
         "tf.nn.conv2d":
-        "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
-        "was renamed to \"filters\"",
+            "WARNING: use_cudnn_on_gpu argument has been removed and "
+            "\"filter\" was renamed to \"filters\"",
         "tf.nn.conv2d_backprop_filter":
-        "WARNING: use_cudnn_on_gpu argument has been removed",
+            "WARNING: use_cudnn_on_gpu argument has been removed",
         "tf.nn.conv2d_backprop_input":
-        "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
-        "was renamed to \"filters\"",
+            "WARNING: use_cudnn_on_gpu argument has been removed and "
+            "\"filter\" was renamed to \"filters\"",
         "tf.nn.erosion2d":
-        "WARNING: <function name> now requires a data_format argument",
+            "WARNING: <function name> now requires a data_format argument",
         "tf.nn.nce_loss":
-        "WARNING: `partition_strategy` has been removed from `tf.nn.nce_loss` "
-        " The 'div' strategy is used by default.",
-        "tf.zeros_like": tf_01s_like_no_optimize_comment,
-        "tf.ones_like": tf_01s_like_no_optimize_comment,
+            deprecate_partition_strategy_comment % "tf.nn.nce_loss",
+        "tf.nn.safe_embedding_lookup_sparse":
+            deprecate_partition_strategy_comment %
+            "tf.nn.safe_embedding_lookup_sparse",
+        "tf.nn.sampled_softmax_loss":
+            deprecate_partition_strategy_comment % "tf.nn.sampled_softmax_loss",
+        "tf.zeros_like":
+            tf_01s_like_no_optimize_comment,
+        "tf.ones_like":
+            tf_01s_like_no_optimize_comment,
+        "tf.nn.embedding_lookup":
+            "WARNING: validate_indices argument has been removed.",
+        "tf.while_loop":
+            "tf.while_loop no longer takes 'return_same_structure' argument. "
+            "'return_same_structure' now defaults to True. Also, 'name'"
+            "argument is now the last argument.",
+        "tf.image.sample_distorted_bounding_box":
+            "tf.image.sample_distorted_bounding_box no longer takes 'seed2' "
+            "argument.",
+        "tf.nn.ctc_beam_search_decoder":
+            "tf.nn.ctc_beam_search_decoder no longer takes 'merge_repeated' "
+            "argument. 'merge_repeated' now defaults to False.",
+        "tf.nn.fractional_avg_pool":
+            "tf.nn.fractional_avg_pool no longer takes 'seed2' and "
+            "'deterministic' arguments. Now it takes a single 'seed' arg. If "
+            "'seed' is zero, the execution is random and deterministic "
+            "otherwise",
+        "tf.nn.fractional_max_pool":
+            "tf.nn.fractional_max_pool no longer takes 'seed2' and "
+            "'deterministic' arguments. Now it takes a single 'seed' arg. If "
+            "'seed' is zero, the execution is random and deterministic "
+            "otherwise",
+        "tf.nn.softmax_cross_entropy_with_logits":
+            "tf.nn.softmax_cross_entropy_with_logits behavior has changed. "
+            "'labels' needs to be wrapped with tf.stop_gradient to keep the "
+            "old behavior. Also, 'dim' argument has been renamed to 'axis'.",
+        "tf.test.assert_equal_graph_def":
+            "tf.assert_equal_graph_def no longer takes 'checkpoint_v2' "
+            "argument. 'checkpoint_v2' now defaults to True.",
     }
 
     self.symbol_renames = {
@@ -786,11 +853,32 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "only effects core estimator. If you are using "
         "tf.contrib.learn.Estimator, please switch to using core estimator.")
 
+    make_initializable_iterator_deprecation = (
+        "(Manual edit required) The "
+        "`tf.data.Dataset.make_initializable_iterator()` method has been "
+        "removed. If you are using the Estimator API, you can return a dataset "
+        "directly from your input functions without creating an iterator. "
+        "As a last resort, please replace calls to that method on `dataset` "
+        "with a call to "
+        "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+
+    make_one_shot_iterator_deprecation = (
+        "(Manual edit required) The "
+        "`tf.data.Dataset.make_one_shot_iterator()` method has been "
+        "removed. If you are using eager execution, you can iterate over "
+        "`dataset` using a Python `for` loop. If you are using the Estimator "
+        "API, you can return a dataset directly from your input functions "
+        "without creating an iterator. As a last resort, please replace calls "
+        "to that method on `dataset` with a call to "
+        "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+
     # Specify warnings for functions that aren't restricted to the tf.x.y.z
     # format. This should only be used for methods with unique names, e.g.
     # export_savedmodel, which is only defined in Estimator objects.
     self.unrestricted_function_warnings = {
         "export_savedmodel": export_saved_model_renamed,
+        "make_initializable_iterator": make_initializable_iterator_deprecation,
+        "make_one_shot_iterator": make_one_shot_iterator_deprecation,
     }
 
   @staticmethod

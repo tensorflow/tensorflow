@@ -223,11 +223,22 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSquaredDifference(self):
-    for dtype in [np.int32, np.float16]:
+    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
       with test_util.device(use_gpu=True):
+        z_tf = self.evaluate(math_ops.squared_difference(x, y))
+        self.assertAllClose(z, z_tf)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testComplexSquaredDifference(self):
+    for dtype in [np.complex64, np.complex128]:
+      x = np.array([[1 + 3j, 2 + 2j, 3 + 1j], [4 - 1j, 5 - 2j, 6 - 3j]],
+                   dtype=dtype)
+      y = np.array([-3 + 1j, -2 + 2j, -1 + 3j], dtype=dtype)
+      z = np.conj(x - y) * (x - y)
+      with test_util.device(use_gpu=False):
         z_tf = self.evaluate(math_ops.squared_difference(x, y))
         self.assertAllClose(z, z_tf)
 

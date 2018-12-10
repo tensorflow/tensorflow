@@ -213,6 +213,10 @@ install(DIRECTORY ${tensorflow_source_dir}/third_party/eigen3/
 # unsupported Eigen directory
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/unsupported/Eigen/
         DESTINATION include/unsupported/Eigen)
+# absl directory
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/abseil_cpp/src/abseil_cpp/absl/
+        DESTINATION include/absl
+        FILES_MATCHING PATTERN "*.h")
 # mkl
 if (tensorflow_ENABLE_MKL_SUPPORT)
     install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/include/

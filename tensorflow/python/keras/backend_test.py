@@ -1422,7 +1422,7 @@ class TestCTC(test.TestCase):
                 decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
       self.assertAllClose(log_prob_truth, log_prob_pred)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_ctc_batch_cost(self):
     with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)

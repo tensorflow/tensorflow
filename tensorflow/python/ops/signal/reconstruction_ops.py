@@ -79,7 +79,7 @@ def overlap_and_add(signal, frame_step, name=None):
     # If frame_length is equal to frame_step, there's no overlap so just
     # reshape the tensor.
     frame_step_static = tensor_util.constant_value(frame_step)
-    if (frame_step_static is not None and
+    if (frame_step_static is not None and signal.shape.dims is not None and
         frame_step_static == signal.shape.dims[-1].value):
       output_shape = full_shape([output_length])
       return array_ops.reshape(signal, output_shape, name="fast_path")

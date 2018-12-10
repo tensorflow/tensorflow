@@ -3561,8 +3561,7 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
-  *optimized_graph = item.graph;
-  GrapplerItem optimized_item(item, optimized_graph);
+  GrapplerItem optimized_item(item);
   optimized_graph_ = &optimized_item.graph;
   node_map_.reset(new NodeMap(optimized_graph_));
 

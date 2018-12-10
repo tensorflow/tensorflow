@@ -588,9 +588,16 @@ class LocalComputation(object):
         compile_options=compile_options,
         layout_fn=layout_fn)
 
-  def Execute(self, arguments=()):
+  def GetReturnValueShape(self):
+    return _wrap_shape(self._c_computation.GetReturnValueShape())
+
+  def Execute(self, arguments=(), check_for_deleted_args=True):
     """Execute on one replica with LocalBuffer arguments and return value."""
-    return self.ExecutePerReplica([arguments])[0]
+    if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
+      raise ValueError('Executing with deleted local buffer argument')
+    raw_args = [arg.c_buffer for arg in arguments]
+    output_buffer = self._c_computation.Execute(raw_args)
+    return LocalBuffer(output_buffer, backend=self._backend, replica=0)
 
   def ExecutePerReplica(self, arguments=None):
     """Execute on many replicas with LocalBuffer arguments and return value.
@@ -633,7 +640,7 @@ class LocalComputation(object):
             'Multi-replica execution is not yet supported via the XRT backend.')
       output_buffers = [self._c_computation.Execute(stripped_args[0])]
     else:
-      output_buffer_tup = self._c_computation.Execute(stripped_args)
+      output_buffer_tup = self._c_computation.ExecutePerReplica(stripped_args)
       size = output_buffer_tup.size()
       output_buffers = [output_buffer_tup.Release(i) for i in xrange(size)]
 

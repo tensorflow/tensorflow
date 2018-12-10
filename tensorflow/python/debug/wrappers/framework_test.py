@@ -141,6 +141,7 @@ class TestDebugWrapperSessionBadAction(framework.BaseDebugWrapperSession):
     return framework.OnRunEndResponse()
 
 
+@test_util.run_v1_only("b/120545219")
 class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def _no_rewrite_session_config(self):

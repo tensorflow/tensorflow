@@ -22,7 +22,6 @@ namespace tflite {
 namespace flex {
 namespace {
 
-using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
 
 class DelegateTest : public testing::FlexModelTest {

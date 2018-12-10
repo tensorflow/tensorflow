@@ -342,6 +342,10 @@ class PolymorphicFunction(object):
     """The python function wrapped in this tf.function."""
     return self._python_function
 
+  @property
+  def input_signature(self):
+    return self._input_signature
+
   def get_initialization_function(self, *args, **kwargs):
     """Returns a `Function` object which initializes this function's variables.
 

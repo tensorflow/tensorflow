@@ -21,10 +21,9 @@ from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util import deprecation
 
@@ -396,18 +395,10 @@ class LMDBDataset(dataset_ops.DatasetSource):
 
   def _as_variant_tensor(self):
     return gen_experimental_dataset_ops.experimental_lmdb_dataset(
-        self._filenames,
-        output_types=nest.flatten(self.output_types),
-        output_shapes=nest.flatten(self.output_shapes))
+        self._filenames, **dataset_ops.flat_structure(self))
 
   @property
-  def output_classes(self):
-    return ops.Tensor, ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
-
-  @property
-  def output_types(self):
-    return dtypes.string, dtypes.string
+  def _element_structure(self):
+    return structure.NestedStructure(
+        (structure.TensorStructure(dtypes.string, []),
+         structure.TensorStructure(dtypes.string, [])))

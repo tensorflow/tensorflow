@@ -230,6 +230,7 @@ class DivideDelegateWithName(object):
 
 
 @tf_export("math.divide", "divide")
+@dispatch.add_dispatch_support
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`."""
 
@@ -242,6 +243,7 @@ def divide(x, y, name=None):
 
 
 @tf_export("math.multiply", "multiply")
+@dispatch.add_dispatch_support
 def multiply(x, y, name=None):
   return gen_math_ops.mul(x, y, name)
 
@@ -262,6 +264,7 @@ _mul.__doc__ = (
 
 
 @tf_export("math.subtract", "subtract")
+@dispatch.add_dispatch_support
 def subtract(x, y, name=None):
   return gen_math_ops.sub(x, y, name)
 
@@ -347,6 +350,7 @@ def scalar_mul_v2(scalar, x, name=None):
 
 
 @tf_export("math.pow", "pow")
+@dispatch.add_dispatch_support
 def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the power of one value to another.
 
@@ -375,6 +379,7 @@ def pow(x, y, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=redefined-builtin,redefined-outer-name
 @tf_export("dtypes.complex", "complex")
+@dispatch.add_dispatch_support
 def complex(real, imag, name=None):
   r"""Converts two real numbers to a complex number.
 
@@ -418,6 +423,7 @@ def complex(real, imag, name=None):
 
 @tf_export("math.real", v1=["math.real", "real"])
 @deprecation.deprecated_endpoints("real")
+@dispatch.add_dispatch_support
 def real(input, name=None):
   r"""Returns the real part of a complex (or real) tensor.
 
@@ -450,6 +456,7 @@ def real(input, name=None):
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
 @deprecation.deprecated_endpoints("imag")
+@dispatch.add_dispatch_support
 def imag(input, name=None):
   r"""Returns the imaginary part of a complex (or real) tensor.
 
@@ -481,6 +488,7 @@ def imag(input, name=None):
 
 @tf_export("math.angle", v1=["math.angle", "angle"])
 @deprecation.deprecated_endpoints("angle")
+@dispatch.add_dispatch_support
 def angle(input, name=None):
   r"""Returns the element-wise argument of a complex (or real) tensor.
 
@@ -520,6 +528,7 @@ def angle(input, name=None):
 
 
 @tf_export("math.round", "round")
+@dispatch.add_dispatch_support
 def round(x, name=None):  # pylint: disable=redefined-builtin
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
@@ -547,6 +556,7 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
 
 
 @tf_export("dtypes.cast", "cast")
+@dispatch.add_dispatch_support
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
 
@@ -610,6 +620,7 @@ def cast(x, dtype, name=None):
 
 
 @tf_export("dtypes.saturate_cast", "saturate_cast")
+@dispatch.add_dispatch_support
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
 
@@ -935,6 +946,7 @@ def _div_python2(x, y, name=None):
 
 
 @tf_export("math.truediv", "truediv")
+@dispatch.add_dispatch_support
 def truediv(x, y, name=None):
   """Divides x / y elementwise (using Python 3 division operator semantics).
 
@@ -992,6 +1004,7 @@ def div(x, y, name=None):
 
 
 @tf_export("div_no_nan")
+@dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
   """Computes an unsafe divide which returns 0 if the y is zero.
 
@@ -1021,6 +1034,7 @@ mod = gen_math_ops.floor_mod
 # TODO(aselle): Deprecate this once all internal functionality uses
 # tf.truncatediv
 @tf_export("math.floordiv", v1=["math.floordiv", "floordiv"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("floordiv")
 def floordiv(x, y, name=None):
   """Divides `x / y` elementwise, rounding toward the most negative integer.
@@ -1050,16 +1064,11 @@ def floordiv(x, y, name=None):
 
 
 realdiv = gen_math_ops.real_div
-tf_export("realdiv")(realdiv)
 truncatediv = gen_math_ops.truncate_div
-tf_export("truncatediv")(truncatediv)
 # TODO(aselle): Rename this to floordiv when we can.
 floor_div = gen_math_ops.floor_div
-tf_export("floor_div")(floor_div)
 truncatemod = gen_math_ops.truncate_mod
-tf_export("truncatemod")(truncatemod)
 floormod = gen_math_ops.floor_mod
-tf_export("floormod", "mod")(floormod)
 
 
 def _mul_dispatch(x, y, name=None):
@@ -1095,6 +1104,7 @@ _OverrideBinaryOperatorHelper(pow, "pow")
 
 
 @tf_export("math.logical_xor", v1=["math.logical_xor", "logical_xor"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
   """x ^ y = (x | y) & ~(x & y)."""
@@ -1277,6 +1287,7 @@ def reduce_sum_v1(input_tensor,
 
 
 @tf_export("math.reduce_sum", "reduce_sum", v1=[])
+@dispatch.add_dispatch_support
 def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the sum of elements across dimensions of a tensor.
 
@@ -1524,6 +1535,7 @@ def reduce_mean_v1(input_tensor,
 
 
 @tf_export("math.reduce_mean", "reduce_mean", v1=[])
+@dispatch.add_dispatch_support
 def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the mean of elements across dimensions of a tensor.
 
@@ -1675,6 +1687,7 @@ def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
 
 
 @tf_export("math.reduce_prod", "reduce_prod", v1=[])
+@dispatch.add_dispatch_support
 def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the product of elements across dimensions of a tensor.
 
@@ -1796,6 +1809,7 @@ def reduce_min_v1(input_tensor,
 
 
 @tf_export("math.reduce_min", "reduce_min", v1=[])
+@dispatch.add_dispatch_support
 def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the minimum of elements across dimensions of a tensor.
 
@@ -1874,6 +1888,7 @@ def reduce_max_v1(input_tensor,
 
 
 @tf_export("math.reduce_max", "reduce_max", v1=[])
+@dispatch.add_dispatch_support
 def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the maximum of elements across dimensions of a tensor.
 
@@ -1961,6 +1976,7 @@ def reduce_all_v1(input_tensor,
 
 
 @tf_export("reduce_all", "math.reduce_all", v1=[])
+@dispatch.add_dispatch_support
 def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the "logical and" of elements across dimensions of a tensor.
 
@@ -2057,6 +2073,7 @@ def reduce_any_v1(input_tensor,
 
 
 @tf_export("math.reduce_any", "reduce_any", v1=[])
+@dispatch.add_dispatch_support
 def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the "logical or" of elements across dimensions of a tensor.
 
@@ -2538,7 +2555,8 @@ def matvec(a,
 
 _OverrideBinaryOperatorHelper(matmul, "matmul")
 
-sparse_matmul = gen_math_ops.sparse_mat_mul
+sparse_matmul = deprecation.deprecated(None, "Use `tf.linalg.matmul` instead")(
+    gen_math_ops.sparse_mat_mul)
 tf_export(v1=["sparse_matmul"])(sparse_matmul)
 
 
@@ -2618,6 +2636,7 @@ def _as_indexed_slices_list(inputs, optimize=True):
 
 
 @tf_export("math.add_n", "add_n")
+@dispatch.add_dispatch_support
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
@@ -2763,6 +2782,7 @@ def sigmoid(x, name=None):
 
 
 @tf_export("math.log_sigmoid", v1=["math.log_sigmoid", "log_sigmoid"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("log_sigmoid")
 def log_sigmoid(x, name=None):
   """Computes log sigmoid of `x` element-wise.
@@ -2972,6 +2992,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
 
 
 @tf_export("math.conj", v1=["math.conj", "conj"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("conj")
 def conj(x, name=None):
   r"""Returns the complex conjugate of a complex number.
@@ -3076,6 +3097,7 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
     "math.unsorted_segment_mean",
     v1=["math.unsorted_segment_mean", "unsorted_segment_mean"])
 @deprecation.deprecated_endpoints("unsorted_segment_mean")
+@dispatch.add_dispatch_support
 def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   r"""Computes the mean along segments of a tensor.
 
@@ -3121,6 +3143,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
     "math.unsorted_segment_sqrt_n",
     v1=["math.unsorted_segment_sqrt_n", "unsorted_segment_sqrt_n"])
 @deprecation.deprecated_endpoints("unsorted_segment_sqrt_n")
+@dispatch.add_dispatch_support
 def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   r"""Computes the sum along segments of a tensor divided by the sqrt(N).
 

@@ -35,7 +35,7 @@ class KerasIntegrationTest(test.TestCase):
   def test_version(self):
     self.assertTrue(keras.__version__.endswith('-tf'))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_vector_classification_sequential(self):
     with self.cached_session():
       np.random.seed(1337)
@@ -134,6 +134,7 @@ class KerasIntegrationTest(test.TestCase):
                           verbose=2)
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
+  @test_util.run_v1_only('b/120545219')
   def test_image_classification_sequential(self):
     with self.cached_session():
       np.random.seed(1337)
@@ -168,7 +169,7 @@ class KerasIntegrationTest(test.TestCase):
                           verbose=2)
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_video_classification_functional(self):
     with self.cached_session():
       np.random.seed(1337)
@@ -197,7 +198,7 @@ class KerasIntegrationTest(test.TestCase):
                           verbose=2)
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_vector_classification_shared_sequential(self):
     # Test that Sequential models that feature internal updates
     # and internal losses can be shared.
@@ -232,7 +233,7 @@ class KerasIntegrationTest(test.TestCase):
                           verbose=2)
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_vector_classification_shared_model(self):
     # Test that functional models that feature internal updates
     # and internal losses can be shared.
