@@ -335,7 +335,7 @@ class CuDNNGRU(_CuDNNRNN):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.CuDNNLSTM')
+@tf_export(v1=['keras.layers.CuDNNLSTM'])
 class CuDNNLSTM(_CuDNNRNN):
   """Fast LSTM implementation backed by cuDNN.
 

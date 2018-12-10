@@ -209,8 +209,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
       y_2 = lstm_model.predict(x_train)
 
       with test_util.device(use_gpu=True):
-        cudnn_layer = keras.layers.UnifiedLSTM(rnn_state_size,
-                                               recurrent_activation='sigmoid')
+        cudnn_layer = keras.layers.UnifiedLSTM(rnn_state_size)
         cudnn_model = keras.models.Model(inputs, cudnn_layer(inputs))
       cudnn_model.set_weights(weights)
       y_3 = cudnn_model.predict(x_train)
