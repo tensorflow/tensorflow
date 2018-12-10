@@ -117,13 +117,34 @@ mlfunc @loop_dma_nested(%arg0 : memref<512x32xvector<8xf32>, #map0>, %arg1 : mem
     // CHECK:  dma_wait %37[
     // CHECK:  for %i6 = 0 to 4 {
 
-    // The DMAs below are outgoing DMAs on arg2, not yet overlapped.
-    // CHECK: dma_start %0{{.*}}, %arg2[
-    // CHECK-NEXT:  dma_wait %1[
-    dma_start %2[%c0, %c0], %arg2[%6#0, %6#1], %num_elts, %5[%c0] : memref<64x4xvector<8xf32>, #map0, 2>, memref<512x32xvector<8xf32>, #map0>, memref<2xi32>
+  } // CHECK: }
+  return // CHECK-NEXT: return
+}
+
+// CHECK: mlfunc @loop_dma_dependent
+mlfunc @loop_dma_dependent(%arg2 : memref<512x32xvector<8xf32>>) {
+  %num_elts = constant 256 : index
+  %c0 = constant 0 : index
+  %0 = alloc() : memref<64x4xvector<8xf32>, 2>
+  %1 = alloc() : memref<64x4xvector<8xf32>, 2>
+  %2 = alloc() : memref<64x4xvector<8xf32>, 2>
+  %3 = alloc() : memref<2xi32>
+  %4 = alloc() : memref<2xi32>
+  %5 = alloc() : memref<2xi32>
+
+  // The two DMAs below are dependent (incoming and outgoing on the same
+  // memref) in the same iteration; so no pipelining here.
+  // CHECK-NOT: dma_start
+  // CHECK: for %i0 = 0 to 8 {
+  for %i0 = 0 to 8 {
+    %6 = affine_apply #map2(%i0)
+    dma_start %arg2[%6#0, %6#1], %2[%c0, %c0], %num_elts, %5[%c0] : memref<512x32xvector<8xf32>>, memref<64x4xvector<8xf32>, 2>, memref<2xi32>
     dma_wait %5[%c0], %num_elts : memref<2xi32>
-  } // CHECK }
-  return
+
+    dma_start %2[%c0, %c0], %arg2[%6#0, %6#1], %num_elts, %5[%c0] : memref<64x4xvector<8xf32>, 2>, memref<512x32xvector<8xf32>>, memref<2xi32>
+    dma_wait %5[%c0], %num_elts : memref<2xi32>
+  } // CHECK: }
+  return // CHECK-NEXT: return
 }
 
 // CHECK-LABEL: mlfunc @escaping_use

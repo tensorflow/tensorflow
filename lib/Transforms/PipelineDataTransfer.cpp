@@ -181,6 +181,19 @@ static void findMatchingStartFinishStmts(
     ForStmt *forStmt,
     SmallVectorImpl<std::pair<OperationStmt *, OperationStmt *>>
         &startWaitPairs) {
+
+  // Collect outgoing DMA statements - needed to check for dependences below.
+  SmallVector<OpPointer<DmaStartOp>, 4> outgoingDmaOps;
+  for (auto &stmt : *forStmt) {
+    auto *opStmt = dyn_cast<OperationStmt>(&stmt);
+    if (!opStmt)
+      continue;
+    OpPointer<DmaStartOp> dmaStartOp;
+    if ((dmaStartOp = opStmt->dyn_cast<DmaStartOp>()) &&
+        dmaStartOp->isSrcMemorySpaceFaster())
+      outgoingDmaOps.push_back(dmaStartOp);
+  }
+
   SmallVector<OperationStmt *, 4> dmaStartStmts, dmaFinishStmts;
   for (auto &stmt : *forStmt) {
     auto *opStmt = dyn_cast<OperationStmt>(&stmt);
@@ -194,9 +207,20 @@ static void findMatchingStartFinishStmts(
     OpPointer<DmaStartOp> dmaStartOp;
     if (!(dmaStartOp = opStmt->dyn_cast<DmaStartOp>()))
       continue;
-    // Only DMAs incoming into higher memory spaces.
-    // TODO(bondhugula): outgoing DMAs.
+    // Only DMAs incoming into higher memory spaces are pipelined for now.
+    // TODO(bondhugula): handle outgoing DMA pipelining.
     if (!dmaStartOp->isDestMemorySpaceFaster())
+      continue;
+
+    // Check for dependence with outgoing DMAs. Doing this conservatively.
+    // TODO(andydavis,bondhugula): use the dependence analysis to check for
+    // dependences between an incoming and outgoing DMA in the same iteration.
+    auto it = outgoingDmaOps.begin();
+    for (; it != outgoingDmaOps.end(); ++it) {
+      if ((*it)->getDstMemRef() == dmaStartOp->getSrcMemRef())
+        break;
+    }
+    if (it != outgoingDmaOps.end())
       continue;
 
     // We only double buffer if the buffer is not live out of loop.
