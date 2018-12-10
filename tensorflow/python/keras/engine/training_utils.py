@@ -68,7 +68,7 @@ class Aggregator(object):
     Arguments:
       batch_outs: A list of batch-level outputs.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   @abc.abstractmethod
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
@@ -81,12 +81,12 @@ class Aggregator(object):
       batch_end: The end index of this batch. Always `None` if `use_steps` is
         `True`.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   @abc.abstractmethod
   def finalize(self):
     """Prepares the total results to be returned."""
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
 
 class MetricsAggregator(Aggregator):
