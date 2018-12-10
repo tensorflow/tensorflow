@@ -107,14 +107,12 @@ class KubernetesClusterResolver(ClusterResolver):
     Returns:
       The name or URL of the session master.
     """
+    task_type = task_type if task_type is not None else self.task_type
+    task_index = task_index if task_index is not None else self.task_index
+
     if task_type is not None and task_index is not None:
       return format_master_url(
           self.cluster_spec().task_address(task_type, task_index),
-          rpc_layer or self.rpc_layer)
-
-    if self.task_type is not None and self.task_index is not None:
-      return format_master_url(
-          self.cluster_spec().task_address(self.task_type, self.task_index),
           rpc_layer or self.rpc_layer)
 
     return ''
