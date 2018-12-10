@@ -22,7 +22,7 @@ from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -48,7 +48,7 @@ class TFRecordWriter(object):
     Returns:
       A `tf.Operation` that, when run, writes contents of `dataset` to a file.
     """
-    if not isinstance(dataset, dataset_ops.Dataset):
+    if not isinstance(dataset, dataset_ops.DatasetV2):
       raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
     if (dataset.output_types != dtypes.string or
         dataset.output_shapes != tensor_shape.scalar()):
@@ -56,5 +56,5 @@ class TFRecordWriter(object):
           "`dataset` must produce scalar `DT_STRING` tensors whereas it "
           "produces shape {0} and types {1}".format(dataset.output_shapes,
                                                     dataset.output_types))
-    return gen_dataset_ops.dataset_to_tf_record(
+    return gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
         dataset._as_variant_tensor(), self._filename, self._compression_type)  # pylint: disable=protected-access

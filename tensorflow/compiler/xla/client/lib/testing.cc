@@ -66,7 +66,7 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
   XlaComputation computation = b.Build().ConsumeValueOrDie();
 
   auto execution_options = CreateDefaultExecutionOptions();
-  *execution_options.mutable_shape_with_output_layout() = shape;
+  *execution_options.mutable_shape_with_output_layout() = shape.ToProto();
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
       .ConsumeValueOrDie();
 }
@@ -93,13 +93,13 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
 
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
     const XlaComputation& computation, Client* client) {
-  CHECK(computation.proto().has_program_shape())
+  CHECK(computation.proto().has_host_program_shape())
       << "Computation should have progran shape.";
-  auto program_shape = computation.proto().program_shape();
+  auto program_shape = computation.proto().host_program_shape();
 
   std::vector<std::unique_ptr<GlobalData>> results;
-  for (const Shape& shape : program_shape.parameters()) {
-    results.push_back(MakeFakeDataOrDie(shape, client));
+  for (const ShapeProto& shape : program_shape.parameters()) {
+    results.push_back(MakeFakeDataOrDie(Shape(shape), client));
   }
   return results;
 }

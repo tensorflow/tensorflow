@@ -228,12 +228,12 @@ Status BiasAddShape(shape_inference::InferenceContext* c) {
   if (s.ok() && data_format == "NCHW") {
     // Merge the length of bias_shape into the third to last dimension
     ShapeHandle first;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, -3, &first));
+    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, 1, &first));
 
     ShapeHandle last;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, -2, &last));
+    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 2, &last));
 
-    DimensionHandle input_bias_dim = c->Dim(input_shape, -3);
+    DimensionHandle input_bias_dim = c->Dim(input_shape, 1);
     DimensionHandle merged_bias_dim;
     TF_RETURN_IF_ERROR(c->Merge(input_bias_dim, bias_dim, &merged_bias_dim));
     ShapeHandle merged_bias = c->Vector(merged_bias_dim);
@@ -266,7 +266,7 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
 
   if (s.ok() && data_format == "NCHW") {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &input_shape));
-    c->set_output(0, c->Vector(c->Dim(input_shape, -3)));
+    c->set_output(0, c->Vector(c->Dim(input_shape, 1)));
   } else {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
     c->set_output(0, c->Vector(c->Dim(input_shape, -1)));
@@ -1059,7 +1059,7 @@ Status UnknownShape(shape_inference::InferenceContext* c) {
 template <typename T>
 Status ReductionShapeHelper(const Tensor* reduction_indices_t,
                             const int32 input_rank,
-                            std::set<int64>& true_indices) {
+                            std::set<int64>* true_indices) {
   auto reduction_indices = reduction_indices_t->flat<T>();
   for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
     const T reduction_index = reduction_indices(i);
@@ -1074,7 +1074,7 @@ Status ReductionShapeHelper(const Tensor* reduction_indices_t,
       wrapped_index += input_rank;
     }
 
-    true_indices.insert(wrapped_index);
+    true_indices->insert(wrapped_index);
   }
   return Status::OK();
 }
@@ -1112,10 +1112,10 @@ Status ReductionShape(InferenceContext* c) {
   std::set<int64> true_indices;
   if (reduction_indices_t->dtype() == DataType::DT_INT32) {
     TF_RETURN_IF_ERROR(ReductionShapeHelper<int32>(reduction_indices_t,
-                                                   input_rank, true_indices));
+                                                   input_rank, &true_indices));
   } else if (reduction_indices_t->dtype() == DataType::DT_INT64) {
     TF_RETURN_IF_ERROR(ReductionShapeHelper<int64>(reduction_indices_t,
-                                                   input_rank, true_indices));
+                                                   input_rank, &true_indices));
   } else {
     return errors::InvalidArgument(
         "reduction_indices can only be int32 or int64");
@@ -1457,7 +1457,11 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
   if (c->input_handle_shapes_and_types(0) != nullptr) {
-    input_shape = (*c->input_handle_shapes_and_types(0))[0].shape;
+    // This is called for tf.scatter_nd_update; input is a Variable handle.
+    const auto& shape_and_type = *(c->input_handle_shapes_and_types(0));
+    if (shape_and_type.size() == 1) {
+      input_shape = shape_and_type[0].shape;
+    }
   }
   ShapeHandle indices_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
@@ -1514,7 +1518,8 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
     }
   }
 
-  if (c->input_handle_shapes_and_types(0) == nullptr) {
+  if (c->input_handle_shapes_and_types(0) == nullptr && c->num_outputs() > 0) {
+    // This is called for tf.scatter_nd; output is a tensor with this shape.
     c->set_output(0, input_shape);
   }
   return Status::OK();
@@ -1542,6 +1547,51 @@ Status ExplicitShapes(InferenceContext* c) {
     c->set_output(i, output_shape);
   }
   return Status::OK();
+}
+
+Status SparseReduceShapeFn(InferenceContext* c) {
+  // Input 0: input_indices
+  // Input 1: input_values
+  // Input 2: input_shape
+  // Input 3: reduction_axes
+  // Attr: keep_dims
+  bool keep_dims = false;
+  TF_RETURN_IF_ERROR(c->GetAttr("keep_dims", &keep_dims));
+
+  const Tensor* shape_tensor = c->input_tensor(2);
+  const Tensor* axes_tensor = c->input_tensor(3);
+  if (shape_tensor != nullptr && axes_tensor != nullptr) {
+    auto shape_vec = shape_tensor->flat<int64>();
+    auto axes_vec = axes_tensor->flat<int32>();
+
+    int64 ndims = shape_vec.size();
+    std::unordered_set<int64> axes;
+    for (int i = 0; i < axes_vec.size(); i++) {
+      axes.insert((axes_vec(i) + ndims) % ndims);
+    }
+
+    std::vector<DimensionHandle> dims;
+    if (keep_dims) {
+      dims.reserve(ndims);
+      for (int d = 0; d < ndims; ++d) {
+        if (axes.find(d) == axes.end()) {
+          dims.push_back(c->MakeDim(shape_vec(d)));
+        } else {
+          dims.push_back(c->MakeDim(1));
+        }
+      }
+    } else {
+      for (int d = 0; d < ndims; ++d) {
+        if (axes.find(d) == axes.end()) {
+          dims.push_back(c->MakeDim(shape_vec(d)));
+        }
+      }
+    }
+
+    c->set_output(0, c->MakeShape(dims));
+    return Status::OK();
+  }
+  return UnknownShape(c);
 }
 
 }  // namespace shape_inference

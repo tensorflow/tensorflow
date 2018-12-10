@@ -28,6 +28,8 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+constexpr char kDevice[] = "/device:CPU:0";
+
 class FunctionsTest : public ::testing::Test {};
 
 TEST_F(FunctionsTest, IsParametrized) {
@@ -69,15 +71,15 @@ TEST_F(FunctionsTest, InstantiationParameters) {
       /* Mapping between function returns and function node outputs. */
       {{"x", "cx:output:0"}, {"y", "cy:output:0"}});
 
-  std::unordered_map<string, AttrValue> func_instantiation_attr;
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
   func_instantiation_attr["key"].set_s("key-value");
   func_instantiation_attr["A"].set_type(DT_FLOAT);
   func_instantiation_attr["B"].set_type(DT_INT32);
   func_instantiation_attr["C"].set_type(DT_DOUBLE);
 
   std::unordered_map<string, DataType> type_parameters;
-  TF_EXPECT_OK(InstantiationTypeParameters(func, func_instantiation_attr,
-                                           &type_parameters));
+  TF_EXPECT_OK(InstantiationTypeParameters(
+      func, AttrSlice(&func_instantiation_attr), &type_parameters));
 
   ASSERT_EQ(3, type_parameters.size());
   EXPECT_EQ(DT_FLOAT, type_parameters["A"]);
@@ -85,8 +87,8 @@ TEST_F(FunctionsTest, InstantiationParameters) {
   EXPECT_EQ(DT_DOUBLE, type_parameters["C"]);
 
   std::unordered_map<string, AttrValue> body_parameters;
-  TF_EXPECT_OK(InstantiationBodyParameters(func, func_instantiation_attr,
-                                           &body_parameters));
+  TF_EXPECT_OK(InstantiationBodyParameters(
+      func, AttrSlice(&func_instantiation_attr), &body_parameters));
 
   ASSERT_EQ(1, body_parameters.size());
   EXPECT_EQ("key-value", body_parameters["key"].s());
@@ -235,13 +237,14 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
           {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
       });
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("XTimesTwo", item.id);
   EXPECT_EQ(4, item.function_body().node_size());
@@ -256,19 +259,19 @@ TEST_F(FunctionsTest, FromSimpleFunctionDef) {
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
-    if (node.name() == "x" && count++) {
+    if (node.name() == "x" && ++count) {
       EXPECT_EQ("Placeholder", node.op());
       EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
-    } else if (node.name() == "two" && count++) {
+    } else if (node.name() == "two" && ++count) {
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ(0, node.input_size());
-    } else if (node.name() == "scale" && count++) {
+    } else if (node.name() == "scale" && ++count) {
       EXPECT_EQ("Cast", node.op());
       EXPECT_EQ(DT_FLOAT, node.attr().at("DstT").type());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("two", node.input(0));
-    } else if (node.name() == "y" && count++) {
+    } else if (node.name() == "y" && ++count) {
       EXPECT_EQ("Mul", node.op());
       EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
       EXPECT_EQ(2, node.input_size());
@@ -311,13 +314,14 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
       // Nodes
       nodes);
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("SubGrad", item.id);
   EXPECT_EQ(12, item.function_body().node_size());
@@ -338,17 +342,17 @@ TEST_F(FunctionsTest, FromFunctionDefWithMultiOutputNodes) {
       EXPECT_EQ("Placeholder", node.op());
       EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
-    } else if (node.name() == "rx" && count++) {
+    } else if (node.name() == "rx" && ++count) {
       EXPECT_EQ("BroadcastGradientArgs", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("sx", node.input(0));
       EXPECT_EQ("sy", node.input(1));
-    } else if (node.name() == "sum_gx" && count++) {
+    } else if (node.name() == "sum_gx" && ++count) {
       EXPECT_EQ("Sum", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("gx", node.input(0));
       EXPECT_EQ("rx", node.input(1));
-    } else if (node.name() == "sum_gy" && count++) {
+    } else if (node.name() == "sum_gy" && ++count) {
       EXPECT_EQ("Sum", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("gy", node.input(0));
@@ -394,12 +398,13 @@ TEST_F(FunctionsTest, FromFunctionDefWithNestedFuncs) {
       // Output Mapping
       {{"o", "o:z:0"}});
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["T"].set_type(DT_FLOAT);
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
@@ -408,29 +413,29 @@ TEST_F(FunctionsTest, FromFunctionDefWithNestedFuncs) {
       EXPECT_EQ("Placeholder", node.op());
       EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
-    } else if (node.name() == "a0" && count++) {
+    } else if (node.name() == "a0" && ++count) {
       EXPECT_EQ("Swap", node.op());
       EXPECT_EQ(3, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("y", node.input(1));
       EXPECT_EQ("^x2", node.input(2));
-    } else if (node.name() == "a1" && count++) {
+    } else if (node.name() == "a1" && ++count) {
       EXPECT_EQ("Swap", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("a0", node.input(0));
       EXPECT_EQ("a0:1", node.input(1));
-    } else if (node.name() == "x2" && count++) {
+    } else if (node.name() == "x2" && ++count) {
       EXPECT_EQ("Mul", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("x", node.input(1));
-    } else if (node.name() == "y2" && count++) {
+    } else if (node.name() == "y2" && ++count) {
       EXPECT_EQ("Mul", node.op());
       EXPECT_EQ(3, node.input_size());
       EXPECT_EQ("y", node.input(0));
       EXPECT_EQ("y", node.input(1));
       EXPECT_EQ("^a1", node.input(2));
-    } else if (node.name() == "o" && count++) {
+    } else if (node.name() == "o" && ++count) {
       EXPECT_EQ("Add", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x2", node.input(0));
@@ -456,27 +461,28 @@ TEST_F(FunctionsTest, FromFunctionDefWithOutputMappings) {
       // Mapping
       {{"out", "Exp:y:0"}});
 
-  std::unordered_map<string, AttrValue> func_attr;
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(1, item.output_size());
   EXPECT_EQ("Exp", item.output(0).output_tensors[0]);
 
   int count = 0;
   for (const NodeDef &node : item.function_body().node()) {
-    if (node.name() == "in" && count++) {
+    if (node.name() == "in" && ++count) {
       EXPECT_EQ("Placeholder", node.op());
       EXPECT_EQ(DT_FLOAT, node.attr().at("dtype").type());
       EXPECT_EQ(0, node.input_size());
-    } else if (node.name() == "Linear_func" && count++) {
+    } else if (node.name() == "Linear_func" && ++count) {
       EXPECT_EQ("Identity", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("in", node.input(0));
-    } else if (node.name() == "Exp" && count++) {
+    } else if (node.name() == "Exp" && ++count) {
       EXPECT_EQ("Exp", node.op());
       EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("Linear_func", node.input(0));
@@ -500,12 +506,13 @@ TEST_F(FunctionsTest, FromFunctionDefWithInputForwarding) {
       // Mapping
       {{"out0", "in0"}});
 
-  std::unordered_map<string, AttrValue> func_attr;
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ("ForwardInputs", item.id);
   EXPECT_EQ(5, item.function_body().node_size());
@@ -546,13 +553,14 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
       {{{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
        {{"o"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}}});
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(0, item.input_size());
   EXPECT_EQ(1, item.output_size());
@@ -566,6 +574,33 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
   EXPECT_EQ("o", cast.name());
   EXPECT_EQ(1, cast.input_size());
   EXPECT_EQ("two", cast.input(0));
+}
+
+TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
+  const Tensor kOne = test::AsScalar<float>(1.0);
+  FunctionDef func = FunctionDefHelper::Define(
+      /* Name */ "SideEffects",
+      /* Args */ {"x: Ref(float)"},
+      /* Return values */ {},
+      /* Attr def */ {},
+      /* Nodes */
+      {{{"one"}, "Const", {}, {{"value", kOne}, {"dtype", DT_FLOAT}}},
+       {{"update"}, "AssignAdd", {"x", "one"}, {{"T", DT_FLOAT}}}});
+
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
+
+  GrapplerFunctionItem item;
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
+
+  EXPECT_EQ("SideEffects", item.id);
+  EXPECT_EQ(3, item.function_body().node_size());
+  EXPECT_EQ(1, item.input_size());
+  EXPECT_EQ(0, item.output_size());
+  ASSERT_EQ(1, item.keep_ops.size());
+  EXPECT_EQ("update", item.keep_ops[0]);
 }
 
 TEST_F(FunctionsTest, MakeFunctionDef) {
@@ -586,13 +621,14 @@ TEST_F(FunctionsTest, MakeFunctionDef) {
           {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
       });
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   FunctionDef specialized;
   TF_EXPECT_OK(MakeFunctionDef(item, flib, &specialized));
@@ -606,9 +642,9 @@ TEST_F(FunctionsTest, MakeFunctionDef) {
   // Function body specialized for instantiation types
   int count = 0;
   for (const NodeDef &node : specialized.node_def()) {
-    if (node.name() == "scale" && count++) {
+    if (node.name() == "scale" && ++count) {
       EXPECT_EQ(DT_FLOAT, node.attr().at("DstT").type());
-    } else if (node.name() == "y" && count++) {
+    } else if (node.name() == "y" && ++count) {
       EXPECT_EQ("Mul", node.op());
       EXPECT_EQ("x:0", node.input(0));
       EXPECT_EQ("scale:y:0", node.input(1));
@@ -625,13 +661,14 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
       /* Mapping between function returns and function node outputs. */
       {{"z", "output:z:0"}});
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["T"].set_type(DT_FLOAT);
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   EXPECT_EQ(2, item.input_size());
   EXPECT_EQ(1, item.output_size());
@@ -679,13 +716,13 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
   // Check that graph has const nodes pushed into function body.
   int count = 0;
   for (const NodeDef &node : specialized.node_def()) {
-    if (node.name() == "x" && count++) {
+    if (node.name() == "x" && ++count) {
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ("const_input_x", node.attr().at("Tag").s());
-    } else if (node.name() == "y" && count++) {
+    } else if (node.name() == "y" && ++count) {
       EXPECT_EQ("Const", node.op());
       EXPECT_EQ("const_input_y", node.attr().at("Tag").s());
-    } else if (node.name() == "output" && count++) {
+    } else if (node.name() == "output" && ++count) {
       EXPECT_EQ("Mul", node.op());
       EXPECT_EQ("x:output:0", node.input(0));
       EXPECT_EQ("y:output:0", node.input(1));
@@ -695,7 +732,7 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
 }
 
 TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
-  using test::function::NDef;
+  using ::tensorflow::test::function::NDef;
 
   FunctionDef mul_func = FunctionDefHelper::Create(
       "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
@@ -713,8 +750,8 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
       {/* pass input to output through identity */
        NDef("output", "Identity", {"x"}, {{"T", "float"}})});
 
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_FLOAT);
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["T"].set_type(DT_FLOAT);
 
   FunctionDefLibrary lib_def;
   *lib_def.add_function() = func;
@@ -722,8 +759,9 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), lib_def);
 
   GrapplerFunctionItem item;
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   // Replace function body with identity function
   item.SwapFunctionBody(std::move(id_func_body));
@@ -733,7 +771,7 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
   // Check that graph body was updated.
   int count = 0;
   for (const NodeDef &node : specialized.node_def()) {
-    if (node.name() == "output" && count++) {
+    if (node.name() == "output" && ++count) {
       EXPECT_EQ("Identity", node.op());
       EXPECT_EQ("x:0", node.input(0));
     }
@@ -762,10 +800,11 @@ TEST_F(FunctionsTest, FunctionDefGrapplerFunctionItemRoundTrip) {
   FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
 
   GrapplerFunctionItem item;
-  std::unordered_map<string, AttrValue> func_attr;
-  func_attr["T"].set_type(DT_INT32);
-  TF_EXPECT_OK(MakeGrapplerFunctionItem(func, func_attr, flib,
-                                        TF_GRAPH_DEF_VERSION, &item));
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  func_instantiation_attr["T"].set_type(DT_INT32);
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
 
   FunctionDef func2;
   TF_EXPECT_OK(MakeFunctionDef(item, flib, &func2));

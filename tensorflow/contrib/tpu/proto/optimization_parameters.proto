@@ -62,9 +62,9 @@ message FtrlParameters {
 // (https://www.tensorflow.org/api_docs/python/tf/contrib/opt/AdamOptimizer). If
 // use_non_lazy_adam is enabled, use_gradient_accumulation is also required in
 // order to get correct results; a warning will be printed otherwise (which may
-// change to an error in the future). If use_max_with_epsilon is set, the Adam
+// change to an error in the future). If use_sum_inside_sqrt is set, the Adam
 // variable update formula will be changed from m / (sqrt(v) + epsilon) to
-// m / max(sqrt(v), abs(epsilon)); this option improves the performance of TPU
+// m / sqrt(v + epsilon**2); this option improves the performance of TPU
 // training and is not expected to harm model quality.
 message AdamParameters {
   float beta1 = 3;
@@ -73,7 +73,7 @@ message AdamParameters {
   float initial_m = 6;
   float initial_v = 7;
   bool use_non_lazy_adam = 8;
-  bool use_max_with_epsilon = 9;
+  bool use_sum_inside_sqrt = 10;
 }
 
 // https://www.tensorflow.org/api_docs/python/tf/train/MomentumOptimizer
@@ -153,6 +153,14 @@ message OptimizationParameters {
   // Limits to which to clip the backward pass gradient before using it for
   // updates; not present means no limits are applied.
   ClippingLimits gradient_clipping_limits = 7;
+
+  // Amount of weight decay to apply; see weight_decay_optimizers.py for
+  // details. Almost all optimizers are supported with this option (MDL Adagrad
+  // Light does not work, and SGD does not behave as expected if it is enabled).
+  // Although there is no check, users who want weight decay will probably also
+  // want to enable gradient accumulation as well so that the decay will happen
+  // once per minibatch.
+  float weight_decay_factor = 16;
 
   // Whether to use gradient accumulation (do two passes over the input
   // gradients: one to accumulate them into a temporary array and another to

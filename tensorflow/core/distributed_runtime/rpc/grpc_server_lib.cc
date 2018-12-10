@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <vector>
 
 #include "grpc/support/alloc.h"
 #include "grpcpp/grpcpp.h"
@@ -156,10 +157,12 @@ Status GrpcServer::Init(
   string name_prefix =
       strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
                       "/task:", server_def_.task_index());
-  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
-                                               &master_env_.local_devices));
-  worker_env_.local_devices = master_env_.local_devices;
-  worker_env_.device_mgr = new DeviceMgr(worker_env_.local_devices);
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_RETURN_IF_ERROR(
+      DeviceFactory::AddDevices(sess_opts, name_prefix, &devices));
+  worker_env_.device_mgr = new DeviceMgr(std::move(devices));
+  master_env_.local_devices = worker_env_.device_mgr->ListDevices();
+  worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.rendezvous_mgr = rendezvous_mgr_func == nullptr
                                    ? new RpcRendezvousMgr(&worker_env_)
                                    : rendezvous_mgr_func(&worker_env_);
@@ -194,8 +197,8 @@ Status GrpcServer::Init(
   MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
-  worker_impl_ =
-      worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
+  worker_impl_ = worker_func ? worker_func(&worker_env_, config)
+                             : NewGrpcWorker(&worker_env_, config);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
@@ -451,7 +454,11 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
-  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  Status s = ret->Init(service_func, NewRpcRendezvousMgr, nullptr);
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+    return s;
+  }
   *out_server = std::move(ret);
   return Status::OK();
 }
@@ -462,7 +469,11 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
-  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  Status s = ret->Init(service_func, NewRpcRendezvousMgr, nullptr);
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+    return s;
+  }
   *out_server = std::move(ret);
   return Status::OK();
 }

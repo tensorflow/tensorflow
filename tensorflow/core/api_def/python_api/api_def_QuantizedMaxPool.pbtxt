@@ -2,5 +2,7 @@ op {
   graph_op_name: "QuantizedMaxPool"
   endpoint {
     name: "nn.quantized_max_pool"
+    deprecation_version: 2
   }
+  visibility: HIDDEN
 }

@@ -29,7 +29,7 @@ namespace {
 class WhileTransformerTest : public HloTestBase {
  protected:
   WhileTransformerTest()
-      : module_(CreateNewModule()),
+      : module_(CreateNewVerifiedModule()),
         induction_variable_shape_(ShapeUtil::MakeShape(S32, {})),
         data_shape_(ShapeUtil::MakeShape(F32, {8})),
         condition_result_shape_(ShapeUtil::MakeShape(PRED, {})) {}
@@ -69,8 +69,10 @@ class WhileTransformerTest : public HloTestBase {
     auto data = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
         data_shape_, loop_state, data_tuple_index));
     // Use 'induction_variable' in computation with no path to output tuple.
+    auto cast = builder.AddInstruction(HloInstruction::CreateBitcastConvert(
+        ShapeUtil::MakeShape(F32, {}), induction_variable));
     auto update = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(data_shape_, induction_variable, {}));
+        HloInstruction::CreateBroadcast(data_shape_, cast, {}));
     auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
         data_shape_, HloOpcode::kAdd, data, update));
     // Create output Tuple.

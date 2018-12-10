@@ -1,3 +1,74 @@
+# Release 1.12.0
+
+## Major Features and Improvements
+
+*   Keras models can now be directly exported to the SavedModel
+    format(`tf.contrib.saved_model.save_keras_model()`) and used with Tensorflow
+    Serving.
+*   Keras models now support evaluating with a `tf.data.Dataset`.
+*   TensorFlow binaries are built with XLA support linked in by default.
+
+## Bug Fixes and Other Changes
+
+*   tf.data:
+    *   tf.data users can now represent, get, and set options of TensorFlow
+        input pipelines using `tf.data.Options()`, `tf.data.Dataset.options()`,
+        and `tf.data.Dataset.with_options()` respectively.
+    *   New `tf.data.Dataset.reduce()` API allows users to reduce a finite
+        dataset to a single element using a user-provided reduce function.
+    *   New `tf.data.Dataset.window()` API allows users to create finite windows
+        of input dataset; when combined with the `tf.data.Dataset.reduce()` API,
+        this allows users to implement customized batching.
+    *   All C++ code moves to the `tensorflow::data` namespace.
+    *   Add support for `num_parallel_calls` to `tf.data.Dataset.interleave`.
+*   `tf.contrib`:
+    *   Remove `tf.contrib.linalg`. `tf.linalg` should be used instead.
+    *   Replace any calls to `tf.contrib.get_signature_def_by_key(metagraph_def,
+        signature_def_key)` with
+        `meta_graph_def.signature_def[signature_def_key]`. Catching a ValueError
+        exception thrown by `tf.contrib.get_signature_def_by_key` should be
+        replaced by catching a KeyError exception.
+*   `tf.contrib.data`
+    *   Deprecate, and replace by tf.data.experimental.
+*   Other:
+    *   Instead of jemalloc, revert back to using system malloc since it
+        simplifies build and has comparable performance.
+    *   Remove integer types from `tf.nn.softplus` and `tf.nn.softsign` OpDefs.
+        This is a bugfix; these ops were never meant to support integers.
+    *   Allow subslicing Tensors with a single dimension.
+    *   Add option to calculate string length in Unicode characters
+    *   Add functionality to SubSlice a tensor.
+    *   Add searchsorted (ie lower/upper_bound) op.
+    *   Add model explainability to Boosted Trees.
+    *   Support negative positions for tf.substr
+    *   There was previously a bug in the bijector_impl where the
+        _reduce_jacobian_det_over_event does not handle scalar ILDJ
+        implementations properly.
+    *   In tf eager execution, allow re-entering a GradientTape context
+    *   Add tf_api_version flag. If --define=tf_api_version=2 flag is passed in,
+        then bazel will build TensorFlow API version 2.0. Note that TensorFlow
+        2.0 is under active development and has no guarantees at this point.
+    *   Add additional compression options to TfRecordWriter
+    *   Performance improvements for regex full match operations.
+    *   Replace tf.GraphKeys.VARIABLES with `tf.GraphKeys.GLOBAL_VARIABLES`
+    *   Remove unused dynamic learning rate support.
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+(David) Siu-Kei Muk, Ag Ramesh, Anton Dmitriev, Artem Sobolev, Avijit-Nervana,
+Bairen Yi, Bruno Goncalves, By Shen, candy.dc, Cheng Chen, Clayne Robison,
+coder3101, Dao Zhang, Elms, Fei Hu, feiquan, Geoffrey Irving, Guozhong Zhuang,
+hellcom, Hoeseong Kim, imsheridan, Jason Furmanek, Jason Zaman, Jenny Sahng,
+jiefangxuanyan, Johannes Bannhofer, Jonathan Homer, Koan-Sin Tan, kouml, Loo
+Rong Jie, Lukas Geiger, manipopopo, Ming Li, Moritz KröGer, Naurril, Niranjan
+Hasabnis, Pan Daoxin, Peng Yu, pengwa, rasmi, Roger Xin, Roland Fernandez, Sami
+Kama, Samuel Matzek, Sangjung Woo, Sergei Lebedev, Sergii Khomenko, shaohua,
+Shaohua Zhang, Shujian2015, Sunitha Kambhampati, tomguluson92, ViníCius Camargo,
+wangsiyu, weidankong, Wen-Heng (Jack) Chung, William D. Irons, Xin Jin, Yan
+Facai (颜发才), Yanbo Liang, Yash Katariya, Yong Tang, 在原佐为
+
 # Release 1.11.0
 
 ## Major Features and Improvements
@@ -20,51 +91,84 @@
 
 ## Bug Fixes and Other Changes
 
-* C++:
-  * Changed the signature of SessionFactory::NewSession so that it can return a meaningful error message on failure.
-* tf.data:
-  * Remove `num_parallel_parser_calls` argument from `tf.contrib.data.make_csv_dataset()`. [tf.data] Remove `num_parallel_parser_calls` argument from `tf.contrib.data.make_csv_dataset()`.
-  * `tf.data.Dataset.list_files()` raises an exception at initialization time if the argument matches no files.
-  * Renamed BigTable class to BigtableTable for clarity
-  * Document use of the Cloud Bigtable API
-  * Adding `tf.contrib.data.reduce_dataset` which can be used to reduce a dataset to a single element.
-  * Generalization of `tf.contrib.data.sliding_window_batch`.
-* INC:
-  * Runtime improvements to triangular solve.
-* `tf.contrib`:
-  * Add an `implementation` argument to `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D`. The new mode (`implementation=2`) performs forward pass as a single dense matrix multiplication, allowing dramatic speedups in certain scenarios (but worse performance in others - see docstring). The option also allows to use `padding=same`.
-  * Add documentation clarifying the differences between tf.fill and tf.constant.
-  * Add experimental IndexedDatasets.
-  * Add selective registration target using the lite proto runtime.
-  * Add simple Tensor and DataType classes to TensorFlow Lite Java
-  * Add support for bitcasting to/from uint32 and uint64.
-  * Added a subclass of Estimator that can be created from a SavedModel (SavedModelEstimator).
-  * Adds leaf index modes as an argument.
-  * Allow a different output shape from the input in tf.contrib.image.transform.
-  * Change the state_size order of the StackedRNNCell to be natural order. To keep the existing behavior, user can add reverse_state_order=True when constructing the StackedRNNCells.
-  * Deprecate self.test_session() in favor of self.session() or self.cached_session().
-  * Directly import tensor.proto.h (the transitive import will be removed from tensor.h soon)
-  * Estimator.train() now supports tf.contrib.summary.\* summaries out of the box; each call to .train() will now create a separate tfevents file rather than re-using a shared one.
-  * Fix FTRL L2-shrinkage behavior: the gradient from the L2 shrinkage term should not end up in the accumulator.
-  * Fix toco compilation/execution on Windows
-  * GoogleZoneProvider class added to detect  which Google Cloud Engine zone tensorflow is running in.
-  * It is now safe to call any of the C API's TF_Delete\* functions on nullptr
-  * Log some errors on Android to logcat
-  * Match FakeQuant numerics in TFLite to improve accuracy of TFLite quantized inference models.
-  * Optional bucket location check for the GCS Filesystem.
-  * Performance enhancements for StringSplitOp & StringSplitV2Op.
-  * Performance improvements for regex replace operations.
-  * TFRecordWriter now raises an error if .write() fails.
-  * TPU: More helpful error messages in TPUClusterResolvers.
-  * The legacy_init_op argument to SavedModelBuilder methods for adding MetaGraphs has been deprecated. Please use the equivalent main_op argument instead. As part of this, we now explicitly check for a single main_op or legacy_init_op at the time of SavedModel building, whereas the check on main_op was previously only done at load time.
-  * The protocol used for Estimator training is now configurable in RunConfig.
-  * Triangular solve performance improvements.
-  * Unify RNN cell interface between TF and Keras. Add new get_initial_state() to Keras and TF RNN cell, which will use to replace the existing zero_state() method.
-  * Update initialization of variables in Keras.
-  * Updates to "constrained_optimization" in tensorflow/contrib.
-  * boosted trees: adding pruning mode
-  * tf.train.Checkpoint does not delete old checkpoints by default.
-  * tfdbg: Limit the total disk space occupied by dumped tensor data to 100 GBytes. Add environment variable `TFDBG_DISK_BYTES_LIMIT` to allow adjustment of this upper limit.
+*   C++:
+    *   Changed the signature of SessionFactory::NewSession so that it can
+        return a meaningful error message on failure.
+*   tf.data:
+    *   Remove `num_parallel_parser_calls` argument from
+        `tf.contrib.data.make_csv_dataset()`. [tf.data] Remove
+        `num_parallel_parser_calls` argument from
+        `tf.contrib.data.make_csv_dataset()`.
+    *   `tf.data.Dataset.list_files()` raises an exception at initialization
+        time if the argument matches no files.
+    *   Renamed BigTable class to BigtableTable for clarity
+    *   Document use of the Cloud Bigtable API
+    *   Add `tf.contrib.data.reduce_dataset` which can be used to reduce a
+        dataset to a single element.
+    *   Generalization of `tf.contrib.data.sliding_window_batch`.
+*   INC:
+    *   Runtime improvements to triangular solve.
+*   `tf.contrib`:
+    *   Add an `implementation` argument to `tf.keras.layers.LocallyConnected2D`
+        and `tf.keras.layers.LocallyConnected1D`. The new mode
+        (`implementation=2`) performs forward pass as a single dense matrix
+        multiplication, allowing dramatic speedups in certain scenarios (but
+        worse performance in others - see docstring). The option also allows to
+        use `padding=same`.
+    *   Add documentation clarifying the differences between tf.fill and
+        tf.constant.
+    *   Add experimental IndexedDatasets.
+    *   Add selective registration target using the lite proto runtime.
+    *   Add simple Tensor and DataType classes to TensorFlow Lite Java
+    *   Add support for bitcasting to/from uint32 and uint64.
+    *   Added a subclass of Estimator that can be created from a SavedModel
+        (SavedModelEstimator).
+    *   Adds leaf index modes as an argument.
+    *   Allow a different output shape from the input in
+        tf.contrib.image.transform.
+    *   Change the state_size order of the StackedRNNCell to be natural order.
+        To keep the existing behavior, user can add reverse_state_order=True
+        when constructing the StackedRNNCells.
+    *   Deprecate self.test_session() in favor of self.session() or
+        self.cached_session().
+    *   Directly import tensor.proto.h (the transitive import will be removed
+        from tensor.h soon)
+    *   Estimator.train() now supports tf.contrib.summary.\* summaries out of
+        the box; each call to .train() will now create a separate tfevents file
+        rather than re-using a shared one.
+    *   Fix FTRL L2-shrinkage behavior: the gradient from the L2 shrinkage term
+        should not end up in the accumulator.
+    *   Fix toco compilation/execution on Windows
+    *   GoogleZoneProvider class added to detect which Google Cloud Engine zone
+        tensorflow is running in.
+    *   It is now safe to call any of the C API's TF_Delete\* functions on
+        nullptr
+    *   Log some errors on Android to logcat
+    *   Match FakeQuant numerics in TFLite to improve accuracy of TFLite
+        quantized inference models.
+    *   Optional bucket location check for the GCS Filesystem.
+    *   Performance enhancements for StringSplitOp & StringSplitV2Op.
+    *   Performance improvements for regex replace operations.
+    *   TFRecordWriter now raises an error if .write() fails.
+    *   TPU: More helpful error messages in TPUClusterResolvers.
+    *   The legacy_init_op argument to SavedModelBuilder methods for adding
+        MetaGraphs has been deprecated. Please use the equivalent main_op
+        argument instead. As part of this, we now explicitly check for a single
+        main_op or legacy_init_op at the time of SavedModel building, whereas
+        the check on main_op was previously only done at load time.
+    *   The protocol used for Estimator training is now configurable in
+        RunConfig.
+    *   Triangular solve performance improvements.
+    *   Unify RNN cell interface between TF and Keras. Add new
+        get_initial_state() to Keras and TF RNN cell, which will use to replace
+        the existing zero_state() method.
+    *   Update initialization of variables in Keras.
+    *   Updates to "constrained_optimization" in tensorflow/contrib.
+    *   boosted trees: adding pruning mode
+    *   tf.train.Checkpoint does not delete old checkpoints by default.
+    *   tfdbg: Limit the total disk space occupied by dumped tensor data to 100
+        GBytes. Add environment variable `TFDBG_DISK_BYTES_LIMIT` to allow
+        adjustment of this upper limit.
 
 ## Thanks to our Contributors
 
@@ -154,8 +258,8 @@ Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, A
 * Update `tf.keras` to the Keras 2.1.6 API.
 * Added [`tf.keras.layers.CuDNNGRU`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNGRU) and [`tf.keras.layers.CuDNNLSTM`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNLSTM) layers. [Try it](https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb?linkId=53292082).
 * Adding support of core [feature columns](https://www.tensorflow.org/get_started/feature_columns) and [losses](https://www.tensorflow.org/api_docs/python/tf/losses) to [gradient boosted trees estimators](https://github.com/tensorflow/models/tree/master/official/boosted_trees).
-* The [python interface](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/lite)
-  for the [TFLite Optimizing Converter](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/toco/README.md)
+* The [python interface](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/lite)
+  for the [TFLite Optimizing Converter](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/toco/README.md)
   has been expanded, and the command line interface (AKA: `toco`, `tflite_convert`) is once again
   included in the standard `pip` installation.
 * Improved data-loading and text processing with:
@@ -458,7 +562,7 @@ Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, 田�
 ## Major Features And Improvements
 * [Eager execution](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/eager)
   preview version is now available.
-* [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
+* [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/lite)
   dev preview is now available.
 * CUDA 9.0 and cuDNN 7 support.
 * Accelerated Linear Algebra (XLA):
@@ -805,7 +909,7 @@ See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/
 * Adds tf.contrib.nn.rank_sampled_softmax_loss, a sampled-softmax variant that can improve rank loss.
 * `tf.contrib.metrics`.{streaming_covariance,streaming_pearson_correlation} modified to return nan when they have seen less or equal to 1 unit of weight.
 * Adds time series models to contrib. See contrib/timeseries/README.md for details.
-* Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
+* Adds FULLY_CONNECTED Op to tensorflow/lite/schema.fbs
 
 ## Known Issues
 * Tensorflow_gpu compilation fails with Bazel 0.5.3.

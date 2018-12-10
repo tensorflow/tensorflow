@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import numpy as np
 
+from tensorflow.compiler.tests import test_utils
 from tensorflow.contrib.compiler import jit
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.layers import layers
@@ -29,7 +30,6 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 jit_scope = jit.experimental_jit_scope
-
 
 def GetRunMetadataLabels(run_metadata):
   """Returns all labels in run_metadata."""
@@ -42,7 +42,7 @@ def GetRunMetadataLabels(run_metadata):
 
 def InLabels(labels, substr):
   """Returns true iff one of the labels contains substr."""
-  return any([substr in x for x in labels])
+  return any(substr in x for x in labels)
 
 
 class DenseLayerTest(test.TestCase):
@@ -68,13 +68,14 @@ class DenseLayerTest(test.TestCase):
     config.graph_options.optimizer_options.global_jit_level = (
         config_pb2.OptimizerOptions.ON_1)
 
-    with self.test_session(config=config) as sess:
+    with self.session(config=config) as sess:
       x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
       y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.initialize_all_variables())
       run_metadata = config_pb2.RunMetadata()
-      sess.run(
+      test_utils.RunWithWarmup(
+          sess,
           y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
@@ -96,9 +97,10 @@ class DenseLayerTest(test.TestCase):
       with jit_scope():
         y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.initialize_all_variables())
       run_metadata = config_pb2.RunMetadata()
-      sess.run(
+      test_utils.RunWithWarmup(
+          sess,
           y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
@@ -124,9 +126,10 @@ class DenseLayerTest(test.TestCase):
       with jit_scope():
         y = layers.dense(x, 3)
 
-      sess.run(variables.initialize_all_variables())
+      self.evaluate(variables.initialize_all_variables())
       run_metadata = config_pb2.RunMetadata()
-      sess.run(
+      test_utils.RunWithWarmup(
+          sess,
           y, {x: np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])},
           run_metadata=run_metadata,
           options=config_pb2.RunOptions(
@@ -138,4 +141,6 @@ class DenseLayerTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  os.environ["TF_XLA_FLAGS"] = ("--tf_xla_enable_lazy_compilation=true " +
+                                os.environ.get("TF_XLA_FLAGS", ""))
   test.main()

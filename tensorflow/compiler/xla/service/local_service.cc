@@ -96,44 +96,18 @@ ExecutionOptions CreateExecutionOptions(
     const ExecutableBuildOptions& build_options,
     const ProgramShape* program_shape) {
   ExecutionOptions execution_options = CreateDefaultExecutionOptions();
-  if (build_options.hlo_profile().has_value()) {
-    execution_options.mutable_debug_options()->set_xla_hlo_profile(
-        *build_options.hlo_profile());
-  }
-  if (build_options.generate_hlo_graph().has_value()) {
-    execution_options.mutable_debug_options()->set_xla_generate_hlo_graph(
-        build_options.generate_hlo_graph().value());
-  }
-  if (build_options.dump_optimized_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_optimized_hlo_proto_to(
-            build_options.dump_optimized_hlo_proto_to().value());
-  }
-  if (build_options.dump_unoptimized_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_unoptimized_hlo_proto_to(
-            build_options.dump_unoptimized_hlo_proto_to().value());
-  }
-  if (build_options.dump_per_pass_hlo_proto_to().has_value()) {
-    execution_options.mutable_debug_options()
-        ->set_xla_dump_per_pass_hlo_proto_to(
-            build_options.dump_per_pass_hlo_proto_to().value());
+  if (build_options.has_debug_options()) {
+    *execution_options.mutable_debug_options() = build_options.debug_options();
   }
   if (build_options.result_layout() != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
-        *build_options.result_layout();
+        build_options.result_layout()->ToProto();
   } else {
+    Shape result_shape(program_shape->result());
+    LayoutUtil::SetToDefaultLayout(&result_shape);
     *execution_options.mutable_shape_with_output_layout() =
-        program_shape->result();
-    LayoutUtil::SetToDefaultLayout(
-        execution_options.mutable_shape_with_output_layout());
+        result_shape.ToProto();
   }
-
-  for (const std::string& disabled_pass : build_options.disabled_hlo_passes()) {
-    execution_options.mutable_debug_options()->add_xla_disable_hlo_passes(
-        disabled_pass);
-  }
-
   return execution_options;
 }
 
@@ -144,8 +118,8 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options) {
   const HloModuleProto& proto = computation.proto();
-  TF_RET_CHECK(proto.has_program_shape());
-  const ProgramShape& program_shape = proto.program_shape();
+  TF_RET_CHECK(proto.has_host_program_shape());
+  ProgramShape program_shape(proto.host_program_shape());
 
   // Validate incoming layouts.
   if (argument_layouts.size() != program_shape.parameters_size()) {
@@ -218,6 +192,12 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
         replica_number, buffers.size());
   }
   return buffers[replica_number];
+}
+
+StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
+    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
+  return allocation_tracker_.RegisterReplicatedBuffers(
+      std::move(replicated_buffers), tag);
 }
 
 }  // namespace xla

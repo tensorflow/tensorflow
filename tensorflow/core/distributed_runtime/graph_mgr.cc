@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 
+#include <chrono>  // NOLINT(build/c++11)
 #include <vector>
 
 #include "tensorflow/core/common_runtime/build_graph_options.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
@@ -90,7 +92,7 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   for (const auto& ndef : gdef.node()) {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &parsed)) {
       return errors::InvalidArgument("Missing device name in: ",
-                                     SummarizeNodeDef(ndef));
+                                     FormatNodeDefForError(ndef));
     }
   }
   return Status::OK();
@@ -386,6 +388,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
+  const uint64 start_time_usecs = Env::Default()->NowMicros();
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -443,14 +446,16 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  StartParallelExecutors(handle, step_id, item, rendezvous, ce_handle,
-                         collector, cost_graph, cancellation_manager,
-                         [item, rendezvous, ce_handle, done](const Status& s) {
-                           done(s);
-                           rendezvous->Unref();
-                           item->Unref();
-                           delete ce_handle;
-                         });
+  StartParallelExecutors(
+      handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
+      cancellation_manager,
+      [item, rendezvous, ce_handle, done, start_time_usecs](const Status& s) {
+        done(s);
+        UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+        rendezvous->Unref();
+        item->Unref();
+        delete ce_handle;
+      });
 }
 
 void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,

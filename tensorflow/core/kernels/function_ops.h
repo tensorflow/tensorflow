@@ -22,7 +22,9 @@ limitations under the License.
 namespace tensorflow {
 
 static const char* const kArgOp = FunctionLibraryDefinition::kArgOp;
+static const char* const kDeviceArgOp = FunctionLibraryDefinition::kDeviceArgOp;
 static const char* const kRetOp = FunctionLibraryDefinition::kRetOp;
+static const char* const kDeviceRetOp = FunctionLibraryDefinition::kDeviceRetOp;
 
 class ArgOp : public OpKernel {
  public:

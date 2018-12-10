@@ -525,7 +525,6 @@ Predicate* PredicateFactory::MakeAndOrImpl(
                                    op->GetOperands().begin(),
                                    op->GetOperands().end());
     } else {
-      std::vector<Predicate*> sub_ops_intersection;
       common_inner_operands.clear();
       absl::c_copy_if(op->GetOperands(),
                       std::back_inserter(common_inner_operands),
@@ -696,8 +695,8 @@ Status CreateMultipleNextIterationInputsError(Node* merge) {
     }
   }
   return errors::InvalidArgument(
-      "Multiple NextIteration inputs to merge node ", SummarizeNode(*merge),
-      ": \n", absl::StrJoin(backedges, "\n"),
+      "Multiple NextIteration inputs to merge node ",
+      FormatNodeForError(*merge), ": \n", absl::StrJoin(backedges, "\n"),
       "\nMerge nodes can have at most one incoming NextIteration edge.");
 }
 

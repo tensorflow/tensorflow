@@ -480,7 +480,7 @@ def _GatherNdGrad(op, grad):
   ref = op.inputs[0]
   indices = op.inputs[1]
   ref_shape = array_ops.shape(ref, out_type=indices.dtype)
-  if indices.shape.ndims == 2 and indices.shape[-1].value == 1:
+  if indices.shape.ndims == 2 and indices.shape.dims[-1].value == 1:
     ref_grad = ops.IndexedSlices(grad, array_ops.squeeze(indices, axis=-1),
                                  ref_shape)
   else:
@@ -489,10 +489,12 @@ def _GatherNdGrad(op, grad):
 
 
 @ops.RegisterGradient("CheckNumerics")
-def _CheckNumericsGrad(_, grad):
+def _CheckNumericsGrad(op, grad):
   """Gradient for check_numerics op."""
   return array_ops.check_numerics(
-      grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
+      grad,
+      "Not a number (NaN) or infinity (Inf) values detected in gradient. %s" %
+      op.get_attr("message"))
 
 
 @ops.RegisterGradient("PlaceholderWithDefault")
@@ -733,7 +735,7 @@ def _QuantizeAndDequantizeV3Grad(_, grad):
 @ops.RegisterGradient("ExtractImagePatches")
 def _ExtractImagePatchesGrad(op, grad):
   batch_size, rows_in, cols_in, channels = [
-      dim.value for dim in op.inputs[0].get_shape()
+      dim.value for dim in op.inputs[0].shape.dims
   ]
   input_bhwc = array_ops.shape(op.inputs[0])
   batch_size = input_bhwc[0]
@@ -754,7 +756,7 @@ def _ExtractImagePatchesGrad(op, grad):
       op.get_attr("padding"))
 
   # Create indices matrix for output tensor.
-  _, rows_out, cols_out, _ = [dim.value for dim in op.outputs[0].get_shape()]
+  _, rows_out, cols_out, _ = [dim.value for dim in op.outputs[0].shape.dims]
   _, ksize_r, ksize_c, _ = op.get_attr("ksizes")
   # Indices for output start from 0.
   output_indices_num = rows_out * cols_out * ksize_r * ksize_c
@@ -798,6 +800,32 @@ def _ScatterNdGrad(op, grad):
   indices = op.inputs[0]
   updates_grad = array_ops.gather_nd(grad, indices)
   return [None, updates_grad, None]
+
+
+@ops.RegisterGradient("TensorScatterUpdate")
+def _TensorScatterUpdateGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.tensor_scatter_update(
+      array_ops.identity(grad), indices,
+      array_ops.zeros_like(op.inputs[2], dtype=grad.dtype))
+  return [tensor_grad, None, updates_grad]
+
+
+@ops.RegisterGradient("TensorScatterAdd")
+def _TensorScatterAddGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.identity(grad)
+  return [tensor_grad, None, updates_grad]
+
+
+@ops.RegisterGradient("TensorScatterSub")
+def _TensorScatterSubGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.identity(grad)
+  return [tensor_grad, None, -updates_grad]
 
 
 @ops.RegisterGradient("ScatterNdNonAliasingAdd")

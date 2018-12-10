@@ -30,7 +30,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// The logic below uses a custom-call to implement argmax.
+// The logic below uses a custom-call to implement argmax when possible. When
+// custom-call is not allowed or input shapes are not supported, this kernel
+// falls back to using XLA HLO native ArgMax.
 //
 // Also see b/29507024 for first-class XLA support for indexing ops.
 class ArgMaxCustomCallOp : public XlaOpKernel {
@@ -48,30 +50,42 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
     // We require that the dimension argument is a constant, since it lets us
     // dispatch to a specialized custom-call function without any run-time
     // overhead, when compiling ahead-of-time.
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &literal));
-    const int32 dim = literal.Get<int32>({});
-    OP_REQUIRES(ctx, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
-    OP_REQUIRES(
-        ctx, dim < input_shape.dims(),
-        errors::InvalidArgument("dim must be < input rank (",
-                                input_shape.dims(), "), but got: ", dim));
-    const int64 dim_size = input_shape.dim_size(dim);
-    OP_REQUIRES(ctx, dim_size > 0,
+    int64 dim;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &dim));
+
+    const int input_dims = input_shape.dims();
+    const int axis = dim < 0 ? dim + input_dims : dim;
+    OP_REQUIRES(ctx, axis >= 0 && axis < input_dims,
+                errors::InvalidArgument("Expected dimension in the range [",
+                                        -input_dims, ", ", input_dims,
+                                        "), but got ", dim));
+
+    const int64 axis_size = input_shape.dim_size(axis);
+    OP_REQUIRES(ctx, axis_size > 0,
                 errors::InvalidArgument(
                     "Reduction axis ", dim,
                     " is empty in shape: ", input_shape.DebugString()));
 
-    // The output shape is the input shape contracted along dim.
-    TensorShape output_shape;
-    for (int d = 0; d < input_shape.dims() - 1; ++d) {
-      output_shape.AddDim(input_shape.dim_size((d < dim) ? d : d + 1));
+    const DataType dtype = output_type(0);
+    xla::PrimitiveType output_type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype, &output_type));
+
+    // Fall back to XLA ArgMax HLO when CustomCall is not allowed or when input
+    // shape isn't supported.
+    if (!ctx->compiler()->options().allow_cpu_custom_calls ||
+        (input_dims != 1 && input_dims != 2)) {
+      xla::XlaOp output = XlaHelpers::ArgMax(ctx->Input(0), output_type, axis);
+      ctx->SetOutput(0, output);
+      return;
     }
 
-    // For now we use a custom-call, only for the 1d and 2d cases.
-    OP_REQUIRES(ctx, XlaContext::Get(ctx).allow_cpu_custom_calls(),
-                errors::InvalidArgument(
-                    "ArgMax implementation requires a CustomCall on CPU"));
+    xla::XlaOp output;
+    // The output shape is the input shape contracted along axis.
+    TensorShape output_shape;
+    for (int d = 0; d < input_shape.dims() - 1; ++d) {
+      output_shape.AddDim(input_shape.dim_size((d < axis) ? d : d + 1));
+    }
+
     xla::XlaBuilder& b = *ctx->builder();
 
     // XLA passes <out> to the function, so it is not included here.
@@ -85,31 +99,32 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
       args.push_back(xla::ConstantLiteral(
           &b, xla::LiteralUtil::CreateR1<int64>(output_shape.dim_sizes())));
       args.push_back(
-          xla::ConstantLiteral(&b, xla::LiteralUtil::CreateR0<int32>(dim)));
+          xla::ConstantLiteral(&b, xla::LiteralUtil::CreateR0<int32>(axis)));
     }
 
-    xla::Shape xla_shape =
-        xla::ShapeUtil::MakeShape(xla::S64, output_shape.dim_sizes());
+    // The argmax function expects row-major layout.
+    xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
+        xla::S64, output_shape.dim_sizes());
+    std::vector<xla::Shape> arg_shapes;
+    for (const xla::XlaOp& arg : args) {
+      auto shape_status = b.GetShape(arg);
+      OP_REQUIRES_OK(ctx, shape_status.status());
+      xla::Shape arg_shape = shape_status.ConsumeValueOrDie();
+      *arg_shape.mutable_layout() = xla::LayoutUtil::MakeDescendingLayout(
+          xla::ShapeUtil::Rank(arg_shape));
+      arg_shapes.push_back(std::move(arg_shape));
+    }
 
     // Tell XLA to call the custom code, defined in
-    // index_ops_kernel_argmax_float_1d.cc.
-    xla::XlaOp output;
-    switch (input_shape.dims()) {
-      case 1:
-        output =
-            xla::CustomCall(&b, "argmax_float_1d_xla_impl", args, xla_shape);
-        break;
-      case 2:
-        output =
-            xla::CustomCall(&b, "argmax_float_2d_xla_impl", args, xla_shape);
-        break;
-      default:
-        OP_REQUIRES(ctx, false,
-                    errors::Unimplemented(
-                        "Argmax is only implemented for 1d and 2d tensors"
-                        ", but got shape: ",
-                        input_shape.DebugString()));
+    // index_ops_kernel_argmax_float_{1, 2}d.cc.
+    if (input_dims == 1) {
+      output = xla::CustomCallWithLayout(&b, "argmax_float_1d_xla_impl", args,
+                                         xla_shape, arg_shapes);
+    } else {
+      output = xla::CustomCallWithLayout(&b, "argmax_float_2d_xla_impl", args,
+                                         xla_shape, arg_shapes);
     }
+    output = xla::ConvertElementType(output, output_type);
     ctx->SetOutput(0, output);
   }
 
@@ -120,7 +135,7 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ArgMax")
                     .TypeConstraint("T", DT_FLOAT)
                     .Device(DEVICE_CPU_XLA_JIT)
-                    .CompileTimeConstInput("dimension"),
+                    .CompileTimeConstantInput("dimension"),
                 ArgMaxCustomCallOp);
 
 }  // namespace

@@ -34,28 +34,32 @@ mix TFGAN, native TF, and other custom frameworks
 TFGAN is composed of several parts which were design to exist independently.
 These include the following main pieces (explained in detail below).
 
-* [core](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/train.py):
-provides the main infrastructure needed to train a GAN. Training occurs in four phases, and each phase
-can be completed by custom-code or by using a TFGAN library call.
+*   [core](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/train.py):
+    provides the main infrastructure needed to train a GAN. Training occurs in
+    four phases, and each phase can be completed by custom-code or by using a
+    TFGAN library call.
 
-* [features](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/features/python/):
-Many common GAN operations and normalization techniques are implemented for you
-to use, such as instance normalization and conditioning.
+*   [features](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/features/python/):
+    Many common GAN operations and normalization techniques are implemented for
+    you to use, such as instance normalization and conditioning.
 
-* [losses](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/losses/python/):
-Easily experiment with already-implemented and well-tested losses and penalties,
-such as the Wasserstein loss, gradient penalty, mutual information penalty, etc
+*   [losses](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/losses/python/):
+    Easily experiment with already-implemented and well-tested losses and
+    penalties, such as the Wasserstein loss, gradient penalty, mutual
+    information penalty, etc
 
-* [evaluation](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/):
-Use `Inception Score` or `Frechet Distance` with a pretrained Inception
-network to evaluate your unconditional generative model. You can also use
-your own pretrained classifier for more specific performance numbers, or use
-other methods for evaluating conditional generative models.
+*   [evaluation](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/):
+    Use `Inception Score`, `Frechet Distance`, or `Kernel Distance` with a
+    pretrained Inception network to evaluate your unconditional generative
+    model. You can also use your own pretrained classifier for more specific
+    performance numbers, or use other methods for evaluating conditional
+    generative models.
 
-* [examples](https://github.com/tensorflow/models/tree/master/research/gan/) and [tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb):
-See examples of how to use TFGAN to make GAN training easier, or use the more complicated examples to jumpstart your
-own project. These include unconditional and conditional GANs, InfoGANs,
-adversarial losses on existing networks, and image-to-image translation.
+*   [examples](https://github.com/tensorflow/models/tree/master/research/gan/)
+    and [tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb): See examples of how to use TFGAN to make
+    GAN training easier, or use the more complicated examples to jumpstart your
+    own project. These include unconditional and conditional GANs, InfoGANs,
+    adversarial losses on existing networks, and image-to-image translation.
 
 ## Training a GAN model
 

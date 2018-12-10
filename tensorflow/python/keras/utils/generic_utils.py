@@ -125,20 +125,46 @@ def get_custom_objects():
   return _GLOBAL_CUSTOM_OBJECTS
 
 
+def serialize_keras_class_and_config(cls_name, cls_config):
+  """Returns the serialization of the class with the given config."""
+  return {'class_name': cls_name, 'config': cls_config}
+
+
 @tf_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
   if hasattr(instance, 'get_config'):
-    return {
-        'class_name': instance.__class__.__name__,
-        'config': instance.get_config()
-    }
+    return serialize_keras_class_and_config(instance.__class__.__name__,
+                                            instance.get_config())
   if hasattr(instance, '__name__'):
     return instance.__name__
   else:
     raise ValueError('Cannot serialize', instance)
+
+
+def class_and_config_for_serialized_keras_object(
+    config,
+    module_objects=None,
+    custom_objects=None,
+    printable_module_name='object'):
+  """Returns the class name and config for a serialized keras object."""
+  if (not isinstance(config, dict) or 'class_name' not in config or
+      'config' not in config):
+    raise ValueError('Improper config format: ' + str(config))
+
+  class_name = config['class_name']
+  if custom_objects and class_name in custom_objects:
+    cls = custom_objects[class_name]
+  elif class_name in _GLOBAL_CUSTOM_OBJECTS:
+    cls = _GLOBAL_CUSTOM_OBJECTS[class_name]
+  else:
+    module_objects = module_objects or {}
+    cls = module_objects.get(class_name)
+    if cls is None:
+      raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
+  return (cls, config['config'])
 
 
 @tf_export('keras.utils.deserialize_keras_object')
@@ -146,40 +172,33 @@ def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
                              printable_module_name='object'):
+  if identifier is None:
+    return None
   if isinstance(identifier, dict):
     # In this case we are dealing with a Keras config dictionary.
     config = identifier
-    if 'class_name' not in config or 'config' not in config:
-      raise ValueError('Improper config format: ' + str(config))
-    class_name = config['class_name']
-    if custom_objects and class_name in custom_objects:
-      cls = custom_objects[class_name]
-    elif class_name in _GLOBAL_CUSTOM_OBJECTS:
-      cls = _GLOBAL_CUSTOM_OBJECTS[class_name]
-    else:
-      module_objects = module_objects or {}
-      cls = module_objects.get(class_name)
-      if cls is None:
-        raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
+    (cls, cls_config) = class_and_config_for_serialized_keras_object(
+        config, module_objects, custom_objects, printable_module_name)
+
     if hasattr(cls, 'from_config'):
       arg_spec = tf_inspect.getfullargspec(cls.from_config)
       custom_objects = custom_objects or {}
 
       if 'custom_objects' in arg_spec.args:
         return cls.from_config(
-            config['config'],
+            cls_config,
             custom_objects=dict(
                 list(_GLOBAL_CUSTOM_OBJECTS.items()) +
                 list(custom_objects.items())))
       with CustomObjectScope(custom_objects):
-        return cls.from_config(config['config'])
+        return cls.from_config(cls_config)
     else:
       # Then `cls` may be a function returning a class.
       # in this case by convention `config` holds
       # the kwargs of the function.
       custom_objects = custom_objects or {}
       with CustomObjectScope(custom_objects):
-        return cls(**config['config'])
+        return cls(**cls_config)
   elif isinstance(identifier, six.string_types):
     function_name = identifier
     if custom_objects and function_name in custom_objects:
@@ -300,14 +319,16 @@ class Progbar(object):
           will be displayed as-is. All others will be averaged
           by the progbar before display.
       interval: Minimum visual progress update interval (in seconds).
+      unit_name: Display name for step counts (usually "step" or "sample").
   """
 
   def __init__(self, target, width=30, verbose=1, interval=0.05,
-               stateful_metrics=None):
+               stateful_metrics=None, unit_name='step'):
     self.target = target
     self.width = width
     self.verbose = verbose
     self.interval = interval
+    self.unit_name = unit_name
     if stateful_metrics:
       self.stateful_metrics = set(stateful_metrics)
     else:
@@ -406,12 +427,12 @@ class Progbar(object):
 
         info = ' - ETA: %s' % eta_format
       else:
-        if time_per_unit >= 1:
-          info += ' %.0fs/step' % time_per_unit
+        if time_per_unit >= 1 or time_per_unit == 0:
+          info += ' %.0fs/%s' % (time_per_unit, self.unit_name)
         elif time_per_unit >= 1e-3:
-          info += ' %.0fms/step' % (time_per_unit * 1e3)
+          info += ' %.0fms/%s' % (time_per_unit * 1e3, self.unit_name)
         else:
-          info += ' %.0fus/step' % (time_per_unit * 1e6)
+          info += ' %.0fus/%s' % (time_per_unit * 1e6, self.unit_name)
 
       for k in self._values_order:
         info += ' - %s:' % k

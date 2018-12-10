@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -157,6 +158,32 @@ TEST_F(NNGradTest, Relu6Grad) {
   Tensor x_init_value = test::AsTensor<float>(
       {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 6.1f, 6.3f, 6.5f, 6.7f, 6.9f},
       {5, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NNGradTest, LeakyReluGrad) {
+  TensorShape shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = ops::internal::LeakyRelu(scope_, x);
+  // Avoid input values where Leaky ReLU gradient is not well defined (around
+  // zero).
+  Tensor x_init_value = test::AsTensor<float>(
+      {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
+      {5, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NNGradTest, LeakyReluGradGrad) {
+  TensorShape shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // Avoid input values where Leaky ReLU gradient is not well defined (around
+  // zero).
+  Tensor x_init_value = test::AsTensor<float>(
+      {2.3f, 1.9f, 1.5f, 1.1f, 0.7f, 0.3f, -0.1f, -0.5f, -0.9f, -1.3f}, {5, 2});
+  Tensor features = test::AsTensor<float>(
+      {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
+      {5, 2});
+  auto y = ops::internal::LeakyReluGrad(scope_, x, features);
   RunTest(x, x_init_value, y, shape);
 }
 

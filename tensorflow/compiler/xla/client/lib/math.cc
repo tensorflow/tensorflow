@@ -265,6 +265,21 @@ XlaOp Digamma(XlaOp input) {
   return result;
 }
 
+// Implements Banker's rounding: numbers that are equidistant between two
+// integers are rounded towards even.
+XlaOp RoundToEven(XlaOp x) {
+  auto half = ScalarLike(x, 0.5);
+  auto one = ScalarLike(x, 1.0);
+  auto two = ScalarLike(x, 2.0);
+
+  auto round_val = Floor(x);
+  auto fraction = x - round_val;
+  auto nearest_even_int = round_val - two * Floor(half * x);
+  auto is_odd = Eq(nearest_even_int, one);
+  return Select(Or(Gt(fraction, half), And(Eq(fraction, half), is_odd)),
+                round_val + one, round_val);
+}
+
 // Trigonometric functions.
 
 // acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))
@@ -303,5 +318,14 @@ XlaOp Atanh(XlaOp x) {
 XlaOp Cosh(XlaOp x) { return (Exp(x) + Exp(-x)) * ScalarLike(x, 0.5); }
 
 XlaOp Sinh(XlaOp x) { return (Exp(x) - Exp(-x)) * ScalarLike(x, 0.5); }
+
+XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    auto perform_conj = shape.element_type() == C64 && conjugate;
+    return perform_conj ? Conj(x) : x;
+  });
+}
 
 }  // namespace xla

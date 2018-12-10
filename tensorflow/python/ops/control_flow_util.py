@@ -38,6 +38,11 @@ def IsInXLAContext(op):
   return GetContainingXLAContext(ctxt) is not None
 
 
+def InXlaContext(graph):
+  ctxt = graph._get_control_flow_context()  # pylint: disable=protected-access
+  return GetContainingXLAContext(ctxt) is not None
+
+
 def IsInWhileLoop(op):
   ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
   return GetContainingWhileContext(ctxt) is not None

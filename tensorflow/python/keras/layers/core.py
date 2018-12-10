@@ -34,8 +34,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -134,7 +134,6 @@ class Dropout(Layer):
     return nn_ops._get_noise_shape(inputs, self.noise_shape)  # pylint: disable=protected-access
 
   def call(self, inputs, training=None):
-    original_training_value = training
     if training is None:
       training = K.learning_phase()
 
@@ -145,9 +144,6 @@ class Dropout(Layer):
     output = tf_utils.smart_cond(training,
                                  dropped_inputs,
                                  lambda: array_ops.identity(inputs))
-    # EagerTensor object has no attribute _uses_learning_phase
-    if not context.executing_eagerly() and original_training_value is None:
-      output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 
   def compute_output_shape(self, input_shape):
@@ -510,6 +506,9 @@ class Permute(Layer):
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
 
+  If inputs are shaped `(batch,)` without a channel dimension, then flattening
+  adds an extra channel dimension and output shapes are `(batch, 1)`.
+
   Arguments:
       data_format: A string,
           one of `channels_last` (default) or `channels_first`.
@@ -538,23 +537,27 @@ class Flatten(Layer):
   def __init__(self, data_format=None, **kwargs):
     super(Flatten, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
-    self.input_spec = InputSpec(min_ndim=2)
+    self.input_spec = InputSpec(min_ndim=1)
 
   def call(self, inputs):
-    if self.data_format == 'channels_first':
+    if (self.data_format == 'channels_first'
+        and K.ndim(inputs) is not None and K.ndim(inputs) > 1):
       permutation = [0]
       permutation.extend([i for i in
                           range(2, K.ndim(inputs))])
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
+    outputs = array_ops.reshape(
+        inputs, (inputs.shape[0].value or array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if not input_shape:
+      output_shape = tensor_shape.TensorShape([1])
     output_shape = [input_shape[0]]
     if all(input_shape[1:]):
       output_shape += [np.prod(input_shape[1:])]
@@ -929,14 +932,15 @@ class Dense(Layer):
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
+    last_dim = tensor_shape.dimension_value(input_shape[-1])
     self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: input_shape[-1].value})
+                                axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
-        shape=[input_shape[-1].value, self.units],
+        shape=[last_dim, self.units],
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
         constraint=self.kernel_constraint,
@@ -956,7 +960,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
+    inputs = ops.convert_to_tensor(inputs)
     rank = common_shapes.rank(inputs)
     if rank > 2:
       # Broadcasting is required for the inputs.
@@ -977,7 +981,7 @@ class Dense(Layer):
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError(
           'The innermost dimension of input_shape must be defined, but saw: %s'
           % input_shape)

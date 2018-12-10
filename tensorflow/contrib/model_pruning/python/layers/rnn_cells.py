@@ -94,7 +94,7 @@ class MaskedBasicLSTMCell(tf_rnn.BasicLSTMCell):
 
     self.built = False
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape.dims[1].value
     h_depth = self._num_units
     self._mask = self.add_variable(
         name="mask",
@@ -243,7 +243,7 @@ class MaskedLSTMCell(tf_rnn.LSTMCell):
 
     self.built = False
 
-    input_depth = inputs_shape[1].value
+    input_depth = inputs_shape.dims[1].value
     h_depth = self._num_units
     self._mask = self.add_variable(
         name="mask",
@@ -304,7 +304,7 @@ class MaskedLSTMCell(tf_rnn.LSTMCell):
       c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
       m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
-    input_size = inputs.get_shape().with_rank(2)[1]
+    input_size = inputs.get_shape().with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 

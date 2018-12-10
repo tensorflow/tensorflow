@@ -261,6 +261,13 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   });
 }
 
+void BaseCollectiveExecutor::CompleteParamsAsync(
+    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
+    StatusCallback done) {
+  cp->instance.gpu_ring_order = *gpu_ring_order_;
+  cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr, done);
+}
+
 Status BaseCollectiveExecutor::CreateCollective(
     const CollectiveParams& col_params,
     CollectiveImplementationInterface** col_impl) {

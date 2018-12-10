@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
@@ -183,7 +183,7 @@ Status CpuTransferManager::TransferLiteralFromOutfeed(
     // Note: OSS build didn't like implicit conversion from
     // literal_shape.dimensions() to the array slice on 2017-07-10.
     absl::Span<const int64> dimensions(
-        tensorflow::bit_cast<const int64*>(literal_shape.dimensions().data()),
+        absl::bit_cast<const int64*>(literal_shape.dimensions().data()),
         literal_shape.dimensions().size());
     TF_ASSIGN_OR_RETURN(
         Shape received_shape,

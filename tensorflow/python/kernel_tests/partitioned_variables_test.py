@@ -26,6 +26,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import partitioned_variables
@@ -322,17 +323,19 @@ class PartitionedVariablesTestCase(test.TestCase):
     for i in xrange(len(expected_specs)):
       self.assertEquals(expected_specs[i], slices[i]._save_slice_info.spec)
 
+  @test_util.run_deprecated_v1
   def testVecConstantInit(self):
     with self.cached_session():
       rnd_par = constant_op.constant([1, 2, 3, 4])
       vs = partitioned_variables.create_partitioned_variables([4], [4], rnd_par)
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 0).eval()
-      rnd = rnd_par.eval()
+      rnd = self.evaluate(rnd_par)
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.int32] * 4, [v.dtype.base_dtype for v in vs])
       self._TestSaveSpec(vs, ["4 0,1", "4 1,1", "4 2,1", "4 3,1"])
 
+  @test_util.run_deprecated_v1
   def testConstantInit(self):
     with self.cached_session():
       rnd_par = constant_op.constant([[1, 2, 3, 4], [5, 6, 7, 8]])
@@ -340,7 +343,7 @@ class PartitionedVariablesTestCase(test.TestCase):
                                                               rnd_par)
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 1).eval()
-      rnd = rnd_par.eval()
+      rnd = self.evaluate(rnd_par)
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.int32] * 2, [v.dtype.base_dtype for v in vs])
       self._TestSaveSpec(vs, ["2 4 0,2:0,2", "2 4 0,2:2,2"])
@@ -401,12 +404,15 @@ class PartitionedVariablesTestCase(test.TestCase):
       self.assertEqual(var2_name + "/part_0:0", vs2[0].name)
       self.assertEqual(var2_name + "/part_1:0", vs2[1].name)
 
+  @test_util.run_deprecated_v1
   def testName(self):
     self._testNameHelper(use_resource=False)
 
+  @test_util.run_deprecated_v1
   def testResourceName(self):
     self._testNameHelper(use_resource=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testRandomInitValue(self):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([200, 40]))
@@ -414,7 +420,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           rnd.get_shape(), [1, 10], rnd.initialized_value())
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 1).eval()
-      rnd = rnd.eval()
+      rnd = self.evaluate(rnd)
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.float32] * 10, [v.dtype.base_dtype for v in vs])
       self._TestSaveSpec(vs, [
@@ -424,6 +430,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           "200 40 0,200:36,4"
       ])
 
+  @test_util.run_v1_only("b/120545219")
   def testRandomInitUnevenPartitions(self):
     with self.cached_session():
       rnd = variables.Variable(
@@ -434,7 +441,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           for i in xrange(1, 10)
       ]
       variables.global_variables_initializer().run()
-      rnd_val = rnd.eval()
+      rnd_val = self.evaluate(rnd)
       # Only check the slice save specs for the first 5 tf.
       save_specs = [
           # One slice
@@ -462,6 +469,7 @@ class PartitionedVariablesTestCase(test.TestCase):
         if i < len(save_specs):
           self._TestSaveSpec(vs, save_specs[i])
 
+  @test_util.run_v1_only("b/120545219")
   def testDegenerate(self):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([10, 43]))
@@ -469,10 +477,11 @@ class PartitionedVariablesTestCase(test.TestCase):
           rnd.get_shape(), [1, 1], rnd.initialized_value())
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 0).eval()
-      rnd = rnd.eval()
+      rnd = self.evaluate(rnd)
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, ["10 43 0,10:0,43"])
 
+  @test_util.run_v1_only("b/120545219")
   def testSliceSizeOne(self):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([10, 43]))
@@ -480,7 +489,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           rnd.get_shape(), [10, 1], rnd.initialized_value())
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 0).eval()
-      rnd = rnd.eval()
+      rnd = self.evaluate(rnd)
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, [
           "10 43 0,1:0,43", "10 43 1,1:0,43", "10 43 2,1:0,43",
@@ -488,6 +497,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           "10 43 6,1:0,43", "10 43 7,1:0,43", "10 43 8,1:0,43", "10 43 9,1:0,43"
       ])
 
+  @test_util.run_deprecated_v1
   def testIotaInitializer(self):
     self.assertAllClose([0., 1., 2., 3.], _IotaInitializer([4]))
     self.assertAllClose([[0., 1.], [0., 10.], [0., 100.], [0., 1000.]],
@@ -503,6 +513,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       self.assertAllClose(slice0 + slice1 + slice2, val)
       self._TestSaveSpec(vs, ["13 5 0,5:0,5", "13 5 5,4:0,5", "13 5 9,4:0,5"])
 
+  @test_util.run_deprecated_v1
   def testRandomInitializer(self):
     # Sanity check that the slices uses a different seed when using a random
     # initializer function.
@@ -510,7 +521,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       var0, var1 = partitioned_variables.create_partitioned_variables(
           [20, 12], [1, 2], init_ops.random_uniform_initializer())
       variables.global_variables_initializer().run()
-      val0, val1 = var0.eval().flatten(), var1.eval().flatten()
+      val0, val1 = self.evaluate(var0).flatten(), self.evaluate(var1).flatten()
       self.assertTrue(np.linalg.norm(val0 - val1) > 1e-6)
     # Negative test that proves that slices have the same values if
     # the random initializer uses a seed.
@@ -518,7 +529,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       var0, var1 = partitioned_variables.create_partitioned_variables(
           [20, 12], [1, 2], init_ops.random_uniform_initializer(seed=201))
       variables.global_variables_initializer().run()
-      val0, val1 = var0.eval().flatten(), var1.eval().flatten()
+      val0, val1 = self.evaluate(var0).flatten(), self.evaluate(var1).flatten()
       self.assertAllClose(val0, val1)
 
   def testSomeErrors(self):
@@ -546,6 +557,7 @@ class PartitionedVariablesTestCase(test.TestCase):
         partitioned_variables.create_partitioned_variables(
             [10, 43], [1, 50], rnd.initialized_value())
 
+  @test_util.run_deprecated_v1
   def testControlDepsNone(self):
     with self.cached_session() as session:
       c = constant_op.constant(1.0)
@@ -572,6 +584,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       for op in reading_ops:
         self.assertEqual([], op.control_inputs)
 
+  @test_util.run_deprecated_v1
   def testConcat(self):
     with self.cached_session() as session:
       var_x = variable_scope.get_variable(
@@ -600,7 +613,7 @@ class PartitionedVariablesTestCase(test.TestCase):
   def testMetaGraphSaveLoad(self):
     save_prefix = os.path.join(self.get_temp_dir(), "ckpt")
     save_graph = ops.Graph()
-    with save_graph.as_default(), self.test_session(
+    with save_graph.as_default(), self.session(
         graph=save_graph) as session:
       partitioner = partitioned_variables.fixed_size_partitioner(5, axis=0)
       with variable_scope.variable_scope("root", partitioner=partitioner):
@@ -620,7 +633,7 @@ class PartitionedVariablesTestCase(test.TestCase):
             save_graph.get_tensor_by_name(v0.name + ":0"))
 
     restore_graph = ops.Graph()
-    with restore_graph.as_default(), self.test_session(
+    with restore_graph.as_default(), self.session(
         graph=restore_graph) as session:
       saver = saver_lib.import_meta_graph(save_path + ".meta")
       saver.restore(sess=session, save_path=save_path)

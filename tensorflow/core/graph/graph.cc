@@ -34,7 +34,7 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-class NodeProperties {
+struct NodeProperties {
  public:
   NodeProperties(const OpDef* op_def, const NodeDef& node_def,
                  const DataTypeSlice inputs, const DataTypeSlice outputs)
@@ -84,6 +84,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveReduce", NC_COLLECTIVE},
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
+        {"FakeParam", NC_FAKE_PARAM},
     });
 
 #undef REF_CLASS
@@ -140,6 +141,19 @@ void Node::Clear() {
   class_ = NC_UNINITIALIZED;
   props_.reset();
   assigned_device_name_index_ = 0;
+}
+
+void Node::UpdateProperties() {
+  DataTypeVector inputs;
+  DataTypeVector outputs;
+  Status status =
+      InOutTypesForNode(props_->node_def, *(props_->op_def), &inputs, &outputs);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed at updating node: " << status;
+    return;
+  }
+  props_ = std::make_shared<NodeProperties>(props_->op_def, props_->node_def,
+                                            inputs, outputs);
 }
 
 const string& Node::name() const { return props_->node_def.name(); }
@@ -268,6 +282,14 @@ Status Node::input_node(int idx, const Node** const_n) const {
   Node* n;
   TF_RETURN_IF_ERROR(input_node(idx, &n));
   *const_n = n;
+  return Status::OK();
+}
+
+Status Node::input_tensor(int idx, OutputTensor* t) const {
+  const Edge* e;
+  TF_RETURN_IF_ERROR(input_edge(idx, &e));
+  DCHECK(e != nullptr);
+  *t = OutputTensor(e->src(), e->src_output());
   return Status::OK();
 }
 
@@ -516,13 +538,29 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   const Edge* e = FindEdge(dst, dst_index);
   if (e == nullptr) {
     return errors::InvalidArgument("Couldn't find edge to ",
-                                   dst->DebugString());
+                                   FormatNodeForError(*dst));
   }
   RemoveEdge(e);
   AddEdge(new_src, new_src_index, dst, dst_index);
   dst->MaybeCopyOnWrite();
   (*dst->props_->node_def.mutable_input())[dst_index] =
       strings::StrCat(new_src->name(), ":", new_src_index);
+  return Status::OK();
+}
+
+Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
+  if (dst->type_string() != "While") {
+    return errors::Internal(
+        "dst argument to AddWhileEdgeHack should be a While op, got: ",
+        dst->DebugString());
+  }
+  TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
+  int dst_index = dst->in_edges().size();
+  TF_RETURN_IF_ERROR(IsValidInputTensor(dst, dst_index));
+  AddEdge(new_src, new_src_index, dst, dst_index);
+  dst->MaybeCopyOnWrite();
+  dst->props_->node_def.add_input(
+      strings::StrCat(new_src->name(), ":", new_src_index));
   return Status::OK();
 }
 
@@ -735,6 +773,14 @@ Status Graph::AddWhileContext(StringPiece frame_name,
   }
   *result = &pair.first->second;
   return Status::OK();
+}
+
+std::unordered_map<string, Node*> Graph::BuildNodeNameIndex() const {
+  std::unordered_map<string, Node*> result;
+  for (Node* n : nodes()) {
+    result[n->name()] = n;
+  }
+  return result;
 }
 
 string Edge::DebugString() const {

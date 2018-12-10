@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
@@ -31,6 +32,7 @@ from tensorflow.python.platform import test
 
 class Relu6OpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testRelu6GradGrad(self):
     inputs = constant_op.constant(
         [[-2, -1, 1, 3], [5, 7, 8, 9]], dtype=dtypes.float32)

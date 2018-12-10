@@ -83,11 +83,15 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'data_format\'], varargs=None, keywords=kwargs, defaults=[\'channels_last\'], "
   }
   member_method {
     name: "add_loss"
     argspec: "args=[\'self\', \'losses\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "add_metric"
+    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_update"

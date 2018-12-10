@@ -15,20 +15,19 @@ limitations under the License.
 
 #include <cmath>
 
+#include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 
 namespace xla {
 namespace {
 
 // Rotates a 32-bit integer 'v' left by 'distance' bits.
-XlaOp RotateLeftS32(XlaOp v, int distance) {
-  return (v << ConstantR0<int32>(v.builder(), distance)) |
-         ShiftRightLogical(v, ConstantR0<int32>(v.builder(), 32 - distance));
+XlaOp RotateLeftU32(XlaOp v, int distance) {
+  return (v << ConstantR0<uint32>(v.builder(), distance)) |
+         ShiftRightLogical(v, ConstantR0<uint32>(v.builder(), 32 - distance));
 }
 
 using ThreeFry2x32State = std::array<XlaOp, 2>;
@@ -38,13 +37,16 @@ using ThreeFry2x32State = std::array<XlaOp, 2>;
 // http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
 ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
   XlaBuilder* builder = input[0].builder();
+  key[0] = BitcastConvertType(key[0], U32);
+  key[1] = BitcastConvertType(key[1], U32);
+
   // Rotation distances specified by the Threefry2x32 algorithm.
   constexpr std::array<int, 8> rotations = {13, 15, 26, 6, 17, 29, 16, 24};
   ThreeFry2x32State x;
 
   std::array<XlaOp, 3> ks;
   // 0x1BD11BDA is a parity constant specified by the ThreeFry2x32 algorithm.
-  ks[2] = ConstantR0<int32>(builder, 0x1BD11BDA);
+  ks[2] = ConstantR0<uint32>(builder, 0x1BD11BDA);
   for (int i = 0; i < 2; ++i) {
     ks[i] = key[i];
     x[i] = input[i];
@@ -58,7 +60,7 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
   // amount 'rotation'.
   auto round = [](ThreeFry2x32State v, int rotation) {
     v[0] = v[0] + v[1];
-    v[1] = RotateLeftS32(v[1], rotation);
+    v[1] = RotateLeftU32(v[1], rotation);
     v[1] = v[0] ^ v[1];
     return v;
   };
@@ -70,74 +72,83 @@ ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[1];
-  x[1] = x[1] + ks[2] + ConstantR0<int32>(builder, 1);
+  x[1] = x[1] + ks[2] + ConstantR0<uint32>(builder, 1);
 
   x = round(x, rotations[4]);
   x = round(x, rotations[5]);
   x = round(x, rotations[6]);
   x = round(x, rotations[7]);
   x[0] = x[0] + ks[2];
-  x[1] = x[1] + ks[0] + ConstantR0<int32>(builder, 2);
+  x[1] = x[1] + ks[0] + ConstantR0<uint32>(builder, 2);
 
   x = round(x, rotations[0]);
   x = round(x, rotations[1]);
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[0];
-  x[1] = x[1] + ks[1] + ConstantR0<int32>(builder, 3);
+  x[1] = x[1] + ks[1] + ConstantR0<uint32>(builder, 3);
 
   x = round(x, rotations[4]);
   x = round(x, rotations[5]);
   x = round(x, rotations[6]);
   x = round(x, rotations[7]);
   x[0] = x[0] + ks[1];
-  x[1] = x[1] + ks[2] + ConstantR0<int32>(builder, 4);
+  x[1] = x[1] + ks[2] + ConstantR0<uint32>(builder, 4);
 
   x = round(x, rotations[0]);
   x = round(x, rotations[1]);
   x = round(x, rotations[2]);
   x = round(x, rotations[3]);
   x[0] = x[0] + ks[2];
-  x[1] = x[1] + ks[0] + ConstantR0<int32>(builder, 5);
+  x[1] = x[1] + ks[0] + ConstantR0<uint32>(builder, 5);
 
   return x;
 }
 
-}  // namespace
+// Returns the inputs with unique counter values for ThreeFry2x32.
+ThreeFry2x32State GetInputs(const int64 size, XlaBuilder* builder) {
+  ThreeFry2x32State inputs;
+  inputs[0] = Iota(builder, U32, size);
+  inputs[1] = inputs[0] + ConstantR0<uint32>(builder, size);
+  return inputs;
+}
 
-XlaOp StatelessRngUniform(std::array<XlaOp, 2> seeds, const Shape& shape,
-                          XlaOp minval, XlaOp maxval) {
-  XlaBuilder* builder = seeds[0].builder();
-  if (shape.element_type() != F32) {
-    return builder->ReportError(Unimplemented(
-        "Types other than F32 are not implemented by StatelessRngUniform."));
-  }
-  ThreeFry2x32State key = seeds;
+XlaOp StatelessRngUniformU32(std::array<XlaOp, 2> key, const Shape& shape) {
+  XlaBuilder* builder = key[0].builder();
   const int64 size = ShapeUtil::ElementsIn(shape);
-
   const int64 half_size = CeilOfRatio<int64>(size, 2);
   const bool size_is_odd = (half_size * 2 != size);
-
-  // Fill the generator inputs with unique counter values.
-  ThreeFry2x32State inputs;
-  inputs[0] = Iota(builder, S32, half_size);
-  inputs[1] = inputs[0] + ConstantR0<int32>(builder, half_size);
+  ThreeFry2x32State inputs = GetInputs(half_size, builder);
   ThreeFry2x32State outputs = ThreeFry2x32(inputs, key);
-
   if (size_is_odd) {
     outputs[1] = Slice(outputs[1], {0}, {half_size - 1}, {1});
   }
+  auto result = ConcatInDim(builder, outputs, 0);
+  return Reshape(result, AsInt64Slice(shape.dimensions()));
+}
 
-  auto bits = Reshape(ConcatInDim(builder, outputs, 0),
-                      AsInt64Slice(shape.dimensions()));
+XlaOp StatelessRngUniformU64(std::array<XlaOp, 2> key, const Shape& shape) {
+  XlaBuilder* builder = key[0].builder();
+  const int64 size = ShapeUtil::ElementsIn(shape);
+  ThreeFry2x32State inputs = GetInputs(size, builder);
+  ThreeFry2x32State outputs = ThreeFry2x32(inputs, key);
+  // low 32 bit: outputs[0], high 32 bit: outputs[1]
+  auto result = ConvertElementType(outputs[0], U64) |
+                ShiftLeft(ConvertElementType(outputs[1], U64),
+                          ConstantR0WithType(builder, U64, 32));
+  return Reshape(result, AsInt64Slice(shape.dimensions()));
+}
+
+XlaOp StatelessRngUniformF32(XlaOp bits, XlaOp minval, XlaOp maxval) {
+  XlaBuilder* builder = bits.builder();
 
   // Form 23 random mantissa bits, with a leading 1 bit. The leading 1 bit
   // forces the random bits into the mantissa.
   constexpr int kFloatBits = 32;
   constexpr int kMantissaBits = 23;
   bits = ShiftRightLogical(
-             bits, ConstantR0<int32>(builder, kFloatBits - kMantissaBits)) |
-         ConstantR0<int32>(builder, tensorflow::bit_cast<int32>(1.0f));
+             bits, ConstantR0<uint32>(builder, kFloatBits - kMantissaBits)) |
+         ConstantR0<uint32>(builder, absl::bit_cast<uint32>(1.0f));
   auto floats = BitcastConvertType(bits, F32);
 
   // We have a floating point number in the range [1.0, 2.0).
@@ -145,6 +156,49 @@ XlaOp StatelessRngUniform(std::array<XlaOp, 2> seeds, const Shape& shape,
   floats = floats - ConstantR0<float>(builder, 1.0f);
   // Multiply and add to shift to the range [minval, maxval).
   return floats * (maxval - minval) + minval;
+}
+
+XlaOp StatelessRngUniformInt(XlaOp bits, XlaOp minval, XlaOp maxval,
+                             PrimitiveType type, PrimitiveType unsigned_type) {
+  XlaBuilder* builder = bits.builder();
+  // TODO(b/72573764): Generate real uniform integer distribution.
+  // The following algorithm is the same one that TF uses right now, but it's
+  // uniform only when maxval - minval is a divisor of the range that bits is
+  // generated from.
+  auto range = BitcastConvertType(maxval, unsigned_type) -
+               BitcastConvertType(minval, unsigned_type);
+  auto dist = Rem(bits, range);
+  auto dist_div_2 =
+      ShiftRightLogical(dist, ConstantR0WithType(builder, unsigned_type, 1));
+
+  return minval + BitcastConvertType(dist_div_2, type) +
+         BitcastConvertType(dist - dist_div_2, type);
+}
+
+}  // namespace
+
+XlaOp StatelessRngUniform(std::array<XlaOp, 2> seeds, const Shape& shape,
+                          XlaOp minval, XlaOp maxval) {
+  XlaBuilder* builder = seeds[0].builder();
+  PrimitiveType type = shape.element_type();
+  switch (type) {
+    case F32: {
+      auto bits = StatelessRngUniformU32(seeds, shape);
+      return StatelessRngUniformF32(bits, minval, maxval);
+    }
+    case S32: {
+      auto bits = StatelessRngUniformU32(seeds, shape);
+      return StatelessRngUniformInt(bits, minval, maxval, type, U32);
+    }
+    case S64: {
+      auto bits = StatelessRngUniformU64(seeds, shape);
+      return StatelessRngUniformInt(bits, minval, maxval, type, U64);
+    }
+    default:
+      return builder->ReportError(Unimplemented(
+          "Types other than F32, S32 and S64 are not implemented by "
+          "StatelessRngUniform."));
+  }
 }
 
 }  // namespace xla

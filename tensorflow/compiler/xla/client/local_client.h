@@ -60,8 +60,8 @@ class LocalExecutable {
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
   //
-  // The given ExecutableRunOptions override any values from legacy_flags
-  // (TF_XLA_FLAGS environment variable).
+  // The given ExecutableRunOptions override any values from TF_XLA_FLAGS
+  // environment variable.
   Status ValidateExecutionOptions(
       const absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
@@ -69,8 +69,8 @@ class LocalExecutable {
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
   //
-  // The given ServiceExecutableRunOptions override any values from legacy_flags
-  // (TF_XLA_FLAGS environment variable).
+  // The given ServiceExecutableRunOptions override any values from TF_XLA_FLAGS
+  // environment variable.
   StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const absl::Span<const ShapedBuffer* const> arguments);
@@ -114,8 +114,8 @@ class LocalClient : public Client {
   // Build and return a LocalExecutable object. The executable is compiled using
   // the given XlaComputation, argument layouts and options.
   //
-  // The given ExecutableBuildOptions override any values from legacy_flags
-  // (TF_XLA_FLAGS environment variable).
+  // The given ExecutableBuildOptions override any values from TF_XLA_FLAGS
+  // environment variable.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const XlaComputation& computation,
       const absl::Span<const Shape* const> argument_layouts,
@@ -128,6 +128,10 @@ class LocalClient : public Client {
   StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
       const Literal& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
+
+  // Transfer the BorrowingLiteral to the device with the given ordinal.
+  StatusOr<TransferToServerResponse> TransferToLocalServer(
+      const ::xla::BorrowingLiteral& literal, int device_oridinal);
 
   // Copy the data from the device contained in the given ShapedBuffer and
   // return as a Literal.

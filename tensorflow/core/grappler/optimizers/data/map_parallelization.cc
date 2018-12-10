@@ -47,7 +47,7 @@ bool CanParallelize(const FunctionDef& function,
 
 NodeDef MakeParallelMap(const NodeDef& map_node, MutableGraphView* graph) {
   NodeDef parallel_map = map_node;
-  graph_utils::SetUniqueGraphNodeName("parallel_map", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("parallel_map", graph->graph(),
                                       &parallel_map);
   parallel_map.set_op("ParallelMapDataset");
   // TODO(b/114475558): We want to set `num_parallel_calls` to a special value,
@@ -83,7 +83,7 @@ Status MapParallelization::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (!CanParallelize(*function, function_library)) continue;
 
     auto* parallel_map = graph.AddNode(MakeParallelMap(*map_node, &graph));
-    graph.ReplaceInput(*map_node, *parallel_map);
+    graph.UpdateFanouts(map_node->name(), parallel_map->name());
     nodes_to_delete.insert(map_node->name());
   }
 

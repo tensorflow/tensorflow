@@ -43,7 +43,7 @@ using ::testing::UnorderedElementsAre;
 class HloDataflowAnalysisTest : public HloTestBase,
                                 public ::testing::WithParamInterface<bool> {
  protected:
-  HloDataflowAnalysisTest() : module_(CreateNewModule()) {}
+  HloDataflowAnalysisTest() : module_(CreateNewVerifiedModule()) {}
 
   // Run dataflow analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
@@ -1877,6 +1877,30 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
   }
 }
 
+TEST_P(HloDataflowAnalysisTest, AddDependency) {
+  string module_string = R"(
+HloModule AddDependency
+ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+  %p = f32[3] parameter(0)
+  %token = token[] after-all()
+  ROOT %add_dep = f32[3] add-dependency(f32[3] %p, token[] %token)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseHloString(module_string, GetModuleConfigForTest()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
+                          HloDataflowAnalysis::Run(*module));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAddDependency);
+
+  // The after-all and parameter should define a value. Add-dependency should
+  // not.
+  EXPECT_EQ(analysis->values().size(), 2);
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(root));
+}
+
 INSTANTIATE_TEST_CASE_P(HloDataflowAnalysisInstantiation,
                         HloDataflowAnalysisTest,
                         ::testing::Values(false, true));
@@ -1884,7 +1908,7 @@ INSTANTIATE_TEST_CASE_P(HloDataflowAnalysisInstantiation,
 class HloDataflowAnalysisTestBase : public HloTestBase {
  protected:
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = CreateNewModule();
+    module_ = CreateNewUnverifiedModule();
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 
@@ -2283,6 +2307,44 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
       dataflow_analysis_->CanShareOperandBufferWithUser(starts, {}, dus, {}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
+  const char* hlo_text = R"(
+    HloModule TensorFlowScatterV1
+
+    update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+      lhs = s32[] parameter(0)
+      ROOT rhs = s32[] parameter(1)
+    }
+
+    ENTRY main {
+      operand = s32[3,3] parameter(0)
+      indices = s32[2] parameter(1)
+      updates = s32[2,3] parameter(2)
+      ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+          to_apply=update_s32,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  computation_ = module_->entry_computation();
+  RunAnalysis();
+
+  HloInstruction* operand_param = computation_->parameter_instruction(0);
+  HloInstruction* indices_param = computation_->parameter_instruction(1);
+  HloInstruction* updates_param = computation_->parameter_instruction(2);
+  HloInstruction* scatter = computation_->root_instruction();
+
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(
+      operand_param, {}, scatter, {}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(
+      indices_param, {}, scatter, {}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(
+      updates_param, {}, scatter, {}));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   auto builder = HloComputation::Builder(TestName());
 
@@ -2308,7 +2370,8 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   auto values = builder.AddInstruction(
       HloInstruction::CreateParameter(1, values_shape, "values"));
   auto sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys, values));
+      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys,
+      {values}));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -2437,7 +2500,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     return builder.Build();
   };
 
-  module_ = CreateNewModule();
+  module_ = CreateNewUnverifiedModule();
   HloComputation* cond_computation =
       module_->AddEmbeddedComputation(make_cond());
   HloComputation* body_computation =
@@ -2472,7 +2535,7 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
   auto add = sub_builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sub_param, ones));
 
-  module_ = CreateNewModule();
+  module_ = CreateNewUnverifiedModule();
   auto sub_computation = module_->AddEmbeddedComputation(sub_builder.Build());
   sub_computation->CreateFusionInstruction({add, ones},
                                            HloInstruction::FusionKind::kLoop);

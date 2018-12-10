@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 
+#include "absl/strings/numbers.h"
 #include "tensorflow/core/graph/algorithm.h"
 
 namespace tensorflow {
@@ -62,6 +63,30 @@ bool HasSideEffectingNodes(const Graph& g) {
     }
   }
   return false;
+}
+
+Status ParseHostComputeCoreList(absl::Span<const string> list_from_attr,
+                                std::map<string, int>* host_compute_core) {
+  for (const auto& hc_core : list_from_attr) {
+    std::vector<string> parts = str_util::Split(hc_core, ":");
+    if (parts.size() != 2) {
+      return errors::InvalidArgument(
+          "Malformed host_compute_core entry ", hc_core,
+          " should be <cluster_name>:<core_number>.");
+    }
+    int core;
+    if (!absl::numbers_internal::safe_strto32_base(parts[1], &core, 10)) {
+      return errors::InvalidArgument("Malformed host_compute_core entry ",
+                                     hc_core,
+                                     " part after ':' should be an integer.");
+    }
+    if (host_compute_core->find(parts[0]) != host_compute_core->end()) {
+      return errors::InvalidArgument(
+          "Duplicate host_compute_core entry for cluster ", parts[0]);
+    }
+    (*host_compute_core)[parts[0]] = core;
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

@@ -218,7 +218,7 @@ Status CollectArgNodes(const Graph& graph, std::vector<Node*>* arg_nodes) {
         const Node* dup = insert_result.first->second;
         return errors::InvalidArgument(
             "Multiple ", kArgOp, " nodes with index ", index, ", ",
-            n->DebugString(), " and ", dup->DebugString());
+            FormatNodeForError(*n), " and ", FormatNodeForError(*dup));
       }
     }
   }

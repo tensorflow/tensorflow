@@ -45,5 +45,4 @@ NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 # TODO(mdan); Consolidate all internal imports into a single __ag module.
 COMPILED_IMPORT_STATEMENTS = (
     'from __future__ import print_function',
-    'import tensorflow as tf',
 )

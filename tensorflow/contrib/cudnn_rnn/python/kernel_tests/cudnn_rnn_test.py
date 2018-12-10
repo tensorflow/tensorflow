@@ -536,7 +536,9 @@ class CudnnRNNTestSaveRestore(test_util.TensorFlowTestCase):
       save_path = os.path.join(self.get_temp_dir(),
                                "save-restore-variable-test")
       saver = saver_lib.Saver()
-      weights, biases = model.rnn.saveable._OpaqueParamsToCanonical()
+      weights, biases = (
+          model.rnn.saveable.format_converter._opaque_to_cu_canonical(
+              model.rnn.saveable._variables))
       opaque_params = rnn.trainable_variables[0]
       # CudnnTestModel() creates CudnnOpaqueParamsSaveable that helps saver save
       # Cudnn vars in canonical format.
@@ -583,8 +585,12 @@ class CudnnRNNTestSaveRestore(test_util.TensorFlowTestCase):
             dtype=dtype)
       opaque_params = (model1.rnn.trainable_variables[0],
                        model2.rnn.trainable_variables[0])
-      weights1, biases1 = model1.rnn.saveable._OpaqueParamsToCanonical()
-      weights2, biases2 = model2.rnn.saveable._OpaqueParamsToCanonical()
+      saveable1 = model1.rnn.saveable
+      weights1, biases1 = saveable1.format_converter._opaque_to_cu_canonical(
+          saveable1._variables)
+      saveable2 = model1.rnn.saveable
+      weights2, biases2 = saveable2.format_converter._opaque_to_cu_canonical(
+          saveable2._variables)
       reset_params = [
           state_ops.assign(params,
                            array_ops.zeros_like(params, dtype=dtype))
@@ -1039,8 +1045,8 @@ class CudnnRNNTestParamsSize(test_util.TensorFlowTestCase):
 
     # Min param size estimate = sum(weights.size) + sum(biases.size)
     min_params_size = (
-        np.sum(map(np.prod, rnn.canonical_weight_shapes)) +
-        np.sum([sp[0] for sp in rnn.canonical_bias_shapes]))
+        sum(map(np.prod, rnn.canonical_weight_shapes)) +
+        sum(sp[0] for sp in rnn.canonical_bias_shapes))
 
     opaque_params = rnn.trainable_variables[0]
     with self.test_session(use_gpu=True, graph=ops.get_default_graph()):
@@ -1184,7 +1190,8 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
 
     num_grads = [self._ComputeNumericGrad(sess, y, x, delta) for x in xs]
     self.assertEqual(len(sym_grads), len(num_grads))
-    for sym, num in zip(sym_grads, num_grads):
+    for x, sym, num in zip(xs, sym_grads, num_grads):
+      logging.info("Comparing gradients for input: %s", x.name)
       self.assertFalse(np.any(np.isnan(sym)))
       self.assertFalse(np.any(np.isnan(num)))
       self.assertAllClose(sym, num, atol=tolerance, rtol=tolerance)
@@ -1225,18 +1232,18 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
     params = rnn.trainable_variables[0]
 
     inputs = variables.Variable(
-        random_ops.random_uniform(
-            [seq_length, batch_size, input_size], dtype=dtype),
-        dtype=dtype)
+        random_ops.random_uniform([seq_length, batch_size, input_size],
+                                  dtype=dtype),
+        dtype=dtype).read_value()
     input_h = variables.Variable(
         random_ops.random_uniform(
             [num_layers * dir_count, batch_size, num_units], dtype=dtype),
-        dtype=dtype)
+        dtype=dtype).read_value()
     if has_input_c:
       input_c = variables.Variable(
           random_ops.random_uniform(
               [num_layers * dir_count, batch_size, num_units], dtype=dtype),
-          dtype=dtype)
+          dtype=dtype).read_value()
       initial_state = (input_h, input_c)
     else:
       initial_state = (input_h,)
@@ -1262,7 +1269,7 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
 
   def _TestSimpleTrainingHelper(self, rnn_mode, test_configs):
     dropouts = [0, 0.5, 1.]
-    v2_options = [str(False), str(True)]
+    v2_options = [False, True]
     for config, dropout, use_v2 in itertools.product(test_configs, dropouts,
                                                      v2_options):
       dtype = config.get("dtype", dtypes.float32)
@@ -1270,6 +1277,9 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
       tolerance = config.get("tolerance", 1e-6)
       dir_count = config.get("dir_count", 1)
       shape = config["shape"]
+      if dtype == dtypes.float64:
+        # TODO(jamesqin): b/117848763
+        use_v2 = False
       with ops.Graph().as_default():
         self._TestOneSimpleTraining(
             rnn_mode, shape["num_layers"], shape["num_units"],
@@ -1519,7 +1529,7 @@ if __name__ == "__main__":
   parser.add_argument(
       "--grad_check_num_samples",
       type=int,
-      default=5,
+      default=1,
       help="Number of samples to run for gradient check.")
   FLAGS, unparsed = parser.parse_known_args()
   sys.argv = [argv0] + unparsed

@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import math_ops
@@ -146,6 +147,20 @@ class CoreLayersTest(test.TestCase):
         input_data=inputs)
     target_outputs = np.reshape(
         np.transpose(inputs, (0, 2, 3, 1)), (-1, 5 * 5 * 3))
+    self.assertAllClose(outputs, target_outputs)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_flatten_scalar_channels(self):
+    testing_utils.layer_test(
+        keras.layers.Flatten, kwargs={}, input_shape=(3,))
+
+    # Test channels_first
+    inputs = np.random.random((10,)).astype('float32')
+    outputs = testing_utils.layer_test(
+        keras.layers.Flatten,
+        kwargs={'data_format': 'channels_first'},
+        input_data=inputs)
+    target_outputs = np.expand_dims(inputs, -1)
     self.assertAllClose(outputs, target_outputs)
 
   @tf_test_util.run_in_graph_and_eager_modes
@@ -280,9 +295,7 @@ class CoreLayersTest(test.TestCase):
 
     l = keras.layers.Lambda(lambda_fn, output_shape=(None, 10))
     output_shape = l.compute_output_shape((5, 10, 20))
-    # Dimension(None) != Dimension(None), so check
-    # str representations for equality.
-    self.assertAllEqual(('5', '?', '10'), tuple([str(s) for s in output_shape]))
+    self.assertAllEqual([5, None, 10], output_shape.as_list())
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_lambda_output_shape_function_multiple_outputs(self):
@@ -309,6 +322,18 @@ class CoreLayersTest(test.TestCase):
       })
 
       layer = keras.layers.Lambda.from_config(config)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_numpy_inputs(self):
+    if context.executing_eagerly():
+      layer = keras.layers.RepeatVector(2)
+      x = np.ones((10, 10))
+      self.assertAllEqual(np.ones((10, 2, 10)), layer(x))
+
+      layer = keras.layers.Concatenate()
+      x, y = np.ones((10, 10)), np.ones((10, 10))
+      self.assertAllEqual(np.ones((10, 20)), layer([x, y]))
+
 
 if __name__ == '__main__':
   test.main()

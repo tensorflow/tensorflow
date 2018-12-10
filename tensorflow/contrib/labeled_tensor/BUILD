@@ -70,7 +70,10 @@ py_test(
         "python/ops/core_test.py",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = [
+        "no_windows",  # TODO: needs investigation on Windows
+        "noasan",  # TODO(b/119323169)
+    ],
     deps = [
         ":_typecheck",
         ":core",

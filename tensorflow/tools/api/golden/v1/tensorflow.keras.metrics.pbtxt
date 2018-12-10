@@ -1,5 +1,57 @@
 path: "tensorflow.keras.metrics"
 tf_module {
+  member {
+    name: "Accuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BinaryAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FalseNegatives"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FalsePositives"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Mean"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Precision"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Recall"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SensitivityAtSpecificity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SpecificityAtSensitivity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TrueNegatives"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TruePositives"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "KLD"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
@@ -26,7 +78,7 @@ tf_module {
   }
   member_method {
     name: "binary_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "categorical_accuracy"
@@ -34,7 +86,7 @@ tf_module {
   }
   member_method {
     name: "categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "cosine"
@@ -110,7 +162,7 @@ tf_module {
   }
   member_method {
     name: "sparse_categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "sparse_top_k_categorical_accuracy"

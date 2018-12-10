@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_PERMUTATION_INPUT_ITERATOR_H_
-#define TENSORFLOW_UTIL_PERMUTATION_INPUT_ITERATOR_H_
+#ifndef TENSORFLOW_CORE_UTIL_PERMUTATION_INPUT_ITERATOR_H_
+#define TENSORFLOW_CORE_UTIL_PERMUTATION_INPUT_ITERATOR_H_
 
 #include <iostream>
 #include <iterator>
@@ -131,4 +131,4 @@ class PermutationInputIterator {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_PERMUTATION_INPUT_ITERATOR_H_
+#endif  // TENSORFLOW_CORE_UTIL_PERMUTATION_INPUT_ITERATOR_H_

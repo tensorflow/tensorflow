@@ -64,7 +64,7 @@ class FixedLengthRecordDatasetTestBase(test_base.DatasetTestBase):
 
 
 class MakeBatchedFeaturesDatasetTestBase(test_base.DatasetTestBase):
-  """Base class for setting up and testing `make_batched_feature_dataset`."""
+  """Base class for setting up and testing `make_batched_features_dataset`."""
 
   def setUp(self):
     super(MakeBatchedFeaturesDatasetTestBase, self).setUp()

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.contrib.solvers.python.ops import lanczos
 from tensorflow.contrib.solvers.python.ops import util
 from tensorflow.python.framework import constant_op
@@ -80,7 +81,8 @@ if __name__ == "__main__":
     for shape in [[4, 4], [7, 4], [5, 8]]:
       for orthogonalize in True, False:
         for steps in range(1, min(shape) + 1):
-          for use_static_shape in True, False:
+          # TF2 does not support placeholders so we skip it
+          for use_static_shape in set([True, tf2.enabled()]):
             arg_string = "%s_%s_%s_%s_staticshape_%s" % (
                 dtype.__name__, "_".join(map(str, shape)), orthogonalize, steps,
                 use_static_shape)

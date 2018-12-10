@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 #include "tensorflow/stream_executor/launch_dim.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/module_spec.h"
@@ -238,9 +237,9 @@ class StreamExecutorInterface {
   virtual bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
                                     const DeviceMemoryBase &gpu_src,
                                     uint64 size) = 0;
-  virtual bool HostCallback(Stream *stream, std::function<void()> callback) = 0;
+  virtual bool HostCallback(Stream *stream, std::function<void()> callback);
   virtual bool HostCallback(Stream *stream,
-                            std::function<port::Status()> callback);
+                            std::function<port::Status()> callback) = 0;
   virtual port::Status AllocateEvent(Event *event) = 0;
   virtual port::Status DeallocateEvent(Event *event) = 0;
   virtual port::Status RecordEvent(Stream *stream, Event *event) = 0;

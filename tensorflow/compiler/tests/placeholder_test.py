@@ -33,7 +33,7 @@ class PlaceholderTest(xla_test.XLATestCase):
       ph = array_ops.placeholder_with_default(v, shape=[])
       out = ph * 2
       sess.run(variables.variables_initializer([v]))
-      self.assertEqual(8.0, sess.run(out))
+      self.assertEqual(8.0, self.evaluate(out))
 
   def test_placeholder_with_default_fed(self):
     with self.cached_session() as sess, self.test_scope():
