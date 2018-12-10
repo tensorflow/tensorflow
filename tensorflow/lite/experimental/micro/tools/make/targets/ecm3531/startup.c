@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+/* This file is called at power up time to initialize the chip.  It in turn
+calls _main() which is the entry point into the application */
+
 #include <stdint.h>
 #include "eta_chip.h"
 #include "memio.h"
@@ -90,7 +93,7 @@ extern uint32_t _stack_top;
 //*****************************************************************************
 __attribute__((section(".vectors"), used)) void (*const gVectors[])(void) = {
     //(void (*)(void))((uint32_t)pui32Stack + sizeof(pui32Stack)), // Stack
-    //pointer
+    // pointer
     (void *)STARTUP_STACK_TOP,
     ResetISR,           // Reset handler
     NmiSR,              // The NMI handler
