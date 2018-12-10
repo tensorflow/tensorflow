@@ -171,8 +171,8 @@ class _ConfusionMatrix(Enum):
 
 
 def _assert_thresholds_range(thresholds):
-  invalid_thresholds = [t for t in thresholds if t < 0 or t > 1]
-  if any(invalid_thresholds):
+  invalid_thresholds = [t for t in thresholds if t is None or t < 0 or t > 1]
+  if invalid_thresholds:
     raise ValueError('Threshold values must be in [0, 1]. Invalid values: {}'
                      .format(invalid_thresholds))
 
@@ -870,11 +870,11 @@ class _ConfusionMatrixConditionCount(Metric):
     super(_ConfusionMatrixConditionCount, self).__init__(name=name, dtype=dtype)
     self._confusion_matrix_cond = confusion_matrix_cond
     self.thresholds = 0.5 if thresholds is None else thresholds
-    thresholds = to_list(thresholds)
-    _assert_thresholds_range(thresholds)
+    thresholds_list = to_list(self.thresholds)
+    _assert_thresholds_range(thresholds_list)
     self.accumulator = self.add_weight(
         'accumulator',
-        shape=(len(thresholds),),
+        shape=(len(thresholds_list),),
         initializer=init_ops.zeros_initializer)
 
   def update_state(self, y_true, y_pred, sample_weight=None):
@@ -1153,15 +1153,15 @@ class Precision(Metric):
     """
     super(Precision, self).__init__(name=name, dtype=dtype)
     self.thresholds = 0.5 if thresholds is None else thresholds
-    thresholds = to_list(thresholds)
-    _assert_thresholds_range(thresholds)
+    thresholds_list = to_list(self.thresholds)
+    _assert_thresholds_range(thresholds_list)
     self.tp = self.add_weight(
         'true_positives',
-        shape=(len(thresholds),),
+        shape=(len(thresholds_list),),
         initializer=init_ops.zeros_initializer)
     self.fp = self.add_weight(
         'false_positives',
-        shape=(len(thresholds),),
+        shape=(len(thresholds_list),),
         initializer=init_ops.zeros_initializer)
 
   def update_state(self, y_true, y_pred, sample_weight=None):
@@ -1238,15 +1238,15 @@ class Recall(Metric):
     """
     super(Recall, self).__init__(name=name, dtype=dtype)
     self.thresholds = 0.5 if thresholds is None else thresholds
-    thresholds = to_list(thresholds)
-    _assert_thresholds_range(thresholds)
+    thresholds_list = to_list(self.thresholds)
+    _assert_thresholds_range(thresholds_list)
     self.tp = self.add_weight(
         'true_positives',
-        shape=(len(thresholds),),
+        shape=(len(thresholds_list),),
         initializer=init_ops.zeros_initializer)
     self.fn = self.add_weight(
         'false_negatives',
-        shape=(len(thresholds),),
+        shape=(len(thresholds_list),),
         initializer=init_ops.zeros_initializer)
 
   def update_state(self, y_true, y_pred, sample_weight=None):
