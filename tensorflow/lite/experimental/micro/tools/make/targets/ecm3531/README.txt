@@ -5,7 +5,7 @@ This code will enable you to compile and execute the Tensorflow Lite Micro Speec
 
 GETTING STARTED:
 
-1. Download the Tensorflow code from Github and follow anyinstructions there to download other dependencies.  
+1. Download the Tensorflow code from Github and follow instructions there to download other dependencies.  
 
 2. Download the Eta Compute SDK, version 0.0.17.
 
