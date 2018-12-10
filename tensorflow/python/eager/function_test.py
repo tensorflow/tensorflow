@@ -544,7 +544,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  def disabled_testRunMetadata(self):
+  def testRunMetadata(self):
 
     @def_function.function
     def f(x):
