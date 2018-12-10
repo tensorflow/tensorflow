@@ -1866,7 +1866,7 @@ class TensorFlowTestCase(googletest.TestCase):
     # If a is a tensor then convert it to ndarray
     if isinstance(a, ops.Tensor):
       if isinstance(a, ops._EagerTensorBase):
-        return a.numpy()
+        a = a.numpy()
       else:
         a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
