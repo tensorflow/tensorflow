@@ -8,7 +8,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "optimizer_v2",
@@ -37,7 +37,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "adagrad_test",
     size = "medium",
     srcs = ["adagrad_test.py"],
@@ -56,7 +56,7 @@ gpu_py_test(
     shard_count = 4,
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "adam_test",
     size = "medium",
     srcs = ["adam_test.py"],
@@ -75,7 +75,7 @@ gpu_py_test(
     shard_count = 4,
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "adamax_test",
     size = "medium",
     srcs = ["adamax_test.py"],
@@ -94,7 +94,7 @@ gpu_py_test(
     shard_count = 4,
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "adadelta_test",
     size = "medium",
     srcs = ["adadelta_test.py"],
@@ -113,7 +113,7 @@ gpu_py_test(
     shard_count = 4,
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "ftrl_test",
     size = "medium",
     srcs = ["ftrl_test.py"],
@@ -132,7 +132,7 @@ gpu_py_test(
     shard_count = 4,
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "gradient_descent_test",
     size = "medium",
     srcs = ["gradient_descent_test.py"],
@@ -151,7 +151,7 @@ gpu_py_test(
     shard_count = 4,
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "nadam_test",
     size = "medium",
     srcs = ["nadam_test.py"],
@@ -195,7 +195,7 @@ py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "rmsprop_test",
     size = "medium",
     srcs = ["rmsprop_test.py"],

@@ -4,7 +4,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
 
 py_library(
@@ -18,7 +18,7 @@ py_library(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
     additional_deps = [
@@ -31,7 +31,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "fft_ops_test",
     size = "medium",
     srcs = ["fft_ops_test.py"],
@@ -47,7 +47,7 @@ gpu_py_tests(
     tags = ["optonly"],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "mel_ops_test",
     srcs = ["mel_ops_test.py"],
     additional_deps = [
@@ -58,7 +58,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "mfcc_ops_test",
     srcs = ["mfcc_ops_test.py"],
     additional_deps = [
@@ -72,7 +72,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "reconstruction_ops_test",
     srcs = ["reconstruction_ops_test.py"],
     additional_deps = [
@@ -89,7 +89,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "shape_ops_test",
     srcs = ["shape_ops_test.py"],
     additional_deps = [
@@ -106,7 +106,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "spectral_ops_test",
     size = "large",
     srcs = ["spectral_ops_test.py"],
@@ -127,7 +127,7 @@ gpu_py_tests(
     tags = ["nomac"],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "window_ops_test",
     srcs = ["window_ops_test.py"],
     additional_deps = [

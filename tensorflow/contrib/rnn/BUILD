@@ -8,7 +8,7 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "gpu_py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -79,7 +79,7 @@ tf_custom_op_py_library(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "rnn_cell_test",
     size = "medium",
     srcs = ["python/kernel_tests/rnn_cell_test.py"],
@@ -102,7 +102,7 @@ gpu_py_tests(
     xla_enabled = True,
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "core_rnn_cell_test",
     size = "medium",
     srcs = ["python/kernel_tests/core_rnn_cell_test.py"],
@@ -121,7 +121,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "rnn_test",
     size = "medium",
     srcs = ["python/kernel_tests/rnn_test.py"],
@@ -143,7 +143,7 @@ gpu_py_tests(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "core_rnn_test",
     size = "medium",
     srcs = ["python/kernel_tests/core_rnn_test.py"],
@@ -190,7 +190,7 @@ tf_py_test(
     ],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "lstm_ops_test",
     size = "medium",
     srcs = ["python/kernel_tests/lstm_ops_test.py"],
@@ -256,7 +256,7 @@ tf_gen_op_wrapper_py(
     deps = [":gru_ops_op_lib"],
 )
 
-gpu_py_tests(
+cuda_py_tests(
     name = "gru_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/gru_ops_test.py"],

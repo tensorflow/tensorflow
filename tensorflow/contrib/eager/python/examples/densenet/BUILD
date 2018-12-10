@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_binary")
 
 py_binary(
@@ -15,7 +15,7 @@ py_binary(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "densenet_test",
     size = "large",
     srcs = ["densenet_test.py"],
@@ -30,7 +30,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "densenet_graph_test",
     size = "large",
     srcs = ["densenet_graph_test.py"],
