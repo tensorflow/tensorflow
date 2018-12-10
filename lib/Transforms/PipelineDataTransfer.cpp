@@ -318,15 +318,15 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   startWaitPairs.clear();
   findMatchingStartFinishStmts(forStmt, startWaitPairs);
 
-  // Store delay for statement for later lookup for AffineApplyOp's.
-  DenseMap<const Statement *, unsigned> stmtDelayMap;
+  // Store shift for statement for later lookup for AffineApplyOp's.
+  DenseMap<const Statement *, unsigned> stmtShiftMap;
   for (auto &pair : startWaitPairs) {
     auto *dmaStartStmt = pair.first;
     assert(dmaStartStmt->isa<DmaStartOp>());
-    stmtDelayMap[dmaStartStmt] = 0;
+    stmtShiftMap[dmaStartStmt] = 0;
     // Set shifts for DMA start stmt's affine operand computation slices to 0.
     if (auto *slice = mlir::createAffineComputationSlice(dmaStartStmt)) {
-      stmtDelayMap[slice] = 0;
+      stmtShiftMap[slice] = 0;
     } else {
       // If a slice wasn't created, the reachable affine_apply op's from its
       // operands are the ones that go with it.
@@ -334,39 +334,39 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
       SmallVector<MLValue *, 4> operands(dmaStartStmt->getOperands());
       getReachableAffineApplyOps(operands, affineApplyStmts);
       for (const auto *stmt : affineApplyStmts) {
-        stmtDelayMap[stmt] = 0;
+        stmtShiftMap[stmt] = 0;
       }
     }
   }
   // Everything else (including compute ops and dma finish) are shifted by one.
   for (const auto &stmt : *forStmt) {
-    if (stmtDelayMap.find(&stmt) == stmtDelayMap.end()) {
-      stmtDelayMap[&stmt] = 1;
+    if (stmtShiftMap.find(&stmt) == stmtShiftMap.end()) {
+      stmtShiftMap[&stmt] = 1;
     }
   }
 
-  // Get delays stored in map.
-  std::vector<uint64_t> delays(forStmt->getStatements().size());
+  // Get shifts stored in map.
+  std::vector<uint64_t> shifts(forStmt->getStatements().size());
   unsigned s = 0;
   for (auto &stmt : *forStmt) {
-    assert(stmtDelayMap.find(&stmt) != stmtDelayMap.end());
-    delays[s++] = stmtDelayMap[&stmt];
+    assert(stmtShiftMap.find(&stmt) != stmtShiftMap.end());
+    shifts[s++] = stmtShiftMap[&stmt];
     LLVM_DEBUG(
-        // Tagging statements with delays for debugging purposes.
+        // Tagging statements with shifts for debugging purposes.
         if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
           MLFuncBuilder b(opStmt);
-          opStmt->setAttr(b.getIdentifier("delay"),
-                          b.getIntegerAttr(delays[s - 1]));
+          opStmt->setAttr(b.getIdentifier("shift"),
+                          b.getIntegerAttr(shifts[s - 1]));
         });
   }
 
-  if (!isStmtwiseShiftValid(*forStmt, delays)) {
+  if (!isStmtwiseShiftValid(*forStmt, shifts)) {
     // Violates dependences.
     LLVM_DEBUG(llvm::dbgs() << "Shifts invalid - unexpected\n";);
     return success();
   }
 
-  if (stmtBodySkew(forStmt, delays)) {
+  if (stmtBodySkew(forStmt, shifts)) {
     LLVM_DEBUG(llvm::dbgs() << "stmt body skewing failed - unexpected\n";);
     return success();
   }

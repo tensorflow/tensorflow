@@ -79,6 +79,13 @@ struct MemRefCastFolder : public RewritePattern {
 // AddFOp
 //===----------------------------------------------------------------------===//
 
+void AddFOp::build(Builder *builder, OperationState *result, SSAValue *lhs,
+                   SSAValue *rhs) {
+  assert(lhs->getType() == rhs->getType());
+  result->addOperands({lhs, rhs});
+  result->types.push_back(lhs->getType());
+}
+
 Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
                                MLIRContext *context) const {
   assert(operands.size() == 2 && "addf takes two operands");
@@ -718,7 +725,6 @@ void DmaStartOp::print(OpAsmPrinter *p) const {
   *p << " : " << getSrcMemRef()->getType();
   *p << ", " << getDstMemRef()->getType();
   *p << ", " << getTagMemRef()->getType();
-  p->printOptionalAttrDict(getAttrs());
 }
 
 // Parse DmaStartOp.
@@ -846,8 +852,8 @@ void DmaWaitOp::print(OpAsmPrinter *p) const {
   p->printOperands(getTagIndices());
   *p << "], ";
   p->printOperand(getNumElements());
-  *p << " : " << getTagMemRef()->getType();
   p->printOptionalAttrDict(getAttrs());
+  *p << " : " << getTagMemRef()->getType();
 }
 
 // Parse DmaWaitOp.

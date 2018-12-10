@@ -48,6 +48,9 @@ class AddFOp
     : public BinaryOp<AddFOp, OpTrait::ResultsAreFloatLike,
                       OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
 public:
+  static void build(Builder *builder, OperationState *result, SSAValue *lhs,
+                    SSAValue *rhs);
+
   static StringRef getOperationName() { return "addf"; }
 
   Attribute constantFold(ArrayRef<Attribute> operands,

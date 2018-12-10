@@ -82,8 +82,9 @@ AffineMap getUnrolledLoopUpperBound(const ForStmt &forStmt,
                                     MLFuncBuilder *builder);
 
 /// Skew the statements in the body of a 'for' statement with the specified
-/// statement-wise delays.
-UtilResult stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> delays,
+/// statement-wise shifts. The shifts are with respect to the original execution
+/// order, and are multiplied by the loop 'step' before being applied.
+UtilResult stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> shifts,
                         bool unrollPrologueEpilogue = false);
 
 /// Tiles the specified band of perfectly nested loops creating tile-space loops

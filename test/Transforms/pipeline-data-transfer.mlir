@@ -1,5 +1,9 @@
 // RUN: mlir-opt %s -pipeline-data-transfer | FileCheck %s
 
+// CHECK-DAG: [[MOD_2_2D:#map[0-9]+]] = (d0) -> (d0 mod 2, d0 mod 2)
+// CHECK-DAG: [[MOD_2:#map[0-9]+]] = (d0) -> (d0 mod 2)
+// CHECK-DAG: [[REMAP_SHIFT_MINUS_4:#map[0-9]+]] = (d0) -> (d0 - 4)
+
 // CHECK-LABEL: mlfunc @loop_nest_dma() {
 mlfunc @loop_nest_dma() {
 // CHECK:        %0 = alloc() : memref<256xf32>
@@ -52,6 +56,41 @@ mlfunc @loop_nest_dma() {
   }
   return
 }
+
+// CHECK-LABEL: @loop_step
+mlfunc @loop_step(%arg0 : memref<512xf32>,
+                  %arg1 : memref<512xf32>) {
+  %c0 = constant 0 : index
+  %c4 = constant 4 : index
+  for %i0 = 0 to 512 step 4 {
+    %1 = alloc() : memref<4xf32, 1>
+    %2 = alloc() : memref<1xi32>
+    dma_start %arg0[%i0], %1[%c0], %c4, %2[%c0]
+              : memref<512xf32>, memref<4xf32, 1>, memref<1xi32>
+    dma_wait %2[%c0], %c4 : memref<1xi32>
+    "compute"(%i0) : (index) -> ()
+  }
+  return
+}
+// CHECK:        [[TAG:%[0-9]+]] = alloc() : memref<2x1xi32>
+// CHECK:        %2 = affine_apply [[MOD_2_2D]](%c0)
+// CHECK-NEXT:   dma_start %arg0[%c0], %0[%2#0, %c0_0], %c4, [[TAG]][%2#1, %c0_0] : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
+// CHECK-NEXT:   for %i0 = 4 to 512 step 4 {
+// CHECK-NEXT:     %3 = affine_apply [[MOD_2_2D]](%i0)
+// CHECK-NEXT:     dma_start %arg0[%i0], %0[%3#0, %c0_0], %c4, [[TAG]][%3#1, %c0_0] : memref<512xf32>, memref<2x4xf32, 1>, memref<2x1xi32>
+// CHECK-NEXT:     %4 = affine_apply #map3(%i0)
+// CHECK-NEXT:     %5 = affine_apply [[MOD_2]](%4)
+// CHECK-NEXT:     %6 = affine_apply [[MOD_2]](%4)
+// CHECK-NEXT:     dma_wait [[TAG]][%5, %c0_0], %c4 : memref<2x1xi32>
+// CHECK-NEXT:     "compute"(%4) : (index) -> ()
+// CHECK-NEXT:   }
+// CHECK-NEXT:   %7 = affine_apply [[REMAP_SHIFT_MINUS_4]](%c512)
+// CHECK-NEXT:   %8 = affine_apply [[MOD_2]](%7)
+// CHECK-NEXT:   %9 = affine_apply [[MOD_2]](%7)
+// CHECK-NEXT:   dma_wait [[TAG]][%8, %c0_0], %c4 : memref<2x1xi32>
+// CHECK-NEXT:   "compute"(%7) : (index) -> ()
+// CHECK-NEXT:   return
+// CHECK-NEXT: }
 
 #map0 = (d0, d1) -> (d0, d1)
 #map1 = (d0, d1) -> ((d0 * 2048 + d1 * 256) floordiv 32, 0)
