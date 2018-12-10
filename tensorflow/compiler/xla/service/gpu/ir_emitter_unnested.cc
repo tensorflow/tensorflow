@@ -1389,7 +1389,7 @@ Status IrEmitterUnnested::EmitRowReduction(
       auto emit_z_tile_element_loop = [&](llvm::Value* z_indvar) -> Status {
         llvm::Value* z =
             NSWAdd(z_indvar, NSWMul(index_typed_constant(z_tile_size), z_tile));
-        TF_RETURN_IF_ERROR(ksl.For(
+        TF_RETURN_IF_ERROR(ksl.ForWithStatus(
             "x_tile",
             /*start=*/index_typed_constant(0),
             /*end=*/index_typed_constant(x_tile_loop_bound),
@@ -1461,29 +1461,29 @@ Status IrEmitterUnnested::EmitRowReduction(
         return Status::OK();
       };
 
-      return ksl.For("z_tile",
-                     /*start=*/index_typed_constant(0),
-                     /*end=*/index_typed_constant(z_tile_size),
-                     /*step=*/1, emit_z_tile_element_loop);
+      return ksl.ForWithStatus("z_tile",
+                               /*start=*/index_typed_constant(0),
+                               /*end=*/index_typed_constant(z_tile_size),
+                               /*step=*/1, emit_z_tile_element_loop);
     };
 
     llvm::Value* tile_in_bounds =
         Or(b_.getInt1(width % (x_tile_size * kWarpSize) == 0),
            ICmpULT(last_x, index_typed_constant(width)));
 
-    TF_RETURN_IF_ERROR(
-        ksl.If(tile_in_bounds,
-               /*true_block_generator=*/
-               [&]() -> Status {
-                 return emit_z_x_tile_element_loop(/*x_tile_in_bounds=*/true,
-                                                   x_tile_size);
-               },
-               /*false_block_generator=*/
-               [&]() -> Status {
-                 return emit_z_x_tile_element_loop(
-                     /*x_tile_in_bounds=*/false,
-                     CeilOfRatio(width % (x_tile_size * kWarpSize), kWarpSize));
-               }));
+    TF_RETURN_IF_ERROR(ksl.IfWithStatus(
+        tile_in_bounds,
+        /*true_block_generator=*/
+        [&]() -> Status {
+          return emit_z_x_tile_element_loop(/*x_tile_in_bounds=*/true,
+                                            x_tile_size);
+        },
+        /*false_block_generator=*/
+        [&]() -> Status {
+          return emit_z_x_tile_element_loop(
+              /*x_tile_in_bounds=*/false,
+              CeilOfRatio(width % (x_tile_size * kWarpSize), kWarpSize));
+        }));
 
     // After accumulating the elements of the z_x_tile, emit calls to
     // shfl_down that accumulate the partial reduction results of all
@@ -3121,11 +3121,9 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   // pressure, since we touch threadIdx.x and blockIdx.x at the beginning of the
   // kernel *anyway*.
   std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(hlo);
-  TF_RETURN_IF_ERROR(
-      KernelSupportLibrary(&b_).If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-        llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
-        return Status::OK();
-      }));
+  KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
+  });
 
   // For multioutput fusion, we need to emit each operand and the root.
   TF_RETURN_IF_ERROR(
@@ -3241,7 +3239,7 @@ void EmitPartialTile(
     llvm::Value* x_loc =
         builder->CreateAdd(llvm::ConstantInt::get(index_ty, j), x);
 
-    ksl->IfReturnVoid(
+    ksl->If(
         "x_in_tile", builder->CreateICmpULT(x_loc, tile_width), [&] {
           // tile_height_bound =
           //   ceil(tile_height / num_threads_y) * num_threads_y
@@ -3252,13 +3250,13 @@ void EmitPartialTile(
           llvm::Value* tile_height_bound = builder->CreateMul(
               ceiling_of_ratio,
               llvm::ConstantInt::get(index_ty, num_threads_y));
-          ksl->ForReturnVoid(
+          ksl->For(
               loop_name, /*start=*/llvm::ConstantInt::get(index_ty, 0),
               /*end=*/tile_height_bound,
               /*step=*/llvm::ConstantInt::get(index_ty, num_threads_y),
               [&](llvm::Value* y_indvar) {
                 llvm::Value* y_loc = builder->CreateAdd(y_indvar, y);
-                ksl->IfReturnVoid(
+                ksl->If(
                     "y_in_tile", builder->CreateICmpULT(y_loc, tile_height),
                     [&] {
                       emit_elem_function(
@@ -3290,7 +3288,7 @@ void EmitTiledElementalCodeWithBoundsCheck(
   int64 tile_size_y = mapping_scheme->GetTileSizeForDimensionY();
   llvm::Type* index_ty = tile_width->getType();
 
-  ksl->IfReturnVoid(
+  ksl->If(
       "full_tile",
       builder->CreateAnd(
           builder->CreateICmpEQ(llvm::ConstantInt::get(index_ty, tile_size_x),
@@ -3419,15 +3417,14 @@ void IrEmitterUnnested::EmitBlock(const TileGenerator& emit_one_tile,
               Select(ICmpEQ(last_block_for_dim, block_id_for_dim),
                      last_block_size_for_dim, block_size_for_dim);
 
-          ksl.ForReturnVoid(
-              loop_name,
-              /*start=*/index_typed_constant(0),
-              /*end=*/num_tiles_in_block,
-              /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
-                IrArray::Index tile_index = starting_tile.AddOffsetToDim(
-                    block_dim_induction_var, dim_id, &b_);
-                emit_next_block_dim(tile_index);
-              });
+          ksl.For(loop_name,
+                  /*start=*/index_typed_constant(0),
+                  /*end=*/num_tiles_in_block,
+                  /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
+                    IrArray::Index tile_index = starting_tile.AddOffsetToDim(
+                        block_dim_induction_var, dim_id, &b_);
+                    emit_next_block_dim(tile_index);
+                  });
         }
       };
 
@@ -3524,13 +3521,12 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
   // since we touch threadIdx.x and blockIdx.x at the beginning of the kernel
   // *anyway*.
   if (unnested_hlo->IsMultiOutputFusion()) {
-    TF_CHECK_OK(KernelSupportLibrary(&b_).If(
+    KernelSupportLibrary{&b_}.If(
         "emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
           llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
                              ConstructIrArrayForOutputs(*unnested_hlo), &b_,
                              module_);
-          return Status::OK();
-        }));
+        });
   }
 
   // For each tiled parameter, cast its input IrArray to the corresponding
