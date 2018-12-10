@@ -2546,13 +2546,11 @@ class UnifiedLSTM(LSTM):
   Arguments:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
-        Default: hyperbolic tangent (`tanh`). If you pass `None`, no activation
-          is applied
-        (ie. "linear" activation: `a(x) = x`).
+      Default: hyperbolic tangent (`tanh`). If you pass `None`, no activation
+      is applied (ie. "linear" activation: `a(x) = x`).
     recurrent_activation: Activation function to use for the recurrent step.
-        Default: hard sigmoid (`hard_sigmoid`). If you pass `None`, no
-          activation is applied
-        (ie. "linear" activation: `a(x) = x`).
+      Default: sigmoid (`sigmoid`). If you pass `None`, no activation is
+      applied (ie. "linear" activation: `a(x) = x`).
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix, used for
       the linear transformation of the inputs..
@@ -2602,7 +2600,7 @@ class UnifiedLSTM(LSTM):
   def __init__(self,
                units,
                activation='tanh',
-               recurrent_activation='hard_sigmoid',
+               recurrent_activation='sigmoid',
                use_bias=True,
                kernel_initializer='glorot_uniform',
                recurrent_initializer='orthogonal',
@@ -2663,8 +2661,9 @@ class UnifiedLSTM(LSTM):
     self._num_inputs = None
     self._dropout_mask = None
     self.could_use_cudnn = (
-        activation == 'tanh' and recurrent_dropout == 0 and
-        not unroll and use_bias and bias_regularizer is None)
+        activation == 'tanh' and recurrent_activation == 'sigmoid' and
+        recurrent_dropout == 0 and not unroll and use_bias and
+        bias_regularizer is None)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # LSTM does not support constants. Ignore it during process.
