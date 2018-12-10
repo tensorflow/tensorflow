@@ -2274,7 +2274,7 @@ class PeepholeLSTMCell(LSTMCell):
     return c, o
 
 
-@tf_export('keras.layers.LSTM')
+@tf_export(v1=['keras.layers.LSTM'])
 class LSTM(RNN):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
@@ -2532,7 +2532,7 @@ class LSTM(RNN):
       config['implementation'] = 1
     return cls(**config)
 
-
+@tf_export('keras.layers.LSTM', v1=[])
 class UnifiedLSTM(LSTM):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
