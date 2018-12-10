@@ -27,9 +27,11 @@ import six
 
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
@@ -1191,3 +1193,61 @@ def get_static_batch_size(layer):
   if batch_input_shape is not None:
     return tensor_shape.as_dimension(batch_input_shape[0]).value
   return None
+
+
+def generic_output_names(outputs_list):
+  return ['output_%d' % (i + 1) for i in range(len(outputs_list))]
+
+
+def trace_model_call(model, input_signature=None):
+  """Trace the model call to create a tf.function for exporting a Keras model.
+
+  Args:
+    model: A Keras model.
+    input_signature: optional, a list of tf.TensorSpec objects specifying the
+      inputs to the model.
+
+  Returns:
+    A tf.function wrapping the model's call function with input signatures set.
+
+  Raises:
+    ValueError: if input signature cannot be inferred from the model.
+  """
+  if input_signature is None:
+    if isinstance(model.call, def_function.PolymorphicFunction):
+      input_signature = model.call.input_signature
+
+  if input_signature is None:
+    try:
+      inputs = model.inputs
+      input_names = model.input_names
+    except AttributeError:
+      raise ValueError(
+          'Model {} cannot be saved because the input shapes have not been '
+          'set. Usually, input shapes are automatically determined from calling'
+          ' .fit() or .predict(). To manually set the shapes, call '
+          'model._set_inputs(inputs).'.format(model))
+    input_specs = []
+    for input_tensor, input_name in zip(inputs, input_names):
+      input_specs.append(tensor_spec.TensorSpec(
+          shape=input_tensor.shape, dtype=input_tensor.dtype,
+          name=input_name))
+    # The input signature of the call function is a list with one element, since
+    # all tensor inputs must be passed in as the first argument.
+    input_signature = [input_specs] if len(input_specs) > 1 else input_specs
+
+  @def_function.function(input_signature=input_signature)
+  def _wrapped_model(*args):
+    """A concrete tf.function that wraps the model's call function."""
+    # When given a single input, Keras models will call the model on the tensor
+    # rather than a list consisting of the single tensor.
+    inputs = args[0] if len(input_signature) == 1 else list(args)
+    outputs_list = nest.flatten(model(inputs=inputs))
+    try:
+      output_names = model.output_names
+    except AttributeError:
+      output_names = generic_output_names(outputs_list)
+    return {name: output for name, output in zip(output_names, outputs_list)}
+
+  return _wrapped_model
+

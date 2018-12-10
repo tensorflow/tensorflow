@@ -31,7 +31,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -50,28 +49,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
-
-def _check_for_functional_keras_model(root):
-  """Makes an export signature for `root` if it's a functional Keras Model."""
-  # If nothing is decorated yet but this is a functional Keras Model (duck
-  # typed), we'll try to make a signature ourselves.
-  try:
-    inputs = root.inputs
-    input_names = root.input_names
-  except AttributeError:
-    return None
-  input_signature = []
-  for input_tensor, input_name in zip(inputs, input_names):
-    input_signature.append(tensor_spec.TensorSpec(
-        shape=input_tensor.shape, dtype=input_tensor.dtype,
-        name=input_name))
-
-  @def_function.function(input_signature=input_signature)
-  def _wrapped_model(*args):
-    outputs_list = nest.flatten(root(inputs=list(args)))
-    return {name: output for name, output
-            in zip(root.output_names, outputs_list)}
-  return _wrapped_model
+DEFAULT_SIGNATURE_ATTR = "_default_save_signature"
 
 
 def _find_function_to_export(root):
@@ -93,7 +71,7 @@ def _find_function_to_export(root):
       exported_function = attribute_value
       previous_attribute_name = attribute_name
   if exported_function is None:
-    exported_function = _check_for_functional_keras_model(root)
+    exported_function = getattr(root, DEFAULT_SIGNATURE_ATTR, None)
   if exported_function is None:
     raise ValueError(
         ("Exporting an object with no tf.saved_model.save(..., signatures=...) "

@@ -1539,8 +1539,7 @@ class Model(Network):
 
     outputs = nest.flatten(outputs)
     self.outputs = outputs
-    self.output_names = [
-        'output_%d' % (i + 1) for i in range(len(self.outputs))]
+    self.output_names = training_utils.generic_output_names(outputs)
     self.built = True
 
   def fit(self,
@@ -2579,6 +2578,10 @@ class Model(Network):
       # Backwards compatibility
       batch_size = 32
     return batch_size
+
+  @property
+  def _default_save_signature(self):
+    return training_utils.trace_model_call(self)
 
 
 class DistributedCallbackModel(Model):
