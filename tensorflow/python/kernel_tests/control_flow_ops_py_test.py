@@ -43,6 +43,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
@@ -700,7 +701,8 @@ class ControlFlowTest(test.TestCase):
       v1_msg = "The two structures don't have the same nested structure"
       v2_msg = "Outputs of true_fn and false_fn must have the same structure"
       with self.assertRaisesRegexp(
-          ValueError, v2_msg if control_flow_ops.ENABLE_COND_V2 else v1_msg):
+          ValueError,
+          v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
         r = control_flow_ops.cond(pred, fn1, fn2)
         self.evaluate(r)
 
@@ -859,7 +861,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(sess.run(grad, {pred: False, x: 1.0, y: 2.0}), 0.0)
 
       # v1 control flow gets None second derivative for some reason.
-      if not control_flow_ops.ENABLE_COND_V2:
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
         self.assertIsNone(grad_grad)
         return
 
@@ -949,7 +951,7 @@ class ControlFlowTest(test.TestCase):
 
     # In defuns, all prints should execute in program order.
     # This doesn't work with legacy control flow.
-    if control_flow_ops.ENABLE_COND_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
 
       @eager_function.defun
       def cond():
@@ -1003,7 +1005,7 @@ class ControlFlowTest(test.TestCase):
 
     # In defuns, all prints should execute in program order.
     # This doesn't work with legacy control flow.
-    if control_flow_ops.ENABLE_WHILE_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
 
       @eager_function.defun
       def while_loop():
@@ -1161,7 +1163,7 @@ class ControlFlowTest(test.TestCase):
     gs = gradients_impl.gradients(loop_no_xla, v)
     self.evaluate(gs)  # This should execute without error.
 
-    if control_flow_ops.ENABLE_WHILE_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
       with self.assertRaisesRegexp(
@@ -1219,7 +1221,7 @@ class ControlFlowTest(test.TestCase):
           lambda i, x: (i + 1, v * x), (0, 1.0),
           maximum_iterations=max_iter_holder[0])
 
-    if control_flow_ops.ENABLE_WHILE_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
       with self.assertRaisesRegexp(
@@ -1863,7 +1865,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(sess.run(grad, {pred: True}), 8.0)
       self.assertEqual(sess.run(grad, {pred: False}), 0.0)
 
-      if not control_flow_ops.ENABLE_WHILE_V2:
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
         return
 
       self.assertEqual(sess.run(grad_grad, {pred: True}), 0.0)
@@ -2399,7 +2401,7 @@ class ControlFlowTest(test.TestCase):
     #   outer_loop(x) = g(g(x)) = 4x + 81
     #   outer_loop'(x) = 4
     # Note that v1 control flow gets 4.0 as well if the cond is removed.
-    if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
       self.assertEqual(grad, 4.0)
 
   def testWhile_NestedInput(self):
@@ -2982,7 +2984,7 @@ class ControlFlowTest(test.TestCase):
 
     result = functional_ops.scan(fn, np.array([1., 2., 3.], dtype=np.float32))
     grad_theta = gradients_impl.gradients(result, theta)
-    if not control_flow_ops.ENABLE_WHILE_V2:
+    if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
       with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
         gradients_impl.gradients(grad_theta, theta)
     grad_theta_stopped = array_ops.stop_gradient(grad_theta)
@@ -3514,7 +3516,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(r[1].eval(), 65536.0)
       self.assertEqual(grad.eval(), 524288.0)
       # while_v2 does not have stacks.
-      if not control_flow_ops.ENABLE_WHILE_V2:
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
         self.assertEqual(
             len([op for op in x.graph.get_operations() if op.type == "StackV2"
                 ]), 1)
