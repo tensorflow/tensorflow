@@ -76,4 +76,6 @@ static PassRegistration<LowerAffineApply>
     pass("lower-affine-apply",
          "Decompose affine_applies into primitive operations");
 
-FunctionPass *createLowerAffineApplyPass() { return new LowerAffineApply(); }
+FunctionPass *mlir::createLowerAffineApplyPass() {
+  return new LowerAffineApply();
+}
