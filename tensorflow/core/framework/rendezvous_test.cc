@@ -278,6 +278,12 @@ class DummyDeviceContext : public DeviceContext {
   ~DummyDeviceContext() override {}
   int stream_id() const { return stream_id_; }
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
+                              Tensor* output_tensor,
+                              StatusCallback done) const override {
+    done(Status::OK());
+  }
+
  private:
   const int stream_id_;
 };

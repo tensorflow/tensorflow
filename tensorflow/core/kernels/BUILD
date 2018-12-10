@@ -2196,6 +2196,7 @@ tf_kernel_library(
         ":state",
         ":training_op_helpers",
         ":variable_ops",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
