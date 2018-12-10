@@ -76,7 +76,7 @@ class RmspropTest(xla_test.XLATestCase):
           rms_opt = rmsprop.RMSPropOptimizer(learning_rate, centered=centered)
           rms_update = rms_opt.apply_gradients(
               zip([grads0, grads1], [var0, var1]))
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
 
           mg0 = rms_opt.get_slot(var0, "mg")
           self.assertEqual(mg0 is not None, centered)
@@ -97,7 +97,7 @@ class RmspropTest(xla_test.XLATestCase):
 
           # Run 3 steps of RMSProp
           for _ in range(3):
-            rms_update.run()
+            self.evaluate(rms_update)
 
             var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
                 var0_np,

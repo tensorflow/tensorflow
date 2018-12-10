@@ -41,6 +41,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     input_name = "input"
     input_matrix_rows = 4
     input_matrix_columns = 144
+    # Note that tf.nn.bias_add supports up to 5 dimensions.
     input_dims = [input_matrix_rows, input_matrix_columns]
     output_name = "output"
     g = ops.Graph()
@@ -74,18 +75,18 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
       x5 = nn.bias_add(x5, b)
       x5 = gen_array_ops.reshape(x5, [4, -1])
 
-      x6 = gen_array_ops.reshape(x, [4, 12, 12])
-      b = self._ConstOp((12,))
+      x6 = gen_array_ops.reshape(x, [4, 24, 6])
+      b = self._ConstOp((6,))
       x6 = nn.bias_add(x6, b, data_format="NHWC")
       x6 = gen_array_ops.reshape(x6, [4, -1])
 
-      x7 = gen_array_ops.reshape(x, [4, 12, 3, 4])
-      b = self._ConstOp((4,))
+      x7 = gen_array_ops.reshape(x, [4, 12, 4, 3])
+      b = self._ConstOp((3,))
       x7 = nn.bias_add(x7, b, data_format="NHWC")
       x7 = gen_array_ops.reshape(x7, [4, -1])
 
-      x8 = gen_array_ops.reshape(x, [4, 12, 3, 2, 2])
-      b = self._ConstOp((2,))
+      x8 = gen_array_ops.reshape(x, [4, 4, 3, 2, 6])
+      b = self._ConstOp((6,))
       x8 = nn.bias_add(x8, b, data_format="NHWC")
       x8 = gen_array_ops.reshape(x8, [4, -1])
 
@@ -94,13 +95,13 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
       x9 = nn.bias_add(x9, b, data_format="NCHW")
       x9 = gen_array_ops.reshape(x9, [4, -1])
 
-      x10 = gen_array_ops.reshape(x, [4, 12, 3, 4])
-      b = self._ConstOp((12,))
+      x10 = gen_array_ops.reshape(x, [4, 3, 4, 12])
+      b = self._ConstOp((3,))
       x10 = nn.bias_add(x10, b, data_format="NCHW")
       x10 = gen_array_ops.reshape(x10, [4, -1])
 
-      x11 = gen_array_ops.reshape(x, [4, 12, 12])
-      b = self._ConstOp((12,))
+      x11 = gen_array_ops.reshape(x, [4, 6, 24])
+      b = self._ConstOp((6,))
       x11 = nn.bias_add(x11, b, data_format="NCHW")
       x11 = gen_array_ops.reshape(x11, [4, -1])
 
@@ -116,13 +117,18 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
-    return super(BiasaddMatMulTest,
-                 self).GetConversionParams(run_params)._replace(
-                     max_batch_size=4, maximum_cached_engines=1)
+    conversion_params = super(BiasaddMatMulTest,
+                              self).GetConversionParams(run_params)
+    return conversion_params._replace(
+        max_batch_size=4,
+        maximum_cached_engines=1,
+        # Disable layout optimizer, since it will convert BiasAdd with NHWC
+        # format to NCHW format under four dimentional input.
+        rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["my_trt_op_0"]
+    return ["TRTEngineOp_0"]
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""

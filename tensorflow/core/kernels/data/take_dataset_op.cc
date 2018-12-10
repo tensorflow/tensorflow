@@ -68,6 +68,17 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "TakeDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kUnknownCardinality) {
+        return kUnknownCardinality;
+      }
+      if (n == kInfiniteCardinality) {
+        return count_;
+      }
+      return std::min(n, count_);
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

@@ -49,7 +49,10 @@ from tensorflow.python.util import tf_inspect
 # TODO(mdan): This should behave like to_graph (e.g. convert statically).
 # TODO(znado): Make an alias so can write Verbosity directly without needing
 # to write converter.
-def convert(recursive=False, verbose=converter.Verbosity.VERBOSE):
+def convert(
+    recursive=False,
+    verbose=converter.Verbosity.BRIEF,
+    optional_features=converter.Feature.ALL):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -61,6 +64,9 @@ def convert(recursive=False, verbose=converter.Verbosity.VERBOSE):
     recursive: bool, whether to recursively convert any functions or classes
       that the converted function may use.
     verbose: converter.Verbosity, the level of verbosity.
+    optional_features: converted.Feature, allows toggling optional or
+      experimental features. When set to None, only the core features are
+      enabled.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -78,7 +84,7 @@ def convert(recursive=False, verbose=converter.Verbosity.VERBOSE):
               recursive=recursive,
               verbose=verbose,
               force_conversion=True,
-              optional_features=converter.Feature.ALL,
+              optional_features=optional_features,
           ), *args, **kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
@@ -194,6 +200,17 @@ def converted_call(f, owner, options, *args, **kwargs):
   # things like builtins.
   if not options.internal_convert_user_code:
     return f(*args, **kwargs)
+
+  # Unwrap functools.partial objects
+  # TODO(allenl, mdan): Consider sharing unwrapping logic with tf_inspect.
+  while isinstance(f, functools.partial):
+    args = f.args + args
+    new_kwargs = {}
+    if f.keywords is not None:
+      new_kwargs.update(f.keywords)
+    new_kwargs.update(kwargs)
+    kwargs = new_kwargs
+    f = f.func
 
   if tf_inspect.isfunction(f) or tf_inspect.ismethod(f):
     # Regular functions

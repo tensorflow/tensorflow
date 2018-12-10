@@ -376,27 +376,6 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
-    name = "resampler_ops_test",
-    size = "small",
-    srcs = ["resampler_ops_test.py"],
-    disabled_backends = [
-        # TODO(b/74459949) Support BatchDot in CPU backend.
-        "cpu",
-        "cpu_ondemand",
-    ],
-    # TODO(b/112295522): figure out how to make OSS build pass.
-    tags = ["no_oss"],
-    deps = [
-        ":xla_test",
-        "//tensorflow/contrib/resampler:resampler_ops",
-        "//tensorflow/contrib/resampler:resampler_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
@@ -429,13 +408,6 @@ tf_xla_py_test(
     name = "eager_test",
     size = "large",
     srcs = ["eager_test.py"],
-    disabled_backends = [
-        # TODO(b/78199195) Support XLA CPU devices in eager runtime
-        "cpu",
-        "cpu_ondemand",
-        # TODO(b/78468222) Enable GPU backend
-        "gpu",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",

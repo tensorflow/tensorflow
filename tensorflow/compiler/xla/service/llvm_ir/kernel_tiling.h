@@ -90,6 +90,10 @@ class KernelMappingScheme {
   enum { DimZ = 0, DimY, DimX, DimTot };
 
  public:
+  // dims_in_elems: the normalized tensor dimensions.
+  // req_block_sizes: the requested block size in number of tiles for each
+  //   dimension. The actual block size is set to min(req_block_size,
+  //   dims_in_number_of_blocks).
   explicit KernelMappingScheme(absl::Span<const int64> dims_in_elems,
                                int64 tile_size_y, int64 tile_size_x,
                                absl::Span<const int64> req_block_sizes,

@@ -53,11 +53,11 @@ from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
 from tensorflow.python.util import tf_inspect
@@ -168,6 +168,8 @@ def _augment_with_special_arguments(test_method):
       if GPU_TEST:
         self.skipTest("Test that doesn't require GPUs.")
     elif context.num_gpus() < required_gpus:
+      # TODO(priyag): Consider allowing tests in graph mode using soft
+      # placement.
       self.skipTest(
           "{} GPUs are not available for this test. {} GPUs are available".
           format(required_gpus, context.num_gpus()))
@@ -190,7 +192,7 @@ def _augment_with_special_arguments(test_method):
         kwargs_to_pass[arg] = kwargs[arg]
 
     if mode == "eager":
-      with ops.Graph().as_default(), context.eager_mode():
+      with context.eager_mode():
         if distribution:
           kwargs_to_pass["distribution"] = distribution.strategy
         test_method(**kwargs_to_pass)
@@ -335,6 +337,13 @@ tpu_strategy_one_step = NamedDistribution(
     "TPUOneStep", lambda: tpu_lib.TPUStrategy(
         TPUClusterResolver(""), steps_per_run=1),
     required_tpu=True)
+mirrored_strategy_with_one_cpu = NamedDistribution(
+    "Mirrored1CPU",
+    lambda: mirrored_lib.MirroredStrategy(["/cpu:0"]))
+mirrored_strategy_with_one_gpu = NamedDistribution(
+    "Mirrored1GPU",
+    lambda: mirrored_lib.MirroredStrategy(["/gpu:0"]),
+    required_gpus=1)
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/cpu:0"]),
@@ -343,6 +352,13 @@ mirrored_strategy_with_two_gpus = NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+core_mirrored_strategy_with_one_cpu = NamedDistribution(
+    "CoreMirrored1CPU",
+    lambda: mirrored_lib.CoreMirroredStrategy(["/cpu:0"]))
+core_mirrored_strategy_with_one_gpu = NamedDistribution(
+    "CoreMirrored1GPU",
+    lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0"]),
+    required_gpus=1)
 core_mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "CoreMirroredCPUAndGPU",
     lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/cpu:0"]),

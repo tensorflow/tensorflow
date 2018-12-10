@@ -82,7 +82,7 @@ class BatchNormalizationTest(test.TestCase):
           epsilon=epsilon,
           data_format=data_format,
           is_training=False)
-      y_val = sess.run(y)
+      y_val = self.evaluate(y)
       y_ref = self._inference_ref(x, scale, offset, mean, var, epsilon,
                                   data_format)
     # An atol value of 1e-3 is too small for float16's, because some adjacent
@@ -127,7 +127,7 @@ class BatchNormalizationTest(test.TestCase):
           epsilon=epsilon,
           data_format=data_format,
           is_training=True)
-      y_val, mean_val, var_val = sess.run([y, mean, var])
+      y_val, mean_val, var_val = self.evaluate([y, mean, var])
       y_ref, mean_ref, var_ref = self._training_ref(x, scale, offset, epsilon,
                                                     data_format)
     y_atol = 2e-3 if x_dtype == np.float16 else 1e-3
@@ -277,10 +277,10 @@ class BatchNormalizationTest(test.TestCase):
       if is_training:
         epsilon = y.op.get_attr('epsilon')
         data_format = y.op.get_attr('data_format')
-        grad_vals = sess.run([grad_x, grad_scale, grad_offset])
+        grad_vals = self.evaluate([grad_x, grad_scale, grad_offset])
         grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, pop_mean,
                                                pop_var, epsilon, data_format)
-        grad_internal_vals = sess.run(list(grad_internal))
+        grad_internal_vals = self.evaluate(list(grad_internal))
         for grad_val, grad_internal_val in zip(grad_vals, grad_internal_vals):
           self.assertAllClose(grad_val, grad_internal_val, atol=err_tolerance)
 

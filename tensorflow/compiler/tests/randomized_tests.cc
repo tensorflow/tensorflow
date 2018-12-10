@@ -3382,10 +3382,10 @@ int main(int argc, char** argv) {
   }
   // XLA devices register kernels at construction time; create all known devices
   // to make sure the kernels are registered.
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
   TF_CHECK_OK(tensorflow::DeviceFactory::AddDevices(
       tensorflow::SessionOptions(), "", &devices));
-  tensorflow::DeviceMgr device_mgr(devices);
+  tensorflow::DeviceMgr device_mgr(std::move(devices));
 
   tensorflow::Device* ignored;
   TF_QCHECK_OK(

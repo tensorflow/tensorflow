@@ -23,7 +23,6 @@ package(
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
@@ -38,20 +37,10 @@ cc_library(
         ":xla_cpu_device",
         ":xla_cpu_jit",
         "//tensorflow/compiler/plugin",
-    ] + if_cuda_is_configured([
+    ] + if_cuda([
         ":xla_gpu_device",
         ":xla_gpu_jit",
     ]),
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "register_xla_cpu_jit",
-    srcs = ["register_xla_cpu_jit.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:tf_xla_stub",
-    ],
     alwayslink = 1,
 )
 
@@ -60,22 +49,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":jit_compilation_passes",
-        ":register_xla_cpu_jit",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_cpu_only_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/core:tf_xla_stub",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "register_xla_gpu_jit",
-    srcs = ["register_xla_gpu_jit.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:tf_xla_stub",
     ],
     alwayslink = 1,
 )
@@ -85,8 +63,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda([
         ":jit_compilation_passes",
-        ":register_xla_gpu_jit",
-        "//tensorflow/core:tf_xla_stub",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
@@ -100,9 +76,9 @@ cc_library(
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":create_xla_launch_op",  # buildcleaner: keep
         ":flags",
         ":jit_compilation_passes",
-        ":register_xla_cpu_jit",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -120,8 +96,8 @@ cc_library(
     srcs = ["xla_gpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":create_xla_launch_op",  # buildcleaner: keep
         ":jit_compilation_passes",
-        ":register_xla_gpu_jit",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -130,6 +106,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -294,6 +271,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
@@ -762,7 +740,10 @@ tf_custom_op_py_library(
     visibility = [
         ":friends",
     ],
-    deps = ["//tensorflow/compiler/jit/ops:xla_ops_wrapper_py"],
+    deps = [
+        "//tensorflow/compiler/jit/ops:xla_ops_grad",
+        "//tensorflow/compiler/jit/ops:xla_ops_wrapper_py",
+    ],
 )
 
 # This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.

@@ -43,6 +43,9 @@ public final class NativeInterpreterWrapperTest {
   private static final String BYTE_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/uint8.bin";
 
+  private static final String STRING_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/string.bin";
+
   private static final String QUANTIZED_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/quantized.bin";
 
@@ -221,6 +224,50 @@ public final class NativeInterpreterWrapperTest {
     byte[] expected = {(byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0,
                        (byte) 0xe0, 0x4f, (byte) 0xd0, (byte) 0xe0, 0x4f, (byte) 0xd0};
     assertThat(outputOneD).isEqualTo(expected);
+    wrapper.close();
+  }
+
+  @Test
+  public void testRunWithString() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(STRING_MODEL_PATH);
+    String[] oneD = {"s1", "s22", "s333"};
+    String[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    String[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    String[][][][] fourD = {threeD, threeD};
+    Object[] inputs = {fourD};
+    String[][][][] parsedOutputs = new String[2][4][4][12];
+    Map<Integer, Object> outputs = new HashMap<>();
+    outputs.put(0, parsedOutputs);
+    wrapper.run(inputs, outputs);
+    String[] outputOneD = parsedOutputs[0][0][0];
+    String[] expected = {
+      "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333", "s1", "s22", "s333"
+    };
+    assertThat(outputOneD).isEqualTo(expected);
+    wrapper.close();
+  }
+
+  @Test
+  public void testRunWithString_wrongShapeError() {
+    NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(STRING_MODEL_PATH);
+    String[] oneD = {"s1", "s22", "s333"};
+    String[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    String[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    String[][][][] fourD = {threeD, threeD};
+    Object[] inputs = {fourD};
+    String[][][][] parsedOutputs = new String[2][4][4][10];
+    Map<Integer, Object> outputs = new HashMap<>();
+    outputs.put(0, parsedOutputs);
+    try {
+      wrapper.run(inputs, outputs);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Cannot copy between a TensorFlowLite tensor with shape [2, 4, 4, 12] and "
+                  + "a Java object with shape [2, 4, 4, 10]");
+    }
     wrapper.close();
   }
 

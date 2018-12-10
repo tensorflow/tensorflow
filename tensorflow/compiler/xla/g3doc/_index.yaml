@@ -17,7 +17,7 @@ landing_page:
   - classname: devsite-landing-row-cards
     items:
     - heading: XLA - TensorFlow, compiled
-      image_path: /ecosystem/images/tf-logo-card-16x9.png
+      image_path: /resources/images/tf-logo-card-16x9.png
       path: https://developers.googleblog.com/2017/03/xla-tensorflow-compiled.html
       buttons:
       - label: Read on Google Developers blog
@@ -28,7 +28,7 @@ landing_page:
       - label: Watch the video
         path: https://www.youtube.com/watch?v=kAOanJczHA0
     - heading: XLA on GitHub
-      image_path: /ecosystem/images/github-card-16x9.png
+      image_path: /resources/images/github-card-16x9.png
       path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/compiler/xla
       buttons:
       - label: View on GitHub

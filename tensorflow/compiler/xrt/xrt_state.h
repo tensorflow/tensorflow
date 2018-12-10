@@ -137,6 +137,9 @@ class XRTTupleAllocation : public ResourceBase {
   Status ToLiteral(xla::Backend* backend, int device_ordinal,
                    xla::Literal* literal);
 
+  // Write a new literal value to the allocation.
+  Status WriteLiteral(xla::Backend* backend, const xla::Literal& literal);
+
   // True if none of the buffers in the allocation are aliased by any other live
   // handle.
   bool IsExclusiveOwner();

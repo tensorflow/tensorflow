@@ -108,6 +108,16 @@ enum Format {
   SPARSE = 2;
 }
 
+// Describes a tile used in tiling-based layout. Refer to
+// g3doc/layout_with_tiling.md for details about tiling-based layout.
+message Tile {
+  // Number of elements in each dimension of the tile. It's ordered from the
+  // most major dimension of the tile to the most minor dimension of the tile.
+  // The dimensions correspond to a suffix of the dimensions of the shape being
+  // tiled.
+  repeated int64 dimensions = 1;
+}
+
 // A layout describes how the array is placed in (1D) memory space.  This
 // includes the minor-to-major ordering of dimensions within a shape.
 //
@@ -138,6 +148,20 @@ message Layout {
   // memory.  This field must be unset unless the format is SPARSE.
   int64 max_sparse_elements = 5;
 
+  // A sequence of tiles, starting from the tile that's applied first to the
+  // Shape.
+  //
+  // TODO(b/119839262): implement tiling in each backend or add Unimplemented
+  // error.
+  repeated Tile tiles = 6;
+
+  // Bit size of each element. If the size is bigger than what the element
+  // type requires, the value is stored in the least significant
+  // bits and the additional most significant bits are filled with 0's.
+  //
+  // TODO(b/119839262): implement in each backend or add Unimplemented error.
+  int64 element_size_in_bits = 7;
+
   // Important: if any field is added, be sure to modify ShapeUtil::Equal() and
   // LayoutUtil::Hash appropriately to account for the new field.
 }
@@ -154,7 +178,7 @@ message Layout {
 // See the XLA documentation for more information on shapes and layouts.
 //
 // LINT.IfChange
-message Shape {
+message ShapeProto {
   reserved 1;
   reserved "rank";
 
@@ -169,7 +193,7 @@ message Shape {
   repeated int64 dimensions = 3;
 
   // For tuples only, the shapes of constitutent shapes in the tuple sequence.
-  repeated Shape tuple_shapes = 4;
+  repeated ShapeProto tuple_shapes = 4;
 
   // The layout used to back this shape.
   Layout layout = 5;
@@ -183,9 +207,9 @@ message Shape {
 
 // Shape of the parameters and output of a computation (like a traditional
 // function signature).
-message ProgramShape {
-  repeated Shape parameters = 1;
-  Shape result = 2;
+message ProgramShapeProto {
+  repeated ShapeProto parameters = 1;
+  ShapeProto result = 2;
   repeated string parameter_names = 3;
 }
 
@@ -320,7 +344,7 @@ message DeviceAssignmentProto {
 // Transfers to/from the client are encoded in literal form, and the structure
 // of the repeated fields is implied by the shape.
 message LiteralProto {
-  Shape shape = 1;
+  ShapeProto shape = 1;
   repeated bool preds = 2;
   bytes s8s = 15;
   bytes u8s = 3;
@@ -521,7 +545,7 @@ message OpSharding {
   }
   Type type = 1;
   // The shape of the sharded tile.
-  Shape tile_shape = 2;
+  ShapeProto tile_shape = 2;
   // The shape of the tile assignment tensor - this must be the same rank as
   // tile_shape and the product of its dimensions must equal
   // tile_assignment_devices.size().

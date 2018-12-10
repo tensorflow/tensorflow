@@ -112,7 +112,8 @@ def tflite_jni_binary(
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
-        deps = []):
+        deps = [],
+        srcs = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + [
         "-Wl,--version-script",  # Export only jni functions & classes.
@@ -124,6 +125,7 @@ def tflite_jni_binary(
         linkshared = linkshared,
         linkstatic = linkstatic,
         deps = deps + [linkscript],
+        srcs = srcs,
         linkopts = linkopts,
         testonly = testonly,
     )
@@ -221,6 +223,7 @@ def json_to_tflite(name, src, out):
 # generated_test_models_failing().
 def generated_test_models():
     return [
+        "abs",
         "add",
         "arg_min_max",
         "avg_pool",
@@ -236,18 +239,21 @@ def generated_test_models():
         "equal",
         "exp",
         "expand_dims",
+        "fill",
         "floor",
         "floor_div",
         "floor_mod",
         "fully_connected",
         "fused_batch_norm",
         "gather",
+        "gather_with_constant",
         "global_batch_norm",
         "greater",
         "greater_equal",
         "sum",
         "l2norm",
         "l2_pool",
+        "leaky_relu",
         "less",
         "less_equal",
         "local_response_norm",
@@ -261,6 +267,7 @@ def generated_test_models():
         "maximum",
         "mean",
         "minimum",
+        "mirror_pad",
         "mul",
         "neg",
         "not_equal",
@@ -268,6 +275,7 @@ def generated_test_models():
         "pack",
         "pad",
         "padv2",
+        "placeholder_with_default",
         "prelu",
         "pow",
         "range",
@@ -290,17 +298,21 @@ def generated_test_models():
         "space_to_depth",
         "sparse_to_dense",
         "split",
+        "splitv",
         "sqrt",
         "square",
+        "squared_difference",
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
+        "strided_slice_buggy",
         "sub",
         "tile",
         "topk",
         "transpose",
         "transpose_conv",
         "unpack",
+        "unroll_batch_matmul",
         "where",
         "zeros_like",
     ]
@@ -447,6 +459,7 @@ def gen_model_coverage_test(model_name, data, failure_type, tags):
         native.py_test(
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = ["model_coverage_test.py"],
+            size = "large",
             main = "model_coverage_test.py",
             args = [
                 "--model_name=%s" % model_name,
@@ -457,7 +470,6 @@ def gen_model_coverage_test(model_name, data, failure_type, tags):
             tags = [
                 "no_oss",
                 "no_windows",
-                "notap",
             ] + tags,
             deps = [
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",

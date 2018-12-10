@@ -41,9 +41,6 @@ class NoopEliminationTest(test_base.DatasetTestBase):
             ["FiniteRepeat", "FiniteSkip", "Prefetch", "MemoryCacheImpl"]))
     dataset = dataset.repeat(some_tensor).skip(5).take(-1).skip(0).repeat(
         1).prefetch(0).prefetch(1).cache()
-    options = dataset_ops.Options()
-    options.experimental_noop_elimination = True
-    dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=range(5))
 
 

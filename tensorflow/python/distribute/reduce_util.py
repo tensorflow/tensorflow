@@ -21,9 +21,10 @@ from __future__ import print_function
 import enum
 
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(priyag): Add this to tf.distribute namespace when it exists.
+@tf_export("distribute.ReduceOp")
 class ReduceOp(enum.Enum):
   """Indicates how a set of values should be reduced.
 

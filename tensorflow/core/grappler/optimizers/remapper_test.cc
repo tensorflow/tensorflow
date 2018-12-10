@@ -24,7 +24,17 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-class RemapperTest : public GrapplerTest {};
+class RemapperTest : public GrapplerTest {
+ protected:
+  // TODO(b/119765980): Upgrade upstream Eigen to set `m_can_use_xsmm=false` for
+  // contractions with non-default contraction output kernels.
+  bool EigenSupportsContractionOutputKernel() {
+#if defined(EIGEN_USE_LIBXSMM)
+    return false;
+#endif
+    return true;
+  }
+};
 
 TEST_F(RemapperTest, FusedBatchNorm) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -92,6 +102,8 @@ TEST_F(RemapperTest, FusedBatchNormNCHW) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBias) {
+  if (!EigenSupportsContractionOutputKernel()) return;
+
   using ::tensorflow::ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -153,6 +165,8 @@ TEST_F(RemapperTest, FuseConv2DWithBias) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBiasAndRelu) {
+  if (!EigenSupportsContractionOutputKernel()) return;
+
   using ::tensorflow::ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -216,6 +230,8 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndRelu) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
+  if (!EigenSupportsContractionOutputKernel()) return;
+
   using ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -291,6 +307,8 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNormAndRelu) {
+  if (!EigenSupportsContractionOutputKernel()) return;
+
   using ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -368,6 +386,8 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndRelu) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
+  if (!EigenSupportsContractionOutputKernel()) return;
+
   using ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();

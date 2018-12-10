@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -52,16 +54,78 @@ class ReconstructionOpsTest(test.TestCase):
                             "100000000000000"]
 
   def test_all_ones(self):
-    signal = constant_op.constant(np.ones((3, 5)), dtype=dtypes.int64)
+    signal = array_ops.ones([3, 5])
     reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
 
-    with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction)
+    self.assertEqual(reconstruction.shape.as_list(), [9])
+
+    with self.session(use_gpu=True):
+      output = self.evaluate(reconstruction)
 
       expected_output = np.array([1, 1, 2, 2, 3, 2, 2, 1, 1])
 
       self.assertAllClose(output, expected_output)
 
+  @test_util.run_deprecated_v1
+  def test_unknown_shapes(self):
+    # This test uses placeholders and does not work in eager mode.
+    if context.executing_eagerly():
+      return
+
+    signal = array_ops.placeholder(dtype=dtypes.int32, shape=[None, None, None])
+    frame_step = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
+
+    self.assertEqual(reconstruction.shape.as_list(), [None, None])
+
+    with self.session(use_gpu=True) as sess:
+      output = sess.run(reconstruction,
+                        feed_dict={signal: np.ones([4, 3, 5]), frame_step: 2})
+
+      expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
+
+      self.assertAllClose(output, expected_output)
+
+  @test_util.run_deprecated_v1
+  def test_unknown_rank(self):
+    # This test uses placeholders and does not work in eager mode.
+    if context.executing_eagerly():
+      return
+
+    signal = array_ops.placeholder(dtype=dtypes.int32, shape=None)
+    frame_step = array_ops.placeholder(dtype=dtypes.int32, shape=[])
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
+
+    self.assertEqual(reconstruction.shape, None)
+
+    with self.session(use_gpu=True) as sess:
+      output = sess.run(reconstruction,
+                        feed_dict={signal: np.ones([4, 3, 5]), frame_step: 2})
+
+      expected_output = np.array([[1, 1, 2, 2, 3, 2, 2, 1, 1]] * 4)
+
+      self.assertAllClose(output, expected_output)
+
+  @test_util.run_deprecated_v1
+  def test_fast_path(self):
+    # This test uses tensor names and does not work in eager mode.
+    if context.executing_eagerly():
+      return
+
+    signal = array_ops.ones([3, 5])
+    frame_step = 5
+    reconstruction = reconstruction_ops.overlap_and_add(signal, frame_step)
+
+    self.assertEqual(reconstruction.name, "overlap_and_add/fast_path:0")
+
+    with self.session(use_gpu=True) as sess:
+      output = self.evaluate(reconstruction)
+
+      expected_output = np.ones([15])
+
+      self.assertAllClose(output, expected_output)
+
+  @test_util.run_deprecated_v1
   def test_simple(self):
     def make_input(frame_length, num_frames=3):
       """Generate a tensor of num_frames frames of frame_length."""
@@ -98,8 +162,8 @@ class ReconstructionOpsTest(test.TestCase):
                                   dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction)
+    with self.session(use_gpu=True):
+      output = self.evaluate(reconstruction)
       string_output = [np.base_repr(x, self.bases[0]) for x in output]
 
       self.assertEqual(string_output, self.expected_string)
@@ -108,8 +172,8 @@ class ReconstructionOpsTest(test.TestCase):
     signal = constant_op.constant(self.powers, dtype=dtypes.int64)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction)
+    with self.session(use_gpu=True):
+      output = self.evaluate(reconstruction)
 
       accumulator = True
       for i in range(self.batch_size):
@@ -124,8 +188,8 @@ class ReconstructionOpsTest(test.TestCase):
     signal = constant_op.constant(input_matrix, dtype=dtypes.float32)
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
-    with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction)
+    with self.session(use_gpu=True):
+      output = self.evaluate(reconstruction)
 
       string_output = [np.base_repr(int(x), self.bases[0]) for x in
                        np.squeeze(output)]
@@ -133,6 +197,7 @@ class ReconstructionOpsTest(test.TestCase):
       self.assertEqual(output.shape, (1, 9))
       self.assertEqual(string_output, self.expected_string)
 
+  @test_util.run_deprecated_v1
   def test_gradient(self):
     configurations = [
         ((1, 128), 1),
@@ -154,6 +219,7 @@ class ReconstructionOpsTest(test.TestCase):
         gradient = sess.run(gradients_impl.gradients([loss], [signal])[0])
         self.assertTrue((gradient == 1.0).all())
 
+  @test_util.run_deprecated_v1
   def test_gradient_batch(self):
     with self.session(use_gpu=True) as sess:
       signal = array_ops.zeros((2, 10, 10))
@@ -176,6 +242,7 @@ class ReconstructionOpsTest(test.TestCase):
           np.reshape(np.arange(100).astype(np.float32), (10, 10))])
       self.assertAllEqual(expected_gradient, gradient)
 
+  @test_util.run_deprecated_v1
   def test_gradient_numerical(self):
     with self.session(use_gpu=True):
       shape = (2, 10, 10)

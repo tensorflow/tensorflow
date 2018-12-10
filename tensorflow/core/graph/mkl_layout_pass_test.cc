@@ -65,6 +65,13 @@ static void InitGraph(const string& s, Graph* graph,
 class MklLayoutPassTest : public ::testing::Test {
  public:
   MklLayoutPassTest() : graph_(OpRegistry::Global()) {}
+  // Ashraf added
+  Node* FindNode(const string& name) {
+    for (Node* node : graph_.nodes()) {
+      if (node->name() == name) return node;
+    }
+    LOG(FATAL) << name;
+  }
 
   void InitGraph(const string& s, const string& device = kCPUDevice) {
     ::tensorflow::InitGraph(s, &graph_, device);
@@ -131,6 +138,8 @@ REGISTER_OP("_MklInput2")
     .Output("o: uint8")
     .Output("o1: uint8")
     .SetIsStateful();
+REGISTER_OP("Output2").Input("i: float").Input("i1: float").SetIsStateful();
+REGISTER_OP("Output").Input("i: float").SetIsStateful();
 
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to node merge optiimization
@@ -454,6 +463,559 @@ TEST_F(MklLayoutPassTest, NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd) {
             "DMT/_1->E:4;DMT/_2->E:5;DMT/_3->G:3;E->G:2;E->Y;E:1->G:1;E:2->G:5;"
             "E:3->G:4;F->G;F:control->DMT/_3:control;G->Z;X->Y:1;X->Z:1");
 }
+
+// Test set 3: Pad + Conv2D fusion
+// padding is VALID type
+// A = input(image), B = input(paddings), C= Pad = input of conv2D,
+// D=input(filter), E = Conv2D, Z = Zeta
+// C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
+// After layout pass
+// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
+TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Positive) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Pad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tpaddings'        value { type: DT_INT32 } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHWC' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'VALID' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
+            "DMT/_2->E:5;E->Z;Y->Z:1");
+}
+// Test if input control edges do not duplicate after merge.
+// If both the merging ops have input control edge from a common op
+// then, the merged op will have only one control edge from that
+// common op.
+// padding is VALID type
+// A = input(image), A1 = input, B = input(paddings),
+// C= Pad = input of conv2D,
+// D=input(filter), E = Conv2D, Z = Zeta
+// C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
+// A1:control->C:control
+// A1:control->E:control
+// After layout pass:
+// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
+// A1:control->E:control (only one control edge)
+TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithConv2D_Positive) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A1' op: 'Input'}"
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Pad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tpaddings'        value { type: DT_INT32 } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHWC' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'VALID' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  Node* a1 = FindNode("A1");
+  Node* c = FindNode("C");
+  Node* e = FindNode("E");
+  const Edge* edge = graph_.AddControlEdge(a1, c);
+  const Edge* edge_1 = graph_.AddControlEdge(a1, e);
+  ASSERT_NE(edge, nullptr);
+  ASSERT_NE(edge_1, nullptr);
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+      "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
+      "A1:control->E:control;A:control->DMT/_0:control;A:control->DMT/"
+      "_1:control;"
+      "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
+      "DMT/_2->E:5;E->Z;Y->Z:1");
+}
+// Test if output control edges does not duplicate after merge.
+// If both the merging ops have output control edge to a common op,
+// then after merge, the merged op will have only one control edge
+// to that commom op.
+// padding is VALID type
+// A = input(image), B = input(paddings), C= Pad = input of conv2D,
+// D=input(filter), E = Conv2D, Z = Zeta
+// C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
+// C:control->A1:control
+// E:control->A1:control
+// After layout pass:
+// _MklPadWithConv2D(A, D, B, DMT/_0, DMT/_1, DMT/_2)
+// E:control->A1:control (only one control edge)
+TEST_F(MklLayoutPassTest, Output_ControlEdge_PadWithConv2D_Positive) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A1' op: 'Input'}"
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Pad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tpaddings'        value { type: DT_INT32 } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHWC' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'VALID' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  Node* a1 = FindNode("A1");
+  Node* c = FindNode("C");
+  Node* e = FindNode("E");
+  const Edge* edge = graph_.AddControlEdge(c, a1);
+  const Edge* edge_1 = graph_.AddControlEdge(e, a1);
+  ASSERT_NE(edge, nullptr);
+  ASSERT_NE(edge_1, nullptr);
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);A1(Input);B(Int32Input);D(Input);DMT/_0(Const);DMT/_1(Const);"
+      "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;"
+      "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+      "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"
+      "DMT/_2->E:5;E->Z;E:control->A1:control;Y->Z:1");
+}
+// Pad + Conv2D fusion with padding is VALID,
+// Input node pointing to both Pad and Conv2D
+// A = input(image), B = input(paddings), C= Pad
+// E = Conv2D, Z = Zeta
+// C=Pad(A,B); E=Conv2D(C,A); Z=Zeta(E,Y)
+// After layout pass
+// _MklPadWithConv2D(A, A, B, DMT/_0, DMT/_1, DMT/_2)
+TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Common_Input) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Pad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tpaddings'        value { type: DT_INT32 } }"
+      " input: ['A', 'B']}"
+      "node { name: 'E' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHWC' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'VALID' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['C', 'A'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Int32Input);DMT/_0(Const);DMT/_1(Const);"
+            "DMT/_2(Const);E(_MklPadWithConv2D);Y(Input);Z(Zeta)|A->E;A->E:1;"
+            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->E:2;DMT/_0->E:3;DMT/_1->E:4;"
+            "DMT/_2->E:5;E->Z;Y->Z:1");
+}
+// Pad + Conv2D with padding is VALID,
+// Input node pointing to both Pad and Conv2D
+// Output of both Pad and Conv2D feeds one node (Z as Output2)
+// A = input(as image), B = input(as paddings), C= Pad
+// E = Conv2D, Z = Output2
+// C=Pad(A,B); E=Conv2D(C,A); Z=Output(C,E)
+// After layout pass - No merging, since Pad and Conv2D both
+// feed to the same node (Z)
+TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Common_InOutput) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Pad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tpaddings'        value { type: DT_INT32 } }"
+      " input: ['A', 'B']}"
+      "node { name: 'E' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHWC' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'VALID' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['C', 'A'] }"
+      "node { name: 'Z' op: 'Output2'"
+      " input: ['C', 'E']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Int32Input);C(Pad);DMT/_0(Const);DMT/_1(Const);"
+            "E(_MklConv2D);Z(Output2)|A->C;A->E:1;B->C:1;C->E;C->Z;"
+            "C:control->DMT/_0:control;C:control->DMT/_1:control;"
+            "DMT/_0->E:2;DMT/_1->E:3;E->Z:1");
+}
+// Pad + Conv2D; padding is SAME
+// A = input(image), B = input(paddings), C= Pad = input of conv2D,
+// D=input(filter), E = Conv2D, Z = Zeta
+// C=Pad(A,B); E=Conv2D(C,D); Z=Zeta(E,Y)
+// After layout pass - No merging
+TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Negative) {
+  DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Int32Input'}"
+      "node { name: 'C' op: 'Pad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'Tpaddings'        value { type: DT_INT32 } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Input'}"
+      "node { name: 'E' op: 'Conv2D'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NHWC' } }"
+      " attr { key: 'use_cudnn_on_gpu' value { b: false } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['C', 'D'] }"
+      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['E', 'Y']}");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Int32Input);C(Pad);D(Input);DMT/_0(Const);DMT/_1(Const);"
+      "E(_MklConv2D);Y(Input);Z(Zeta)|A->C;B->C:1;C->E;"
+      "C:control->DMT/_0:control;C:control->DMT/_1:control;"
+      "D->E:1;DMT/_0->E:2;DMT/_1->E:3;E->Z;Y->Z:1");
+}
+#ifdef ENABLE_TRANSPOSE_OPTIMIZATION
+TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
+  InitGraph(
+      "node { name: 'Input0' op: 'Input'}"
+      "node { name: 'Input1' op: 'Input'}"
+      "node { name: 'Const0' op: 'Const'"
+      "  attr {"
+      "   key: 'dtype'"
+      "   value {"
+      "     type: DT_INT32"
+      "   }"
+      "  }"
+      " attr {"
+      "   key: 'value'"
+      "   value {"
+      "     tensor {"
+      "       dtype: DT_INT32"
+      "       tensor_shape {"
+      "         dim {"
+      "           size: 4"
+      "         }"
+      "       }"
+      "       tensor_content: "
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
+      "\\000\\000'"
+      "     }"
+      "   }"
+      " }"
+      "}"
+      "node { name: 'Const1' op: 'Const'"
+      "  attr {"
+      "   key: 'dtype'"
+      "   value {"
+      "     type: DT_INT32"
+      "   }"
+      "  }"
+      " attr {"
+      "   key: 'value'"
+      "   value {"
+      "     tensor {"
+      "       dtype: DT_INT32"
+      "       tensor_shape {"
+      "         dim {"
+      "           size: 4"
+      "         }"
+      "       }"
+      "       tensor_content: "
+      "'\\000\\000\\000\\000\\003\\000\\000\\000\\001\\000\\000\\000\\002\\000"
+      "\\000\\000'"
+      "     }"
+      "   }"
+      " }"
+      "}"
+      "node {              \
+      name: 'Transpose0' \
+      op: 'Transpose'    \
+      input: 'Input0'    \
+      input: 'Const0'    \
+      attr {             \
+        key: 'T'         \
+        value {          \
+          type: DT_FLOAT \
+        }                \
+      }                  \
+      attr {             \
+        key: 'Tperm'     \
+        value {          \
+          type: DT_INT32 \
+        }                \
+      }                  \
+    }"
+      "node {                 \
+      name: 'Conv2D'        \
+      op: 'Conv2D'          \
+      input: 'Transpose0'   \
+      input: 'Input1'       \
+      attr {                \
+        key: 'T'            \
+        value {             \
+          type: DT_FLOAT    \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'data_format'  \
+        value {             \
+          s: 'NHWC'         \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'dilations'    \
+        value {             \
+          list {            \
+            i: 1            \
+            i: 1            \
+            i: 1            \
+            i: 1            \
+          }                 \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'padding'      \
+        value {             \
+          s: 'SAME'         \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'strides'      \
+        value {             \
+          list {            \
+            i: 1            \
+            i: 1            \
+            i: 1            \
+            i: 1            \
+          }                 \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'use_cudnn_on_gpu' \
+        value {                 \
+          b: true               \
+        }                       \
+      }                         \
+    }"
+      "node {              \
+      name: 'Transpose1' \
+      op: 'Transpose'    \
+      input: 'Conv2D'    \
+      input: 'Const1'    \
+      attr {             \
+        key: 'T'         \
+        value {          \
+          type: DT_FLOAT \
+        }                \
+      }                  \
+      attr {             \
+        key: 'Tperm'     \
+        value {          \
+          type: DT_INT32 \
+        }                \
+      }                  \
+    }"
+      "node { name: 'Relu' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['Transpose1'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "Const0(Const);Const1(Const);"
+            "Conv2D(_MklConv2D);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
+            "Input1(Input);Relu(_MklRelu)|Conv2D->Relu;Conv2D:2->Relu:1;DMT/"
+            "_0->Conv2D:2;DMT/_1->Conv2D:3;Input0->Conv2D;"
+            "Input0:control->DMT/_0:control;Input0:control->DMT/"
+            "_1:control;Input1->Conv2D:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
+  InitGraph(
+      "node { name: 'Input0' op: 'Input'}"
+      "node { name: 'Input1' op: 'Input'}"
+      "node { name: 'Const0' op: 'Const'"
+      "  attr {"
+      "   key: 'dtype'"
+      "   value {"
+      "     type: DT_INT32"
+      "   }"
+      "  }"
+      " attr {"
+      "   key: 'value'"
+      "   value {"
+      "     tensor {"
+      "       dtype: DT_INT32"
+      "       tensor_shape {"
+      "         dim {"
+      "           size: 4"
+      "         }"
+      "       }"
+      "       tensor_content: "
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
+      "\\000\\000'"
+      "     }"
+      "   }"
+      " }"
+      "}"
+      "node { name: 'Const1' op: 'Const'"
+      "  attr {"
+      "   key: 'dtype'"
+      "   value {"
+      "     type: DT_INT32"
+      "   }"
+      "  }"
+      " attr {"
+      "   key: 'value'"
+      "   value {"
+      "     tensor {"
+      "       dtype: DT_INT32"
+      "       tensor_shape {"
+      "         dim {"
+      "           size: 4"
+      "         }"
+      "       }"
+      "       tensor_content: "
+      "'\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\001\\000"
+      "\\000\\000'"
+      "     }"
+      "   }"
+      " }"
+      "}"
+      "node {              \
+      name: 'Transpose0' \
+      op: 'Transpose'    \
+      input: 'Input0'    \
+      input: 'Const0'    \
+      attr {             \
+        key: 'T'         \
+        value {          \
+          type: DT_FLOAT \
+        }                \
+      }                  \
+      attr {             \
+        key: 'Tperm'     \
+        value {          \
+          type: DT_INT32 \
+        }                \
+      }                  \
+    }"
+      "node {                 \
+      name: 'Conv2D'        \
+      op: 'Conv2D'          \
+      input: 'Transpose0'   \
+      input: 'Input1'       \
+      attr {                \
+        key: 'T'            \
+        value {             \
+          type: DT_FLOAT    \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'data_format'  \
+        value {             \
+          s: 'NHWC'         \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'dilations'    \
+        value {             \
+          list {            \
+            i: 1            \
+            i: 1            \
+            i: 1            \
+            i: 1            \
+          }                 \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'padding'      \
+        value {             \
+          s: 'SAME'         \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'strides'      \
+        value {             \
+          list {            \
+            i: 1            \
+            i: 1            \
+            i: 1            \
+            i: 1            \
+          }                 \
+        }                   \
+      }                     \
+      attr {                \
+        key: 'use_cudnn_on_gpu' \
+        value {                 \
+          b: true               \
+        }                       \
+      }                         \
+    }"
+      "node {              \
+      name: 'Transpose1' \
+      op: 'Transpose'    \
+      input: 'Conv2D'    \
+      input: 'Const1'    \
+      attr {             \
+        key: 'T'         \
+        value {          \
+          type: DT_FLOAT \
+        }                \
+      }                  \
+      attr {             \
+        key: 'Tperm'     \
+        value {          \
+          type: DT_INT32 \
+        }                \
+      }                  \
+    }"
+      "node { name: 'Relu' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['Transpose1'] }");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "Const0(Const);Const1(Const);"
+      "Conv2D(_MklConv2D);DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);"
+      "Input0(Input);Input1(Input);Relu(_MklRelu);"
+      "Transpose0(Transpose);Transpose1(Transpose)|Const0->Transpose0:1;Const1-"
+      ">Transpose1:1;"
+      "Conv2D->Transpose1;DMT/_0->Conv2D:2;DMT/_1->Conv2D:3;DMT/"
+      "_2->Relu:1;Input0->Transpose0;"
+      "Input1->Conv2D:1;Transpose0->Conv2D;Transpose0:control->DMT/_0:control;"
+      "Transpose0:control->DMT/"
+      "_1:control;Transpose1->Relu;Transpose1:control->DMT/_2:control");
+}
+#endif  // ENABLE_TRANSPOSE_OPTIMIZATION
 
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to rewriting node to Mkl node

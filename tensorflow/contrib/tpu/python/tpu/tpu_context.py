@@ -41,7 +41,7 @@ _NUM_CORES_TO_COMPUTATION_SHAPE = {
 
 
 class TPUContext(object):
-  """The context of current input_fn invocation."""
+  """A context that holds the current configuration of the TPU computation."""
 
   def __init__(self,
                internal_ctx,

@@ -71,9 +71,9 @@ Status LocalExecutable::ValidateExecutionOptions(
           "parameter "
           "%d: want %s, got %s",
           i,
-          ShapeUtil::HumanString(
+          ShapeUtil::HumanStringWithLayout(
               computation_layout.parameter_layout(i).shape()),
-          ShapeUtil::HumanString(arguments[i]->on_host_shape()));
+          ShapeUtil::HumanStringWithLayout(arguments[i]->on_host_shape()));
     }
   }
 

@@ -30,6 +30,9 @@ import six
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
@@ -42,9 +45,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.training import device_util
-from tensorflow.python.training import distribute as distribute_lib
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import saver
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
@@ -100,10 +100,21 @@ class DistributedValues(object):
   # DistributionStrategy implementations.
 
 
+# NOTE(josh11b,apassos): It would be great if we could inspect the values this was
+# initialized with and use that to generate the overloaded operators here.
+# Unfortunately, Python's rules for special methods don't allow this, see
+# https://docs.python.org/3/reference/datamodel.html#special-method-names
+# "if a class defines a method named __getitem__(), and x is an instance of
+# this class, then x[i] is roughly equivalent to type(x).__getitem__(x, i)."
+# In particular, these special methods don't go through __getattr__, and
+# it will only use those methods if they are defined in the class, not the
+# object.
 class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 
   def __getattr__(self, name):
+    # TODO(priyag): This needs to be made robust against pitfalls from mix use
+    # __getattr__ and @property. See b/120402273.
     return getattr(self.get(), name)
 
   # pylint: disable=multiple-statements
@@ -324,7 +335,7 @@ def _apply_aggregation(strategy, value, aggregation, destinations):
     return strategy.broadcast(strategy.unwrap(value)[0],
                               destinations=destinations)
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
-  return strategy.reduce(reduce_op, value=value, destinations=destinations)
+  return strategy.extended.reduce_to(reduce_op, value, destinations)
 
 
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
@@ -1160,7 +1171,7 @@ class PerReplicaDataset(object):
     # Eager mode prefetching would error out in constructor. Only remaining
     # case is non-prefetching in eager mode. We delegate to
     # PerReplicaDataIterator to handle that case.
-    dataset_iterator = self._dataset.make_one_shot_iterator()
+    dataset_iterator = dataset_ops.make_one_shot_iterator(self._dataset)
     return PerReplicaDataIterator(
         dataset_iterator, self._devices, prefetch_on_device=False)
 
@@ -1175,7 +1186,7 @@ class PerReplicaDataset(object):
       dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
           self._dataset, self._devices)
     else:
-      dataset_iterator = self._dataset.make_initializable_iterator()
+      dataset_iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return PerReplicaDataIterator(
         dataset_iterator,
         self._devices,
@@ -1293,14 +1304,15 @@ class MultiWorkerDataset(object):
     iterators = []
     for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators.append((worker, dataset.make_one_shot_iterator()))
+        iterators.append((worker, dataset_ops.make_one_shot_iterator(dataset)))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
   def make_initializable_iterator(self):
     iterators = []
     for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators.append((worker, dataset.make_initializable_iterator()))
+        iterators.append(
+            (worker, dataset_ops.make_initializable_iterator(dataset)))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
 
@@ -1433,7 +1445,7 @@ class InputFunctionIterator(InputIteratorImpl):
       # TODO(priyag): We should probably explicitly specify CPU device on worker.
       with ops.device(worker):
         result = input_fn(ctx)
-        if not isinstance(result, dataset_ops.Dataset):
+        if not isinstance(result, dataset_ops.DatasetV2):
           raise ValueError("input_fn must return a tf.data.Dataset.")
         iterator = _SingleWorkerDatasetIterator(result, worker, devices)
         iterators.append(iterator)
@@ -1512,7 +1524,7 @@ class _SingleWorkerDatasetIterator(object):
         # TODO(priyag): Measure the performance of this approach vs calling
         # get_next on the original dataset N times.
         dataset = self._dataset.batch(len(self._devices), drop_remainder=True)
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
       else:
         iterator = multi_device_iterator_ops.MultiDeviceIterator(
             self._dataset, self._devices)
@@ -1608,11 +1620,11 @@ class MultiStepContext(object):
   """A context object that can be used to capture things when running steps.
 
   This context object is useful when running multiple steps at a time using the
-  `run_steps_on_dataset` API. For e.g. it allows the user's step function to
-  specify which outputs to emit at what frequency. Currently it supports
-  capturing output from the last step, as well as capturing non tensor outputs.
-  In the future it will be augmented to support other use cases such as output
-  each N steps.
+  `experimental_run_steps_on_iterator` API. For e.g. it allows the user's step
+  function to specify which outputs to emit at what frequency. Currently it
+  supports capturing output from the last step, as well as capturing non tensor
+  outputs.  In the future it will be augmented to support other use cases such
+  as output each N steps.
   """
 
   def __init__(self):
@@ -1672,13 +1684,11 @@ class MultiStepContext(object):
         self._last_step_outputs[name] = output
       else:
         distribution = distribution_strategy_context.get_distribution_strategy()
-        self._last_step_outputs[name] = distribution.reduce(
-            reduce_op, output, destinations="/device:CPU:0")
+        self._last_step_outputs[name] = distribution.reduce(reduce_op, output)
     else:
       assert reduce_op is not None
       def merge_fn(distribution, value):
-        self._last_step_outputs[name] = distribution.reduce(
-            reduce_op, value, destinations="/device:CPU:0")
+        self._last_step_outputs[name] = distribution.reduce(reduce_op, value)
         # Setting this inside the `merge_fn` because all replicas share the same
         # context object, so it's more robust to set it only once (even if all
         # the replicas are trying to set the same value).

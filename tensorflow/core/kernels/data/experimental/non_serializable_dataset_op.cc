@@ -75,6 +75,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
       return errors::Unimplemented(DebugString(), "::AsGraphDefInternal");
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:

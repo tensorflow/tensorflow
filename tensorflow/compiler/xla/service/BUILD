@@ -281,10 +281,12 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_element_type_converter",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -408,7 +410,34 @@ tf_cc_test(
         ":hlo",
         ":pattern_matcher",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "pattern_matcher_gmock",
+    testonly = 1,
+    hdrs = ["pattern_matcher_gmock.h"],
+    deps = [
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:test",
+    ],
+)
+
+tf_cc_test(
+    name = "pattern_matcher_gmock_test",
+    srcs = ["pattern_matcher_gmock_test.cc"],
+    deps = [
+        ":hlo",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
@@ -1562,7 +1591,10 @@ tf_cc_test(
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_matchers",
+        ":hlo_parser",
         ":hlo_pass",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -1730,7 +1762,9 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":hlo_query",
+        ":pattern_matcher",
         ":while_loop_analysis",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -1743,9 +1777,13 @@ tf_cc_test(
     name = "while_loop_simplifier_test",
     srcs = ["while_loop_simplifier_test.cc"],
     deps = [
+        ":algebraic_simplifier",
         ":hlo",
+        ":hlo_cse",
         ":hlo_dce",
         ":hlo_matchers",
+        ":hlo_pass",
+        ":hlo_pass_pipeline",
         ":tuple_simplifier",
         ":while_loop_simplifier",
         "//tensorflow/compiler/xla:test",
@@ -1869,6 +1907,41 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "dynamic_dimension_inference",
+    srcs = ["dynamic_dimension_inference.cc"],
+    hdrs = ["dynamic_dimension_inference.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "dynamic_dimension_inference_test",
+    srcs = ["dynamic_dimension_inference_test.cc"],
+    deps = [
+        ":dynamic_dimension_inference",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -2029,7 +2102,8 @@ tf_cc_test(
     srcs = ["hlo_computation_test.cc"],
     deps = [
         ":hlo",
-        ":hlo_matchers",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -2623,8 +2697,9 @@ tf_cc_test(
         ":algebraic_simplifier",
         ":computation_layout",
         ":hlo",
-        ":hlo_matchers",
         ":layout_assignment",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
@@ -2635,6 +2710,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "@com_google_absl//absl/types:span",
@@ -2769,6 +2845,8 @@ tf_cc_test(
         ":hlo_matchers",
         ":hlo_parser",
         ":hlo_pass",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -2881,6 +2959,46 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "hlo_get_dimension_size_rewriter",
+    srcs = ["hlo_get_dimension_size_rewriter.cc"],
+    hdrs = ["hlo_get_dimension_size_rewriter.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":shape_inference",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_get_dimension_size_rewriter_test",
+    srcs = ["hlo_get_dimension_size_rewriter_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_get_dimension_size_rewriter",
+        ":hlo_matchers",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "device_memory_allocator",
     srcs = [
         "device_memory_allocator.cc",
@@ -2938,6 +3056,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@llvm//:core",
         "@llvm//:transform_utils",
@@ -3051,6 +3170,7 @@ cc_library(
         ":hlo_casting_utils",
         ":hlo_execution_profile",
         ":hlo_tfgraph_builder",
+        ":pattern_matcher",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -3488,6 +3608,8 @@ tf_cc_test(
         ":hlo_casting_utils",
         ":hlo_matchers",
         ":hlo_parser",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/core:lib",

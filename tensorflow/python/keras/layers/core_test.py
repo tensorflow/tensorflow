@@ -150,6 +150,20 @@ class CoreLayersTest(test.TestCase):
     self.assertAllClose(outputs, target_outputs)
 
   @tf_test_util.run_in_graph_and_eager_modes
+  def test_flatten_scalar_channels(self):
+    testing_utils.layer_test(
+        keras.layers.Flatten, kwargs={}, input_shape=(3,))
+
+    # Test channels_first
+    inputs = np.random.random((10,)).astype('float32')
+    outputs = testing_utils.layer_test(
+        keras.layers.Flatten,
+        kwargs={'data_format': 'channels_first'},
+        input_data=inputs)
+    target_outputs = np.expand_dims(inputs, -1)
+    self.assertAllClose(outputs, target_outputs)
+
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_repeat_vector(self):
     testing_utils.layer_test(
         keras.layers.RepeatVector, kwargs={'n': 3}, input_shape=(3, 2))

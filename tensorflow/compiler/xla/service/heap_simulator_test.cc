@@ -258,7 +258,7 @@ class HeapSimulatorTracker {
   // Constructor for testing a single entry computation.
   HeapSimulatorTracker(
       const string& name, std::unique_ptr<HloComputation> computation,
-      const std::vector<const HloInstruction*>& instruction_sequence) {
+      const std::vector<HloInstruction*>& instruction_sequence) {
     HloModuleConfig config;
     module_ = absl::make_unique<HloModule>(name, config);
     module_->AddEntryComputation(std::move(computation));
@@ -286,7 +286,7 @@ class HeapSimulatorTracker {
   // Similar to the single entry computation constructor above, but runs the
   // simulation over the entire module.
   void RunWholeModule(
-      const std::vector<const HloInstruction*>& full_module_sequence) {
+      const std::vector<HloInstruction*>& full_module_sequence) {
     points_to_analysis_ =
         TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
 
@@ -294,7 +294,7 @@ class HeapSimulatorTracker {
     HloSchedule schedule(module_.get());
     absl::flat_hash_map<const HloInstruction*, int> reverse_position;
     for (int i = 0; i < full_module_sequence.size(); ++i) {
-      const HloInstruction* instruction = full_module_sequence[i];
+      HloInstruction* instruction = full_module_sequence[i];
       schedule.GetOrCreateSequence(instruction->parent())
           .push_back(instruction);
       reverse_position[instruction] = full_module_sequence.size() - i;

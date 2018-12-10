@@ -104,11 +104,7 @@ class HloModule {
                                        HloCloneContext* context = nullptr);
 
   // Return a pointer to the entry computation of the module.
-  const HloComputation* entry_computation() const {
-    CHECK_NE(nullptr, entry_computation_);
-    return entry_computation_;
-  }
-  HloComputation* entry_computation() {
+  HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
   }
@@ -135,6 +131,12 @@ class HloModule {
   const ComputationLayout& entry_computation_layout() const {
     return config_.entry_computation_layout();
   }
+
+  // Generates a hash value of an HLO module. Hash considers
+  // information on opcode, shape, operands, and typically a root instruction.
+  // This function returns the same hash value for equivalent HLO modules,
+  // with respect to HloInstruction::Identical() method.
+  uint64 Hash() const { return entry_computation()->Hash(); }
 
   // Gets the computations in this module.
   //

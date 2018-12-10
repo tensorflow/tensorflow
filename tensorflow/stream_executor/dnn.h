@@ -114,6 +114,10 @@ template <>
 struct ToDataType<int8> {
   static constexpr DataType value = DataType::kInt8;
 };
+template <>
+struct ToDataType<int32> {
+  static constexpr DataType value = DataType::kInt32;
+};
 
 // Specifies the types of a RNN model.
 enum class RnnMode {

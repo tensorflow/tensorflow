@@ -26,4 +26,4 @@ to client devices, generally mobile devices, where the TensorFlow Lite
 interpreter handles them on-device.  This flow is represented in the diagram
 below.
 
-![drawing](g3doc/toco_landscape.svg)
+![drawing](../g3doc/images/convert/workflow.svg)

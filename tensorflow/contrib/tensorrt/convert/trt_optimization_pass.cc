@@ -67,6 +67,9 @@ tensorflow::Status TRTOptimizationPass::Init(
     TF_RETURN_IF_ERROR(GetPrecisionMode(
         Uppercase(params.at("precision_mode").s()), &precision_mode_));
   }
+  if (params.count("use_calibration")) {
+    use_calibration_ = params.at("use_calibration").b();
+  }
   return tensorflow::Status::OK();
 }
 
@@ -187,8 +190,8 @@ tensorflow::Status TRTOptimizationPass::Optimize(
     *optimized_graph = item.graph;
     return tensorflow::Status::OK();
   }
-  if (VLOG_IS_ON(2)) {
-    VLOG(2) << CurrentStackTrace();
+  if (VLOG_IS_ON(3)) {
+    LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
   int max_dim = -1;
@@ -222,6 +225,12 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
   tensorflow::tensorrt::convert::ConversionParams cp;
 
+  if (use_calibration_ && precision_mode_ != INT8MODE) {
+    LOG(ERROR) << "Calibration with FP32 or FP16 is not implemented. "
+               << "Falling back to use_calibration = False.";
+    use_calibration_ = false;
+  }
+
   std::vector<string> nodes_to_preserve;
   for (const auto& n : item.NodesToPreserve()) {
     auto tokens = str_util::Split(n, ":");
@@ -250,6 +259,7 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   cp.is_dyn_op = is_dynamic_op_;
   cp.cached_engine_batches = batches_;
   cp.max_cached_engines = max_cached_batches_;
+  cp.use_calibration = use_calibration_;
   auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;

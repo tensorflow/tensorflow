@@ -139,6 +139,27 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
            (2.0 * 0.25 + 0.0) / (1.0 * 0.25 + 1.0)],
           var.eval())
 
+  @combinations.generate(all_combinations)
+  def testAssignVariable(self, distribution):
+
+    def replica_fn():
+      var = variables.Variable([10.0, 11.0])
+      # Here we expect to check the case when input value are variable.
+      val = variables.Variable([1., 2.])
+      decay = 0.25
+      assign = moving_averages.assign_moving_average(
+          var, val, decay, zero_debias=False)
+      return var, assign
+
+    with distribution.scope(), self.cached_session() as sess:
+      var, assign = distribution.call_for_each_replica(replica_fn)
+      variables.global_variables_initializer().run()
+      self.assertAllClose([10.0, 11.0], var.eval())
+      sess.run(distribution.unwrap(assign))
+      self.assertAllClose(
+          [10 * 0.25 + 1. * (1 - 0.25), 11 * 0.25 + 2. * (1 - 0.25)],
+          var.eval())
+
 
 if __name__ == "__main__":
   test.main()

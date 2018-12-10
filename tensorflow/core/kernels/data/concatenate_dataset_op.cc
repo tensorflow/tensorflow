@@ -79,6 +79,18 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
       return "ConcatenateDatasetOp::Dataset";
     }
 
+    int64 Cardinality() const override {
+      int64 n1 = input_->Cardinality();
+      int64 n2 = to_concatenate_->Cardinality();
+      if (n1 == kInfiniteCardinality || n2 == kInfiniteCardinality) {
+        return kInfiniteCardinality;
+      }
+      if (n1 == kUnknownCardinality || n2 == kUnknownCardinality) {
+        return kUnknownCardinality;
+      }
+      return n1 + n2;
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

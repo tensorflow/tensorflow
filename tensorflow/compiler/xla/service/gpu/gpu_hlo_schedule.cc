@@ -37,7 +37,7 @@ class GpuHloOrdering : public PredecessorHloOrdering {
  public:
   GpuHloOrdering(const HloModule* module,
                  const StreamAssignment& stream_assignment,
-                 const std::vector<const HloInstruction*>& thunk_launch_order);
+                 const std::vector<HloInstruction*>& thunk_launch_order);
   ~GpuHloOrdering() override = default;
 
   // Only the entry computation can possibly be sequentially ordered, and only
@@ -56,7 +56,7 @@ class GpuHloOrdering : public PredecessorHloOrdering {
 
 GpuHloOrdering::GpuHloOrdering(
     const HloModule* module, const StreamAssignment& stream_assignment,
-    const std::vector<const HloInstruction*>& thunk_launch_order)
+    const std::vector<HloInstruction*>& thunk_launch_order)
     : PredecessorHloOrdering(module) {
   // The entry computation has a total order when there's only one stream.
   if (stream_assignment.StreamCount() == 1) {
@@ -150,7 +150,7 @@ GpuHloOrdering::GpuHloOrdering(
 // However, if the total order is A,B,D,C,E, then C and E can run
 // concurrently.
 void BFSLaunchOrder(const HloComputation* computation,
-                    std::vector<const HloInstruction*>* launch_order) {
+                    std::vector<HloInstruction*>* launch_order) {
   // This topological sort uses two data structures:
   // 1. `incoming_edge_count` which keeps track of the number of incoming
   // edges to each HLO;
@@ -158,9 +158,9 @@ void BFSLaunchOrder(const HloComputation* computation,
   //
   // The sorting algorithm repeatedly pops the top from the queue and deletes
   // that HLO from the graph, making more HLOs incoming-edge free.
-  std::deque<const HloInstruction*> queue;
+  std::deque<HloInstruction*> queue;
   std::unordered_map<const HloInstruction*, int64> incoming_edge_count;
-  for (const auto& hlo : computation->instructions()) {
+  for (auto* hlo : computation->instructions()) {
     if (hlo->operand_count() == 0) {
       queue.push_back(hlo);
     } else {
@@ -172,10 +172,10 @@ void BFSLaunchOrder(const HloComputation* computation,
   }
 
   while (!queue.empty()) {
-    const HloInstruction* x = queue.front();
+    HloInstruction* x = queue.front();
     queue.pop_front();
     launch_order->push_back(x);
-    for (const HloInstruction* y : x->users()) {
+    for (HloInstruction* y : x->users()) {
       --incoming_edge_count[y];
       if (incoming_edge_count[y] == 0) {
         queue.push_back(y);
@@ -195,14 +195,14 @@ StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
   std::unique_ptr<GpuHloSchedule> schedule(new GpuHloSchedule);
 
   // Initialize thunk_launch_order_, the total order of thunk launches.
-  const HloComputation* entry_computation = module.entry_computation();
+  HloComputation* entry_computation = module.entry_computation();
   if (stream_assignment.StreamCount() == 1) {
     // All kernels are launched on a single stream, so there's no loss of
     // concurrency by optimizing for minimal memory usage.
     TF_ASSIGN_OR_RETURN(
         HloInstructionSequence sequence,
         ScheduleComputation(
-            *entry_computation, [pointer_size](const BufferValue& buffer) {
+            entry_computation, [pointer_size](const BufferValue& buffer) {
               return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
             }));
     schedule->thunk_launch_order_ = sequence.instructions();

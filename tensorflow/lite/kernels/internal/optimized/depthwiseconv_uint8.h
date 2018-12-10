@@ -1499,22 +1499,26 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
     int out_x_loop_end_unclampled = 0;
     if (kAllowStrided) {
       if (stride == 2) {
-        out_x_loop_start_unclampled = (pad_width - filter_x + 1) / 2;
+        out_x_loop_start_unclampled =
+            (pad_width - dilation_factor * filter_x + 1) / 2;
         out_x_loop_end_unclampled =
-            (pad_width + input_width - filter_x + 1) / 2;
+            (pad_width + input_width - dilation_factor * filter_x + 1) / 2;
       } else if (stride == 4) {
-        out_x_loop_start_unclampled = (pad_width - filter_x + 3) / 4;
+        out_x_loop_start_unclampled =
+            (pad_width - dilation_factor * filter_x + 3) / 4;
         out_x_loop_end_unclampled =
-            (pad_width + input_width - filter_x + 3) / 4;
+            (pad_width + input_width - dilation_factor * filter_x + 3) / 4;
       } else {
         out_x_loop_start_unclampled =
-            (pad_width - filter_x + stride - 1) / stride;
-        out_x_loop_end_unclampled =
-            (pad_width + input_width - filter_x + stride - 1) / stride;
+            (pad_width - dilation_factor * filter_x + stride - 1) / stride;
+        out_x_loop_end_unclampled = (pad_width + input_width -
+                                     dilation_factor * filter_x + stride - 1) /
+                                    stride;
       }
     } else {
-      out_x_loop_start_unclampled = pad_width - filter_x;
-      out_x_loop_end_unclampled = pad_width + input_width - filter_x;
+      out_x_loop_start_unclampled = pad_width - dilation_factor * filter_x;
+      out_x_loop_end_unclampled =
+          pad_width + input_width - dilation_factor * filter_x;
     }
     // The kernel will have to iterate on the segment of the
     // output row that starts at out_x_loop_start and out_x_loop_end.
@@ -1525,7 +1529,8 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
 
     int32* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
-    const int in_x_origin = (out_x_loop_start * stride) - pad_width + filter_x;
+    const int in_x_origin =
+        (out_x_loop_start * stride) - pad_width + dilation_factor * filter_x;
     const uint8* input_ptr = input_data + in_x_origin * input_depth;
     const int num_output_pixels = out_x_loop_end - out_x_loop_start;
     QuantizedDepthwiseConvKernel<
@@ -1703,8 +1708,7 @@ inline void DepthwiseConvGeneral(
                                         FIXED_DEPTH_MULTIPLIER)           \
   if (!row_accum_func && (stride_width == 1 || ALLOW_STRIDED) &&          \
       (input_depth == FIXED_INPUT_DEPTH || FIXED_INPUT_DEPTH == 0) &&     \
-      depth_multiplier == FIXED_DEPTH_MULTIPLIER &&                       \
-      dilation_width_factor == 1 && dilation_height_factor == 1) {        \
+      depth_multiplier == FIXED_DEPTH_MULTIPLIER) {                       \
     row_accum_func =                                                      \
         QuantizedDepthwiseConvAccumRow<ALLOW_STRIDED, FIXED_INPUT_DEPTH,  \
                                        FIXED_DEPTH_MULTIPLIER>;           \

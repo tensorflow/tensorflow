@@ -40,8 +40,8 @@ namespace {
 template <typename T>
 bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > static_cast<double>(std::numeric_limits<RealType>::max()) ||
-      value < static_cast<double>(std::numeric_limits<RealType>::min())) {
+  if (value > static_cast<double>(Eigen::NumTraits<RealType>::highest()) ||
+      value < static_cast<double>(Eigen::NumTraits<RealType>::lowest())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);

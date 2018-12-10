@@ -428,6 +428,7 @@ class GradientBoostedDecisionTreeQuantileRegressor(estimator.Estimator):
                learner_config,
                examples_per_layer,
                quantiles,
+               label_dimension=1,
                num_trees=None,
                feature_columns=None,
                weight_column_name=None,
@@ -448,6 +449,10 @@ class GradientBoostedDecisionTreeQuantileRegressor(estimator.Estimator):
         layer. It can also be a function that computes the number of examples
         based on the depth of the layer that's being built.
       quantiles: a list of quantiles for the loss, each between 0 and 1.
+      label_dimension: Dimension of regression label. This is the size
+        of the last dimension of the labels `Tensor` (typically, this has shape
+        `[batch_size, label_dimension]`). When label_dimension>1, it is
+        recommended to use multiclass strategy diagonal hessian or full hessian.
       num_trees: An int, number of trees to build.
       feature_columns: A list of feature columns.
       weight_column_name: Name of the column for weights, or None if not
@@ -489,8 +494,10 @@ class GradientBoostedDecisionTreeQuantileRegressor(estimator.Estimator):
           loss_fn=functools.partial(
               losses.per_example_quantile_regression_loss, quantile=quantile),
           link_fn=array_ops.identity,
-          logit_dimension=1)
+          logit_dimension=label_dimension)
       return head
+
+    learner_config.num_classes = max(2, label_dimension)
 
     super(GradientBoostedDecisionTreeQuantileRegressor, self).__init__(
         model_fn=model.model_builder,
@@ -548,6 +555,7 @@ def core_multiclass_head(
 # Core..QuantileRegressor directly,
 def core_quantile_regression_head(
     quantiles,
+    label_dimension=1,
     weight_column=None,
     loss_reduction=core_losses.Reduction.SUM_OVER_NONZERO_WEIGHTS):
   """Core head for quantile regression problems."""
@@ -562,7 +570,7 @@ def core_quantile_regression_head(
 
   # pylint:disable=protected-access
   head_fn = core_head_lib._regression_head(
-      label_dimension=1,
+      label_dimension=label_dimension,
       loss_fn=loss_fn,
       loss_reduction=loss_reduction,
       weight_column=weight_column)
@@ -747,6 +755,7 @@ class CoreGradientBoostedDecisionTreeQuantileRegressor(
                learner_config,
                examples_per_layer,
                quantiles,
+               label_dimension=1,
                num_trees=None,
                feature_columns=None,
                weight_column_name=None,
@@ -766,6 +775,10 @@ class CoreGradientBoostedDecisionTreeQuantileRegressor(
         layer. It can also be a function that computes the number of examples
         based on the depth of the layer that's being built.
       quantiles: a list of quantiles for the loss, each between 0 and 1.
+      label_dimension: Dimension of regression label. This is the size
+        of the last dimension of the labels `Tensor` (typically, this has shape
+        `[batch_size, label_dimension]`). When label_dimension>1, it is
+        recommended to use multiclass strategy diagonal hessian or full hessian.
       num_trees: An int, number of trees to build.
       feature_columns: A list of feature columns.
       weight_column_name: Name of the column for weights, or None if not
@@ -799,18 +812,31 @@ class CoreGradientBoostedDecisionTreeQuantileRegressor(
           mode=mode,
           config=config,
           params={
-              'head': core_quantile_regression_head(quantiles[0]),
-              'feature_columns': feature_columns,
-              'learner_config': learner_config,
-              'num_trees': num_trees,
-              'weight_column_name': weight_column_name,
-              'examples_per_layer': examples_per_layer,
-              'center_bias': center_bias,
-              'logits_modifier_function': logits_modifier_function,
-              'use_core_libs': True,
-              'output_leaf_index': output_leaf_index,
-              'override_global_step_value': None,
-              'num_quantiles': num_quantiles,
+              'head':
+                  core_quantile_regression_head(
+                      quantiles[0], label_dimension=label_dimension),
+              'feature_columns':
+                  feature_columns,
+              'learner_config':
+                  learner_config,
+              'num_trees':
+                  num_trees,
+              'weight_column_name':
+                  weight_column_name,
+              'examples_per_layer':
+                  examples_per_layer,
+              'center_bias':
+                  center_bias,
+              'logits_modifier_function':
+                  logits_modifier_function,
+              'use_core_libs':
+                  True,
+              'output_leaf_index':
+                  output_leaf_index,
+              'override_global_step_value':
+                  None,
+              'num_quantiles':
+                  num_quantiles,
           },
           output_type=model.ModelBuilderOutputType.ESTIMATOR_SPEC)
 

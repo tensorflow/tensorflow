@@ -47,6 +47,8 @@ namespace xla {
 #define HLO_OPCODE_LIST(V)                                   \
   V(kAbs, "abs")                                             \
   V(kAdd, "add")                                             \
+  V(kAddDependency, "add-dependency")                        \
+  V(kAfterAll, "after-all", kHloOpcodeIsVariadic)            \
   V(kAllToAll, "all-to-all")                                 \
   V(kAtan2, "atan2")                                         \
   V(kBatchNormGrad, "batch-norm-grad")                       \
@@ -84,7 +86,6 @@ namespace xla {
   V(kGather, "gather")                                       \
   V(kGe, "greater-than-or-equal-to", kHloOpcodeIsComparison) \
   V(kGetDimensionSize, "get-dimension-size")                 \
-  V(kAfterAll, "after-all", kHloOpcodeIsVariadic)            \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
   V(kImag, "imag")                                           \

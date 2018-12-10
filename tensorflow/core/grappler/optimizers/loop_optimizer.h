@@ -19,7 +19,6 @@ limitations under the License.
 #include <unordered_set>
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
-#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 

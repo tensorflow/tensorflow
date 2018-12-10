@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -466,6 +468,9 @@ class ShapeUtil {
   // arrays.
   static bool IsArray(const Shape& shape);
 
+  // Returns whether the given primitive type corresponds to an array shape.
+  static bool IsArrayPrimitiveType(PrimitiveType primitive_type);
+
   // Returns whether the shape is a tuple with at least one element which is
   // also a tuple.
   static bool IsNestedTuple(const Shape& shape);
@@ -756,10 +761,18 @@ class ShapeUtil {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
     }
 
+    tensorflow::mutex mu;
+    Status status;  // Guarded by mu
+
     while (n < rank) {
       if (pool != absl::nullopt) {
-        pool->Schedule(
-            [indexes, &visitor_function] { visitor_function(indexes); });
+        pool->Schedule([indexes, &visitor_function, &mu, &status] {
+          StatusOr<bool> result = visitor_function(indexes);
+          if (!result.ok()) {
+            tensorflow::mutex_lock lock(mu);
+            status = status.ok() ? result.status() : status;
+          }
+        });
       } else {
         TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
         if (!should_continue) {
@@ -777,13 +790,13 @@ class ShapeUtil {
       }
     }
 
-    return Status::OK();
+    // Waits for the scheduled work to complete.
+    pool.reset();
+    return status;
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
 };
-
-std::ostream& operator<<(std::ostream& out, const Shape& shape);
 
 }  // namespace xla
 

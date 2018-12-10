@@ -291,6 +291,13 @@ message RPCOptions {
   // transport for client-master communication that avoids the RPC
   // stack. This option is primarily for used testing the RPC stack.
   bool use_rpc_for_inprocess_master = 1;
+
+  // The compression algorithm to be used. One of "deflate", "gzip".
+  string compression_algorithm = 2;
+
+  // If compression_algorithm is set, the compression level to be used.
+  // From 0 (no compression), up to 3.
+  int32 compression_level = 3;
 };
 
 // Session configuration parameters.

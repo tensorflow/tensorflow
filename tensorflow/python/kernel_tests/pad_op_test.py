@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
@@ -116,6 +117,7 @@ class PadOpTest(test.TestCase):
           self._testGradient(np_inputs, paddings, mode=mode,
                              constant_values=constant_values)
 
+  @test_util.run_deprecated_v1
   def testInputDims(self):
     with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
@@ -124,6 +126,7 @@ class PadOpTest(test.TestCase):
                       array_ops.reshape(
                           [1, 2], shape=[1, 2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsDim(self):
     with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
@@ -132,6 +135,7 @@ class PadOpTest(test.TestCase):
                       array_ops.reshape(
                           [1, 2], shape=[2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsDim2(self):
     with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
@@ -140,6 +144,7 @@ class PadOpTest(test.TestCase):
                       array_ops.reshape(
                           [1, 2], shape=[2, 1]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsDim3(self):
     with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
@@ -148,6 +153,7 @@ class PadOpTest(test.TestCase):
                       array_ops.reshape(
                           [1, 2], shape=[1, 2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsDim4(self):
     with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
@@ -156,6 +162,7 @@ class PadOpTest(test.TestCase):
                       array_ops.reshape(
                           [1, 2, 3, 4, 5, 6], shape=[3, 2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsNonNegative(self):
     with self.session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, "must be non-negative"):
@@ -164,6 +171,7 @@ class PadOpTest(test.TestCase):
                       constant_op.constant(
                           [-1, 0], shape=[1, 2]))
 
+  @test_util.run_deprecated_v1
   def testPaddingsNonNegative2(self):
     with self.session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, "must be non-negative"):
@@ -223,6 +231,7 @@ class PadOpTest(test.TestCase):
           np.random.randint(-100, 100, (4, 2, 1, 3)).astype(t),
           [[0, 0], [0, 0], [0, 0], [0, 0]], -123)
 
+  @test_util.run_deprecated_v1
   def testFloatTypes(self):
     for t in [np.float32, np.float64]:
       self._testAll(np.random.rand(2, 5).astype(t), [[1, 0], [2, 0]], 0.0)
@@ -261,6 +270,7 @@ class PadOpTest(test.TestCase):
           [[b"Hello", b"World", b"World"], [b"Hello", b"World", b"World"],
            [b"Goodnight", b"Moon", b"Moon"]], self.evaluate(symmetric))
 
+  @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # Unknown paddings shape.
     inp = constant_op.constant(0.0, shape=[4, 4, 4, 4])
@@ -277,6 +287,7 @@ class PadOpTest(test.TestCase):
     padded = array_ops.pad(inp, array_ops.placeholder(dtypes.int32))
     self.assertAllEqual(None, padded.get_shape().ndims)
 
+  @test_util.run_deprecated_v1
   def testPartialShapeInformation(self):
     unknown = array_ops.placeholder(dtypes.int32)
 
@@ -341,6 +352,7 @@ class PadOpTest(test.TestCase):
       self.assertAllEqual(inp, out)
       self.assertShapeEqual(inp, tf_val)
 
+  @test_util.run_deprecated_v1
   def testCollapseAdjacentNonPaddedDimensions(self):
     # pyformat: disable
     paddings_values = [[[0, 0], [0, 0], [0, 0], [0, 1]],

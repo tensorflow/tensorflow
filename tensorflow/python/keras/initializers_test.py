@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.ops import init_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -38,6 +39,7 @@ class KerasInitializersTest(test.TestCase):
     output_2 = keras.backend.get_value(variable)
     self.assertAllClose(output, output_2, atol=1e-4)
 
+  @test_util.run_deprecated_v1
   def test_uniform(self):
     tensor_shape = (9, 6, 7)
     with self.cached_session():
@@ -47,6 +49,7 @@ class KerasInitializersTest(test.TestCase):
                    tensor_shape,
                    target_mean=0., target_max=1, target_min=-1)
 
+  @test_util.run_deprecated_v1
   def test_normal(self):
     tensor_shape = (8, 12, 99)
     with self.cached_session():
@@ -54,6 +57,7 @@ class KerasInitializersTest(test.TestCase):
                    tensor_shape,
                    target_mean=0., target_std=1)
 
+  @test_util.run_deprecated_v1
   def test_truncated_normal(self):
     tensor_shape = (12, 99, 7)
     with self.cached_session():
@@ -69,6 +73,7 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.Constant(2), tensor_shape,
                    target_mean=2, target_max=2, target_min=2)
 
+  @test_util.run_deprecated_v1
   def test_lecun_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -77,6 +82,7 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.lecun_uniform(seed=123), tensor_shape,
                    target_mean=0., target_std=std)
 
+  @test_util.run_deprecated_v1
   def test_glorot_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -85,6 +91,7 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.glorot_uniform(seed=123), tensor_shape,
                    target_mean=0., target_std=std)
 
+  @test_util.run_deprecated_v1
   def test_he_uniform(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -93,6 +100,7 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.he_uniform(seed=123), tensor_shape,
                    target_mean=0., target_std=std)
 
+  @test_util.run_deprecated_v1
   def test_lecun_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -101,6 +109,7 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.lecun_normal(seed=123), tensor_shape,
                    target_mean=0., target_std=std)
 
+  @test_util.run_deprecated_v1
   def test_glorot_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -109,6 +118,7 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.glorot_normal(seed=123), tensor_shape,
                    target_mean=0., target_std=std)
 
+  @test_util.run_deprecated_v1
   def test_he_normal(self):
     tensor_shape = (5, 6, 4, 2)
     with self.cached_session():
@@ -117,6 +127,7 @@ class KerasInitializersTest(test.TestCase):
       self._runner(keras.initializers.he_normal(seed=123), tensor_shape,
                    target_mean=0., target_std=std)
 
+  @test_util.run_deprecated_v1
   def test_orthogonal(self):
     tensor_shape = (20, 20)
     with self.cached_session():

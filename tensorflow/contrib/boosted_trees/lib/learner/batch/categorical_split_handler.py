@@ -119,7 +119,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
 
     def not_active_inputs():
       return (constant_op.constant([], dtype=dtypes.int32),
-              constant_op.constant([], dtype=dtypes.int64, shape=[1, 2]),
+              constant_op.constant_v1([], dtype=dtypes.int64, shape=[1, 2]),
               empty_gradients, empty_hessians)
 
     def active_inputs():

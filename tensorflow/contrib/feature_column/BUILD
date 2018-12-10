@@ -14,6 +14,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":sequence_feature_column",
+        ":sequence_feature_column_v2",
         "//tensorflow/python:util",
     ],
 )
@@ -32,7 +33,7 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
     ],
 )
 
@@ -51,7 +52,7 @@ py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -69,7 +70,7 @@ py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras:layers",
     ],
 )
@@ -89,7 +90,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
-        "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/feature_column:feature_column_py",
     ],
 )
 
@@ -110,7 +111,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python/feature_column",
-        "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

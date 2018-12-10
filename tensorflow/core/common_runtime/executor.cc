@@ -1239,7 +1239,6 @@ class ExecutorState {
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
-  const tracing::TraceCollector* const trace_collector_;
   const tracing::EventCollector* const event_collector_;
   Context context_;
 
@@ -1366,7 +1365,6 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
-      trace_collector_(tracing::GetTraceCollector()),
       event_collector_(
           tracing::GetEventCollector(tracing::EventCategory::kCompute)),
       context_(ContextKind::kThread),
@@ -1565,7 +1563,6 @@ struct ExecutorState::AsyncState {
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
 bool MightTrace(const NodeItem& item,
-                const tracing::TraceCollector* trace_collector,
                 const tracing::EventCollector* event_collector,
                 bool using_annotations) {
   // Tracing will only be enabled if either `event_collector` is non null,
@@ -1578,6 +1575,7 @@ bool MightTrace(const NodeItem& item,
   if (event_collector != nullptr) {
     return true;
   }
+  auto* trace_collector = tracing::GetTraceCollector();
   if (trace_collector) {
     if (using_annotations) {
       return trace_collector->IsEnabledForAnnotations();
@@ -1713,7 +1711,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
           NodeExecStatsInterface* stats = state->stats;  // Shorthand
-          Entry* first_input = state->first_input;     // Shorthand
+          Entry* first_input = state->first_input;       // Shorthand
 
           nodestats::SetOpEnd(stats);
           EntryVector outputs;
@@ -1762,9 +1760,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
 
-        if (TF_PREDICT_FALSE(MightTrace(item, trace_collector_,
-                                        event_collector_,
-                                        trace_using_annotations_))) {
+        if (TF_PREDICT_FALSE(
+                MightTrace(item, event_collector_, trace_using_annotations_))) {
           const string& op_name = op_kernel->name();
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
@@ -2046,6 +2043,24 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
+  auto activity_handle =
+      [&]() -> std::unique_ptr<tracing::TraceCollector::Handle> {
+    auto* trace_collector = tracing::GetTraceCollector();
+    if (TF_PREDICT_FALSE(trace_collector != nullptr &&
+                         trace_collector->IsEnabledForActivities(
+                             false /* is_expensive */))) {
+      const string& op_name = item->kernel->name();
+      // Intentionally using ExecutorPropagateOutputs as the first key so that
+      // users are aware that it's not the op invocation.
+      return trace_collector->CreateActivityHandle(
+          "ExecutorPropagateOutputs",
+          strings::StrCat(op_name, "#id=", step_id_, "#"),
+          false /* is_expensive */);
+    } else {
+      return nullptr;
+    }
+  }();
+
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
   const int64 input_iter = tagged_node.input_iter;
@@ -2377,18 +2392,23 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
+  CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
+
   if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    status.Update(device->Sync());
+    device->Sync([=](Status new_status) mutable {
+      status.Update(new_status);
+      delete this;
+      runner([=]() { done_cb(status); });
+    });
+  } else {
+    delete this;
+    runner([=]() { done_cb(status); });
   }
-
-  delete this;
-  CHECK(done_cb != nullptr);
-  runner([=]() { done_cb(status); });
 }
 
 void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,

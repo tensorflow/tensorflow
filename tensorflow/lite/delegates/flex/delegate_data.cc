@@ -14,20 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tflite {
 namespace flex {
 tensorflow::Status DelegateData::Create(std::unique_ptr<DelegateData>* data) {
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
 
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
       tensorflow::SessionOptions(), "/job:localhost/replica:0/task:0",
       &devices));
 
-  std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(devices));
+  std::unique_ptr<tensorflow::DeviceMgr> device_mgr =
+      absl::make_unique<tensorflow::DeviceMgr>(std::move(devices));
   // Note that Rendezvous is ref-counted so it will be automatically deleted.
   tensorflow::Rendezvous* rendezvous =
       new tensorflow::IntraProcessRendezvous(device_mgr.get());

@@ -31,12 +31,12 @@ namespace tensorflow {
 class XlaCpuDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
-                                          const string& name_prefix,
-                                          std::vector<Device*>* devices) {
+Status XlaCpuDeviceFactory::CreateDevices(
+    const SessionOptions& session_options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
@@ -64,7 +64,18 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
   options.compilation_device_name = DEVICE_CPU_XLA_JIT;
   options.use_multiple_streams = false;
   auto device = absl::make_unique<XlaDevice>(session_options, options);
-  devices->push_back(device.release());
+
+  // Setting GpuDeviceInfo because eager runtime relies on the device
+  // context in tensorflow_gpu_device_info(). Also,
+  // tensorflow_gpu_device_info() == nullptr is used as an IsCPU test.
+  // We need XlaCpuDevice to be treated not as CPU because it allocates
+  // XlaTensors, not regular Tensors.
+  Status status = device->UseGpuDeviceInfo();
+  if (!status.ok()) {
+    errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT);
+    return status;
+  }
+  devices->push_back(std::move(device));
   return Status::OK();
 }
 
