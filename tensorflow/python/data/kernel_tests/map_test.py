@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -1063,6 +1064,20 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
 
+  def testRandomShuffleWithGlobalSeed(self):
+    random_seed.set_random_seed(999)
+
+    dataset1 = dataset_ops.Dataset.range(100).batch(4).map(
+        lambda x: random_ops.random_shuffle(x))
+    get_next1 = self.getNext(dataset1)
+    output1 = [self.evaluate(get_next1()) for _ in range(25)]
+
+    dataset2 = dataset_ops.Dataset.range(100).batch(4).map(
+        lambda x: random_ops.random_shuffle(x))
+    get_next2 = self.getNext(dataset2)
+    output2 = [self.evaluate(get_next2()) for _ in range(25)]
+
+    self.assertAllEqual(output1, output2)
 
 
 if __name__ == "__main__":

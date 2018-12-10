@@ -2035,11 +2035,16 @@ class StructuredFunctionWrapper(object):
     if defun_kwargs is None:
       defun_kwargs = {}
 
+    self._graph_level_seed, _ = core_random_seed.get_seed(None)
+
     @function.Defun(
         *self._input_structure._flat_types, func_name=self._func_name,  # pylint: disable=protected-access
         **defun_kwargs)
     def tf_data_structured_function_wrapper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
+      if self._graph_level_seed is not None:
+        core_random_seed.set_random_seed(self._graph_level_seed)
+
       # pylint: disable=protected-access
       nested_args = self._input_structure._from_compatible_tensor_list(args)
       if not _should_unpack_args(nested_args):
