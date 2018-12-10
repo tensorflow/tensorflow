@@ -494,7 +494,7 @@ class FunctionalOpsTest(test.TestCase):
 
   @test_util.disable_control_flow_v2("b/119323354")
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMapEmptyScalar(self):
     map_return = functional_ops.map_fn(lambda x: 1, constant_op.constant([]))
     self.assertAllEqual([0], map_return.get_shape().dims)
@@ -503,7 +503,7 @@ class FunctionalOpsTest(test.TestCase):
   # TODO(akshayka): this test fails in eager: the iterable is of length 0 so
   # so the body of the while loop never executes
   @test_util.disable_control_flow_v2("b/119323354")
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMapEmptyTensor(self):
     with self.cached_session():
       map_return = functional_ops.map_fn(lambda x: array_ops.zeros([3, 2]),
@@ -797,7 +797,7 @@ class FunctionalOpsTest(test.TestCase):
     self.assertAllEqual(Run(100., False), 5050.)
     self.assertAllEqual(Run(100., True), 5050.)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWhileError(self):
     for use_gpu in (True, False):
       with ops.Graph().as_default() as g:
@@ -1027,7 +1027,7 @@ class FunctionalOpsTest(test.TestCase):
   def testForMLPWhile(self):
     self._testForMLP(True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testForError(self):
 
     @function.Defun(dtypes.int32, dtypes.float32)
@@ -1233,7 +1233,7 @@ class PartitionedCallTest(test.TestCase):
       self.assertAllEqual(expected, result)
 
   # Use an invalid executor name to test the plumbing of the executor_type attr.
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testExecutorTypeAttrExecutorNotFound(self):
     @function.Defun(dtypes.int32)
     def AddFive(x):

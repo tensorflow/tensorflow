@@ -98,6 +98,7 @@ class MultiDeviceIterator : public ResourceBase {
       IteratorContext::Params params(ctx);
       params.lib = lib_;
       params.function_handle_cache = function_handle_cache_.get();
+      params.resource_mgr = &resource_mgr_;
       IteratorContext iter_ctx(std::move(params));
       tf_shared_lock l(mu_);
       multi_device_buffer_->GetNextFromShard(
@@ -124,6 +125,8 @@ class MultiDeviceIterator : public ResourceBase {
   FunctionHandleCache* function_handle_cache() {
     return function_handle_cache_.get();
   }
+
+  ResourceMgr* resource_mgr() { return &resource_mgr_; }
 
  private:
   // A private class that uses a background thread to keep a per device buffer
@@ -350,6 +353,7 @@ class MultiDeviceIterator : public ResourceBase {
   const std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* const lib_ = nullptr;  // not owned.
   const std::unique_ptr<FunctionHandleCache> function_handle_cache_;
+  ResourceMgr resource_mgr_;
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
 
   int64 incarnation_id_ GUARDED_BY(mu_) = 0;
@@ -477,6 +481,7 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     IteratorContext::Params params(ctx);
     params.lib = resource->lib();
     params.function_handle_cache = resource->function_handle_cache();
+    params.resource_mgr = resource->resource_mgr();
     IteratorContext iter_ctx(std::move(params));
     OP_REQUIRES_OK(
         ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -797,6 +798,19 @@ class SparseMathOpsTest(test_util.TensorFlowTestCase):
                                                result_tensor.dense_shape,
                                                result_tensor.values).eval()
     self.assertAllEqual(result_np, res_densified)
+
+  @test_util.run_deprecated_v1
+  def testCwiseShapeValidation(self):
+    # Test case for GitHub 24072.
+    with self.session(use_gpu=False):
+      a = array_ops.ones([3, 4, 1], dtype=dtypes.int32)
+      b = sparse_tensor.SparseTensor([[0, 0, 1, 0], [0, 0, 3, 0]], [10, 20],
+                                     [1, 1, 4, 2])
+      c = a * b
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "broadcasts dense to sparse only; got incompatible shapes"):
+        c.eval()
 
   @test_util.run_deprecated_v1
   def testCwiseDivAndMul(self):

@@ -24,6 +24,22 @@ limitations under the License.
 
 namespace tensorflow {
 
+#define NCCL_RETURN_IF_ERROR(...)                               \
+  do {                                                          \
+    ncclResult_t nccl_status = (__VA_ARGS__);                   \
+    if (nccl_status != ncclSuccess) {                           \
+      return errors::Internal(ncclGetErrorString(nccl_status)); \
+    }                                                           \
+  } while (0)
+
+#define CUDA_RETURN_IF_ERROR(...)                               \
+  do {                                                          \
+    cudaError_t cuda_status = (__VA_ARGS__);                    \
+    if (cuda_status != cudaSuccess) {                           \
+      return errors::Internal(cudaGetErrorString(cuda_status)); \
+    }                                                           \
+  } while (0)
+
 using se::cuda::ScopedActivateExecutorContext;
 
 // Contains data for a single stream used for nccl communication; this includes
@@ -177,8 +193,8 @@ NcclManager* NcclManager::instance() {
   return instance;
 }
 
-NcclManager::Communicator* NcclManager::GetCommunicator(
-    NcclManager::Collective* collective) {
+Status NcclManager::GetCommunicator(NcclManager::Collective* collective,
+                                    NcclManager::Communicator** communicator) {
   // Sort by executor to make ordering of executors deterministic.
   std::sort(collective->participants.begin(), collective->participants.end(),
             [](const std::unique_ptr<Participant>& a,
@@ -217,7 +233,10 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
           break;
         }
       }
-      if (i == num_devices) return comm.get();
+      if (i == num_devices) {
+        *communicator = comm.get();
+        return Status::OK();
+      }
     }
   }
 
@@ -264,37 +283,36 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
   // NCCL2 prevents InitAll for more communicators than devices (but doesn't
   // check that device ids are unique). Work around it by initializing each
   // rank individually.
-  cudaGetDeviceCount(&device_count);
+  CUDA_RETURN_IF_ERROR(cudaGetDeviceCount(&device_count));
 #endif
   std::vector<ncclComm_t> nccl_comms(num_devices);
   if (num_devices <= device_count) {
-    auto result =
-        ncclCommInitAll(nccl_comms.data(), num_devices, devices.data());
-    CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
+    NCCL_RETURN_IF_ERROR(
+        ncclCommInitAll(nccl_comms.data(), num_devices, devices.data()));
   } else {
     int savedDevice = 0;
-    CHECK_EQ(cudaGetDevice(&savedDevice), cudaSuccess);
+    CUDA_RETURN_IF_ERROR(cudaGetDevice(&savedDevice));
     ncclUniqueId commId;
-    ncclGetUniqueId(&commId);
+    NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&commId));
 #if NCCL_MAJOR >= 2
-    CHECK_EQ(ncclGroupStart(), ncclSuccess);
+    NCCL_RETURN_IF_ERROR(ncclGroupStart());
 #endif
     for (int rank = 0; rank < num_devices; ++rank) {
-      cudaSetDevice(devices[rank]);
-      auto result =
-          ncclCommInitRank(nccl_comms.data() + rank, num_devices, commId, rank);
-      CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
+      CUDA_RETURN_IF_ERROR(cudaSetDevice(devices[rank]));
+      NCCL_RETURN_IF_ERROR(ncclCommInitRank(nccl_comms.data() + rank,
+                                            num_devices, commId, rank));
     }
 #if NCCL_MAJOR >= 2
-    CHECK_EQ(ncclGroupEnd(), ncclSuccess);
+    NCCL_RETURN_IF_ERROR(ncclGroupEnd());
 #endif
-    cudaSetDevice(savedDevice);
+    CUDA_RETURN_IF_ERROR(cudaSetDevice(savedDevice));
   }
   for (int rank = 0; rank < num_devices; ++rank) {
     members[rank].nccl_comm = nccl_comms[rank];
   }
   communicators_.emplace_back(new Communicator(std::move(members)));
-  return communicators_.back().get();
+  *communicator = communicators_.back().get();
+  return Status::OK();
 }
 
 void NcclManager::AddToAllReduce(int num_devices, const string& key,
@@ -400,10 +418,18 @@ void NcclManager::AddParticipant(int num_devices, const string& key,
 void NcclManager::RunCollective(const string& key, Collective* collective) {
   static mutex collective_mu(LINKER_INITIALIZED);
 
-  auto* communicator = GetCommunicator(collective);
-  collective->communicator = communicator;
-  const int size = communicator->num_devices;
+  Communicator* communicator = nullptr;
+  const int size = static_cast<int>(collective->participants.size());
+  Status s = GetCommunicator(collective, &communicator);
+  if (!s.ok()) {
+    for (int i = 0; i < size; ++i) {
+      collective->participants[i]->done_callback(s);
+    }
+    delete collective;
+    return;
+  }
 
+  collective->communicator = communicator;
   for (int rank = 0; rank < size; ++rank) {
     Participant* p = collective->participants[rank].get();
     NcclStream* nccl_stream = communicator->members[rank].nccl_stream;

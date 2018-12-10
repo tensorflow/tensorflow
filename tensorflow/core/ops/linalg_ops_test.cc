@@ -274,4 +274,23 @@ TEST(LinalgOpsTest, Svd_ShapeFn) {
   INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
 }
 
+TEST(LinalgOpsTest, Lu_ShapeFn) {
+  ShapeInferenceTestOp op("Lu");
+  INFER_OK(op, "?", "?;?");
+  INFER_ERROR("Shape must be at least rank 2 but is rank 1", op, "[1]");
+  INFER_ERROR("Dimensions must be equal, but are 1 and 2", op, "[1,?,3,4,1,2]");
+
+  INFER_OK(op, "[?,?]", "[d0_0,d0_0];[d0_0]");
+  INFER_OK(op, "[1,?]", "[d0_0,d0_0];[d0_0]");
+  INFER_OK(op, "[?,1]", "[d0_1,d0_1];[d0_1]");
+
+  // Repeat previous block of tests with input rank > 2.
+  INFER_OK(op, "[1,?,3,4,?,?]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_4,d0_4];[d0_0,d0_1,d0_2,d0_3,d0_4]");
+  INFER_OK(op, "[1,?,3,4,1,?]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_4,d0_4];[d0_0,d0_1,d0_2,d0_3,d0_4]");
+  INFER_OK(op, "[1,?,3,4,?,1]",
+           "[d0_0,d0_1,d0_2,d0_3,d0_5,d0_5];[d0_0,d0_1,d0_2,d0_3,d0_5]");
+}
+
 }  // end namespace tensorflow

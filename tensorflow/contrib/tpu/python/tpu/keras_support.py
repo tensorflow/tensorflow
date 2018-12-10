@@ -133,7 +133,7 @@ def _tpu_session_context():
 An error occurred connecting or initializing your TPU.
 
 The session has been reset. re-run keras_to_tpu_model to create a new session.
-""" + e)
+""" + str(e))
 
 
 def setup_tpu_session(cluster_resolver):
@@ -729,7 +729,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
     dummy_x_shape[0] *= tpu_assignment.num_towers
     dummy_y_shape = dataset.output_shapes[1].as_list()
     dummy_y_shape[0] *= tpu_assignment.num_towers
-    self._iterator = dataset.make_initializable_iterator()
+    self._iterator = dataset_ops.make_initializable_iterator(dataset)
     K.get_session().run(self._iterator.initializer)
 
     self._get_next_ops = []
@@ -1676,14 +1676,10 @@ class KerasTPUModel(models.Model):
         callbacks,
         self,
         do_validation=do_validation,
-        val_inputs=val_inputs,
-        val_targets=val_targets,
-        val_sample_weights=val_sample_weights,
         batch_size=batch_size,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
         samples=num_training_samples,
-        validation_steps=validation_steps,
         verbose=verbose,
         count_mode=count_mode)
 

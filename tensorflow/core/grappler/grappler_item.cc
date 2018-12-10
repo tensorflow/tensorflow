@@ -30,20 +30,22 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef* graph_def) {
-  id = other.id;
-  feed = other.feed;
-  fetch = other.fetch;
-  init_ops = other.init_ops;
-  keep_ops = other.keep_ops;
-  expected_init_time = other.expected_init_time;
-  save_op = other.save_op;
-  restore_op = other.restore_op;
-  save_restore_loc_tensor = other.save_restore_loc_tensor;
-  queue_runners = other.queue_runners;
-  devices_ = other.devices_;
-  allowed_optimizations_ = other.allowed_optimizations_;
-  graph.Swap(graph_def);
+GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
+  GrapplerItem item;
+  item.id = id;
+  item.feed = feed;
+  item.fetch = fetch;
+  item.init_ops = init_ops;
+  item.keep_ops = keep_ops;
+  item.expected_init_time = expected_init_time;
+  item.save_op = save_op;
+  item.restore_op = restore_op;
+  item.save_restore_loc_tensor = save_restore_loc_tensor;
+  item.queue_runners = queue_runners;
+  item.devices_ = devices_;
+  item.allowed_optimizations_ = allowed_optimizations_;
+  item.graph.Swap(&graph_def);
+  return item;
 }
 
 std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {

@@ -130,9 +130,8 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
         sess.run(get_next)
 
     seed_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
-    iterator = (
-        dataset_ops.Dataset.range(10).shuffle(10, seed=seed_placeholder)
-        .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).shuffle(10, seed=seed_placeholder))
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -223,7 +222,8 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
           10, reshuffle_each_iteration=reshuffle).repeat(3)
 
       if initializable:
-        iterators = [dataset.make_initializable_iterator() for _ in range(2)]
+        iterators = [dataset_ops.make_initializable_iterator(dataset)
+                     for _ in range(2)]
       else:
         iterators = [dataset_ops.make_one_shot_iterator(dataset)
                      for _ in range(2)]

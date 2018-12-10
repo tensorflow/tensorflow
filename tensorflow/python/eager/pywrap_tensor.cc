@@ -221,7 +221,7 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
     }
   }
   tensorflow::Safe_PyObjectPtr value_decrefer;
-  if (PyArray_CheckAnyScalarExact(value)) {
+  if (PyArray_IsScalar(value, Generic)) {
     // Convert numpy scalars to numpy arrays.
     value = PyArray_FromScalar(value, nullptr);
     // The returned value needs to be DECREF'd, but the original value was

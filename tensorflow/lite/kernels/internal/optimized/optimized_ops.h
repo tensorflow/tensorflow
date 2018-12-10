@@ -3582,8 +3582,8 @@ inline void AveragePool(const PoolParams& params,
             std::min(params.filter_height, input_height - in_y_origin);
         const int filter_count =
             (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
-        // 1280 required by Inception v3
-        static constexpr int kAccBufferMaxSize = 2048;
+        // 2560 is required by MobileNetV2 with depth multiplier 2.
+        static constexpr int kAccBufferMaxSize = 4096;
         TFLITE_DCHECK_LE(depth, kAccBufferMaxSize);
         uint16 acc[kAccBufferMaxSize];
         memset(acc, 0, depth * sizeof(acc[0]));
@@ -3748,8 +3748,8 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
         const int filter_y_start = std::max(0, -in_y_origin);
         const int filter_y_end =
             std::min(params.filter_height, input_height - in_y_origin);
-        // 2048 required by Inception v3
-        static constexpr int kAccBufferMaxSize = 2048;
+        // 2560 is required by MobileNetV2 with depth multiplier 2.
+        static constexpr int kAccBufferMaxSize = 4096;
         TFLITE_DCHECK_LE(depth, kAccBufferMaxSize);
         uint8 acc[kAccBufferMaxSize];
         memset(acc, 0, depth * sizeof(acc[0]));

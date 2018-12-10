@@ -23,6 +23,7 @@ import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
@@ -38,7 +39,6 @@ from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable

@@ -665,7 +665,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   std::reverse(topo_sorted_graph.mutable_node()->begin(),
                topo_sorted_graph.mutable_node()->end());
 
-  GrapplerItem topo_sorted_item(item, std::move(topo_sorted_graph));
+  GrapplerItem topo_sorted_item = item.WithGraph(std::move(topo_sorted_graph));
   RemapperContext ctx(topo_sorted_item);
 
   // Skip nodes that were invalidated by a remapper, e.g. do not process BiasAdd

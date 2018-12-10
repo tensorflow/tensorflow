@@ -63,7 +63,19 @@ Status XlaCpuDeviceFactory::CreateDevices(
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_CPU_XLA_JIT;
   options.use_multiple_streams = false;
-  devices->push_back(absl::make_unique<XlaDevice>(session_options, options));
+  auto device = absl::make_unique<XlaDevice>(session_options, options);
+
+  // Setting GpuDeviceInfo because eager runtime relies on the device
+  // context in tensorflow_gpu_device_info(). Also,
+  // tensorflow_gpu_device_info() == nullptr is used as an IsCPU test.
+  // We need XlaCpuDevice to be treated not as CPU because it allocates
+  // XlaTensors, not regular Tensors.
+  Status status = device->UseGpuDeviceInfo();
+  if (!status.ok()) {
+    errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT);
+    return status;
+  }
+  devices->push_back(std::move(device));
   return Status::OK();
 }
 

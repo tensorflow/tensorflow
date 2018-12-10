@@ -173,7 +173,13 @@ class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
 
-  StatusOr<LocalShapedBufferTuple*> Execute(
+  StatusOr<LocalShapedBuffer*> Execute(
+      absl::Span<LocalShapedBuffer* const> argument_handles);
+
+  // Execute on many replicas. Takes a sequence of argument lists (one argument
+  // list per replica) and returns a tuple of results (one result per replica).
+  // The number of argument lists must be equal to the replica count.
+  StatusOr<LocalShapedBufferTuple*> ExecutePerReplica(
       absl::Span<const std::vector<LocalShapedBuffer*> > argument_handles);
 
  private:

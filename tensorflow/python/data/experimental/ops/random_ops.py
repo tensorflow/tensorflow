@@ -21,9 +21,8 @@ import functools
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import random_seed
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -44,16 +43,8 @@ class RandomDatasetV2(dataset_ops.DatasetSource):
         **dataset_ops.flat_structure(self))
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.int64
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.int64, [])
 
 
 @tf_export(v1=["data.experimental.RandomDataset"])

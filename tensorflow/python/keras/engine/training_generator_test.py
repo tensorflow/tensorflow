@@ -25,11 +25,16 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
+from tensorflow.python.util import nest
 
 
 def custom_generator(mode=2):
@@ -327,6 +332,57 @@ class TestGeneratorMethodsWithSequences(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  '`sample_weight` argument is not supported'):
       model.fit(CustomSequence(), sample_weight=np.ones([10, 1]))
+
+
+@tf_test_util.run_all_in_graph_and_eager_modes
+class TestConvertToGeneratorLike(test.TestCase, parameterized.TestCase):
+  simple_inputs = (np.ones((10, 10)), np.ones((10, 1)))
+  nested_inputs = ((np.ones((10, 10)), np.ones((10, 20))), (np.ones((10, 1)),
+                                                            np.ones((10, 3))))
+
+  def _make_dataset(self, inputs, batches):
+    return dataset_ops.DatasetV2.from_tensors(inputs).repeat(batches)
+
+  def _make_iterator(self, inputs, batches):
+    return dataset_ops.make_one_shot_iterator(
+        self._make_dataset(inputs, batches))
+
+  def _make_generator(self, inputs, batches):
+
+    def _gen():
+      for _ in range(batches):
+        yield inputs
+
+    return _gen()
+
+  def _make_numpy(self, inputs, _):
+    return inputs
+
+  @parameterized.named_parameters(
+      ('simple_dataset', _make_dataset, simple_inputs),
+      ('simple_iterator', _make_iterator, simple_inputs),
+      ('simple_generator', _make_generator, simple_inputs),
+      ('simple_numpy', _make_numpy, simple_inputs),
+      ('nested_dataset', _make_dataset, nested_inputs),
+      ('nested_iterator', _make_iterator, nested_inputs),
+      ('nested_generator', _make_generator, nested_inputs),
+      ('nested_numpy', _make_numpy, nested_inputs))
+  def test_convert_to_generator_like(self, input_fn, inputs):
+    expected_batches = 5
+    data = input_fn(self, inputs, expected_batches)
+
+    # Dataset and Iterator not supported in Legacy Graph mode.
+    if (not context.executing_eagerly() and
+        isinstance(data, (dataset_ops.DatasetV2, iterator_ops.Iterator))):
+      return
+
+    generator, steps = training_generator.convert_to_generator_like(
+        data, batch_size=2, steps_per_epoch=expected_batches)
+    self.assertEqual(steps, expected_batches)
+
+    for _ in range(expected_batches):
+      outputs = next(generator)
+    nest.assert_same_structure(outputs, inputs)
 
 
 if __name__ == '__main__':

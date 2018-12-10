@@ -302,15 +302,14 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
 class NumpyTensorBuffer : public TensorBuffer {
  public:
   NumpyTensorBuffer(PyArrayObject* array, size_t len, void* data)
-      : array_(array), len_(len), data_(data) {}
+      : TensorBuffer(data), array_(array), len_(len) {}
 
   ~NumpyTensorBuffer() override {
     // Note: The session::run wrapper is responsible for freeing this while
     // holding the GIL.
-    DelayedNumpyDecref(data_, len_, array_);
+    DelayedNumpyDecref(data(), len_, array_);
   }
 
-  void* data() const override { return data_; }
   size_t size() const override { return len_; }
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(AllocationDescription* proto) const override {
@@ -329,7 +328,6 @@ class NumpyTensorBuffer : public TensorBuffer {
  private:
   PyArrayObject* array_;
   size_t len_;
-  void* data_;
 };
 
 Status PyObjectToString(PyObject* obj, string* str) {

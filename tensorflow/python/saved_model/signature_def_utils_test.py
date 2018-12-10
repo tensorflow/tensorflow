@@ -423,6 +423,7 @@ class SignatureDefUtilsTest(test.TestCase):
         {},
         signature_constants.PREDICT_METHOD_NAME)
 
+  @test_util.run_v1_only("b/120545219")
   def testOpSignatureDef(self):
     key = "adding_1_and_2_key"
     add_op = math_ops.add(1, 2, name="adding_1_and_2")
@@ -430,6 +431,7 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertIn(key, signature_def.outputs)
     self.assertEqual(add_op.name, signature_def.outputs[key].name)
 
+  @test_util.run_v1_only("b/120545219")
   def testLoadOpFromSignatureDef(self):
     key = "adding_1_and_2_key"
     add_op = math_ops.add(1, 2, name="adding_1_and_2")

@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OpsSet"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "TFLiteConverter"
     mtype: "<type \'type\'>"
   }

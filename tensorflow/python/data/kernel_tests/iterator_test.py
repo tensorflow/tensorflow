@@ -289,9 +289,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
   @test_util.run_deprecated_v1
   def testNotInitializedError(self):
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
-    iterator = (
-        dataset_ops.Dataset.from_tensors(components)
-        .make_initializable_iterator())
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.from_tensors(components))
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -523,7 +522,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
   def testIteratorStringHandleReuseTensorObject(self):
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
     one_shot_iterator = dataset_ops.make_one_shot_iterator(dataset)
-    initializable_iterator = dataset.make_initializable_iterator()
+    initializable_iterator = dataset_ops.make_initializable_iterator(dataset)
     structure_iterator = iterator_ops.Iterator.from_structure(
         dataset.output_types)
 
@@ -687,7 +686,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     with ops.device("/job:client"):
       client_dataset = dataset_ops.Dataset.zip((targets, handles)).map(map_fn)
-      itr = client_dataset.make_initializable_iterator()
+      itr = dataset_ops.make_initializable_iterator(client_dataset)
       n = itr.get_next()
 
     with session.Session(s3.target, config=config) as sess:
@@ -777,8 +776,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     def _build_range_dataset_graph():
       start = 1
       stop = 10
-      iterator = dataset_ops.Dataset.range(start,
-                                           stop).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.range(start, stop))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = _save_op(iterator._iterator_resource)
@@ -787,8 +786,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     def _build_reader_dataset_graph():
       filenames = ["test"]  # Does not exist but we don't care in this test.
-      iterator = readers.FixedLengthRecordDataset(
-          filenames, 1, 0, 0).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          readers.FixedLengthRecordDataset(filenames, 1, 0, 0))
       init_op = iterator.initializer
       get_next_op = iterator.get_next()
       save_op = _save_op(iterator._iterator_resource)

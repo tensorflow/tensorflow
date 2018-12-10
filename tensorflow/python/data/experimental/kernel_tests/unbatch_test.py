@@ -43,7 +43,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     placeholder = array_ops.placeholder(dtypes.int32)
     dataset = dataset_ops.Dataset.from_tensors(placeholder).apply(
         batching.unbatch())
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_elem = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -206,7 +206,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     ph2 = array_ops.placeholder(dtypes.int32, shape=None)
     data = dataset_ops.Dataset.from_tensors((ph1, ph2))
     data = data.apply(batching.unbatch())
-    iterator = data.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(data)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:

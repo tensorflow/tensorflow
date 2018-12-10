@@ -263,10 +263,8 @@ class GradientDescentOptimizerTest(test.TestCase):
 class MomentumOptimizerTest(test.TestCase):
 
   def _update_nesterov_momentum_numpy(self, var, accum, g, lr, momentum):
-    var = var + accum * lr * momentum
-    accum = accum * momentum + g
-    var = var - lr * accum
-    var = var - accum * lr * momentum
+    accum = accum * momentum - g * lr
+    var += (accum * momentum - g * lr)
     return var, accum
 
   @test_util.run_in_graph_and_eager_modes
@@ -301,9 +299,9 @@ class MomentumOptimizerTest(test.TestCase):
         self.evaluate(mom_update)
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([0.1, 0.1]), self.evaluate(slot0))
+            np.array([-0.2, -0.2]), self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([0.01, 0.01]), self.evaluate(slot1))
+            np.array([-0.02, -0.02]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
@@ -317,11 +315,11 @@ class MomentumOptimizerTest(test.TestCase):
           mom_opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
             self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
-            self.evaluate(slot1))
+            np.array([(0.9 * (-0.02) - 2.0 * 0.01),
+                      (0.9 * (-0.02) - 2.0 * 0.01)]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([
@@ -486,9 +484,9 @@ class MomentumOptimizerTest(test.TestCase):
         mom_update.run()
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([0.1, 0.1]), self.evaluate(slot0))
+            np.array([-0.2, -0.2]), self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([0.01, 0.01]), self.evaluate(slot1))
+            np.array([-0.02, -0.02]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
@@ -500,11 +498,11 @@ class MomentumOptimizerTest(test.TestCase):
         mom_update.run()
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
             self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
-            self.evaluate(slot1))
+            np.array([(0.9 * (-0.02) - 2.0 * 0.01),
+                      (0.9 * (-0.02) - 2.0 * 0.01)]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([
@@ -553,10 +551,10 @@ class MomentumOptimizerTest(test.TestCase):
             np.array([0, 0]),
             self.evaluate(slot0)[0])
         self.assertAllCloseAccordingToType(
-            np.array([.1, .1]),
+            np.array([-2.0 * .1, -2.0 * .1]),
             self.evaluate(slot0)[1])
         self.assertAllCloseAccordingToType(
-            np.array([.01, .01]),
+            np.array([-2.0 * .01, -2.0 * .01]),
             self.evaluate(slot1)[2])
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
@@ -573,10 +571,11 @@ class MomentumOptimizerTest(test.TestCase):
         # Check that the momentum accumulators have been updated.
         self.assertAllClose(np.array([0, 0]), self.evaluate(slot0)[0])
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
             self.evaluate(slot0)[1])
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+            np.array([(0.9 * (-0.02) - 2.0 * 0.01),
+                      (0.9 * (-0.02) - 2.0 * 0.01)]),
             self.evaluate(slot1)[2])
         # Check that the parameters have been updated.
         self.assertAllClose(np.array([0, 0]), self.evaluate(var0)[0])
@@ -621,9 +620,9 @@ class MomentumOptimizerTest(test.TestCase):
         mom_update1.run()
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([0.1, 0.1]), self.evaluate(slot0))
+            np.array([-0.2, -0.2]), self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([0.01, 0.01]), self.evaluate(slot1))
+            np.array([-0.02, -0.02]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
@@ -635,11 +634,11 @@ class MomentumOptimizerTest(test.TestCase):
         mom_update2.run()
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            np.array([(0.9 * (-0.2) - 2.0 * 0.1), (0.9 * (-0.2) - 2.0 * 0.1)]),
             self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
-            self.evaluate(slot1))
+            np.array([(0.9 * (-0.02) - 2.0 * 0.01),
+                      (0.9 * (-0.02) - 2.0 * 0.01)]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([

@@ -54,6 +54,8 @@ class Dataset : public DatasetBase {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 
+  int64 Cardinality() const override { return sparse_tensor_.shape()[0]; }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,

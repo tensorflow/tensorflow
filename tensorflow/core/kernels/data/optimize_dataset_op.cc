@@ -162,6 +162,8 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "OptimizeDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -303,8 +305,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
         // removing unused graph nodes)
         // TODO(b/118175421): This should be part of the tf.data optimization
         // pass manager.
-        for (const auto& optimizer : {"pruning", "function", "constfold",
-                                      "shape", "arithmetic", "dependency"}) {
+        // TODO(b/120437209): Apply `constfold` optimization when it is fixed.
+        for (const auto& optimizer :
+             {"pruning", "function", "shape", "arithmetic", "dependency"}) {
           rewriter_config.add_optimizers(optimizer);
         }
       }

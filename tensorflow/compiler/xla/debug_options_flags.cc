@@ -334,6 +334,12 @@ void AllocateFlags() {
           "overhead from context switching but we let the user override this "
           "behavior to help run tests on the host that run models in parallel "
           "across multiple devices."),
+      tensorflow::Flag(
+          "xla_gpu_disable_ptxas_optimizations",
+          bool_setter_for(
+              &DebugOptions::set_xla_gpu_disable_ptxas_optimizations),
+          flag_values->xla_gpu_disable_ptxas_optimizations(),
+          "In XLA:GPU run ptxas in -O0 (default is -O3)."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

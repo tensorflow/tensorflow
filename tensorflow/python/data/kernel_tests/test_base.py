@@ -62,7 +62,7 @@ class DatasetTestBase(test.TestCase):
       return iterator._next_internal  # pylint: disable=protected-access
     else:
       if requires_initialization:
-        iterator = dataset.make_initializable_iterator()
+        iterator = dataset_ops.make_initializable_iterator(dataset)
         self.evaluate(iterator.initializer)
       else:
         iterator = dataset_ops.make_one_shot_iterator(dataset)

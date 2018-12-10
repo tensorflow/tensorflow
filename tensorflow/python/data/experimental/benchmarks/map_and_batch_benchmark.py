@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -54,7 +55,7 @@ class MapAndBatchBenchmark(test.Benchmark):
 
     dataset = dataset.apply(batching.map_and_batch(
         lambda _: dense_value, batch_size_placeholder))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     for shape in shapes:
@@ -139,31 +140,11 @@ class MapAndBatchBenchmark(test.Benchmark):
 
         num_iters = 1024 // (
             (element_size * batch_size) // min(num_calls, inter_op))
-        dataset = make_base_dataset(element_size)
-        chained_dataset = dataset.map(
+        fused_dataset = make_base_dataset(element_size)
+        fused_dataset = fused_dataset.map(
             math_ops.matmul,
             num_parallel_calls=num_calls).batch(batch_size=batch_size)
-        chained_iterator = dataset_ops.make_one_shot_iterator(chained_dataset)
-        chained_get_next = chained_iterator.get_next()
 
-        chained_deltas = []
-        with session.Session(
-            config=config_pb2.ConfigProto(
-                inter_op_parallelism_threads=inter_op,
-                use_per_session_threads=True)) as sess:
-          for _ in range(5):
-            sess.run(chained_get_next.op)
-          for _ in range(num_iters):
-            start = time.time()
-            sess.run(chained_get_next.op)
-            end = time.time()
-            chained_deltas.append(end - start)
-
-        fused_dataset = dataset.apply(
-            batching.map_and_batch(
-                math_ops.matmul,
-                num_parallel_calls=num_calls,
-                batch_size=batch_size))
         fused_iterator = dataset_ops.make_one_shot_iterator(fused_dataset)
         fused_get_next = fused_iterator.get_next()
 
@@ -180,6 +161,28 @@ class MapAndBatchBenchmark(test.Benchmark):
             sess.run(fused_get_next.op)
             end = time.time()
             fused_deltas.append(end - start)
+
+        # `map_and_batch_fusion` is optimized by default. To get the chained
+        # dataset, with have to disable it.
+        options = dataset_ops.Options()
+        options.experimental_optimization = OptimizationOptions()
+        options.experimental_optimization.map_and_batch_fusion = False
+        chained_dataset = fused_dataset.with_options(options)
+        chained_iterator = dataset_ops.make_one_shot_iterator(chained_dataset)
+        chained_get_next = chained_iterator.get_next()
+
+        chained_deltas = []
+        with session.Session(
+            config=config_pb2.ConfigProto(
+                inter_op_parallelism_threads=inter_op,
+                use_per_session_threads=True)) as sess:
+          for _ in range(5):
+            sess.run(chained_get_next.op)
+          for _ in range(num_iters):
+            start = time.time()
+            sess.run(chained_get_next.op)
+            end = time.time()
+            chained_deltas.append(end - start)
 
         print(
             "batch size: %d, num parallel calls: %d, inter-op parallelism: %d, "

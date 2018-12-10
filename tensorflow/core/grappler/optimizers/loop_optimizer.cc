@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
-#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -380,14 +379,14 @@ Status LoopInvariantNodeMotionOptimizer::FindInvariantNodes(
 
 Status LoopInvariantNodeMotionOptimizer::Optimize() {
   node_map_.reset(new NodeMap(optimized_graph_));
-  FrameMap frame_map;
-  int num_frames;
-  TF_RETURN_IF_ERROR(IdentifyFramesWithNodeMap(*optimized_graph_, *node_map_,
-                                               &frame_map, &num_frames));
+  FrameView frame_view;
+  // TODO(ezhulenev): Use GraphView when migrated from NodeMap.
+  TF_RETURN_IF_ERROR(frame_view.InferFromGraph(*optimized_graph_));
+
   std::deque<int> worklist;
-  for (auto iter = frame_map.begin(); iter != frame_map.end(); ++iter) {
-    auto* node = iter->first;
-    auto& frame_ids = iter->second;
+  for (const NodeDef& node : optimized_graph_->node()) {
+    const std::vector<int>& frame_ids = frame_view.Frames(node);
+
     if (frame_ids.size() >= 3) {
       for (unsigned int i = 1; i < frame_ids.size() - 1; ++i) {
         frame_parent_[frame_ids[i]] = frame_ids[i - 1];
@@ -400,18 +399,18 @@ Status LoopInvariantNodeMotionOptimizer::Optimize() {
     }
     if (!frame_ids.empty()) {
       frame_children_.insert(std::make_pair(frame_ids.back(), empty_set_));
-      if (node->op() == "LoopCond") {
+      if (node.op() == "LoopCond") {
         if (loop_cond_.count(frame_ids.back())) {
           return errors::InvalidArgument(
               "Loop ", frame_ids.back(),
-              " has more than one LoopCond node: ", node->name(), " and ",
+              " has more than one LoopCond node: ", node.name(), " and ",
               loop_cond_[frame_ids.back()]->name());
         }
-        loop_cond_[frame_ids.back()] = node;
+        loop_cond_[frame_ids.back()] = &node;
       }
-      if (IsEnter(*node) && node->attr().at("is_constant").b()) {
+      if (IsEnter(node) && node.attr().at("is_constant").b()) {
         invariant_enters_[frame_ids.back()].push_back(
-            const_cast<NodeDef*>(node));
+            const_cast<NodeDef*>(&node));
       }
     }
   }

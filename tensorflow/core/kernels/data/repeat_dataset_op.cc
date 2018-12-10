@@ -71,6 +71,23 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "RepeatDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (count_ < 0) {
+        if (n == 0) {
+          return 0;
+        }
+        return kInfiniteCardinality;
+      }
+      if (count_ == 0) {
+        return 0;
+      }
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return count_ * n;
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

@@ -369,6 +369,12 @@ class KerasMetricsTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
+  def test_assert_thresholds_range(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'Threshold values must be in \[0, 1\]. Invalid values: \[None\]'):
+      metrics._assert_thresholds_range([None, 0.5])
+
 
 def _get_simple_sequential_model(compile_metrics):
   model = Sequential()

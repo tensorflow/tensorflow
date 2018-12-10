@@ -61,6 +61,8 @@ class TensorDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "TensorDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override { return 1LL; }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

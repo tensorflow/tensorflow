@@ -20,15 +20,18 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedBooleanMaskOpTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedBooleanMaskOpTest(ragged_test_util.RaggedTensorTestCase,
                               parameterized.TestCase):
   # Define short constants for true & false, so the data & mask can be lined
   # up in the examples below.  This makes it easier to read the examples, to
@@ -298,26 +301,18 @@ class RaggedBooleanMaskOpTest(test_util.TensorFlowTestCase,
           keepdims=True,
           expected=ragged.constant_value([[[1], [4, 6]], [[7, 9], []]])),
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
   def testBooleanMask(self, descr, data, mask, keepdims, expected):
     actual = ragged.boolean_mask(data, mask, keepdims=keepdims)
-    self.assertEqual(
-        getattr(actual, 'ragged_rank', 0), getattr(expected, 'ragged_rank', 0))
-    with self.test_session():
-      if isinstance(expected, ragged.RaggedTensorValue):
-        expected = expected.tolist()
-      self.assertEqual(actual.eval().tolist(), expected)
+    self.assertRaggedEqual(actual, expected)
 
-  @test_util.run_deprecated_v1
   def testErrors(self):
-    self.assertRaisesRegexp(ValueError,
-                            r'mask\.shape\.ndims must be kown statically',
-                            ragged.boolean_mask, [[1, 2]],
-                            array_ops.placeholder(dtypes.bool))
+    if not context.executing_eagerly():
+      self.assertRaisesRegexp(ValueError,
+                              r'mask\.shape\.ndims must be kown statically',
+                              ragged.boolean_mask, [[1, 2]],
+                              array_ops.placeholder(dtypes.bool))
 
-    self.assertRaisesRegexp(TypeError,
-                            "Expected bool, got 0 of type 'int' instead.",
-                            ragged.boolean_mask, [[1, 2]], [[0, 1]])
+    self.assertRaises(TypeError, ragged.boolean_mask, [[1, 2]], [[0, 1]])
     self.assertRaisesRegexp(
         ValueError, 'Tensor conversion requested dtype bool for '
         'RaggedTensor with dtype int32', ragged.boolean_mask,
@@ -326,15 +321,6 @@ class RaggedBooleanMaskOpTest(test_util.TensorFlowTestCase,
     self.assertRaisesRegexp(
         ValueError, r'Shapes \(1, 2\) and \(1, 3\) are incompatible',
         ragged.boolean_mask, [[1, 2]], [[True, False, True]])
-
-    # self.assertRaisesRegexp(ValueError,
-    #                         r'data=.* is non-ragged but mask=.* is ragged',
-    #                         ragged.boolean_mask, [[1, 2]],
-    #                         ragged.constant([[True, False]]))
-
-    # self.assertRaisesRegexp(
-    #     ValueError, r'data=.* is ragged but mask=.* is non-ragged',
-    #     ragged.boolean_mask, ragged.constant([[1, 2]]), [[True, False]])
 
     self.assertRaisesRegexp(errors.InvalidArgumentError,
                             r'Inputs must have identical ragged splits',
