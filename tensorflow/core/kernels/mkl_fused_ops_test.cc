@@ -32,7 +32,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Helper class for converting MKL tesnors to TF tensors and comparing to
+// Helper class for converting MKL tensors to TF tensors and comparing to
 // expected values
 
 static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -295,10 +295,10 @@ TYPED_TEST_P(MklFusedConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
   this->VerifyConv2DWithBiasAndRelu(filter_size, filter_count);
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest,
-                           OneByOneConvolution,    //
-                           SpatialConvolution,     //
-                           OneByOneConvolutionAndRelu,   //
+REGISTER_TYPED_TEST_CASE_P(MklFusedConv2DWithBiasOpTest,  //
+                           OneByOneConvolution,           //
+                           SpatialConvolution,            //
+                           OneByOneConvolutionAndRelu,    //
                            SpatialConvolutionAndRelu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
