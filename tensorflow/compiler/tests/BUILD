@@ -18,8 +18,8 @@ package(
     default_visibility = [":internal"],
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
@@ -1033,7 +1033,7 @@ tf_xla_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "xla_device_gpu_test",
     size = "small",
     srcs = ["xla_device_gpu_test.py"],
@@ -1047,7 +1047,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "jit_test",
     size = "medium",
     srcs = ["jit_test.py"],
@@ -1066,7 +1066,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "dense_layer_test",
     size = "small",
     srcs = ["dense_layer_test.py"],
@@ -1105,7 +1105,7 @@ cc_library(
     ],
 )
 
-tf_gpu_cc_test(
+tf_cuda_cc_test(
     name = "randomized_tests",
     size = "large",
     # This test is randomized, so only run it if explicitly requested.
@@ -1130,7 +1130,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "lstm_test",
     srcs = ["lstm_test.py"],
     additional_deps = [

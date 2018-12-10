@@ -9,7 +9,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 filegroup(
     name = "all_files",
@@ -60,7 +60,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "adadelta_test",
     size = "medium",
     srcs = ["adadelta_test.py"],
@@ -78,7 +78,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "adagrad_test",
     size = "small",
     srcs = ["adagrad_test.py"],
@@ -94,7 +94,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "adam_test",
     size = "small",
     srcs = ["adam_test.py"],
@@ -110,7 +110,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "checkpointable_utils_test",
     srcs = ["checkpointable_utils_test.py"],
     additional_deps = [
@@ -135,7 +135,7 @@ gpu_py_test(
     tags = ["notsan"],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "gradient_descent_test",
     size = "medium",
     srcs = ["gradient_descent_test.py"],
@@ -152,7 +152,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "momentum_test",
     size = "medium",
     srcs = ["momentum_test.py"],
@@ -170,7 +170,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
@@ -188,7 +188,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "rmsprop_test",
     size = "small",
     srcs = ["rmsprop_test.py"],

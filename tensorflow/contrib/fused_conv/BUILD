@@ -24,7 +24,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_py_library(
@@ -136,7 +136,7 @@ py_library(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "fused_conv2d_bias_activation_op_test",
     size = "large",
     srcs = ["python/ops/fused_conv2d_bias_activation_op_test.py"],
@@ -151,7 +151,7 @@ gpu_py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "fused_conv2d_bias_activation_benchmark",
     srcs = ["python/ops/fused_conv2d_bias_activation_benchmark.py"],
     additional_deps = [
