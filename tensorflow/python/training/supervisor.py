@@ -40,7 +40,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.Supervisor")
+@tf_export(v1=["train.Supervisor"])
 class Supervisor(object):
   """A training helper that checkpoints models and computes summaries.
 

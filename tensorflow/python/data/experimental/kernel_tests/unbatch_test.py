@@ -17,20 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
 
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
@@ -40,11 +38,12 @@ from tensorflow.python.util import compat
 
 class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @test_util.run_deprecated_v1
   def testUnbatchWithUnknownRankInput(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     dataset = dataset_ops.Dataset.from_tensors(placeholder).apply(
         batching.unbatch())
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_elem = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -52,8 +51,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       for i in range(4):
         self.assertEqual(i, self.evaluate(next_elem))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_elem)
+        self.evaluate(next_elem)
 
+  @test_util.run_deprecated_v1
   def testUnbatchScalarDataset(self):
     data = tuple([math_ops.range(10) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -63,7 +63,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     op = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -71,8 +71,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual((i,) * 3, self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(op)
+        self.evaluate(op)
 
+  @test_util.run_deprecated_v1
   def testUnbatchDatasetWithStrings(self):
     data = tuple([math_ops.range(10) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -83,7 +84,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     op = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -91,8 +92,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual((i, compat.as_bytes(str(i)), i), self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(op)
+        self.evaluate(op)
 
+  @test_util.run_deprecated_v1
   def testUnbatchDatasetWithSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
@@ -102,7 +104,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     data = data.batch(5)
     data = data.apply(batching.unbatch())
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -112,8 +114,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual([i], st_row.values)
         self.assertEqual([10], st_row.dense_shape)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testUnbatchDatasetWithDenseAndSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
@@ -123,7 +126,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     data = data.batch(5)
     data = data.apply(batching.unbatch())
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -134,8 +137,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual([i], st_row.values)
         self.assertEqual([10], st_row.dense_shape)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
+  @test_util.run_deprecated_v1
   def testUnbatchSingleElementTupleDataset(self):
     data = tuple([(math_ops.range(10),) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -145,7 +149,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     op = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -153,8 +157,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual(((i,),) * 3, self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(op)
+        self.evaluate(op)
 
+  @test_util.run_deprecated_v1
   def testUnbatchMultiElementTupleDataset(self):
     data = tuple([(math_ops.range(10 * i, 10 * i + 10),
                    array_ops.fill([10], "hi")) for i in range(3)])
@@ -165,28 +170,29 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertAllEqual(expected_types, data.output_types)
 
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     op = iterator.get_next()
 
     with self.cached_session() as sess:
       for i in range(10):
         self.assertEqual(((i, b"hi"), (10 + i, b"hi"), (20 + i, b"hi")),
-                         sess.run(op))
+                         self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(op)
+        self.evaluate(op)
 
+  @test_util.run_deprecated_v1
   def testUnbatchEmpty(self):
     data = dataset_ops.Dataset.from_tensors(
         (constant_op.constant([]), constant_op.constant([], shape=[0, 4]),
          constant_op.constant([], shape=[0, 4, 0])))
     data = data.apply(batching.unbatch())
-    iterator = data.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(data)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   def testUnbatchStaticShapeMismatch(self):
     data = dataset_ops.Dataset.from_tensors((np.arange(7), np.arange(8),
@@ -194,12 +200,13 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       data.apply(batching.unbatch())
 
+  @test_util.run_deprecated_v1
   def testUnbatchDynamicShapeMismatch(self):
     ph1 = array_ops.placeholder(dtypes.int32, shape=[None])
     ph2 = array_ops.placeholder(dtypes.int32, shape=None)
     data = dataset_ops.Dataset.from_tensors((ph1, ph2))
     data = data.apply(batching.unbatch())
-    iterator = data.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(data)
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -211,7 +218,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
               ph2: np.arange(8).astype(np.int32)
           })
       with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
       # No 0th dimension (i.e. scalar value) for one component.
       sess.run(
@@ -221,79 +228,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
               ph2: 7
           })
       with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(next_element)
-
-
-class UnbatchBenchmark(test.Benchmark):
-
-  def benchmarkNativeUnbatch(self):
-    batch_sizes = [1, 2, 5, 10, 20, 50]
-    elems_per_trial = 10000
-    with ops.Graph().as_default():
-      dataset = dataset_ops.Dataset.from_tensors("element").repeat(None)
-      batch_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
-      dataset = dataset.batch(batch_size_placeholder)
-      dataset = dataset.apply(batching.unbatch())
-      dataset = dataset.skip(elems_per_trial)
-      iterator = dataset.make_initializable_iterator()
-      next_element = iterator.get_next()
-
-      with session.Session() as sess:
-        for batch_size in batch_sizes:
-          deltas = []
-          for _ in range(5):
-            sess.run(
-                iterator.initializer,
-                feed_dict={batch_size_placeholder: batch_size})
-            start = time.time()
-            sess.run(next_element.op)
-            end = time.time()
-            deltas.append((end - start) / elems_per_trial)
-
-          median_wall_time = np.median(deltas)
-          print("Unbatch (native) batch size: %d Median wall time per element:"
-                " %f microseconds" % (batch_size, median_wall_time * 1e6))
-          self.report_benchmark(
-              iters=10000,
-              wall_time=median_wall_time,
-              name="benchmark_unbatch_dataset_native_batch_size_%d" %
-              batch_size)
-
-  # Include a benchmark of the previous `unbatch()` implementation that uses
-  # a composition of more primitive ops. Eventually we'd hope to generate code
-  # that is as good in both cases.
-  def benchmarkOldUnbatchImplementation(self):
-    batch_sizes = [1, 2, 5, 10, 20, 50]
-    elems_per_trial = 10000
-    with ops.Graph().as_default():
-      dataset = dataset_ops.Dataset.from_tensors("element").repeat(None)
-      batch_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
-      dataset = dataset.batch(batch_size_placeholder)
-      dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
-      dataset = dataset.skip(elems_per_trial)
-      iterator = dataset.make_initializable_iterator()
-      next_element = iterator.get_next()
-
-      with session.Session() as sess:
-        for batch_size in batch_sizes:
-          deltas = []
-          for _ in range(5):
-            sess.run(
-                iterator.initializer,
-                feed_dict={batch_size_placeholder: batch_size})
-            start = time.time()
-            sess.run(next_element.op)
-            end = time.time()
-            deltas.append((end - start) / elems_per_trial)
-
-          median_wall_time = np.median(deltas)
-          print("Unbatch (unfused) batch size: %d Median wall time per element:"
-                " %f microseconds" % (batch_size, median_wall_time * 1e6))
-          self.report_benchmark(
-              iters=10000,
-              wall_time=median_wall_time,
-              name="benchmark_unbatch_dataset_unfused_batch_size_%d" %
-              batch_size)
+        self.evaluate(next_element)
 
 
 if __name__ == "__main__":

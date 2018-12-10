@@ -24,12 +24,14 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
 class SparseCrossOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_simple(self):
     """Tests a simple scenario."""
     op = sparse_ops.sparse_cross([
@@ -45,6 +47,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_dense(self):
     """Tests only dense inputs."""
     op = sparse_ops.sparse_cross([
@@ -65,6 +68,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_integer_mixed_string_sparse(self):
     """Tests mixed type."""
     op = sparse_ops.sparse_cross([
@@ -79,6 +83,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_integer_mixed_string_dense(self):
     """Tests mixed dense inputs."""
     op = sparse_ops.sparse_cross([
@@ -97,6 +102,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_sparse_cross_dense(self):
     """Tests sparse and dense inputs."""
     op = sparse_ops.sparse_cross([
@@ -114,6 +120,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_integer_sparse_input(self):
     """Tests mixed type sparse and dense inputs."""
     op = sparse_ops.sparse_cross([
@@ -130,6 +137,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_permutation_3x3x3(self):
     """Tests 3x3x3 permutation."""
     op = sparse_ops.sparse_cross([
@@ -172,6 +180,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_permutation_3x1x2(self):
     """Tests 3x1x2 permutation."""
     op = sparse_ops.sparse_cross([
@@ -191,6 +200,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_large_batch(self):
     """Tests with large batch size to force multithreading."""
     batch_size = 5000
@@ -224,6 +234,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_one_column_empty(self):
     """Tests when one column is empty.
 
@@ -237,6 +248,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_empty(self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_some_columns_empty(self):
     """Tests when more than one columns are empty.
 
@@ -256,6 +268,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_all_columns_empty(self):
     """Tests when all columns are empty.
 
@@ -269,6 +282,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_empty(self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_hashed_zero_bucket_no_hash_key(self):
     op = sparse_ops.sparse_cross_hashed([
         self._sparse_tensor([['batch1-FC1-F1']]),
@@ -280,6 +294,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_hashed_zero_bucket(self):
     op = sparse_ops.sparse_cross_hashed(
         [
@@ -294,6 +309,7 @@ class SparseCrossOpTest(test.TestCase):
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   # TODO(sibyl-Aix6ihai): Add benchmark to compare Hashed vs Non-hashed.
+  @test_util.run_deprecated_v1
   def test_hashed_no_hash_key(self):
     op = sparse_ops.sparse_cross_hashed(
         [
@@ -307,6 +323,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_hashed_output(self):
     op = sparse_ops.sparse_cross_hashed(
         [
@@ -321,6 +338,7 @@ class SparseCrossOpTest(test.TestCase):
     with self.cached_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
+  @test_util.run_deprecated_v1
   def test_hashed__has_no_collision(self):
     """Tests that fingerprint concatenation has no collisions."""
     # Although the last 10 bits of 359 and 1024+359 are identical.

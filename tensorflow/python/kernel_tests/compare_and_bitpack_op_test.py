@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -30,7 +31,7 @@ class CompareAndBitpackTest(test.TestCase):
                              x, threshold,
                              truth,
                              expected_err_re=None):
-    with self.cached_session(use_gpu=True):
+    with test_util.use_gpu():
       ans = math_ops.compare_and_bitpack(x, threshold)
       if expected_err_re is None:
         tf_ans = self.evaluate(ans)

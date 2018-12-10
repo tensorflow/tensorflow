@@ -21,11 +21,13 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 _MAX_INT32 = dtypes.int32.max
@@ -37,7 +39,9 @@ def mean(*values):
   return 1.0 * sum(values) / len(values)
 
 
-class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedReduceOpsTest(ragged_test_util.RaggedTensorTestCase,
+                          parameterized.TestCase):
 
   @parameterized.parameters(
       #=========================================================================
@@ -303,8 +307,7 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testReduce(self, ragged_reduce_op, rt_input, axis, expected):
     rt_input = ragged.constant(rt_input)
     reduced = ragged_reduce_op(rt_input, axis)
-    with self.test_session():
-      self.assertEqual(reduced.eval().tolist(), expected)
+    self.assertRaggedEqual(reduced, expected)
 
   def assertEqualWithNan(self, actual, expected):
     """Like assertEqual, but NaN==NaN."""
@@ -318,22 +321,22 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
             [4, 1, 0, 2, 1, 2]))
     rt_input = ragged.constant(rt_as_list)
     reduced = ragged.reduce_mean(rt_input, axis=1)
-    with self.test_session():
-      self.assertEqualWithNan(reduced.eval(), expected)
+    self.assertEqualWithNan(self.evaluate(reduced), expected)
 
   def testMeanWithTensorInputs(self):
     tensor = [[1.0, 2.0, 3.0], [10.0, 20.0, 30.0]]
     expected = [2.0, 20.0]
     reduced = ragged.reduce_mean(tensor, axis=1)
-    with self.test_session():
-      self.assertAllEqual(reduced.eval(), expected)
+    self.assertRaggedEqual(reduced, expected)
 
   def testErrors(self):
     rt_input = ragged.constant([[1, 2, 3], [4, 5]])
     axis = array_ops.placeholder_with_default(constant_op.constant([0]), None)
-    self.assertRaisesRegexp(ValueError,
-                            r'axis must be known at graph construction time.',
-                            ragged.reduce_sum, rt_input, axis)
+
+    if not context.executing_eagerly():
+      self.assertRaisesRegexp(
+          ValueError, r'axis must be known at graph construction time.',
+          ragged.reduce_sum, rt_input, axis)
     self.assertRaisesRegexp(TypeError,
                             r'axis must be an int; got str.*',
                             ragged.reduce_sum, rt_input, ['x'])

@@ -60,7 +60,8 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
             ["LatencyStats", "Map", "LatencyStats", "Prefetch",
              "LatencyStats"])).map(lambda x: x * x).prefetch(1)
     options = dataset_ops.Options()
-    options.experimental_stats = stats_options.StatsOptions(aggregator)
+    options.experimental_stats = stats_options.StatsOptions()
+    options.experimental_stats.aggregator = aggregator
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset,

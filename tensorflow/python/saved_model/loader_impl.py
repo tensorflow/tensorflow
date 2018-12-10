@@ -31,6 +31,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -38,7 +39,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _parse_saved_model(export_dir):
+def parse_saved_model(export_dir):
   """Reads the savedmodel.pb or savedmodel.pbtxt file containing `SavedModel`.
 
   Args:
@@ -80,6 +81,11 @@ def _parse_saved_model(export_dir):
                   (export_dir,
                    constants.SAVED_MODEL_FILENAME_PBTXT,
                    constants.SAVED_MODEL_FILENAME_PB))
+
+
+# TODO(b/120594573): Make this symbol also available as private, so that
+# tensorflow_transform and tensorflow_estimator do not break.
+_parse_saved_model = parse_saved_model
 
 
 def _get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
@@ -141,15 +147,46 @@ def _get_main_op_tensor(
     RuntimeError: If the collection def corresponding to the main op key has
         other than exactly one tensor.
   """
+  # TODO(kathywu): Rename this method to _get_op_from_collection when
+  # dependency from SavedModelEstimator is removed.
   collection_def = meta_graph_def_to_load.collection_def
-  main_op_tensor = None
+  init_op = None
   if init_op_key in collection_def:
-    main_ops = collection_def[init_op_key].node_list.value
-    if len(main_ops) != 1:
-      raise RuntimeError("Expected exactly one SavedModel main op. "
-                         "Found: {}".format(main_ops))
-    main_op_tensor = ops.get_collection(init_op_key)[0]
-  return main_op_tensor
+    init_op_list = collection_def[init_op_key].node_list.value
+    if len(init_op_list) != 1:
+      raise RuntimeError("Expected exactly one SavedModel init op. "
+                         "Found: {}".format(init_op_list))
+    init_op = ops.get_collection(init_op_key)[0]
+  return init_op
+
+
+def _get_op_from_collection(meta_graph_def, op_key):
+  return _get_main_op_tensor(meta_graph_def, op_key)
+
+
+def _get_op_from_signature_def(meta_graph_def, op_signature_key, import_scope):
+  """Retrieve op stored in the imported meta graph's signature def."""
+  if op_signature_key in meta_graph_def.signature_def:
+    return signature_def_utils.load_op_from_signature_def(
+        meta_graph_def.signature_def[op_signature_key], op_signature_key,
+        import_scope)
+  else:
+    return None
+
+
+def get_init_op(meta_graph_def, import_scope=None):
+  return (_get_op_from_signature_def(
+      meta_graph_def, constants.INIT_OP_SIGNATURE_KEY, import_scope) or
+          _get_op_from_collection(meta_graph_def, constants.MAIN_OP_KEY) or
+          _get_op_from_collection(meta_graph_def, constants.LEGACY_INIT_OP_KEY))
+
+
+def get_train_op(meta_graph_def, import_scope=None):
+  train_op = _get_op_from_signature_def(
+      meta_graph_def, constants.TRAIN_OP_SIGNATURE_KEY, import_scope)
+  if train_op is None:
+    train_op = _get_op_from_collection(meta_graph_def, constants.TRAIN_OP_KEY)
+  return train_op
 
 
 @tf_export(v1=[
@@ -244,7 +281,7 @@ class SavedModelLoader(object):
     """
     self._export_dir = export_dir
     self._variables_path = saved_model_utils.get_variables_path(export_dir)
-    self._saved_model = _parse_saved_model(export_dir)
+    self._saved_model = parse_saved_model(export_dir)
 
   @property
   def export_dir(self):
@@ -359,11 +396,9 @@ class SavedModelLoader(object):
       asset_tensors_dictionary = _get_asset_tensors(
           self._export_dir, meta_graph_def, import_scope=import_scope)
 
-      main_op_tensor = (
-          _get_main_op_tensor(meta_graph_def, constants.MAIN_OP_KEY) or
-          _get_main_op_tensor(meta_graph_def, constants.LEGACY_INIT_OP_KEY))
-      if main_op_tensor is not None:
-        sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
+      init_op = get_init_op(meta_graph_def, import_scope)
+      if init_op is not None:
+        sess.run(fetches=[init_op], feed_dict=asset_tensors_dictionary)
 
   def load(self, sess, tags, import_scope=None, **saver_kwargs):
     """Load the MetaGraphDef graph and restore variable values into the session.

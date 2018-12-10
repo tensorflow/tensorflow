@@ -262,7 +262,7 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
         name=name)
 
 
-@tf_export("nn.relu_layer")
+@tf_export(v1=["nn.relu_layer"])
 def relu_layer(x, weights, biases, name=None):
   """Computes Relu(x * weight + biases).
 
@@ -329,7 +329,7 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
-@tf_export("math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize")
+@tf_export(v1=["math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize"])
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
   """Normalizes along dimension `axis` using an L2 norm.
@@ -353,8 +353,33 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
   Returns:
     A `Tensor` with the same shape as `x`.
   """
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  return l2_normalize_v2(x, axis, epsilon, name)
+
+
+@tf_export("math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize", v1=[])
+def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
+  """Normalizes along dimension `axis` using an L2 norm.
+
+  For a 1-D tensor with `axis = 0`, computes
+
+      output = x / sqrt(max(sum(x**2), epsilon))
+
+  For `x` with more dimensions, independently normalizes each 1-D slice along
+  dimension `axis`.
+
+  Args:
+    x: A `Tensor`.
+    axis: Dimension along which to normalize.  A scalar or a vector of
+      integers.
+    epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
+      divisor if `norm < sqrt(epsilon)`.
+    name: A name for this operation (optional).
+
+  Returns:
+    A `Tensor` with the same shape as `x`.
+  """
   with ops.name_scope(name, "l2_normalize", [x]) as name:
-    axis = deprecated_argument_lookup("axis", axis, "dim", dim)
     x = ops.convert_to_tensor(x, name="x")
     square_sum = math_ops.reduce_sum(math_ops.square(x), axis, keepdims=True)
     x_inv_norm = math_ops.rsqrt(math_ops.maximum(square_sum, epsilon))
@@ -836,7 +861,7 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
   return (mean, variance)
 
 
-@tf_export("nn.moments")
+@tf_export(v1=["nn.moments"])
 def moments(
     x,
     axes,
@@ -893,6 +918,42 @@ def moments(
               math_ops.cast(variance, dtypes.float16))
     else:
       return (mean, variance)
+
+
+@tf_export("nn.moments", v1=[])
+def moments_v2(
+    x,
+    axes,
+    shift=None,
+    keepdims=False,
+    name=None):
+  """Calculates the mean and variance of `x`.
+
+  The mean and variance are calculated by aggregating the contents of `x`
+  across `axes`.  If `x` is 1-D and `axes = [0]` this is just the mean
+  and variance of a vector.
+
+  Note: shift is currently not used; the true mean is computed and used.
+
+  When using these moments for batch normalization (see
+  `tf.nn.batch_normalization`):
+
+   * for so-called "global normalization", used with convolutional filters with
+     shape `[batch, height, width, depth]`, pass `axes=[0, 1, 2]`.
+   * for simple batch normalization pass `axes=[0]` (batch only).
+
+  Args:
+    x: A `Tensor`.
+    axes: Array of ints.  Axes along which to compute mean and
+      variance.
+    shift: Not used in the current implementation.
+    keepdims: produce moments with the same dimensionality as the input.
+    name: Name used to scope the operations that compute the moments.
+
+  Returns:
+    Two `Tensor` objects: `mean` and `variance`.
+  """
+  return moments(x=x, axes=axes, shift=shift, name=name, keep_dims=keepdims)
 
 
 @tf_export(v1=["nn.weighted_moments"])
@@ -1051,7 +1112,7 @@ def batch_normalization(x,
         offset - mean * inv if offset is not None else -mean * inv, x.dtype)
 
 
-@tf_export("nn.fused_batch_norm")
+@tf_export(v1=["nn.fused_batch_norm"])
 def fused_batch_norm(
     x,
     scale,
@@ -1401,7 +1462,111 @@ def _compute_sampled_logits(weights,
     return out_logits, out_labels
 
 
-@tf_export("nn.nce_loss")
+@tf_export("nn.nce_loss", v1=[])
+def nce_loss_v2(weights,
+                biases,
+                labels,
+                inputs,
+                num_sampled,
+                num_classes,
+                num_true=1,
+                sampled_values=None,
+                remove_accidental_hits=False,
+                name="nce_loss"):
+  """Computes and returns the noise-contrastive estimation training loss.
+
+  See [Noise-contrastive estimation: A new estimation principle for
+  unnormalized statistical
+  models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+  Also see our [Candidate Sampling Algorithms
+  Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
+
+  A common use case is to use this method for training, and calculate the full
+  sigmoid loss for evaluation or inference as in the following example:
+
+  ```python
+  if mode == "train":
+    loss = tf.nn.nce_loss(
+        weights=weights,
+        biases=biases,
+        labels=labels,
+        inputs=inputs,
+        ...)
+  elif mode == "eval":
+    logits = tf.matmul(inputs, tf.transpose(weights))
+    logits = tf.nn.bias_add(logits, biases)
+    labels_one_hot = tf.one_hot(labels, n_classes)
+    loss = tf.nn.sigmoid_cross_entropy_with_logits(
+        labels=labels_one_hot,
+        logits=logits)
+    loss = tf.reduce_sum(loss, axis=1)
+  ```
+
+  Note: when doing embedding lookup on `weights` and `bias`, "div" partition
+  strategy will be used. Support for other partition strategy will be added
+  later.
+
+  Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
+  so your labels must be sorted in order of decreasing frequency to achieve
+  good results.  For more details, see
+  `tf.nn.log_uniform_candidate_sampler`.
+
+  Note: In the case where `num_true` > 1, we assign to each target class
+  the target probability 1 / `num_true` so that the target probabilities
+  sum to 1 per-example.
+
+  Note: It would be useful to allow a variable number of target classes per
+  example.  We hope to provide this functionality in a future release.
+  For now, if you have a variable number of target classes, you can pad them
+  out to a constant number by either repeating them or by padding
+  with an otherwise unused class.
+
+  Args:
+    weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
+      objects whose concatenation along dimension 0 has shape [num_classes,
+      dim].  The (possibly-partitioned) class embeddings.
+    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
+    labels: A `Tensor` of type `int64` and shape `[batch_size, num_true]`. The
+      target classes.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward activations of
+      the input network.
+    num_sampled: An `int`.  The number of negative classes to randomly sample
+      per batch. This single sample of negative classes is evaluated for each
+      element in the batch.
+    num_classes: An `int`. The number of possible classes.
+    num_true: An `int`.  The number of target classes per training example.
+    sampled_values: a tuple of (`sampled_candidates`, `true_expected_count`,
+      `sampled_expected_count`) returned by a `*_candidate_sampler` function.
+      (if None, we default to `log_uniform_candidate_sampler`)
+    remove_accidental_hits:  A `bool`.  Whether to remove "accidental hits"
+      where a sampled class equals one of the target classes.  If set to `True`,
+      this is a "Sampled Logistic" loss instead of NCE, and we are learning to
+      generate log-odds instead of log probabilities.  See our [Candidate
+      Sampling Algorithms Reference]
+        (https://www.tensorflow.org/extras/candidate_sampling.pdf). Default is
+          False.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `batch_size` 1-D tensor of per-example NCE losses.
+  """
+  # TODO(yuefengz): get partition_strategy from either variables or distribution
+  # strategies.
+  return nce_loss(
+      weights,
+      biases,
+      labels,
+      inputs,
+      num_sampled,
+      num_classes,
+      num_true=num_true,
+      sampled_values=sampled_values,
+      remove_accidental_hits=remove_accidental_hits,
+      partition_strategy="div",
+      name=name)
+
+
+@tf_export(v1=["nn.nce_loss"])
 def nce_loss(weights,
              biases,
              labels,
@@ -1512,7 +1677,98 @@ def nce_loss(weights,
   return _sum_rows(sampled_losses)
 
 
-@tf_export("nn.sampled_softmax_loss")
+@tf_export("nn.sampled_softmax_loss", v1=[])
+def sampled_softmax_loss_v2(weights,
+                            biases,
+                            labels,
+                            inputs,
+                            num_sampled,
+                            num_classes,
+                            num_true=1,
+                            sampled_values=None,
+                            remove_accidental_hits=True,
+                            seed=None,
+                            name="sampled_softmax_loss"):
+  """Computes and returns the sampled softmax training loss.
+
+  This is a faster way to train a softmax classifier over a huge number of
+  classes.
+
+  This operation is for training only.  It is generally an underestimate of
+  the full softmax loss.
+
+  A common use case is to use this method for training, and calculate the full
+  sigmoid loss for evaluation or inference as in the following example:
+
+  ```python
+  if mode == "train":
+    loss = tf.nn.sampled_softmax_loss(
+        weights=weights,
+        biases=biases,
+        labels=labels,
+        inputs=inputs,
+        ...)
+  elif mode == "eval":
+    logits = tf.matmul(inputs, tf.transpose(weights))
+    logits = tf.nn.bias_add(logits, biases)
+    labels_one_hot = tf.one_hot(labels, n_classes)
+    loss = tf.nn.softmax_cross_entropy_with_logits_v2(
+        labels=labels_one_hot,
+        logits=logits)
+  ```
+
+  See our [Candidate Sampling Algorithms Reference]
+  (https://www.tensorflow.org/extras/candidate_sampling.pdf)
+
+  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
+  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
+
+  Note: when doing embedding lookup on `weights` and `bias`, "div" partition
+  strategy will be used. Support for other partition strategy will be added
+  later.
+
+  Args:
+    weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
+      objects whose concatenation along dimension 0 has shape [num_classes,
+      dim].  The (possibly-sharded) class embeddings.
+    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
+    labels: A `Tensor` of type `int64` and shape `[batch_size, num_true]`. The
+      target classes.  Note that this format differs from the `labels` argument
+      of `nn.softmax_cross_entropy_with_logits_v2`.
+    inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward activations of
+      the input network.
+    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_classes: An `int`. The number of possible classes.
+    num_true: An `int`.  The number of target classes per training example.
+    sampled_values: a tuple of (`sampled_candidates`, `true_expected_count`,
+      `sampled_expected_count`) returned by a `*_candidate_sampler` function.
+      (if None, we default to `log_uniform_candidate_sampler`)
+    remove_accidental_hits:  A `bool`.  whether to remove "accidental hits"
+      where a sampled class equals one of the target classes.  Default is True.
+    seed: random seed for candidate sampling. Default to None, which doesn't set
+      the op-level random seed for candidate sampling.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `batch_size` 1-D tensor of per-example sampled softmax losses.
+
+  """
+  return sampled_softmax_loss(
+      weights,
+      biases,
+      labels,
+      inputs,
+      num_sampled,
+      num_classes,
+      num_true=num_true,
+      sampled_values=sampled_values,
+      remove_accidental_hits=remove_accidental_hits,
+      partition_strategy="div",
+      name=name,
+      seed=seed)
+
+
+@tf_export(v1=["nn.sampled_softmax_loss"])
 def sampled_softmax_loss(weights,
                          biases,
                          labels,

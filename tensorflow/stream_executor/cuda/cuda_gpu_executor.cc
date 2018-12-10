@@ -662,8 +662,13 @@ bool CUDAExecutor::MemcpyDeviceToDevice(Stream *stream,
 }
 
 bool CUDAExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
-  auto callback_ptr = new std::function<void()>(callback);
+                                std::function<port::Status()> callback) {
+  auto callback_ptr = new std::function<void()>([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return CUDADriver::AddStreamCallback(context_, AsCUDAStreamValue(stream),
                                        InternalHostCallback, callback_ptr);
 }

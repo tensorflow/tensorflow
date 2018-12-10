@@ -1774,10 +1774,10 @@ class DeepConv2DTest(test.TestCase):
       conv = nn_ops.conv2d(t1, t2, strides=strides, padding=padding)
 
       os.environ["TF_USE_DEEP_CONV2D"] = "0"
-      values_expect = sess.run([conv])
+      values_expect = self.evaluate([conv])
 
       os.environ["TF_USE_DEEP_CONV2D"] = "1"
-      values_test = sess.run([conv])
+      values_test = self.evaluate([conv])
 
       self.assertAllClose(values_expect, values_test, rtol=1e-5, atol=1e-5)
 

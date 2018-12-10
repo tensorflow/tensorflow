@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.experimental.ops import filter_for_shard_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
@@ -41,7 +42,8 @@ def auto_shard_dataset(dataset, num_shards, index):
     dataset: A `tf.data.Dataset` instance, typically the result of a bunch of
       dataset transformations.
     num_shards: A `tf.int64` scalar `tf.Tensor`, representing the number of
-        shards operating in parallel. Same usage as in `Dataset.shard`.
+        shards operating in parallel. Same usage as in
+        `tf.data.experimental.filter_for_shard`.
     index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
       Same usage as in `Dataset.shard`.
 
@@ -74,13 +76,15 @@ def auto_shard_dataset(dataset, num_shards, index):
         # constructor. Eventually we will change all cases to clone datasets
         # instead of updating in-place.
         return dataset._clone(
-            filenames=dataset._filenames.shard(num_shards, index))
+            filenames=dataset._filenames.apply(
+                filter_for_shard_ops.filter_for_shard(num_shards, index)))
       elif isinstance(dataset, dataset_ops.RangeDataset):
-        return dataset.shard(num_shards, index)
+        return dataset.apply(
+            filter_for_shard_ops.filter_for_shard(num_shards, index))
       elif hasattr(dataset, "_map_func"):
         # TODO(priyag): Make this check more robust by enforcing some common
         # property on all map/flatmap/interleave datasets.
-        map_func_def = dataset._map_func.definition
+        map_func_def = dataset._map_func.function.definition
         for node in map_func_def.node_def:
           if node.op in _READER_DATASET_OPS:
             found_reader_op = True
@@ -142,6 +146,7 @@ def auto_shard_dataset(dataset, num_shards, index):
     # TODO(priyag): This will shard the filenames before any shuffling of the
     # filename dataset. It might be desirable to shard after shuffling
     # filenames? If so, how do we achieve that?
-    return dataset.shard(num_shards, index)
+    return dataset.apply(
+        filter_for_shard_ops.filter_for_shard(num_shards, index))
 
   return _auto_shard_impl(dataset=dataset, found_reader_op=False)

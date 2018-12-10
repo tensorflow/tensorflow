@@ -1045,8 +1045,8 @@ class CudnnRNNTestParamsSize(test_util.TensorFlowTestCase):
 
     # Min param size estimate = sum(weights.size) + sum(biases.size)
     min_params_size = (
-        np.sum(list(map(np.prod, rnn.canonical_weight_shapes))) +
-        np.sum([sp[0] for sp in rnn.canonical_bias_shapes]))
+        sum(map(np.prod, rnn.canonical_weight_shapes)) +
+        sum(sp[0] for sp in rnn.canonical_bias_shapes))
 
     opaque_params = rnn.trainable_variables[0]
     with self.test_session(use_gpu=True, graph=ops.get_default_graph()):

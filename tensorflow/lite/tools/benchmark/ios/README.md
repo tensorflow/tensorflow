@@ -41,3 +41,14 @@ resources that need to be copied.
 
 - Now try running the app. The app has a single button that runs the benchmark
   on the model and displays results in a text view below.
+
+## Profiling
+
+If you want detailed profiling, use the following command:
+
+```bash
+tensorflow/lite/build_ios_universal_lib.sh -p
+```
+
+Then following the same steps above and run the benchmark app. You will see the
+detailed profiling results in the outputs.

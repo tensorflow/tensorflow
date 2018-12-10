@@ -53,6 +53,6 @@ download_and_extract "${QUANTIZED_MODELS_URL}" "${DOWNLOADS_DIR}/quantized_model
 file ${DOWNLOADS_DIR}/models
 
 cp ${DOWNLOADS_DIR}/models/models/* simple/data/
-cp "${DOWNLOADS_DIR}/quantized_models/labels.txt" camera/data/
+cp ${DOWNLOADS_DIR}/models/models/* camera/data/
 cp "${DOWNLOADS_DIR}/quantized_models/mobilenet_quant_v1_224.tflite" \
-   'camera/data/mobilenet_v1_1.0_224.tflite'
+   'camera/data/mobilenet_quant_v1_224.tflite'

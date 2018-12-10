@@ -31,7 +31,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kInsertOpName[] = "LatencyStatsDataset";
+constexpr char kInsertOpName[] = "ExperimentalLatencyStatsDataset";
 
 NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
   NodeDef new_node;

@@ -21,6 +21,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -29,8 +30,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import distribution_strategy_context
-from tensorflow.python.training import saver
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -311,10 +311,10 @@ def _set_checkpoint_initializer(variable,
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
 
-    names_to_saveables = saver.BaseSaverBuilder.OpListToDict([variable])
+    names_to_saveables = saveable_object_util.op_list_to_dict([variable])
     saveable_objects = []
     for name, op in names_to_saveables.items():
-      for s in saver.BaseSaverBuilder.SaveableObjectsForOp(op, name):
+      for s in saveable_object_util.saveable_objects_for_op(op, name):
         saveable_objects.append(s)
 
     assert len(saveable_objects) == 1  # Should be only one variable.

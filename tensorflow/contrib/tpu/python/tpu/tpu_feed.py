@@ -833,24 +833,30 @@ class _PartitionedInfeedQueue(InfeedQueue):
     dims = np.array(dims)
     self._check_input_partition_dims(tensor, dims)
     output = [tensor]
-    divds, remainders = np.divmod(np.array(tensor.shape.as_list()), dims)
-    for axis, (divd, remainder, dim) in enumerate(
-        np.dstack((divds, remainders, dims))[0]):
+    shape_list = np.array(tensor.shape.as_list())
+    quotients, remainders = np.divmod(shape_list, dims)
+    for axis, (quotient, remainder, dim, original_size) in enumerate(
+        zip(quotients, remainders, dims, shape_list)):
       if dim <= 1:
         continue
       if remainder > 0:
         # For each dimension, when it cannot be evenly partitioned, XLA assumes
-        # the size of last parts are smaller by 1. E.g. 2D tensor with shape
-        # (5, 14) and dims are (2, 4). Since 5 % 2 = 1 and 14 % 4 = 2, [5, 14]
-        # => [[(3, 3), (3, 3), (2, 3), (2, 3)],
-        # [(2, 3), (2, 3), (2, 2), (2, 2)]]
-        output = [
-            array_ops.split(
-                x,
-                num_or_size_splits=[divd + 1] * remainder +
-                [divd] * (dim - remainder),
-                axis=axis) for x in output
-        ]
+        # tensors are partitioned in a greedy manner by using
+        # ceil_ratio(size/dim) first. E.g. 2D tensor with shape (5, 14) and dims
+        # are (2, 4). Since 5 % 2 = 1 and 14 % 4 = 2, [5, 14] =>
+        # [[(3, 4), (3, 4), (2, 4), (2, 2)],
+        # [(2, 4), (2, 4), (2, 4), (2, 2)]]
+        ceil_ratio = quotient + 1
+        num_full_slots, left_over = np.divmod(original_size, ceil_ratio)
+        num_or_size_splits = [ceil_ratio] * num_full_slots + [left_over]
+        if len(num_or_size_splits) < dim:
+          num_or_size_splits += [0] * (dim - len(num_or_size_splits))
+        new_output = []
+        for x in output:
+          new_output.append(
+              array_ops.split(
+                  x, num_or_size_splits=num_or_size_splits, axis=axis))
+        output = new_output
       else:
         output = [array_ops.split(x, dim, axis=axis) for x in output]
       output = nest.flatten(output)

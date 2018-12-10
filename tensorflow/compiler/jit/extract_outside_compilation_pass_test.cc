@@ -290,21 +290,18 @@ TEST(ExtractOutsideCompilationForFunctionTest, Basic) {
   TF_CHECK_OK(GetNodeAttr(host_compute_1->attrs(), "shapes", &shapes));
   EXPECT_EQ(shapes.size(), 1);
   EXPECT_EQ(shapes[0].dim_size(), 1);
-  // Check XlaHostCompute nodes' "shape_inference_graph" attr. "0" should have a
-  // non-empty value, and "1" should have an empty value.
+  // Check XlaHostCompute nodes' "shape_inference_graph" attr. Both should have
+  // empty values.
   string shape_inference_graph;
   TF_CHECK_OK(GetNodeAttr(host_compute_0->attrs(), "shape_inference_graph",
                           &shape_inference_graph));
-  EXPECT_EQ(shape_inference_graph,
-            "_outside_compilation_shape_inference_cluster_0");
+  EXPECT_EQ(shape_inference_graph, "");
   TF_CHECK_OK(GetNodeAttr(host_compute_1->attrs(), "shape_inference_graph",
                           &shape_inference_graph));
   EXPECT_EQ(shape_inference_graph, "");
 
   // Check `shape_inference_graphs`.
-  EXPECT_EQ(shape_inference_graphs.size(), 1);
-  EXPECT_EQ(shape_inference_graphs[0],
-            "_outside_compilation_shape_inference_cluster_0");
+  EXPECT_EQ(shape_inference_graphs.size(), 0);
 
   // Check `host_graph`: verify we have key placeholder and sequencer.
   Node *key_placeholder = nullptr, *sequencer = nullptr;
@@ -333,8 +330,8 @@ TEST(ExtractOutsideCompilationForFunctionTest, Basic) {
       send_recv_nodes.push_back(n);
     }
   }
-  EXPECT_EQ(num_send_from_host, 2);
-  EXPECT_EQ(num_recv_at_host, 2);
+  EXPECT_EQ(num_send_from_host, 1);
+  EXPECT_EQ(num_recv_at_host, 1);
   for (Node *n : send_recv_nodes) {
     Node *input_node;
     TF_CHECK_OK(n->input_node(n->num_inputs() - 1, &input_node));

@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
@@ -41,6 +42,8 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -498,9 +501,6 @@ class Model(Network):
         raise NotImplementedError(
             'optimizer must be an instance of '
             'tf.train.Optimizer, not a %s' % type(optimizer))
-      if self.run_eagerly:
-        raise NotImplementedError('DistributionStrategy is not supported '
-                                  'when running a model eagerly.')
       if sample_weight_mode:
         raise NotImplementedError('sample_weight_mode is not supported with '
                                   'DistributionStrategy.')
@@ -568,16 +568,16 @@ class Model(Network):
               '" missing from loss dictionary. We assume '
               'this was done on purpose. The fit and evaluate APIs will not be '
               'expecting any data to be passed to "' + name + '".')
-        loss_functions.append(losses.get(loss.get(name)))
+        loss_functions.append(training_utils.get_loss_function(loss.get(name)))
     elif isinstance(loss, list):
       if len(loss) != len(self.outputs):
         raise ValueError('When passing a list as loss, '
                          'it should have one entry per model outputs. '
                          'The model has ' + str(len(self.outputs)) +
                          ' outputs, but you passed loss=' + str(loss))
-      loss_functions = [losses.get(l) for l in loss]
+      loss_functions = [training_utils.get_loss_function(l) for l in loss]
     else:
-      loss_function = losses.get(loss)
+      loss_function = training_utils.get_loss_function(loss)
       loss_functions = [loss_function for _ in range(len(self.outputs))]
     self.loss_functions = loss_functions
 
@@ -693,11 +693,15 @@ class Model(Network):
             target = None
           if target is None or K.is_placeholder(target):
             if target is None:
+              target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
+                  self.loss_functions[i],
+                  K.dtype(self.outputs[i]))
+
               target = K.placeholder(
                   ndim=len(shape),
                   name=name + '_target',
                   sparse=K.is_sparse(self.outputs[i]),
-                  dtype=K.dtype(self.outputs[i]))
+                  dtype=target_dtype)
             self._feed_targets.append(target)
             self._feed_outputs.append(self.outputs[i])
             self._feed_output_names.append(name)
@@ -726,8 +730,21 @@ class Model(Network):
           mask = masks[i]
           loss_weight = loss_weights_list[i]
           with K.name_scope(self.output_names[i] + '_loss'):
-            weighted_loss = training_utils.weighted_masked_objective(loss_fn)
-            output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
+            if isinstance(loss_fn, losses.Loss):
+              if mask is not None:
+                mask = math_ops.cast(mask, y_pred.dtype)
+                # Update weights with mask.
+                if sample_weight is None:
+                  sample_weight = mask
+                else:
+                  # Update dimensions of weights to match with mask if possible.
+                  mask, _, sample_weight = squeeze_or_expand_dimensions(
+                      mask, None, sample_weight)
+                  sample_weight *= mask
+              output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
+            else:
+              weighted_loss = training_utils.weighted_masked_objective(loss_fn)
+              output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
 
           if len(self.outputs) > 1:
             # Keep track of the un-aggregated loss result tensor.
@@ -735,8 +752,10 @@ class Model(Network):
                                           '_loss'] = output_loss
 
             # Keep track of stateful result tensor and function for the loss.
+            loss_name = loss_fn.name if isinstance(
+                loss_fn, losses.Loss) else loss_fn.__name__
             mean_wrapped_loss = metrics_module.MeanMetricWrapper(
-                loss_fn, name=loss_fn.__name__)
+                loss_fn, name=loss_name)
             result_tensor = training_utils.call_metric_function(
                 mean_wrapped_loss,
                 y_true,
@@ -856,17 +875,11 @@ class Model(Network):
                                      [self.total_loss] + metrics_tensors)
 
   def _make_fit_function(self):
-    # TODO(psv/anjalisridhar): Remove updates after we fix b/118841692
-    # Stateful metrics updates
-    metric_updates = []
-    for m in self.metrics:
-      metric_updates += m.updates
-
     metrics_tensors = [
         self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
     self._make_train_function_helper(
-        '_fit_function', [self.total_loss] + metrics_tensors, metric_updates)
+        '_fit_function', [self.total_loss] + metrics_tensors)
 
   def _make_test_function_helper(self, fn_name, outputs, metric_updates=None):
     if not hasattr(self, fn_name):
@@ -902,8 +915,8 @@ class Model(Network):
     metrics_tensors = [
         self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
-    self._make_test_function_helper('_eval_function',
-                                    [self.total_loss] + metrics_tensors)
+    self._make_test_function_helper(
+        '_eval_function', [self.total_loss] + metrics_tensors)
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -921,7 +934,7 @@ class Model(Network):
             name='predict_function',
             **kwargs)
 
-  def _get_execution_function(self, mode):
+  def _make_execution_function(self, mode):
     if mode == 'train':
       self._make_fit_function()
       return self._fit_function
@@ -996,7 +1009,7 @@ class Model(Network):
     # TODO(anjalisridhar): Remove this check once we refactor the
     # _standardize_user_data code path. This check is already present elsewhere
     # in the codebase.
-    if check_steps and isinstance(x, dataset_ops.Dataset) and steps is None:
+    if check_steps and isinstance(x, dataset_ops.DatasetV2) and steps is None:
       raise ValueError('When using Datasets as input, '
                        'you should specify the `{steps_name}` argument.'
                        .format(steps_name=steps_name))
@@ -1039,11 +1052,13 @@ class Model(Network):
         x = dataset_ops.Dataset.from_tensor_slices(var_x)
         x = x.batch(batch_size, drop_remainder=drop_remainder)
 
-    assert isinstance(x, dataset_ops.Dataset)
+    assert isinstance(x, dataset_ops.DatasetV2)
 
     with self._distribution_strategy.scope():
       iterator = self._distribution_strategy.make_dataset_iterator(x)
-      K.get_session().run(iterator.initialize())
+      init_op = iterator.initialize()
+      if not context.executing_eagerly():
+        K.get_session().run(init_op)
 
     training_utils.validate_iterator_input(x, y, sample_weight,
                                            validation_split)
@@ -1128,14 +1143,14 @@ class Model(Network):
           shuffle=shuffle)
       return iterator, None, None
 
-    if isinstance(x, dataset_ops.Dataset):
+    if isinstance(x, dataset_ops.DatasetV2):
       if context.executing_eagerly():
-        x = x.make_one_shot_iterator()
+        x = iter(x)
       else:
         if x in self._dataset_iterator_cache:
           x = self._dataset_iterator_cache[x]
         else:
-          iterator = x.make_initializable_iterator()
+          iterator = dataset_ops.make_initializable_iterator(x)
           self._dataset_iterator_cache[x] = iterator
           x = iterator
         K.get_session().run(x.initializer)
@@ -1184,12 +1199,57 @@ class Model(Network):
           x, y, sample_weight = next_element
       else:
         x = next_element
-    x, y, sample_weights = self._standardize_weights(x, y, sample_weight,
-                                                     class_weight, batch_size)
+    x, y, sample_weights = self._standardize_weights(
+        x, y, sample_weight, class_weight, batch_size, is_x_iterator)
     return x, y, sample_weights
 
-  def _standardize_weights(self, x, y, sample_weight=None, class_weight=None,
-                           batch_size=None,):
+  def _standardize_weights(self,
+                           x,
+                           y,
+                           sample_weight=None,
+                           class_weight=None,
+                           batch_size=None,
+                           from_iterator=False):
+    """Standardize input data, target data, and weight values.
+
+    This method reformats all data passed to the model to an ordered list of
+    array/tensors, matching the order expected by the model. This also validates
+    the input and target data shapes.
+
+    Args:
+      x: Input data. It could be:
+        - A Numpy array (or array-like), or a list of arrays
+          (in case the model has multiple inputs).
+        - A TensorFlow tensor, or a list of tensors
+          (in case the model has multiple inputs).
+        - A dict mapping input names to the corresponding array/tensors,
+          if the model has named inputs.
+        x cannot not be an iterator.
+      y: Target data. Like the input data `x`,
+        it could be either Numpy array(s) or TensorFlow tensor(s).
+        It should be consistent with `x` (you cannot have Numpy inputs and
+        tensor targets, or inversely).
+      sample_weight: An optional sample-weight array passed by the user to
+        weight the importance of each sample in `x`.
+      class_weight: An optional class-weight array by the user to
+        weight the importance of samples in `x` based on the class they belong
+        to, as conveyed by `y`.
+      batch_size: Integer batch size. If provided, it is used to run additional
+        validation checks on stateful models.
+      from_iterator: Whether x and y were obtained from an iterator.
+
+    Returns:
+      Tuple of standardized data that will be fed to the model:
+        (input data, target data, sample weights)
+
+    Raises:
+      RuntimeError: If target data is provided, but the model has not yet been
+        compiled.
+      ValueError: If the input data, target data, and batch size have invalid
+        shapes or formats (e.g. the model expects input to be a list of three
+        tensors, but x is a list with two tensors). Error is also raised if the
+        input and target data are not both arrays or tensors.
+    """
     # TODO(sourabhbajaj): Split input validation from weight standardization.
     if sample_weight is not None and class_weight is not None:
       logging.warning(
@@ -1223,11 +1283,17 @@ class Model(Network):
         all_inputs.append(x)
 
       # Build the model using the retrieved inputs (value or symbolic).
-      # If values, then in symbolic-mode placeholders will be created
-      # to match the value shapes.
+      # If values or generated from a dataset, then in symbolic-mode
+      # placeholders will be created to match the value shapes.
       if not self.inputs:
         is_build_called = True
-        self._set_inputs(x)
+        if from_iterator:
+          cast_inputs = nest.map_structure(lambda v: v.shape, x)
+        elif training_utils.has_tensors(x):
+          cast_inputs = training_utils.cast_if_floating_dtype(x)
+        else:
+          cast_inputs = x
+        self._set_inputs(cast_inputs)
     else:
       dict_inputs = isinstance(self.inputs, dict)
     if dict_inputs and context.executing_eagerly():
@@ -1243,6 +1309,8 @@ class Model(Network):
       if not self._is_compiled:
         # On-the-fly compilation of the model.
         # We need to use `y` to set the model targets.
+        if training_utils.has_tensors(y):
+          y = training_utils.cast_if_floating_dtype(y)
         if isinstance(y, (list, tuple)):
           if not all(isinstance(v, np.ndarray) or
                      tensor_util.is_tensor(v) for v in y):
@@ -1267,7 +1335,7 @@ class Model(Network):
                              'TensorFlow tensors. '
                              'You passed: x=' + str(x) + '; y=' + str(y))
 
-        if self.run_eagerly:
+        if self.run_eagerly or from_iterator:
           target_tensors = None
         else:
           # Handle target tensors if any passed.
@@ -1290,9 +1358,8 @@ class Model(Network):
     # part of the graph.
     # Note: in this case, `any` and `all` are equivalent since we disallow
     # mixed symbolic/value inputs.
-    if (not self.run_eagerly and is_build_called and
-        is_compile_called and
-        any(_is_symbolic_tensor(v) for v in all_inputs)):
+    if (not self.run_eagerly and is_build_called and is_compile_called and
+        not from_iterator and any(_is_symbolic_tensor(v) for v in all_inputs)):
       return [], [], []
 
     # What follows is input validation and standardization to list format,
@@ -1406,12 +1473,12 @@ class Model(Network):
 
     Args:
       inputs: Single array, or list of arrays. The arrays could be placeholders,
-        Numpy arrays, or data tensors.
+        Numpy arrays, data tensors, or TensorShapes.
         - if placeholders: the model is built on top of these placeholders,
           and we expect Numpy data to be fed for them when calling `fit`/etc.
-        - if Numpy data: we create placeholders matching the shape of the Numpy
-          arrays. We expect Numpy data to be fed for these placeholders
-          when calling `fit`/etc.
+        - if Numpy data or TensorShapes: we create placeholders matching the
+          TensorShapes or shapes of the Numpy arrays. We expect Numpy data to be
+          fed for these placeholders when calling `fit`/etc.
         - if data tensors: the model is built on top of these tensors.
           We do not expect any Numpy data to be provided when calling `fit`/etc.
       outputs: None, a data tensor, or a list of tensors. If None, the
@@ -1429,8 +1496,9 @@ class Model(Network):
 
     if self.__class__.__name__ == 'Sequential' and not self.built:
       if tensor_util.is_tensor(inputs):
-        input_shape = (None,) + tuple(inputs.get_shape().as_list()[1:])
-        self.build(input_shape=input_shape)
+        input_shape = (None,) + tuple(inputs.shape.as_list()[1:])
+      elif isinstance(inputs, tensor_shape.TensorShape):
+        input_shape = (None,) + tuple(inputs.as_list()[1:])
       elif isinstance(inputs, dict):
         # We assert that the first layer is a FeatureLayer.
         if not training_utils.is_feature_layer(self.layers[0]):
@@ -1438,10 +1506,9 @@ class Model(Network):
                            'which doesn\'t have FeatureLayer as the first layer'
                            ' is an error.')
         input_shape = (None,)
-        self.build(input_shape=input_shape)
       else:
-        input_shape = (None,) + inputs.shape[1:]
-        self.build(input_shape=input_shape)
+        input_shape = (None,) + tuple(inputs.shape[1:])
+      self._build_input_shape = input_shape
 
     # On-the-fly setting of symbolic model inputs (either by using the tensor
     # provided, or by creating a placeholder if Numpy data was provided).
@@ -1459,6 +1526,8 @@ class Model(Network):
         self._feed_inputs.append(v)
         self._feed_input_names.append(k)
         self._feed_input_shapes.append(K.int_shape(v))
+
+    # TODO(fchollet): consider calling `_maybe_build` before calling the model.
 
     if outputs is None:
       # Obtain symbolic outputs by calling the model.
@@ -1650,7 +1719,8 @@ class Model(Network):
 
     # Validate and standardize user data.
     if self._distribution_strategy:
-      distributed_training_utils.validate_callbacks(callbacks)
+      distributed_training_utils.validate_callbacks(callbacks, self.optimizer,
+                                                    self._distribution_strategy)
 
       distributed_training_utils.validate_inputs(
           x, y, self._distribution_strategy)
@@ -1662,9 +1732,8 @@ class Model(Network):
                 self._distribution_strategy, first_x_value, steps_per_epoch,
                 batch_size, is_training=True))
 
-    # Backwards compatibility
-    if batch_size is None and steps_per_epoch is None:
-      batch_size = 32
+    batch_size = self._validate_or_infer_batch_size(batch_size, steps_per_epoch,
+                                                    x)
 
     x, y, sample_weights = self._standardize_user_data(
         x,
@@ -1682,7 +1751,7 @@ class Model(Network):
     if validation_data:
       if (isinstance(validation_data, iterator_ops.Iterator) or
           isinstance(validation_data, iterator_ops.EagerIterator) or
-          isinstance(validation_data, dataset_ops.Dataset)):
+          isinstance(validation_data, dataset_ops.DatasetV2)):
         val_x = validation_data
         val_y = None
         val_sample_weight = None
@@ -1738,24 +1807,20 @@ class Model(Network):
       val_y = None
       val_sample_weights = None
 
-    if self.run_eagerly:
-      return training_eager.fit_loop(
-          self,
-          inputs=x,
-          targets=y,
-          sample_weights=sample_weights,
-          class_weight=class_weight,
+    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
+                             not self._distribution_strategy)):
+      return training_generator.fit_generator(
+          self, (x, y, sample_weights),
+          steps_per_epoch=steps_per_epoch,
           batch_size=batch_size,
           epochs=epochs,
+          shuffle=shuffle,
           verbose=verbose,
           callbacks=callbacks,
-          val_inputs=val_x,
-          val_targets=val_y,
-          val_sample_weights=val_sample_weights,
-          shuffle=shuffle,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps)
+          validation_data=validation_data,
+          validation_steps=validation_steps,
+          workers=0,
+          initial_epoch=initial_epoch)
     elif distributed_training_utils.is_tpu_strategy(
         self._distribution_strategy):
       return training_distributed.experimental_fit_loop(
@@ -1768,18 +1833,6 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
-      return training_generator.fit_generator(
-          self,
-          x,
-          steps_per_epoch=steps_per_epoch,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          validation_data=validation_data,
-          validation_steps=validation_steps,
-          workers=0,
-          initial_epoch=initial_epoch)
     else:
       return training_arrays.fit_loop(
           self,
@@ -1896,9 +1949,7 @@ class Model(Network):
         steps, batch_size = distributed_training_utils.get_input_params(
             self._distribution_strategy, first_x_value, steps, batch_size)
 
-    # Backwards compatibility.
-    if batch_size is None and steps is None:
-      batch_size = 32
+    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
 
     x, y, sample_weights = self._standardize_user_data(
         x,
@@ -1909,26 +1960,18 @@ class Model(Network):
         steps_name='steps',
         steps=steps)
 
-    if self.run_eagerly:
-      return training_eager.test_loop(
-          self,
-          inputs=x,
-          targets=y,
-          sample_weights=sample_weights,
+    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
+                             not self._distribution_strategy)):
+      return training_generator.evaluate_generator(
+          self, (x, y, sample_weights),
+          steps=steps,
           batch_size=batch_size,
           verbose=verbose,
-          steps=steps)
+          workers=0)
     elif distributed_training_utils.is_tpu_strategy(
         self._distribution_strategy):
       return training_distributed.experimental_test_loop(
           self, iterator=x, verbose=verbose, steps=steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
-      return training_generator.evaluate_generator(
-          self,
-          x,
-          steps=steps,
-          verbose=verbose,
-          workers=0)
     else:
       return training_arrays.test_loop(
           self,
@@ -2010,9 +2053,7 @@ class Model(Network):
         steps, batch_size = distributed_training_utils.get_input_params(
             self._distribution_strategy, first_x_value, steps, batch_size)
 
-    # Backwards compatibility.
-    if batch_size is None and steps is None:
-      batch_size = 32
+    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
 
     # Validate and standardize user data.
     if self._distribution_strategy:
@@ -2026,25 +2067,37 @@ class Model(Network):
       x, _, _ = self._standardize_user_data(
           x, check_steps=True, steps_name='steps', steps=steps)
 
-    if self.run_eagerly:
-      return training_eager.predict_loop(
-          self, x, batch_size=batch_size, verbose=verbose, steps=steps)
-    elif distributed_training_utils.is_tpu_strategy(
-        self._distribution_strategy):
-      return training_distributed.experimental_predict_loop(
-          self, x, verbose=verbose, steps=steps)
-    elif isinstance(x, iterator_ops.EagerIterator):
+    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
+                             not self._distribution_strategy)):
       return training_generator.predict_generator(
           self,
           x,
           steps=steps,
+          batch_size=batch_size,
           verbose=verbose,
           workers=0)
+    elif distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy):
+      return training_distributed.experimental_predict_loop(
+          self, x, verbose=verbose, steps=steps)
     else:
       return training_arrays.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
 
-  def train_on_batch(self, x, y=None, sample_weight=None, class_weight=None):
+  def reset_metrics(self):
+    """Resets the state of metrics."""
+    if hasattr(self, 'metrics'):
+      for m in self.metrics:
+        m.reset_states()
+      if self._distribution_strategy:
+        training_distributed._reset_metrics(self)  # pylint: disable=protected-access
+
+  def train_on_batch(self,
+                     x,
+                     y=None,
+                     sample_weight=None,
+                     class_weight=None,
+                     reset_metrics=True):
     """Runs a single gradient update on a single batch of data.
 
     Arguments:
@@ -2072,6 +2125,9 @@ class Model(Network):
           weight (float) to apply to the model's loss for the samples from this
           class during training. This can be useful to tell the model to "pay
           more attention" to samples from an under-represented class.
+        reset_metrics: If `True`, the metrics returned will be only for this
+          batch. If `False`, the metrics will be statefully accumulated across
+          batches.
 
     Returns:
         Scalar training loss
@@ -2099,14 +2155,21 @@ class Model(Network):
       else:
         ins = x + y + sample_weights
 
-      self._make_train_function()
-      outputs = self.train_function(ins)  # pylint: disable=not-callable
+      if reset_metrics:
+        self._make_train_function()
+        outputs = self.train_function(ins)  # pylint: disable=not-callable
+      else:
+        self._make_fit_function()
+        outputs = self._fit_function(ins)  # pylint: disable=not-callable
+
+    if reset_metrics:
+      self.reset_metrics()
 
     if len(outputs) == 1:
       return outputs[0]
     return outputs
 
-  def test_on_batch(self, x, y=None, sample_weight=None):
+  def test_on_batch(self, x, y=None, sample_weight=None, reset_metrics=True):
     """Test the model on a single batch of samples.
 
     Arguments:
@@ -2132,6 +2195,9 @@ class Model(Network):
             In this case you should make sure to specify
             sample_weight_mode="temporal" in compile(). This argument is not
             supported when `x` is a dataset or a dataset iterator.
+        reset_metrics: If `True`, the metrics returned will be only for this
+          batch. If `False`, the metrics will be statefully accumulated across
+          batches.
 
     Returns:
         Scalar test loss (if the model has a single output and no metrics)
@@ -2154,8 +2220,15 @@ class Model(Network):
           self, x, y, sample_weights=sample_weights)
     else:
       inputs = x + y + sample_weights
-      self._make_test_function()
-      outputs = self.test_function(inputs)  # pylint: disable=not-callable
+      if reset_metrics:
+        self._make_test_function()
+        outputs = self.test_function(inputs)  # pylint: disable=not-callable
+      else:
+        self._make_eval_function()
+        outputs = self._eval_function(inputs)  # pylint: disable=not-callable
+
+    if reset_metrics:
+      self.reset_metrics()
 
     if len(outputs) == 1:
       return outputs[0]
@@ -2186,7 +2259,7 @@ class Model(Network):
     inputs, _, _ = self._standardize_user_data(x)
     if self.run_eagerly:
       if (isinstance(inputs, iterator_ops.EagerIterator) or
-          (isinstance(inputs, dataset_ops.Dataset))):
+          (isinstance(inputs, dataset_ops.DatasetV2))):
         inputs = training_utils.cast_if_floating_dtype(inputs)
       elif isinstance(inputs, collections.Sequence):
         inputs = [
@@ -2456,15 +2529,64 @@ class Model(Network):
     self._replicated_model = DistributedCallbackModel(first_replicated_model)
     self._replicated_model.set_original_model(self)
 
+  def _validate_or_infer_batch_size(self, batch_size, steps, x):
+    """Validates that the `batch_size` provided is consistent with InputLayer.
+
+    It's possible that the user specified a static batch size in their
+    InputLayer. If so, this method checks the provided `batch_size` and `x`
+    arguments are consistent with this static batch size. Also, if
+    `batch_size` is `None`, this method will attempt to infer the batch size
+    from the static batch size of the InputLayer.
+
+    Arguments:
+      batch_size: The batch_size provided as an argument to
+        fit/evaluate/predict.
+      steps: The steps provided as an argument to fit/evaluate/predict.
+      x: The data passed as `x` to fit/evaluate/predict.
+
+    Returns:
+      The validated batch_size, auto-inferred from the first layer if not
+      provided.
+    """
+    layers = super(Model, self).layers  # Avoids the override in Sequential.
+    if layers:
+      first_layer = layers[0]
+      static_batch_size = training_utils.get_static_batch_size(first_layer)
+      if static_batch_size is not None:
+
+        # Check `batch_size` argument is consistent with InputLayer.
+        if batch_size is not None and batch_size != static_batch_size:
+          raise ValueError('The `batch_size` argument value {} is incompatible '
+                           'with the specified batch size of your Input Layer: '
+                           '{}'.format(batch_size, static_batch_size))
+
+        # Check Dataset/Iterator batch size is consistent with InputLayer.
+        if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
+                          iterator_ops.EagerIterator)):
+          ds_batch_size = tensor_shape.as_dimension(
+              nest.flatten(x.output_shapes)[0][0]).value
+          if ds_batch_size is not None and ds_batch_size != static_batch_size:
+            raise ValueError('The batch output shape of your `Dataset` is {}, '
+                             'which is incompatible with the specified batch '
+                             'size of your Input Layer: {}'.format(
+                                 ds_batch_size, static_batch_size))
+
+        # Set inferred batch size from the InputLayer.
+        if steps is None:
+          batch_size = static_batch_size
+
+    if batch_size is None and steps is None:
+      # Backwards compatibility
+      batch_size = 32
+    return batch_size
+
 
 class DistributedCallbackModel(Model):
   """Model that is used for callbacks with DistributionStrategy."""
 
   def __init__(self, model):
     super(DistributedCallbackModel, self).__init__()
-    # TODO(anjalisridhar): Right now the only attributes set are the layer and
-    # weights. We may need to set additional attributes as needed since we have
-    # not called compile on this model.
+    self.optimizer = model.optimizer
 
   def set_original_model(self, orig_model):
     self._original_model = orig_model

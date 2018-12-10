@@ -81,7 +81,7 @@ class ExpectationImportanceSampleTest(test.TestCase):
       # Compute E_p[X_1 * X_2 > 0], with X_i the ith component of X ~ p(x).
       # Should equal 1/2 because p is a spherical Gaussian centered at (0, 0).
       def indicator(x):
-        x1_times_x2 = math_ops.reduce_prod(x, reduction_indices=[-1])
+        x1_times_x2 = math_ops.reduce_prod(x, axis=[-1])
         return 0.5 * (math_ops.sign(x1_times_x2) + 1.0)
 
       prob = mc.expectation_importance_sampler(

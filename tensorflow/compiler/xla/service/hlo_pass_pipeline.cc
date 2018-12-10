@@ -113,7 +113,7 @@ void HloPassPipeline::MaybeDumpHlo(const HloModule& module,
   }
 
   const string message =
-      StrCat("after ", after_pass_name, ", before ", before_pass_name);
+      absl::StrCat("after ", after_pass_name, ", before ", before_pass_name);
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(3) << "HLO " << message << ":";
   VLOG(3) << module.entry_computation_layout().ToString();

@@ -53,11 +53,11 @@ from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
 from tensorflow.python.util import tf_inspect
@@ -192,7 +192,7 @@ def _augment_with_special_arguments(test_method):
         kwargs_to_pass[arg] = kwargs[arg]
 
     if mode == "eager":
-      with ops.Graph().as_default(), context.eager_mode():
+      with context.eager_mode():
         if distribution:
           kwargs_to_pass["distribution"] = distribution.strategy
         test_method(**kwargs_to_pass)

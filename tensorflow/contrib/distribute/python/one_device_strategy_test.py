@@ -55,7 +55,7 @@ class OneDeviceStrategyTest(strategy_test_lib.DistributionTestBase):
         expected_input_pipeline_id=0)
     iterator = d.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(
-        iterator, d.worker_devices, expected_values)
+        iterator, d.extended.worker_devices, expected_values)
 
 
 if __name__ == "__main__":

@@ -187,6 +187,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(2, g(constant_op.constant(2.)))
 
+  @test_util.run_v1_only('b/120545219')
   def testGraphModeEagerGradError(self):
     with context.graph_mode():
       def f():

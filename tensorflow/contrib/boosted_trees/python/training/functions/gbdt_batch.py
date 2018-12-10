@@ -897,9 +897,9 @@ class GradientBoostedDecisionTreeModel(object):
     empty_hess_shape = [1] + self._hessian_shape.as_list()
     empty_grad_shape = [1] + self._gradient_shape.as_list()
 
-    empty_gradients = constant_op.constant(
+    empty_gradients = constant_op.constant_v1(
         [], dtype=dtypes.float32, shape=empty_grad_shape)
-    empty_hessians = constant_op.constant(
+    empty_hessians = constant_op.constant_v1(
         [], dtype=dtypes.float32, shape=empty_hess_shape)
 
     active_handlers = array_ops.unstack(active_handlers, axis=0)

@@ -74,8 +74,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
 
   Status rewriteNode(Node* n, Graph* g) {
     AttrSlice n_attrs = n->attrs();
-    auto base_make_node = [n, g, &n_attrs](const string& op,
-                                           const string& name) {
+    auto base_make_node = [n, &n_attrs](const string& op, const string& name) {
       NodeBuilder node_builder(name, op);
 
       // The pieces of AccumulateNV2 should all be on the same node.
@@ -86,7 +85,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
       }
       return node_builder;
     };
-    auto make_node = [n, g, &n_attrs, &base_make_node](string op) {
+    auto make_node = [n, g, &base_make_node](string op) {
       return base_make_node(
           op, g->NewName(strings::StrCat(n->name(), "/Internal")));
     };

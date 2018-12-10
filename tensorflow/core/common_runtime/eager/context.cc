@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include "tensorflow/core/common_runtime/collective_executor_mgr.h"
+#include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
+#include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -71,6 +74,13 @@ EagerContext::EagerContext(const SessionOptions& opts,
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
+
+  std::unique_ptr<DeviceResolverInterface> drl(
+      new DeviceResolverLocal(local_device_mgr()));
+  std::unique_ptr<ParamResolverInterface> cprl(new CollectiveParamResolverLocal(
+      local_device_mgr(), drl.get(), "/job:localhost/replica:0/task:0"));
+  collective_executor_mgr_.reset(new CollectiveExecutorMgr(
+      opts.config, local_device_mgr(), std::move(drl), std::move(cprl)));
 }
 
 void EagerContext::InitDeviceMapAndAsync() {

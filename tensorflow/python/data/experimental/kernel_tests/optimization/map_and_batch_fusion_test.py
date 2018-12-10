@@ -31,9 +31,6 @@ class MapAndBatchFusionTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.range(10).apply(
         optimization.assert_next(
             ["MapAndBatch"])).map(lambda x: x * x).batch(10)
-    options = dataset_ops.Options()
-    options.experimental_map_and_batch_fusion = True
-    dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset, expected_output=[[x * x for x in range(10)]])
 

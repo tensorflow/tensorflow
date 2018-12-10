@@ -29,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -48,6 +49,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("ParallelCallsNUMA", 2, None, True),
       ("ParallelBatchesNUMA", None, 10, True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatch(self, num_parallel_calls, num_parallel_batches,
                       numa_aware):
     """Test a dataset that maps a TF function across its input elements."""
@@ -76,7 +78,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -95,7 +97,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
             self.assertAllEqual(component[(i * 14 + j) % 7]**2,
                                 result_component[j])
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
       # Batch of a finite input, where the batch_size does not
       # divide the total number of elements.
@@ -115,12 +117,12 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
           self.assertAllEqual(component[((num_batches - 1) * 8 + j) % 7]**2,
                               result_component[j])
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
       # Batch of an empty input should fail straight away.
       sess.run(init_op, feed_dict={count: 0, batch_size: 8})
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
       # Empty batch should be an initialization time error.
       with self.assertRaises(errors.InvalidArgumentError):
@@ -132,6 +134,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("EvenNUMA", False, True),
       ("UnevenNUMA", True, True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchPartialBatch(self, drop_remainder, numa_aware):
     dataset = (
         dataset_ops.Dataset.range(10).apply(
@@ -144,25 +147,26 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     if drop_remainder:
       self.assertEqual([4, 1], iterator.output_shapes.as_list())
     else:
       self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertAllEqual([[0], [1], [4], [9]], self.evaluate(next_element))
       self.assertAllEqual([[16], [25], [36], [49]], self.evaluate(next_element))
       if not drop_remainder:
         self.assertAllEqual([[64], [81]], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   @parameterized.named_parameters(
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchYieldsPartialBatch(self, numa_aware):
     dataset = (
         dataset_ops.Dataset.range(10).apply(
@@ -173,20 +177,21 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
 
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertAllEqual([[0], [1], [4], [9]], self.evaluate(next_element))
       self.assertAllEqual([[16], [25], [36], [49]], self.evaluate(next_element))
       self.assertAllEqual([[64], [81]], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+        self.evaluate(next_element)
 
   @parameterized.named_parameters(
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchParallelGetNext(self, numa_aware):
     dataset = dataset_ops.Dataset.range(50000).apply(
         batching.map_and_batch(lambda x: x, batch_size=100))
@@ -194,12 +199,12 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     elements = []
     for _ in range(100):
       elements.append(iterator.get_next())
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(5):
         got = self.evaluate(elements)
         got.sort(key=lambda x: x[0])
@@ -208,12 +213,13 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
           expected.append(range(i * 10000 + j * 100, i * 10000 + (j + 1) * 100))
         self.assertAllEqual(got, expected)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(elements)
+        self.evaluate(elements)
 
   @parameterized.named_parameters(
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchParallelGetNextDropRemainder(self, numa_aware):
     dataset = dataset_ops.Dataset.range(49999).apply(
         batching.map_and_batch(
@@ -223,12 +229,12 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     elements = []
     for _ in range(100):
       elements.append(iterator.get_next())
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(4):
         got = self.evaluate(elements)
         got.sort(key=lambda x: x[0])
@@ -237,12 +243,13 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
           expected.append(range(i * 10000 + j * 100, i * 10000 + (j + 1) * 100))
         self.assertAllEqual(got, expected)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(elements)
+        self.evaluate(elements)
 
   @parameterized.named_parameters(
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchSparse(self, numa_aware):
 
     def _sparse(i):
@@ -255,12 +262,12 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(init_op)
       for i in range(2):
         actual = self.evaluate(get_next)
@@ -271,12 +278,13 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertTrue(sparse_tensor.is_sparse(actual))
         self.assertSparseValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   @parameterized.named_parameters(
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchFails(self, numa_aware):
     """Test a dataset that maps a TF function across its input elements."""
     dataset = dataset_ops.Dataset.from_tensors(
@@ -288,7 +296,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     with self.cached_session() as sess:
@@ -299,6 +307,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchShapeMismatch(self, numa_aware):
     """Test a dataset that maps a TF function across its input elements."""
 
@@ -316,15 +325,15 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
 
     init_op = iterator.initializer
     get_next = iterator.get_next()
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(init_op)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "number of elements does not match"):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   @parameterized.named_parameters(
       ("Normal", False),
@@ -349,12 +358,12 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       for _ in range(3):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   @parameterized.named_parameters(
       ("1", 0, False),
@@ -370,13 +379,12 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("5NUMA", 95, True),
       ("6NUMA", 99, True),
   )
-  def testMapAndBatchOutOfRangeError(self, threshold, numa_aware):
+  @test_util.run_deprecated_v1
+  def testMapAndBatchMapError(self, threshold, numa_aware):
 
     def raising_py_fn(i):
-      if i == threshold:
+      if i >= threshold:
         raise StopIteration()
-      elif i > threshold:
-        raise RuntimeError("Alternate error; you shouldn't see me! (i: %s)" % i)
       else:
         return i
 
@@ -388,19 +396,24 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(threshold // 10):
         self.assertAllEqual([i * 10 + j for j in range(10)],
                             self.evaluate(get_next))
-      if threshold % 10 != 0:
-        self.assertAllEqual(
-            [threshold // 10 * 10 + j for j in range(threshold % 10)],
-            sess.run(get_next))
+      if numa_aware:
+        if threshold % 10 != 0:
+          self.assertAllEqual(
+              [threshold // 10 * 10 + j for j in range(threshold % 10)],
+              self.evaluate(get_next))
+      else:
+        for i in range(threshold // 10, 10):
+          with self.assertRaises(errors.InvalidArgumentError):
+            self.evaluate(get_next)
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
   @parameterized.named_parameters(
       ("1", False, dtypes.bool, False),
@@ -439,9 +452,9 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
 
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       for _ in range(10):
         self.assertAllEqual([element for _ in range(10)],
                             self.evaluate(get_next))
@@ -452,10 +465,11 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Swap", (None, None), lambda x, y: (y, x), None),
       ("Project", (None, None), lambda x, y: x, None),
   )
+  @test_util.run_deprecated_v1
   def testShortCircuit(self, structure, map_fn, num_parallel_calls):
     dataset = self.structuredDataset(structure).repeat().apply(
         batching.map_and_batch(map_fn, batch_size=10))
-    get_next = dataset.make_one_shot_iterator().get_next()
+    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       if isinstance(structure, tuple):
@@ -466,11 +480,12 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
             sess.run(self.structuredElement(structure, shape=[10])))
       self.assertAllEqual(expected, self.evaluate(get_next))
 
+  @test_util.run_deprecated_v1
   def testShortCircuitCapturedInput(self):
     captured_t = array_ops.placeholder(dtypes.int64, shape=[])
     dataset = self.structuredDataset(None).repeat().apply(
         batching.map_and_batch(lambda x: captured_t, batch_size=10))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
@@ -481,6 +496,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("Normal", False),
       ("NUMA", True),
   )
+  @test_util.run_deprecated_v1
   def testMapAndBatchControlFlow(self, numa_aware):
 
     def map_fn(x):
@@ -496,20 +512,19 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
-    with self.cached_session() as sess:
+    with self.cached_session():
       for i in range(10):
-        print("Case %d" % i)
         if i < 5:
           self.assertAllEqual([i * 10 + j + 1 for j in range(10)],
-                              sess.run(get_next))
+                              self.evaluate(get_next))
         else:
           self.assertAllEqual(
               [((i * 10) + j) * ((i * 10) + j) for j in range(10)],
-              sess.run(get_next))
+              self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
 
 if __name__ == "__main__":

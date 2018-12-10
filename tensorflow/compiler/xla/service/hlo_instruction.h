@@ -770,6 +770,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateGetDimensionSize(
       const Shape& shape, HloInstruction* operand, int64 dimension);
 
+  static std::unique_ptr<HloInstruction> CreateAddDependency(
+      HloInstruction* data_operand, HloInstruction* token_operand);
+
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
 
@@ -885,7 +888,7 @@ class HloInstruction {
 
     // Two AllReduces are Identical if they have the same all_reduce_id.
     // Their operands don't have to be Identical.
-    if (!this->IsCrossModuleAllReduce()) {
+    if (!IsCrossModuleAllReduce()) {
       // Use an explicit loop rather than ContainerEquals, because copying
       // around std::functions may be too expensive in some cases.
       for (size_t i = 0; i < operands().size(); ++i) {
@@ -901,6 +904,12 @@ class HloInstruction {
 
     return IdenticalSlowPath(other, eq_computations);
   }
+
+  // Generates a hash value of an HLO instruction. Hash considers
+  // information on opcode, shape, operands, and typically a root instruction.
+  // This function returns the same hash value for equivalent HLO instructions,
+  // with respect to HloInstruction::Identical() method.
+  uint64 Hash() const;
 
   // Returns whether the instruction has a constant operand.
   bool HasConstantOperand() const;
@@ -1263,6 +1272,7 @@ class HloInstruction {
   // superior.
   // Precondition: opcode must be kConvolution or kDot.
   const PrecisionConfig& precision_config() const;
+  PrecisionConfig* mutable_precision_config();
 
   // Sets the debug metadata for this instruction.
   void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
@@ -1608,6 +1618,10 @@ class HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const;
+
+  // Generates a hash value specific to a particular type of an instruction.
+  // This function typically considers the inner root instruction.
+  virtual uint64 InnerHash() const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(

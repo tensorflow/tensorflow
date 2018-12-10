@@ -68,6 +68,8 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "SleepDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

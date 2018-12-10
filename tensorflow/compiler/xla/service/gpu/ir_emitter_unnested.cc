@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
@@ -2172,7 +2173,18 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   Shape keys_shape = sort->operand(0)->shape();
+  int64 dimension_to_sort = sort->dimensions(0);
+  // In case there is a 'values' parameter that is a iota, we take note and use
+  // it later to ensure a stable sort. Otherwise, we don't guarantee a stable
+  // sort.
+  int64 iota_values_parameter_index = -1;
   for (int64 i = 0; i < sort->operand_count(); ++i) {
+    if (i > 0 && sort->operand(i)->opcode() == HloOpcode::kIota &&
+        ShapeUtil::ElementIsIntegral(sort->operand(i)->shape()) &&
+        Cast<HloIotaInstruction>(sort->operand(i))->iota_dimension() ==
+            dimension_to_sort) {
+      iota_values_parameter_index = i;
+    }
     ShapeIndex shape_index =
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and outputs is the
@@ -2197,7 +2209,6 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
     }
   }
 
-  int64 dimension_to_sort = sort->dimensions(0);
   uint64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
   CHECK_GE(1ULL << num_stages, dimension_to_sort_bound);
@@ -2299,8 +2310,9 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       }
     }
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, keys_array, values_arrays, IrName(sort), xor_masks,
-        &b_, launch_dimensions,
+        dimension_to_sort, keys_array, values_arrays,
+        iota_values_parameter_index, IrName(sort), xor_masks, &b_,
+        launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
         kTileSize);
@@ -2386,7 +2398,7 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
   return Status::OK();
 }
 
-Status IrEmitterUnnested::HandleAfterAll(HloInstruction* gen_token) {
+Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 
@@ -3104,8 +3116,18 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
             GetIndexTypeForKernel(&hlo, launch_dimensions.launch_bound(), &b_));
   }
 
-  // For multioutput fusion, we need to emit each operand and the root.
+  // Emit the tuple pointers in one thread.  We could do this at any point in
+  // the kernel, but we do it at the beginning in the hopes of reducing register
+  // pressure, since we touch threadIdx.x and blockIdx.x at the beginning of the
+  // kernel *anyway*.
   std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(hlo);
+  TF_RETURN_IF_ERROR(
+      KernelSupportLibrary(&b_).If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+        llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
+        return Status::OK();
+      }));
+
+  // For multioutput fusion, we need to emit each operand and the root.
   TF_RETURN_IF_ERROR(
       ParallelLoopEmitter(element_generator, output_arrays, launch_dimensions,
                           &b_, unroll_factor)
@@ -3114,8 +3136,6 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
                         &hlo, launch_dimensions.launch_bound(), &b_)));
 
   b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
-  llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
-
   return Status::OK();
 }
 
@@ -3174,37 +3194,6 @@ int IrEmitterUnnested::ConstructInputReducedShapeAndCastInputIrArrayToShape(
 }
 
 namespace {
-
-// Reads thread_idx.x and converts it to a (y,x) coordinate, assuming that the
-// thread lives within a square tile of size tile_size (so thread blocks are of
-// size tile_size * tile_size).
-std::tuple<llvm::Value*, llvm::Value*> CalculateYXCoordinateWithinTile(
-    llvm::IRBuilder<>* builder, llvm::Value* tile_size,
-    int64 threads_per_tile) {
-  // Calculate the starting element coordinate within a tile for the current
-  // thread, (y, x) from thread_id.
-  llvm::Value* thread_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, builder);
-  llvm_ir::AddRangeMetadata(0, threads_per_tile,
-                            llvm::cast<llvm::Instruction>(thread_id));
-  thread_id = builder->CreateIntCast(thread_id, tile_size->getType(),
-                                     /*isSigned=*/true, "thread.id.x");
-  auto x = builder->CreateURem(thread_id, tile_size);
-  auto y = builder->CreateUDiv(thread_id, tile_size);
-  return std::make_tuple(y, x);
-}
-
-// Reads block_idx.x, casts it to type index_ty, and adds the assumption that
-// it's in the range [0, num_blocks].
-llvm::Value* GetBlockIdx(llvm::IRBuilder<>* builder, llvm::Type* index_ty,
-                         int64 num_blocks) {
-  llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, builder);
-  llvm_ir::AddRangeMetadata(0, num_blocks,
-                            llvm::cast<llvm::Instruction>(block_id));
-  return builder->CreateIntCast(block_id, index_ty, /*isSigned=*/true,
-                                "block.id.x");
-}
 
 void EmitFullTile(const KernelMappingScheme* mapping_scheme,
                   const IrArray::Index& tile_origin_index,
@@ -3529,6 +3518,21 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     return llvm::ConstantInt::get(index_ty, c);
   };
 
+  // For multioutput fusion, one thread needs to output a tuple with pointers to
+  // all the individual outputs.  We could do this at any point in the kernel,
+  // but we do it at the beginning in the hopes of reducing register pressure,
+  // since we touch threadIdx.x and blockIdx.x at the beginning of the kernel
+  // *anyway*.
+  if (unnested_hlo->IsMultiOutputFusion()) {
+    TF_CHECK_OK(KernelSupportLibrary(&b_).If(
+        "emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+          llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
+                             ConstructIrArrayForOutputs(*unnested_hlo), &b_,
+                             module_);
+          return Status::OK();
+        }));
+  }
+
   // For each tiled parameter, cast its input IrArray to the corresponding
   // reduced shape and keep the reduced shape live during IR emission.
   std::vector<IrArray> param_in_reduced_shape_arrays;
@@ -3636,15 +3640,6 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
       kernel_generator.GetBlockEpilogueGenerator();
   if (block_epilogue_generator) {
     block_epilogue_generator(unnested_hlo, kernel_info);
-  }
-
-  // For multioutput fusion, emit a tuple with pointers to all the individual
-  // outputs.
-  if (unnested_hlo->IsMultiOutputFusion()) {
-    std::vector<IrArray> output_arrays =
-        ConstructIrArrayForOutputs(*unnested_hlo);
-    llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo), output_arrays,
-                       &b_, module_);
   }
 
   return launch_dimensions;

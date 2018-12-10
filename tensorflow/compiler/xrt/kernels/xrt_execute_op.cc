@@ -228,14 +228,35 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
       shaped_buffer, device_ref.backend(), device_ref.device_ordinal(),
       &output_tuple));
+  if (config_proto.return_exploded_tuple() &&
+      xla::ShapeUtil::IsTuple(output_tuple->on_device_shape())) {
+    int64 tuple_element_count =
+        xla::ShapeUtil::TupleElementCount(output_tuple->on_device_shape());
+    Tensor* output_tensor;
+    TF_RETURN_IF_ERROR(context->allocate_output(
+        0, TensorShape({tuple_element_count}), &output_tensor));
 
-  Tensor* output_tensor;
-  TF_RETURN_IF_ERROR(
-      context->allocate_output(0, TensorShape({}), &output_tensor));
-  int64 key;
-  TF_RETURN_IF_ERROR(output_tuple->Intern(rm, &key));
-  output_tensor->scalar<int64>()() = key;
+    for (int64 i = 0; i < tuple_element_count; ++i) {
+      xla::ShapeIndex shape_index;
+      shape_index.push_back(i);
 
+      XRTTupleAllocation* suballocation;
+      TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
+          output_tuple, shape_index, &suballocation,
+          /*alias_parent_allocation=*/false));
+      int64 key;
+      TF_RETURN_IF_ERROR(suballocation->Intern(rm, &key));
+      output_tensor->vec<int64>()(i) = key;
+    }
+    output_tuple->Unref();
+  } else {
+    Tensor* output_tensor;
+    TF_RETURN_IF_ERROR(
+        context->allocate_output(0, TensorShape({}), &output_tensor));
+    int64 key;
+    TF_RETURN_IF_ERROR(output_tuple->Intern(rm, &key));
+    output_tensor->scalar<int64>()() = key;
+  }
   return Status::OK();
 }
 

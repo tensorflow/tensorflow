@@ -696,7 +696,7 @@ void CollectiveParamResolverLocal::CompleteInstanceSource(InstanceRec* ir,
         if (ir->source_rank >= 0) {
           ir->status = errors::Internal("Instance ", cp->instance.instance_key,
                                         " already has source ", ir->source_rank,
-                                        ", recevied second claim from ",
+                                        ", received second claim from ",
                                         cp->default_rank);
         } else {
           ir->source_rank = cp->default_rank;

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 
 from tensorflow.python.autograph.converters import call_trees
@@ -85,6 +87,34 @@ class CallTreesTest(converter_testing.TestCase):
       tc = TestClass()
       self.assertEquals(3, result.test_fn_2(tc, 1))
 
+  def test_known_called_lambda(self):
+
+    l = lambda x: x
+
+    def test_fn(a):
+      return l(a)
+
+    ns = {'l': l}
+    node, ctx = self.prepare(test_fn, ns)
+    node = call_trees.transform(node, ctx)
+
+    with self.compiled(node, ns) as result:
+      self.assertEquals(1, result.test_fn(1))
+
+  def test_known_called_namedtuple(self):
+
+    nt = collections.namedtuple('TestNamedTuple', ['a'])
+
+    def test_fn(a):
+      return nt(a)
+
+    ns = {'nt': nt}
+    node, ctx = self.prepare(test_fn, ns)
+    node = call_trees.transform(node, ctx)
+
+    with self.compiled(node, ns) as result:
+      self.assertEquals(nt(1), result.test_fn(1))
+
   def test_py_func_known_function(self):
 
     def test_fn():
@@ -94,7 +124,7 @@ class CallTreesTest(converter_testing.TestCase):
                         dtypes.int64) as result:
       with self.cached_session() as sess:
         self.assertTrue(isinstance(result.test_fn(), ops.Tensor))
-        self.assertIn(sess.run(result.test_fn()), (0, 1, 2))
+        self.assertIn(self.evaluate(result.test_fn()), (0, 1, 2))
 
   def test_uncompiled_modules(self):
 

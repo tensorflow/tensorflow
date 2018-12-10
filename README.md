@@ -9,12 +9,14 @@
 |-----------------|
 | [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
-**TensorFlow** is an open source software library for numerical computation using
-data flow graphs.  The graph nodes represent mathematical operations, while
+**TensorFlow** is an open source software library for numerical computation
+using data flow graphs. The graph nodes represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow
-between them.  This flexible architecture enables you to deploy computation to one
-or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
-code.  TensorFlow also includes [TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard), a data visualization toolkit.
+between them. This flexible architecture enables you to deploy computation to
+one or more CPUs or GPUs in a desktop, server, or mobile device without
+rewriting code. TensorFlow also includes
+[TensorBoard](https://github.com/tensorflow/tensorboard), a data visualization
+toolkit.
 
 TensorFlow was originally developed by researchers and engineers
 working on the Google Brain team within Google's Machine Intelligence Research
@@ -111,22 +113,24 @@ The TensorFlow project strives to abide by generally accepted best practices in 
 Build Type                                                                                                                                                                                      | Status                                                                                                                                                                                   | Artifacts
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------
 **IBM s390x**                                                                                                                                                                                   | [![Build Status](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/badge/icon)](http://ibmz-ci.osuosl.org/job/TensorFlow_IBMZ_CI/)                                                        | TBA
-**IBM ppc64le CPU**                                                                                                                                                                             | [![Build Status](http://powerci.osuosl.org/job/TensorFlow_Ubuntu_16.04_CPU/badge/icon)](http://powerci.osuosl.org/job/TensorFlow_Ubuntu_16.04_CPU/)                                      | TBA
+**IBM ppc64le CPU**                                                                                                                                                                             | [![Build Status](http://powerci.osuosl.org/job/TensorFlow_PPC64LE_CPU_Build/badge/icon)](http://powerci.osuosl.org/job/TensorFlow_PPC64LE_CPU_Build/)                                    | TBA
 **IBM ppc64le GPU** Nightly                                                                                                                                                                     | [![Build Status](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Nightly_Artifact/badge/icon)](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Nightly_Artifact/)            | [Nightly](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Nightly_Artifact/)
 **IBM ppc64le GPU** Stable Release                                                                                                                                                              | [![Build Status](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Release_Build/badge/icon)](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Release_Build/)                  | [Release](https://powerci.osuosl.org/job/TensorFlow_PPC64LE_GPU_Release_Build/)
 **Linux CPU with Intel® MKL-DNN** Nightly                                                                                                                                                       | [![Build Status](https://tensorflow-ci.intel.com/job/tensorflow-mkl-linux-cpu/badge/icon)](https://tensorflow-ci.intel.com/job/tensorflow-mkl-linux-cpu/)                                | [Nightly](https://tensorflow-ci.intel.com/job/tensorflow-mkl-build-whl-nightly/)
 **Linux CPU with Intel® MKL-DNN** Python 2.7<br> **Linux CPU with Intel® MKL-DNN** Python 3.4<br> **Linux CPU with Intel® MKL-DNN** Python 3.5<br> **Linux CPU with Intel® MKL-DNN** Python 3.6 | [![Build Status](https://tensorflow-ci.intel.com/job/tensorflow-mkl-build-release-whl/badge/icon)](https://tensorflow-ci.intel.com/job/tensorflow-mkl-build-release-whl/lastStableBuild) | [1.11.0 py2.7](https://storage.googleapis.com/intel-optimized-tensorflow/tensorflow-1.11.0-cp27-cp27mu-linux_x86_64.whl)<br>[1.11.0 py3.4](https://storage.googleapis.com/intel-optimized-tensorflow/tensorflow-1.11.0-cp34-cp34m-linux_x86_64.whl)<br>[1.11.0 py3.5](https://storage.googleapis.com/intel-optimized-tensorflow/tensorflow-1.11.0-cp35-cp35m-linux_x86_64.whl)<br>[1.11.0 py3.6](https://storage.googleapis.com/intel-optimized-tensorflow/tensorflow-1.11.0-cp36-cp36m-linux_x86_64.whl)
 
 ## For more information
-* [TensorFlow Website](https://www.tensorflow.org)
-* [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
-* [TensorFlow Model Zoo](https://github.com/tensorflow/models)
-* [TensorFlow Twitter](https://twitter.com/tensorflow)
-* [TensorFlow Blog](https://medium.com/tensorflow)
-* [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)
-* [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
-* [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
-* [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
+
+*   [TensorFlow Website](https://www.tensorflow.org)
+*   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
+*   [TensorFlow Model Zoo](https://github.com/tensorflow/models)
+*   [TensorFlow Twitter](https://twitter.com/tensorflow)
+*   [TensorFlow Blog](https://medium.com/tensorflow)
+*   [TensorFlow Course at Stanford](https://web.stanford.edu/class/cs20si)
+*   [TensorFlow Roadmap](https://www.tensorflow.org/community/roadmap)
+*   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
+*   [TensorFlow YouTube Channel](https://www.youtube.com/channel/UC0rqucBdTuFTjJiefW5t-IQ)
+*   [TensorFlow Visualization Toolkit](https://github.com/tensorflow/tensorboard)
 
 Learn more about the TensorFlow community at the [community page of tensorflow.org](https://www.tensorflow.org/community) for a few ways to participate.
 

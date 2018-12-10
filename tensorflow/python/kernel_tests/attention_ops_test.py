@@ -85,7 +85,7 @@ class ExtractGlimpseTest(test.TestCase):
 
     # Evaluate the TensorFlow Graph.
     with self.cached_session() as sess:
-      value_rows, value_cols = sess.run([glimpse_rows, glimpse_cols])
+      value_rows, value_cols = self.evaluate([glimpse_rows, glimpse_cols])
 
     # Check dimensions of returned glimpse.
     self.assertEqual(value_rows.shape[1], glimpse_sizes[0])

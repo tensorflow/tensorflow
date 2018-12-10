@@ -42,6 +42,7 @@ class SplitOpTest(test.TestCase):
       data -= 1j * data
     return data
 
+  @test_util.run_deprecated_v1
   def testShapeInference(self):
     model_input = array_ops.placeholder(dtypes.float32, shape=(1, 10))
 
@@ -85,6 +86,7 @@ class SplitOpTest(test.TestCase):
     with self.cached_session(use_gpu=True) as sess:
       sess.run(result, feed_dict={model_input2: np.ones([4, 2])})
 
+  @test_util.run_deprecated_v1
   def testFailWithoutExplicitNum(self):
     size_splits = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
 
@@ -209,6 +211,7 @@ class SplitOpTest(test.TestCase):
     self.assertAllEqual(result[:, 0:1], inp_grads[0])
     self.assertAllEqual(result[:, 1:4], inp_grads[1])
 
+  @test_util.run_deprecated_v1
   def testOutputShape(self):
     for axis in [1, -1]:
       with self.cached_session(use_gpu=True):
@@ -322,11 +325,13 @@ class SplitOpTest(test.TestCase):
     for i in range(4):
       self.assertAllEqual(result[:, i:i + 1], inp_grads[i])
 
+  @test_util.run_deprecated_v1
   def testGradientsAll(self):
     for dtype in _TEST_DTYPES:
       self._testGradientsSimple(dtype)
       self._testGradientsSimpleVariable(dtype)
 
+  @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # split_dim greater than rank of input.
     with self.assertRaises(ValueError):
@@ -356,6 +361,7 @@ class SplitOpTest(test.TestCase):
     for s in splits:
       self.assertEqual(None, s.get_shape().ndims)
 
+  @test_util.run_deprecated_v1
   def testVariableShapeFunction(self):
     # size_splits too big
     with self.assertRaises(ValueError):
@@ -366,6 +372,7 @@ class SplitOpTest(test.TestCase):
     assert s0.shape.as_list() == [2]
     assert s1.shape.as_list() == [1]
 
+  @test_util.run_deprecated_v1
   def testNonexistentDimTensor(self):
     x = array_ops.placeholder(dtypes.int32)
     values = np.zeros([5, 30])

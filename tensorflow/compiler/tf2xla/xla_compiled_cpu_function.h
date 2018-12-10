@@ -26,7 +26,7 @@ limitations under the License.
 // Forward-declare, rather than include, to reduce code size for users that
 // never use this functionality.
 namespace xla {
-class ProgramShape;
+class ProgramShapeProto;
 class HloProfilePrinterData;
 }
 
@@ -84,7 +84,7 @@ class XlaCompiledCpuFunction {
     void set_result_names(const char** result_names) {
       result_names_ = result_names;
     }
-    void set_program_shape(const xla::ProgramShape* program_shape) {
+    void set_program_shape(const xla::ProgramShapeProto* program_shape) {
       program_shape_ = program_shape;
     }
     const xla::HloProfilePrinterData* hlo_profile_printer_data() const {
@@ -122,7 +122,7 @@ class XlaCompiledCpuFunction {
     const char** result_names_ = nullptr;
 
     // [Optional] Arg and result shapes.
-    const xla::ProgramShape* program_shape_ = nullptr;
+    const xla::ProgramShapeProto* program_shape_ = nullptr;
 
     // [Optional] Profile printer data.  Null if profiling is disabled.
     const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
@@ -206,8 +206,14 @@ class XlaCompiledCpuFunction {
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
-  void set_arg_data(size_t index, void* data) {
-    buffer_table_[arg_index_table_[index]] = data;
+  void set_arg_data(size_t index, const void* data) {
+    // The const_cast is safe because the generated code does not write to arg
+    // buffers.
+    //
+    // buffer_table_ contains pointers to buffers that _will_ be written to by
+    // generated code so it would be misleading to make buffer_table_ a `const
+    // void**`.
+    buffer_table_[arg_index_table_[index]] = const_cast<void*>(data);
   }
 
   // ------------------------------
@@ -264,7 +270,7 @@ class XlaCompiledCpuFunction {
 
   // Returns the shape of the args and results. May return nullptr if the
   // program shape isn't available.
-  const xla::ProgramShape* ProgramShape() const { return program_shape_; }
+  const xla::ProgramShapeProto* ProgramShape() const { return program_shape_; }
 
   bool hlo_profiling_enabled() const {
     return hlo_profile_printer_data_ != nullptr;
@@ -305,7 +311,7 @@ class XlaCompiledCpuFunction {
   // Optional metadata.
   const char** arg_names_ = nullptr;
   const char** result_names_ = nullptr;
-  const xla::ProgramShape* program_shape_ = nullptr;
+  const xla::ProgramShapeProto* program_shape_ = nullptr;
   const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
 };
 

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -39,6 +40,7 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(values, [b"pigs", b"on", b"the", b"wing", b"animals"])
       self.assertAllEqual(shape, [2, 4])
 
+  @test_util.run_deprecated_v1
   def testStringSplitEmptyDelimiter(self):
     strings = ["hello", "hola", b"\xF0\x9F\x98\x8E"]  # Last string is U+1F60E
 
@@ -81,6 +83,7 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(values, [b"a", b"b", b"c", b"d", b"e", b"f", b"g"])
       self.assertAllEqual(shape, [10, 1])
 
+  @test_util.run_deprecated_v1
   def testStringSplitWithDelimiter(self):
     strings = ["hello|world", "hello world"]
 
@@ -103,6 +106,7 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(values, [b"hello", b"world", b"hello", b"world"])
       self.assertAllEqual(shape, [2, 2])
 
+  @test_util.run_deprecated_v1
   def testStringSplitWithDelimiterTensor(self):
     strings = ["hello|world", "hello world"]
 
@@ -121,6 +125,7 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(values, [b"hello", b"world", b"hello world"])
       self.assertAllEqual(shape, [2, 2])
 
+  @test_util.run_deprecated_v1
   def testStringSplitWithDelimitersTensor(self):
     strings = ["hello.cruel,world", "hello cruel world"]
 
