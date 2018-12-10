@@ -33,7 +33,7 @@ performance of TF-TRT. For more information see
 
 ## Documentation
 
-[TF-TRT documentaion](https://docs.nvidia.com/deeplearning/dgx/integrate-tf-trt/index.html)
+[TF-TRT documentation](https://docs.nvidia.com/deeplearning/dgx/integrate-tf-trt/index.html)
 gives an overview of the supported functionalities, provides tutorials
 and verified models, explains best practices with troubleshooting guides.
 
