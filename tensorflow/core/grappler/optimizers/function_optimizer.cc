@@ -1472,7 +1472,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
       // for the function body, because functions have strict semantics.
 
       if (num_fanouts == 0 && happens_after.empty() &&
-          !ctx->allowed_optimizations().inline_ops_with_side_effects) {
+          ctx->allowed_optimizations().prune_ops_with_side_effects) {
         return errors::Internal(
             "Can't inline a function with a side-effectful op with empty "
             "fanouts and empty output control edge set. Function body node: ",
