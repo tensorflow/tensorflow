@@ -6,7 +6,7 @@ load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_gpu_tests_tags",
+    "tf_cuda_tests_tags",
 )
 
 all_backends = ["cpu", "gpu"] + plugins.keys()
@@ -141,7 +141,7 @@ def xla_test(
         elif backend == "gpu":
             backend_deps = ["//tensorflow/compiler/xla/service:gpu_plugin"]
             backend_deps += ["//tensorflow/compiler/xla/tests:test_macros_gpu"]
-            this_backend_tags += tf_gpu_tests_tags()
+            this_backend_tags += tf_cuda_tests_tags()
         elif backend in plugins:
             backend_deps = []
             backend_deps += plugins[backend]["deps"]

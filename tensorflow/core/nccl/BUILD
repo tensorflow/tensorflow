@@ -8,7 +8,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
@@ -31,7 +31,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_gpu_cc_test(
+tf_cuda_cc_test(
     name = "nccl_manager_test",
     size = "medium",
     srcs = if_cuda(

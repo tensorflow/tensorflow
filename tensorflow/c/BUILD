@@ -7,11 +7,11 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_copts",
-    "tf_gpu_library",
+    "tf_cuda_library",
     "tf_custom_op_library",
     "tf_kernel_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # -----------------------------------------------------------------------------
 # Public targets
@@ -43,7 +43,7 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
     hdrs = ["c_api_internal.h"],
@@ -65,7 +65,7 @@ tf_gpu_library(
     }),
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "c_api",
     srcs = [
         "c_api.cc",
@@ -107,7 +107,7 @@ tf_gpu_library(
     }),
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
         "c_api_experimental.cc",
@@ -150,7 +150,7 @@ exports_files(
     visibility = ["//visibility:public"],
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "tf_status_helper",
     srcs = ["tf_status_helper.cc"],
     hdrs = ["tf_status_helper.h"],
@@ -162,7 +162,7 @@ tf_gpu_library(
     ],
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "checkpoint_reader",
     srcs = ["checkpoint_reader.cc"],
     hdrs = ["checkpoint_reader.h"],
@@ -175,7 +175,7 @@ tf_gpu_library(
     ],
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "kernels",
     srcs = [
         "kernels.cc",
@@ -200,7 +200,7 @@ tf_gpu_library(
 # -----------------------------------------------------------------------------
 # Tests
 
-tf_gpu_library(
+tf_cuda_library(
     name = "c_test_util",
     testonly = 1,
     srcs = ["c_test_util.cc"],
@@ -219,7 +219,7 @@ tf_gpu_library(
     ],
 )
 
-tf_gpu_cc_test(
+tf_cuda_cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
@@ -330,7 +330,7 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-tf_gpu_cc_test(
+tf_cuda_cc_test(
     name = "kernels_test",
     size = "small",
     srcs = ["kernels_test.cc"],
@@ -357,7 +357,7 @@ tf_gpu_cc_test(
 # -----------------------------------------------------------------------------
 # Python API target
 
-tf_gpu_library(
+tf_cuda_library(
     name = "python_api",
     srcs = ["python_api.cc"],
     hdrs = ["python_api.h"],

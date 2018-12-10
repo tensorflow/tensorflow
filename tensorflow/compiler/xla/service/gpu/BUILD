@@ -31,7 +31,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_gpu_tests_tags",
+    "tf_cuda_tests_tags",
 )
 
 xla_proto_library(
@@ -76,7 +76,7 @@ cc_library(
 #    srcs = [
 #        "partition_assignment_test.cc",
 #    ],
-#    tags = tf_gpu_tests_tags(),
+#    tags = tf_cuda_tests_tags(),
 #    deps = [
 #        ":partition_assignment",
 #        "//tensorflow/core:stream_executor_no_cuda",
@@ -998,7 +998,7 @@ cc_library(
 tf_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
-    tags = tf_gpu_tests_tags(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
