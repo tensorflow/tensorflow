@@ -2234,7 +2234,7 @@ class TPUEstimator(estimator_lib.Estimator):
     def computation():
       """Compute tpu tensors used in export_outputs.
 
-      Passed to rewrite so that model_fn will be called under
+      Passed to rewrite_for_inference so that model_fn will be called under
       the rewriting contexts. Only tpu tensors are returned, but export_outputs
       and scaffold are captured.
 
@@ -2243,7 +2243,7 @@ class TPUEstimator(estimator_lib.Estimator):
          outside_compilation.
       """
       # We should only call model fn once and it should be inside `computation`
-      # so that building the graph will happen under `rewrite`.
+      # so that building the graph will happen under `rewrite_for_inference`.
       mode = model_fn_lib.ModeKeys.PREDICT
       estimator_spec = self._call_model_fn(features, labels, mode, config)
 
@@ -2260,7 +2260,7 @@ class TPUEstimator(estimator_lib.Estimator):
       capture.capture((estimator_spec, tensors_dict, tensors))
       return tpu_tensors
 
-    tpu_tensors_on_cpu = tpu.rewrite(computation)
+    tpu_tensors_on_cpu = tpu.rewrite_for_inference(computation)
     estimator_spec, tensors_dict, tensors = capture.get()
 
     # Reconstruct `tensors`, but with `tpu_tensors` replaced with
