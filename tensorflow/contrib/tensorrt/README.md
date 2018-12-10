@@ -18,9 +18,8 @@ https://docs.nvidia.com/deeplearning/dgx/index.html#installing-frameworks-for-je
 ## Installing TensorRT
 
 In order to make use of TF-TRT, you will need a local installation
-of TensorRT from the
-[NVIDIA Developer website](https://developer.nvidia.com/tensorrt).
-Installation instructions for compatibility with TensorFlow are provided on the
+of TensorRT. Installation instructions for compatibility with TensorFlow
+are provided on the
 [TensorFlow GPU support](https://www.tensorflow.org/install/gpu) guide.
 
 ## Examples
