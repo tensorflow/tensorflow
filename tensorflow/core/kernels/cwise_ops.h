@@ -29,6 +29,28 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
+#if GOOGLE_CUDA
+template <>
+struct scalar_arg_op<std::complex<float>> {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_arg_op)
+  typedef typename Eigen::NumTraits<std::complex<float>>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const float operator()(
+      const std::complex<float>& a) const {
+    return ::atan2f(a.imag(), a.real());
+  }
+};
+
+template <>
+struct scalar_arg_op<std::complex<double>> {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_arg_op)
+  typedef typename Eigen::NumTraits<std::complex<double>>::Real result_type;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const double operator()(
+      const std::complex<double>& a) const {
+    return ::atan2(a.imag(), a.real());
+  }
+};
+#endif
+
 template <typename T>
 struct scalar_asinh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
