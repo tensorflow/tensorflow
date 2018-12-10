@@ -587,7 +587,7 @@ def concat(values, axis, name=None):
     return _ragged_stack_concat_helper(values, axis, stack_values=False)
 
 
-def stack(values, axis, name=None):
+def stack(values, axis=0, name=None):
   """Stacks potentially ragged tensors along one dimension.
 
   Given a list of tensors with the same rank `K` (`K >= axis`), returns a

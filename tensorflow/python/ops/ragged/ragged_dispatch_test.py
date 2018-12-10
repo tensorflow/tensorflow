@@ -446,6 +446,139 @@ class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase,
     with self.assertRaises((TypeError, ValueError)):
       self.evaluate(math_ops.add_n([x, y]))
 
+  @parameterized.parameters([
+      dict(
+          op=array_ops.batch_gather,
+          args=(ragged.constant_value([[5, 6, 7], [8, 9]]),
+                ragged.constant_value([[2, 1, 0], [1]])),
+          expected=ragged.constant_value([[7, 6, 5], [9]])),
+      dict(
+          op=array_ops.concat,
+          args=([ragged.constant_value([[1, 2, 3], [4]], dtype=np.int32),
+                 np.array([[5, 6]], dtype=np.int32)],),
+          kwargs={'axis': 0},
+          expected=ragged.constant_value([[1, 2, 3], [4], [5, 6]])),
+      dict(
+          op=array_ops.expand_dims,
+          kwargs={'input': ragged.constant_value([[1, 2], [3]]),
+                  'axis': 0},
+          expected=ragged.constant_value([[[1, 2], [3]]])),
+      dict(
+          op=array_ops.expand_dims_v2,
+          kwargs={'input': ragged.constant_value([[1, 2], [3]]),
+                  'axis': -1},
+          expected=ragged.constant_value([[[1], [2]], [[3]]],
+                                         ragged_rank=1),),
+      dict(
+          op=array_ops.gather,
+          kwargs={'params': ragged.constant_value([[1, 2], [3]]),
+                  'indices': [1, 0, 1]},
+          expected=ragged.constant_value([[3], [1, 2], [3]])),
+      dict(
+          op=array_ops.gather_v2,
+          kwargs={'params': ragged.constant_value([[1, 2], [3]]),
+                  'indices': ragged.constant_value([[1, 0], [1]])},
+          expected=ragged.constant_value([[[3], [1, 2]], [[3]]])),
+      dict(
+          op=array_ops.gather_nd,
+          kwargs={'params': ragged.constant_value([[7, 8], [9]]),
+                  'indices': [[0, 1], [1, 0], [0, 0]]},
+          expected=ragged.constant_value([8, 9, 7])),
+      dict(
+          op=array_ops.stack,
+          args=([ragged.constant_value([[1, 2, 3], [4]], dtype=np.int32),
+                 np.array([[5, 6]], dtype=np.int32)],),
+          expected=ragged.constant_value([[[1, 2, 3], [4]], [[5, 6]]])),
+      dict(
+          op=array_ops.tile,
+          args=([ragged.constant_value([[1, 2], [3]], dtype=np.int32), [2, 3]]),
+          expected=ragged.constant_value([[1, 2, 1, 2, 1, 2], [3, 3, 3],
+                                          [1, 2, 1, 2, 1, 2], [3, 3, 3]])),
+      dict(
+          op=array_ops.where,
+          args=(ragged.constant_value([[True, False], [True]]),
+                ragged.constant_value([[b'A', b'B'], [b'C']]),
+                ragged.constant_value([[b'a', b'b'], [b'c']])),
+          expected=ragged.constant_value([[b'A', b'b'], [b'C']])),
+      dict(
+          op=math_ops.unsorted_segment_sum,
+          kwargs={'data': ragged.constant_value([[1, 2], [3]]),
+                  'segment_ids': ragged.constant_value([[0, 2], [0]]),
+                  'num_segments': 3},
+          expected=[4, 0, 2]),
+      dict(
+          op=math_ops.unsorted_segment_prod,
+          kwargs={'data': ragged.constant_value([[1, 2], [3]]),
+                  'segment_ids': ragged.constant_value([[0, 2], [0]]),
+                  'num_segments': 3},
+          expected=[3, 1, 2]),
+      dict(
+          op=math_ops.unsorted_segment_min,
+          kwargs={'data': ragged.constant_value([[1, 2], [3]]),
+                  'segment_ids': ragged.constant_value([[0, 1], [0]]),
+                  'num_segments': 2},
+          expected=[1, 2]),
+      dict(
+          op=math_ops.unsorted_segment_max,
+          kwargs={'data': ragged.constant_value([[1, 2], [3]]),
+                  'segment_ids': ragged.constant_value([[0, 1], [0]]),
+                  'num_segments': 2},
+          expected=[3, 2]),
+      dict(
+          op=math_ops.unsorted_segment_mean,
+          kwargs={'data': ragged.constant_value([[1, 2], [3]]),
+                  'segment_ids': ragged.constant_value([[0, 1], [0]]),
+                  'num_segments': 2},
+          expected=[2, 2]),
+      dict(
+          op=math_ops.unsorted_segment_sqrt_n,
+          kwargs={'data': ragged.constant_value([[1.0, 2.0], [3.0, 4.0, 6.0]]),
+                  'segment_ids': ragged.constant_value([[0, 1], [0, 0, 0]]),
+                  'num_segments': 2},
+          expected=[7.0, 2.0]),
+      dict(
+          op=math_ops.reduce_sum,
+          kwargs={'input_tensor': ragged.constant_value([[1, 2], [3, 4, 5]]),
+                  'axis': 1},
+          expected=[3, 12]),
+      dict(
+          op=math_ops.reduce_prod,
+          kwargs={'input_tensor': ragged.constant_value([[1, 2], [3, 4, 5]]),
+                  'axis': 1},
+          expected=[2, 60]),
+      dict(
+          op=math_ops.reduce_min,
+          kwargs={'input_tensor': ragged.constant_value([[1, 2], [3, 4, 5]]),
+                  'axis': 1},
+          expected=[1, 3]),
+      dict(
+          op=math_ops.reduce_max,
+          kwargs={'input_tensor': ragged.constant_value([[1, 2], [3, 4, 5]]),
+                  'axis': 1},
+          expected=[2, 5]),
+      dict(
+          op=math_ops.reduce_mean,
+          kwargs={'input_tensor': ragged.constant_value([[1, 3], [3, 4, 5]]),
+                  'axis': 1},
+          expected=[2, 4]),
+      dict(
+          op=math_ops.reduce_any,
+          kwargs={'input_tensor': ragged.constant_value([[True, False],
+                                                         [True, True, True]]),
+                  'axis': 1},
+          expected=[True, True]),
+      dict(
+          op=math_ops.reduce_all,
+          kwargs={'input_tensor': ragged.constant_value([[True, False],
+                                                         [True, True, True]]),
+                  'axis': 1},
+          expected=[False, True]),
+  ])
+  def testRaggedDispatch(self, op, expected, args=(), kwargs=None):
+    if kwargs is None: kwargs = {}
+    result = op(*args, **kwargs)
+    self.assertRaggedEqual(result, expected)
+
 
 if __name__ == '__main__':
   googletest.main()
