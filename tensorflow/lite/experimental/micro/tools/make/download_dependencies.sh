@@ -33,6 +33,7 @@ GEMMLOWP_URL="https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37
 FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/1f5eae5d6a135ff6811724f6c57f911d1f46bb15.tar.gz"
 CMSIS_URL="https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
 STM32_BARE_LIB_URL="https://github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
+INTEL_NEON="https://github.com/intel/ARM_NEON_2_x86_SSE/archive/97a126f08ce318023be604d03f88bf0820a9464a.zip"
 
 download_and_extract() {
   local usage="Usage: download_and_extract URL DIR"
@@ -69,5 +70,6 @@ download_and_extract "${GEMMLOWP_URL}" "${DOWNLOADS_DIR}/gemmlowp"
 download_and_extract "${FLATBUFFERS_URL}" "${DOWNLOADS_DIR}/flatbuffers"
 download_and_extract "${CMSIS_URL}" "${DOWNLOADS_DIR}/cmsis"
 download_and_extract "${STM32_BARE_LIB_URL}" "${DOWNLOADS_DIR}/stm32_bare_lib"
+download_and_extract "${INTEL_NEON}" "${DOWNLOADS_DIR}/intel_neon"
 
 echo "download_dependencies.sh completed successfully." >&2
