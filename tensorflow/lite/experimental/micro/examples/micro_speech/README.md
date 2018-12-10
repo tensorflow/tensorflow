@@ -31,6 +31,8 @@ To understand how TensorFlow Lite does this, you can look at the `TestInvoke()` 
 
 Once you have downloaded the dependencies and got the x86/Linux build working, you can try building a version for the STM32F103 'bluepill' device. The following command will build the test and then run it on an emulator, assuming you have Docker installed:
 
+*On Mac OS you need ot have ARM compiler installed, one way of doing so is with brew: brew install caskroom/cask/gcc-arm-embedded*
+
 ```
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=bluepill test_micro_speech
 ```
