@@ -235,7 +235,7 @@ class LocallyConnected2DLayersTest(test.TestCase):
 
 class LocallyConnectedImplementationModeTest(test.TestCase):
 
-  @tf_test_util.run_deprecated_v1
+  @tf_test_util.run_v1_only('b/120545219')
   def test_locallyconnected_implementation(self):
     with self.cached_session():
       num_samples = 4
