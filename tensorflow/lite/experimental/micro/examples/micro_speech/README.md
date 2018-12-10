@@ -31,6 +31,8 @@ To understand how TensorFlow Lite does this, you can look at the `TestInvoke()` 
 
 Once you have downloaded the dependencies and got the x86/Linux build working, you can try building a version for the STM32F103 'bluepill' device. The following command will build the test and then run it on an emulator, assuming you have Docker installed:
 
+*On Mac OS you need ot have ARM compiler installed, one way of doing so is with brew: brew install caskroom/cask/gcc-arm-embedded*
+
 ```
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=bluepill test_micro_speech
 ```
@@ -100,4 +102,55 @@ Finally, convert the file into a C source file that can be compiled into an embe
 
 ```
 xxd -i /tmp/tiny_conv.tflite > /tmp/tiny_conv_model_data.cc
+```
+
+### Creating Your Own Model With Google Cloud
+
+If want to train your model in Google Cloud you can do so by using pre-configured Deep Learning images.
+
+First create the VM:
+
+```
+export IMAGE_FAMILY="tf-latest-cpu" 
+export ZONE="us-west1-b" # Or any other required region
+export INSTANCE_NAME="model-trainer"
+export INSTANCE_TYPE="n1-standard-8" # or any other instance type
+gcloud compute instances create $INSTANCE_NAME \
+        --zone=$ZONE \
+        --image-family=$IMAGE_FAMILY \
+        --image-project=deeplearning-platform-release \
+        --machine-type=$INSTANCE_TYPE \
+        --boot-disk-size=120GB \
+        --min-cpu-platform=Intel\ Skylake
+```
+
+As soon as instance has been created you can SSH to it(as a jupyter user!):
+
+```
+gcloud compute ssh "jupyter@${INSTANCE_NAME}"
+```
+
+now install Bazel:
+
+```
+wget https://github.com/bazelbuild/bazel/releases/download/0.15.0/bazel-0.15.0-installer-linux-x86_64.sh
+sudo bash ./bazel-0.15.0-installer-linux-x86_64.sh
+source /usr/local/lib/bazel/bin/bazel-complete.bash
+sudo ln /usr/local/bin/bazel /usr/bin/bazel
+```
+and finally run the build:
+
+```
+# TensorFlow already pre-baked on the image
+cd src/tensorflow
+bazel run -c opt --copt=-mavx2 --copt=-mfma \
+tensorflow/examples/speech_commands:train -- \
+--model_architecture=tiny_conv --window_stride=20 --preprocess=average \
+--wanted_words="yes,no" --silence_percentage=25 --unknown_percentage=25 --quantize=1
+```
+
+After build is over follow the rest of the instrucitons from this tutorial. And finally do not forget to remove the instance when training is done:
+
+```
+gcloud compute instances delete "${INSTANCE_NAME}" --zone="${ZONE}"
 ```
