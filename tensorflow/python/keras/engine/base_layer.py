@@ -1063,9 +1063,20 @@ class Layer(checkpointable.CheckpointableBase):
       RuntimeError: If called in Eager mode.
       AttributeError: If no inbound nodes are found.
     """
+    if context.executing_eagerly():
+      raise RuntimeError('Cannot retrieve input tensors in eager mode.')
+
     if not self._inbound_nodes:
       raise AttributeError('Layer ' + self.name +
                            ' is not connected, no input to return.')
+
+    if len(self._inbound_nodes) > 1:
+      raise AttributeError('Layer ' + self.name +
+                           ' has multiple inbound nodes, '
+                           'hence the notion of "layer input" '
+                           'is ill-defined. '
+                           'Use `get_input_at(node_index)` instead.')
+
     return self._get_node_attribute_at_index(0, 'input_tensors', 'input')
 
   @property
@@ -1083,8 +1094,19 @@ class Layer(checkpointable.CheckpointableBase):
         layers.
       RuntimeError: if called in Eager mode.
     """
+    if context.executing_eagerly():
+      raise RuntimeError('Cannot retrieve output tensors in eager mode.')
+
     if not self._inbound_nodes:
       raise AttributeError('Layer ' + self.name + ' has no inbound nodes.')
+
+    if len(self._inbound_nodes) > 1:
+      raise AttributeError('Layer ' + self.name +
+                           ' has multiple inbound nodes, '
+                           'hence the notion of "layer output" '
+                           'is ill-defined. '
+                           'Use `get_output_at(node_index)` instead.')
+
     return self._get_node_attribute_at_index(0, 'output_tensors', 'output')
 
   @property
