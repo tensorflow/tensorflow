@@ -231,6 +231,13 @@ void OpEmitter::emitBuilder() {
   // Otherwise, generate a default builder that requires all result type,
   // operands, and attributes as parameters.
 
+  // We generate two builders here, one having a stand-alone parameter for
+  // each result type / operand / attribute, the other having an aggregated
+  // parameter for all result types / operands / attributes, to facilitate
+  // different call patterns.
+
+  // 1. Stand-alone parameters
+
   std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
   std::vector<Record *> operandTypes = def.getValueAsListOfDefs("operandTypes");
 
@@ -277,6 +284,30 @@ void OpEmitter::emitBuilder() {
   }
 
   os << "  }\n";
+
+  // 2. Aggregated parameters
+
+  // Signature
+  os << "  static void build(Builder* builder, OperationState* result, "
+     << "ArrayRef<Type> resultTypes, ArrayRef<SSAValue*> args, "
+        "ArrayRef<NamedAttribute> attributes) {\n";
+
+  // Result types
+  os << "    assert(resultTypes.size() == " << returnTypes.size()
+     << "u && \"mismatched number of return types\");\n"
+     << "    result->addTypes(resultTypes);\n";
+
+  // Operands
+  os << "    assert(args.size() == " << operandTypes.size()
+     << "u && \"mismatched number of parameters\");\n"
+     << "    result->addOperands(args);\n\n";
+
+  // Attributes
+  os << "    assert(attributes.size() >= " << attrs.size()
+     << "u && \"not enough attributes\");\n"
+     << "    for (const auto& pair : attributes)\n"
+     << "      result->addAttribute(pair.first, pair.second);\n"
+     << "  }\n";
 }
 
 void OpEmitter::emitCanonicalizationPatterns() {

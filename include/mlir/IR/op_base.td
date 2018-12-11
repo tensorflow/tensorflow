@@ -144,15 +144,20 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // Define the hooks used for building, parsing, printing, verification.
 
   // Custom builder.
-  // If a derived class/def does not override this, then a default builder
-  // is generated, with the following signature:
+  // If a derived class/def does not override this, then two default builders
+  // are generated, with the following signatures:
   //
   //   static void build(Builder* builder, OperationState* result,
   //                     Type resultType0, Type resultType1, ...,
   //                     SSAValue* arg0, SSAValue* arg1, ...,
-  //                     Attribute attr0, Attribute attr1, ...);
+  //                     Attribute <attr0-name>, Attribute <attr1-name>, ...);
   //
-  // Where the attributes follow the same declaration order as in the op.
+  //   * where the attributes follow the same declaration order as in the op.
+  //
+  //   static void build(Builder* builder, OperationState* result,
+  //                     ArrayRef<Type> resultTypes,
+  //                     ArrayRef<SSAValue*> args,
+  //                     ArrayRef<NamedAttribute> attributes);
   code builder = ?;
 
   // Custom parser.
