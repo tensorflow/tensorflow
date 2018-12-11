@@ -717,7 +717,7 @@ py_test(
     ],
 )
 
-gpu_py_test(
+cuda_py_test(
     name = "wrap_unwrap_test",
     size = "small",
     srcs = ["wrap_unwrap_test.py"],
