@@ -21,7 +21,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.bzl", "tf_gpu_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
@@ -33,7 +33,7 @@ exports_files(glob([
     "test/testdata/*",
 ]))
 
-tf_gpu_cc_test(
+tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
     srcs = ["tensorrt_test.cc"],
@@ -305,7 +305,7 @@ tf_gpu_library(
     ]) + tf_custom_op_library_additional_deps(),
 )
 
-tf_gpu_cc_test(
+tf_cuda_cc_test(
     name = "convert_graph_test",
     size = "medium",
     srcs = ["convert/convert_graph_test.cc"],
@@ -335,7 +335,7 @@ tf_gpu_cc_test(
     ]),
 )
 
-tf_gpu_cc_test(
+tf_cuda_cc_test(
     name = "convert_nodes_test",
     size = "medium",
     srcs = ["convert/convert_nodes_test.cc"],
@@ -426,7 +426,7 @@ tf_gpu_library(
     ]),
 )
 
-tf_gpu_cc_test(
+tf_cuda_cc_test(
     name = "trt_plugin_factory_test",
     size = "small",
     srcs = ["plugin/trt_plugin_factory_test.cc"],
