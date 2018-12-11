@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_CHOLESKY_H_
-#define TENSORFLOW_COMPILER_TF2XLA_LIB_CHOLESKY_H_
+#ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_CHOLESKY_H_
+#define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_CHOLESKY_H_
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-namespace tensorflow {
+namespace xla {
 
 // Computes the Cholesky decompositions of a batch of symmetric positive
 // definite matrices.
@@ -34,6 +34,6 @@ xla::XlaOp Cholesky(
     xla::XlaOp a, int64 block_size = 256,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::HIGHEST);
 
-}  // namespace tensorflow
+}  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_CHOLESKY_H_
+#endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_CHOLESKY_H_

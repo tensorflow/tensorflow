@@ -15,8 +15,6 @@ filegroup(
     ]),
 )
 
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-
 cc_library(
     name = "broadcast",
     srcs = ["broadcast.cc"],
@@ -30,27 +28,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "cholesky",
-    srcs = ["cholesky.cc"],
-    hdrs = ["cholesky.h"],
-    deps = [
-        ":util",
-        ":while_loop",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/client/lib:matrix",
-        "//tensorflow/compiler/xla/client/lib:slicing",
-        "//tensorflow/compiler/xla/client/lib:triangular_solve",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -75,7 +52,6 @@ cc_library(
     hdrs = ["qr.h"],
     deps = [
         ":util",
-        ":while_loop",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -84,6 +60,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
         "//tensorflow/compiler/xla/client/lib:slicing",
@@ -97,7 +74,6 @@ cc_library(
     hdrs = ["scatter.h"],
     deps = [
         ":util",
-        ":while_loop",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -125,22 +101,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "while_loop",
-    srcs = ["while_loop.cc"],
-    hdrs = ["while_loop.h"],
-    deps = [
-        ":util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )

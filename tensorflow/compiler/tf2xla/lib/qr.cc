@@ -19,9 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -225,8 +225,8 @@ xla::StatusOr<QRBlockResult> QRBlock(
       builder, xla::ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {n})));
 
   TF_ASSIGN_OR_RETURN(auto values,
-                      XlaForEachIndex(std::min(m, n), xla::S32, qr_body_fn,
-                                      {a, vs, taus}, "qr", builder));
+                      xla::ForEachIndex(std::min(m, n), xla::S32, qr_body_fn,
+                                        {a, vs, taus}, "qr", builder));
 
   QRBlockResult result;
   result.r = values[0];
@@ -301,8 +301,8 @@ xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
   w = UpdateSliceInMinorDims(w, bv, {0});
 
   TF_ASSIGN_OR_RETURN(
-      auto values, XlaForEachIndex(n - 1, xla::S32, body_fn, {w, y, vs, taus},
-                                   "wy", builder));
+      auto values, xla::ForEachIndex(n - 1, xla::S32, body_fn, {w, y, vs, taus},
+                                     "wy", builder));
   return values[0];
 }
 
