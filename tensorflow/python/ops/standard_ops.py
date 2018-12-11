@@ -22,6 +22,8 @@ from __future__ import print_function
 
 import sys as _sys
 
+from tensorflow.python import autograph
+
 # pylint: disable=g-bad-import-order
 # Imports the following modules so that @RegisterGradient get executed.
 from tensorflow.python.ops import array_grad

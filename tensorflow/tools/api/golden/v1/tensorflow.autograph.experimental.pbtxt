@@ -1,0 +1,11 @@
+path: "tensorflow.autograph.experimental"
+tf_module {
+  member {
+    name: "Feature"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "Verbosity"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+}
