@@ -24,7 +24,6 @@ from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 # pylint: enable=unused-import
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import data
-#from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python import keras
 from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
