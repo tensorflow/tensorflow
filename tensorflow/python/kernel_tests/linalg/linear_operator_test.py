@@ -214,7 +214,7 @@ class LinearOperatorTest(test.TestCase):
     operator = LinearOperatorMatmulSolve(matrix, is_square=True)
     self.assertTrue(operator.is_square)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_deprecated_v1
   def test_linear_operator_matmul_hints_closed(self):
     matrix = array_ops.placeholder(dtypes.float32)
     operator1 = LinearOperatorMatmulSolve(matrix)
@@ -241,7 +241,7 @@ class LinearOperatorTest(test.TestCase):
     self.assertTrue(operator_matmul.is_self_adjoint)
     self.assertEqual(None, operator_matmul.is_positive_definite)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_deprecated_v1
   def test_linear_operator_matmul_hints_false(self):
     matrix = array_ops.placeholder(dtypes.float32)
     operator1 = LinearOperatorMatmulSolve(
@@ -274,7 +274,7 @@ class LinearOperatorTest(test.TestCase):
     self.assertEqual(None, operator_matmul.is_self_adjoint)
     self.assertEqual(None, operator_matmul.is_positive_definite)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_deprecated_v1
   def test_linear_operator_matmul_hint_infer_square(self):
     matrix1 = array_ops.placeholder(shape=[2, 3], dtype=dtypes.float32)
     matrix2 = array_ops.placeholder(shape=[3, 2], dtype=dtypes.float32)
