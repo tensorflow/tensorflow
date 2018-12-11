@@ -24,11 +24,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.util.tf_export import tf_export
 
 
 #===============================================================================
 # Op to construct a constant RaggedTensor from a nested Python list.
 #===============================================================================
+@tf_export("ragged.constant")
 def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None, name=None):
   """Constructs a constant RaggedTensor from a nested Python list.
 
@@ -74,6 +76,7 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None, name=None):
                            inner_shape)
 
 
+@tf_export(v1=["ragged.constant_value"])
 def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None):
   """Constructs a RaggedTensorValue from a nested Python list.
 

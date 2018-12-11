@@ -21,8 +21,10 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("ragged.map_flat_values")
 def map_flat_values(op, *args, **kwargs):
   """Applies `op` to the inner values of one or more RaggedTensors.
 
