@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Server"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Strategy"
     mtype: "<type \'type\'>"
   }
