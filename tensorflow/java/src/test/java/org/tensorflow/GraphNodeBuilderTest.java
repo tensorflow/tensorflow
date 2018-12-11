@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Unit tests for {@link org.tensorflow.OperationBuilder}. */
+/** Unit tests for {@link org.tensorflow.GraphNodeBuilder}. */
 @RunWith(JUnit4.class)
-public class OperationBuilderTest {
+public class GraphNodeBuilderTest {
   // TODO(ashankar): Restore this test once the C API gracefully handles mixing graphs and
   // operations instead of segfaulting.
   @Test
@@ -168,7 +168,7 @@ public class OperationBuilderTest {
         Tensor<Boolean> yes = Tensors.create(true);
         Tensor<Boolean> no = Tensors.create(false)) {
       Output<Boolean> placeholder = TestUtil.placeholder(g, "boolean", Boolean.class);
-      Operation check =
+      GraphNode check =
           g.opBuilder("Assert", "assert")
               .addInput(placeholder)
               .addInputList(new Output<?>[] {placeholder})

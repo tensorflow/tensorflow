@@ -15,7 +15,7 @@ limitations under the License.
 
 package org.tensorflow.op;
 
-import org.tensorflow.Graph;
+import org.tensorflow.ExecutionEnvironment;
 
 /**
  * Manages groups of related properties when creating Tensorflow Operations, such as a common name
@@ -78,15 +78,15 @@ public final class Scope {
   /**
    * Create a new top-level scope.
    *
-   * @param graph The graph instance to be managed by the scope.
+   * @param env The execution environment used by the scope.
    */
-  public Scope(Graph graph) {
-    this(graph, new NameScope());
+  public Scope(ExecutionEnvironment env) {
+    this(env, new NameScope());
   }
 
-  /** Returns the graph managed by this scope. */
-  public Graph graph() {
-    return graph;
+  /** Returns the execution environment used by this scope. */
+  public ExecutionEnvironment env() {
+    return env;
   }
 
   /**
@@ -103,7 +103,7 @@ public final class Scope {
    * @throws IllegalArgumentException if the name is invalid
    */
   public Scope withSubScope(String childScopeName) {
-    return new Scope(graph, nameScope.withSubScope(childScopeName));
+    return new Scope(env, nameScope.withSubScope(childScopeName));
   }
 
   /**
@@ -119,7 +119,7 @@ public final class Scope {
    * @throws IllegalArgumentException if the name is invalid
    */
   public Scope withName(String opName) {
-    return new Scope(graph, nameScope.withName(opName));
+    return new Scope(env, nameScope.withName(opName));
   }
 
   /**
@@ -131,11 +131,11 @@ public final class Scope {
    * instance. Typical operator building code might look like
    *
    * <pre>{@code
-   * scope.graph().opBuilder("Const", scope.makeOpName("Const"))...
+   * scope.env().opBuilder("Const", scope.makeOpName("Const"))...
    * }</pre>
    *
-   * <p><b>Note:</b> if you provide a composite operator building class (i.e, a class that adds a
-   * set of related operations to the graph by calling other operator building code), the provided
+   * <p><b>Note:</b> if you provide a composite operator building class (i.e, a class that creates a
+   * set of related operations by calling other operator building code), the provided
    * name will act as a subscope to all underlying operators.
    *
    * @param defaultName name for the underlying operator.
@@ -146,11 +146,11 @@ public final class Scope {
     return nameScope.makeOpName(defaultName);
   }
 
-  private Scope(Graph graph, NameScope nameScope) {
-    this.graph = graph;
+  private Scope(ExecutionEnvironment env, NameScope nameScope) {
+    this.env = env;
     this.nameScope = nameScope;
   }
 
-  private final Graph graph;
+  private final ExecutionEnvironment env;
   private final NameScope nameScope;
 }

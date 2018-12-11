@@ -24,13 +24,14 @@ import static org.junit.Assert.fail;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Unit tests for {@link org.tensorflow.Operation}. */
+/** Unit tests for {@link org.tensorflow.GraphNode}. */
 @RunWith(JUnit4.class)
-public class OperationTest {
+public class GraphNodeTest {
 
   @Test
   public void outputListLengthFailsOnInvalidName() {
@@ -53,12 +54,12 @@ public class OperationTest {
 
   @Test
   public void operationEquality() {
-    Operation op1;
+    GraphNode op1;
     try (Graph g = new Graph()) {
-      op1 = TestUtil.constant(g, "op1", 1).op();
-      Operation op2 = TestUtil.constant(g, "op2", 2).op();
-      Operation op3 = new Operation(g, op1.getUnsafeNativeHandle());
-      Operation op4 = g.operation("op1");
+      op1 = TestUtil.constantOp(g, "op1", 1);
+      GraphNode op2 = TestUtil.constantOp(g, "op2", 2);
+      GraphNode op3 = new GraphNode(g, op1.getUnsafeNativeHandle());
+      GraphNode op4 = g.operation("op1");
       assertEquals(op1, op1);
       assertNotEquals(op1, op2);
       assertEquals(op1, op3);
@@ -78,10 +79,10 @@ public class OperationTest {
   @Test
   public void operationCollection() {
     try (Graph g = new Graph()) {
-      Operation op1 = TestUtil.constant(g, "op1", 1).op();
-      Operation op2 = TestUtil.constant(g, "op2", 2).op();
-      Operation op3 = new Operation(g, op1.getUnsafeNativeHandle());
-      Operation op4 = g.operation("op1");
+      GraphNode op1 = TestUtil.constantOp(g, "op1", 1);
+      GraphNode op2 = TestUtil.constantOp(g, "op2", 2);
+      GraphNode op3 = new GraphNode(g, op1.getUnsafeNativeHandle());
+      GraphNode op4 = g.operation("op1");
       Set<Operation> ops = new HashSet<>();
       ops.addAll(Arrays.asList(op1, op2, op3, op4));
       assertEquals(2, ops.size());
