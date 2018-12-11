@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _eval_using_default_session = ops._eval_using_default_session
@@ -43,6 +44,7 @@ _eval_using_default_session = ops._eval_using_default_session
 #===============================================================================
 
 
+@tf_export("RaggedTensor")
 class RaggedTensor(object):
   """Represents a ragged tensor (go/ragged).
 

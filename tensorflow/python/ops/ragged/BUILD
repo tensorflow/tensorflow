@@ -62,6 +62,7 @@ py_library(
         "//tensorflow/python:ragged_array_ops_gen",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -82,6 +83,7 @@ py_library(
         "//tensorflow/python:ragged_conversion_ops_gen",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -95,6 +97,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//third_party/py/numpy",
@@ -110,6 +113,7 @@ py_library(
         ":ragged_tensor",
         ":ragged_util",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -147,6 +151,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:ragged_math_ops_gen",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -189,6 +194,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -216,7 +222,10 @@ py_library(
     name = "ragged_tensor_value",
     srcs = ["ragged_tensor_value.py"],
     srcs_version = "PY2AND3",
-    deps = ["//third_party/py/numpy"],
+    deps = [
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
 )
 
 py_library(
@@ -245,6 +254,7 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
     ],
 )
 

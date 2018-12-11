@@ -69,6 +69,7 @@ TENSORFLOW_API_INIT_FILES = [
     "nn/__init__.py",
     "nn/rnn_cell/__init__.py",
     "quantization/__init__.py",
+    "ragged/__init__.py",
     "random/__init__.py",
     "saved_model/__init__.py",
     "sets/__init__.py",
