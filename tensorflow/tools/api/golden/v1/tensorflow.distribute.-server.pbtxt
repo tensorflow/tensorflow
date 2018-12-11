@@ -1,4 +1,4 @@
-path: "tensorflow.train.Server"
+path: "tensorflow.distribute.Server"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.server_lib.Server\'>"
   is_instance: "<type \'object\'>"

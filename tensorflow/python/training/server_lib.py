@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -93,7 +94,8 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
   return server_def
 
 
-@tf_export("train.Server")
+@tf_export("distribute.Server", v1=["distribute.Server", "train.Server"])
+@deprecation.deprecated_endpoints("train.Server")
 class Server(object):
   """An in-process TensorFlow server, for use in distributed training.
 

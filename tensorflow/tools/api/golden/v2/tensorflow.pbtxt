@@ -13,10 +13,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "FIFOQueue"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GradientTape"
     mtype: "<type \'type\'>"
   }
@@ -254,6 +250,10 @@ tf_module {
   }
   member {
     name: "quantization"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "queue"
     mtype: "<type \'module\'>"
   }
   member {

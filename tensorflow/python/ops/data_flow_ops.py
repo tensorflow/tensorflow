@@ -113,8 +113,9 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
-@tf_export("io.QueueBase", v1=["io.QueueBase", "QueueBase"])
-@deprecation.deprecated_endpoints("QueueBase")
+@tf_export("queue.QueueBase",
+           v1=["queue.QueueBase", "io.QueueBase", "QueueBase"])
+@deprecation.deprecated_endpoints(["io.QueueBase", "QueueBase"])
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -616,8 +617,11 @@ def _shared_name(shared_name):
 
 
 @tf_export(
-    "io.RandomShuffleQueue", v1=["io.RandomShuffleQueue", "RandomShuffleQueue"])
-@deprecation.deprecated_endpoints("RandomShuffleQueue")
+    "queue.RandomShuffleQueue",
+    v1=["queue.RandomShuffleQueue",
+        "io.RandomShuffleQueue", "RandomShuffleQueue"])
+@deprecation.deprecated_endpoints(
+    ["io.RandomShuffleQueue", "RandomShuffleQueue"])
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
@@ -702,7 +706,8 @@ class RandomShuffleQueue(QueueBase):
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("FIFOQueue")
+@tf_export("queue.FIFOQueue", v1=["queue.FIFOQueue", "FIFOQueue"])
+@deprecation.deprecated_endpoints("FIFOQueue")
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
@@ -760,8 +765,9 @@ class FIFOQueue(QueueBase):
 
 
 @tf_export(
-    "io.PaddingFIFOQueue", v1=["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
-@deprecation.deprecated_endpoints("PaddingFIFOQueue")
+    "queue.PaddingFIFOQueue",
+    v1=["queue.PaddingFIFOQueue", "io.PaddingFIFOQueue", "PaddingFIFOQueue"])
+@deprecation.deprecated_endpoints(["io.PaddingFIFOQueue", "PaddingFIFOQueue"])
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
@@ -835,8 +841,9 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
-@tf_export("io.PriorityQueue", v1=["io.PriorityQueue", "PriorityQueue"])
-@deprecation.deprecated_endpoints("PriorityQueue")
+@tf_export("queue.PriorityQueue",
+           v1=["queue.PriorityQueue", "io.PriorityQueue", "PriorityQueue"])
+@deprecation.deprecated_endpoints(["io.PriorityQueue", "PriorityQueue"])
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 

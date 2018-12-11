@@ -1,6 +1,6 @@
-path: "tensorflow.io.PriorityQueue"
+path: "tensorflow.queue.RandomShuffleQueue"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.PriorityQueue\'>"
+  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.RandomShuffleQueue\'>"
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.QueueBase\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -25,7 +25,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'capacity\', \'types\', \'shapes\', \'names\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'priority_queue\'], "
+    argspec: "args=[\'self\', \'capacity\', \'min_after_dequeue\', \'dtypes\', \'shapes\', \'names\', \'seed\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'random_shuffle_queue\'], "
   }
   member_method {
     name: "close"
