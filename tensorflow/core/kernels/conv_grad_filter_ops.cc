@@ -903,7 +903,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
   auto input_ptr = AsDeviceMemory(transformed_input.template flat<T>().data(),
                                   transformed_input.template flat<T>().size());
 
-  static int64 ConvolveBackwardFilterScratchSize = GetCudnnWorkspaceLimit(
+  static int64 ConvolveBackwardFilterScratchSize = GetDnnWorkspaceLimit(
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
   );
   int device_id = stream->parent()->device_ordinal();
@@ -939,7 +939,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+      DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                               ctx);
       ProfileResult profile_result;
       bool cudnn_launch_status =
@@ -977,7 +977,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);
   }
-  CudnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
+  DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           ctx);
   bool cudnn_launch_status =
       stream
