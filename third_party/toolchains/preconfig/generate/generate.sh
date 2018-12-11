@@ -46,7 +46,7 @@ echo "CUDA: ${CUDA_VERSION}"
 echo "CUDNN: ${CUDNN_VERSION}"
 echo "NCCL: ${NCCL_VERSION}"
 
-bazel build --define=mount_project="${PWD}" "${PKG}/generate:${TARGET}"
+bazel build "${PKG}/generate:${TARGET}"
 cd "${TEMPDIR}"
 tar xvf "${ROOT}/bazel-bin/${PKG}/generate/${TARGET}_outputs.tar"
 
