@@ -2037,30 +2037,29 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
 tensorflow::Status GetStridedSliceBound(const std::vector<int>& input_dims,
                                         const TRT_ShapedWeights& bound_weights,
                                         string bound_name, string node_name,
-                                        std::vector<int>& output_bound) {
-  const int* weights_ptr =
-      static_cast<int*>(const_cast<void*>(bound_weights.GetValues()));
-  output_bound = 
+                                        std::vector<int>* output_bound) {
+  const int* weights_ptr = static_cast<int*>(bound_weights.GetValues());
+  *output_bound = 
       std::vector<int>(weights_ptr, weights_ptr + bound_weights.count());
-  if (output_bound.size() != input_dims.size()) {
+  if (output_bound->size() != input_dims.size()) {
     return tensorflow::errors::InvalidArgument(
         "StridedSlice \"", bound_name, "\" specified ",
-        std::to_string(output_bound.size()), " dimensions, but input rank is ",
+        std::to_string(output_bound->size()), " dimensions, but input rank is ",
         std::to_string(input_dims.size()), ", at ", node_name);
   }
-  for (int i = 0; i < output_bound.size(); i++) {
+  for (int i = 0; i < output_bound->size(); i++) {
     // Make sure bound is valid.
-    if ((output_bound[i] < -input_dims[i]) ||
-        (output_bound[i] > input_dims[i])) {
+    if (((*output_bound)[i] < -input_dims[i]) ||
+        ((*output_bound)[i] > input_dims[i])) {
       return tensorflow::errors::InvalidArgument(
           bound_name,
-          " for StridedSlice is invalid, must be in the range "
-          "[-rank(input), rank(input)], at ",
+          " value for StridedSlice is invalid, must be in the range "
+          "[-dim_size(i), dim_size(i)], at ",
           node_name);
     }
     // Convert negative values to their positive equivalent.
-    if (output_bound[i] < 0) {
-      output_bound[i] += input_dims[i];
+    if ((*output_bound)[i] < 0) {
+      (*output_bound)[i] += input_dims[i];
     }
   }
   return tensorflow::Status::OK();
@@ -2099,9 +2098,9 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   // Get begin and end bounds per axis.
   std::vector<int> begin, end;
   TF_RETURN_IF_ERROR(GetStridedSliceBound(input_dims, inputs.at(1).weights(),
-                                          "begin", node_def.name(), begin));
+                                          "begin", node_def.name(), &begin));
   TF_RETURN_IF_ERROR(GetStridedSliceBound(input_dims, inputs.at(2).weights(),
-                                          "end", node_def.name(), end));
+                                          "end", node_def.name(), &end));
   int begin_mask = attrs.get<int>("begin_mask");
   for (int i = 0; i < begin.size(); i++) {
     if ((1 << i) & begin_mask) {
@@ -2116,8 +2115,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   }
   // Get strides per axis (must all be 1).
   TRT_ShapedWeights stride_weights = inputs.at(3).weights();
-  const int* stride_weights_ptr =
-      static_cast<int*>(const_cast<void*>(stride_weights.GetValues()));
+  const int* stride_weights_ptr = static_cast<int*>(stride_weights.GetValues());
   std::vector<int> strides(stride_weights_ptr,
                            stride_weights_ptr + stride_weights.count());
   for (int x : strides) {
@@ -2128,17 +2126,18 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
     }
   }
   // Unsupported mask options.
-  for (string attr : {"ellipsis_mask", "new_axis_mask", "shrink_axis_mask"}) {
+  for (const string& attr :
+       {"ellipsis_mask", "new_axis_mask", "shrink_axis_mask"}) {
     int attr_val = attrs.get<int>(attr);
     if (attr_val != 0) {
       return tensorflow::errors::Unimplemented(
-          attr, " is not implemented for StridedSlice, at ", node_def.name());
+          attr, " is not supported for StridedSlice, at ", node_def.name());
     }
   }
 
   nvinfer1::ITensor* tensor = 
       const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
-  // Reshape if necessary to 4-D.
+  // Reshape if necessary to 4-D, since IPaddingLayer requires a 4-D input.
   const bool need_reshape = (input_dims.size() != 4);
   int reshape_dims_added = 0;
   nvinfer1::Dims reshape_dims;
@@ -2156,7 +2155,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   // Find dimensions which need to be sliced.
   std::vector<int> pad_dims;
   for (int i = 0; i < input_dims.size(); i++) {
-    if (begin[i] != 0 || (end[i] - input_dims[i]) != 0) {
+    if ((begin[i] != 0) || (end[i] != input_dims[i])) {
       if (i == 0) {
         return tensorflow::errors::Unimplemented(
             "StridedSlice can't modify batch dim, at ", node_def.name());
@@ -2175,10 +2174,11 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
     return tensorflow::Status::OK();
   } else if (pad_dims.size() == 1) {
     // Only one dim is modified but we have to have 2, mark a second dim which
-    // will have padding of 0.
-    if (pad_dims[0] == 1 || pad_dims[0] == 3) {
+    // will have padding of 0. The dim we add is chosen to avoid an unecessary
+    // transpose.
+    if (pad_dims[0] != 2) {
       pad_dims.push_back(2);
-    } else if (pad_dims[0] == 2) {
+    } else {
       pad_dims.push_back(3);
     }
   } else if (pad_dims.size() > 2) {
@@ -2186,7 +2186,8 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
         "StridedSlice can only modify 2 dimensions, at ", node_def.name());
   }
   std::sort(pad_dims.begin(), pad_dims.end());
-  // Convert to pre/post padding values.
+  // Convert to pre/post padding values. Since TRT does not have a StridedSlice
+  // or Slice layer, we instead create an IPaddingLayer with negative padding.
   nvinfer1::DimsHW pre_padding, post_padding;
   for (int i = 0; i < pad_dims.size(); i++) {
     const int axis = pad_dims[i];
