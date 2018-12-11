@@ -446,15 +446,19 @@ cc_library(
 )
 
 cc_library(
-    name = "logger",
-    srcs = tf_platform_srcs(["logger.cc"]),
-    hdrs = ["platform/logger.h"] + tf_platform_hdrs(["logger.h"]),
+    name = "logger_interface",
+    hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-    ] + tf_additional_logger_deps(),
+    deps = [":platform_protobuf"],
+)
+
+cc_library(
+    name = "logger",
+    srcs = tf_platform_srcs(["logger.cc"]),
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [":logger_interface"] + tf_additional_logger_deps(),
 )
 
 filegroup(
@@ -1619,7 +1623,6 @@ filegroup(
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/**/logger.cc",
-            "platform/**/logger.h",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
