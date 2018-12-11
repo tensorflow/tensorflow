@@ -2985,10 +2985,16 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   }
   bool is_training = attrs.get<bool>("is_training");
   if (is_training) {
+    // Trying to use batchnorm in training mode is a very common problem.
+    // Because the error message will only be printed in VLOG(1) by the
+    // segmenter, we issue a special warning so that users will actually see it.
+    LOG(WARNING) << node_def.op() << " only supports is_training=false. If you "
+                 << "are using Keras, please call "
+                 << "keras.backend.set_learning_phase(0) before constructing "
+                 << "your model. At "
+                 << node_def.name());
     return tensorflow::errors::Unimplemented(
-        node_def.op(),
-        " only supports is_training=false. If you are using "
-        "Keras, please use keras.backend.set_learning_phase(0). At ",
+        node_def.op(), " only supports is_training=false, at ",
         node_def.name());
   }
   if (inputs.at(0).is_weights()) {
@@ -3003,7 +3009,7 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
           node_def.op(),
           " must have constant inputs for scale, offset, mean and variance, "
           "at ",
-           node_def.name());
+          node_def.name());
     }
   }
   nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
