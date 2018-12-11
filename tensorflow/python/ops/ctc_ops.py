@@ -1029,7 +1029,7 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
   for the forward backward use case.
 
   Examples:
-    scan(lambda a, e: a + e, [1.0, 2.0, 3.0], 1.0) => [2.0, 3.0, 4.0]
+    scan(lambda a, e: a + e, [1.0, 2.0, 3.0], 1.0) => [2.0, 4.0, 7.0]
 
     Multiple accumulators:
       scan(lambda a, e: (a[0] + e, a[1] * e), [1.0, 2.0, 3.0], (0.0, 1.0))
