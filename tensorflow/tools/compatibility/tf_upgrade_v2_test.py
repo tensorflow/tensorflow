@@ -37,32 +37,6 @@ from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
 
 
-_TENSORFLOW_API_ATTR_V1 = (
-    tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].names)
-_TENSORFLOW_API_ATTR = tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names
-_ESTIMATOR_API_ATTR_V1 = (
-    tf_export.API_ATTRS_V1[tf_export.ESTIMATOR_API_NAME].names)
-_ESTIMATOR_API_ATTR = tf_export.API_ATTRS[tf_export.ESTIMATOR_API_NAME].names
-
-
-def get_v1_names(symbol):
-  names_v1 = []
-  if hasattr(symbol, _TENSORFLOW_API_ATTR_V1):
-    names_v1.extend(getattr(symbol, _TENSORFLOW_API_ATTR_V1))
-  if hasattr(symbol, _ESTIMATOR_API_ATTR_V1):
-    names_v1.extend(getattr(symbol, _ESTIMATOR_API_ATTR_V1))
-  return names_v1
-
-
-def get_v2_names(symbol):
-  names_v2 = set()
-  if hasattr(symbol, _TENSORFLOW_API_ATTR):
-    names_v2.update(getattr(symbol, _TENSORFLOW_API_ATTR))
-  if hasattr(symbol, _ESTIMATOR_API_ATTR):
-    names_v2.update(getattr(symbol, _ESTIMATOR_API_ATTR))
-  return list(names_v2)
-
-
 def get_symbol_for_name(root, name):
   name_parts = name.split(".")
   symbol = root
@@ -118,7 +92,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     def symbol_collector(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
-        api_names_v2 = get_v2_names(attr)
+        api_names_v2 = tf_export.get_v2_names(attr)
         for name in api_names_v2:
           cls.v2_symbols["tf." + name] = attr
 
@@ -166,7 +140,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     def conversion_visitor(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
-        api_names = get_v1_names(attr)
+        api_names = tf_export.get_v1_names(attr)
         for name in api_names:
           _, _, _, text = self._upgrade("tf." + name)
           if (text and
@@ -190,7 +164,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     def conversion_visitor(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
-        api_names = get_v1_names(attr)
+        api_names = tf_export.get_v1_names(attr)
         for name in api_names:
           if collect:
             v1_symbols.add("tf." + name)
@@ -219,7 +193,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     def arg_test_visitor(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
-        names_v1 = get_v1_names(attr)
+        names_v1 = tf_export.get_v1_names(attr)
 
         for name in names_v1:
           name = "tf.%s" % name
@@ -270,7 +244,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
         _, attr = tf_decorator.unwrap(child[1])
         if not tf_inspect.isfunction(attr):
           continue
-        names_v1 = get_v1_names(attr)
+        names_v1 = tf_export.get_v1_names(attr)
         arg_names_v1 = get_args(attr)
 
         for name in names_v1:
@@ -340,7 +314,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       # get other names for this function
       attr = get_symbol_for_name(tf.compat.v1, name)
       _, attr = tf_decorator.unwrap(attr)
-      v1_names = get_v1_names(attr)
+      v1_names = tf_export.get_v1_names(attr)
       self.assertTrue(v1_names)
       v1_names = ["tf.%s" % n for n in v1_names]
       # check if any other name is in
