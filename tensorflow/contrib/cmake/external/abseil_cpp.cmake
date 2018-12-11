@@ -31,8 +31,8 @@ if (systemlib_ABSEIL_CPP)
   message(STATUS "  abseil_cpp includes: ${ABSEIL_CPP_INCLUDE_DIR}")
   message(STATUS "  abseil_cpp libraries: ${ABSEIL_CPP_LIBRARIES}")
 
-  add_custom_target(abseil_cpp)
-  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES abseil_cpp)
+  add_custom_target(abseil_cpp_build)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES abseil_cpp_build)
 
 else (systemlib_ABSEIL_CPP)
 
@@ -53,6 +53,7 @@ else (systemlib_ABSEIL_CPP)
           ${abseil_cpp_BUILD}/absl/numeric/Release/absl_int128.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/absl_strings.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/str_format_internal.lib
+          ${abseil_cpp_BUILD}/absl/time/Release/absl_time.lib
           ${abseil_cpp_BUILD}/absl/types/Release/absl_bad_optional_access.lib)
     else()
       set(abseil_cpp_STATIC_LIBRARIES
@@ -64,6 +65,7 @@ else (systemlib_ABSEIL_CPP)
           ${abseil_cpp_BUILD}/absl/numeric/absl_int128.lib
           ${abseil_cpp_BUILD}/absl/strings/absl_strings.lib
           ${abseil_cpp_BUILD}/absl/strings/str_format_internal.lib
+          ${abseil_cpp_BUILD}/absl/time/absl_time.lib
           ${abseil_cpp_BUILD}/absl/types/absl_bad_optional_access.lib)
     endif()
   else()
@@ -76,14 +78,18 @@ else (systemlib_ABSEIL_CPP)
         ${abseil_cpp_BUILD}/absl/numeric/libabsl_int128.a
         ${abseil_cpp_BUILD}/absl/strings/libabsl_strings.a
         ${abseil_cpp_BUILD}/absl/strings/libstr_format_internal.a
+        ${abseil_cpp_BUILD}/absl/time/libabsl_time.a
         ${abseil_cpp_BUILD}/absl/types/libabsl_bad_optional_access.a)
   endif()
 
-  ExternalProject_Add(abseil_cpp
+  ExternalProject_Add(abseil_cpp_build
       PREFIX abseil_cpp
       GIT_REPOSITORY ${abseil_cpp_URL}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
+      BUILD_IN_SOURCE 1
       BUILD_BYPRODUCTS ${abseil_cpp_STATIC_LIBRARIES}
+      BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release
+      COMMAND ${CMAKE_COMMAND} --build . --config Release
       INSTALL_COMMAND ""
       CMAKE_CACHE_ARGS
           -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
@@ -96,6 +102,6 @@ else (systemlib_ABSEIL_CPP)
 
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${abseil_cpp_STATIC_LIBRARIES})
 
-  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES abseil_cpp)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES abseil_cpp_build)
 
 endif (systemlib_ABSEIL_CPP)
