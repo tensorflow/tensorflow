@@ -2358,23 +2358,21 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   }
 
   // Get nodedef for StridedSlice layer.
-  auto get_strided_slice_nodedef = [](int begin_mask = 0, int ellipsis_mask = 0,
-                                      int end_mask = 0,int new_axis_mask = 0,
+  auto get_strided_slice_nodedef = [](int begin_mask = 0, int end_mask = 0,
+                                      int ellipsis_mask = 0,
+                                      int new_axis_mask = 0,
                                       int shrink_axis_mask = 0) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);
     auto end = ops::Placeholder(s.WithOpName("end"), DT_INT32);
     auto strides = ops::Placeholder(s.WithOpName("strides"), DT_INT32);
-    ops::StridedSlice::Attrs strided_slice_attrs;
-    strided_slice_attrs.begin_mask_ = begin_mask;
-    strided_slice_attrs.ellipsis_mask_ = ellipsis_mask;
-    strided_slice_attrs.end_mask_ = end_mask;
-    strided_slice_attrs.new_axis_mask_ = new_axis_mask;
-    strided_slice_attrs.shrink_axis_mask_ = shrink_axis_mask;
+    ops::StridedSlice::Attrs attrs = ops::StridedSlice::Attrs()
+        .BeginMask(begin_mask).EndMask(end_mask).EllipsisMask(ellipsis_mask)
+        .NewAxisMask(new_axis_mask).ShrinkAxisMask(shrink_axis_mask);
     auto strided_slice = 
         ops::StridedSlice(s.WithOpName("my_strided_slice"), input, begin, end,
-                          strides, strided_slice_attrs);
+                          strides, attrs);
     return strided_slice.operation.node()->def();
   };
 
@@ -2405,7 +2403,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     // Non-zero ellipsis_mask, should fail.
     Reset();
     NodeDef node_def = get_strided_slice_nodedef(
-        /*begin_mask=*/0, /*ellipsis_mask=*/2, /*end_mask=*/0,
+        /*begin_mask=*/0, /*end_mask=*/0, /*ellipsis_mask=*/2, 
         /*new_axis_mask=*/0, /*shrink_axis_mask=*/0);
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
@@ -2413,37 +2411,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "ellipsis_mask is not implemented for StridedSlice, at "
-        "my_strided_slice");
-  }
-  {
-    // Non-zero ellipsis_mask, should fail.
-    Reset();
-    NodeDef node_def = get_strided_slice_nodedef(
-        /*begin_mask=*/0, /*ellipsis_mask=*/0, /*end_mask=*/0,
-        /*new_axis_mask=*/2, /*shrink_axis_mask=*/0);
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
-    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
-    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "new_axis_mask is not implemented for StridedSlice, at "
-        "my_strided_slice");
-  }
-  {
-    // Non-zero shrink_axis_mask, should fail.
-    Reset();
-    NodeDef node_def = get_strided_slice_nodedef(
-        /*begin_mask=*/0, /*ellipsis_mask=*/0, /*end_mask=*/0,
-        /*new_axis_mask=*/0, /*shrink_axis_mask=*/2);
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
-    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
-    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "shrink_axis_mask is not implemented for StridedSlice, at "
+        "ellipsis_mask is not supported for StridedSlice, at "
         "my_strided_slice");
   }
   {
@@ -2480,8 +2448,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "begin for StridedSlice is invalid, must be in the range "
-        "[-rank(input), rank(input)], at my_strided_slice");
+        "begin value for StridedSlice is invalid, must be in the range "
+        "[-dim_size(i), dim_size(i)], at my_strided_slice");
   }
   {
     // End out of bounds, should fail.
@@ -2493,8 +2461,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "end for StridedSlice is invalid, must be in the range "
-        "[-rank(input), rank(input)], at my_strided_slice");
+        "end value for StridedSlice is invalid, must be in the range "
+        "[-dim_size(i), dim_size(i)], at my_strided_slice");
   }
   {
     // Size of sliced dim is negative, should fail.
@@ -2628,7 +2596,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 
   for (int i = 0; i < kStridedSliceOKCases; i++) {
     Reset();
-    NodeDef node_def = get_strided_slice_nodedef(ok_params[i].begin_mask, 0,
+    NodeDef node_def = get_strided_slice_nodedef(ok_params[i].begin_mask,
                                                  ok_params[i].end_mask);
     AddTestTensor("input", ok_params[i].input_dims);
     AddTestWeights<int32>("begin", {ok_params[i].begin.size()},
