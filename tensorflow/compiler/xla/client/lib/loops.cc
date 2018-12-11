@@ -13,44 +13,43 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
-#include "tensorflow/compiler/tf2xla/lib/util.h"
+#include "tensorflow/compiler/xla/client/lib/loops.h"
+
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-namespace tensorflow {
+namespace xla {
 
-xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
-    const LoopConditionFunction& condition_function,
-    const LoopBodyFunction& body_function,
-    absl::Span<const xla::XlaOp> initial_values, absl::string_view name,
-    xla::XlaBuilder* builder) {
+StatusOr<std::vector<XlaOp>> WhileLoopHelper(
+    const WhileLoopHelperConditionFunction& condition_function,
+    const WhileLoopHelperBodyFunction& body_function,
+    absl::Span<const XlaOp> initial_values, absl::string_view name,
+    XlaBuilder* builder) {
   int arity = initial_values.size();
-  std::vector<xla::Shape> var_shapes;
+  std::vector<Shape> var_shapes;
   var_shapes.reserve(arity);
-  for (const xla::XlaOp& input : initial_values) {
+  for (const XlaOp& input : initial_values) {
     TF_ASSIGN_OR_RETURN(auto shape, builder->GetShape(input));
     var_shapes.push_back(std::move(shape));
   }
-  xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(var_shapes);
+  Shape tuple_shape = ShapeUtil::MakeTupleShape(var_shapes);
 
   // Unpacks a tuple into its component parts.
-  auto unpack_tuple = [](xla::XlaOp tuple, int arity,
-                         xla::XlaBuilder* builder) {
-    std::vector<xla::XlaOp> elements(arity);
+  auto unpack_tuple = [](XlaOp tuple, int arity, XlaBuilder* builder) {
+    std::vector<XlaOp> elements(arity);
     for (int i = 0; i < arity; ++i) {
-      elements[i] = xla::GetTupleElement(tuple, i);
+      elements[i] = GetTupleElement(tuple, i);
     }
     return elements;
   };
 
   // Build the condition.
-  std::unique_ptr<xla::XlaBuilder> cond_builder =
+  std::unique_ptr<XlaBuilder> cond_builder =
       builder->CreateSubBuilder(absl::StrCat(name, "_condition"));
   {
-    auto parameter =
-        xla::Parameter(cond_builder.get(), 0, tuple_shape, "parameter");
+    auto parameter = Parameter(cond_builder.get(), 0, tuple_shape, "parameter");
 
     TF_RETURN_IF_ERROR(
         condition_function(unpack_tuple(parameter, arity, cond_builder.get()),
@@ -60,11 +59,10 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
   TF_ASSIGN_OR_RETURN(auto cond, cond_builder->Build());
 
   // Build the body.
-  std::unique_ptr<xla::XlaBuilder> body_builder =
+  std::unique_ptr<XlaBuilder> body_builder =
       builder->CreateSubBuilder(absl::StrCat(name, "_body"));
   {
-    auto parameter =
-        xla::Parameter(body_builder.get(), 0, tuple_shape, "parameter");
+    auto parameter = Parameter(body_builder.get(), 0, tuple_shape, "parameter");
 
     TF_ASSIGN_OR_RETURN(
         auto result,
@@ -72,56 +70,54 @@ xla::StatusOr<std::vector<xla::XlaOp>> XlaWhileLoop(
                       body_builder.get()));
 
     TF_RET_CHECK(result.size() == initial_values.size());
-    xla::Tuple(body_builder.get(), result);
+    Tuple(body_builder.get(), result);
   }
   TF_ASSIGN_OR_RETURN(auto body, body_builder->Build());
 
-  auto outputs = xla::While(cond, body, xla::Tuple(builder, initial_values));
+  auto outputs = While(cond, body, Tuple(builder, initial_values));
 
   return unpack_tuple(outputs, arity, builder);
 }
 
-xla::StatusOr<std::vector<xla::XlaOp>> XlaForEachIndex(
-    int64 num_iterations, xla::PrimitiveType num_iterations_type,
+StatusOr<std::vector<XlaOp>> ForEachIndex(
+    int64 num_iterations, PrimitiveType num_iterations_type,
     const ForEachIndexBodyFunction& body_function,
-    absl::Span<const xla::XlaOp> initial_values, absl::string_view name,
-    xla::XlaBuilder* builder) {
-  auto while_cond_fn =
-      [&](absl::Span<const xla::XlaOp> values,
-          xla::XlaBuilder* cond_builder) -> xla::StatusOr<xla::XlaOp> {
-    return xla::Lt(values[0], IntegerLiteral(cond_builder, num_iterations_type,
-                                             num_iterations));
+    absl::Span<const XlaOp> initial_values, absl::string_view name,
+    XlaBuilder* builder) {
+  auto while_cond_fn = [&](absl::Span<const XlaOp> values,
+                           XlaBuilder* cond_builder) -> StatusOr<XlaOp> {
+    return Lt(values[0], ConstantR0WithType(cond_builder, num_iterations_type,
+                                            num_iterations));
   };
-  auto while_body_fn = [&](absl::Span<const xla::XlaOp> values,
-                           xla::XlaBuilder* body_builder)
-      -> xla::StatusOr<std::vector<xla::XlaOp>> {
-    xla::XlaOp iteration = values[0];
+  auto while_body_fn =
+      [&](absl::Span<const XlaOp> values,
+          XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
+    XlaOp iteration = values[0];
 
-    std::vector<xla::XlaOp> updated_values;
+    std::vector<XlaOp> updated_values;
     updated_values.reserve(values.size());
-    updated_values.push_back(xla::Add(
+    updated_values.push_back(Add(
         iteration,
-        xla::ConstantLiteral(body_builder,
-                             xla::LiteralUtil::One(num_iterations_type))));
+        ConstantLiteral(body_builder, LiteralUtil::One(num_iterations_type))));
 
     values.remove_prefix(1);
-    TF_ASSIGN_OR_RETURN(std::vector<xla::XlaOp> body_outputs,
+    TF_ASSIGN_OR_RETURN(std::vector<XlaOp> body_outputs,
                         body_function(iteration, values, body_builder));
     updated_values.insert(updated_values.end(), body_outputs.begin(),
                           body_outputs.end());
     return updated_values;
   };
 
-  std::vector<xla::XlaOp> values;
+  std::vector<XlaOp> values;
   values.reserve(initial_values.size() + 1);
-  values.push_back(xla::ConstantLiteral(
-      builder, xla::LiteralUtil::Zero(num_iterations_type)));
+  values.push_back(
+      ConstantLiteral(builder, LiteralUtil::Zero(num_iterations_type)));
   values.insert(values.end(), initial_values.begin(), initial_values.end());
 
-  TF_ASSIGN_OR_RETURN(values, XlaWhileLoop(while_cond_fn, while_body_fn, values,
-                                           name, builder));
+  TF_ASSIGN_OR_RETURN(values, WhileLoopHelper(while_cond_fn, while_body_fn,
+                                              values, name, builder));
   values.erase(values.begin(), values.begin() + 1);
   return values;
 }
 
-}  // namespace tensorflow
+}  // namespace xla

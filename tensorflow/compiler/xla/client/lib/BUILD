@@ -1,5 +1,7 @@
 # Common computation builders for XLA.
 
+load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
+
 licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow/compiler/xla/client:friends"])
@@ -12,9 +14,6 @@ filegroup(
         "**/*.h",
     ]),
 )
-
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites")
 
 # Generate test_suites for all backends, named "${backend}_tests".
 generate_backend_suites()
@@ -32,6 +31,48 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "cholesky",
+    srcs = ["cholesky.cc"],
+    hdrs = ["cholesky.h"],
+    deps = [
+        ":math",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:loops",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/client/lib:slicing",
+        "//tensorflow/compiler/xla/client/lib:triangular_solve",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
+    name = "cholesky_test",
+    srcs = ["cholesky_test.cc"],
+    tags = ["optonly"],
+    deps = [
+        ":arithmetic",
+        ":cholesky",
+        ":matrix",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -72,6 +113,22 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "loops",
+    srcs = ["loops.cc"],
+    hdrs = ["loops.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
