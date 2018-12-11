@@ -90,3 +90,4 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/keras:unified_lstm_test_gpu \
     -//tensorflow/python/keras/optimizer_v2:adamax_test \
     -//tensorflow/python/keras/optimizer_v2:adamax_test_gpu \
+    -//tensorflow/tools/api/tests:api_compatibility_test \
