@@ -1539,9 +1539,9 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
         node_def.name());
   }
   if (inputs.at(1).is_tensor()) {
-    return tensorflow::errors::Unimplemented(
-        "Kernel for ", node_def.op(), " must be constant weights, at ",
-        node_def.name());
+    return tensorflow::errors::Unimplemented("Kernel for ", node_def.op(),
+                                             " must be constant weights, at ",
+                                             node_def.name());
   }
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
   VLOG(2) << "weight shape: " << weights_rsck.DebugString();
@@ -1658,7 +1658,7 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params,
     case ConvolutionType::DEPTHWISE_CONV:
       return ConvertConv2DHelper(params, 0);
   }
-  return tensorflow::errors::Unimplemented("unsupported convolution type at, " +
+  return tensorflow::errors::Unimplemented("Unsupported convolution type, at ",
                                            params->node_def.name());
 }
 
@@ -2050,16 +2050,14 @@ tensorflow::Status ConvertPool(OpConverterParams* params) {
   } else if (node_def.op() == "AvgPool") {
     type = nvinfer1::PoolingType::kAVERAGE;
   } else {
-    return tensorflow::errors::Unimplemented("Unsupported pooling type: ",
-                                             node_def.op(), ", at ",
-                                             node_def.name());
+    return tensorflow::errors::Unimplemented(
+        "Unsupported pooling type: ", node_def.op(), ", at ", node_def.name());
   }
   TFAttrs attrs(node_def);
   const string padding_type = attrs.get<string>("padding");
   if ((padding_type != "SAME") && (padding_type != "VALID")) {
-    return tensorflow::errors::Unimplemented("Unsupported padding type: ",
-                                             padding_type, ", at ",
-                                             node_def.name());
+    return tensorflow::errors::Unimplemented(
+        "Unsupported padding type: ", padding_type, ", at ", node_def.name());
   }
   if (params->validation_only) return Status::OK();
 
@@ -2988,20 +2986,24 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   bool is_training = attrs.get<bool>("is_training");
   if (is_training) {
     return tensorflow::errors::Unimplemented(
-        node_def.op(), " only supports is_training=false. If you are using "
+        node_def.op(),
+        " only supports is_training=false. If you are using "
         "Keras, please use keras.backend.set_learning_phase(0). At ",
         node_def.name());
   }
   if (inputs.at(0).is_weights()) {
     return tensorflow::errors::Unimplemented(
-        node_def.op(), " is only implemented for tensor inputs, not weights, "
-        "at ", node_def.name());
+        node_def.op(),
+        " is only implemented for tensor inputs, not weights, at ",
+        node_def.name());
   }
   for (int i = 1; i < 5; i++) {
     if (inputs.at(i).is_tensor()) {
       return tensorflow::errors::Unimplemented(
-          node_def.op(), " must have constant inputs for scale, offset, mean "
-          "and variance, at ", node_def.name());
+          node_def.op(),
+          " must have constant inputs for scale, offset, mean and variance, "
+          "at ",
+           node_def.name());
     }
   }
   nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
