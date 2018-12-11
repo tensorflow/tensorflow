@@ -914,12 +914,8 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
                                          HloInstruction* operand,
                                          HloInstruction* update,
                                          HloInstruction* start_indices) {
-  auto instruction = absl::WrapUnique(
-      new HloInstruction(HloOpcode::kDynamicUpdateSlice, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(update);
-  instruction->AppendOperand(start_indices);
-  return instruction;
+  return absl::make_unique<HloDynamicUpdateSliceInstruction>(
+      shape, operand, update, start_indices);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConcatenate(
