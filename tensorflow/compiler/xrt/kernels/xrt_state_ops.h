@@ -469,6 +469,26 @@ class XRTReleaseAllocationOp : public OpKernel {
   }
 };
 
+// Op that discards a handle to device memory.
+template <class DeviceAccessor>
+class XRTReleaseAllAllocationsOp : public OpKernel {
+ public:
+  explicit XRTReleaseAllAllocationsOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  ~XRTReleaseAllAllocationsOp() override = default;
+  XRTReleaseAllAllocationsOp(const XRTReleaseAllAllocationsOp&) = delete;
+  XRTReleaseAllAllocationsOp& operator=(const XRTReleaseAllAllocationsOp&) =
+      delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTReleaseAllAllocationsOp::Compute";
+
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+    OP_REQUIRES_OK(ctx, XRTTupleAllocation::ReleaseAllAllocations(rm));
+  }
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_XRT_KERNELS_XRT_STATE_OPS_H_
