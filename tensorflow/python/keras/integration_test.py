@@ -134,7 +134,6 @@ class KerasIntegrationTest(test.TestCase):
                           verbose=2)
       self.assertGreater(history.history['val_acc'][-1], 0.7)
 
-  @test_util.run_v1_only('b/120545219')
   def test_image_classification_sequential(self):
     with self.cached_session():
       np.random.seed(1337)

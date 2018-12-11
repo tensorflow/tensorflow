@@ -242,7 +242,6 @@ class CTCLossTest(test.TestCase):
 
     self._testCTCLoss(inputs, seq_lens, labels, loss_truth, grad_truth)
 
-  @test_util.run_v1_only("b/120545219")
   def test_time_major(self):
     """Testing time_major param.
 
@@ -565,7 +564,6 @@ class CTCLossTestV2(test.TestCase):
               rtol=2e-06,
               atol=2e-06)
 
-  @test_util.run_v1_only("b/120545219")
   def testCollapseRepeated(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(
         labels=[[1, 3, 3, 3, 0],
@@ -579,7 +577,6 @@ class CTCLossTestV2(test.TestCase):
          [1, 4, 0, 0],
          [4, 2, 9, 4]])
 
-  @test_util.run_v1_only("b/120545219")
   def testCollapseRepeatedPreservesDtypes(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(
         labels=constant_op.constant(
@@ -597,7 +594,6 @@ class CTCLossTestV2(test.TestCase):
          [1, 4, 0, 0],
          [4, 2, 9, 4]])
 
-  @test_util.run_v1_only("b/120545219")
   def testCollapseRepeatedExtraPadding(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(
         labels=[[1, 3, 3, 3, 0, 0, 0],
@@ -611,7 +607,6 @@ class CTCLossTestV2(test.TestCase):
          [1, 4, 0, 0],
          [4, 2, 9, 4]])
 
-  @test_util.run_v1_only("b/120545219")
   def testCollapseRepeatedFrontRepeats(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(
         labels=[[1, 1, 1, 2, 2],
@@ -625,7 +620,6 @@ class CTCLossTestV2(test.TestCase):
          [1, 2],
          [1, 0]])
 
-  @test_util.run_v1_only("b/120545219")
   def testCollapseRepeatedAllLabelsTheSame(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(
         labels=[[1, 1, 1, 1, 1],
@@ -658,7 +652,6 @@ class CTCLossTestV2(test.TestCase):
 
     self.assertAllEqual(padded_dense, new_dense)
 
-  @test_util.run_v1_only("b/120545219")
   def testUnique(self):
     labels = [
         [3, 4, 4, 3],
@@ -674,7 +667,6 @@ class CTCLossTestV2(test.TestCase):
         [0, 0, 0, 1],
     ], idx)
 
-  @test_util.run_v1_only("b/120545219")
   def testSumStates(self):
     idx = [
         [0, 1, 0, 1],
@@ -694,7 +686,6 @@ class CTCLossTestV2(test.TestCase):
          [1.8, 0.8, 0.0, 0.0]]
     ], sum_of_states)
 
-  @test_util.run_v1_only("b/120545219")
   def testStateToOlabel(self):
     labels = [
         [3, 4, 3, 4],
@@ -733,7 +724,6 @@ class CTCLossTestV2(test.TestCase):
          [22.0 + 23.0 + 24.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
     ])
 
-  @test_util.run_v1_only("b/120545219")
   def testStateToOlabelUnique(self):
     labels = [
         [3, 4, 3, 4],
