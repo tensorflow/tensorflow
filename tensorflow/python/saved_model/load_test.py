@@ -23,6 +23,7 @@ import tempfile
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
@@ -47,6 +48,7 @@ class LoadTest(test.TestCase):
     imported = load.load(save_dir)
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
+    self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
 
   def _make_asset(self, contents):
     filename = tempfile.mktemp(prefix=self.get_temp_dir())

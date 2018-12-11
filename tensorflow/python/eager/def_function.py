@@ -242,6 +242,7 @@ class PolymorphicFunction(object):
       raise NotImplementedError()
     self._created_variables = None
     self._stateful_fn = None
+    self._stateless_fn = None
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
 
@@ -381,6 +382,26 @@ class PolymorphicFunction(object):
             init, ops.get_default_graph())[init])
 
     return initialize_variables.get_concrete_function()
+
+  @property
+  def _cached_input_signatures(self):
+    """All input signatures used to call this PolymorphicFunction."""
+    seen = set()
+    # Preserves signature ordering rather than returning a set() so that we
+    # don't need to re-sort signatures later to work around Python 2's set
+    # nondeterminism.
+    # pylint: disable=protected-access
+    concrete_functions = []
+    if self._stateful_fn:
+      concrete_functions.extend(self._stateful_fn._function_cache.values())
+    if self._stateless_fn:
+      concrete_functions.extend(self._stateless_fn._function_cache.values())
+    for concrete_function in concrete_functions:
+      signature = concrete_function._python_call_signature
+      if signature not in seen:
+        yield signature
+        seen.add(signature)
+    # pylint: enable=protected-access
 
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `Function` object specialized to inputs and execution context.
