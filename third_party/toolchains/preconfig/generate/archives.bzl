@@ -2,7 +2,7 @@ load("//tensorflow:version_check.bzl", "parse_bazel_version")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def bazel_toolchains_archive():
-  if parse_bazel_version(native.bazel_version) >= parse_bazel_version("0.19"):
+  if native.bazel_version and parse_bazel_version(native.bazel_version) >= parse_bazel_version("0.19"):
     # This version of the toolchains repo is incompatible with older bazel
     # versions - we can remove this once TensorFlow drops support for bazel
     # before 0.19.
