@@ -19,7 +19,7 @@ filegroup(
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_gpu_library",
+    "tf_cuda_library",
 )
 
 # For platform specific build config
@@ -37,7 +37,7 @@ tf_proto_library_cc(
     ],
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "gdr_memory_manager",
     srcs = ["gdr_memory_manager.cc"],
     hdrs = ["gdr_memory_manager.h"],
@@ -58,7 +58,7 @@ tf_gpu_library(
     ],
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "gdr_worker",
     srcs = ["gdr_worker.cc"],
     hdrs = ["gdr_worker.h"],

@@ -97,7 +97,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tensorflow_opensource_extra_deps")
-load("//tensorflow:tensorflow.bzl", "tf_gpu_only_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 
 # For platform specific build config
 load(
@@ -4109,7 +4109,7 @@ tf_cc_test_gpu(
     ],
 )
 
-tf_gpu_only_cc_test(
+tf_cuda_only_cc_test(
     name = "util_gpu_kernel_helper_test",
     srcs = [
         "util/gpu_kernel_helper_test.cu.cc",
