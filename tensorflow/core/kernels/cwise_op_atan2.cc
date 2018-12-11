@@ -17,7 +17,7 @@ limitations under the License.
 
 namespace tensorflow {
 REGISTER2(BinaryOp, CPU, "Atan2", functor::atan2, float, double);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER2(BinaryOp, GPU, "Atan2", functor::atan2, float, double);
 #endif
 }  // namespace tensorflow

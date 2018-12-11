@@ -62,7 +62,7 @@ class BroadcastToOp : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 #define DECLARE_GPU_TEMPLATE(Type)                              \

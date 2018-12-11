@@ -19,7 +19,7 @@ namespace tensorflow {
 REGISTER4(UnaryOp, CPU, "Tan", functor::tan, float, double, complex64,
           complex128);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER2(UnaryOp, GPU, "Tan", functor::tan, float, double);
 #endif
 

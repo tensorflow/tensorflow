@@ -29,10 +29,18 @@ REGISTER2(BinaryOp, CPU, "DivNoNan", functor::div_no_nan, float, double);
 #if GOOGLE_CUDA
 REGISTER9(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
           uint16, int16, int64, complex64, complex128);
-REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
-          int64);
 REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
           complex64, complex128);
+#elif TENSORFLOW_USE_ROCM
+// ROCM doesn't support complex64 / complex128 div yet
+REGISTER7(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
+          uint16, int16, int64);
+REGISTER3(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double);
+#endif
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
+          int64);
 REGISTER2(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, float, double);
 
 // A special GPU kernel for int32.

@@ -19,7 +19,7 @@ namespace tensorflow {
 REGISTER6(UnaryOp, CPU, "Log", functor::log, float, Eigen::half, double,
           bfloat16, complex64, complex128);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(UnaryOp, GPU, "Log", functor::log, float, Eigen::half, double);
 #endif
 

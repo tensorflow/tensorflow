@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -214,7 +214,7 @@ class AdjustSaturationOp<CPUDevice> : public AdjustSaturationOpBase {
 REGISTER_KERNEL_BUILDER(Name("AdjustSaturation").Device(DEVICE_CPU),
                         AdjustSaturationOp<CPUDevice>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 class AdjustSaturationOp<GPUDevice> : public AdjustSaturationOpBase {
  public:
