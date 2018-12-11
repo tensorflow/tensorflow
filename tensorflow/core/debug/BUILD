@@ -36,7 +36,7 @@ load(
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_gpu_tests_tags",
+    "tf_cuda_tests_tags",
 )
 
 # Check that tensorflow/core:tensorflow does not depend on grpc.
