@@ -1284,57 +1284,6 @@ void FlatAffineConstraints::removeEquality(unsigned pos) {
   equalities.resize(equalities.size() - numReservedCols);
 }
 
-bool FlatAffineConstraints::getDimensionBounds(unsigned pos, unsigned num,
-                                               SmallVectorImpl<AffineMap> *lbs,
-                                               SmallVectorImpl<AffineMap> *ubs,
-                                               MLIRContext *context) {
-  assert(pos + num < getNumCols());
-
-  projectOut(0, pos);
-  projectOut(pos + num, getNumIds() - num);
-
-  lbs->resize(num, AffineMap::Null());
-  ubs->resize(num, AffineMap::Null());
-
-  for (int i = static_cast<int>(num) - 1; i >= 0; i--) {
-    // Only constant dim bounds for now.
-    auto lb = getConstantLowerBound(i);
-    auto ub = getConstantUpperBound(i);
-    // TODO(mlir-team): handle arbitrary bounds.
-    if (!lb.hasValue() || !ub.hasValue())
-      return false;
-    (*lbs)[i] = AffineMap::getConstantMap(lb.getValue(), context);
-    (*ubs)[i] = AffineMap::getConstantMap(ub.getValue(), context);
-    projectOut(i);
-  }
-  return true;
-}
-
-Optional<int64_t>
-FlatAffineConstraints::getConstantLowerBound(unsigned pos) const {
-  assert(pos < getNumCols() - 1);
-  Optional<int64_t> lb = None;
-  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
-    if (atIneq(r, pos) <= 0)
-      // Not a lower bound.
-      continue;
-    unsigned c;
-    for (c = 0, e = getNumCols() - 1; c < e; c++) {
-      if (c != pos && atIneq(r, c) != 0)
-        break;
-    }
-    // Not a constant lower bound.
-    if (c < getNumCols() - 1)
-      return None;
-    auto mayLb = mlir::ceilDiv(-atIneq(r, getNumCols() - 1), atIneq(r, pos));
-    if (!lb.hasValue() || mayLb > lb.getValue())
-      lb = mayLb;
-  }
-  // TODO(andydavis,bondhugula): consider equalities (and an equality
-  // contradicting an inequality, i.e, an empty set).
-  return lb;
-}
-
 /// Finds an equality that equates the specified identifier to a constant.
 /// Returns the position of the equality row. If 'symbolic' is set to true,
 /// symbols are also treated like a constant, i.e., an affine function of the
@@ -1497,31 +1446,6 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
     }
   }
   return minDiff;
-}
-
-Optional<int64_t>
-FlatAffineConstraints::getConstantUpperBound(unsigned pos) const {
-  assert(pos < getNumCols() - 1);
-  Optional<int64_t> ub = None;
-  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
-    // Not a upper bound.
-    if (atIneq(r, pos) >= 0)
-      continue;
-    unsigned c, f;
-    for (c = 0, f = getNumCols() - 1; c < f; c++) {
-      if (c != pos && atIneq(r, c) != 0)
-        break;
-    }
-    // Not a constant upper bound.
-    if (c < getNumCols() - 1)
-      return None;
-    auto mayUb = mlir::floorDiv(atIneq(r, getNumCols() - 1), -atIneq(r, pos));
-    if (!ub.hasValue() || mayUb < ub.getValue())
-      ub = mayUb;
-  }
-  // TODO(andydavis,bondhugula): consider equalities (and an equality
-  // contradicting an inequality, i.e, an empty set).
-  return ub;
 }
 
 // A simple (naive and conservative) check for hyper-rectangularlity.

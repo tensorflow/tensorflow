@@ -485,17 +485,6 @@ public:
   /// Clears this list of constraints and copies other into it.
   void clearAndCopyFrom(const FlatAffineConstraints &other);
 
-  /// Returns the constant lower bound of the specified identifier (through a
-  /// scan through the constraints); returns None if the bound isn't trivially a
-  /// constant.
-  Optional<int64_t> getConstantLowerBound(unsigned pos) const;
-
-  /// Returns the constant upper bound of the specified identifier (through a
-  /// scan through the constraints); returns None if the bound isn't trivially a
-  /// constant. Note that the upper bound for FlatAffineConstraints is
-  /// inclusive.
-  Optional<int64_t> getConstantUpperBound(unsigned pos) const;
-
   /// Returns the smallest known constant bound for the extent of the
   /// specified identifier (pos^th), i.e., the smallest known constant that is
   /// greater than or equal to 'exclusive upper bound' - 'lower bound' of the
@@ -508,13 +497,6 @@ public:
   Optional<int64_t>
   getConstantBoundOnDimSize(unsigned pos,
                             SmallVectorImpl<int64_t> *lb = nullptr) const;
-
-  // Returns the lower and upper bounds of the specified dimensions as
-  // AffineMap's. Returns false for the unimplemented cases for the moment.
-  bool getDimensionBounds(unsigned pos, unsigned num,
-                          SmallVectorImpl<AffineMap> *lbs,
-                          SmallVectorImpl<AffineMap> *ubs,
-                          MLIRContext *context);
 
   /// Returns true if the set can be trivially detected as being
   /// hyper-rectangular on the specified contiguous set of identifiers.
