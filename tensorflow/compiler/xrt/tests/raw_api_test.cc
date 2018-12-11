@@ -265,6 +265,37 @@ TEST(RawApiTest, AllocAndRewrite) {
                            &outputs));
 }
 
+TEST(RawApiTest, AllocAndClearAll) {
+  xrt::XLAAllocation alloc;
+  alloc.set_device_ordinal(0);
+  *alloc.mutable_value() =
+      xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto value =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc.SerializeAsString());
+  auto handle = ops::XRTAllocate(root, value);
+  TF_ASSERT_OK(root.status());
+
+  tensorflow::ClientSession session(root);
+  std::vector<tensorflow::Tensor> outputs;
+  TF_EXPECT_OK(session.Run({handle}, &outputs));
+  EXPECT_EQ(outputs.size(), 1);
+
+  int64 allocation_handle = outputs[0].scalar<int64>()();
+
+  auto clear_all = ops::XRTReleaseAllAllocations(root);
+
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {},
+                           {clear_all}, &outputs));
+  EXPECT_EQ(outputs.size(), 0);
+
+  auto read_after_clear = ops::XRTReadLiteral(root, Input(allocation_handle));
+  EXPECT_EQ(session.Run({read_after_clear}, &outputs).code(),
+            tensorflow::error::Code::NOT_FOUND);
+}
+
 TEST(RawApiTest, ReadAndWriteState) {
   xrt::XLAAllocation alloc;
   alloc.set_device_ordinal(0);
