@@ -48,5 +48,3 @@ def check_bazel_version_at_least(minimum_bazel_version):
             native.bazel_version,
             minimum_bazel_version,
         ))
-
-parse_bazel_version = _parse_bazel_version
