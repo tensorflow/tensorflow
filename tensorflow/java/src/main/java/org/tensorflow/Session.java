@@ -204,7 +204,7 @@ public final class Session implements AutoCloseable {
      * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
      */
     public Runner addTarget(String operation) {
-      Operation op = operationByName(operation);
+      GraphNode op = operationByName(operation);
       if (op != null) {
         targets.add(op);
       }
@@ -213,9 +213,15 @@ public final class Session implements AutoCloseable {
 
     /**
      * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
+     * 
+     * @throws execption if the operation is not a {@link GraphNode}
      */
     public Runner addTarget(Operation operation) {
-      targets.add(operation);
+      if (!(operation instanceof GraphNode)) {
+        throw new IllegalArgumentException("Operation of type " + operation.getClass().getName() +
+            " is not supported in graph sessions");
+      }
+      targets.add((GraphNode) operation);
       return this;
     }
     
@@ -293,18 +299,18 @@ public final class Session implements AutoCloseable {
       }
       idx = 0;
       for (Output<?> o : inputs) {
-        inputOpHandles[idx] = o.op().getUnsafeNativeHandle();
+        inputOpHandles[idx] = o.getUnsafeNativeHandle();
         inputOpIndices[idx] = o.index();
         idx++;
       }
       idx = 0;
       for (Output<?> o : outputs) {
-        outputOpHandles[idx] = o.op().getUnsafeNativeHandle();
+        outputOpHandles[idx] = o.getUnsafeNativeHandle();
         outputOpIndices[idx] = o.index();
         idx++;
       }
       idx = 0;
-      for (Operation op : targets) {
+      for (GraphNode op : targets) {
         targetOpHandles[idx++] = op.getUnsafeNativeHandle();
       }
       Reference runRef = new Reference();
@@ -366,8 +372,8 @@ public final class Session implements AutoCloseable {
       }
     }
 
-    private Operation operationByName(String opName) {
-      Operation op = graph.operation(opName);
+    private GraphNode operationByName(String opName) {
+      GraphNode op = graph.operation(opName);
       if (op == null) {
         throw new IllegalArgumentException("No Operation named [" + opName + "] in the Graph");
       }
@@ -392,7 +398,7 @@ public final class Session implements AutoCloseable {
     private ArrayList<Output<?>> inputs = new ArrayList<Output<?>>();
     private ArrayList<Tensor<?>> inputTensors = new ArrayList<Tensor<?>>();
     private ArrayList<Output<?>> outputs = new ArrayList<Output<?>>();
-    private ArrayList<Operation> targets = new ArrayList<Operation>();
+    private ArrayList<GraphNode> targets = new ArrayList<GraphNode>();
     private byte[] runOptions = null;
   }
 
