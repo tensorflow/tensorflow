@@ -24,7 +24,10 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/xla/client/lib/cholesky.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
+#include "tensorflow/compiler/xla/client/lib/qr.h"
+#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -863,6 +866,27 @@ LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
                                             const LocalOp& values,
                                             int64 dimension) {
   return xla::Sort(keys.op(), {values.op()}, dimension);
+}
+
+LocalOp LocalComputationBuilder::Cholesky(const LocalOp& a) {
+  return xla::Cholesky(a.op());
+}
+
+LocalOp LocalComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
+  XlaBuilder* builder = a.op().builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto qr, xla::QRDecomposition(a.op(), full_matrices));
+    return xla::Tuple(builder, {qr.q, qr.r});
+  });
+}
+
+LocalOp LocalComputationBuilder::TriangularSolve(const LocalOp& a,
+                                                 const LocalOp& b,
+                                                 bool left_side, bool lower,
+                                                 bool transpose_a,
+                                                 bool conjugate_a) {
+  return xla::TriangularSolve(a.op(), b.op(), left_side, lower, transpose_a,
+                              conjugate_a);
 }
 
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(

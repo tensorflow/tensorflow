@@ -1411,6 +1411,20 @@ class ComputationBuilder(object):
     """Enqueues a key-value sort operation onto the computation."""
     return self._client.SortKeyVal(keys, values, dimension)
 
+  def Cholesky(self, a):
+    """Enqueues a Cholesky decomposition onto the computation."""
+    return self._client.Cholesky(a)
+
+  def QR(self, a, full_matrices=True):
+    """Enqueues a QR decomposition onto the computation."""
+    return self._client.QR(a, full_matrices)
+
+  def TriangularSolve(self, a, b, left_side=False, lower=False,
+                      transpose_a=False, conjugate_a=False):
+    """Enqueues a triangular-solve operation onto the computation."""
+    return self._client.TriangularSolve(
+        a, b, left_side, lower, transpose_a, conjugate_a)
+
 
 def _forward_methods_to_local_builder():
   """Forward remaining ComputationBuilder methods to the C API.
