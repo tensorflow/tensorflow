@@ -202,6 +202,16 @@ static void AllocateFlags() {
           "must exactly match the passes' names; no whitespace around "
           "commas."),
       tensorflow::Flag(
+          "xla_disable_all_hlo_passes",
+          bool_setter_for(&DebugOptions::set_xla_disable_all_hlo_passes), false,
+          "Disables all HLO passes.  Notes that some passes are necessary for "
+          "correctness and the invariants that must be satisfied by 'fully "
+          "optimized' HLO are different for different devices and may change "
+          "over time.  The only 'guarantee', such as it is, is that if you "
+          "compile XLA and dump the optimized HLO for some graph, you should "
+          "be able to run it again on the same device with the same build of "
+          "XLA."),
+      tensorflow::Flag(
           "xla_embed_ir_in_executable",
           bool_setter_for(&DebugOptions::set_xla_embed_ir_in_executable),
           flag_values->xla_embed_ir_in_executable(),
