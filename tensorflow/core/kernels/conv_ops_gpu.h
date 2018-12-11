@@ -31,7 +31,7 @@ namespace tensorflow {
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
-                             int64 default_value_in_bytes);
+                           int64 default_value_in_bytes);
 
 // A class to provide scratch-space allocator for Stream-Executor Cudnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after

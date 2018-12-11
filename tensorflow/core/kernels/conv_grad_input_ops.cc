@@ -953,7 +953,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 
   static int64 ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
-  );
+      );
   DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = out_backprop.dtype();
@@ -989,7 +989,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
-                                              ctx);
+                                            ctx);
       ProfileResult profile_result;
       bool cudnn_launch_status =
           stream

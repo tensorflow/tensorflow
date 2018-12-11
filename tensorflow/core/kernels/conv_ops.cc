@@ -522,7 +522,7 @@ template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
-                             int64 default_value_in_bytes) {
+                           int64 default_value_in_bytes) {
   const char* workspace_limit_in_mb_str = getenv(envvar_in_mb.c_str());
   if (workspace_limit_in_mb_str != nullptr &&
       strcmp(workspace_limit_in_mb_str, "") != 0) {
@@ -762,7 +762,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
-  );
+      );
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
