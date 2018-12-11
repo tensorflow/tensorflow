@@ -16,6 +16,18 @@ mlfunc @illegaltype() {
 extfunc @nestedtensor(tensor<tensor<i8>>) -> () // expected-error {{invalid tensor element type}}
 
 // -----
+
+extfunc @indexvector(vector<4 x index>) -> () // expected-error {{vector elements must be int or float type}}
+
+// -----
+
+extfunc @indexmemref(memref<? x index>) -> () // expected-error {{invalid memref element type}}
+
+// -----
+
+extfunc @indextensor(tensor<4 x index>) -> () // expected-error {{invalid tensor element type}}
+
+// -----
 // Test no map in memref type.
 extfunc @memrefs(memref<2x4xi8, >) // expected-error {{expected list element}}
 
@@ -379,7 +391,7 @@ bb1(%x: i17):
 
 // Test no nested vector.
 extfunc @vectors(vector<1 x vector<1xi32>>, vector<2x4xf32>)
-// expected-error@-1 {{vector elements must be primitives}}
+// expected-error@-1 {{vector elements must be int or float type}}
 
 // -----
 

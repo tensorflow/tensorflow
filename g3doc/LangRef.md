@@ -551,13 +551,15 @@ hardware synthesis (where a 13 bit multiplier is a lot cheaper/smaller than a 16
 bit one).
 
 TODO: Need to decide on a representation for quantized integers
-[[initial thoughts](Rationale.md#quantized-integer-operations)].
+([initial thoughts](Rationale.md#quantized-integer-operations)).
 
 ### Index Type {#index-type}
 
 The `index` type is a signless integer whose size is equal to the natural
 machine word of the target ([rationale](Rationale.md#signless-types)) and is
-used by the affine constructs in MLIR.
+used by the affine constructs in MLIR. Unlike fixed-size integers. It cannot be
+used as an element of vector, tensor or memref type
+([rationale](Rationale.md#index-type-disallowed-in-aggregate-types)).
 
 Syntax:
 
@@ -615,7 +617,7 @@ Function types are also used to indicate the arguments and results of
 
 ``` {.ebnf}
 vector-type ::= `vector` `<` const-dimension-list vector-element-type `>`
-vector-element-type ::= float-type | integer-type | index-type
+vector-element-type ::= float-type | integer-type
 
 const-dimension-list ::= (integer-literal `x`)+
 ```

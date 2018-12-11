@@ -143,6 +143,8 @@ public:
   bool isIntOrIndex() const;
   /// Return true if this is an integer, index, or float type.
   bool isIntOrIndexOrFloat() const;
+  /// Return true of this is an integer or a float type.
+  bool isIntOrFloat() const;
 
   // Convenience factories.
   static IndexType getIndex(MLIRContext *ctx);
@@ -230,6 +232,10 @@ inline bool Type::isIntOrIndex() const {
 
 inline bool Type::isIntOrIndexOrFloat() const {
   return isa<IndexType>() || isa<IntegerType>() || isa<FloatType>();
+}
+
+inline bool Type::isIntOrFloat() const {
+  return isa<IntegerType>() || isa<FloatType>();
 }
 
 class FloatType : public Type {
@@ -403,7 +409,7 @@ public:
 
   /// Returns true of the given type can be used as an element of a vector type.
   /// In particular, vectors can consist of integer or float primitives.
-  static bool isValidElementType(Type t) { return t.isIntOrIndexOrFloat(); }
+  static bool isValidElementType(Type t) { return t.isIntOrFloat(); }
 
   ArrayRef<int> getShape() const;
 
@@ -428,8 +434,7 @@ public:
 
   /// Return true if the specified element type is ok in a tensor.
   static bool isValidElementType(Type type) {
-    return isValidTFElementType(type) || type.isa<VectorType>() ||
-           type.isa<IndexType>();
+    return isValidTFElementType(type) || type.isa<VectorType>();
   }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.

@@ -237,6 +237,28 @@ More information about this split is available in an old
 [talk on youtube](https://www.youtube.com/watch?v=VeRaLPupGks) talking about
 LLVM 2.0.
 
+### Index type disallowed in aggregate types {#index-type-disallowed-in-aggregate-types}
+
+Index types are not allowed as elements of `vector`, `tensor` or `memref` type.
+Index types are intended to be used for platform-specific "size" values and may
+appear in subscripts, sizes of aggregate types and affine expressions. They are
+also tightly coupled with `affine_apply` and load/store operations; having
+`index` type is a necessary precondition of a value to be acceptable by these
+operations. While it may be useful to have `memref<?xindex>` to express indirect
+accesses in MLFunctions, e.g. sparse matrix manipulations or lookup tables, it
+creates problems MLIR is not ready to address yet. MLIR needs to internally
+store constants of aggregate types and emit code operating on values of those
+types, which are subject to target-specific size and alignment constraints.
+Since MLIR does not have a target description mechanism at the moment, it cannot
+reliably emit such code. Moreover, some platforms may not support vectors of
+type equivalent to `index`.
+
+Indirect access use cases can be alternatively supported by providing and
+`index_cast` instruction that allows for conversion between `index` and
+fixed-width integer types, at the SSA value level. It has an additional benefit
+of supporting smaller integer types, e.g. `i8` or `i16`, for small indices
+instead of (presumably larger) `index` type.
+
 ### Splitting floating point vs integer operations {#splitting-floating-point-vs-integer-operations}
 
 The MLIR operation set is likely to

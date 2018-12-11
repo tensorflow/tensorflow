@@ -867,7 +867,8 @@ static VectorType getVectorType(ArrayRef<int> shape, Type elementType,
 
   if (!VectorType::isValidElementType(elementType)) {
     if (location)
-      context->emitError(*location, "vector elements must be primitives");
+      context->emitError(*location,
+                         "vector elements must be int or float type");
     return {};
   }
 
