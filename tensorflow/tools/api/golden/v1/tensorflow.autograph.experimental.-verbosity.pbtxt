@@ -1,0 +1,12 @@
+path: "tensorflow.autograph.experimental.Verbosity"
+tf_class {
+  is_instance: "<enum \'Verbosity\'>"
+  member {
+    name: "BRIEF"
+    mtype: "<enum \'Verbosity\'>"
+  }
+  member {
+    name: "VERBOSE"
+    mtype: "<enum \'Verbosity\'>"
+  }
+}

@@ -412,7 +412,7 @@ class PartitionedVariablesTestCase(test.TestCase):
   def testResourceName(self):
     self._testNameHelper(use_resource=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testRandomInitValue(self):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([200, 40]))
@@ -430,7 +430,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           "200 40 0,200:36,4"
       ])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testRandomInitUnevenPartitions(self):
     with self.cached_session():
       rnd = variables.Variable(
@@ -469,7 +469,7 @@ class PartitionedVariablesTestCase(test.TestCase):
         if i < len(save_specs):
           self._TestSaveSpec(vs, save_specs[i])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testDegenerate(self):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([10, 43]))
@@ -481,7 +481,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, ["10 43 0,10:0,43"])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSliceSizeOne(self):
     with self.cached_session():
       rnd = variables.Variable(random_ops.random_uniform([10, 43]))

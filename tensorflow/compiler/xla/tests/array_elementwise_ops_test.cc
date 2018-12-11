@@ -329,13 +329,13 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   Literal b_literal = LiteralUtil::CreateR1<float>({b_values});
   std::unique_ptr<GlobalData> b_data =
       client_->TransferToServer(b_literal).ConsumeValueOrDie();
-  auto b_constant = Parameter(&builder, 1, a_literal.shape(), "b_param");
-  auto b_param = ConstantR1<float>(&builder, b_values);
+  auto b_param = Parameter(&builder, 1, a_literal.shape(), "b_param");
+  auto b_constant = ConstantR1<float>(&builder, b_values);
 
-  auto sum1 = Add(a_constant, b_constant);
-  auto sum2 = Add(a_constant, b_param);
-  auto sum3 = Add(a_param, b_constant);
-  auto sum4 = Add(a_param, b_param);
+  auto sum1 = Add(a_constant, b_param);
+  auto sum2 = Add(a_constant, b_constant);
+  auto sum3 = Add(a_param, b_param);
+  auto sum4 = Add(a_param, b_constant);
 
   auto sum = Add(sum1, sum2);
   sum = Add(sum, sum3);

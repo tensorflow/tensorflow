@@ -403,7 +403,7 @@ class KerasCallbacksTest(test.TestCase):
           float(keras.backend.get_value(
               model.optimizer.lr)) - 0.01 / 4) < keras.backend.epsilon()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_ReduceLROnPlateau(self):
     with self.cached_session():
       np.random.seed(1337)
@@ -675,7 +675,7 @@ class KerasCallbacksTest(test.TestCase):
       self.assertEqual(len(loss), 1)
       self.assertEqual(loss[0], np.inf)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_TensorBoard(self):
     np.random.seed(1337)
 
@@ -779,7 +779,7 @@ class KerasCallbacksTest(test.TestCase):
           data_generator(True), len(x_train), epochs=2, callbacks=cbks)
       assert os.path.exists(temp_dir)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_TensorBoard_multi_input_output(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()
@@ -851,7 +851,7 @@ class KerasCallbacksTest(test.TestCase):
                           callbacks=callbacks_factory(histogram_freq=1))
       assert os.path.isdir(filepath)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_Tensorboard_histogram_summaries_in_test_function(self):
 
     class FileWriterStub(object):
@@ -929,7 +929,7 @@ class KerasCallbacksTest(test.TestCase):
 
       self.assertAllEqual(tsb.writer.steps_seen, [0, 1, 2, 3, 4, 5])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_Tensorboard_histogram_summaries_with_generator(self):
     np.random.seed(1337)
     tmpdir = self.get_temp_dir()

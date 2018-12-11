@@ -875,17 +875,11 @@ class Model(Network):
                                      [self.total_loss] + metrics_tensors)
 
   def _make_fit_function(self):
-    # TODO(psv/anjalisridhar): Remove updates after we fix b/118841692
-    # Stateful metrics updates
-    metric_updates = []
-    for m in self.metrics:
-      metric_updates += m.updates
-
     metrics_tensors = [
         self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
     self._make_train_function_helper(
-        '_fit_function', [self.total_loss] + metrics_tensors, metric_updates)
+        '_fit_function', [self.total_loss] + metrics_tensors)
 
   def _make_test_function_helper(self, fn_name, outputs, metric_updates=None):
     if not hasattr(self, fn_name):
@@ -921,8 +915,8 @@ class Model(Network):
     metrics_tensors = [
         self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
-    self._make_test_function_helper('_eval_function',
-                                    [self.total_loss] + metrics_tensors)
+    self._make_test_function_helper(
+        '_eval_function', [self.total_loss] + metrics_tensors)
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -1545,8 +1539,7 @@ class Model(Network):
 
     outputs = nest.flatten(outputs)
     self.outputs = outputs
-    self.output_names = [
-        'output_%d' % (i + 1) for i in range(len(self.outputs))]
+    self.output_names = training_utils.generic_output_names(outputs)
     self.built = True
 
   def fit(self,
@@ -2095,6 +2088,8 @@ class Model(Network):
     if hasattr(self, 'metrics'):
       for m in self.metrics:
         m.reset_states()
+      if self._distribution_strategy:
+        training_distributed._reset_metrics(self)  # pylint: disable=protected-access
 
   def train_on_batch(self,
                      x,
@@ -2583,6 +2578,10 @@ class Model(Network):
       # Backwards compatibility
       batch_size = 32
     return batch_size
+
+  @property
+  def _default_save_signature(self):
+    return training_utils.trace_model_call(self)
 
 
 class DistributedCallbackModel(Model):

@@ -23,6 +23,7 @@ import os
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import traceable_stack
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_stack
@@ -112,6 +113,7 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
     self.assertIn("No node-device colocations", summary)
 
 
+@test_util.run_v1_only("b/120545219")
 class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
 
   def setUp(self):
@@ -193,6 +195,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     self.assertRegexpMatches(interpolated_string, "constant_op.py:[0-9]+.*")
 
 
+@test_util.run_v1_only("b/120545219")
 class InterpolateDeviceSummaryTest(test.TestCase):
 
   def _fancy_device_function(self, unused_op):
@@ -236,6 +239,7 @@ class InterpolateDeviceSummaryTest(test.TestCase):
     self.assertRegexpMatches(result, expected_re)
 
 
+@test_util.run_v1_only("b/120545219")
 class InterpolateColocationSummaryTest(test.TestCase):
 
   def setUp(self):
@@ -260,11 +264,13 @@ class InterpolateColocationSummaryTest(test.TestCase):
 
     self.graph = node_three.graph
 
+  @test_util.run_v1_only("b/120545219")
   def testNodeThreeHasColocationInterpolation(self):
     message = "{{colocation_node Three_with_one}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("colocate_with(One)", result)
 
+  @test_util.run_v1_only("b/120545219")
   def testNodeFourHasColocationInterpolationForNodeThreeOnly(self):
     message = "{{colocation_node Four_with_three}}"
     result = error_interpolation.interpolate(message, self.graph)
@@ -273,12 +279,14 @@ class InterpolateColocationSummaryTest(test.TestCase):
         "One", result,
         "Node One should not appear in Four_with_three's summary:\n%s" % result)
 
+  @test_util.run_v1_only("b/120545219")
   def testNodeFiveHasColocationInterpolationForNodeOneAndTwo(self):
     message = "{{colocation_node Five_with_one_with_two}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("colocate_with(One)", result)
     self.assertIn("colocate_with(Two)", result)
 
+  @test_util.run_v1_only("b/120545219")
   def testColocationInterpolationForNodeLackingColocation(self):
     message = "{{colocation_node One}}"
     result = error_interpolation.interpolate(message, self.graph)

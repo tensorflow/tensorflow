@@ -1,0 +1,15 @@
+path: "tensorflow.autograph"
+tf_module {
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "to_code"
+    argspec: "args=[\'entity\', \'recursive\', \'arg_values\', \'arg_types\', \'indentation\', \'optional_features\', \'experimental_partial_types\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\', \'  \', \'Feature.ALL\', \'None\'], "
+  }
+  member_method {
+    name: "to_graph"
+    argspec: "args=[\'entity\', \'recursive\', \'verbose\', \'arg_values\', \'arg_types\', \'strip_decorators\', \'optional_features\', \'experimental_partial_types\'], varargs=None, keywords=None, defaults=[\'True\', \'Verbosity.VERBOSE\', \'None\', \'None\', \'None\', \'Feature.ALL\', \'None\'], "
+  }
+}

@@ -3040,7 +3040,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):  # pylint: disa
         noise_shape, seed=seed, dtype=x.dtype)
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
-    ret = math_ops.div(x, keep_prob) * binary_tensor
+    ret = math_ops.divide(x, keep_prob) * binary_tensor
     if not context.executing_eagerly():
       ret.set_shape(x.get_shape())
     return ret
@@ -3776,7 +3776,7 @@ def erosion2d_v2(value,
             name=name))
 
 
-@tf_export("math.in_top_k", "nn.in_top_k")
+@tf_export(v1=["math.in_top_k", "nn.in_top_k"])
 def in_top_k(predictions, targets, k, name=None):
   r"""Says whether the targets are in the top `K` predictions.
 
@@ -3808,6 +3808,14 @@ def in_top_k(predictions, targets, k, name=None):
   """
   with ops.name_scope(name, "in_top_k"):
     return gen_nn_ops.in_top_kv2(predictions, targets, k, name=name)
+
+
+@tf_export("math.in_top_k", "nn.in_top_k", v1=[])
+def in_top_k_v2(targets, predictions, k, name=None):
+  return in_top_k(predictions, targets, k, name)
+
+
+in_top_k_v2.__doc__ = in_top_k.__doc__
 
 
 tf_export(v1=["nn.quantized_avg_pool"])(gen_nn_ops.quantized_avg_pool)

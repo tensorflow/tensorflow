@@ -13,8 +13,16 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DatasetStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "INFINITE_CARDINALITY"
     mtype: "<type \'int\'>"
+  }
+  member {
+    name: "NestedStructure"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "OptimizationOptions"
@@ -25,11 +33,19 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OptionalStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RandomDataset"
     mtype: "<type \'type\'>"
   }
   member {
     name: "Reducer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseTensorStructure"
     mtype: "<type \'type\'>"
   }
   member {
@@ -45,7 +61,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Structure"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TFRecordWriter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TensorStructure"
     mtype: "<type \'type\'>"
   }
   member {

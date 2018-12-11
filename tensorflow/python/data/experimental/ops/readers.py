@@ -32,10 +32,10 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import io_ops
@@ -652,11 +652,9 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         argument_default=[],
         argument_dtype=dtypes.int64,
     )
-    self._output_shapes = tuple(
-        tensor_shape.scalar() for _ in range(len(record_defaults)))
-    self._output_types = tuple(d.dtype for d in self._record_defaults)
-    self._output_classes = tuple(
-        ops.Tensor for _ in range(len(record_defaults)))
+    self._structure = structure.NestedStructure(
+        tuple(structure.TensorStructure(d.dtype, [])
+              for d in self._record_defaults))
 
   def _as_variant_tensor(self):
     # Constructs graph node for the dataset op.
@@ -665,7 +663,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         record_defaults=self._record_defaults,
         buffer_size=self._buffer_size,
         header=self._header,
-        output_shapes=self._output_shapes,
+        output_shapes=self._structure._flat_shapes,  # pylint: disable=protected-access
         field_delim=self._field_delim,
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
@@ -674,16 +672,8 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     )
 
   @property
-  def output_types(self):
-    return self._output_types
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_classes(self):
-    return self._output_classes
+  def _element_structure(self):
+    return self._structure
 
 
 @tf_export(v1=["data.experimental.CsvDataset"])
@@ -961,7 +951,9 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
         data_source_name, dtype=dtypes.string, name="data_source_name")
     self._query = ops.convert_to_tensor(
         query, dtype=dtypes.string, name="query")
-    self._output_types = output_types
+    self._structure = structure.NestedStructure(
+        nest.map_structure(
+            lambda dtype: structure.TensorStructure(dtype, []), output_types))
 
   def _as_variant_tensor(self):
     return gen_experimental_dataset_ops.experimental_sql_dataset(
@@ -969,17 +961,8 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
         nest.flatten(self.output_types), nest.flatten(self.output_shapes))
 
   @property
-  def output_classes(self):
-    return nest.map_structure(lambda _: ops.Tensor, self._output_types)
-
-  @property
-  def output_shapes(self):
-    return nest.map_structure(lambda _: tensor_shape.TensorShape([]),
-                              self._output_types)
-
-  @property
-  def output_types(self):
-    return self._output_types
+  def _element_structure(self):
+    return self._structure
 
 
 @tf_export(v1=["data.experimental.SqlDataset"])

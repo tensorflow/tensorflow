@@ -180,8 +180,36 @@ class MirroredStrategyVariableCreatorStackTest(
         variable_scope.variable_creator_scope(main_thread_creator):
       result = distribution.extended.call_for_each_replica(model_fn)
       result = distribution.unwrap(result)
-      expected = ["main_thread:thread_0", "main_thread:thread_1"]
+      expected = ("main_thread:thread_0", "main_thread:thread_1")
       self.assertEqual(expected, result)
+
+@combinations.generate(combinations.combine(
+    distribution=[
+        combinations.mirrored_strategy_with_gpu_and_cpu,
+        combinations.core_mirrored_strategy_with_gpu_and_cpu],
+    mode=["graph", "eager"]))
+class MirroredStrategyCallForEachReplicaTest(test.TestCase):
+
+  def testExecutingEagerlyOutsideFunction(self, distribution):
+    """Verify we preserve the value of executing_eagerly_outside_functions()."""
+    def model_fn():
+      return ops.executing_eagerly_outside_functions()
+
+    originally = ops.executing_eagerly_outside_functions()
+    with distribution.scope():
+      in_scope = ops.executing_eagerly_outside_functions()
+      in_model_fn = distribution.extended.call_for_each_replica(model_fn)
+      unwrapped = distribution.unwrap(in_model_fn)
+      self.assertEqual(in_scope, unwrapped[0])
+      self.assertEqual(in_scope, originally)
+
+    # Verify this all again, but this time in a FuncGraph.
+    with func_graph.FuncGraph("fg").as_default(), distribution.scope():
+      in_scope = ops.executing_eagerly_outside_functions()
+      in_model_fn = distribution.extended.call_for_each_replica(model_fn)
+      unwrapped = distribution.unwrap(in_model_fn)
+      self.assertEqual(in_scope, unwrapped[0])
+      self.assertEqual(in_scope, originally)
 
 
 @combinations.generate(combinations.combine(

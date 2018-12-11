@@ -66,6 +66,7 @@ class ReconstructionOpsTest(test.TestCase):
 
       self.assertAllClose(output, expected_output)
 
+  @test_util.run_deprecated_v1
   def test_unknown_shapes(self):
     # This test uses placeholders and does not work in eager mode.
     if context.executing_eagerly():
@@ -85,6 +86,7 @@ class ReconstructionOpsTest(test.TestCase):
 
       self.assertAllClose(output, expected_output)
 
+  @test_util.run_deprecated_v1
   def test_unknown_rank(self):
     # This test uses placeholders and does not work in eager mode.
     if context.executing_eagerly():
@@ -104,6 +106,7 @@ class ReconstructionOpsTest(test.TestCase):
 
       self.assertAllClose(output, expected_output)
 
+  @test_util.run_deprecated_v1
   def test_fast_path(self):
     # This test uses tensor names and does not work in eager mode.
     if context.executing_eagerly():

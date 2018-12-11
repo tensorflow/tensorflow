@@ -138,9 +138,10 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   @test_util.run_deprecated_v1
   def testPrefetchBufferScalars(self, dataset_transformation):
+    def map_fn(x):
+      return array_ops.tile([x], ops.convert_to_tensor([x]))
     aggregator = stats_aggregator.StatsAggregator()
-    dataset = dataset_ops.Dataset.range(10).map(
-        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(0)
+    dataset = dataset_ops.Dataset.range(10).map(map_fn).prefetch(1)
     dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
@@ -153,9 +154,9 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
             np.array([i] * i, dtype=np.int64), self.evaluate(next_element))
         summary_str = self.evaluate(summary_t)
         self._assertSummaryHasScalarValue(summary_str,
-                                          "Prefetch::buffer_capacity", 0)
+                                          "Prefetch::buffer_capacity", 1)
         self._assertSummaryHasScalarValue(summary_str, "Prefetch::buffer_size",
-                                          0)
+                                          1)
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 

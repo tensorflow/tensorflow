@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
@@ -564,9 +565,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
   class MemoryDataset : public DatasetBase {
    public:
     explicit MemoryDataset(OpKernelContext* ctx, const DatasetBase* input)
-        : DatasetBase(DatasetContext(ctx)),
-          input_(input),
-          cache_(new MemoryCache()) {
+        : DatasetBase(DatasetContext(ctx)), input_(input) {
       input->Ref();
     }
 
@@ -574,8 +573,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new MemoryIterator(
-          {this, strings::StrCat(prefix, "::MemoryCache")}, cache_));
+      return std::unique_ptr<IteratorBase>(
+          new MemoryIterator({this, strings::StrCat(prefix, "::MemoryCache")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -611,9 +610,11 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
     // The expected use is that a single `MemoryWriterIterator` populates the
     // cache with dataset elements. Once all elements are cached, the cache can
     // be used by one or more `MemoryReaderIterator`s.
-    class MemoryCache {
+    class MemoryCache : public ResourceBase {
      public:
       MemoryCache() = default;
+
+      string DebugString() override { return "CacheDataset::MemoryCache"; }
 
       // Marks the cache as completed.
       void Complete() {
@@ -681,15 +682,25 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
 
     class MemoryIterator : public DatasetIterator<MemoryDataset> {
      public:
-      explicit MemoryIterator(const Params& params,
-                              const std::shared_ptr<MemoryCache>& cache)
-          : DatasetIterator<MemoryDataset>(params), cache_(cache) {
-        mode_ = cache->MaybeClaim() ? Mode::write : Mode::read;
-        InitializeIterator();
-      }
+      explicit MemoryIterator(const Params& params)
+          : DatasetIterator<MemoryDataset>(params) {}
+
+      ~MemoryIterator() override { cache_->Unref(); }
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
+        // Use the resource manager in the iterator context to get / create
+        // a cache.
+        ResourceMgr* mgr = ctx->resource_mgr();
+        const string name =
+            strings::StrCat(prefix(), "::", dataset()->name(), "::MemoryCache");
+        TF_RETURN_IF_ERROR(mgr->LookupOrCreate<MemoryCache>(
+            "tf_data", name, &cache_, [](MemoryCache** cache) {
+              *cache = new MemoryCache();
+              return Status::OK();
+            }));
+        mode_ = cache_->MaybeClaim() ? Mode::write : Mode::read;
+        InitializeIterator();
         if (mode_ == Mode::read && !cache_->IsCompleted()) {
           return errors::Internal(
               "Cache should only be read after it has been completed.");
@@ -788,8 +799,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
      private:
       class MemoryWriterIterator : public DatasetIterator<MemoryDataset> {
        public:
-        explicit MemoryWriterIterator(const Params& params,
-                                      const std::shared_ptr<MemoryCache>& cache)
+        explicit MemoryWriterIterator(const Params& params, MemoryCache* cache)
             : DatasetIterator<MemoryDataset>(params), cache_(cache) {
           CHECK(cache_);
         }
@@ -822,6 +832,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             cache_->Complete();
             return Status::OK();
           }
+          RecordBufferEnqueue(ctx, *out_tensors);
           cache_->emplace_back(*out_tensors);
           return Status::OK();
         }
@@ -847,15 +858,44 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
        private:
         mutex mu_;
         std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-        std::shared_ptr<MemoryCache> cache_;
+        MemoryCache* const cache_ GUARDED_BY(mu_);  // not owned.
       };  // MemoryWriterIterator
 
       class MemoryReaderIterator : public DatasetIterator<MemoryDataset> {
        public:
-        explicit MemoryReaderIterator(const Params& params,
-                                      const std::shared_ptr<MemoryCache>& cache)
+        explicit MemoryReaderIterator(const Params& params, MemoryCache* cache)
             : DatasetIterator<MemoryDataset>(params), cache_(cache), index_(0) {
           CHECK(cache);
+        }
+
+        Status Initialize(IteratorContext* ctx) override {
+          // The memory allocated for the cache is owned by the parent
+          // dataset but performance modeling uses the iterator abstraction and
+          // thus we record the memory allocated for the cache here. The caveat
+          // is that this is incorrect if there are concurrent instances of this
+          // iterator.
+          tf_shared_lock l(mu_);
+          for (size_t i = 0; i < cache_->size(); ++i) {
+            RecordBufferEnqueue(ctx, cache_->at(i));
+          }
+          return Status::OK();
+        }
+
+        Status GetNextInternal(IteratorContext* ctx,
+                               std::vector<Tensor>* out_tensors,
+                               bool* end_of_sequence) override {
+          mutex_lock l(mu_);
+          if (index_ < cache_->size()) {
+            const std::vector<Tensor>& cache_tensors = cache_->at(index_);
+            out_tensors->insert(out_tensors->begin(), cache_tensors.begin(),
+                                cache_tensors.end());
+            index_++;
+            *end_of_sequence = false;
+            return Status::OK();
+          } else {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
         }
 
        protected:
@@ -882,26 +922,9 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        Status GetNextInternal(IteratorContext* ctx,
-                               std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence) override {
-          mutex_lock l(mu_);
-          if (index_ < cache_->size()) {
-            const std::vector<Tensor>& cache_tensors = cache_->at(index_);
-            out_tensors->insert(out_tensors->begin(), cache_tensors.begin(),
-                                cache_tensors.end());
-            index_++;
-            *end_of_sequence = false;
-            return Status::OK();
-          } else {
-            *end_of_sequence = true;
-            return Status::OK();
-          }
-        }
-
        private:
         mutex mu_;
-        const std::shared_ptr<MemoryCache> cache_;
+        MemoryCache* const cache_ GUARDED_BY(mu_);  // not owned.
         size_t index_ GUARDED_BY(mu_);
       };  // MemoryReaderIterator
 
@@ -918,14 +941,13 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::shared_ptr<MemoryCache> cache_;
+      MemoryCache* cache_ GUARDED_BY(mu_);  // not owned.
       enum Mode { read, write };
       Mode mode_ GUARDED_BY(mu_);
       std::unique_ptr<IteratorBase> iterator_ GUARDED_BY(mu_);
     };  // MemoryIterator
 
     const DatasetBase* const input_;
-    const std::shared_ptr<MemoryCache> cache_;
   };  // MemoryDataset
 };    // CacheDatasetOp
 

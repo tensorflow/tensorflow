@@ -203,6 +203,8 @@ class XlaAssignVariableOp : public OpKernel {
                               .HostMemory("output")                            \
                               .TypeConstraint<ResourceHandle>("T"),            \
                           ArgOp);                                              \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name(kArgOp).Device(DEVICE).TypeConstraint<Variant>("T"), ArgOp);        \
                                                                                \
   REGISTER_KERNEL_BUILDER(Name(kRetOp)                                         \
                               .Device(DEVICE)                                  \

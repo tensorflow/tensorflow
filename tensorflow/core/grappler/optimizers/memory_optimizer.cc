@@ -1306,13 +1306,12 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
 
 Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
-  *optimized_graph = item.graph;
+  GrapplerItem optimized_item(item);
 
   RecomputationRewritingPass(optimization_level_,
-                             recomputation_targets_name_scope_, optimized_graph,
-                             item);
+                             recomputation_targets_name_scope_,
+                             &optimized_item.graph, item);
 
-  GrapplerItem optimized_item(item, optimized_graph);
   std::unordered_set<string> skip_list;
   // Bound the number of rewrite passes to avoid long processing times on graphs
   // that simply won't fit in memory.

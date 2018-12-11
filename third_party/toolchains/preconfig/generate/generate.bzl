@@ -36,9 +36,7 @@ def _tensorflow_rbe_config(name, cuda_version, cudnn_version, python_version, co
             "TF_NCCL_VERSION": "2",
             "CUDNN_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
         },
-        # TODO(klimek): We should use the sources that we currently work on, not
-        # just the latest snapshot of tensorflow that is checked in.
-        git_repo = "https://github.com/tensorflow/tensorflow",
+        mount_project = "$(mount_project)",
         tags = ["manual"],
         incompatible_changes_off = True,
     )

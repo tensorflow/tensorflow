@@ -199,11 +199,19 @@ def validate_callbacks(input_callbacks, optimizer, current_strategy):
       # running ops.
       if isinstance(callback, callbacks.TensorBoard):
         if callback.__getattribute__('histogram_freq'):
-          raise ValueError('histogram_freq in the TensorBoard callback is not '
-                           'supported when using DistributionStrategy.')
+          logging.warning(
+              UserWarning(
+                  '`histogram_freq` in the TensorBoard callback is not '
+                  'supported when using DistributionStrategy. Setting '
+                  '`histogram_freq` to `0`.'))
+          callback.histogram_freq = 0
         if callback.__getattribute__('write_grads'):
-          raise ValueError('write_grads in the TensorBoard callback is not '
-                           'supported when using DistributionStrategy.')
+          logging.warning(
+              UserWarning(
+                  '`write_grads` in the TensorBoard callback is not supported '
+                  'when using DistributionStrategy. Setting `write_grads` '
+                  'to `False`.'))
+          callback.histogram_freq = False
 
 
 def validate_distributed_dataset_inputs(distribution_strategy, x, y,

@@ -32,7 +32,7 @@ from tensorflow.python.training import slot_creator
 
 class SlotCreatorTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCreateSlotFromVariable(self):
     with self.cached_session():
       v = variables.Variable([1.0, 2.5], name="var")
@@ -73,7 +73,7 @@ class SlotCreatorTest(test.TestCase):
       self.assertEqual(dtypes.float64, slot.dtype.base_dtype)
       self.assertAllEqual([0.0, 0.0], self.evaluate(slot))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCreateZerosSlotFromDynamicShapedVariable(self):
     with self.cached_session():
       dyn_shape = constant_op.constant([2], dtype=dtypes.int32)
@@ -125,7 +125,7 @@ class SlotCreatorTest(test.TestCase):
       self.assertEqual(dtypes.float64, slot.dtype.base_dtype)
       self.assertAllEqual([0.0, 0.0], self.evaluate(slot))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCreateSlotFromVariableRespectsScope(self):
     # See discussion on #2740.
     with self.cached_session():

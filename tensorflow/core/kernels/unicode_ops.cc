@@ -493,7 +493,7 @@ class UnicodeEncodeOp : public OpKernel {
     const Tensor& input_splits = context->input(1);
     const auto input_splits_flat = input_splits.flat<int64>();
 
-    // Since we limit to a 2-D input (inner_values of rank 1 and a single splits
+    // Since we limit to a 2-D input (flat_values of rank 1 and a single splits
     // tensor), our output dimension will be 1 with it's size equal to the
     // number of splits (outer dimension or ragged tensor).
     TensorShape output_shape({input_splits.dim_size(0) - 1});

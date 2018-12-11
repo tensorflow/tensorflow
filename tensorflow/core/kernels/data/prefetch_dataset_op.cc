@@ -125,7 +125,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
 
         if (!buffer_.empty()) {
-          return Consume(out_tensors, end_of_sequence, ctx);
+          return Consume(ctx, out_tensors, end_of_sequence);
         }
 
         if (prefetch_thread_finished_) {
@@ -228,8 +228,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> value;
     };
 
-    Status Consume(std::vector<Tensor>* out_tensors, bool* end_of_sequence,
-                   IteratorContext* ctx) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+                   bool* end_of_sequence) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         stats_aggregator->AddToHistogram(
@@ -248,6 +248,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       Status s = buffer_.front().status;
       if (s.ok()) {
         *out_tensors = std::move(buffer_.front().value);
+        RecordBufferDequeue(ctx, *out_tensors);
       }
       auto_tuner_.RecordConsumption(buffer_.size());
       buffer_.pop_front();
@@ -318,6 +319,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // 3. Signal that the element has been produced.
         {
           mutex_lock l(mu_);
+          RecordBufferEnqueue(ctx.get(), buffer_element.value);
           buffer_.push_back(std::move(buffer_element));
           cond_var_.notify_all();
         }

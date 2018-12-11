@@ -187,7 +187,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           new ParseExampleFunctor(this));
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParseExample")}, input_,
-          std::move(parse_example_functor), num_parallel_calls_, sloppy_);
+          std::move(parse_example_functor), num_parallel_calls_, sloppy_,
+          /*preserve_cardinality=*/true);
     }
 
     const DataTypeVector& output_dtypes() const override {

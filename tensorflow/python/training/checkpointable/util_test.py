@@ -616,6 +616,7 @@ class CheckpointingTests(test.TestCase):
 
   # pylint: disable=cell-var-from-loop
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testWithDefun(self):
     num_training_steps = 2
     checkpoint_directory = self.get_temp_dir()

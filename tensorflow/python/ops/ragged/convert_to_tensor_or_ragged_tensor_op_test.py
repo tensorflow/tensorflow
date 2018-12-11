@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.convert_to_tensor_or_ragged_tensor."""
+"""Tests for ragged.convert_to_tensor_or_ragged."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,11 +25,13 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
-                                              parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedConvertToTensorOrRaggedTensorTest(
+    ragged_test_util.RaggedTensorTestCase, parameterized.TestCase):
 
   #=============================================================================
   # Tests where the 'value' param is a RaggedTensor
@@ -90,7 +92,6 @@ class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
           preferred_dtype=dtypes.string,
           expected_dtype=dtypes.int32),
   ])
-  @test_util.run_deprecated_v1
   def testConvertRaggedTensorValue(self,
                                    value,
                                    dtype=None,
@@ -102,8 +103,7 @@ class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
         value, dtype, preferred_dtype)
     self.assertEqual(value.ragged_rank, converted.ragged_rank)
     self.assertEqual(dtypes.as_dtype(expected_dtype), converted.dtype)
-    with self.test_session():
-      self.assertEqual(value.tolist(), self.evaluate(converted).tolist())
+    self.assertEqual(value.to_list(), self.eval_to_list(converted))
 
   @parameterized.parameters([
       dict(
@@ -131,8 +131,7 @@ class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
     tensor = constant_op.constant(pylist)
     converted = ragged.convert_to_tensor_or_ragged_tensor(
         tensor, dtype, preferred_dtype)
-    with self.test_session():
-      self.assertIs(tensor, converted)
+    self.assertIs(tensor, converted)
 
   @parameterized.parameters([
       dict(
@@ -146,7 +145,6 @@ class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
           message=('Tensor conversion requested dtype string for '
                    'Tensor with dtype int32')),
   ])
-  @test_util.run_deprecated_v1
   def testConvertTensorError(self,
                              pylist,
                              message,
@@ -189,8 +187,7 @@ class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
     converted = ragged.convert_to_tensor_or_ragged_tensor(
         value, dtype, preferred_dtype)
     self.assertEqual(dtypes.as_dtype(expected_dtype), converted.dtype)
-    with self.test_session():
-      self.assertAllEqual(value, converted)
+    self.assertAllEqual(value, converted)
 
   @parameterized.parameters([
       dict(

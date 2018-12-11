@@ -45,6 +45,7 @@ class TensorBuffer;
 class TensorCApi;
 class TensorDescription;
 class TensorProto;
+class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
@@ -581,11 +582,16 @@ class Tensor {
   friend class XlaTensor;             // For access to RefCountIsOne().
   friend class XlaTensorBuffer;  // For access to the private constructor taking
                                  // the buffer
+  friend class Var;
   template <typename Device, typename T>
   friend class AssignVariableOp;  // For access to RefCountIsOne().
   template <typename Device, typename T>
   friend Status PrepareToUpdateVariable(
-      OpKernelContext* ctx, Tensor* tensor);  // For access to RefCountIsOne().
+      OpKernelContext* ctx, Tensor* tensor,
+      bool copy_on_read_mode);  // For access to RefCountIsOne().
+  template <typename Device, typename T>
+  friend Status EnsureSparseVariableAccess(
+      OpKernelContext* ctx, Var* var);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
       int64 index);                // For access to RefCountIsOne().

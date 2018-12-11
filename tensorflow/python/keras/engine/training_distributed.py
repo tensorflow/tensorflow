@@ -163,11 +163,9 @@ def experimental_fit_loop(model,
   do_validation = bool(validation_steps)
 
   # Copy the weights from the original model to each of the replicated models.
-  orig_model_weights = model.get_weights()
   with current_strategy.scope():
-    distributed_model = current_strategy.unwrap(model._grouped_model_train)[0]
-    distributed_training_utils.set_weights(
-        current_strategy, distributed_model, orig_model_weights)
+    _copy_weights_to_distributed_model(model, model._grouped_model_train)
+
   callbacks = cbks.configure_callbacks(
       callbacks,
       model,
@@ -185,6 +183,8 @@ def experimental_fit_loop(model,
 
   callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
+    with current_strategy.scope():
+      _reset_metrics(model, model._grouped_model_train)
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     step_index = 0
@@ -217,9 +217,8 @@ def experimental_fit_loop(model,
       # Since we create a new clone from the original model we need to copy
       # the weights back to the original model before we can run validation.
       with current_strategy.scope():
-        updated_weights = current_strategy.unwrap(
-            model._grouped_model_train)[0].get_weights()
-        model.set_weights(updated_weights)
+        _copy_weights_to_original_model(model, model._grouped_model_train,
+                                        'train')
 
       val_outs = experimental_test_loop(  # pylint: disable=undefined-variable
           model,
@@ -240,9 +239,7 @@ def experimental_fit_loop(model,
 
   # Copy the weights back from the replicated model to the original model.
   with current_strategy.scope():
-    updated_weights = current_strategy.unwrap(
-        model._grouped_model_train)[0].get_weights()
-    model.set_weights(updated_weights)
+    _copy_weights_to_original_model(model, model._grouped_model_train, 'train')
 
   K.get_session().run(current_strategy.finalize())
   return model.history
@@ -345,22 +342,26 @@ def experimental_test_loop(model,
     progbar = Progbar(target=steps)
 
   # Copy the weights from the original model to each of the replicated models.
-  orig_model_weights = model.get_weights()
   with current_strategy.scope():
-    distributed_model = current_strategy.unwrap(model._grouped_model_test)[0]
-    distributed_training_utils.set_weights(
-        current_strategy, distributed_model, orig_model_weights)
-
+    _copy_weights_to_distributed_model(model, model._grouped_model_test)
+    _reset_metrics(model, model._grouped_model_test)
   assert steps is not None
   outs = [0.] * len(model.metrics_names)
   for step in range(steps):
     _, batch_outs = K.get_session().run([test_op, output_tensors])
     for i, label in enumerate(model.metrics_names):
-      outs[i] += batch_outs[label]
+      if i == 0:
+        # Loss is stateless metrics.
+        outs[i] += batch_outs[label]
+      else:
+        # For all stateful metrics, the aggregation is handled by mirrored vars.
+        outs[i] = batch_outs[label]
+
     if verbose >= 1:
       progbar.update(step + 1)
-  for i in range(len(outs)):
-    outs[i] /= (steps)
+
+  if len(outs) >= 0:
+    outs[0] /= (steps)
 
   if initialize_finalize_strategy:
     K.get_session().run(current_strategy.finalize())
@@ -455,12 +456,9 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
     progbar = Progbar(target=steps)
 
   # Copy the weights from the original model to each of the replicated models.
-  orig_model_weights = model.get_weights()
   with current_strategy.scope():
-    distributed_model = current_strategy.unwrap(model._grouped_model_predict)[0]
-    distributed_training_utils.set_weights(
-        current_strategy, distributed_model, orig_model_weights)
-
+    _copy_weights_to_distributed_model(model, model._grouped_model_predict)
+    _reset_metrics(model, model._grouped_model_predict)
   assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate
   # the returned Numpy arrays. Instead, we store one array per batch seen
@@ -695,22 +693,23 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   return ins
 
 
-def _copy_weights_to_distributed_model(model):
+def _copy_weights_to_distributed_model(original_model, grouped_model):
   """Copies weights from original model to distributed models."""
-  if model._distribution_strategy:
-    # Copy the weights from the original model to each of the replicated models.
-    orig_model_weights = model.get_weights()
-    distributed_model = model._distribution_strategy.unwrap(
-        model._grouped_model)[0]
-    distributed_training_utils.set_weights(
-        model._distribution_strategy, distributed_model, orig_model_weights)
+  strategy = original_model._distribution_strategy
+  if strategy:
+    # Copy the weights from the original model to each of the replicated
+    # models.
+    orig_model_weights = original_model.get_weights()
+    distributed_model = strategy.unwrap(grouped_model)[0]
+    distributed_training_utils.set_weights(strategy, distributed_model,
+                                           orig_model_weights)
 
 
-def _copy_weights_to_original_model(model, mode):
+def _copy_weights_to_original_model(model, grouped_model, mode):
   """Copies weights from first distributed model back to original model."""
   if model._distribution_strategy and mode == 'train':
     updated_weights = model._distribution_strategy.unwrap(
-        model._grouped_model)[0].get_weights()
+        grouped_model)[0].get_weights()
     model.set_weights(updated_weights)
 
 
@@ -724,3 +723,11 @@ def _per_device_aggregate_batch(batch_outs, model, mode):
       total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
     return total_batch_outs
   return batch_outs
+
+
+def _reset_metrics(model, distributed_model=None):
+  if model._distribution_strategy:
+    distributed_model = (
+        distributed_model or
+        model._distribution_strategy.unwrap(model._grouped_model)[0])
+    distributed_model.reset_metrics()

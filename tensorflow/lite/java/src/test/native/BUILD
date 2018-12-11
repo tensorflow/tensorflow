@@ -12,20 +12,11 @@ cc_library(
     testonly = 1,
     srcs = [
         "interpreter_test_jni.cc",
-    ] + select({
-        # The Android toolchain makes "jni.h" available in the include path.
-        # For non-Android toolchains, generate jni.h and jni_md.h.
-        "//tensorflow:android": [],
-        "//conditions:default": [
-            "//tensorflow/lite/java/src/main/native:jni.h",
-            "//tensorflow/lite/java/src/main/native:jni_md.h",
-        ],
-    }),
-    includes = select({
-        "//tensorflow:android": [],
-        "//conditions:default": ["../../main/native/."],
-    }),
-    deps = ["//tensorflow/lite/c:c_api_internal"],
+    ],
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/java/jni",
+    ],
 )
 
 tflite_jni_binary(

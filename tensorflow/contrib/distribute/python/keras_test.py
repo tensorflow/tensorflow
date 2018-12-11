@@ -165,7 +165,9 @@ def get_multi_inputs_multi_outputs_data():
   return (train_data, test_data)
 
 
-def batch_wrapper(dataset, batch_size, distribution):
+def batch_wrapper(dataset, batch_size, distribution, repeat=None):
+  if repeat:
+    dataset = dataset.repeat(repeat)
   # TPUs currently require fully defined input shapes, drop_remainder ensures
   # the input will have fully defined shapes.
   if isinstance(distribution, tpu_strategy.TPUStrategy):
@@ -216,6 +218,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
                                 with_distribution,
                                 x_train, y_train, x_predict):
   """Generates the inputs for correctness check when enable Keras with DS."""
+  training_epochs = 2
   global_batch_size = 64
   batch_size = global_batch_size
   # TODO(b/118776054): Use global batch size for Keras/DS support.
@@ -231,7 +234,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
         'batch_size': batch_size,
         'x': x_train,
         'y': y_train,
-        'epochs': 1,
+        'epochs': training_epochs,
         'shuffle': False,
     }
 
@@ -252,13 +255,14 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
     # keras.fit/evaluate/predict. The batch size is part of the dataset.
     train_dataset = dataset_ops.Dataset.from_tensor_slices(
         (x_train, y_train))
-    x = batch_wrapper(train_dataset, batch_size, with_distribution)
+    x = batch_wrapper(
+        train_dataset, batch_size, with_distribution, repeat=training_epochs)
 
     training_inputs = {
         'batch_size': None,
         'x': x,
         'y': None,
-        'epochs': 1,
+        'epochs': training_epochs,
         'shuffle': False,
         'steps_per_epoch': len(x_train) // global_batch_size,
     }
@@ -1081,8 +1085,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
       mode=['graph', 'eager']))
   def test_unsupported_features(self, distribution):
     with self.cached_session():
@@ -1130,8 +1134,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
       mode=['graph', 'eager']))
   def test_calling_with_unsupported_predefined_callbacks(self, distribution):
     with self.cached_session():
@@ -1157,12 +1161,6 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
                                    'using'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                   callbacks=[keras.callbacks.ReduceLROnPlateau()])
-      with self.assertRaisesRegexp(ValueError,
-                                   'histogram_freq in the TensorBoard callback '
-                                   'is not supported when using '
-                                   'DistributionStrategy.'):
-        model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
-                  callbacks=[keras.callbacks.TensorBoard(histogram_freq=10)])
 
 
 class TestDistributionStrategyWithLossMasking(test.TestCase,
@@ -1259,25 +1257,57 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
 
-      history = model.fit(x=train_dataset, epochs=1, steps_per_epoch=10)
-      self.assertEqual(history.history['binary_accuracy'], [1.0])
+      history = model.fit(x=train_dataset, epochs=2, steps_per_epoch=10)
+      self.assertEqual(history.history['binary_accuracy'], [1.0, 1.0])
+
+  @combinations.generate(all_strategy_combinations())
+  def test_eval_metrics_correctness(self, distribution):
+    with self.cached_session():
+      model = keras.Sequential()
+      model.add(
+          keras.layers.Dense(
+              3, activation='relu', input_dim=4, kernel_initializer='ones'))
+      model.add(
+          keras.layers.Dense(
+              1, activation='sigmoid', kernel_initializer='ones'))
+      model.compile(
+          loss='mae',
+          metrics=['accuracy', keras.metrics.BinaryAccuracy()],
+          optimizer=gradient_descent.GradientDescentOptimizer(0.001),
+          distribute=distribution)
+
+      # verify correctness of stateful and stateless metrics.
+      x = np.ones((100, 4)).astype('float32')
+      y = np.ones((100, 1)).astype('float32')
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat()
+      dataset = batch_wrapper(dataset, 4, distribution)
+      outs = model.evaluate(dataset, steps=10)
+      self.assertEqual(outs[1], 1.)
+      self.assertEqual(outs[2], 1.)
+
+      y = np.zeros((100, 1)).astype('float32')
+      dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).repeat()
+      dataset = batch_wrapper(dataset, 4, distribution)
+      outs = model.evaluate(dataset, steps=10)
+      self.assertEqual(outs[1], 0.)
+      self.assertEqual(outs[2], 0.)
 
   @combinations.generate(strategy_and_input_combinations())
   def test_correctness(self, distribution, use_numpy, use_validation_data):
 
     with self.cached_session():
-      tolerance = 1e-5
+      default_tolerance = 1e-5
+      tol_table = {}
 
       if isinstance(distribution, (mirrored_strategy.MirroredStrategy,
                                    mirrored_strategy.CoreMirroredStrategy)):
-        # TODO(b/119257215): use the default one once the flakyness is fixed.
-        tolerance = 1e-4
-
-      if (use_validation_data and
-          not isinstance(distribution, tpu_strategy.TPUStrategy)):
-        # TODO(b/120435565): Enable tests with use_validation_data once the
-        # the underlying bug is fixed.
-        return
+        # TODO(b/119257215): Weights are not exactly the same, so use larger
+        # tolerance for now. Predict should be related to weights.
+        tol_table = {
+            'weights_1': 1e-4,
+            'weights_2': 1e-4,
+            'predict_result_1': 1e-4,
+        }
 
       keras.backend.set_image_data_format('channels_last')
       np.random.seed(_RANDOM_SEED)
@@ -1318,6 +1348,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
         model.compile(
             loss=keras.losses.mean_squared_error,
             optimizer=gradient_descent_keras.SGD(0.5),
+            metrics=['mse'],
             distribute=with_distribution)
 
         training_inputs, eval_inputs, predict_inputs = (
@@ -1325,45 +1356,47 @@ class TestDistributionStrategyCorrectness(test.TestCase,
                                         with_distribution,
                                         x_train, y_train, x_predict))
 
-        traning_history = model.fit(**training_inputs).history
+        result = {}
+        result['training_history_1'] = model.fit(**training_inputs).history
 
         if eval_inputs is not None:
-          eval_result = model.evaluate(**eval_inputs)
-        else:
-          # Creates a dummy identical eval_result to be compared later.
-          eval_result = 1.0
+          result['eval_result_1'] = model.evaluate(**eval_inputs)
 
-        weights = model.get_weights()
-        predict_result = model.predict(**predict_inputs)
+        result['weights_1'] = model.get_weights()
+        result['predict_result_1'] = model.predict(**predict_inputs)
 
-        return weights, traning_history, eval_result, predict_result
+        # Train and eval again to mimic user's flow.
 
-      wts_with_ds, history_with_ds, eval_with_ds, predict_with_ds = (
-          fit_eval_and_predict(with_distribution=distribution))
+        result['training_history_2'] = model.fit(**training_inputs).history
 
-      (wts_without_ds, history_without_ds, eval_without_ds,
-       predict_without_ds) = fit_eval_and_predict(with_distribution=None)
+        if eval_inputs is not None:
+          result['eval_result_2'] = model.evaluate(**eval_inputs)
+
+        result['weights_2'] = model.get_weights()
+
+        return result
+
+      results_with_ds = fit_eval_and_predict(with_distribution=distribution)
+      results_without_ds = fit_eval_and_predict(with_distribution=None)
 
       # Verify that the weights, training history, eval results, predict outputs
       # are the same within some limits of tolerance.
-      self.assertAllClose(
-          wts_with_ds, wts_without_ds, atol=tolerance, rtol=tolerance,
-          msg='Fail to assert weights after training.')
+      for key in results_with_ds:
+        if (key.startswith('training_history') and
+            isinstance(distribution, tpu_strategy.TPUStrategy) and
+            distribution.extended.steps_per_run > 1):
+          # TODO(b/119894254): Enable this test for all cases once the
+          # underlying bug is fixed.
+          continue
 
-      self.assertAllClose(
-          eval_with_ds, eval_without_ds, atol=tolerance, rtol=tolerance,
-          msg='Fail to assert eval results.')
-      self.assertAllClose(
-          predict_with_ds, predict_without_ds, atol=tolerance, rtol=tolerance,
-          msg='Fail to assert predict results.')
+        tolerance = tol_table.get(key, default_tolerance)
 
-      if not (isinstance(distribution, tpu_strategy.TPUStrategy)
-              and distribution.extended.steps_per_run > 1):
-        # TODO(b/119894254): Enable this test for all cases once the underlying
-        # bug is fixed.
         self.assertAllClose(
-            history_with_ds, history_without_ds, atol=tolerance, rtol=tolerance,
-            msg='Fail to assert training history.')
+            results_with_ds[key],
+            results_without_ds[key],
+            atol=tolerance,
+            rtol=tolerance,
+            msg='Fail to assert {}.'.format(key))
 
 
 if __name__ == '__main__':

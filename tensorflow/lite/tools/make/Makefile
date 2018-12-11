@@ -52,6 +52,7 @@ LIBS := \
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
 CXXFLAGS := -O3 -DNDEBUG
+CXXFLAGS += $(EXTRA_CXXFLAGS)
 CCFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
 CFLAGS :=

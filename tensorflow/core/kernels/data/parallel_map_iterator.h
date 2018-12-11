@@ -48,7 +48,7 @@ std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
     const DatasetBase* input_dataset,
     std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
-    int32 num_parallel_calls, bool sloppy);
+    int32 num_parallel_calls, bool sloppy, bool preserve_cardinality);
 
 }  // namespace data
 }  // namespace tensorflow

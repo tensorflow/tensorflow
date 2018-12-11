@@ -10504,6 +10504,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ExperimentalMapDataset"
@@ -10545,6 +10552,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -10684,6 +10698,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -10918,6 +10939,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {
@@ -15763,6 +15791,46 @@ op {
   }
 }
 op {
+  name: "Lu"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "lu"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "p"
+    type_attr: "output_idx_type"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  attr {
+    name: "output_idx_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "MakeIterator"
   input_arg {
     name: "dataset"
@@ -15852,6 +15920,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -19899,6 +19974,13 @@ op {
   }
   attr {
     name: "sloppy"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "preserve_cardinality"
     type: "bool"
     default_value {
       b: false
@@ -38072,6 +38154,17 @@ op {
   is_stateful: true
 }
 op {
+  name: "UnwrapDatasetVariant"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
+  }
+}
+op {
   name: "UpperBound"
   input_arg {
     name: "sorted_inputs"
@@ -38387,6 +38480,17 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "WrapDatasetVariant"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
   }
 }
 op {

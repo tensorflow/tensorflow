@@ -110,6 +110,11 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.compute_pool
 }
 
+void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {
+  builder->AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS,
+                              std::numeric_limits<int>::max());
+}
+
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func,

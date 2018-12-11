@@ -112,6 +112,12 @@ class Node {
   explicit Node(Args args)
       : id_(args.id), name_(args.name), output_(args.output.get()) {}
 
+  // Increments the bytes buffered by the given delta.
+  void add_buffered_bytes(int64 delta) LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    buffered_bytes_ += delta;
+  }
+
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
@@ -124,17 +130,23 @@ class Node {
     processing_time_ += delta;
   }
 
+  // Returns the number of bytes stored in this node's buffer.
+  int64 buffered_bytes() const LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return buffered_bytes_;
+  }
+
   // Returns the unique node ID.
   int64 id() const LOCKS_EXCLUDED(mu_) { return id_; }
-
-  // Returns the node name.
-  const string& name() const { return name_; }
 
   // Returns the node inputs.
   std::list<std::shared_ptr<Node>> inputs() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return inputs_;
   }
+
+  // Returns the node name.
+  const string& name() const { return name_; }
 
   // Returns the number of elements produced by the node.
   int64 num_elements() const LOCKS_EXCLUDED(mu_) {
@@ -185,7 +197,8 @@ class Node {
 
   // Collects tunable parameters in the subtree rooted in this node.
   void CollectTunableParameters(
-      std::vector<std::shared_ptr<Parameter>>* parameters) LOCKS_EXCLUDED(mu_) {
+      std::vector<std::shared_ptr<Parameter>>* parameters) const
+      LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     for (auto& pair : parameters_) {
       if (pair.second->state->tunable) {
@@ -219,6 +232,7 @@ class Node {
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     std::shared_ptr<Node> result = Clone(output);
+    result->buffered_bytes_ = buffered_bytes_;
     result->processing_time_ = processing_time_;
     result->num_elements_ = num_elements_;
     result->parameters_ = parameters_;
@@ -274,6 +288,7 @@ class Node {
   mutable mutex mu_;
   const int64 id_;
   const string name_;
+  int64 buffered_bytes_ GUARDED_BY(mu_) = 0;
   int64 processing_time_ GUARDED_BY(mu_) = 0;
   int64 num_elements_ GUARDED_BY(mu_) = 0;
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);

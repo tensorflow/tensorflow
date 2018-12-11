@@ -22,6 +22,7 @@ import os
 
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training.checkpointable import tracking
@@ -31,8 +32,9 @@ from tensorflow.python.util import compat
 class _Loader(object):
   """Helper class to load an object-based SavedModel."""
 
-  def __init__(self, proto, export_dir):
-    self._proto = proto
+  def __init__(self, object_graph_proto, saved_model_proto, export_dir):
+    self._asset_file_def = saved_model_proto.meta_graphs[0].asset_file_def
+    self._proto = object_graph_proto
     self._export_dir = export_dir
     self._load_all()
 
@@ -63,7 +65,7 @@ class _Loader(object):
   def _recreate_asset(self, proto):
     filename = os.path.join(
         saved_model_utils.get_assets_dir(self._export_dir),
-        proto.relative_filename)
+        self._asset_file_def[proto.asset_file_def_index].filename)
     return tracking.TrackableAsset(filename)
 
 
@@ -75,13 +77,16 @@ def _load_saved_object_graph_proto(filename):
 
 def load(export_dir):
   """Load a SavedModel from `export_dir`."""
+  saved_model_proto = loader_impl.parse_saved_model(export_dir)
   object_graph_filename = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY),
       compat.as_bytes("object_graph.pb"))
   if file_io.file_exists(object_graph_filename):
-    proto = _load_saved_object_graph_proto(object_graph_filename)
-    loader = _Loader(proto, export_dir)
+    object_graph_proto = _load_saved_object_graph_proto(object_graph_filename)
+    loader = _Loader(object_graph_proto,
+                     saved_model_proto,
+                     export_dir)
     root = loader.get(0)
   else:
     raise NotImplementedError(
