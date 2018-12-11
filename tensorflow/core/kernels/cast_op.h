@@ -120,21 +120,19 @@ class CpuCastOp : public CastOpBase {
 namespace functor {
 
 template <typename I>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-constexpr int MantissaWidth() {
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE constexpr int MantissaWidth() {
   return std::numeric_limits<I>::digits;
 }
 
 template <>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-constexpr int MantissaWidth<Eigen::half>() {
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE constexpr int
+MantissaWidth<Eigen::half>() {
   // Remember, there's 1 hidden bit
   return 10 + 1;
 }
 
 template <>
-EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
-constexpr int MantissaWidth<bfloat16>() {
+EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE constexpr int MantissaWidth<bfloat16>() {
   // Remember, there's 1 hidden bit
   return 7 + 1;
 }
