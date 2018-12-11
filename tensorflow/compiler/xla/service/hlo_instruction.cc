@@ -569,6 +569,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
+
+  TF_RET_CHECK(proto.id() >= 0)
+      << "Instruction with negative id: " << proto.id();
+  TF_RET_CHECK(proto.id() <= INT_MAX)
+      << "Instruction with id > INT_MAX: " << proto.id();
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
