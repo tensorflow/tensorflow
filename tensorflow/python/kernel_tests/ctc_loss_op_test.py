@@ -811,7 +811,7 @@ class CTCLossTestV2(test.TestCase):
       x = random_ops.random_uniform([])
       fn = lambda accum, elem: accum + x * elem
       out = ctc_ops._scan(fn, constant_op.constant([0.0, 1.0, 2.0]), 23.0)
-      self.assertAllEqual(*sess.run([
+      self.assertAllClose(*sess.run([
           [23.0 + x * 0.0, 23.0 + x * 1.0, 23.0 + x * 3.0], out
       ]))
 
