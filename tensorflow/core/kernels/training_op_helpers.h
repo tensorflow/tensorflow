@@ -178,7 +178,7 @@ VariableInputLockHolder MaybeLockVariableInputMutexesInOrder(
     mutex* mu = GetTrainingVariableMutex<Device, T>(ctx, input, sparse, &var);
     core::ScopedUnref scoped_unref(var);
     if (mu != nullptr) {
-      if (do_lock) {
+      if (!sparse || do_lock) {
         locks->emplace_back(*mu);
       } else {
         shared_locks->emplace_back(*mu);
