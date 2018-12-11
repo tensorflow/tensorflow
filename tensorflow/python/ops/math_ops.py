@@ -3061,8 +3061,8 @@ def reduced_shape(input_shape, axes):
     input_shape[axes] = 1
     return input_shape
 
-  input_shape = to_int32(input_shape)  # [2, 3, 5, 7]
-  axes = to_int32(axes)  # [1, 2]
+  input_shape = cast(input_shape, dtypes.int32)  # [2, 3, 5, 7]
+  axes = cast(axes, dtypes.int32)  # [1, 2]
 
   input_rank = array_ops.size(input_shape)  # 4
   axes = (axes + input_rank) % input_rank
