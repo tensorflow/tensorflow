@@ -1,0 +1,125 @@
+project_path: /lite/_project.yaml
+book_path: /lite/_book.yaml
+description: <!--no description-->
+landing_page:
+  body_class: tfo-hide-page-nav
+  custom_css_path: /site-assets/css/style.css
+  show_side_navs: true
+  rows:
+
+  # Hero
+  - classname: >
+      devsite-landing-row-50
+      devsite-landing-row-large-headings
+      devsite-landing-row-no-image-background
+    foreground: theme
+    items:
+    - heading: Models marketplace
+      description: >
+        The TensorFlow Lite models marketplace, your neighborhood model shoppe.
+      image_path: /resources/images/tflite-card-16x9.png
+
+  # Features
+  - background: grey
+    items:
+    - heading: Optimized for mobile
+      description: >
+        Machine learning can make your apps more engaging, personalized, and
+        helpful, and provides solutions that are optimized to run on-device.
+    - heading: Built with Google expertise
+      description: >
+        Models offer the technologies that have long powered Google's own
+        experiences on mobile.
+    - heading: Approachable and comprehensive
+      description: >
+        Use out-of-the-box solutions (base APIs) or custom models, running
+        on-device or in the Cloud, depending on your specific needs.
+
+  # Beginner models
+  - classname: devsite-landing-row-100
+    heading: "Build machine learning into your apps"
+    items:
+    - heading: >
+        Image labeling
+      description: >
+        Identify objects, locations, activities, animal species, products, and
+        more
+      icon:
+        path: ../images/landing-page/assistant_logo.png
+      path: /lite/image/labeling/
+    - heading: >
+        Text recognition (OCR)
+      description: >
+        Recognize and extract text from images
+      icon:
+        path: ../images/landing-page/assistant_logo.png
+      path: /lite/image/labeling/
+    - heading: >
+        Face detection
+      description: >
+        Detect faces and facial landmarks
+      icon:
+        path: ../images/landing-page/assistant_logo.png
+      path: /lite/image/labeling/
+
+  - items:
+    - heading: >
+        Barcode scanning
+      description: >
+        Scan and process barcodes
+      icon:
+        path: ../images/landing-page/assistant_logo.png
+      path: /lite/image/labeling/
+    - heading: >
+        Landmark detection
+      description: >
+        Identify popular landmarks in an image
+      icon:
+        path: ../images/landing-page/assistant_logo.png
+      path: /lite/image/labeling/
+    - heading: >
+        Smart reply
+      description: >
+        Provide suggested text snippet that fits context
+      icon:
+        path: ../images/landing-page/assistant_logo.png
+      path: /lite/image/labeling/
+
+  # Custom models
+  - classname: >
+      devsite-landing-row-no-image-background
+      devsite-landing-row-50
+      devsite-landing-row-large-headings
+    foreground: theme
+    background: grey
+    items:
+    - heading: Custom models
+      description: >
+        <p>If models don’t cover your use cases, you can always
+        bring your own existing TensorFlow Lite models. Just upload your model,
+        and we’ll take care of hosting and serving it to your app.</p>
+
+        <p>Models acts as an API layer to your custom model, making it easy to
+        run and use. In addition to deploying your models, we are releasing an
+        experimental model compression flow that aims to reduce model size (up
+        to orders of magnitudes) while maintaining similar accuracy. Sign up at
+        <a href="https://g.co/firebase/signup">g.co/firebase/signup</a></p>
+
+        <p>And if you’re new to machine learning and want more information on
+        custom models for mobile, you can <a
+        href="//www.tensorflow.org/lite/">learn more about TensorFlow
+        Lite.</a></p>
+      image_path: /resources/images/tflite-card-16x9.png
+      image_left: true
+  - classname: devsite-landing-row-large-headings
+    foreground: theme
+    items:
+    - heading: Just the beginning
+      description: >
+        Our ultimate goal is to reduce idea–to–implementation cycles and make AI
+        an essential and intuitive part of a developer's toolkit. We will do so
+        by continuing to add new Base APIs that leverage Google’s machine
+        learning expertise. Base APIs will ultimately cover significantly more
+        use cases in the vision, speech, and text fields. We will also continue
+        to simplify use of custom models, adding tools to deploy, compress, and
+        create them.
