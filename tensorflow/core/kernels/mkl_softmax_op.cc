@@ -76,8 +76,10 @@ class MklSoftmaxOp : public OpKernel {
       // "nc" for 2 dim tensor, "tnc" for 3 dim tensor, "nchw" for 4 dim tensor,
       // and "ncdhw" for 5 dim tensor. Each of the symbols has the following
       // meaning: n = batch, c = channels, t = sequence length, h = height, w =
-      // width, d = depth. When src tensor is MKL, layout_type here is only used 
-      // for setting TF layout type of output tensor.
+      // width, d = depth. When src tensor is MKL, layout_type here is only used
+      // for setting TF layout type of output tensor. When input is TF Tensor,
+      // layout here is no special sense. We use axis to define on which
+      // dimension to do softmax.
       switch (input_dims) {
         case 1:
           layout_type = memory::format::x;
