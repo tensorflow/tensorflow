@@ -22,49 +22,48 @@ limitations under the License.
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 
 namespace xla {
-namespace {
 
-DebugOptions* flag_values;
-std::vector<tensorflow::Flag>* flag_objects;
-std::once_flag flags_init;
-
-void SetDebugOptionsDefaults(DebugOptions* flags) {
-  flags->set_xla_llvm_enable_alias_scope_metadata(true);
-  flags->set_xla_llvm_enable_noalias_metadata(true);
-  flags->set_xla_llvm_enable_invariant_load_metadata(true);
-  flags->set_xla_llvm_disable_expensive_passes(false);
-  flags->set_xla_backend_optimization_level(3);
-  flags->set_xla_cpu_multi_thread_eigen(true);
-  flags->set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
-  flags->set_xla_eliminate_hlo_implicit_broadcast(true);
+DebugOptions DefaultDebugOptionsIgnoringFlags() {
+  DebugOptions opts;
+  opts.set_xla_llvm_enable_alias_scope_metadata(true);
+  opts.set_xla_llvm_enable_noalias_metadata(true);
+  opts.set_xla_llvm_enable_invariant_load_metadata(true);
+  opts.set_xla_llvm_disable_expensive_passes(false);
+  opts.set_xla_backend_optimization_level(3);
+  opts.set_xla_cpu_multi_thread_eigen(true);
+  opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
+  opts.set_xla_eliminate_hlo_implicit_broadcast(true);
 #ifdef INTEL_MKL
-  flags->set_xla_cpu_use_mkl_dnn(true);
+  opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
-  flags->set_xla_gpu_max_kernel_unroll_factor(4);
+  opts.set_xla_gpu_max_kernel_unroll_factor(4);
   // Set cudnn batchnorm off by default; it does not provide a performance win
   // on average.
-  flags->set_xla_gpu_use_cudnn_batchnorm(false);
+  opts.set_xla_gpu_use_cudnn_batchnorm(false);
 
   // Run all GPU work on one stream by default.  Using multiple streams
   // increases memory usage and we lack strong motivating benchmarks for tuning
   // the heuristics needed to decide when to run on multiple streams.  See
   // b/77879207.
-  flags->set_xla_gpu_disable_multi_streaming(true);
+  opts.set_xla_gpu_disable_multi_streaming(true);
 
   // TODO(jlebar): Disable fastmath once doing so is not a performance
   // regression.
-  flags->set_xla_cpu_enable_fast_math(true);
-  flags->set_xla_gpu_enable_fast_min_max(true);
+  opts.set_xla_cpu_enable_fast_math(true);
+  opts.set_xla_gpu_enable_fast_min_max(true);
 
-  flags->set_xla_force_host_platform_device_count(1);
+  opts.set_xla_force_host_platform_device_count(1);
+  return opts;
 }
+
+static DebugOptions* flag_values;
+static std::vector<tensorflow::Flag>* flag_objects;
+static std::once_flag flags_init;
 
 // Allocates flag_values and flag_objects; this function must not be called more
 // than once - its call done via call_once.
-void AllocateFlags() {
-  flag_values = new DebugOptions;
-
-  SetDebugOptionsDefaults(flag_values);
+static void AllocateFlags() {
+  flag_values = new DebugOptions(DefaultDebugOptionsIgnoringFlags());
 
   // Returns a lambda that calls "member_setter" on "flag_values" with the
   // argument passed in to the lambda.
@@ -343,8 +342,6 @@ void AllocateFlags() {
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
-
-}  // namespace
 
 void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list) {
   std::call_once(flags_init, &AllocateFlags);
