@@ -125,7 +125,6 @@ data_index = 0
 
 # Step 3: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
-  global data
   global data_index
   assert batch_size % num_skips == 0
   assert num_skips <= 2 * skip_window
