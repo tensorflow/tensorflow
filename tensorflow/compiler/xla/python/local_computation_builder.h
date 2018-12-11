@@ -394,6 +394,13 @@ class LocalComputationBuilder {
   LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
                      int64 dimension);
 
+  LocalOp QR(const LocalOp& a, bool full_matrices);
+
+  LocalOp Cholesky(const LocalOp& a);
+
+  LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
+                          bool lower, bool transpose_a, bool conjugate_a);
+
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
