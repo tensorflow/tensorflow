@@ -848,7 +848,6 @@ py_test(
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/saved_model:save_test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
