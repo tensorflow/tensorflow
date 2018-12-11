@@ -748,6 +748,19 @@ class Function(object):
     return ret
 
 
+class UnknownArgument(object):
+  """Signifies an argument which is not currently handled."""
+  pass
+
+
+def _encode_arg_for_serialization(arg):
+  """A representation for this argument, for serializing signatures."""
+  if isinstance(arg, ops.Tensor):
+    return tensor_spec.TensorSpec(arg.shape, arg.dtype)
+  else:
+    return UnknownArgument()
+
+
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
 pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
 
@@ -1163,6 +1176,14 @@ class PolymorphicFunction(object):
                 autograph=self._autograph,
                 arg_names=arg_names),
             self._function_attributes)
+        if self._input_signature:
+          python_call_signature = self._input_signature
+        else:
+          python_call_signature = tuple(
+              _encode_arg_for_serialization(arg) for arg in args)
+        # Save information about non-Tensor arguments with the concrete
+        # function. Used to serialize PolymorphicFunctions.
+        graph_function._python_call_signature = python_call_signature  # pylint: disable=protected-access
         self._function_cache[cache_key] = graph_function
       return graph_function, args, kwargs
 

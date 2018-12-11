@@ -20,8 +20,10 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.framework import function as function_lib
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
@@ -33,9 +35,17 @@ class _Loader(object):
   """Helper class to load an object-based SavedModel."""
 
   def __init__(self, object_graph_proto, saved_model_proto, export_dir):
-    self._asset_file_def = saved_model_proto.meta_graphs[0].asset_file_def
+    meta_graph = saved_model_proto.meta_graphs[0]
+    self._asset_file_def = meta_graph.asset_file_def
     self._proto = object_graph_proto
     self._export_dir = export_dir
+    self._defined_functions = {}
+    for defined_function in function_lib.from_library(
+        meta_graph.graph_def.library):
+      # TODO(allenl): Do we need to do name mapping here? Not quite sure what
+      # happens when loaded names collide with existing names.
+      defined_function.add_to_graph(None)
+      self._defined_functions[defined_function.name] = defined_function
     self._load_all()
 
   def _load_all(self):
@@ -52,6 +62,7 @@ class _Loader(object):
     factory = {
         "user_object": lambda: self._recreate_user_object(proto.user_object),
         "asset": lambda: self._recreate_asset(proto.asset),
+        "function": lambda: self._recreate_function(proto.function)
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
@@ -67,6 +78,10 @@ class _Loader(object):
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
     return tracking.TrackableAsset(filename)
+
+  def _recreate_function(self, proto):
+    return function_deserialization.recreate_polymorphic_function(
+        proto, self._defined_functions)
 
 
 def _load_saved_object_graph_proto(filename):
@@ -92,5 +107,4 @@ def load(export_dir):
     raise NotImplementedError(
         "Currently only SavedModels exported with `tf.saved_model.save` may be "
         "imported. Other SavedModels may eventually be supported via load().")
-  # TODO(allenl): load functions from the SavedModel into the eager context
   return root

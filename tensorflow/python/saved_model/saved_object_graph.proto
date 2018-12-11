@@ -48,6 +48,7 @@ message SavedObject {
   oneof kind {
     SavedUserObject user_object = 4;
     SavedAsset asset = 5;
+    SavedPolymorphicFunction function = 6;
   }
 }
 
@@ -70,4 +71,14 @@ message SavedAsset {
   // Only the field `AssetFileDef.filename` is used. Other fields, such as
   // `AssetFileDef.tensor_info`, MUST be ignored.
   uint32 asset_file_def_index = 1;
+}
+
+// A function with multiple signatures, possibly with non-Tensor arguments.
+message SavedPolymorphicFunction {
+  repeated SavedMonomorphicFunction monomorphic_function = 1;
+}
+
+message SavedMonomorphicFunction {
+  // A reference to a TensorFlow function in the MetaGraph's FunctionDefLibrary
+  string concrete_function = 1;
 }
