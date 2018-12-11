@@ -27,7 +27,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/concat_lib_gpu.h"
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
 
 namespace tensorflow {
 namespace {
