@@ -55,4 +55,4 @@ mkdir -p ./internal/proto
 ${PROTOC} \
   -I ${TF_DIR} \
   --go_out=./internal/proto \
-  ${TF_DIR}/tensorflow/core/framework/*.proto
+  /tensorflow/core/framework/*.proto
