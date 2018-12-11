@@ -521,9 +521,9 @@ class ParameterServerStrategyTestBase(
   def _test_reduce_to_cpu(self, task_type, task_id, num_gpus):
     d, master_target, sess_config = self._get_test_objects(
         task_type, task_id, num_gpus)
-    assert hasattr(d, '_cluster_spec') and d._cluster_spec
-    num_workers = len(d._cluster_spec.as_dict().get(WORKER))
-    if CHIEF in d._cluster_spec.as_dict():
+    assert hasattr(d.extended, '_cluster_spec') and d.extended._cluster_spec
+    num_workers = len(d.extended._cluster_spec.as_dict().get(WORKER))
+    if CHIEF in d.extended._cluster_spec.as_dict():
       num_workers += 1
 
     with ops.Graph().as_default(), \
@@ -535,18 +535,20 @@ class ParameterServerStrategyTestBase(
         y = x - constant_op.constant(1.)
         return y * y
 
-      two = d.broadcast(constant_op.constant(2.))
-      result_grouped = d.call_for_each_tower(minus_one_square, two)
-      result_mean = d.unwrap(d.reduce(variable_scope.VariableAggregation.MEAN,
-                                      result_grouped,
-                                      destinations="/device:CPU:0"))[0]
-      result_sum = d.unwrap(d.reduce(variable_scope.VariableAggregation.SUM,
-                                     result_grouped,
-                                     destinations="/device:CPU:0"))[0]
+      two = d.extended.broadcast_to(constant_op.constant(2.))
+      result_grouped = d.extended.call_for_each_replica(minus_one_square, two)
+      result_mean = d.unwrap(
+          d.reduce_to(variable_scope.VariableAggregation.MEAN,
+                      result_grouped,
+                      destinations="/device:CPU:0"))[0]
+      result_sum = d.unwrap(
+          d.reduce_to(variable_scope.VariableAggregation.SUM,
+                      result_grouped,
+                      destinations="/device:CPU:0"))[0]
 
       mean_var, sum_var = sess.run([result_mean, result_sum])
       self.assertEqual(mean_var, 1.0)
-      self.assertEqual(sum_var, 1.0 * num_workers * d.num_towers)
+      self.assertEqual(sum_var, 1.0 * num_workers * d.num_replicas_in_sync)
 
   def _test_input_fn_iterator(self, task_type, task_id, num_gpus, input_fn,
                               expected_values):
