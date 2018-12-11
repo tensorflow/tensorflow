@@ -1863,7 +1863,7 @@ class Checkpoint(tracking.Checkpointable):
       checkpoint_number = assign_op.numpy()
     file_path = self.write("%s-%d" % (file_prefix, checkpoint_number),
                            session=session)
-    checkpoint_management.update_checkpoint_state(
+    checkpoint_management.update_checkpoint_state_internal(
         save_dir=os.path.dirname(file_prefix),
         model_checkpoint_path=file_path,
         all_model_checkpoint_paths=[file_path])
