@@ -481,7 +481,8 @@ class TPUClusterResolver(ClusterResolver):
     return self._environment
 
   def _start_local_server(self):
-    address = self._requestComputeMetadata('instance/network-interfaces/0/ip')
+    address = compat.as_text(self._requestComputeMetadata(
+        'instance/network-interfaces/0/ip'))
     self._server = server_lib.Server(
         {
             'local': ['0.0.0.0:0']
