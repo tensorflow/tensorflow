@@ -71,7 +71,8 @@ TEST_F(FilterbankTest, CheckChannelFrequencyStarts) {
 
   const int16_t expected[] = {0, 4, 8};
   ASSERT_EQ(state.num_channels + 1, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i <= state.num_channels; ++i) {
+  int i;
+  for (i = 0; i <= state.num_channels; ++i) {
     EXPECT_EQ(state.channel_frequency_starts[i], expected[i]);
   }
 
@@ -85,7 +86,8 @@ TEST_F(FilterbankTest, CheckChannelWeightStarts) {
 
   const int16_t expected[] = {0, 8, 16};
   ASSERT_EQ(state.num_channels + 1, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i <= state.num_channels; ++i) {
+  int i;
+  for (i = 0; i <= state.num_channels; ++i) {
     EXPECT_EQ(state.channel_weight_starts[i], expected[i]);
   }
 
@@ -99,7 +101,8 @@ TEST_F(FilterbankTest, CheckChannelWidths) {
 
   const int16_t expected[] = {8, 8, 8};
   ASSERT_EQ(state.num_channels + 1, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i <= state.num_channels; ++i) {
+  int i;
+  for (i = 0; i <= state.num_channels; ++i) {
     EXPECT_EQ(state.channel_widths[i], expected[i]);
   }
 
@@ -117,7 +120,8 @@ TEST_F(FilterbankTest, CheckWeights) {
   ASSERT_EQ(state.channel_weight_starts[state.num_channels] +
                 state.channel_widths[state.num_channels],
             sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
+  int i;
+  for (i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
     EXPECT_EQ(state.weights[i], expected[i]);
   }
 
@@ -135,7 +139,8 @@ TEST_F(FilterbankTest, CheckUnweights) {
   ASSERT_EQ(state.channel_weight_starts[state.num_channels] +
                 state.channel_widths[state.num_channels],
             sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
+  int i;
+  for (i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
     EXPECT_EQ(state.unweights[i], expected[i]);
   }
 
@@ -154,7 +159,8 @@ TEST_F(FilterbankTest, CheckConvertFftComplexToEnergy) {
   int32_t* energy = reinterpret_cast<int32_t*>(fake_fft);
   FilterbankConvertFftComplexToEnergy(&state, fake_fft, energy);
 
-  for (int i = state.start_index; i < state.end_index; ++i) {
+  int i;
+  for (i = state.start_index; i < state.end_index; ++i) {
     EXPECT_EQ(energy[i], kEnergy[i]);
   }
 }
@@ -167,7 +173,8 @@ TEST_F(FilterbankTest, CheckAccumulateChannels) {
   FilterbankAccumulateChannels(&state, kEnergy);
 
   ASSERT_EQ(state.num_channels + 1, sizeof(kWork) / sizeof(kWork[0]));
-  for (int i = 0; i <= state.num_channels; ++i) {
+  int i;
+  for (i = 0; i <= state.num_channels; ++i) {
     EXPECT_EQ(state.work[i], kWork[i]);
   }
 
@@ -184,7 +191,8 @@ TEST_F(FilterbankTest, CheckSqrt) {
 
   const uint32_t expected[] = {247311, 508620};
   ASSERT_EQ(state.num_channels, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < state.num_channels; ++i) {
+  int i;
+  for (i = 0; i < state.num_channels; ++i) {
     EXPECT_EQ(scaled_filterbank[i], expected[i]);
   }
 
