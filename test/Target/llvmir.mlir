@@ -597,3 +597,14 @@ bb0:
   %6 = load %0#2 [%5, %5, %5, %5] : memref<42x?x10x?xf32>
   return
 }
+
+// CHECK-LABEL: define <4 x float> @vector_ops(<4 x float>) {
+// CHECK-NEXT:    %2 = fadd <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
+// CHECK-NEXT:    ret <4 x float> %2
+// CHECK-NEXT:  }
+cfgfunc @vector_ops(vector<4xf32>) -> vector<4xf32> {
+bb0(%arg0 : vector<4xf32>):
+  %0 = constant splat<vector<4xf32>, 42.> : vector<4xf32>
+  %1 = addf %arg0, %0 : vector<4xf32>
+  return %1 : vector<4xf32>
+}
