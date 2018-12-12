@@ -58,6 +58,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/stream_executor/device_memory.h"
+
+#ifndef PLATFORM_GOOGLE
+#include "tensorflow/stream_executor/dso_loader.h"
+#endif
+
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -76,21 +81,8 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuBlasPlugin);
 
 namespace wrap {
 
-#define STREAM_EXECUTOR_CUBLAS_WRAP(__name)                         \
-  struct WrapperShim__##__name {                                    \
-    static const char *kName;                                       \
-    template <typename... Args>                                     \
-    cublasStatus_t operator()(CUDAExecutor *parent, Args... args) { \
-      cuda::ScopedActivateExecutorContext sac{parent};              \
-      return ::__name(args...);                                     \
-    }                                                               \
-  } __name;                                                         \
-  const char *WrapperShim__##__name::kName = #__name;
-
-#define STREAM_EXECUTOR_CUBLAS_V2_WRAP(__name) \
-  STREAM_EXECUTOR_CUBLAS_WRAP(__name)
-
-#define CUBLAS_BLAS_ROUTINE_EACH(__macro) \
+// clang-format off
+#define CUBLAS_ROUTINE_EACH(__macro)      \
   __macro(cublasSnrm2)                    \
   __macro(cublasDnrm2)                    \
   __macro(cublasScnrm2)                   \
@@ -262,6 +254,58 @@ namespace wrap {
   __macro(cublasCdgmm)                    \
   __macro(cublasZdgmm)
 
+// clang-format off
+
+#ifdef PLATFORM_GOOGLE
+#define STREAM_EXECUTOR_CUBLAS_WRAP(__name)                         \
+  struct WrapperShim__##__name {                                    \
+    static const char *kName;                                       \
+    template <typename... Args>                                     \
+    cublasStatus_t operator()(CUDAExecutor *parent, Args... args) { \
+      cuda::ScopedActivateExecutorContext sac{parent};              \
+      return ::__name(args...);                                     \
+    }                                                               \
+  } __name;                                                         \
+  const char *WrapperShim__##__name::kName = #__name;
+
+#define STREAM_EXECUTOR_CUBLAS_V2_WRAP(__name) \
+  STREAM_EXECUTOR_CUBLAS_WRAP(__name)
+
+#else
+
+#define STREAM_EXECUTOR_CUBLAS_WRAP(__name)                               \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetCublasDsoHandle();           \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void* f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in cublas DSO; dlerror: " << s.error_message();  \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    cublasStatus_t operator()(CUDAExecutor* parent, Args... args) {       \
+      cuda::ScopedActivateExecutorContext sac{parent};                    \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
+
+#define STREAM_EXECUTOR_CUBLAS_V2_WRAP(__name) \
+  STREAM_EXECUTOR_CUBLAS_WRAP(__name)
+
+#endif
+
 STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasCreate)
 STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasDestroy)
 STREAM_EXECUTOR_CUBLAS_V2_WRAP(cublasSetStream)
@@ -271,7 +315,7 @@ STREAM_EXECUTOR_CUBLAS_WRAP(cublasSgemmBatched)
 STREAM_EXECUTOR_CUBLAS_WRAP(cublasDgemmBatched)
 STREAM_EXECUTOR_CUBLAS_WRAP(cublasCgemmBatched)
 STREAM_EXECUTOR_CUBLAS_WRAP(cublasZgemmBatched)
-CUBLAS_BLAS_ROUTINE_EACH(STREAM_EXECUTOR_CUBLAS_V2_WRAP)
+CUBLAS_ROUTINE_EACH(STREAM_EXECUTOR_CUBLAS_V2_WRAP)
 
 #if CUDA_VERSION >= 7050
 STREAM_EXECUTOR_CUBLAS_WRAP(cublasSgemmEx)
@@ -424,7 +468,8 @@ class ScopedCublasMathMode {
   // Note that when false is returned, an appropriate error has already been
   // logged.
   bool Init(cublasMath_t new_mode) {
-    cublasStatus_t ret = wrap::cublasGetMathMode(parent_, handle_, &old_mode_);
+    cublasStatus_t ret =
+        wrap::cublasGetMathMode(parent_, handle_, &old_mode_);
     if (ret != CUBLAS_STATUS_SUCCESS) {
       LOG(ERROR) << "failed to get old cublas math mode: " << ToString(ret);
       return ok_ = false;
@@ -442,7 +487,8 @@ class ScopedCublasMathMode {
   // successful in the first place.
   ~ScopedCublasMathMode() {
     if (ok_) {
-      cublasStatus_t ret = wrap::cublasSetMathMode(parent_, handle_, old_mode_);
+      cublasStatus_t ret =
+          wrap::cublasSetMathMode(parent_, handle_, old_mode_);
       if (ret != CUBLAS_STATUS_SUCCESS) {
         LOG(ERROR) << "failed to set former cublas math mode: "
                    << ToString(ret);
@@ -675,16 +721,16 @@ bool CUDABlas::DoBlasAsum(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<float> *result) {
   return DoBlasInternal(
-      wrap::cublasScasum, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasScasum, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasAsum(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<double> *result) {
   return DoBlasInternal(
-      wrap::cublasDzasum, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasDzasum, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasAxpy(Stream *stream, uint64 elem_count, float alpha,
@@ -835,16 +881,16 @@ bool CUDABlas::DoBlasNrm2(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<float> *result) {
   return DoBlasInternal(
-      wrap::cublasScnrm2, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasScnrm2, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasNrm2(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<double> *result) {
   return DoBlasInternal(
-      wrap::cublasDznrm2, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasDznrm2, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasRot(Stream *stream, uint64 elem_count,
@@ -1060,48 +1106,48 @@ bool CUDABlas::DoBlasIamax(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<float>> &x, int incx,
                            DeviceMemory<int> *result) {
   return DoBlasInternal(
-      wrap::cublasIcamax, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasIcamax, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasIamax(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<double>> &x,
                            int incx, DeviceMemory<int> *result) {
   return DoBlasInternal(
-      wrap::cublasIzamax, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasIzamax, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<float> &x, int incx,
                            DeviceMemory<int> *result) {
   return DoBlasInternal(
-      wrap::cublasIsamin, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasIsamin, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<double> &x, int incx,
                            DeviceMemory<int> *result) {
   return DoBlasInternal(
-      wrap::cublasIdamin, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasIdamin, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<float>> &x, int incx,
                            DeviceMemory<int> *result) {
   return DoBlasInternal(
-      wrap::cublasIcamin, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasIcamin, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<double>> &x,
                            int incx, DeviceMemory<int> *result) {
   return DoBlasInternal(
-      wrap::cublasIzamin, stream, false /* = pointer_mode_host */, elem_count,
-      CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
+      wrap::cublasIzamin, stream, false /* = pointer_mode_host */,
+      elem_count, CUDAComplex(CUDAMemory(x)), incx, CUDAMemoryMutable(result));
 }
 
 bool CUDABlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,

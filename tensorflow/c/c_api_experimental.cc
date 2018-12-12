@@ -6530,7 +6530,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/cycle_length"
+      name: "ExperimentalParallelInterleaveDataset/cycle_length"
       op: "Const"
       attr {
         key: "dtype"
@@ -6551,7 +6551,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/block_length"
+      name: "ExperimentalParallelInterleaveDataset/block_length"
       op: "Const"
       attr {
         key: "dtype"
@@ -6572,7 +6572,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/sloppy"
+      name: "ExperimentalParallelInterleaveDataset/sloppy"
       op: "Const"
       attr {
         key: "dtype"
@@ -6593,7 +6593,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/buffer_output_elements"
+      name: "ExperimentalParallelInterleaveDataset/buffer_output_elements"
       op: "Const"
       attr {
         key: "dtype"
@@ -6614,7 +6614,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/prefetch_input_elements"
+      name: "ExperimentalParallelInterleaveDataset/prefetch_input_elements"
       op: "Const"
       attr {
         key: "dtype"
@@ -6635,14 +6635,14 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset"
-      op: "ParallelInterleaveDataset"
+      name: "ExperimentalParallelInterleaveDataset"
+      op: "ExperimentalParallelInterleaveDataset"
       input: "RepeatDataset:handle:0"
-      input: "ParallelInterleaveDataset/cycle_length:output:0"
-      input: "ParallelInterleaveDataset/block_length:output:0"
-      input: "ParallelInterleaveDataset/sloppy:output:0"
-      input: "ParallelInterleaveDataset/buffer_output_elements:output:0"
-      input: "ParallelInterleaveDataset/prefetch_input_elements:output:0"
+      input: "ExperimentalParallelInterleaveDataset/cycle_length:output:0"
+      input: "ExperimentalParallelInterleaveDataset/block_length:output:0"
+      input: "ExperimentalParallelInterleaveDataset/sloppy:output:0"
+      input: "ExperimentalParallelInterleaveDataset/buffer_output_elements:output:0"
+      input: "ExperimentalParallelInterleaveDataset/prefetch_input_elements:output:0"
       attr {
         key: "Targuments"
         value {
@@ -6742,7 +6742,7 @@ library {
     node_def {
       name: "ShuffleDataset_2"
       op: "ShuffleDataset"
-      input: "ParallelInterleaveDataset:handle:0"
+      input: "ExperimentalParallelInterleaveDataset:handle:0"
       input: "ShuffleDataset_2/buffer_size_1:output:0"
       input: "ShuffleDataset_2/seed_2:output:0"
       input: "ShuffleDataset_2/seed2_2:output:0"

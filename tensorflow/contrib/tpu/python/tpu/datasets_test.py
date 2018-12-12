@@ -70,7 +70,7 @@ class DatasetsTest(test.TestCase):
     dataset = datasets.StreamingFilesDataset(
         os.path.join(self.get_temp_dir(), 'text_line.*.txt'), filetype='text')
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 
@@ -94,7 +94,7 @@ class DatasetsTest(test.TestCase):
     dataset = datasets.StreamingFilesDataset(
         os.path.join(self.get_temp_dir(), 'tf_record*'), filetype='tfrecord')
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 
@@ -121,7 +121,7 @@ class DatasetsTest(test.TestCase):
 
     dataset = datasets.StreamingFilesDataset(filenames, filetype='tfrecord')
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 
@@ -154,7 +154,7 @@ class DatasetsTest(test.TestCase):
         os.path.join(self.get_temp_dir(), 'fixed_length*'),
         filetype=FixedLengthFile)
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 
@@ -177,7 +177,7 @@ class DatasetsTest(test.TestCase):
     dataset = datasets.StreamingFilesDataset(
         dataset_ops.Dataset.range(10), filetype=gen_dataset)
 
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     self._sess.run(iterator.initializer)
     get_next = iterator.get_next()
 

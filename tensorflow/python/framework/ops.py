@@ -43,7 +43,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
@@ -1113,10 +1112,9 @@ def internal_convert_to_tensor(value,
   if ctx is None: ctx = context.context()
   if isinstance(value, EagerTensor):
     if ctx.executing_eagerly():
-      # Fast path for EagerTensors that don't need any conversion.
-      # Note that we don't check that value's dtype matches the dtype
-      # argument.  We expect that the C runtime will do that checking
-      # when we execute the kernel.
+      if dtype is not None:
+        dtype = dtypes.as_dtype(dtype)
+        value = _TensorTensorConversionFunction(value, dtype=dtype)
       return value
     else:
       graph = get_default_graph()
@@ -2086,6 +2084,31 @@ class Operation(object):
         self._graph._c_graph,  # pylint: disable=protected-access
         tensor._as_tf_output(),  # pylint: disable=protected-access
         self._tf_input(index))
+
+  def _add_while_inputs(self, tensors):
+    """See AddWhileInputHack in python_api.h.
+
+    NOTE: This is for TF internal use only. Please don't use it.
+
+    Args:
+      tensors: list of Tensors
+
+    Raises:
+      TypeError: if tensor is not a Tensor,
+        or if input tensor type is not convertible to dtype.
+      ValueError: if the Tensor is from a different graph.
+    """
+    for tensor in tensors:
+      if not isinstance(tensor, Tensor):
+        raise TypeError("tensor must be a Tensor: %s" % tensor)
+      _assert_same_graph(self, tensor)
+
+      # Reset cached inputs.
+      self._inputs_val = None
+      c_api.AddWhileInputHack(
+          self._graph._c_graph,  # pylint: disable=protected-access
+          tensor._as_tf_output(),  # pylint: disable=protected-access
+          self._c_op)
 
   def _add_control_inputs(self, ops):
     """Add a list of new control inputs to this operation.
@@ -3307,36 +3330,6 @@ class Graph(object):
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
-  def _make_colocation_conflict_message(self, op, colocation_op):
-    """Return detailed error message about device conflict due to colocation."""
-    # Example error message:
-    #   Tried to colocate op 'a' (defined at file1.py:149) having device
-    #   '/device:GPU:0' with op 'b' (defined at file2:96) which had an
-    #   incompatible device '/device:CPU:0'.
-    #
-    #   No node-device colocations were active during op 'a' creation.
-    #   Device assignments active during op 'a' creation:
-    #     with tf.device(/device:GPU:0): file1.py:148>
-    #
-    #   Node-device colocations active during op 'b' creation:
-    #     with tf.colocate_with(a): file2.py:93>
-    #   Device assignments active during op 'b' creation:
-    #     with tf.device(/cpu:0): file2.py:94
-    op_info = error_interpolation.compute_field_dict(op)
-    coloc_op_info = error_interpolation.compute_field_dict(colocation_op)
-    msg = ("Tried to colocate op '{op_name}'{op_loc} having device '{op_dev}' "
-           "with op '{coloc_op_name}'{coloc_op_loc} which had an incompatible "
-           "device '{coloc_op_dev}'.\n\n{op_summary}\n\n{coloc_op_summary}"
-           .format(op_name=op.name,
-                   op_loc=op_info["defined_at"],
-                   op_dev=op.device,
-                   op_summary=op_info["devs_and_colocs"],
-                   coloc_op_name=colocation_op.name,
-                   coloc_op_loc=coloc_op_info["defined_at"],
-                   coloc_op_dev=colocation_op.device,
-                   coloc_op_summary=coloc_op_info["devs_and_colocs"]))
-    return msg
-
   def _create_op_helper(self, op, compute_device=True):
     """Common logic for creating an op in this graph."""
     # Apply any additional attributes requested. Do not overwrite any existing
@@ -3389,12 +3382,9 @@ class Graph(object):
       for colocation_op in self._colocation_stack.peek_objs():
         all_colocation_groups.extend(colocation_op.colocation_groups())
         if colocation_op.device:
-          if (op.device and pydev.canonical_name(op.device) !=
-              pydev.canonical_name(colocation_op.device)):
-            msg = self._make_colocation_conflict_message(op, colocation_op)
-            logging.warning(msg)
-          else:
-            op._set_device(colocation_op.device)  # pylint: disable=protected-access
+          # pylint: disable=protected-access
+          op._set_device(colocation_op.device)
+          # pylint: enable=protected-access
 
       all_colocation_groups = sorted(set(all_colocation_groups))
       # pylint: disable=protected-access
@@ -5385,6 +5375,10 @@ def init_scope():
 
 def executing_eagerly_outside_functions():
   """Returns True if executing eagerly, even if inside a graph function."""
+  # Fastpath for when this is called eagerly (its not necessary to init_scope).
+  if context.executing_eagerly():
+    return True
+
   with init_scope():
     return context.executing_eagerly()
 

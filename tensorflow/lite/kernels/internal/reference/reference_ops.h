@@ -4613,6 +4613,16 @@ inline void BroadcastPrelu4DSlow(const PreluParams& params,
   }
 }
 
+template <typename T>
+void Fill(const RuntimeShape& value_shape, const T* value_data,
+          const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_EQ(value_shape.DimensionsCount(), 0);
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = *value_data;
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 

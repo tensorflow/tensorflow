@@ -20,15 +20,16 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedConstOpTest(ragged_test_util.RaggedTensorTestCase,
+                        parameterized.TestCase):
 
   @parameterized.parameters(
       #=========================================================================
@@ -133,7 +134,6 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dict(pylist=[[b'a', b'b'], [b'c'], [b'd', b'e', b'f']],
            dtype=dtypes.string),
   )
-  @test_util.run_deprecated_v1
   def testRaggedConst(self,
                       pylist,
                       dtype=None,
@@ -157,7 +157,7 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       expected_dtype: The expected dtype for the resulting ragged tensor (used
         to test default/inferred types when dtype=None).
     """
-    rt = ragged_factory_ops.constant(
+    rt = ragged.constant(
         pylist, dtype=dtype, ragged_rank=ragged_rank, inner_shape=inner_shape)
 
     # If dtype was explicitly specified, check it.
@@ -168,31 +168,22 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # If ragged_rank was explicitly specified, check it.
     if ragged_rank is not None:
-      if isinstance(rt, ragged_tensor.RaggedTensor):
+      if isinstance(rt, ragged.RaggedTensor):
         self.assertEqual(rt.ragged_rank, ragged_rank)
       else:
         self.assertEqual(0, ragged_rank)
 
     # If inner_shape was explicitly specified, check it.
     if inner_shape is not None:
-      if isinstance(rt, ragged_tensor.RaggedTensor):
-        self.assertEqual(rt.inner_values.shape.as_list()[1:], list(inner_shape))
+      if isinstance(rt, ragged.RaggedTensor):
+        self.assertEqual(rt.flat_values.shape.as_list()[1:], list(inner_shape))
       else:
         self.assertEqual(rt.shape.as_list(), list(inner_shape))
 
     if expected_shape is not None:
       self.assertEqual(tuple(rt.shape.as_list()), expected_shape)
 
-    with self.test_session():
-      result = self.evaluate(rt)
-      if rt.shape.ndims > 0:
-        self.assertEqual(result.tolist(), pylist)
-        if expected_shape is not None:
-          self.assertEqual(result.shape, expected_shape)
-      else:
-        self.assertEqual(result, pylist)
-        if expected_shape is not None:
-          self.assertEqual((), expected_shape)
+    self.assertRaggedEqual(rt, pylist)
 
   @parameterized.parameters(
       dict(
@@ -236,11 +227,7 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           exception=ValueError,
           message='pylist has scalar values depth 2, but ragged_rank=2 '
           'requires scalar value depth greater than 2'),
-      dict(
-          pylist=[1, 2, 3],
-          inner_shape=(1, 1),
-          exception=TypeError,
-          message='Expected Tensor\'s shape'),
+      dict(pylist=[1, 2, 3], inner_shape=(1, 1), exception=TypeError),
       dict(
           pylist=[[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
           inner_shape=(2, 2),
@@ -259,7 +246,6 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           exception=ValueError,
           message='inner values have inconsistent shape'),
   )
-  @test_util.run_deprecated_v1
   def testRaggedConstError(self,
                            pylist,
                            dtype=None,
@@ -271,7 +257,7 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertRaisesRegexp(
         exception,
         message,
-        ragged_factory_ops.constant,
+        ragged.constant,
         pylist,
         dtype=dtype,
         ragged_rank=ragged_rank,
@@ -310,10 +296,10 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if exception is not None:
       self.assertRaisesRegexp(
           exception, message,
-          ragged_factory_ops._find_scalar_and_max_depth, pylist)
+          ragged.ragged_factory_ops._find_scalar_and_max_depth, pylist)
     else:
       self.assertEqual(
-          ragged_factory_ops._find_scalar_and_max_depth(pylist),
+          ragged.ragged_factory_ops._find_scalar_and_max_depth(pylist),
           (scalar_depth, max_depth))
 
   @parameterized.parameters([
@@ -360,11 +346,11 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if exception is not None:
       self.assertRaisesRegexp(
           exception, message,
-          ragged_factory_ops._default_inner_shape_for_pylist, pylist,
+          ragged.ragged_factory_ops._default_inner_shape_for_pylist, pylist,
           ragged_rank)
     else:
       self.assertEqual(
-          ragged_factory_ops._default_inner_shape_for_pylist(
+          ragged.ragged_factory_ops._default_inner_shape_for_pylist(
               pylist, ragged_rank), inner_shape)
 
 

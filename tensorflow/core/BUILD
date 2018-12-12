@@ -492,7 +492,10 @@ cc_library(
         ":platform_env_internal_hdrs",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         ":error_codes_proto_cc",
         ":lib",
@@ -1679,6 +1682,9 @@ filegroup(
 # operators, use :android_tensorflow_lib if you want full operator
 # support.
 #
+# If you just need TensorFlow types, e.g. Tensors, use
+# :android_tensorflow_lib_lite_no_runtime.
+#
 # Compiles to a trivial library on non-Android to prevent irrelevant
 # build errors. If not building this as part of an android_binary,
 # a command such as the following must be used:
@@ -1689,7 +1695,33 @@ filegroup(
 cc_library(
     name = "android_tensorflow_lib_lite",
     srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts(android_optimization_level_override = None),
+    copts = tf_copts(android_optimization_level_override = None) + [
+        "-DSUPPORT_SELECTIVE_REGISTRATION",
+    ],
+    linkopts = ["-lz"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":mobile_additional_lib_deps",
+        ":protos_all_cc_impl",
+        ":stats_calculator_portable",
+        "//third_party/eigen3",
+        "@double_conversion//:double-conversion",
+        "@nsync//:nsync_cpp",
+        "@protobuf_archive//:protobuf",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "android_tensorflow_lib_lite_nortti",
+    srcs = if_android(["//tensorflow/core:android_srcs"]),
+    copts = tf_copts(android_optimization_level_override = None) + [
+        "-DSUPPORT_SELECTIVE_REGISTRATION",
+    ] + tf_opts_nortti_if_android(),
     linkopts = ["-lz"],
     tags = [
         "manual",
@@ -1801,52 +1833,21 @@ cc_library(
 # Does not contain operators. In contrast to android_tensorflow_lib_lite,
 # this links in framework support for all types, relying on selective
 # registration of ops to prune code size.
-cc_library(
+#
+# TODO(gonnet): Move all users of these aliases to the corresponding
+#     :android_tensorflow_lib_lite* targets and remove.
+alias(
     name = "android_tensorflow_lib_selective_registration",
-    srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts(android_optimization_level_override = None) + [
-        "-DSUPPORT_SELECTIVE_REGISTRATION",
-    ],
-    linkopts = if_android(["-lz"]),
-    tags = [
-        "manual",
-        "notap",
-    ],
+    actual = ":android_tensorflow_lib_lite",
     visibility = ["//visibility:public"],
-    deps = [
-        ":protos_all_cc_impl",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@double_conversion//:double-conversion",
-        "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
-    ],
-    alwayslink = 1,
 )
 
 # Android library for use with the SELECTIVE_REGISTRATION feature with
 # no proto_rtti.
-cc_library(
+alias(
     name = "android_tensorflow_lib_selective_registration_nortti",
-    srcs = if_android(["//tensorflow/core:android_srcs"]),
-    copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_android() + [
-        "-DSUPPORT_SELECTIVE_REGISTRATION",
-    ],
-    linkopts = if_android(["-lz"]),
-    tags = [
-        "manual",
-        "notap",
-    ],
+    actual = ":android_tensorflow_lib_lite_nortti",
     visibility = ["//visibility:public"],
-    deps = [
-        ":protos_all_cc_impl",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@double_conversion//:double-conversion",
-        "@nsync//:nsync_cpp",
-        "@protobuf_archive//:protobuf",
-    ],
-    alwayslink = 1,
 )
 
 filegroup(
@@ -2087,9 +2088,7 @@ tf_proto_library_cc(
     srcs = ["protobuf/master.proto"],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
 )
 
 tf_proto_library_cc(

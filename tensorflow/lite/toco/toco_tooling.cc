@@ -309,6 +309,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   // Fix any issues with IO edges. This must happen after any transform that
   // may modify the structure of the edges.
   FixEdgeArrays(model);
+  FixOperatorOrdering(model);
 
   if (quantize_output) {
     // If the user specified default min/max ranges we need to set all arrays

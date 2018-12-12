@@ -80,6 +80,128 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   EXPECT_EQ(root, param0);
 }
 
+TEST_F(AlgebraicSimplifierTest, FactorIntegerAddition) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[8] parameter(0)
+      p1 = s32[8] parameter(1)
+      p2 = s32[8] parameter(2)
+      x = s32[8] multiply(p0, p2)
+      y = s32[8] multiply(p1, p2)
+      ROOT sum = s32[8] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MultiplyAnyOrder(
+          m::AddAnyOrder(m::Parameter(0), m::Parameter(1)), m::Parameter(2))));
+}
+
+// A*C + B*C => (A+B)*C if C is a floating-point power of 2.
+TEST_F(AlgebraicSimplifierTest, FactorFpAddition) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      c = f32[] constant(0.125)
+      x = f32[] multiply(p0, c)
+      y = f32[] multiply(p1, c)
+      ROOT sum = f32[] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                  m::ConstantScalar(0.125))));
+}
+
+// A*C + B*C => (A+B)*C if C is a broadcast of a floating-point power of 2.
+TEST_F(AlgebraicSimplifierTest, FactorFpAdditionWithBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      c = f32[] constant(0.125)
+      b = f32[4] broadcast(c), dimensions={}
+      x = f32[4] multiply(p0, b)
+      y = f32[4] multiply(p1, b)
+      ROOT sum = f32[4] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                  m::Broadcast(m::ConstantScalar(0.125)))));
+}
+
+// A*C + B*C => (A+B)*C simplification should not happen if C is not a
+// floating-point power of 2.
+TEST_F(AlgebraicSimplifierTest, FactorFpAdditionNotPowerOf2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      c = f32[] constant(0.3)
+      x = f32[] multiply(p0, c)
+      y = f32[] multiply(p1, c)
+      ROOT sum = f32[] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+// A*C + B*C => (A+B)*C simplification should not happen if A, B, and C are
+// complex numbers.
+TEST_F(AlgebraicSimplifierTest, FactorFpAdditionComplex) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = c64[8] parameter(0)
+      p1 = c64[8] parameter(1)
+      p2 = c64[8] parameter(2)
+      x = c64[8] multiply(p0, p2)
+      y = c64[8] multiply(p1, p2)
+      ROOT sum = c64[8] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+// A*C + B*C => (A+B)*C simplification is OK if A, B, and C are complex.
+TEST_F(AlgebraicSimplifierTest, FactorFpAdditionBfloat16) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[4] parameter(0)
+      p1 = bf16[4] parameter(1)
+      c = bf16[] constant(0.125)
+      b = bf16[4] broadcast(c), dimensions={}
+      x = bf16[4] multiply(p0, b)
+      y = bf16[4] multiply(p1, b)
+      ROOT sum = bf16[4] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                  m::Broadcast(m::ConstantScalar(0.125)))));
+}
+
 // Test that A * 0 is simplified to 0
 TEST_F(AlgebraicSimplifierTest, MulZero) {
   auto m = CreateNewVerifiedModule();
@@ -1672,7 +1794,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
       (AlgebraicSimplifierOptions(bitcasting_callback())));
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  // Verify that that reshape(transpose(rng)) is replace by a single rng of the
+  // Verify that reshape(transpose(rng)) is replace by a single rng of the
   // same shape as the reshape.
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Rng()));
   EXPECT_TRUE(ShapeUtil::Equal(computation->root_instruction()->shape(),

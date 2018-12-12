@@ -44,7 +44,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.check_numerics(x, "message")).apply(
             error_ops.ignore_errors()))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -63,7 +63,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(components).map(
             lambda x: array_ops.check_numerics(x, "message"),
             num_parallel_calls=2).prefetch(2).apply(error_ops.ignore_errors()))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -91,7 +91,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
         dataset_ops.Dataset.from_tensor_slices(filenames).map(
             io_ops.read_file,
             num_parallel_calls=2).prefetch(2).apply(error_ops.ignore_errors()))
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 

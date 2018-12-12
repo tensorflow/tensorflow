@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -396,6 +397,16 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
+  const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
+  Literal result(bitcast->shape());
+  TF_RET_CHECK(operand_literal.size_bytes() == result.size_bytes());
+  memcpy(result.untyped_data(), operand_literal.untyped_data(),
+         operand_literal.size_bytes());
+  evaluated_[bitcast] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
@@ -618,8 +629,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<int64>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case F16:
-      return Unimplemented("unhandled primitive type: F16.");
+    case F16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<half>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case BF16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
                           Compare<bfloat16>(compare->shape(), opcode,

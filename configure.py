@@ -491,7 +491,7 @@ def check_bazel_version(min_version, max_version):
     sys.exit(0)
   if curr_version_int > max_version_int:
     print('Please downgrade your bazel installation to version %s or lower to '
-          'build TensorFlow!' % min_version)
+          'build TensorFlow!' % max_version)
     sys.exit(0)
   return curr_version
 
@@ -1565,7 +1565,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.15.0', '0.19.2')
+  check_bazel_version('0.15.0', '0.20.0')
 
   reset_tf_configure_bazelrc()
   # Explicitly import tools/bazel.rc, this is needed for Bazel 0.19.0 or later

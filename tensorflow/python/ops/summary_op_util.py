@@ -21,10 +21,10 @@ from __future__ import print_function
 import contextlib
 import re
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training import distribution_strategy_context
 
 
 def collect(val, collections, default_collections):

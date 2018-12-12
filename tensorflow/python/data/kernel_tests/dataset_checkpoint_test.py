@@ -64,8 +64,8 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
   def testSaveRestore(self):
 
     def _build_graph(start, stop):
-      iterator = dataset_ops.Dataset.range(start,
-                                           stop).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.range(start, stop))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = self._save_op(iterator._iterator_resource)
@@ -114,7 +114,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
 
     def _build_graph(start, stop, num_epochs):
       dataset = dataset_ops.Dataset.range(start, stop).repeat(num_epochs)
-      iterator = dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(dataset)
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = self._save_op(iterator._iterator_resource)
@@ -161,7 +161,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
 
     def _build_graph(start, stop):
       dataset = dataset_ops.Dataset.range(start, stop)
-      iterator = dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(dataset)
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = self._save_op(iterator._iterator_resource)
@@ -200,7 +200,7 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
 
     def _build_graph(start, stop):
       dataset = dataset_ops.Dataset.range(start, stop)
-      iterator = dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(dataset)
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = self._save_op(iterator._iterator_resource)
@@ -233,8 +233,8 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
   def testMultipleSaves(self):
 
     def _build_graph(start, stop):
-      iterator = dataset_ops.Dataset.range(start,
-                                           stop).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.range(start, stop))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = self._save_op(iterator._iterator_resource)
@@ -276,8 +276,8 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
   def testSaveRestoreWithRepeat(self):
 
     def _build_graph(start, stop, num_epochs):
-      iterator = dataset_ops.Dataset.range(
-          start, stop).repeat(num_epochs).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.range(start, stop).repeat(num_epochs))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = self._save_op(iterator._iterator_resource)
@@ -321,8 +321,8 @@ class DatasetCheckpointTest(test_base.DatasetTestBase):
   def testSaveRestoreExhaustedIterator(self):
 
     def _build_graph(start, stop, num_epochs):
-      iterator = dataset_ops.Dataset.range(
-          start, stop).repeat(num_epochs).make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.range(start, stop).repeat(num_epochs))
       init_op = iterator.initializer
       get_next = iterator.get_next()
       save_op = self._save_op(iterator._iterator_resource)

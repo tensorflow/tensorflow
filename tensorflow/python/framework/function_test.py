@@ -1054,6 +1054,28 @@ class FunctionTest(test.TestCase):
         self.assertFalse(all(val3 == val1))
         self.assertFalse(all(val4 == val2))
 
+  def testStatefulFunctionWithWhitelisting(self):
+    t = random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
+
+    @function.Defun(capture_by_value=True)
+    def StatefulFn():
+      return t + constant_op.constant(3, dtype=dtypes.int32)
+
+    # First time we try to capture a stateful RandomUniform op.
+    with self.assertRaisesRegexp(ValueError, "Cannot capture a stateful node"):
+      res = StatefulFn()
+
+    # This time we whitelist this op, so that its recreated.
+    @function.Defun(capture_by_value=True, whitelisted_stateful_ops=set([t.op]))
+    def StatefulFn2():
+      return t + constant_op.constant(3, dtype=dtypes.int32)
+
+    res = StatefulFn2()
+    with session.Session() as sess:
+      r = sess.run(res)
+      for i in r:
+        self.assertGreaterEqual(i, 3)
+
   @test_util.run_deprecated_v1
   def testSameFunctionOnTwoDevices(self):
 

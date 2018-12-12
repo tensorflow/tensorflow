@@ -93,6 +93,7 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "@absl_py//absl/testing:parameterized",
     ],
 )

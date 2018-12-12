@@ -43,14 +43,15 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import coordinator
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
 
 
 @contextlib.contextmanager
-def _enter_graph(g):
-  if context.executing_eagerly():
+def _enter_graph(g, eager):
+  if eager:
     with g.as_default(), context.eager_mode():
       yield
   else:
@@ -168,7 +169,12 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
           # capture the name_scope from the first MRT and assume it is
           # the same for all other MRTs.
           mtt_captured_name_scope = threads[0].captured_name_scope
-          with ops.name_scope(mtt_captured_name_scope):
+          # Capture and merge the control dependencies from all the threads.
+          mtt_captured_control_deps = set()
+          for t in threads:
+            mtt_captured_control_deps.update(t.captured_control_deps)
+          with ops.name_scope(mtt_captured_name_scope),\
+              ops.control_dependencies(mtt_captured_control_deps):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for t in threads:
@@ -422,6 +428,7 @@ def all_local_devices(num_gpus=None):
           ("/device:CPU:0",))
 
 
+@tf_export("distribute.MirroredStrategy")
 class MirroredStrategy(distribute_lib.DistributionStrategy):
   """Mirrors vars to distribute across multiple devices and machines.
 
@@ -470,7 +477,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument.")
     # TODO(josh11b): Require at least 2 devices?
-    self._devices = [device_util.resolve(d) for d in devices]
+    self._devices = tuple(device_util.resolve(d) for d in devices)
     self._canonical_device_set = set(self._devices)
     self._device_index = values.PerReplica(
         {d: i for i, d in enumerate(devices)})
@@ -486,7 +493,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument.")
     # TODO(josh11b): Require at least 2 devices?
-    self._devices = [device_util.resolve(d) for d in devices]
+    self._devices = tuple(device_util.resolve(d) for d in devices)
     self._canonical_device_set = set(self._devices)
     self._device_index = values.PerReplica(
         {d: i for i, d in enumerate(devices)})
@@ -520,7 +527,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       index = {}
       for i, d in enumerate(devices):
-        with ops.device(d):
+        with ops.init_scope(), ops.device(d):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = index[devices[0]].name.split(":")[0]
@@ -693,6 +700,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return self._cross_device_ops or self._inferred_cross_device_ops
 
   def _reduce_to(self, reduce_op, value, destinations):
+    if (isinstance(value, values.Mirrored) and
+        reduce_op == reduce_util.ReduceOp.MEAN):
+      return value
     assert not isinstance(value, values.Mirrored)
     if not isinstance(value, values.DistributedValues):
       # This function handles reducing values that are not PerReplica or
@@ -722,7 +732,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return values.update_regroup(self, updates, group)
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
-    assert isinstance(colocate_with, list)
+    assert isinstance(colocate_with, tuple)
     # TODO(josh11b): In eager mode, use one thread per device.
     updates = {}
     for d in colocate_with:
@@ -743,9 +753,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     if isinstance(val, values.DistributedValues):
       # Return in a deterministic order.
       if set(val.devices) == self._canonical_device_set:
-        return [val.get(device=d) for d in self._devices]
-      return [val.get(device=d) for d in sorted(val.devices)]
-    return [val]
+        return tuple(val.get(device=d) for d in self._devices)
+      return tuple(val.get(device=d) for d in sorted(val.devices))
+    return (val,)
 
   def value_container(self, val):
     return values.value_container(val)
@@ -756,12 +766,11 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   @property
   def worker_devices(self):
-    # Make a copy to prevent users from accidentally mutating our copy.
-    return list(self._devices)
+    return self._devices
 
   @property
   def parameter_devices(self):
-    return list(self._devices)
+    return self._devices
 
   @property
   def experimental_between_graph(self):
@@ -781,7 +790,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   def non_slot_devices(self, var_list):
     del var_list
-    return list(self._devices)
+    return tuple(self._devices)
 
   def _get_devices_from(self, colocate_with=None):
     if colocate_with is None:
@@ -830,14 +839,19 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       self.has_paused = threading.Event()
       # These fields have to do with inheriting various contexts from the
       # parent thread:
+      ctx = context.context()
+      self.in_eager = ctx.executing_eagerly()
       # pylint: disable=protected-access
-      self.context_mode = context.context()._eager_context.mode
-      if not context.context()._context_handle:
-        context.context()._initialize_handle_and_devices()
+      if not ctx._context_handle:
+        ctx._initialize_handle_and_devices()
       self.context_device_policy = (
           pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
-              context.context()._context_handle))
+              ctx._context_handle))
       self.graph = ops.get_default_graph()
+      with ops.init_scope():
+        self._init_in_eager = context.executing_eagerly()
+        self._init_graph = ops.get_default_graph()
+
       self._variable_creator_stack = self.graph._variable_creator_stack[:]
       self._captured_var_scope = variable_scope.get_variable_scope()
       # Adding a "/" at end lets us re-enter this scope later.
@@ -858,9 +872,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
         if self.coord.should_stop():
           return
         with self.coord.stop_on_exception(), \
-            context.context()._mode(self.context_mode), \
+            _enter_graph(self._init_graph, self._init_in_eager), \
+            _enter_graph(self.graph, self.in_eager), \
             context.context().device_policy(self.context_device_policy), \
-            _enter_graph(self.graph), \
             MirroredReplicaContext(self.distribution, constant_op.constant(
                 self.replica_id, dtypes.int32)), \
             ops.device(self.device), \
@@ -894,6 +908,8 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     # Adding a "/" at end lets us re-enter this scope later.
     if t.captured_name_scope:
       t.captured_name_scope += "/"
+
+    t.captured_control_deps = t.graph._current_control_dependencies()  # pylint: disable=protected-access
     t.has_paused.set()
     t.should_run.wait()
     t.should_run.clear()

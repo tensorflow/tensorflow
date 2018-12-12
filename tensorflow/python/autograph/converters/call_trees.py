@@ -22,7 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
+import collections
 
 import gast
 
@@ -35,7 +35,7 @@ from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.util import tf_inspect
 
 
-class FunctionInfo(namedtuple('FunctionInfo', ('dtype',))):
+class FunctionInfo(collections.namedtuple('FunctionInfo', ('dtype',))):
   pass
 
 
@@ -116,12 +116,19 @@ class CallTreeTransformer(converter.Base):
   def _function_is_compilable(self, target_entity):
     """Determines whether an entity can be compiled at all."""
     # TODO(mdan): Expand.
+
     if target_entity.__module__ is None:
       # Functions like builtins and NumPy don't expose a module.
       # Those in general should not be compiled.
       return False
+
     if inspect_utils.isbuiltin(target_entity):
       return False
+
+    if inspect_utils.isnamedtuple(target_entity):
+      # namedtuple doesn't expose its source code, making it uncompilable.
+      return False
+
     return True
 
   def _should_compile(self, node, fqn):
@@ -301,7 +308,13 @@ class CallTreeTransformer(converter.Base):
         # safe for graph mode.
         return node
 
+      elif inspect_utils.isnamedtuple(target_entity):
+        # Although not compilable, we assume they are safe for graph mode.
+        node = self.generic_visit(node)
+        return node
+
       else:
+        # TODO(mdan): Instert dynamic conversion here instead.
         raise NotImplementedError(
             'py_func with return values (unknown function)')
     else:
@@ -310,12 +323,12 @@ class CallTreeTransformer(converter.Base):
 
       # 1. super() calls - these are preserved. The class conversion mechanism
       # will ensure that they return the correct value.
-      if ast_util.matches(node, 'super(_)'):
+      if ast_util.matches(node, parser.parse_expression('super(_)')):
         return node
 
       # 2. super().method calls - these are preserved as well, when the
       # conversion processes the entire class.
-      if (ast_util.matches(node, 'super(_)._(_)') and
+      if (ast_util.matches(node, parser.parse_expression('super(_)._(_)')) and
           self.ctx.info.owner_type is not None):
         return node
 

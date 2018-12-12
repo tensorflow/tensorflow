@@ -79,6 +79,7 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",

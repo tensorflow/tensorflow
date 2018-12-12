@@ -123,22 +123,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "3cf6132129ba87f0781c383bfaf381b7174b5818e81fffcc5d04bb451154f0f2",
-        strip_prefix = "abseil-cpp-f95179062eb65ce40895cc76f1398cce25394369",
+        sha256 = "3ad76de484192b2d5afd49d90492b5ed0bc59eb1a4e8e0deecc7a2a077a90251",
+        strip_prefix = "abseil-cpp-f197d7c72a54064cfde5a2058f1513a4a0ee36fb",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/f95179062eb65ce40895cc76f1398cce25394369.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/f95179062eb65ce40895cc76f1398cce25394369.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/f197d7c72a54064cfde5a2058f1513a4a0ee36fb.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/f197d7c72a54064cfde5a2058f1513a4a0ee36fb.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
-        sha256 = "6e505fa8bf8d234d0338679b390cb89f850d870214c751b01a5db7f647e4d438",
-        strip_prefix = "eigen-eigen-135398e50bed",
+        sha256 = "aae7a680d141c978301dfae2c7945c06039f65849fcf64269595a9cdbba82638",
+        strip_prefix = "eigen-eigen-729d33d11c81",
         urls = [
-            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/135398e50bed.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/135398e50bed.tar.gz",
+            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/729d33d11c81.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/729d33d11c81.tar.gz",
         ],
     )
 
@@ -168,12 +168,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "803c7811146edeef8f91064de37c6f19136ff01a2a8cdb3230e940b2fd9f07fe",
-        strip_prefix = "re2-2018-07-01",
+        sha256 = "a31397714a353587413d307337d0b58f8a2e20e2b9d02f2e24e3463fa4eeda81",
+        strip_prefix = "re2-2018-10-01",
         system_build_file = clean_dep("//third_party/systemlibs:re2.BUILD"),
         urls = [
-            "https://mirror.bazel.build/github.com/google/re2/archive/2018-07-01.tar.gz",
-            "https://github.com/google/re2/archive/2018-07-01.tar.gz",
+            "https://mirror.bazel.build/github.com/google/re2/archive/2018-10-01.tar.gz",
+            "https://github.com/google/re2/archive/2018-10-01.tar.gz",
         ],
     )
 
@@ -347,16 +347,20 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     )
 
     PROTOBUF_URLS = [
-        "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.1.1.tar.gz",
-        "https://github.com/google/protobuf/archive/v3.6.1.1.tar.gz",
+        "https://mirror.bazel.build/github.com/protocolbuffers/protobuf/archive/v3.6.1.2.tar.gz",
+        "https://github.com/protocolbuffers/protobuf/archive/v3.6.1.2.tar.gz",
     ]
-    PROTOBUF_SHA256 = "1ade182f91f0fa6c6116195def5d22270e01b9d03fe91319e4c6215022d0d24b"
-    PROTOBUF_STRIP_PREFIX = "protobuf-3.6.1.1"
+    PROTOBUF_SHA256 = "2244b0308846bb22b4ff0bcc675e99290ff9f1115553ae9671eba1030af31bc0"
+    PROTOBUF_STRIP_PREFIX = "protobuf-3.6.1.2"
 
     tf_http_archive(
         name = "protobuf_archive",
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
+        system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
+        },
         urls = PROTOBUF_URLS,
     )
 
@@ -367,6 +371,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "com_google_protobuf",
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
+        system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
+        },
         urls = PROTOBUF_URLS,
     )
 
@@ -374,6 +382,10 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "com_google_protobuf_cc",
         sha256 = PROTOBUF_SHA256,
         strip_prefix = PROTOBUF_STRIP_PREFIX,
+        system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
+        },
         urls = PROTOBUF_URLS,
     )
 
@@ -445,14 +457,26 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+    # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "grpc",
-        sha256 = "50db9cf2221354485eb7c3bd55a4c27190caef7048a2a1a15fbe60a498f98b44",
-        strip_prefix = "grpc-1.13.0",
+        sha256 = "1aa84387232dda273ea8fdfe722622084f72c16f7b84bfc519ac7759b71cdc91",
+        strip_prefix = "grpc-69b6c047bc767b4d80e7af4d00ccb7c45b683dae",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         urls = [
-            "https://mirror.bazel.build/github.com/grpc/grpc/archive/v1.13.0.tar.gz",
-            "https://github.com/grpc/grpc/archive/v1.13.0.tar.gz",
+            "https://mirror.bazel.build/github.com/grpc/grpc/archive/69b6c047bc767b4d80e7af4d00ccb7c45b683dae.tar.gz",
+            "https://github.com/grpc/grpc/archive/69b6c047bc767b4d80e7af4d00ccb7c45b683dae.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_github_nanopb_nanopb",
+        sha256 = "8bbbb1e78d4ddb0a1919276924ab10d11b631df48b657d960e0c795a25515735",
+        build_file = "@grpc//third_party:nanopb.BUILD",
+        strip_prefix = "nanopb-f8ac463766281625ad710900479130c7fcb4d63b",
+        urls = [
+            "https://mirror.bazel.build/github.com/nanopb/nanopb/archive/f8ac463766281625ad710900479130c7fcb4d63b.tar.gz",
+            "https://github.com/nanopb/nanopb/archive/f8ac463766281625ad710900479130c7fcb4d63b.tar.gz",
         ],
     )
 
@@ -472,11 +496,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "ba61783c407c8decb2df1ca1c7019cbd0bb38419509ae8870fa7ce6bc30b6cfb",
-        strip_prefix = "llvm-cdc3118297348c68b25dff92b504581f5dd78000",
+        sha256 = "34170a4aa07e434dd537d98a705dcf1b3901f73820fe1d6b9370e8c1c94e9157",
+        strip_prefix = "llvm-0487bd8f42c8b38166ff825d56014d0ff49db604",
         urls = [
-            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cdc3118297348c68b25dff92b504581f5dd78000.tar.gz",
-            "https://github.com/llvm-mirror/llvm/archive/cdc3118297348c68b25dff92b504581f5dd78000.tar.gz",
+            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/0487bd8f42c8b38166ff825d56014d0ff49db604.tar.gz",
+            "https://github.com/llvm-mirror/llvm/archive/0487bd8f42c8b38166ff825d56014d0ff49db604.tar.gz",
         ],
     )
 
@@ -710,12 +734,22 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "tflite_mobilenet",
-        build_file = clean_dep("//third_party:tflite_mobilenet.BUILD"),
-        sha256 = "23f814d1c076bdf03715dfb6cab3713aa4fbdf040fd5448c43196bd2e97a4c1b",
+        name = "tflite_mobilenet_float",
+        build_file = clean_dep("//third_party:tflite_mobilenet_float.BUILD"),
+        sha256 = "2fadeabb9968ec6833bee903900dda6e61b3947200535874ce2fe42a8493abc0",
         urls = [
-            "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip",
-            "https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip",
+            "http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224.tgz",
+            "http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224.tgz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tflite_mobilenet_quant",
+        build_file = clean_dep("//third_party:tflite_mobilenet_quant.BUILD"),
+        sha256 = "d32432d28673a936b2d6281ab0600c71cf7226dfe4cdcef3012555f691744166",
+        urls = [
+            "http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz",
+            "http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz",
         ],
     )
 
@@ -846,7 +880,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # important since we have set GRPC_ARES=0 in .bazelrc
     native.bind(
         name = "cares",
-        actual = "@grpc//third_party/nanopb:nanopb",
+        actual = "@com_github_nanopb_nanopb//:nanopb",
     )
 
     # Needed by Protobuf
@@ -878,7 +912,7 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # Needed by gRPC
     native.bind(
         name = "nanopb",
-        actual = "@grpc//third_party/nanopb:nanopb",
+        actual = "@com_github_nanopb_nanopb//:nanopb",
     )
 
     # Needed by gRPC

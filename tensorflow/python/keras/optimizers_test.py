@@ -91,26 +91,26 @@ def _test_optimizer(optimizer, target=0.75):
 
 class KerasOptimizersTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_sgd(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            nesterov=True))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_rmsprop(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.RMSprop())
       _test_optimizer(keras.optimizers.RMSprop(decay=1e-3))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_adagrad(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Adagrad())
       _test_optimizer(keras.optimizers.Adagrad(decay=1e-3))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_adadelta(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Adadelta(), target=0.6)
@@ -119,32 +119,32 @@ class KerasOptimizersTest(test.TestCase):
       # the accuracy.
       _test_optimizer(keras.optimizers.Adadelta(decay=1e-3), target=0.4)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_adam(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Adam())
       _test_optimizer(keras.optimizers.Adam(decay=1e-3))
       _test_optimizer(keras.optimizers.Adam(amsgrad=True))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_adamax(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Adamax())
       _test_optimizer(keras.optimizers.Adamax(decay=1e-3))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_nadam(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Nadam())
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_clipnorm(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            clipnorm=0.5))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_clipvalue(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,

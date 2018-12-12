@@ -64,6 +64,10 @@ tf_class {
     argspec: "args=[\'self\', \'delta\', \'use_locking\', \'name\', \'read_value\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'True\'], "
   }
   member_method {
+    name: "batch_scatter_update"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "count_up_to"
     argspec: "args=[\'self\', \'limit\'], varargs=None, keywords=None, defaults=None"
   }

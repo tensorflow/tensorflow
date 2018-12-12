@@ -445,14 +445,9 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/jit:flags",
-        "//tensorflow/compiler/xla:parse_flags_from_env",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 

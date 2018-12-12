@@ -173,6 +173,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RaggedTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RandomShuffleQueue"
     mtype: "<type \'type\'>"
   }
@@ -286,6 +290,10 @@ tf_module {
   }
   member {
     name: "app"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "autograph"
     mtype: "<type \'module\'>"
   }
   member {
@@ -511,6 +519,10 @@ tf_module {
   member {
     name: "quint8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "ragged"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "random"

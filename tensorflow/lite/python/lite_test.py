@@ -80,6 +80,7 @@ class FromConstructor(test_util.TensorFlowTestCase):
     self.assertTrue(converter._has_valid_tensors())
 
 
+@test_util.run_v1_only('b/120545219')
 class FromSessionTest(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -176,6 +177,38 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         'Quantization input stats are not available for input tensors '
         '\'inputB\'.', str(error.exception))
+
+  def testIntermediateInputArray(self):
+    """Convert a model from an intermediate input array."""
+    in_tensor_init = array_ops.placeholder(
+        shape=[1, 16, 16, 3], dtype=dtypes.float32)
+    in_tensor_final = in_tensor_init + in_tensor_init
+    out_tensor = in_tensor_final + in_tensor_final
+    sess = session.Session()
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor_final],
+                                                  [out_tensor])
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertEqual(1, len(input_details))
+    self.assertEqual('add', input_details[0]['name'])
+    self.assertEqual(np.float32, input_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+    self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+    output_details = interpreter.get_output_details()
+    self.assertEqual(1, len(output_details))
+    self.assertEqual('add_1', output_details[0]['name'])
+    self.assertEqual(np.float32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testSizeNoneInvalid(self):
     in_tensor = array_ops.placeholder(dtype=dtypes.float32)
@@ -465,6 +498,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+@test_util.run_v1_only('b/120545219')
 class FromFrozenGraphFile(test_util.TensorFlowTestCase):
 
   def testFloat(self):
@@ -712,6 +746,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+@test_util.run_v1_only('b/120545219')
 class FromSavedModelTest(test_util.TensorFlowTestCase):
 
   def _createSavedModel(self, shape):
@@ -856,6 +891,7 @@ class FromSavedModelTest(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
 
 
+@test_util.run_v1_only('b/120545219')
 class FromKerasFile(test_util.TensorFlowTestCase):
 
   def setUp(self):
