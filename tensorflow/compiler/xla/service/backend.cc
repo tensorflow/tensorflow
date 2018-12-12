@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
 
