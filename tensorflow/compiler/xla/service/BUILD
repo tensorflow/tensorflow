@@ -3163,6 +3163,7 @@ cc_library(
     name = "hlo_graph_dumper",
     srcs = [
         "hlo_graph_dumper.cc",
+        "hlo_graph_html_renderer.cc",
     ],
     hdrs = ["hlo_graph_dumper.h"],
     deps = [

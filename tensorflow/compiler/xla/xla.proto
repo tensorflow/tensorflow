@@ -224,7 +224,10 @@ message DebugOptions {
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
   bool xla_gpu_disable_ptxas_optimizations = 103;
 
-  // Next id: 105
+  // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
+  bool xla_hlo_dump_as_html = 105;
+
+  // Next id: 106
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
