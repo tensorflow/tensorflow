@@ -432,13 +432,17 @@ mlfunc @loop_nest_single_iteration_after_unroll(%N: index) {
 // No cleanup will be generated here.
 // UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand1() {
 mlfunc @loop_nest_operand1() {
-  // UNROLL-BY-4: for %i0 = 0 to 100 step 2 {
+// UNROLL-BY-4:      for %i0 = 0 to 100 step 2 {
+// UNROLL-BY-4-NEXT:   for %i1 = (d0) -> (0)(%i0) to #map{{[0-9]+}}(%i0) step 4
+// UNROLL-BY-4-NEXT:      %0 = "foo"() : () -> i32
+// UNROLL-BY-4-NEXT:      %1 = "foo"() : () -> i32
+// UNROLL-BY-4-NEXT:      %2 = "foo"() : () -> i32
+// UNROLL-BY-4-NEXT:      %3 = "foo"() : () -> i32
+// UNROLL-BY-4-NEXT:   }
+// UNROLL-BY-4-NEXT: }
+// UNROLL-BY-4-NEXT: return
   for %i = 0 to 100 step 2 {
-    // UNROLL-BY-4: %0 = "foo"() : () -> i32
-    // UNROLL-BY-4: %1 = "foo"() : () -> i32
-    // UNROLL-BY-4: %2 = "foo"() : () -> i32
-    // UNROLL-BY-4: %3 = "foo"() : () -> i32
-    for %j = (d0) -> (0) (%i) to (d0) -> (d0 - d0 mod 4 - 1) (%i) {
+    for %j = (d0) -> (0) (%i) to (d0) -> (d0 - d0 mod 4) (%i) {
       %x = "foo"() : () -> i32
     }
   }
@@ -448,13 +452,17 @@ mlfunc @loop_nest_operand1() {
 // No cleanup will be generated here.
 // UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand2() {
 mlfunc @loop_nest_operand2() {
-  // UNROLL-BY-4: for %i0 = 0 to 100 step 2 {
+// UNROLL-BY-4:      for %i0 = 0 to 100 step 2 {
+// UNROLL-BY-4-NEXT:   for %i1 = (d0) -> (d0)(%i0) to #map{{[0-9]+}}(%i0) step 4 {
+// UNROLL-BY-4-NEXT:     %0 = "foo"() : () -> i32
+// UNROLL-BY-4-NEXT:     %1 = "foo"() : () -> i32
+// UNROLL-BY-4-NEXT:     %2 = "foo"() : () -> i32
+// UNROLL-BY-4-NEXT:     %3 = "foo"() : () -> i32
+// UNROLL-BY-4-NEXT:   }
+// UNROLL-BY-4-NEXT: }
+// UNROLL-BY-4-NEXT: return
   for %i = 0 to 100 step 2 {
-    // UNROLL-BY-4: %0 = "foo"() : () -> i32
-    // UNROLL-BY-4: %1 = "foo"() : () -> i32
-    // UNROLL-BY-4: %2 = "foo"() : () -> i32
-    // UNROLL-BY-4: %3 = "foo"() : () -> i32
-    for %j = (d0) -> (d0) (%i) to (d0) -> (5*d0 + 3) (%i) {
+    for %j = (d0) -> (d0) (%i) to (d0) -> (5*d0 + 4) (%i) {
       %x = "foo"() : () -> i32
     }
   }
