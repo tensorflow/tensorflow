@@ -123,11 +123,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "be91500afe4d2768a7aeeeae616d9f7fc4fe237a1493b630883dbf8f20d4682d",
-        strip_prefix = "abseil-cpp-455dc17ba1af9635f0b60155bc565bc572a1e722",
+        sha256 = "c2f8a1a399994df49db348a4725933b12fc807909cee21d48e46f53a28e79d4b",
+        strip_prefix = "abseil-cpp-8fbcdb90952c57828c4a9c2f6d79fcd7cae9088f",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/455dc17ba1af9635f0b60155bc565bc572a1e722.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/455dc17ba1af9635f0b60155bc565bc572a1e722.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/8fbcdb90952c57828c4a9c2f6d79fcd7cae9088f.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/8fbcdb90952c57828c4a9c2f6d79fcd7cae9088f.tar.gz",
         ],
     )
 
