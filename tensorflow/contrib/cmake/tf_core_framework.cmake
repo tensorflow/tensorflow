@@ -275,9 +275,8 @@ if (NOT WIN32)
       COMMAND ${PYTHON_EXECUTABLE} ${tensorflow_source_dir}/tensorflow/tools/git/gen_git_source.py
       ARGS --raw_generate ${VERSION_INFO_CC} --source_dir ${tensorflow_source_dir} --git_tag_override=${GIT_TAG_OVERRIDE}
       DEPENDS __force_rebuild)
+  set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 endif()
-
-set(tf_version_srcs ${tensorflow_source_dir}/tensorflow/core/util/version_info.cc)
 
 ########################################################
 # tf_core_framework library
