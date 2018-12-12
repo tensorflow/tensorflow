@@ -261,7 +261,7 @@ class CallTreeTransformer(converter.Base):
         func=func,
         owner=owner,
         options=self.ctx.program.options.to_ast(
-            self.ctx.info.namespace,
+            self.ctx,
             internal_convert_user_code=self.ctx.program.options.recursive),
         args=node.args)
     # TODO(mdan): Improve the template mechanism to better support this.
