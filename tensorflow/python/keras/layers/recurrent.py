@@ -2659,8 +2659,7 @@ class UnifiedLSTM(LSTM):
     self._dropout_mask = None
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
-        recurrent_dropout == 0 and not unroll and use_bias and
-        bias_regularizer is None)
+        recurrent_dropout == 0 and not unroll and use_bias)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # LSTM does not support constants. Ignore it during process.
