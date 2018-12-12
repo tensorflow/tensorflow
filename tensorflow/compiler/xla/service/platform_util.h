@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_PLATFORM_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PLATFORM_UTIL_H_
 
+#include <set>
 #include <string>
 #include <vector>
-#include <set>
 
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"

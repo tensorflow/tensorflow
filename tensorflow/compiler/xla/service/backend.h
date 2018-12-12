@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
-#include <set>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -114,8 +114,8 @@ class Backend {
   se::StreamExecutor* default_stream_executor() const {
     CHECK(!stream_executors_.empty());
 
-    for(se::StreamExecutor* e :stream_executors_){
-      if(e){
+    for (se::StreamExecutor* e : stream_executors_) {
+      if (e) {
         return e;
       }
     }
