@@ -22,7 +22,6 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -99,7 +98,7 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
       input_tensor = array_ops.constant([[1]])
       get_next = self.getNext(
           dataset_ops.Dataset.from_tensors(input_tensor).apply(
-            batching.dense_to_sparse_batch(4, [12])),
+              batching.dense_to_sparse_batch(4, [12])),
           requires_initialization=True)
       self.evaluate(get_next())
 
@@ -108,9 +107,9 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
                                  "larger than the row shape"):
       input_tensor = math_ops.range(0, 13)
       get_next = self.getNext(
-        dataset_ops.Dataset.from_tensors(input_tensor).apply(
-          batching.dense_to_sparse_batch(4, [12])),
-        requires_initialization=True)
+          dataset_ops.Dataset.from_tensors(input_tensor).apply(
+              batching.dense_to_sparse_batch(4, [12])),
+          requires_initialization=True)
       self.evaluate(get_next())
 
 

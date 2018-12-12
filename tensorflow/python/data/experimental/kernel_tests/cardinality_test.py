@@ -151,8 +151,8 @@ class NumElementsTest(test_base.DatasetTestBase, parameterized.TestCase):
       # pylint: enable=g-long-lambda
   )
   def testNumElements(self, dataset_fn, expected_result):
-      self.assertEqual(
-          self.evaluate(cardinality.cardinality(dataset_fn())), expected_result)
+    self.assertEqual(
+        self.evaluate(cardinality.cardinality(dataset_fn())), expected_result)
 
 
 if __name__ == "__main__":
