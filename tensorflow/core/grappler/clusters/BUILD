@@ -2,7 +2,7 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -16,7 +16,7 @@ config_setting(
     },
 )
 
-tf_gpu_library(
+tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
