@@ -2060,6 +2060,10 @@ bool HloInstruction::IsCrossModuleAllReduce() const {
   return opcode() == HloOpcode::kCrossReplicaSum && all_reduce_id();
 }
 
+bool HloInstruction::IsCrossReplicaAllReduce() const {
+  return opcode() == HloOpcode::kCrossReplicaSum && !all_reduce_id();
+}
+
 string HloInstruction::ToStringWithCanonicalNameMap(
     const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
