@@ -18,8 +18,8 @@ limitations under the License.
 #include <vector>
 
 #include "rccl.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/contrib/rccl/kernels/rccl_manager.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace {

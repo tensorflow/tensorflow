@@ -262,10 +262,10 @@ RcclManager::Communicator* RcclManager::GetCommunicator(
   int currDevice;
   auto status = hipGetDevice(&currDevice);
 
-  for(int i = 0; i < num_devices; i++) {
+  for (int i = 0; i < num_devices; i++) {
     hipSetDevice(devices[i]);
-    for(int j = 0; j < num_devices; j++) {
-      if(devices[i] != devices[j]) {
+    for (int j = 0; j < num_devices; j++) {
+      if (devices[i] != devices[j]) {
         hipDeviceEnablePeerAccess(devices[j], 0);
       }
     }
