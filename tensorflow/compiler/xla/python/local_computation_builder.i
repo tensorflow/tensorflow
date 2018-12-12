@@ -1147,6 +1147,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Cholesky;
 %unignore xla::swig::LocalComputationBuilder::QR;
 %unignore xla::swig::LocalComputationBuilder::TriangularSolve;
+%unignore xla::swig::LocalComputationBuilder::CustomCall;
 %unignore xla::swig::DeleteLocalComputation;
 %unignore xla::swig::DestructureLocalShapedBufferTuple;
 %unignore xla::swig::DestructureXrtAllocationTuple;

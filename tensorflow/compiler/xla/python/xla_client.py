@@ -1102,6 +1102,31 @@ class ComputationBuilder(object):
     """
     return self._client.Call(computation_to_apply.computation, operands)
 
+  def CustomCall(self,
+                 call_target_name,
+                 operands,
+                 shape_with_layout,
+                 operand_shapes_with_layout,
+                 opaque=None):
+    """Enqueues a custom call operation onto the computation.
+
+    Args:
+      call_target_name: the name of the function to call.
+      operands: an iterable of LocalOp. The number and types of operands must
+        match the arity of `operand_shapes_with_layout`.
+      shape_with_layout: the shape of the operator's output, with layout.
+      operand_shapes_with_layout: the shapes of `operands`, including the
+        expected layouts.
+      opaque: an opaque string passed to the backend.
+
+    Returns:
+      A LocalOp representing the added custom call op.
+    """
+    opaque = opaque or ''
+    return self._client.CustomCall(call_target_name, operands,
+                                   shape_with_layout,
+                                   operand_shapes_with_layout, opaque)
+
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
 

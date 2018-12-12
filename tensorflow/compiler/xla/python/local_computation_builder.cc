@@ -783,6 +783,21 @@ LocalOp LocalComputationBuilder::Call(const LocalComputation& local_computation,
   return xla::Call(&builder_, local_computation.computation(), xla_ops);
 }
 
+LocalOp LocalComputationBuilder::CustomCall(
+    const string& call_target_name, absl::Span<const LocalOp> operands,
+    const Shape& shape_with_layout,
+    const std::vector<Shape>& operand_shapes_with_layout,
+    const string& opaque) {
+  std::vector<XlaOp> xla_ops;
+  xla_ops.reserve(operands.size());
+  for (const auto& op : operands) {
+    xla_ops.push_back(op.op());
+  }
+  return xla::CustomCallWithLayout(&builder_, call_target_name, xla_ops,
+                                   shape_with_layout,
+                                   operand_shapes_with_layout, opaque);
+}
+
 LocalOp LocalComputationBuilder::Transpose(
     const LocalOp& operand, absl::Span<const int64> permutation) {
   return xla::Transpose(operand.op(), permutation);
