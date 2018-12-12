@@ -764,12 +764,7 @@ py_test(
     srcs = ["engine/training_test.py"],
     shard_count = 16,
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",  # TODO(b/120560388)
-        "no_oss",  # TODO(b/120560388)
-        "notap",  # TODO(b/120560388)
-        "notsan",
-    ],
+    tags = ["notsan"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

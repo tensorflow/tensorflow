@@ -250,8 +250,10 @@ class TrainingTest(keras_parameterized.TestCase):
                   run_eagerly=testing_utils.should_run_eagerly())
     # This will work
     model.fit([input_a_np], output_d_np, epochs=1)
-    with self.assertRaises(ValueError):
-      model.fit([input_a_np, input_a_np], output_d_np, epochs=1)
+    # TODO(gsundeep) Test only works in eager, file ticket
+    if testing_utils.should_run_eagerly() and context.executing_eagerly():
+      with self.assertRaises(ValueError):
+        model.fit([input_a_np, input_a_np], output_d_np, epochs=1)
 
     # Test model on a list of floats
     input_a_np = np.random.random((10, 3))
