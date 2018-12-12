@@ -190,7 +190,10 @@ class MklSlicePrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(sliceParams.to->get_data_handle());
     context_.slice_stream->submit(context_.slice_primitives);
 
-    // For safety guard, so that data_handle wouldn't be rewritten.
+    // We should set it back to DummyData so as to make the primitive
+    // in cache pool stateless. Otherwise, if the result for previous
+    // iteration is kept, problems of current iteration won't be
+    // thrown immediately, and wrong data would be reused.
     context_.src_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
     return;
@@ -214,7 +217,8 @@ class MklSlicePrimitive : public MklPrimitive {
   engine cpu_engine_ = engine(engine::cpu, 0);
 
   void Setup(const MklSliceParams& sliceParams) {
-    // Just create the memory primitive, fill with dummy.
+    // Actually, this DummyData will not be used in computation,
+    // because the real data will be filled before real execution.
     context_.src_mem.reset(
         new memory({sliceParams.from->get_primitive_desc().desc(), cpu_engine_},
                    DummyData));
