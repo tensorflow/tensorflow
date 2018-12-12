@@ -82,7 +82,7 @@ std::once_flag reg_mem_visitors_call;
 
 Status VerbsServer::Init(ServiceInitFunction service_func,
                          RendezvousMgrCreationFunction rendezvous_mgr_func) {
-  RdmaAdapter *rdma_adapter = new RdmaAdapter(worker_env());
+  RdmaAdapter* rdma_adapter = new RdmaAdapter(worker_env());
   std::call_once(reg_mem_visitors_call, [rdma_adapter]() {
     RdmaMgr::RegMemVisitors(rdma_adapter->GetDevice());
   });
