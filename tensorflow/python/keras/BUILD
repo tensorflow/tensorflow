@@ -401,7 +401,7 @@ py_test(
     name = "core_test",
     size = "medium",
     srcs = ["layers/core_test.py"],
-    shard_count = 2,
+    shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
