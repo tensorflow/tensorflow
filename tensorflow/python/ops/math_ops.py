@@ -1465,7 +1465,7 @@ def count_nonzero_v2(input,  # pylint: disable=redefined-builtin
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU
-            to_int64(gen_math_ops.not_equal(input, zero)),
+            cast(gen_math_ops.not_equal(input, zero), dtypes.int64),
             axis=axis,
             keepdims=keepdims),
         dtype=dtype)
