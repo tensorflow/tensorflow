@@ -110,10 +110,7 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.compute_pool
 }
 
-void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {
-  builder->AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS,
-                              std::numeric_limits<int>::max());
-}
+void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
@@ -196,6 +193,11 @@ Status GrpcServer::Init(
   builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port),
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS,
+                             std::numeric_limits<int>::max());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
+                             std::numeric_limits<int>::max());
+
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
   // Allow subclasses to specify more args to pass to the gRPC server.
