@@ -260,6 +260,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv3d_grad_filter = "Conv3DBackpropFilterV2";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
+    csinfo_.fused_conv2d = "_FusedConv2D";
     csinfo_.identity = "Identity";
     csinfo_.lrn = "LRN";
     csinfo_.lrn_grad = "LRNGrad";
@@ -274,6 +275,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_conv2d_with_bias = "_MklConv2DWithBias";
     csinfo_.mkl_conv2d_grad_filter_with_bias =
         "_MklConv2DBackpropFilterWithBias";
+    csinfo_.mkl_fused_conv2d = "_MklFusedConv2D";
     csinfo_.mkl_pad_with_conv2d = "_MklPadWithConv2D";
     csinfo_.pad = "Pad";
     csinfo_.pad_with_conv2d = "__MklDummyPadWithConv2D";
@@ -380,6 +382,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.fused_batch_norm_grad,
          mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm_grad),
          CopyAttrsFusedBatchNorm, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.fused_conv2d, csinfo_.mkl_fused_conv2d,
+                      CopyAttrsFusedConv2D, FusedConv2DRewrite});
     rinfo_.push_back({csinfo_.identity,
                       mkl_op_registry::GetMklOpName(csinfo_.identity),
                       CopyAttrsDataType, AlwaysRewrite});
@@ -665,6 +669,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string conv3d_grad_filter;
     string fused_batch_norm;
     string fused_batch_norm_grad;
+    string fused_conv2d;
     string identity;
     string lrn;
     string lrn_grad;
@@ -679,6 +684,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_conv2d_grad_filter;
     string mkl_conv2d_grad_filter_with_bias;
     string mkl_conv2d_with_bias;
+    string mkl_fused_conv2d;
     string mkl_pad_with_conv2d;
     string mul;
     string pad;
@@ -1174,6 +1180,23 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return false;
   }
 
+  static bool FusedConv2DRewrite(const Node* n) {
+    // MKL DNN currently doesn't support all fusions that grappler fuses
+    // together with Conv2D (ex. batchnorm). We rewrite _FusedConv2D only if
+    // it includes those we support.
+    DataType T;
+    if (!GetNodeAttr(n->def(), "T", &T).ok() ||
+        !mkl_op_registry::IsMklOp(csinfo_.mkl_fused_conv2d, T)) {
+      return false;
+    }
+
+    std::vector<string> fused_ops;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "fused_ops", &fused_ops));
+    return (fused_ops == std::vector<string>{"BiasAdd"} ||
+            fused_ops == std::vector<string>{"Relu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "Relu"});
+  }
+
   // Rewrites input node to a new node specified by its matching rewrite info.
   //
   // Method first searches matching rewrite info for input node and then
@@ -1335,6 +1358,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                 bool change_format = false);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb,
                                       bool change_format = false);
+  static void CopyAttrsFusedConv2D(const Node* orig_node, NodeBuilder* nb,
+                                   bool change_format = false);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
                            bool change_format = false);
   static void CopyAttrsPadWithConv2D(const Node* orig_node, NodeBuilder* nb,
@@ -1554,12 +1579,13 @@ int MklLayoutRewritePass::SetUpContiguousInputs(
     CHECK_NOTNULL(filter_node);
 
     // Now check which nodes receive from filter_node. Filter feeds as
-    // 2nd input (slot 1) of _MklConv2D and _MklConv2DWithBias.
+    // 2nd input (slot 1) of _MklConv2D, _MklConv2DWithBias, and
+    // _MklFusedConv2D.
     for (const Edge* e : filter_node->out_edges()) {
       if ((e->dst()->type_string() == csinfo_.mkl_conv2d ||
-           // add check for mkl_pad_with_conv2d
            e->dst()->type_string() == csinfo_.mkl_pad_with_conv2d ||
-           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias) &&
+           e->dst()->type_string() == csinfo_.mkl_conv2d_with_bias ||
+           e->dst()->type_string() == csinfo_.mkl_fused_conv2d) &&
           e->dst_input() == kConv2DFilterInputSlotIdx
           /* filter is 2nd input of Conv2D and _MklConv2D. */) {
         if (conv2d_node != nullptr) {
@@ -2234,6 +2260,39 @@ void MklLayoutRewritePass::CopyAttrsFusedBatchNorm(const Node* orig_node,
   nb->Attr("is_training", is_training);
 }
 
+void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
+                                                NodeBuilder* nb,
+                                                bool change_format) {
+  DataType T;
+  int num_args;
+  float epsilon;
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+  std::vector<string> fused_ops;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "num_args", &num_args));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "fused_ops", &fused_ops));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "epsilon", &epsilon));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("num_args", num_args);
+  nb->Attr("strides", strides);
+  nb->Attr("padding", padding);
+  nb->Attr("data_format", data_format);
+  nb->Attr("dilations", dilations);
+  nb->Attr("fused_ops", fused_ops);
+  nb->Attr("epsilon", epsilon);
+}
+
 //////////////////////////////////////////////////////////////////////////
 //           Helper functions related to node merge pass
 //////////////////////////////////////////////////////////////////////////
@@ -2881,6 +2940,7 @@ MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   if (n->type_string() != csinfo_.conv2d_with_bias &&
       n->type_string() != csinfo_.pad_with_conv2d &&
       n->type_string() != csinfo_.conv2d_grad_filter_with_bias &&
+      n->type_string() != csinfo_.fused_conv2d &&
       !mkl_op_registry::IsMklOp(mkl_op_registry::GetMklOpName(n->type_string()),
                                 T)) {
     return nullptr;
