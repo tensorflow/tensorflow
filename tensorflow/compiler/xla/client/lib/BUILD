@@ -337,6 +337,34 @@ xla_test(
 )
 
 cc_library(
+    name = "quantize",
+    hdrs = ["quantize.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
+    name = "quantize_test",
+    srcs = ["quantize_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
+    deps = [
+        ":quantize",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "testing",
     srcs = ["testing.cc"],
     hdrs = ["testing.h"],
