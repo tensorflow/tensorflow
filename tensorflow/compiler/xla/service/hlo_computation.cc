@@ -797,7 +797,7 @@ Status HloComputation::AcceptWithOperandOrder(
 template <typename HloInstructionPtr>
 Status HloComputation::AcceptOrdered(
     DfsHloVisitorBase<HloInstructionPtr>* visitor,
-    const std::vector<HloInstruction*>& order) const {
+    absl::Span<HloInstruction* const> order) const {
   VLOG(3) << "Accepting visitor with order.";
   for (HloInstruction* root : CollectUnreachableRoots()) {
     TF_RET_CHECK(std::find(order.begin(), order.end(), root) != order.end())
@@ -827,9 +827,9 @@ Status HloComputation::AcceptOrdered(
 
 // Explicit instantiations.
 template Status HloComputation::AcceptOrdered(
-    DfsHloVisitor*, const std::vector<HloInstruction*>&) const;
+    DfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 template Status HloComputation::AcceptOrdered(
-    ConstDfsHloVisitor*, const std::vector<HloInstruction*>&) const;
+    ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 
 Status HloComputation::Accept(
     const std::function<Status(HloInstruction*)>& visitor_func) {

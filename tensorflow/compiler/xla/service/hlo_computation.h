@@ -307,7 +307,7 @@ class HloComputation {
   // be a topological sort of all instructions in the computation.
   template <typename HloInstructionPtr>
   Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
-                       const std::vector<HloInstruction*>& order) const;
+                       absl::Span<HloInstruction* const> order) const;
 
   // Same as Accept() above, but the visitor is given as a function.
   Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);

@@ -635,18 +635,17 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
             .EmitComputation(
                 embedded_computation, embedded_computation->name(),
                 /*is_top_level_computation=*/false,
-                &schedule.sequence(embedded_computation).instructions())
+                schedule.sequence(embedded_computation).instructions())
             .status());
   }
   string function_name_prefix = entry_computation->name().empty()
                                     ? "__compute"
                                     : entry_computation->name();
-  TF_ASSIGN_OR_RETURN(
-      llvm::Function * entry_function,
-      ir_emitter.EmitComputation(
-          entry_computation, function_name_prefix,
-          /*is_top_level_computation=*/true,
-          &schedule.sequence(entry_computation).instructions()));
+  TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
+                      ir_emitter.EmitComputation(
+                          entry_computation, function_name_prefix,
+                          /*is_top_level_computation=*/true,
+                          schedule.sequence(entry_computation).instructions()));
 
   string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
@@ -835,7 +834,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
               .EmitComputation(
                   embedded_computation, embedded_computation->name(),
                   /*is_top_level_computation=*/false,
-                  &schedule.sequence(embedded_computation).instructions())
+                  schedule.sequence(embedded_computation).instructions())
               .status());
     }
     const string& entry_point_name = options.entry_point_name();
@@ -843,7 +842,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                         ir_emitter.EmitComputation(
                             computation, entry_point_name,
                             /*is_top_level_computation=*/true,
-                            &schedule.sequence(computation).instructions()));
+                            schedule.sequence(computation).instructions()));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 
