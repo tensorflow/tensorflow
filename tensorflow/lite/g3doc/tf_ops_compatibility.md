@@ -373,17 +373,6 @@ outputs: {
 }
 ```
 
-**ABS**
-
-```
-inputs {
-  0: tensor
-}
-outputs: {
-  0: result of computing element-wise absolute value of the input tensor
-}
-```
-
 **FULLY_CONNECTED**
 
 ```

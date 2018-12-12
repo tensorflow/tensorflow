@@ -3050,16 +3050,6 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-inline void Abs(const RuntimeShape& input_shape, const float* input_data,
-                const RuntimeShape& output_shape, float* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = std::fabs(input_data[offset]);
-  }
-}
-
 template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
