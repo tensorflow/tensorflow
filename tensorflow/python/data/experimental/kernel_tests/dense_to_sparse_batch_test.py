@@ -26,73 +26,64 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DenseToSparseBatchTest(test_base.DatasetTestBase):
 
-  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
-    iterator = dataset_ops.make_initializable_iterator(
+    get_next = self.getNext(
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([x], x)).apply(
-            batching.dense_to_sparse_batch(4, [12])))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+            batching.dense_to_sparse_batch(4, [12])),
+        requires_initialization=True)
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
+    for start in range(0, len(components), 4):
+      results = self.evaluate(get_next())
+      self.assertAllEqual([[i, j]
+                           for i, c in enumerate(components[start:start + 4])
+                           for j in range(c)], results.indices)
+      self.assertAllEqual(
+          [c for c in components[start:start + 4] for _ in range(c)],
+          results.values)
+      self.assertAllEqual([min(4,
+                               len(components) - start), 12],
+                          results.dense_shape)
 
-      for start in range(0, len(components), 4):
-        results = self.evaluate(get_next)
-        self.assertAllEqual([[i, j]
-                             for i, c in enumerate(components[start:start + 4])
-                             for j in range(c)], results.indices)
-        self.assertAllEqual(
-            [c for c in components[start:start + 4] for _ in range(c)],
-            results.values)
-        self.assertAllEqual([min(4,
-                                 len(components) - start), 12],
-                            results.dense_shape)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(get_next)
-
-  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
-    iterator = dataset_ops.make_initializable_iterator(
+    get_next = self.getNext(
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([x, x], x)).apply(
-            batching.dense_to_sparse_batch(4, [5, None])))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+            batching.dense_to_sparse_batch(4, [5, None])),
+        requires_initialization=True)
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
+    for start in range(0, len(components), 4):
+      results = self.evaluate(get_next())
+      self.assertAllEqual([[i, j, z]
+                           for i, c in enumerate(components[start:start + 4])
+                           for j in range(c)
+                           for z in range(c)], results.indices)
+      self.assertAllEqual([
+          c
+          for c in components[start:start + 4] for _ in range(c)
+          for _ in range(c)
+      ], results.values)
+      self.assertAllEqual([
+          min(4,
+              len(components) - start), 5,
+          np.max(components[start:start + 4])
+      ], results.dense_shape)
 
-      for start in range(0, len(components), 4):
-        results = self.evaluate(get_next)
-        self.assertAllEqual([[i, j, z]
-                             for i, c in enumerate(components[start:start + 4])
-                             for j in range(c)
-                             for z in range(c)], results.indices)
-        self.assertAllEqual([
-            c
-            for c in components[start:start + 4] for _ in range(c)
-            for _ in range(c)
-        ], results.values)
-        self.assertAllEqual([
-            min(4,
-                len(components) - start), 5,
-            np.max(components[start:start + 4])
-        ], results.dense_shape)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(get_next)
-
-  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
     with self.assertRaisesRegexp(ValueError, "Dimension -2 must be >= 0"):
@@ -100,27 +91,27 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
           dataset_ops.Dataset.from_tensors(input_tensor).apply(
               batching.dense_to_sparse_batch(4, [-2])))
 
-  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetShapeErrors(self):
-    input_tensor = array_ops.placeholder(dtypes.int32)
-    iterator = dataset_ops.make_initializable_iterator(
+
+    # Initialize with an input tensor of incompatible rank.
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "incompatible with the row shape"):
+      input_tensor = array_ops.constant([[1]])
+      get_next = self.getNext(
+          dataset_ops.Dataset.from_tensors(input_tensor).apply(
+            batching.dense_to_sparse_batch(4, [12])),
+          requires_initialization=True)
+      self.evaluate(get_next())
+
+    # Initialize with an input tensor that is larger than `row_shape`.
+    with self.assertRaisesRegexp(errors.DataLossError,
+                                 "larger than the row shape"):
+      input_tensor = math_ops.range(0, 13)
+      get_next = self.getNext(
         dataset_ops.Dataset.from_tensors(input_tensor).apply(
-            batching.dense_to_sparse_batch(4, [12])))
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      # Initialize with an input tensor of incompatible rank.
-      sess.run(init_op, feed_dict={input_tensor: [[1]]})
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "incompatible with the row shape"):
-        self.evaluate(get_next)
-
-      # Initialize with an input tensor that is larger than `row_shape`.
-      sess.run(init_op, feed_dict={input_tensor: range(13)})
-      with self.assertRaisesRegexp(errors.DataLossError,
-                                   "larger than the row shape"):
-        self.evaluate(get_next)
+          batching.dense_to_sparse_batch(4, [12])),
+        requires_initialization=True)
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":
