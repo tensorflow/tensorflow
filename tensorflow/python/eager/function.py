@@ -149,10 +149,9 @@ class _EagerDefinedFunction(object):
       outputs: the tensors in the graph which will be outputs to the function
       attrs: dict mapping names of attributes to their AttrValue values
     """
-    operations = [
-        op for op in graph.get_operations()
-        if op not in set(arg.op for arg in inputs)
-    ]
+    input_ops = set(arg.op for arg in inputs)
+    operations = [op for op in graph.get_operations() if op not in input_ops]
+
     fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
         graph._c_graph,  # pylint: disable=protected-access
         compat.as_str(name),
