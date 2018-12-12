@@ -312,8 +312,12 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     std::string output_handle;
     ConversionFn output_convertor;
     std::vector<char> converted_data;
-    char data[0];
+    char* data;
+
+    TensorControl(size_t size_);
+    ~TensorControl();
   };
+
   struct InputDef {
     TensorControl* tc;
     ConversionFn fn;

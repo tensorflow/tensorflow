@@ -119,6 +119,19 @@ se::host::HostStream* AsPoplarStream(se::Stream* stream) {
   return dynamic_cast<se::host::HostStream*>(stream->implementation());
 }
 
+PoplarExecutor::TensorControl::TensorControl(size_t size_) {
+  size = size_;
+  ref_count = 1;
+  on_device = false;
+  input_handle.clear();
+  output_handle.clear();
+  output_convertor = nullptr;
+  converted_data.clear();
+  data = new char[size_];
+}
+
+PoplarExecutor::TensorControl::~TensorControl() { delete[] data; }
+
 PoplarExecutor::PoplarExecutor()
     : ordinal_(0),
       current_engine_(nullptr),
@@ -129,15 +142,7 @@ PoplarExecutor::PoplarExecutor()
 PoplarExecutor::~PoplarExecutor() {}
 
 void* PoplarExecutor::Allocate(uint64 size) {
-  void* raw_buf = new char[size + sizeof(TensorControl)];
-  TensorControl* allocated = new (raw_buf) TensorControl();
-  allocated->size = size;
-  allocated->ref_count = 1;
-  allocated->on_device = false;
-  allocated->input_handle.clear();
-  allocated->output_handle.clear();
-  allocated->output_convertor = nullptr;
-  allocated->converted_data.clear();
+  TensorControl* allocated = new TensorControl(size);
   {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     allocations_.push_back(allocated);
@@ -171,10 +176,8 @@ void PoplarExecutor::DeferredDeallocation() {
       std::partition(allocations_.begin(), allocations_.end(),
                      [](TensorControl* tc) { return tc->ref_count > 0; });
 
-  std::for_each(new_end, allocations_.end(), [](TensorControl* tc) {
-    tc->~TensorControl();
-    delete[] reinterpret_cast<char*>(tc);
-  });
+  std::for_each(new_end, allocations_.end(),
+                [](TensorControl* tc) { delete tc; });
 
   allocations_.erase(new_end, allocations_.end());
 }
@@ -1152,10 +1155,10 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
             "Executable must have an HloModule");
       }
 
-      TF_ASSIGN_OR_RETURN(const bool move__device_to_host,
+      TF_ASSIGN_OR_RETURN(const bool move_device_to_host,
                           CheckMoveDeviceToHostRequired(engine_changed));
 
-      if (move__device_to_host) {
+      if (move_device_to_host) {
         MoveDeviceToHost();
       }
 
@@ -1168,8 +1171,6 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
           }
 
           executable.OnEngineLoaded();
-
-          DeferredDeallocation();
           current_engine_ = engine;
 
         } catch (const std::exception& e) {
@@ -1177,9 +1178,12 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         }
       }
 
-      TF_ASSIGN_OR_RETURN(const bool move__host_to_device,
+      // Deallocate all the marked buffers.
+      DeferredDeallocation();
+
+      TF_ASSIGN_OR_RETURN(const bool move_host_to_device,
                           CheckMoveHostToDeviceRequired(engine_changed));
-      if (move__host_to_device) {
+      if (move_host_to_device) {
         MoveHostToDevice();
       }
 
