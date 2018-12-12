@@ -27,7 +27,10 @@ from tensorflow.python.util.tf_export import tf_export
 class RaggedTensorValue(object):
   """Represents the value of a `RaggedTensor`.
 
-  See `RaggedTensor` for a description of ragged tensors.
+  Warning: `RaggedTensorValue` should only be used in graph mode; in
+  eager mode, the `tf.RaggedTensor` class contains its value directly.
+
+  See `tf.RaggedTensor` for a description of ragged tensors.
   """
 
   def __init__(self, values, row_splits):
