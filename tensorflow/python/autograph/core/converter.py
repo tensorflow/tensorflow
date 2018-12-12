@@ -179,15 +179,14 @@ class ConversionOptions(object):
     return (Feature.ALL in self.optional_features or
             feature in self.optional_features)
 
-  def to_ast(self, namespace, internal_convert_user_code=None):
+  def to_ast(self, ctx, internal_convert_user_code=None):
     """Returns a representation of this object as an AST node.
 
     The AST node encodes a constructor that would create an object with the
     same contents.
 
     Args:
-      namespace: Dict[str, Any], the namespace to use when serializing values to
-        names.
+      ctx: EntityContext, the entity with which this AST needs to be consistent.
       internal_convert_user_code: Optional[bool], allows ovrriding the
         corresponding value.
 
@@ -205,10 +204,11 @@ class ConversionOptions(object):
     """
 
     def as_qualified_name(o):
-      name = inspect_utils.getqualifiedname(namespace, o)
+      name = inspect_utils.getqualifiedname(ctx.info.namespace, o, max_depth=1)
       if not name:
-        raise ValueError('Could not locate entity {} in {}'.format(
-            o, namespace))
+        # TODO(mdan): This needs to account for the symbols defined locally.
+        name = ctx.namer.new_symbol(o.__name__, ())
+        ctx.program.add_symbol(name, o)
       return name
 
     def list_of_names(values):
@@ -279,6 +279,7 @@ class ProgramContext(object):
     self.dependency_cache = {}
     self.additional_imports = set()
     self.name_map = {}
+    self.additional_symbols = {}
 
   @property
   def required_imports(self):
@@ -320,6 +321,11 @@ class ProgramContext(object):
               (o, (name, self.name_map[o])))
       else:
         self.name_map[o] = name
+
+  def add_symbol(self, name, value):
+    if name in self.additional_symbols:
+      assert self.additional_symbols[name] is value
+    self.additional_symbols[name] = value
 
   def add_to_cache(self, original_entity, converted_ast):
     self.conversion_order.append(original_entity)
