@@ -144,12 +144,11 @@ class Model(Network):
 
     Arguments:
         optimizer: String (name of optimizer) or optimizer instance.
-            See [optimizers](/api_docs/python/tf/keras/optimizers).
+            See `tf.keras.optimizers`.
         loss: String (name of objective function) or objective function.
-            See [losses](/api_docs/python/tf/losses).
-            If the model has multiple outputs, you can use a different loss
-            on each output by passing a dictionary or a list of losses.
-            The loss value that will be minimized by the model
+            See `tf.losses`. If the model has multiple outputs, you can use a
+            different loss on each output by passing a dictionary or a list of
+            losses. The loss value that will be minimized by the model
             will then be the sum of all individual losses.
         metrics: List of metrics to be evaluated by the model
             during training and testing.
@@ -629,7 +628,7 @@ class Model(Network):
             0 = silent, 1 = progress bar, 2 = one line per epoch.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during training.
-            See [callbacks](/api_docs/python/tf/keras/callbacks).
+            See `tf.keras.callbacks`.
         validation_split: Float between 0 and 1.
             Fraction of the training data to be used as validation data.
             The model will set apart this fraction of the training data,
