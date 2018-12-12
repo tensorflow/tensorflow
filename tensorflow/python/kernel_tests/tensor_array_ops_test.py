@@ -425,7 +425,6 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(t_g_ta_0, t_g_ta_1)
       self.assertAllEqual([[4.0, 5.0]], d_r1_0)
 
-  @test_util.run_v1_only("b/120545219")
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
@@ -459,7 +458,6 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.write(3, 3.0).flow)
 
-  @test_util.run_v1_only("b/120545219")
   def testTensorArrayReadWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
@@ -505,7 +503,6 @@ class TensorArrayTest(test.TestCase):
           "it has already been written to."):
         self.evaluate(ta.write(2, 3.0).write(2, 3.0).flow)
 
-  @test_util.run_v1_only("b/120545219")
   def testTensorArrayConcatIncompatibleShapesFails(self):
     with self.session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
@@ -537,7 +534,6 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError("shape"):
         self.evaluate(w3.concat())
 
-  @test_util.run_v1_only("b/120545219")
   def testTensorArraySplitIncompatibleShapesFails(self):
     with self.session(use_gpu=True):
       in_eager_mode = context.executing_eagerly()
@@ -959,7 +955,7 @@ class TensorArrayTest(test.TestCase):
         v0_grad = gradients_impl.gradients([vout], [v0], [grad_val])[0]
         state0_grad = gradients_impl.gradients([vout], [state0], [grad_val])[0]
         var_grad = gradients_impl.gradients([vout], [var], [grad_val])[0]
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       state0_t, var_t, v0_t, vout_t, v0_grad_t, var_grad_t, state0_grad_t = (
           self.evaluate(
@@ -1578,7 +1574,7 @@ class TensorArrayTest(test.TestCase):
       self.assertEqual(tensor_shape.scalar(), read1.get_shape())
 
       if not context.executing_eagerly():
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       read0_v, read1_v, size0_v, size1_v = self.evaluate((read0, read1, size0,
                                                           size1))
