@@ -570,6 +570,12 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
+  def __str__(self):
+    return "%s:%s" % (self.__class__.__name__, self._index)
+
+  def __repr__(self):
+    return "%s(%r)" % (self.__class__.__name__, self._index)
+
   @property
   def handle(self):
     # If we're in a tpu.rewrite(), return the replicated handle.

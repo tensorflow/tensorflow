@@ -28,7 +28,6 @@ from tensorflow.python.distribute import values
 
 # pylint: disable=protected-access,invalid-name
 _call_for_each_replica = mirrored_strategy._call_for_each_replica
-_reduce_non_distributed_value = mirrored_strategy._reduce_non_distributed_value
 _create_mirrored_variable = mirrored_strategy._create_mirrored_variable
 all_local_devices = mirrored_strategy.all_local_devices
 CoreMirroredStrategy = mirrored_strategy.MirroredStrategy
