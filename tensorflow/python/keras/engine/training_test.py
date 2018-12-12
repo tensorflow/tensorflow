@@ -793,12 +793,12 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 class LossWeightingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
-  # TODO(b/120562577): Test failing with assertion error.
-  def DISABLED_test_class_weights(self):
+  def test_class_weights(self):
     num_classes = 5
     batch_size = 5
-    epochs = 5
+    epochs = 10
     weighted_class = 3
+    weight = 10.
     train_samples = 1000
     test_samples = 1000
     input_dim = 5
@@ -827,7 +827,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     class_weight = dict([(i, 1.) for i in range(num_classes)])
-    class_weight[weighted_class] = 2.
+    class_weight[weighted_class] = weight
 
     sample_weight = np.ones((y_train.shape[0]))
     sample_weight[int_y_train == weighted_class] = 2.
@@ -864,12 +864,12 @@ class LossWeightingTest(keras_parameterized.TestCase):
     self.assertLess(score[0], ref_score[0])
 
   @keras_parameterized.run_all_keras_modes
-  @tf_test_util.run_v1_only('b/120545219')
   def test_sample_weights(self):
     num_classes = 5
     batch_size = 5
-    epochs = 5
+    epochs = 10
     weighted_class = 3
+    weight = 10.
     train_samples = 1000
     test_samples = 1000
     input_dim = 5
@@ -898,7 +898,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     sample_weight = np.ones((y_train.shape[0]))
-    sample_weight[int_y_train == weighted_class] = 2.
+    sample_weight[int_y_train == weighted_class] = weight
 
     model.fit(
         x_train,
@@ -962,13 +962,12 @@ class LossWeightingTest(keras_parameterized.TestCase):
       self.assertTrue(msg_found)
 
   @keras_parameterized.run_all_keras_modes
-  @tf_test_util.run_v1_only('b/120545219')
-  # TODO(b/120562577): Test failing with assertion error.
-  def DISABLED_test_temporal_sample_weights(self):
+  def test_temporal_sample_weights(self):
     num_classes = 5
     batch_size = 5
-    epochs = 5
+    epochs = 10
     weighted_class = 3
+    weight = 10.
     train_samples = 1000
     test_samples = 1000
     input_dim = 5
@@ -997,7 +996,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
       test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
       sample_weight = np.ones((y_train.shape[0]))
-      sample_weight[int_y_train == weighted_class] = 2.
+      sample_weight[int_y_train == weighted_class] = weight
 
       temporal_x_train = np.reshape(x_train, (len(x_train), 1,
                                               x_train.shape[1]))
@@ -1018,7 +1017,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
       model.compile(
           RMSPropOptimizer(learning_rate=learning_rate),
-          loss='binary_crossentropy',
+          loss='categorical_crossentropy',
           metrics=['acc', metrics_module.CategoricalAccuracy()],
           weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
           sample_weight_mode='temporal',
