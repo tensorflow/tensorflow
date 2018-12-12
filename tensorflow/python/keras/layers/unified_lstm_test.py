@@ -159,25 +159,22 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
         existing_loss = loss_value
 
   @parameterized.named_parameters(
-      ('non_tan_activation', 'relu', 'sigmoid', 0, False, True, None),
-      ('non_sigmoid_recur_activation', 'tanh', 'relu', 0, False, True, None),
-      ('use_recurrent_dropout', 'tanh', 'sigmoid', 0.1, False, True, None),
-      ('unroll', 'tanh', 'sigmoid', 0, True, True, None),
-      ('not_use_bias', 'tanh', 'sigmoid', 0, False, False, None),
-      ('use_bias_regularizer', 'tanh', 'sigmoid', 0, False, True, 'l2')
+      ('non_tan_activation', 'relu', 'sigmoid', 0, False, True),
+      ('non_sigmoid_recur_activation', 'tanh', 'relu', 0, False, True),
+      ('use_recurrent_dropout', 'tanh', 'sigmoid', 0.1, False, True),
+      ('unroll', 'tanh', 'sigmoid', 0, True, True),
+      ('not_use_bias', 'tanh', 'sigmoid', 0, False, False),
   )
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_could_use_defun_backend(self, activation, recurrent_activation,
-                                   recurrent_dropout, unroll, use_bias,
-                                   bias_regularizer):
+                                   recurrent_dropout, unroll, use_bias):
     layer = keras.layers.UnifiedLSTM(
         1,
         activation=activation,
         recurrent_activation=recurrent_activation,
         recurrent_dropout=recurrent_dropout,
         unroll=unroll,
-        use_bias=use_bias,
-        bias_regularizer=bias_regularizer)
+        use_bias=use_bias)
     self.assertFalse(layer.could_use_cudnn)
 
   def test_unified_lstm_feature_parity_with_canonical_lstm(self):
