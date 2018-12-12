@@ -2992,7 +2992,7 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
                  << "are using Keras, please call "
                  << "keras.backend.set_learning_phase(0) before constructing "
                  << "your model. At "
-                 << node_def.name());
+                 << node_def.name();
     return tensorflow::errors::Unimplemented(
         node_def.op(), " only supports is_training=false, at ",
         node_def.name());
