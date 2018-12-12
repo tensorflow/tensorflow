@@ -18,16 +18,14 @@ checking block.
 MLIR with ML, CFG and External functions. The following restrictions apply to
 the input ML functions:
 
--   0 or 1 return values;
 -   no `Tensor` types;
--   no `if` conditions in the body.
 
 These restrictions may be lifted in the future.
 
 ### Output IR
 
 MLIR with CFG and External functions only. The CFG functions introduced by this
-pass can contain any operations from BuiltIn and StandardOps dialects in
+pass can contain `affine_apply` operations from the BuiltinOps dialect in
 addition to the operations present in the source ML functions.
 
 ### Invariants

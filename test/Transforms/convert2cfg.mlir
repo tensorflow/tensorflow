@@ -9,6 +9,9 @@
 // CHECK-DAG: [[map56:#map[0-9]+]] = () -> (56)
 // CHECK-DAG: [[map1Sym:#map[0-9]+]] = ()[s0] -> (s0)
 // CHECK-DAG: [[map1Id:#map[0-9]+]] = (d0) -> (d0)
+// CHECK-DAG: [[mapAdd1:#map[0-9]+]] = (d0) -> (d0 + 1)
+// CHECK-DAG: [[mapAdd2:#map[0-9]+]] = (d0) -> (d0 + 2)
+// CHECK-DAG: [[mapAdd3:#map[0-9]+]] = (d0) -> (d0 + 3)
 // CHECK-DAG: [[multiMap1:#map[0-9]+]] = (d0)[s0] -> (d0, d0 * -1 + s0)
 // CHECK-DAG: [[multiMap2:#map[0-9]+]] = (d0)[s0] -> (s0, d0 + 10)
 // CHECK-DAG: [[multi7Map:#map[0-9]+]] = (d0) -> (d0, d0, d0, d0, d0, d0, d0)
@@ -42,8 +45,7 @@ extfunc @body(index) -> ()
 // CHECK-NEXT:   cond_br %3, bb3, bb4
 // CHECK-NEXT: bb3:	// pred: bb2
 // CHECK-NEXT:   call @body(%2) : (index) -> ()
-// CHECK-NEXT:   %c1 = constant 1 : index
-// CHECK-NEXT:   %4 = addi %2, %c1 : index
+// CHECK-NEXT:   %4 = affine_apply [[mapAdd1]](%2)
 // CHECK-NEXT:   br bb2(%4 : index)
 // CHECK-NEXT: bb4:	// pred: bb2
 // CHECK-NEXT:   return
@@ -120,8 +122,7 @@ extfunc @other(index, i32) -> (i32)
 // CHECK-NEXT:   %5 = call @other(%4, %arg0) : (index, i32) -> i32
 // CHECK-NEXT:   %6 = call @other(%4, %5) : (index, i32) -> i32
 // CHECK-NEXT:   %7 = call @other(%4, %arg1) : (index, i32) -> i32
-// CHECK-NEXT:   %c1 = constant 1 : index
-// CHECK-NEXT:   %8 = addi %2, %c1 : index
+// CHECK-NEXT:   %8 = affine_apply [[mapAdd1]](%2)
 // CHECK-NEXT:   br bb2(%8 : index)
 // CHECK-NEXT: bb4:	// pred: bb2
 // CHECK-NEXT:   %c0 = constant 0 : index
@@ -169,13 +170,11 @@ extfunc @post(index) -> ()
 // CHECK-NEXT:   cond_br %7, bb6, bb7
 // CHECK-NEXT: bb6:	// pred: bb5
 // CHECK-NEXT:   call @body2(%2, %6) : (index, index) -> ()
-// CHECK-NEXT:   %c2 = constant 2 : index
-// CHECK-NEXT:   %8 = addi %6, %c2 : index
+// CHECK-NEXT:   %8 = affine_apply [[mapAdd2]](%6)
 // CHECK-NEXT:   br bb5(%8 : index)
 // CHECK-NEXT: bb7:	// pred: bb5
 // CHECK-NEXT:   call @post(%2) : (index) -> ()
-// CHECK-NEXT:   %c1 = constant 1 : index
-// CHECK-NEXT:   %9 = addi %2, %c1 : index
+// CHECK-NEXT:   %9 = affine_apply [[mapAdd1]](%2)
 // CHECK-NEXT:   br bb2(%9 : index)
 // CHECK-NEXT: bb8:	// pred: bb2
 // CHECK-NEXT:   return
@@ -218,8 +217,7 @@ extfunc @body3(index, index) -> ()
 // CHECK-NEXT:   cond_br %7, bb6, bb7
 // CHECK-NEXT: bb6:	// pred: bb5
 // CHECK-NEXT:   call @body2(%2, %6) : (index, index) -> ()
-// CHECK-NEXT:   %c2 = constant 2 : index
-// CHECK-NEXT:   %8 = addi %6, %c2 : index
+// CHECK-NEXT:   %8 = affine_apply [[mapAdd2]](%6)
 // CHECK-NEXT:   br bb5(%8 : index)
 // CHECK-NEXT: bb7:	// pred: bb5
 // CHECK-NEXT:   call @mid(%2) : (index) -> ()
@@ -233,13 +231,11 @@ extfunc @body3(index, index) -> ()
 // CHECK-NEXT:   cond_br %12, bb10, bb11
 // CHECK-NEXT: bb10:	// pred: bb9
 // CHECK-NEXT:   call @body3(%2, %11) : (index, index) -> ()
-// CHECK-NEXT:   %c3 = constant 3 : index
-// CHECK-NEXT:   %13 = addi %11, %c3 : index
+// CHECK-NEXT:   %13 = affine_apply [[mapAdd3]](%11)
 // CHECK-NEXT:   br bb9(%13 : index)
 // CHECK-NEXT: bb11:	// pred: bb9
 // CHECK-NEXT:   call @post(%2) : (index) -> ()
-// CHECK-NEXT:   %c1 = constant 1 : index
-// CHECK-NEXT:   %14 = addi %2, %c1 : index
+// CHECK-NEXT:   %14 = affine_apply [[mapAdd1]](%2)
 // CHECK-NEXT:   br bb2(%14 : index)
 // CHECK-NEXT: bb12:	// pred: bb2
 // CHECK-NEXT:   return
@@ -280,12 +276,10 @@ mlfunc @more_imperfectly_nested_loops() {
 // CHECK-NEXT:   cond_br %7, bb6, bb7
 // CHECK-NEXT: bb6:	// pred: bb5
 // CHECK-NEXT:   call @body2(%2, %6) : (index, index) -> ()
-// CHECK-NEXT:   %c1 = constant 1 : index
-// CHECK-NEXT:   %8 = addi %6, %c1 : index
+// CHECK-NEXT:   %8 = affine_apply [[mapAdd1]](%6)
 // CHECK-NEXT:   br bb5(%8 : index)
 // CHECK-NEXT: bb7:	// pred: bb5
-// CHECK-NEXT:   %c1_0 = constant 1 : index
-// CHECK-NEXT:   %9 = addi %2, %c1_0 : index
+// CHECK-NEXT:   %9 = affine_apply [[mapAdd1]](%2)
 // CHECK-NEXT:   br bb2(%9 : index)
 // CHECK-NEXT: bb8:	// pred: bb2
 // CHECK-NEXT:   return
@@ -478,8 +472,7 @@ mlfunc @if_for() {
 // CHECK-NEXT: [[innerElseBB:bb[0-9]+]]:
 // CHECK-NEXT:   br [[innerEndBB]]
 // CHECK-NEXT: [[innerEndBB]]:
-// CHECK-NEXT:   %c1 = constant 1 : index
-// CHECK-NEXT:   %9 = addi %5, %c1 : index
+// CHECK-NEXT:   %9 = affine_apply [[mapAdd1]](%5)
 // CHECK-NEXT:   br [[midLoopCondBB]](%9 : index)
 // CHECK-NEXT: [[midLoopEndBB]]:
 // CHECK-NEXT:   br [[outerEndBB]]
@@ -517,14 +510,12 @@ mlfunc @if_for() {
 // CHECK-NEXT:   cond_br %19, [[innerLoopBodyBB:bb[0-9]+]], [[innerLoopEndBB:bb[0-9]+]]
 // CHECK-NEXT: [[innerLoopBodyBB]]:
 // CHECK-NEXT:   call @body3(%12, %18) : (index, index) -> ()
-// CHECK-NEXT:   %c1_2 = constant 1 : index
-// CHECK-NEXT:   %20 = addi %18, %c1_2 : index
+// CHECK-NEXT:   %20 = affine_apply [[mapAdd1]](%18)
 // CHECK-NEXT:   br [[innerLoopCondBB]](%20 : index)
 // CHECK-NEXT: [[innerLoopEndBB]]:
 // CHECK-NEXT:   br [[midEndBB]]
 // CHECK-NEXT: [[midEndBB]]:
-// CHECK-NEXT:   %c1_3 = constant 1 : index
-// CHECK-NEXT:   %21 = addi %12, %c1_3 : index
+// CHECK-NEXT:   %21 = affine_apply [[mapAdd1]](%12)
 // CHECK-NEXT:   br [[outerLoopCond]](%21 : index)
   for %k = 0 to 42 {
     if #set2(%k) {
@@ -566,12 +557,10 @@ mlfunc @if_for() {
 // CHECK-NEXT:   cond_br %{{[0-9]+}}, bb6, bb7
 // CHECK-NEXT: bb6:	// pred: bb5
 // CHECK-NEXT:   call @body2(%{{[0-9]+}}, %{{[0-9]+}}) : (index, index) -> ()
-// CHECK-NEXT:   %c1 = constant 1 : index
-// CHECK-NEXT:   %{{[0-9]+}} = addi %{{[0-9]+}}, %c1 : index
+// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[mapAdd1]](%{{[0-9]+}})
 // CHECK-NEXT:   br bb5(%{{[0-9]+}} : index)
 // CHECK-NEXT: bb7:	// pred: bb5
-// CHECK-NEXT:   %c1_0 = constant 1 : index
-// CHECK-NEXT:   %{{[0-9]+}} = addi %{{[0-9]+}}, %c1_0 : index
+// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[mapAdd1]](%{{[0-9]+}})
 // CHECK-NEXT:   br bb2(%{{[0-9]+}} : index)
 // CHECK-NEXT: bb8:	// pred: bb2
 // CHECK-NEXT:   return
@@ -614,8 +603,7 @@ mlfunc @loop_min_max(%N : index) {
 // CHECK-NEXT:   cond_br %{{[0-9]+}}, bb3, bb4
 // CHECK-NEXT: bb3:	// pred: bb2
 // CHECK-NEXT:   call @body(%{{[0-9]+}}) : (index) -> ()
-// CHECK-NEXT:   %c1 = constant 1 : index
-// CHECK-NEXT:   %{{[0-9]+}} = addi %{{[0-9]+}}, %c1 : index
+// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[mapAdd1]](%{{[0-9]+}})
 // CHECK-NEXT:   br bb2(%{{[0-9]+}} : index)
 // CHECK-NEXT: bb4:	// pred: bb2
 // CHECK-NEXT:   return

@@ -246,10 +246,14 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
 
   // Builder point is currently at the last block of the loop body.  Append the
   // induction variable stepping to this block and branch back to the exit
-  // condition block.
-  CFGValue *step = getConstantIndexValue(forStmt->getStep());
-  auto stepOp = builder.create<AddIOp>(forStmt->getLoc(), iv, step);
-  CFGValue *nextIvValue = cast<CFGValue>(stepOp->getResult());
+  // condition block.  Construct an affine map f : (x -> x+step) and apply this
+  // map to the induction variable.
+  auto affStep = builder.getAffineConstantExpr(forStmt->getStep());
+  auto affDim = builder.getAffineDimExpr(0);
+  auto affStepMap = builder.getAffineMap(1, 0, {affDim + affStep}, {});
+  auto stepOp =
+      builder.create<AffineApplyOp>(forStmt->getLoc(), affStepMap, iv);
+  CFGValue *nextIvValue = cast<CFGValue>(stepOp->getResult(0));
   builder.create<BranchOp>(builder.getUnknownLoc(), loopConditionBlock,
                            nextIvValue);
 
