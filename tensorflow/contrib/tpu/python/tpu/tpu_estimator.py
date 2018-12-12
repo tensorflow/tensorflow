@@ -336,6 +336,16 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
+    if tensor_tracer.TensorTracer.is_enabled():
+      tt = tensor_tracer.TensorTracer()
+      tracing_calls = tt.trace_cpu(ops.get_default_graph())
+      tracing_call_ret = _OutfeedHostCall.create_cpu_hostcall(tracing_calls)
+      tracing_functions = tracing_call_ret.values()
+      if tracing_functions:
+        if hooks:
+          hooks.extend([_OutfeedHostCallHook(tracing_functions)])
+        else:
+          hooks = [_OutfeedHostCallHook(tracing_functions)]
     hooks = tuple(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
