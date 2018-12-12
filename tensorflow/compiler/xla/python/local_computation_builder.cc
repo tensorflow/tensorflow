@@ -647,6 +647,15 @@ LocalOp LocalComputationBuilder::ConstantLiteral(const Literal& literal) {
   return xla::ConstantLiteral(&builder_, literal);
 }
 
+LocalOp LocalComputationBuilder::Iota(PrimitiveType element_type, int64 size) {
+  return xla::Iota(&builder_, element_type, size);
+}
+
+LocalOp LocalComputationBuilder::BroadcastedIota(const Shape& shape,
+                                                 int64 dimension) {
+  return xla::Iota(&builder_, shape, dimension);
+}
+
 LocalOp LocalComputationBuilder::Broadcast(
     const LocalOp& operand, absl::Span<const int64> broadcast_sizes) {
   return xla::Broadcast(operand.op(), broadcast_sizes);

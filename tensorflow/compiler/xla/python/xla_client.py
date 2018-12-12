@@ -831,6 +831,33 @@ class ComputationBuilder(object):
     return self.ParameterWithShape(
         Shape.from_pyval(value), name=name, parameter_num=parameter_num)
 
+  def Iota(self, dtype, size):
+    """Enqueues an iota constant onto the computation.
+
+    Args:
+      dtype: expected numpy dtype of the output.
+      size: integer, the number of elements in the array.
+
+    Returns:
+      A LocalOp representing the added iota constant.
+    """
+    element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
+    return self._client.Iota(element_type, size)
+
+  def BroadcastedIota(self, dtype, shape, dimension):
+    """Enqueues a broadcasted iota constant onto the computation.
+
+    Args:
+      dtype: expected numpy dtype of the output.
+      shape: tuple of integers, the expected output shape (dimensions).
+      dimension: positive integer, dimension along which to increment values.
+
+    Returns:
+      A LocalOp representing the added broadcasted iota constant.
+    """
+    xla_shape = Shape.array_shape(dtype, shape)
+    return self._client.BroadcastedIota(xla_shape, dimension)
+
   def Broadcast(self, operand, sizes):
     """Enqueues a broadcast operation onto the computation.
 

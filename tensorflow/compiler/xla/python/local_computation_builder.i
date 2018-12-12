@@ -1051,6 +1051,8 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Outfeed;
 %unignore xla::swig::LocalComputationBuilder::ConstantLiteral;
 %unignore xla::swig::LocalComputationBuilder::ConstantR0;
+%unignore xla::swig::LocalComputationBuilder::Iota;
+%unignore xla::swig::LocalComputationBuilder::BroadcastedIota;
 %unignore xla::swig::LocalComputationBuilder::Broadcast;
 %unignore xla::swig::LocalComputationBuilder::BroadcastInDim;
 %unignore xla::swig::LocalComputationBuilder::Pad;
