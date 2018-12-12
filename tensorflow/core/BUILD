@@ -49,7 +49,7 @@
 # filegroup ":android_proto_srcs" - Protos
 # filegroup ":android_srcs" - Core sources
 # cc_library ":android_tensorflow_lib" - Native library
-# cc_library ":android_tensorflow_lib_selective_registration" - Native library
+# cc_library ":android_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
 # portable_proto_library ":android_proto_lib" (Google-internal)
 #
@@ -1830,27 +1830,6 @@ cc_library(
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
-)
-
-# Android library for use with the SELECTIVE_REGISTRATION feature.
-# Does not contain operators. In contrast to android_tensorflow_lib_lite,
-# this links in framework support for all types, relying on selective
-# registration of ops to prune code size.
-#
-# TODO(gonnet): Move all users of these aliases to the corresponding
-#     :android_tensorflow_lib_lite* targets and remove.
-alias(
-    name = "android_tensorflow_lib_selective_registration",
-    actual = ":android_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
-# Android library for use with the SELECTIVE_REGISTRATION feature with
-# no proto_rtti.
-alias(
-    name = "android_tensorflow_lib_selective_registration_nortti",
-    actual = ":android_tensorflow_lib_lite_nortti",
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
