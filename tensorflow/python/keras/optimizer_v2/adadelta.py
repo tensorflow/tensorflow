@@ -22,8 +22,10 @@ import numpy as np
 
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.optimizers.Adadelta')
 class Adadelta(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adadelta algorithm.
 
@@ -85,7 +87,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
     @end_compatibility
     """
     super(Adadelta, self).__init__(name, **kwargs)
-    self._set_hyper('learning_rate', learning_rate)
+    self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._set_hyper('rho', rho)
     self._set_hyper('epsilon', epsilon)

@@ -162,9 +162,9 @@ class AdamOptimizerTest(test.TestCase):
         # it (i.e. they have GPU kernels).
         var = variables.Variable([[1.0], [2.0]])
         indices = constant_op.constant([0, 1], dtype=index_dtype)
-        gathered_sum = math_ops.reduce_sum(array_ops.gather(var, indices))
+        g_sum = lambda: math_ops.reduce_sum(array_ops.gather(var, indices))  # pylint: disable=cell-var-from-loop
         optimizer = adam.Adam(3.0)
-        minimize_op = optimizer.minimize(gathered_sum, var_list=[var])
+        minimize_op = optimizer.minimize(g_sum, var_list=[var])
         variables.global_variables_initializer().run()
         minimize_op.run()
 
@@ -502,6 +502,14 @@ class AdamOptimizerTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(
         self.evaluate(keras_v1_iteration), self.evaluate(keras_v2_iteration))
+
+  def testConstructAdamWithLR(self):
+    opt = adam.Adam(lr=1.0)
+    self.assertEqual(opt.lr, 1.0)
+    opt_2 = adam.Adam(learning_rate=0.1, lr=1.0)
+    self.assertEqual(opt_2.lr, 1.0)
+    opt_3 = adam.Adam(learning_rate=0.1)
+    self.assertEqual(opt_3.lr, 0.1)
 
 
 if __name__ == "__main__":

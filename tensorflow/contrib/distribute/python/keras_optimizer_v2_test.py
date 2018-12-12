@@ -18,24 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import shutil
-import tempfile
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.contrib.distribute.python import combinations
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.estimator import run_config
-from tensorflow.python.estimator import training
-from tensorflow.python.estimator.canned import dnn_linear_combined
-from tensorflow.python.estimator.canned import prediction_keys
-from tensorflow.python.estimator.export import export
-from tensorflow.python.estimator.inputs import numpy_io
-from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -44,103 +32,7 @@ from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
-from tensorflow.python.summary.writer import writer_cache
-
-
-class KerasOptimizerV2IntegrationTest(test.TestCase, parameterized.TestCase):
-
-  def setUp(self):
-    self._model_dir = tempfile.mkdtemp()
-
-  def dataset_input_fn(self, x, y, batch_size):
-
-    def input_fn():
-      dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-      dataset = dataset.repeat(1).batch(batch_size)
-      return dataset
-
-    return input_fn
-
-  @combinations.generate(
-      combinations.combine(
-          mode=['graph'],
-          distribution=[
-              combinations.one_device_strategy,
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.mirrored_strategy_with_two_gpus,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_two_gpus
-          ],
-          use_train_and_evaluate=[True, False]))
-  def test_complete_flow_with_mode(self, distribution, use_train_and_evaluate):
-    label_dimension = 2
-    input_dimension = label_dimension
-    batch_size = 10
-    data = np.linspace(0., 2., batch_size * label_dimension, dtype=np.float32)
-    data = data.reshape(batch_size, label_dimension)
-    train_input_fn = self.dataset_input_fn(
-        x={'x': data},
-        y=data,
-        batch_size=batch_size // distribution.num_replicas_in_sync)
-    eval_input_fn = self.dataset_input_fn(
-        x={'x': data},
-        y=data,
-        batch_size=batch_size // distribution.num_replicas_in_sync)
-    predict_input_fn = numpy_io.numpy_input_fn(
-        x={'x': data}, batch_size=batch_size, shuffle=False)
-
-    linear_feature_columns = [
-        feature_column.numeric_column('x', shape=(input_dimension,))
-    ]
-    dnn_feature_columns = [
-        feature_column.numeric_column('x', shape=(input_dimension,))
-    ]
-    feature_columns = linear_feature_columns + dnn_feature_columns
-    session_config = config_pb2.ConfigProto(
-        log_device_placement=True, allow_soft_placement=True)
-    estimator = dnn_linear_combined.DNNLinearCombinedRegressor(
-        linear_feature_columns=linear_feature_columns,
-        dnn_hidden_units=(2, 2),
-        dnn_feature_columns=dnn_feature_columns,
-        label_dimension=label_dimension,
-        model_dir=self._model_dir,
-        dnn_optimizer=adam.Adam(0.001),
-        linear_optimizer=adam.Adam(0.001),
-        config=run_config.RunConfig(
-            train_distribute=distribution,
-            eval_distribute=distribution,
-            session_config=session_config))
-
-    num_steps = 2
-    if use_train_and_evaluate:
-      scores, _ = training.train_and_evaluate(
-          estimator, training.TrainSpec(train_input_fn, max_steps=num_steps),
-          training.EvalSpec(eval_input_fn))
-    else:
-      estimator.train(train_input_fn, steps=num_steps)
-      scores = estimator.evaluate(eval_input_fn)
-
-    self.assertIn('loss', six.iterkeys(scores))
-
-    predictions = np.array([
-        x[prediction_keys.PredictionKeys.PREDICTIONS]
-        for x in estimator.predict(predict_input_fn)
-    ])
-    self.assertAllEqual((batch_size, label_dimension), predictions.shape)
-
-    feature_spec = feature_column.make_parse_example_spec(feature_columns)
-    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
-        feature_spec)
-    export_dir = estimator.export_savedmodel(tempfile.mkdtemp(),
-                                             serving_input_receiver_fn)
-    self.assertTrue(gfile.Exists(export_dir))
-
-  def tearDown(self):
-    if self._model_dir:
-      writer_cache.FileWriterCache.clear()
-      shutil.rmtree(self._model_dir)
 
 
 def get_model():
@@ -162,7 +54,9 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
       var = variables.Variable(
           2.0, name='var', aggregation=variable_scope.VariableAggregation.SUM)
       # grad for cpu is 1, grad for gpu is 2, avg grad is 1.5.
-      loss = math_ops.cast(_replica_id() + 1, dtype=dtypes.float32) * var
+      def loss():
+        return math_ops.cast(_replica_id() + 1, dtype=dtypes.float32) * var
+
       optimizer = adam.Adam(learning_rate=0.01, beta_1=0.2, beta_2=0.2)
       train_op = optimizer.minimize(loss, var_list=[var])
       m = optimizer.get_slot(var, 'm')

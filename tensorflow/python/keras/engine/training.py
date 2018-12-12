@@ -40,6 +40,7 @@ from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine.network import Network
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
@@ -195,8 +196,9 @@ class Model(Network):
     # Validate that arguments passed by the user to `compile` are supported by
     # DistributionStrategy.
     if distribute:
-      if not isinstance(
-          optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
+      if not isinstance(optimizer,
+                        (tf_optimizer_module.Optimizer, optimizers.TFOptimizer,
+                         optimizer_v2.OptimizerV2)):
         raise NotImplementedError(
             'optimizer must be an instance of '
             'tf.train.Optimizer, not a %s' % type(optimizer))

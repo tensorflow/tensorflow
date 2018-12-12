@@ -136,9 +136,9 @@ class AdamaxOptimizerTest(test.TestCase):
         # it (i.e. they have GPU kernels).
         var = variables.Variable([[1.0], [2.0]])
         indices = constant_op.constant([0, 1], dtype=index_dtype)
-        gathered_sum = math_ops.reduce_sum(array_ops.gather(var, indices))
+        g_sum = lambda: math_ops.reduce_sum(array_ops.gather(var, indices))  # pylint: disable=cell-var-from-loop
         optimizer = adamax.Adamax(3.0)
-        minimize_op = optimizer.minimize(gathered_sum, var_list=[var])
+        minimize_op = optimizer.minimize(g_sum, var_list=[var])
         variables.global_variables_initializer().run()
         minimize_op.run()
 
@@ -361,6 +361,14 @@ class AdamaxOptimizerTest(test.TestCase):
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, and two unique slot variables for v1 and v2.
       self.assertEqual(5, len(set(opt.variables())))
+
+  def testConstructAdamaxWithLR(self):
+    opt = adamax.Adamax(lr=1.0)
+    self.assertEqual(opt.lr, 1.0)
+    opt_2 = adamax.Adamax(learning_rate=0.1, lr=1.0)
+    self.assertEqual(opt_2.lr, 1.0)
+    opt_3 = adamax.Adamax(learning_rate=0.1)
+    self.assertEqual(opt_3.lr, 0.1)
 
 
 if __name__ == "__main__":
