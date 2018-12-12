@@ -1078,9 +1078,11 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
 
   ProgramShape program_shape(arg->computation().host_program_shape());
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
+  absl::optional<Layout> output_layout;
   if (arg->has_output_layout()) {
+    output_layout = Layout::CreateFromProto(arg->output_layout());
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
-        arg->output_layout(), program_shape.result()));
+        *output_layout, program_shape.result()));
   }
 
   HloModuleConfig config(program_shape);
@@ -1096,8 +1098,8 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
   // relayout here.
   //
   // TODO(b/77824332): Make HloEvaluator take care of the re-layout.
-  if (arg->has_output_layout()) {
-    result_literal = result_literal.Relayout(arg->output_layout());
+  if (output_layout.has_value()) {
+    result_literal = result_literal.Relayout(*output_layout);
   }
   *result->mutable_literal() = result_literal.ToProto();
 

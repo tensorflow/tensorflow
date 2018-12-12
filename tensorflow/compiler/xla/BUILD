@@ -224,6 +224,7 @@ cc_library(
     name = "shape_util",
     srcs = [
         "index_util.cc",
+        "layout.cc",
         "layout_util.cc",
         "primitive_util.cc",
         "shape.cc",
@@ -231,6 +232,7 @@ cc_library(
     ],
     hdrs = [
         "index_util.h",
+        "layout.h",
         "layout_util.h",
         "primitive_util.h",
         "shape.h",
@@ -298,6 +300,22 @@ tf_cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "layout_test",
+    srcs = ["layout_test.cc"],
+    deps = [
+        ":shape_util",
+        ":status_macros",
+        ":test",
+        ":test_helpers",
+        ":types",
+        ":util",
+        ":xla_data_proto",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
