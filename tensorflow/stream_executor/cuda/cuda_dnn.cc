@@ -300,7 +300,11 @@ port::Status GetLoadedCudnnVersion(CudnnVersion* version) {
 
 }  // namespace
 
-CudnnSupport::CudnnSupport(CUDAExecutor* parent) : parent_(parent) {}
+CudnnSupport::CudnnSupport(CUDAExecutor* parent) : parent_(parent) {
+  // TODO(pr/24355): Support all cuDNN functionality. Currently only conv.
+  tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC", false,
+                                 &cudnn_deterministic_);
+}
 
 port::Status CudnnSupport::Init() {
   ScopedActivateExecutorContext context(parent_);
@@ -2816,10 +2820,15 @@ bool CudnnSupport::GetConvolveAlgorithms(
   }
 
   out_algorithms->clear();
-  for (auto i : algo_types) {
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
-      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+  if (cudnn_deterministic_) {
+    out_algorithms->push_back({CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
+                               /*user_tensor_ops=*/false});
+  } else {
+    for (auto i : algo_types) {
+      out_algorithms->push_back({i, /*use_tensor_ops=*/false});
+      if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+        out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+      }
     }
   }
   return true;
@@ -2864,10 +2873,15 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   }
 
   out_algorithms->clear();
-  for (auto i : algo_types) {
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
-      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+  if (cudnn_deterministic_) {
+    out_algorithms->push_back({CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
+                               /*use_tensor_ops=*/false});
+  } else {
+    for (auto i : algo_types) {
+      out_algorithms->push_back({i, /*use_tensor_ops=*/false});
+      if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+        out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+      }
     }
   }
   return true;
@@ -2895,10 +2909,15 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   }
 
   out_algorithms->clear();
-  for (auto i : algo_types) {
-    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
-    if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
-      out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+  if (cudnn_deterministic_) {
+    out_algorithms->push_back({CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
+                               /*use_tensor_ops=*/false});
+  } else {
+    for (auto i : algo_types) {
+      out_algorithms->push_back({i, /*use_tensor_ops=*/false});
+      if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+        out_algorithms->push_back({i, /*use_tensor_ops=*/true});
+      }
     }
   }
   return true;

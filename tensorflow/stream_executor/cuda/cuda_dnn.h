@@ -643,6 +643,8 @@ class CudnnSupport : public dnn::DnnSupport {
   // Provides access to the cuDNN handle.
   std::unique_ptr<class CudnnAccess> cudnn_;
 
+  bool cudnn_deterministic_ = false;
+
   template <class T, class U>
   port::Status DoBatchNormalizationForwardImpl(
       Stream* stream, dnn::DataType input_data_type,
