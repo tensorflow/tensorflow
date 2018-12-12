@@ -99,7 +99,7 @@ def while_loop(cond,
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
-    add_control_dependencies = util.in_defun()
+    add_control_dependencies = ops.get_default_graph()._add_control_dependencies
 
     # Build a `cond` wrapper that can handle the extra counter loop_var.
     def wrapped_cond(loop_counter, *args):
