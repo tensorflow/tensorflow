@@ -340,8 +340,8 @@ port::Status GetLoadedCudnnVersion(CudnnVersion* version) {
 }  // namespace
 
 CudnnSupport::CudnnSupport(CUDAExecutor* parent) : parent_(parent) {
-  tensorflow::ReadBoolFromEnvVar("CUDNN_DETERMINISTIC", false,
-                                 &cudnn_deterministic);
+  tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC", false,
+                                 &cudnn_deterministic_);
 }
 
 port::Status CudnnSupport::Init() {
@@ -2682,7 +2682,7 @@ bool CudnnSupport::GetConvolveAlgorithms(
   }
 
   out_algorithms->clear();
-  if (cudnn_deterministic) {
+  if (cudnn_deterministic_) {
     out_algorithms->push_back({CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM,
                                /*user_tensor_ops=*/false});
   } else {
@@ -2735,7 +2735,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
   }
 
   out_algorithms->clear();
-  if (cudnn_deterministic) {
+  if (cudnn_deterministic_) {
     out_algorithms->push_back({CUDNN_CONVOLUTION_BWD_DATA_ALGO_1,
                                /*use_tensor_ops=*/false});
   } else {
@@ -2771,7 +2771,7 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   }
 
   out_algorithms->clear();
-  if (cudnn_deterministic) {
+  if (cudnn_deterministic_) {
     out_algorithms->push_back({CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1,
                                /*use_tensor_ops=*/false});
   } else {
