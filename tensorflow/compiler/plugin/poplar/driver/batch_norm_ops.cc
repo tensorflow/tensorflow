@@ -44,8 +44,8 @@ poplar::Tensor ShuffleBatchNormOutputToTensorflow(
   if (output.rank() == 4) {
     output_shuffled = output.dimShufflePartial({1}, {feature_dimension});
   } else {
-    const unsigned final_dim = output.rank() - 1;
     output_shuffled = output.reshapePartial(0, 1, {non_broadcast_dims});
+    const unsigned final_dim = output_shuffled.rank() - 1;
     output_shuffled =
         output_shuffled.dimShufflePartial({final_dim}, {feature_dimension});
   }

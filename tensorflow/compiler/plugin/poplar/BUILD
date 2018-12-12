@@ -2,6 +2,7 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
+load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_poplar//poplar:build_defs.bzl", "poplar_lib_directory")
 load("@local_config_poplar//poplar:build_defs.bzl", "poplibs_lib_directory")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -358,6 +359,9 @@ cc_library(
     hdrs = [
         "tests/test_utils.h",
     ],
+    deps = [
+        "//tensorflow/compiler/xla:array3d",
+    ],
 )
 
 tf_cc_test(
@@ -536,6 +540,43 @@ tf_cc_test(
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+xla_test(
+    name = "fused_batch_norm_test",
+    srcs = ["tests/fused_batch_norm_test.cc"],
+    backends = [
+        "poplar",
+    ],
+    size = "medium",
+    deps = [
+        ":optimizers",
+        ":test_utils",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:reference_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -949,6 +990,7 @@ test_suite(
         "while_loop_to_repeat_simplify_test",
         "lstm_test",
         "wide_const_expansion_test",
+        "fused_batch_norm_test",
     ],
 )
 
