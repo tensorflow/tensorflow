@@ -46,6 +46,10 @@ tf_class {
     argspec: "args=[\'self\', \'var\', \'slot_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_slot_names"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_updates"
     argspec: "args=[\'self\', \'loss\', \'params\'], varargs=None, keywords=None, defaults=None"
   }
