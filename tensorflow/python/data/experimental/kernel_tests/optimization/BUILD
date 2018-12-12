@@ -279,7 +279,6 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:optimization",
-        "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
@@ -287,7 +286,7 @@ py_test(
 
 py_test(
     name = "optimize_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["optimize_dataset_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -301,10 +300,17 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:grouping",
         "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:optimization_options",
+        "//tensorflow/python/data/experimental/ops:scan_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

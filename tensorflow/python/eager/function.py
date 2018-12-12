@@ -982,11 +982,17 @@ class PolymorphicFunction(object):
       input_signature = self._flat_input_signature
 
     ctx = context.context()
-    with ops.init_scope():
-      # The graph, or whether we're executing eagerly, should be a part of the
-      # cache key so we don't improperly capture tensors such as variables.
-      executing_eagerly = ctx.executing_eagerly()
-      parent_graph = None if executing_eagerly else ops.get_default_graph()
+
+    # Don't need to open an init_scope if the _cache_key call is in eager mode
+    # already.
+    executing_eagerly = ctx.executing_eagerly()
+    parent_graph = None
+    if not executing_eagerly:
+      with ops.init_scope():
+        # The graph, or whether we're executing eagerly, should be a part of the
+        # cache key so we don't improperly capture tensors such as variables.
+        executing_eagerly = ctx.executing_eagerly()
+        parent_graph = None if executing_eagerly else ops.get_default_graph()
 
     # pylint: disable=protected-access
     default_graph = ops.get_default_graph()

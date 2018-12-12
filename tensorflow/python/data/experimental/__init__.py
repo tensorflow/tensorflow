@@ -25,18 +25,24 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@Counter
 @@CheckpointInputPipelineHook
 @@CsvDataset
+@@DatasetStructure
+@@NestedStructure
 @@OptimizationOptions
 @@Optional
+@@OptionalStructure
 @@RandomDataset
 @@Reducer
+@@SparseTensorStructure
 @@SqlDataset
 @@StatsAggregator
 @@StatsOptions
+@@Structure
 @@TFRecordWriter
+@@TensorStructure
 @@ThreadingOptions
 
-@@assume_finite
 @@bucket_by_sequence_length
+@@cardinality
 @@choose_from_datasets
 @@copy_to_device
 @@dense_to_sparse_batch
@@ -63,6 +69,8 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@unique
 
 @@AUTOTUNE
+@@INFINITE_CARDINALITY
+@@UNKNOWN_CARDINALITY
 """
 
 from __future__ import absolute_import
@@ -74,6 +82,9 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
 from tensorflow.python.data.experimental.ops.batching import unbatch
+from tensorflow.python.data.experimental.ops.cardinality import cardinality
+from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
+from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
@@ -83,7 +94,6 @@ from tensorflow.python.data.experimental.ops.grouping import bucket_by_sequence_
 from tensorflow.python.data.experimental.ops.grouping import group_by_reducer
 from tensorflow.python.data.experimental.ops.grouping import group_by_window
 from tensorflow.python.data.experimental.ops.grouping import Reducer
-from tensorflow.python.data.experimental.ops.has_indefinite_repeat import assume_finite
 from tensorflow.python.data.experimental.ops.interleave_ops import choose_from_datasets
 from tensorflow.python.data.experimental.ops.interleave_ops import parallel_interleave
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
@@ -108,8 +118,14 @@ from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
 from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
+from tensorflow.python.data.ops.dataset_ops import DatasetStructure
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
+from tensorflow.python.data.ops.optional_ops import OptionalStructure
+from tensorflow.python.data.util.structure import NestedStructure
+from tensorflow.python.data.util.structure import SparseTensorStructure
+from tensorflow.python.data.util.structure import Structure
+from tensorflow.python.data.util.structure import TensorStructure
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

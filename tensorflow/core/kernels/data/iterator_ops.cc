@@ -77,6 +77,7 @@ class IteratorResource : public ResourceBase {
       params.lib = captured_state->lib;
       params.function_handle_cache =
           captured_state->function_handle_cache.get();
+      params.resource_mgr = &captured_state->resource_mgr;
       return captured_state->iterator->GetNext(
           IteratorContext(std::move(params)), out_tensors, end_of_sequence);
     } else {
@@ -135,8 +136,8 @@ class IteratorResource : public ResourceBase {
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
     TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&flib_def, &pflr, &lib));
     TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
-    std::unique_ptr<State> new_state(
-        new State(std::move(flib_def), std::move(pflr), lib, nullptr));
+    std::unique_ptr<State> new_state(new State(
+        std::move(flib_def), std::move(pflr), lib, nullptr /* iterator */));
 
     TF_RETURN_IF_ERROR(
         graph_runner.Run(&graph, new_state->lib, {}, {output_node}, &outputs));
@@ -145,6 +146,7 @@ class IteratorResource : public ResourceBase {
     IteratorContext::Params params(ctx);
     params.lib = new_state->lib;
     params.function_handle_cache = new_state->function_handle_cache.get();
+    params.resource_mgr = &new_state->resource_mgr;
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
                                              "Iterator", &new_state->iterator));
     TF_RETURN_IF_ERROR(
@@ -156,6 +158,7 @@ class IteratorResource : public ResourceBase {
       IteratorContext::Params params(ctx);
       params.lib = new_state->lib;
       params.function_handle_cache = new_state->function_handle_cache.get();
+      params.resource_mgr = &new_state->resource_mgr;
       DeviceBase* device = new_state->lib->device();
       params.allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
@@ -180,7 +183,8 @@ class IteratorResource : public ResourceBase {
       tf_shared_lock l(mu_);
       new_state.reset(new State(iterator_state_->flib_def,
                                 iterator_state_->pflr, iterator_state_->lib,
-                                nullptr, nullptr));
+                                nullptr /* function_handle_cache */,
+                                nullptr /* iterator */));
     }
 
     // Ensure that the iterator has access to all functions in the current
@@ -212,6 +216,7 @@ class IteratorResource : public ResourceBase {
     IteratorContext::Params params(ctx);
     params.lib = new_state->lib;
     params.function_handle_cache = new_state->function_handle_cache.get();
+    params.resource_mgr = &new_state->resource_mgr;
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
                                              "Iterator", &iterator));
     TF_RETURN_IF_ERROR(
@@ -259,6 +264,7 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
     FunctionLibraryRuntime* lib = nullptr;  // not owned.
     std::unique_ptr<FunctionHandleCache> function_handle_cache;
+    ResourceMgr resource_mgr;
     std::unique_ptr<IteratorBase> iterator;
   };
 

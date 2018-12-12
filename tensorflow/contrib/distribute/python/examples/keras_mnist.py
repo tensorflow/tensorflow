@@ -20,6 +20,10 @@ from __future__ import print_function
 import tensorflow as tf
 
 
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.keras.optimizer_v2 import rmsprop
+
+
 NUM_CLASSES = 10
 
 
@@ -109,10 +113,10 @@ def main(_):
 
   # Instantiate the MirroredStrategy object. If we don't specify `num_gpus` or
   # the `devices` argument then all the GPUs available on the machine are used.
-  strategy = tf.contrib.distribute.MirroredStrategy(['/gpu:0', '/cpu:0'])
+  # TODO(priyag): Use `tf.distribute.MirroredStrategy` once available.
+  strategy = mirrored_strategy.MirroredStrategy(['/gpu:0', '/cpu:0'])
 
-  # TODO(priyag): Use RMSPropOptimizer when it works with eager mode.
-  optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
+  optimizer = rmsprop.RMSProp(learning_rate=0.001)
 
   # Compile the model by passing the distribution strategy object to the
   # `distribute` argument. `fit`, `evaluate` and `predict` will be distributed

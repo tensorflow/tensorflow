@@ -256,6 +256,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
         if (result->status.ok()) {
           *out_tensors = std::move(result->return_values);
+          RecordBufferDequeue(ctx, *out_tensors);
         }
         *end_of_sequence = false;
         return result->status;
@@ -394,6 +395,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           if (end_of_input) {
             result->skip = true;
           }
+          RecordBufferEnqueue(ctx.get(), result->return_values);
           {
             mutex_lock l(*mu_);
             result->notification.Notify();

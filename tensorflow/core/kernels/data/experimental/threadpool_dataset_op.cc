@@ -169,6 +169,8 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return "ThreadPoolDatasetOp::Dataset";
     }
 
+    int64 Cardinality() const override { return input_->Cardinality(); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -273,6 +275,8 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "MaxIntraOpParallelismDatasetOp::Dataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -382,6 +386,8 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return "PrivateThreadPoolDatasetOp::Dataset";
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

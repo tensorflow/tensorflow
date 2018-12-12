@@ -116,7 +116,7 @@ def _make_coordinated_sloppy_dataset(input_values, cycle_length, block_length,
   dataset = dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
       2).interleave(interleave_fn, cycle_length, block_length,
                     num_parallel_calls).with_options(options)
-  iterator = dataset.make_one_shot_iterator()
+  iterator = dataset_ops.make_one_shot_iterator(dataset)
   get_next = iterator.get_next()
   return get_next, coordination_events
 
@@ -264,6 +264,7 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("8", np.int64([4, 0, 6]), 2, 3, 1),
       ("9", np.int64([4, 0, 6]), 2, 3, 2),
   )
+  @test_util.run_v1_only("b/120545219")
   def testSkipEagerSloppyInterleaveInOrder(self, input_values, cycle_length,
                                            block_length, num_parallel_calls):
     get_next, coordination_events = _make_coordinated_sloppy_dataset(
@@ -286,6 +287,7 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("3", np.int64([4, 5, 6]), 3, 2, 3),
       ("4", np.int64([4, 0, 6]), 2, 3, 2),
   )
+  @test_util.run_v1_only("b/120545219")
   def testSkipEagerSloppyInterleaveOutOfOrder(self, input_values, cycle_length,
                                               block_length, num_parallel_calls):
     get_next, coordination_events = _make_coordinated_sloppy_dataset(

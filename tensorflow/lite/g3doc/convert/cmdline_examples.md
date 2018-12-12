@@ -94,11 +94,12 @@ tflite_convert \
 ### Convert a TensorFlow GraphDef for quantized inference <a name="graphdef_quant"></a>
 
 The TensorFlow Lite Converter is compatible with fixed point quantization models
-described [here](https://www.tensorflow.org/performance/quantization). These are
-float models with `FakeQuant*` ops inserted at the boundaries of fused layers
-to record min-max range information. This generates a quantized inference
-workload that reproduces the quantization behavior that was used during
-training.
+described
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/q
+uantize/README.md). These are float models with `FakeQuant*` ops inserted at the
+boundaries of fused layers to record min-max range information. This generates a
+quantized inference workload that reproduces the quantization behavior that was
+used during training.
 
 The following command generates a quantized TensorFlow Lite FlatBuffer from a
 "quantized" TensorFlow GraphDef.

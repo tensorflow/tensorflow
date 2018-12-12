@@ -37,7 +37,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_autotune = True
     dataset = dataset.with_options(options)
 
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:

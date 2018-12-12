@@ -67,7 +67,7 @@ class CBAForwardTestSuite(FusionOpsTestCase):
     def _test01(self, dtype):
         with test_util.device(True):
             
-            x = constant_op.constant([5,5,5,5,5,7,7,7,7,7,9,9,9,9,9,11,11,11,11,11], dtype=dtype, shape=[1,5,5,1])
+            x = constant_op.constant([5,5,5,5,5,7,7,7,7,7,9,9,9,9,9,11,11,11,11,11,13,13,13,13,13], dtype=dtype, shape=[1,5,5,1])
             k = constant_op.constant([1,0,1,1,0,1,1,0,1], dtype=dtype, shape=[3,3,1,1])
             offset = constant_op.constant([2], dtype=dtype)
             

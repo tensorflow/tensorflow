@@ -25,6 +25,7 @@ import abc
 import six
 
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -38,7 +39,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribution_strategy_context as distribute_ctx
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
@@ -663,8 +663,10 @@ class Optimizer(
         ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
+
     # Note that this is called in a cross-replica context.
-    self._create_slots(var_list)
+    with ops.init_scope():
+      self._create_slots(var_list)
 
     def update(v, g):
       """Apply gradients to a replica variable."""
@@ -754,7 +756,7 @@ class Optimizer(
       # `_resource_apply_dense`.
       distributed_container = var._distributed_container()
       assert distributed_container is not None
-      if context.executing_eagerly():
+      if ops.executing_eagerly_outside_functions():
         key = distributed_container._unique_id
       else:
         key = (distributed_container.graph, distributed_container._shared_name)

@@ -268,17 +268,16 @@ XlaOp Digamma(XlaOp input) {
 // Implements Banker's rounding: numbers that are equidistant between two
 // integers are rounded towards even.
 XlaOp RoundToEven(XlaOp x) {
-  auto half = xla::ScalarLike(x, 0.5);
-  auto one = xla::ScalarLike(x, 1.0);
-  auto two = xla::ScalarLike(x, 2.0);
+  auto half = ScalarLike(x, 0.5);
+  auto one = ScalarLike(x, 1.0);
+  auto two = ScalarLike(x, 2.0);
 
-  auto round_val = xla::Floor(x);
+  auto round_val = Floor(x);
   auto fraction = x - round_val;
-  auto nearest_even_int = round_val - two * xla::Floor(half * x);
-  auto is_odd = xla::Eq(nearest_even_int, one);
-  return xla::Select(xla::Or(xla::Gt(fraction, half),
-                             xla::And(xla::Eq(fraction, half), is_odd)),
-                     round_val + one, round_val);
+  auto nearest_even_int = round_val - two * Floor(half * x);
+  auto is_odd = Eq(nearest_even_int, one);
+  return Select(Or(Gt(fraction, half), And(Eq(fraction, half), is_odd)),
+                round_val + one, round_val);
 }
 
 // Trigonometric functions.
@@ -319,5 +318,14 @@ XlaOp Atanh(XlaOp x) {
 XlaOp Cosh(XlaOp x) { return (Exp(x) + Exp(-x)) * ScalarLike(x, 0.5); }
 
 XlaOp Sinh(XlaOp x) { return (Exp(x) - Exp(-x)) * ScalarLike(x, 0.5); }
+
+XlaOp MaybeConjugate(XlaOp x, bool conjugate) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
+    auto perform_conj = shape.element_type() == C64 && conjugate;
+    return perform_conj ? Conj(x) : x;
+  });
+}
 
 }  // namespace xla

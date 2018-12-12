@@ -50,7 +50,7 @@ def canonicalize(d, default=None):
   # Fill in missing device fields using defaults.
   result = tf_device.DeviceSpec(
       replica=0, task=0, device_type="CPU", device_index=0)
-  if context.executing_eagerly():
+  if ops.executing_eagerly_outside_functions():
     result.job = "localhost"
   if default:
     result.merge_from(tf_device.DeviceSpec.from_string(default))

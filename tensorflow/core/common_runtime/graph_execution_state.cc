@@ -595,6 +595,13 @@ Status GraphExecutionState::OptimizeGraph(
     grappler::GrapplerItem item;
     item.id = "tf_graph";
     graph_->ToGraphDef(&item.graph);
+
+    // It's ok to skip invalid device annotations in Grappler.
+    Status inferred_devices = item.InferDevicesFromGraph();
+    if (!inferred_devices.ok()) {
+      VLOG(3) << inferred_devices.error_message();
+    }
+
     // TODO(b/114748242): Add a unit test to test this bug fix.
     if (flib_def_) {
       *item.graph.mutable_library() = flib_def_->ToProto();

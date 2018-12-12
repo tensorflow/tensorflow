@@ -1153,6 +1153,31 @@ tensorflow::Status ConvertConcatOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertMirrorPadOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  if (node.op() != "MirrorPad") {
+    LOG(FATAL) << "Expected MirrorPad.";
+  }
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  CHECK_EQ(num_inputs, 2);
+  auto* op = new MirrorPadOperator;
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  const auto mode = GetStringAttr(node, "mode");
+  if (mode == "REFLECT") {
+    op->mode = toco::MirrorPadMode::kReflect;
+  } else if (mode == "SYMMETRIC") {
+    op->mode = toco::MirrorPadMode::kSymmetric;
+  }
+
+  model->operators.emplace_back(op);
+
+  return tensorflow::Status::OK();
+}
+
 static constexpr int kAnyNumInputs = -1;
 
 enum FlexSupport { kFlexOk, kFlexNotOk };
@@ -2389,6 +2414,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Unpack", ConvertUnpackOperator},
       {"ZerosLike", ConvertSimpleOperator<TensorFlowZerosLikeOperator, 1>},
       {"UnidirectionalSequenceLstm", ConvertUnidirectionalSequenceLstm},
+      {"MirrorPad", ConvertMirrorPadOperator},
   });
 }
 

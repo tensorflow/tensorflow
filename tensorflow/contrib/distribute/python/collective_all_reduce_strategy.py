@@ -77,11 +77,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._num_workers = 1
 
     if num_gpus_per_worker:
-      local_devices = [
+      local_devices = tuple(
           "/device:GPU:%d" % i for i in range(num_gpus_per_worker)
-      ]
+      )
     else:
-      local_devices = ["/device:CPU:0"]
+      local_devices = ("/device:CPU:0",)
     self._worker_device = device_util.canonicalize("/device:CPU:0")
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
@@ -104,7 +104,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     if task_type is None or task_id is None:
       raise ValueError("When `cluster_spec` is given, you must also specify "
                        "`task_type` and `task_id`")
-    if task_type not in ["chief", "worker"]:
+    if task_type not in ("chief", "worker"):
       raise ValueError(
           "Unrecognized task_type: %r, valid task types are: \"chief\", "
           "\"worker\"." % task_type)
@@ -119,12 +119,12 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     self._worker_device = "/job:%s/task:%d" % (task_type, task_id)
     if num_gpus_per_worker:
-      local_devices = [
+      local_devices = tuple(
           "%s/device:GPU:%d" % (self._worker_device, i)
           for i in range(num_gpus_per_worker)
-      ]
+      )
     else:
-      local_devices = [self._worker_device]
+      local_devices = (self._worker_device,)
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
     self._initialize_local(local_devices)

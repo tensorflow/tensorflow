@@ -42,7 +42,8 @@ class MnistGraphGanBenchmark(tf.test.Benchmark):
     # Generate some random data.
     images_data = np.random.randn(batch_size, 784).astype(np.float32)
     dataset = tf.data.Dataset.from_tensors(images_data)
-    images = dataset.repeat().make_one_shot_iterator().get_next()
+    images = tf.compat.v1.data.make_one_shot_iterator(
+        dataset.repeat()).get_next()
 
     # Create the models and optimizers
     generator = mnist.Generator(data_format())

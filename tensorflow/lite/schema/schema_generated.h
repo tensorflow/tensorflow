@@ -2247,7 +2247,7 @@ inline const char *EnumNameCustomOptionsFormat(CustomOptionsFormat e) {
 
 struct CustomQuantizationT : public flatbuffers::NativeTable {
   typedef CustomQuantization TableType;
-  std::vector<int8_t> custom;
+  std::vector<uint8_t> custom;
   CustomQuantizationT() {
   }
 };
@@ -2257,8 +2257,8 @@ struct CustomQuantization FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum {
     VT_CUSTOM = 4
   };
-  const flatbuffers::Vector<int8_t> *custom() const {
-    return GetPointer<const flatbuffers::Vector<int8_t> *>(VT_CUSTOM);
+  const flatbuffers::Vector<uint8_t> *custom() const {
+    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -2274,7 +2274,7 @@ struct CustomQuantization FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct CustomQuantizationBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_custom(flatbuffers::Offset<flatbuffers::Vector<int8_t>> custom) {
+  void add_custom(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> custom) {
     fbb_.AddOffset(CustomQuantization::VT_CUSTOM, custom);
   }
   explicit CustomQuantizationBuilder(flatbuffers::FlatBufferBuilder &_fbb)
@@ -2291,7 +2291,7 @@ struct CustomQuantizationBuilder {
 
 inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(
     flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int8_t>> custom = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> custom = 0) {
   CustomQuantizationBuilder builder_(_fbb);
   builder_.add_custom(custom);
   return builder_.Finish();
@@ -2299,10 +2299,10 @@ inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(
 
 inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantizationDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<int8_t> *custom = nullptr) {
+    const std::vector<uint8_t> *custom = nullptr) {
   return tflite::CreateCustomQuantization(
       _fbb,
-      custom ? _fbb.CreateVector<int8_t>(*custom) : 0);
+      custom ? _fbb.CreateVector<uint8_t>(*custom) : 0);
 }
 
 flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(flatbuffers::FlatBufferBuilder &_fbb, const CustomQuantizationT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);

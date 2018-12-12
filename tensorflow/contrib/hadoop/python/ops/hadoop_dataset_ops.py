@@ -20,10 +20,9 @@ from __future__ import print_function
 from tensorflow.contrib.hadoop.python.ops import gen_dataset_ops
 from tensorflow.contrib.hadoop.python.ops import hadoop_op_loader  # pylint: disable=unused-import
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 
 
 class SequenceFileDataset(dataset_ops.DatasetSource):
@@ -40,15 +39,12 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
     For example:
 
     ```python
+    tf.enable_eager_execution()
+
     dataset = tf.contrib.hadoop.SequenceFileDataset("/foo/bar.seq")
-    iterator = dataset.make_one_shot_iterator()
-    next_element = iterator.get_next()
     # Prints the (key, value) pairs inside a hadoop sequence file.
-    while True:
-      try:
-        print(sess.run(next_element))
-      except tf.errors.OutOfRangeError:
-        break
+    for key, value in dataset:
+      print(key, value)
     ```
 
     Args:
@@ -60,16 +56,10 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.sequence_file_dataset(
-        self._filenames, nest.flatten(self.output_types))
+        self._filenames, self._element_structure._flat_types)  # pylint: disable=protected-access
 
   @property
-  def output_classes(self):
-    return ops.Tensor, ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
-
-  @property
-  def output_types(self):
-    return dtypes.string, dtypes.string
+  def _element_structure(self):
+    return structure.NestedStructure(
+        (structure.TensorStructure(dtypes.string, []),
+         structure.TensorStructure(dtypes.string, [])))

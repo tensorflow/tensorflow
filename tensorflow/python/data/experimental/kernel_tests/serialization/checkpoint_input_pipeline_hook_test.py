@@ -21,8 +21,6 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops import iterator_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import model_fn
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,6 +31,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+from tensorflow_estimator.python.estimator import estimator
+from tensorflow_estimator.python.estimator import model_fn
 
 
 class CheckpointInputPipelineHookTest(test_base.DatasetTestBase):

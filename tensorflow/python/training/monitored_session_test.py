@@ -541,6 +541,7 @@ class WrappedSessionTest(test.TestCase):
       self.assertFalse(wrapped_sess1.should_stop())
       self.assertTrue(wrapped_sess1.should_stop())
 
+  @test_util.run_deprecated_v1
   def test_close_twice(self):
     with self.cached_session() as sess:
       wrapped_sess = monitored_session._WrappedSession(sess)

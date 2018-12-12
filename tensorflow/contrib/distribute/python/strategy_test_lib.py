@@ -290,4 +290,4 @@ class DistributionTestBase(test.TestCase):
       self.evaluate(strategy.group(train_ops))
       global_step_tensors = strategy.unwrap(value)
       global_step_values = self.evaluate(global_step_tensors)
-      self.assertEqual([1] * len(global_step_tensors), global_step_values)
+      self.assertEqual((1,) * len(global_step_tensors), global_step_values)

@@ -246,7 +246,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
         dataset = dataset.map(lambda x: x + var_1.read_value())
       sess.run(var_1.initializer)
 
-      iterator = dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(dataset)
       sess.run(iterator.initializer)
 
       with self.assertRaisesRegexp(

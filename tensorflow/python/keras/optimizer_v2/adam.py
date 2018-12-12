@@ -132,9 +132,6 @@ class Adam(optimizer_v2.OptimizerV2):
     self._set_hyper('beta_1', beta_1)
     self._set_hyper('beta_2', beta_2)
     self._set_hyper('epsilon', epsilon)
-    # TODO(tanzheny): create op for resource_apply_adam_with_amsgrad
-    if amsgrad:
-      raise ValueError('Amsgrad is currently not supported.')
     self._amsgrad = amsgrad
 
   def _create_slots(self, var_list):
@@ -144,6 +141,9 @@ class Adam(optimizer_v2.OptimizerV2):
       self.add_slot(var, 'm')
     for var in var_list:
       self.add_slot(var, 'v')
+    if self._amsgrad:
+      for var in var_list:
+        self.add_slot(var, 'vhat')
 
   def set_weights(self, weights):
     params = self.weights
@@ -162,21 +162,38 @@ class Adam(optimizer_v2.OptimizerV2):
     v = self.get_slot(var, 'v')
     beta_1_t = self._get_hyper('beta_1', var_dtype)
     beta_2_t = self._get_hyper('beta_2', var_dtype)
+    epsilon = self._get_hyper('epsilon', var_dtype)
     local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     beta_2_power = math_ops.pow(beta_2_t, local_step)
-    return training_ops.resource_apply_adam(
-        var.handle,
-        m.handle,
-        v.handle,
-        beta_1_power,
-        beta_2_power,
-        lr_t,
-        beta_1_t,
-        beta_2_t,
-        self._get_hyper('epsilon', var_dtype),
-        grad,
-        use_locking=self._use_locking)
+    if not self._amsgrad:
+      return training_ops.resource_apply_adam(
+          var.handle,
+          m.handle,
+          v.handle,
+          beta_1_power,
+          beta_2_power,
+          lr_t,
+          beta_1_t,
+          beta_2_t,
+          epsilon,
+          grad,
+          use_locking=self._use_locking)
+    else:
+      vhat = self.get_slot(var, 'vhat')
+      return training_ops.resource_apply_adam_with_amsgrad(
+          var.handle,
+          m.handle,
+          v.handle,
+          vhat.handle,
+          beta_1_power,
+          beta_2_power,
+          lr_t,
+          beta_1_t,
+          beta_2_t,
+          epsilon,
+          grad,
+          use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices):
     var_dtype = var.dtype.base_dtype
@@ -203,10 +220,23 @@ class Adam(optimizer_v2.OptimizerV2):
     with ops.control_dependencies([v_t]):
       v_t = self._resource_scatter_add(v, indices, v_scaled_g_values)
 
-    v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(
-        var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
-    return control_flow_ops.group(*[var_update, m_t, v_t])
+    if not self._amsgrad:
+      v_sqrt = math_ops.sqrt(v_t)
+      var_update = state_ops.assign_sub(
+          var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
+      return control_flow_ops.group(*[var_update, m_t, v_t])
+    else:
+      v_hat = self.get_slot(var, 'vhat')
+      v_hat_t = math_ops.maximum(v_hat, v_t)
+      with ops.control_dependencies([v_hat_t]):
+        v_hat_t = state_ops.assign(
+            v_hat, v_hat_t, use_locking=self._use_locking)
+      v_hat_sqrt = math_ops.sqrt(v_hat_t)
+      var_update = state_ops.assign_sub(
+          var,
+          lr * m_t / (v_hat_sqrt + epsilon_t),
+          use_locking=self._use_locking)
+      return control_flow_ops.group(*[var_update, m_t, v_t, v_hat_t])
 
   def _resource_scatter_add(self, x, i, v):
     with ops.control_dependencies(

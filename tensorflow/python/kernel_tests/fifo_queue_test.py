@@ -39,6 +39,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
+@test_util.run_v1_only("b/120545219")
 class FIFOQueueTest(test.TestCase):
 
   def testConstructor(self):
@@ -1423,6 +1424,7 @@ class FIFOQueueTest(test.TestCase):
         session.run([a, c])
 
 
+@test_util.run_v1_only("b/120545219")
 class FIFOQueueDictTest(test.TestCase):
 
   def testConstructor(self):
@@ -1583,6 +1585,7 @@ class FIFOQueueDictTest(test.TestCase):
       self.assertTrue([compat.as_bytes("dd"), compat.as_bytes("ee")], list(s))
 
 
+@test_util.run_v1_only("b/120545219")
 class FIFOQueueWithTimeoutTest(test.TestCase):
 
   def testDequeueWithTimeout(self):
@@ -1617,6 +1620,7 @@ class FIFOQueueWithTimeoutTest(test.TestCase):
       self.assertEqual(37, self.evaluate(dequeued_t))
 
 
+@test_util.run_v1_only("b/120545219")
 class QueueContainerTest(test.TestCase):
 
   def testContainer(self):

@@ -217,7 +217,7 @@ class StatefulScatterNdTest(test.TestCase):
   def testVariableRankAdd(self):
     self._VariableRankTests(_NumpyAdd, state_ops.scatter_nd_add)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testVariableRankSub(self):
     self._VariableRankTests(_NumpySub, state_ops.scatter_nd_sub)
 
@@ -235,7 +235,7 @@ class StatefulScatterNdTest(test.TestCase):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testScatterRepeatIndices(self):
     """This tests scatter_add using indices that repeat."""
     self._ScatterRepeatIndicesTest(_NumpyAdd, state_ops.scatter_nd_add)
@@ -257,7 +257,7 @@ class StatefulScatterNdTest(test.TestCase):
   #     session.run([update0, update1])
   #     self.assertAllEqual([False, True], self.evaluate(var))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testScatterOutOfRangeCpu(self):
     # TODO(simister): Re-enable once binary size increase due to
     # scatter_nd ops is under control.
@@ -294,7 +294,7 @@ class StatefulScatterNdTest(test.TestCase):
         state_ops.scatter_nd_update(ref, indices,
                                     updates).get_shape().as_list(), shape)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testResVarInvalidOutputShape(self):
     res = variables.Variable(
         initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
@@ -509,7 +509,7 @@ class ScatterNdTest(test.TestCase):
         ValueError, "Indices and updates specified for empty output shape"):
       self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testEmptyOutputShape2(self):
     indices = array_ops.placeholder(dtypes.int32, shape=None)
     updates = array_ops.placeholder(dtypes.int32, shape=None)
@@ -717,6 +717,7 @@ class ScatterNdTensorTest(test.TestCase):
     self.assertAllEqual(subbed,
                         constant_op.constant([1, -10, 1, -9, -8, 1, 1, -11]))
 
+  @test_util.run_v1_only("b/120545219")
   def testUpdateAddSubGradients(self):
 
     with self.cached_session():

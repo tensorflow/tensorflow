@@ -32,14 +32,12 @@ class StatsOptions(options.OptionsBase):
   pattern:
 
   ```python
-  aggretator = tf.data.experimental.StatsAggregator()
+  aggregator = tf.data.experimental.StatsAggregator()
 
   options = tf.data.Options()
   options.experimental_stats = tf.data.experimental.StatsOptions()
   options.experimental_stats.aggregator = aggregator
   dataset = dataset.with_options(options)
-
-  iterator = dataset.make_one_shot_iterator()
   ```
 
   Note: a `StatsAggregator` object can be attached either duing construction or

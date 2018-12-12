@@ -71,6 +71,11 @@ REGISTER_OP("ExperimentalCSVDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ExperimentalDatasetCardinality")
+    .Input("input_dataset: variant")
+    .Output("cardinality: int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalDatasetToTFRecord")
     .Input("input_dataset: variant")
     .Input("filename: string")
@@ -169,6 +174,7 @@ REGISTER_OP("ExperimentalMapAndBatchDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Use index from the end to retrieve the Input shapes,
       // so that to avoid guessing the length of "other_arguments".
@@ -193,6 +199,7 @@ REGISTER_OP("ExperimentalMapDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalMatchingFilesDataset")
@@ -244,6 +251,35 @@ REGISTER_OP("ExperimentalParseExampleDataset")
                                               // sorted by key (dense_keys and
                                               // sparse_keys combined) here.
     .Attr("sloppy: bool = false")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ExperimentalRandomDataset")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // buffer_size, seed, and seed2 should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("ExperimentalScanDataset")
+    .Input("input_dataset: variant")
+    .Input("initial_state: Tstate")
+    .Input("other_arguments: Targuments")
+    .Output("handle: variant")
+    .Attr("f: func")
+    .Attr("Tstate: list(type) >= 1")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalSetStatsAggregatorDataset")
@@ -392,6 +428,7 @@ REGISTER_OP("ExperimentalNumaMapAndBatchDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       // Use index from the end to retrieve the Input shapes,
       // so that to avoid guessing the length of "other_arguments".

@@ -105,6 +105,7 @@ class TimeToReadableStrTest(test_util.TensorFlowTestCase):
       cli_shared.time_to_readable_str(100, force_time_unit="ks")
 
 
+@test_util.run_v1_only("b/120545219")
 class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -334,6 +335,7 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     self.assertEqual("run #1: 1 fetch (a:0); 1 feed (foo)", short_description)
 
 
+@test_util.run_v1_only("b/120545219")
 class GetErrorIntroTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -342,7 +344,6 @@ class GetErrorIntroTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
 
-  @test_util.run_deprecated_v1
   def testShapeError(self):
     tf_error = errors.OpError(None, self.var_a.initializer, "foo description",
                               None)

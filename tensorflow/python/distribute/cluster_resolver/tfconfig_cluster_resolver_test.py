@@ -169,12 +169,12 @@ class TFConfigClusterResolverTest(test.TestCase):
     """
 
     cluster_resolver = TFConfigClusterResolver(task_type='ps', task_index=0,
-                                               num_accelerators_per_worker=8)
+                                               num_accelerators=8)
 
     self.assertEqual('grpc://ps0:2222', cluster_resolver.master())
     self.assertEqual('ps', cluster_resolver.task_type)
     self.assertEqual(0, cluster_resolver.task_index)
-    self.assertEqual(8, cluster_resolver.num_accelerators_per_worker())
+    self.assertEqual(8, cluster_resolver.num_accelerators())
 
     cluster_resolver.task_type = 'worker'
     cluster_resolver.task_index = 1

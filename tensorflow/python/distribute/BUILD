@@ -21,6 +21,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/contrib/rccl:rccl_py",
     ],
 )
 
@@ -79,6 +80,7 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/contrib/rccl:rccl_py",
     ],
 )
 
@@ -100,6 +102,18 @@ cuda_py_test(
         ":device_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_library(
+    name = "distribute",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":distribute_lib",
+        ":mirrored_strategy",
     ],
 )
 

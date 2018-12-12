@@ -70,6 +70,7 @@ cc_test(
     deps = [
         ":benchmark_tflite_model_lib",
         ":command_line_flags",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
