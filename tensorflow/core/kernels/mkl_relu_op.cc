@@ -204,7 +204,7 @@ class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   ~MklEltwiseFwdPrimitiveFactory() {}
 
   static string CreateKey(const MklEltwiseFwdParams<T>& fwdParams,
-                               memory::format src_fmt) {
+                          memory::format src_fmt) {
     string prefix = "eltwise_fwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
@@ -422,8 +422,8 @@ class MklEltwiseBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 
  private:
   static string CreateKey(const MklEltwiseBwdParams<T>& bwdParams,
-                               const memory::format& src_fmt,
-                               const memory::format& diff_dst_fmt) {
+                          const memory::format& src_fmt,
+                          const memory::format& diff_dst_fmt) {
     string prefix = "eltwise_bwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
@@ -856,9 +856,9 @@ class MklReluOpBase : public OpKernel {
 
       Tensor* dst_tensor = nullptr;
       OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                      {static_cast<const int>(src_index)},
-                                      static_cast<const int>(dst_index),
-                                      tf_shape_dst, &dst_tensor));
+                                  {static_cast<const int>(src_index)},
+                                  static_cast<const int>(dst_index),
+                                  tf_shape_dst, &dst_tensor));
       AllocateOutputSetMklShape(context, dst_index, dnn_shape_dst);
 
       T* dst_data = dst_tensor->flat<T>().data();
@@ -867,18 +867,19 @@ class MklReluOpBase : public OpKernel {
       eltwise_fwd->Execute(src_data, dst_data);
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) +
-                         ", in file " + string(__FILE__) + ":" +
-                         std::to_string(__LINE__);
-      OP_REQUIRES_OK(context,
-                     errors::Aborted("Operation received an exception:",
-                        error_msg));
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      OP_REQUIRES_OK(
+          context,
+          errors::Aborted("Operation received an exception:", error_msg));
     }
   }
 
  private:
   engine cpu_engine = engine(engine::cpu, 0);
   std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
+
+ protected:
   float alpha_;
   float beta_;
 };
@@ -947,11 +948,11 @@ class MklReluGradOpBase : public OpKernel {
         auto diff_dst_tf_data_format =
             MklDnnDataFormatToTFDataFormat(diff_dst_mkl_data_format);
 
-        src_dims = (src_tensor.dims() == 4) 
-                 ? TFShapeToMklDnnDimsInNCHW(src_tensor.shape(),
-                                             diff_dst_tf_data_format)
-                 : TFShapeToMklDnnDimsInNCDHW(src_tensor.shape(),
-                                              diff_dst_tf_data_format);
+        src_dims = (src_tensor.dims() == 4)
+                       ? TFShapeToMklDnnDimsInNCHW(src_tensor.shape(),
+                                                   diff_dst_tf_data_format)
+                       : TFShapeToMklDnnDimsInNCDHW(src_tensor.shape(),
+                                                    diff_dst_tf_data_format);
         src_md =
             memory::desc(src_dims, MklDnnType<T>(), diff_dst_mkl_data_format);
       } else {
@@ -1001,8 +1002,7 @@ class MklReluGradOpBase : public OpKernel {
       // allocate diff_src tensor
       MklDnnShape dnn_shape_diff_src;
       TensorShape tf_shape_diff_src;
-      if (dnn_shape_src.IsMklTensor() ||
-              dnn_shape_diff_dst.IsMklTensor()) {
+      if (dnn_shape_src.IsMklTensor() || dnn_shape_diff_dst.IsMklTensor()) {
         auto diff_src_pd = eltwise_bwd_pd->diff_src_primitive_desc();
         dnn_shape_diff_src.SetMklTensor(true);
         dnn_shape_diff_src.SetMklLayout(&diff_src_pd);
@@ -1012,9 +1012,10 @@ class MklReluGradOpBase : public OpKernel {
                                          dnn_shape_src.GetSizesAsMklDnnDims(),
                                          dnn_shape_src.GetTfDataFormat());
         } else {
-          dnn_shape_diff_src.SetTfLayout(dnn_shape_diff_dst.GetDimension(),
-                                 dnn_shape_diff_dst.GetSizesAsMklDnnDims(),
-                                 dnn_shape_diff_dst.GetTfDataFormat());
+          dnn_shape_diff_src.SetTfLayout(
+              dnn_shape_diff_dst.GetDimension(),
+              dnn_shape_diff_dst.GetSizesAsMklDnnDims(),
+              dnn_shape_diff_dst.GetTfDataFormat());
         }
         tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
       } else {
@@ -1045,6 +1046,8 @@ class MklReluGradOpBase : public OpKernel {
  private:
   engine cpu_engine = engine(engine::cpu, 0);
   std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
+
+ protected:
   float alpha_;
   float beta_;
 };
@@ -1312,8 +1315,86 @@ class MklRelu6GradOp
     T* out_o = diff_src_tensor->flat<T>().data();
     T* user_i = const_cast<T*>(src_tensor.flat<T>().data());
     T* user_g = const_cast<T*>(diff_dst_tensor.flat<T>().data());
-    out_o[0] = user_g[0] * user_i[0] > 0 &&
-               (user_i[0] < static_cast<T>(RELU6_UPPER_BOUND));
+    out_o[0] = user_g[0] * (user_i[0] > 0 &&
+                            (user_i[0] < static_cast<T>(RELU6_UPPER_BOUND)));
+    return;
+  }
+};
+
+template <typename Device, typename T>
+class MklLeakyReluOp : public MklReluOpBase<Device, T, eltwise_relu> {
+ public:
+  ~MklLeakyReluOp() {}
+
+  explicit MklLeakyReluOp(OpKernelConstruction* context)
+      : MklReluOpBase<Device, T, eltwise_relu>(context, 0.0f, 0.0f) {
+    float alpha;
+    OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha));
+    OP_REQUIRES(
+        context, alpha <= 1,
+        errors::InvalidArgument("MKL LeakyRelu only supports alpha <= 1. "
+                                "alpha is: ",
+                                alpha));
+
+    this->alpha_ = alpha;
+  }
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t src_index = 0;  // index of src input tensor
+    const size_t dst_index = 0;  // index of dst output tensor
+    const Tensor& src_tensor = MklGetInput(context, src_index);
+    MklDnnShape dnn_shape_src;
+    GetMklShape(context, src_index, &dnn_shape_src);
+
+    Tensor* dst_tensor = nullptr;
+    T* user_i = const_cast<T*>(src_tensor.flat<T>().data());
+    MklDnnShape dnn_shape_dst;
+    dnn_shape_dst.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
+                              src_tensor.shape(), dnn_shape_dst);
+    T* out_o = dst_tensor->flat<T>().data();
+    out_o[0] = user_i[0] >= 0 ? user_g[0] : user_g[0] * this->alpha_;
+    return;
+  }
+};
+
+template <typename Device, typename T>
+class MklLeakyReluGradOp : public MklReluGradOpBase<Device, T, eltwise_relu> {
+ public:
+  ~MklLeakyReluGradOp() {}
+
+  explicit MklLeakyReluGradOp(OpKernelConstruction* context)
+      : MklReluGradOpBase<Device, T, eltwise_relu>(context, 0.0f, 0.0f) {
+    float alpha;
+    OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha));
+    OP_REQUIRES(
+        context, alpha <= 1,
+        errors::InvalidArgument("MKL LeakyRelu only supports alpha <= 1. "
+                                "alpha is: ",
+                                alpha));
+
+    this->alpha_ = alpha;
+  }
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t diff_dst_index = 0;  // index of diff_dst input tensor
+    const size_t src_index = 1;       // index of src input tensor
+    const size_t diff_src_index = 0;  // index of diff_src output tensor
+    const Tensor& src_tensor = MklGetInput(context, src_index);
+    const Tensor& diff_dst_tensor = MklGetInput(context, diff_dst_index);
+    Tensor* diff_src_tensor = nullptr;
+
+    MklDnnShape dnn_shape_diff_dst;
+    GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
+
+    MklDnnShape dnn_shape_diff_src;
+    dnn_shape_diff_src.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
+                              diff_dst_tensor.shape(), dnn_shape_diff_src);
+    T* out_o = diff_src_tensor->flat<T>().data();
+    T* user_i = const_cast<T*>(src_tensor.flat<T>().data());
+    T* user_g = const_cast<T*>(diff_dst_tensor.flat<T>().data());
+    out_o[0] = user_i[0] >= 0 ? user_g[0] : user_g[0] * this->alpha_;
     return;
   }
 };
@@ -1375,6 +1456,19 @@ TF_CALL_float(REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES);
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklRelu6GradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU6_MKL_SUPPORTED_KERNELS_TYPES);
+
+#define REGISTER_LeakyRelu_MKL_SUPPORTED_KERNELS_TYPES(type)        \
+  REGISTER_KERNEL_BUILDER(Name("_MklLeakyRelu")                     \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklLeakyReluOp<CPUDevice, type>);         \
+  REGISTER_KERNEL_BUILDER(Name("_MklLeakyReluGrad")                 \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklLeakyReluGradOp<CPUDevice, type>);
+TF_CALL_float(REGISTER_LeakyRelu_MKL_SUPPORTED_KERNELS_TYPES);
 
 #endif
 
