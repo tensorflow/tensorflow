@@ -352,6 +352,12 @@ class LocalComputationBuilder {
   LocalOp Call(const LocalComputation& local_computation,
                absl::Span<const LocalOp> operands);
 
+  LocalOp CustomCall(const string& call_target_name,
+                     absl::Span<const LocalOp> operands,
+                     const Shape& shape_with_layout,
+                     const std::vector<Shape>& operand_shapes_with_layout,
+                     const string& opaque);
+
   LocalOp Transpose(const LocalOp& operand,
                     absl::Span<const int64> permutation);
 
