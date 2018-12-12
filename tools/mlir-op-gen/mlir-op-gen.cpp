@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -140,7 +141,13 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   // Query the returned type and operands types of the op.
   emitter.getAttributes();
 
-  os << "\nclass " << def.getName() << " : public Op<" << def.getName();
+  SmallVector<StringRef, 2> split;
+  SplitString(def.getName(), split, "_");
+  for (auto it = split.begin(), e = std::prev(split.end()); it != e; ++it) {
+    os << "\nnamespace " << *it << "{\n";
+  }
+  StringRef className = split.back();
+  os << "class " << className << " : public Op<" << className;
   emitter.emitTraits();
   os << "> {\npublic:\n";
 
@@ -156,9 +163,12 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   emitter.emitCanonicalizationPatterns();
 
   os << "private:\n  friend class ::mlir::Operation;\n";
-  os << "  explicit " << def.getName()
+  os << "  explicit " << className
      << "(const Operation* state) : Op(state) {}\n";
   os << "};\n";
+  for (auto it = split.begin(), e = std::prev(split.end()); it != e; ++it) {
+    os << "} // end namespace " << *it << "\n";
+  }
 }
 
 void OpEmitter::getAttributes() {
@@ -222,14 +232,12 @@ void OpEmitter::emitBuilder() {
   if (hasStringAttribute(def, "builder")) {
     // If a custom builder is given then print that out instead.
     auto builder = def.getValueAsString("builder");
-    if (!builder.empty()) {
+    if (!builder.empty())
       os << builder << '\n';
-      return;
-    }
   }
 
-  // Otherwise, generate a default builder that requires all result type,
-  // operands, and attributes as parameters.
+  // Generate default builders that requires all result type, operands, and
+  // attributes as parameters.
 
   // We generate two builders here, one having a stand-alone parameter for
   // each result type / operand / attribute, the other having an aggregated
@@ -451,7 +459,10 @@ static void emitOpList(const std::vector<Record *> &defs, raw_ostream &os) {
   for (auto &def : defs) {
     if (!first)
       os << ",";
-    os << def->getName();
+
+    SmallVector<StringRef, 2> split;
+    SplitString(def->getName(), split, "_");
+    os << join(split, "::");
     first = false;
   }
 }
