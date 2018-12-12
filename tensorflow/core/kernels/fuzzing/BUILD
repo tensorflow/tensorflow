@@ -68,3 +68,5 @@ tf_ops_fuzz_target_lib("decode_json_example")
 tf_oss_fuzz_corpus("decode_json_example")
 
 tf_oss_fuzz_dict("decode_json_example")
+
+tf_ops_fuzz_target_lib("check_numerics")
