@@ -592,6 +592,7 @@ cc_library(
 #   #endif
 cc_library(
     name = "eigen_contraction_kernel",
+    srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
         ":mkldnn_contraction_kernel": [
