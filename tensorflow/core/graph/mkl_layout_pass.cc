@@ -262,6 +262,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_conv2d = "_FusedConv2D";
     csinfo_.identity = "Identity";
+    csinfo_.leakyrelu = "LeakyRelu";
+    csinfo_.leakyrelu_grad = "LeakyReluGrad";
     csinfo_.lrn = "LRN";
     csinfo_.lrn_grad = "LRNGrad";
     csinfo_.matmul = "MatMul";
@@ -392,6 +394,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.lrn_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.lrn_grad),
                       CopyAttrsLRN, LrnGradRewrite});
+    rinfo_.push_back({csinfo_.leakyrelu,
+                      mkl_op_registry::GetMklOpName(csinfo_.leakyrelu),
+                      CopyAttrsLeakyRelu, LeakyReluRewrite});
+    rinfo_.push_back({csinfo_.leakyrelu_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.leakyrelu_grad),
+                      CopyAttrsLeakyRelu, LeakyReluRewrite});
     rinfo_.push_back({csinfo_.max_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool),
                       CopyAttrsPooling, NonDepthBatchWisePoolRewrite});
@@ -671,6 +679,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string fused_batch_norm_grad;
     string fused_conv2d;
     string identity;
+    string leakyrelu;
+    string leakyrelu_grad;
     string lrn;
     string lrn_grad;
     string matmul;
@@ -1148,6 +1158,30 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return do_rewrite;
   }
 
+  // MKL-DNN's LeakyRelu(feature) = feature          (if feature > 0), or
+  //                                feature * alpha  (otherwise),
+  // while TensorFlow's LeakyRelu(feature) = max(feature, feature * alpha).
+  // These two algorithms are not consistent when alpha > 1,
+  // so we only rewrite LeakyRelu to MKL OP when alpha <= 1.
+  static bool LeakyReluRewrite(const Node* n) {
+    DCHECK(n);
+
+    float alpha;
+    bool has_attr = GetNodeAttr(n->def(), "alpha", &alpha).ok();
+    DCHECK(has_attr);
+
+    // If the alpha of LeakyRelu is less than 1, rewrite the node.
+    // Otherwise eigen node is used instead.
+    if (alpha <= 1) {
+      return true;
+    }
+    VLOG(1) << "LeakyReluRewrite: The model sets alpha is greater than 1 "
+            << "which case is not optimized by Intel MKL, thus using Eigen op"
+            << "for LeakyRelu ";
+
+    return false;
+  }
+
   static bool MaxpoolGradRewrite(const Node* n) {
     CHECK_NOTNULL(n);
     bool do_rewrite = false;
@@ -1358,6 +1392,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                 bool change_format = false);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb,
                                       bool change_format = false);
+  static void CopyAttrsLeakyRelu(const Node* orig_node, NodeBuilder* nb,
+                                 bool change_format = false);
   static void CopyAttrsFusedConv2D(const Node* orig_node, NodeBuilder* nb,
                                    bool change_format = false);
   static void CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
@@ -2059,6 +2095,21 @@ void MklLayoutRewritePass::CopyAttrsLRN(const Node* orig_node, NodeBuilder* nb,
   nb->Attr("bias", bias);
   nb->Attr("alpha", alpha);
   nb->Attr("beta", beta);
+}
+
+void MklLayoutRewritePass::CopyAttrsLeakyRelu(const Node* orig_node,
+                                              NodeBuilder* nb,
+                                              bool change_format) {
+  DataType T;
+  float alpha;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "alpha", &alpha));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("alpha", alpha);
 }
 
 void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
