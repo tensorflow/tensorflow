@@ -29,7 +29,6 @@ namespace {
 
 bool IsElementwiseOperator(OperatorType optype) {
   switch (optype) {
-    case OperatorType::kAbs:
     case OperatorType::kCast:
     case OperatorType::kCeil:
     case OperatorType::kExp:

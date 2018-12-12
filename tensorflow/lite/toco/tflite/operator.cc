@@ -1652,8 +1652,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<CeilOperator>>("CEIL", OperatorType::kCeil));
   ops.push_back(
-      MakeUnique<SimpleOperator<AbsOperator>>("ABS", OperatorType::kAbs));
-  ops.push_back(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
       "RELU_N1_TO_1", OperatorType::kRelu1));

@@ -1073,66 +1073,6 @@ TEST(NNAPIDelegate, CeilMultiDims) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 5}));
 }
 
-class AbsOpModel : public SingleOpModelWithNNAPI {
- public:
-  AbsOpModel(std::initializer_list<int> input_shape, TensorType input_type) {
-    input_ = AddInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(BuiltinOperator_ABS, BuiltinOptions_NONE, 0);
-    BuildInterpreter({
-        input_shape,
-    });
-  }
-
-  int input() { return input_; }
-
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
-  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
-
- private:
-  int input_;
-  int output_;
-};
-
-TEST(NNAPIDelegate, AbsSingleDim) {
-  AbsOpModel model({2}, TensorType_FLOAT32);
-  model.PopulateTensor<float>(model.input(), {8.5, -2.0});
-  model.Invoke();
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray({8.5, 2.0}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2}));
-}
-
-TEST(NNAPIDelegate, AbsMultiDims) {
-  AbsOpModel model({2, 1, 1, 5}, TensorType_FLOAT32);
-  model.PopulateTensor<float>(model.input(), {
-                                                 0.0001,
-                                                 8.0001,
-                                                 0.9999,
-                                                 9.9999,
-                                                 0.5,
-                                                 -0.0001,
-                                                 -8.0001,
-                                                 -0.9999,
-                                                 -9.9999,
-                                                 -0.5,
-                                             });
-  model.Invoke();
-  EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({
-                                                 0.0001,
-                                                 8.0001,
-                                                 0.9999,
-                                                 9.9999,
-                                                 0.5,
-                                                 0.0001,
-                                                 8.0001,
-                                                 0.9999,
-                                                 9.9999,
-                                                 0.5,
-                                             }));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 5}));
-}
-
 class LocalResponseNormOpModel : public SingleOpModelWithNNAPI {
  public:
   LocalResponseNormOpModel(std::initializer_list<int> input_shape, int radius,

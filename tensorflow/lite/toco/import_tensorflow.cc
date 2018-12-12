@@ -1505,20 +1505,6 @@ tensorflow::Status ConvertCeilOperator(
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertAbsOperator(
-    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
-    Model* model) {
-  CHECK_EQ(node.op(), "Abs");
-  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
-  const auto data_type = GetDataTypeAttr(node, "T");
-  CHECK(data_type == DT_FLOAT);
-  auto* op = new AbsOperator;
-  op->inputs.push_back(node.input(0));
-  op->outputs.push_back(node.name());
-  model->operators.emplace_back(op);
-  return tensorflow::Status::OK();
-}
-
 tensorflow::Status ConvertGatherOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {

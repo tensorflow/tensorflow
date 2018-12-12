@@ -158,7 +158,6 @@ cc_library(
 cc_library(
     name = "builtin_op_kernels",
     srcs = [
-        "abs.cc",
         "activations.cc",
         "add.cc",
         "arg_min_max.cc",
@@ -591,22 +590,6 @@ tf_cc_test(
     size = "small",
     srcs = ["floor_test.cc"],
     tags = [
-        "tflite_not_portable_ios",
-    ],
-    deps = [
-        ":builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-tf_cc_test(
-    name = "abs_test",
-    size = "small",
-    srcs = ["abs_test.cc"],
-    tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [

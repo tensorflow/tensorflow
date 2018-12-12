@@ -648,16 +648,6 @@ class NNAPIDelegateKernel {
           return nullptr;
         }
         break;
-      case kTfLiteBuiltinAbs:
-        if (version == 1) {
-          return [](const NNAPIOpMappingArgs& mapping_args)
-                     -> ANeuralNetworksOperationType {
-            return ANEURALNETWORKS_ABS;
-          };
-        } else {
-          return nullptr;
-        }
-        break;
       case kTfLiteBuiltinRelu:
         if (version == 1) {
           return [](const NNAPIOpMappingArgs& mapping_args)

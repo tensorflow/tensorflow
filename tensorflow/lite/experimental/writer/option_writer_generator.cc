@@ -161,7 +161,6 @@ class OpOptionData {
         "";  // TODO(aselle): maybe something else.
     op_to_option_["FLOOR"] = "";
     op_to_option_["CEIL"] = "";
-    op_to_option_["ABS"] = "";
     op_to_option_["HASHTABLE_LOOKUP"] =
         "";  // TODO(aselle): maybe something else.
     op_to_option_["LOGISTIC"] = "";
