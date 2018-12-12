@@ -751,6 +751,12 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   if (ModifiesFrameInfo(node)) {
     return false;
   }
+
+  // Removing LoopCond nodes can screw up the partitioner.
+  if (node.op() == "LoopCond") {
+    return false;
+  }
+
   // Skip constants, they're already folded
   if (IsConstant(node)) {
     return false;

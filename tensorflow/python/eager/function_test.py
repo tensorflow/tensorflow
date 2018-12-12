@@ -462,6 +462,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
+  @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
 
     @function.defun
