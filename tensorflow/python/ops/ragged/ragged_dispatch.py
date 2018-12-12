@@ -447,10 +447,17 @@ def register_dispatchers():
   for (original_op, ragged_op, args) in _RAGGED_DISPATCH_OPS:
     RaggedDispatcher(original_op, ragged_op, args).register(original_op)
 
-  docstring = (
+
+def ragged_op_list():
+  """Returns a string listing operators that have dispathers registered."""
+  op_list = (
+      _UNARY_ELEMENTWISE_OPS + _UNARY_LIST_ELEMENTWISE_OPS +
+      _BINARY_ELEMENTWISE_OPS + [x[0] for x in _RAGGED_DISPATCH_OPS])
+  return (
       '\n\n### Additional ops that support `RaggedTensor`\n\n' + '\n'.join([
           '* `tf.%s`' % tf_export.get_canonical_name_for_symbol(op)
           for op in op_list
       ]))
 
-  return docstring
+
+register_dispatchers()

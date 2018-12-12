@@ -71,6 +71,8 @@ from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
 from tensorflow.python.ops.partitioned_variables import *
+from tensorflow.python.ops.ragged import ragged_dispatch as _ragged_dispatch
+from tensorflow.python.ops.ragged import ragged_operators as _ragged_operators
 from tensorflow.python.ops.random_ops import *
 from tensorflow.python.ops.script_ops import py_func
 from tensorflow.python.ops.session_ops import *
@@ -102,3 +104,7 @@ from tensorflow.python.ops.variable_scope import *
 from tensorflow.python.ops.variables import *
 # pylint: enable=wildcard-import
 # pylint: enable=g-bad-import-order
+
+
+# These modules were imported to set up RaggedTensor operators and dispatchers:
+del _ragged_dispatch, _ragged_operators
