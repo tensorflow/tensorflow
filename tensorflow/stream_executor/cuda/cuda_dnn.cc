@@ -794,6 +794,19 @@ bool BatchnormSpatialPersistentEnabled() {
   return is_enabled;
 }
 
+// A helper function to decide whether to enable deterministic functionality.
+// TODO(pr/24355): Support all cuDNN functionality (currently only convolution).
+bool Deterministic() {
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(
+        tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
+                                       /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+}
+
 // Turns a ConvolutionDescriptor structure into a cudnn convolution handle
 // within a scope.
 class CudnnConvolutionDescriptor {
@@ -3056,10 +3069,19 @@ bool CudnnSupport::GetConvolveAlgorithms(
     algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 
+  if (Deterministic()) {
+    algo_types.clear();
+    algo_types.push_back(CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM);
+  }
+
   out_algorithms->clear();
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
     if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+      if (Deterministic()) {
+        // For determinism: always use tensor op math, if it's available
+        out_algorithms->pop_back();
+      }
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
   }
@@ -3104,10 +3126,19 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
 
+  if (Deterministic()) {
+    algo_types.clear();
+    algo_types.push_back(CUDNN_CONVOLUTION_BWD_DATA_ALGO_1);
+  }
+
   out_algorithms->clear();
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
     if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+      if (Deterministic()) {
+        // For determinism: always use tensor op math, if it's available
+        out_algorithms->pop_back();
+      }
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
   }
@@ -3135,10 +3166,19 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
     algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED);
   }
 
+  if (Deterministic()) {
+    algo_types.clear();
+    algo_types.push_back(CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1);
+  }
+
   out_algorithms->clear();
   for (auto i : algo_types) {
     out_algorithms->push_back({i, /*use_tensor_ops=*/false});
     if (cc_major >= 7 && CUDNN_VERSION >= 7000 && TensorOpMathEnabled()) {
+      if (Deterministic()) {
+        // For determinism: always use tensor op math, if it's available
+        out_algorithms->pop_back();
+      }
       out_algorithms->push_back({i, /*use_tensor_ops=*/true});
     }
   }
