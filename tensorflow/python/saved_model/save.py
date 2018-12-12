@@ -533,8 +533,7 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.user_object.SetInParent()
 
 
-@tf_export("saved_model.save",
-           v1=["saved_model.save", "saved_model.experimental.save"])
+@tf_export("saved_model.save", v1=["saved_model.experimental.save"])
 def save(obj, export_dir, signatures=None):
   # pylint: disable=line-too-long
   """Exports the Checkpointable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
@@ -681,7 +680,25 @@ def save(obj, export_dir, signatures=None):
 
   Raises:
     ValueError: If `obj` is not checkpointable.
+
+  @compatibility(eager)
+  Not supported when graph building. From TensorFlow 1.x,
+  `tf.enable_eager_execution()` must run first. May not be called from within a
+  function body.
+  @end_compatibility
   """
+  if not context.executing_eagerly():
+    with ops.init_scope():
+      if context.executing_eagerly():
+        raise AssertionError(
+            "tf.saved_model.save is not supported inside a traced "
+            "@tf.function. Move the call to the outer eagerly-executed "
+            "context.")
+      else:
+        raise AssertionError(
+            "tf.saved_model.save is not supported when graph building. "
+            "tf.enable_eager_execution() must run first when calling it from "
+            "TensorFlow 1.x.")
   # pylint: enable=line-too-long
   if not isinstance(obj, base.CheckpointableBase):
     raise ValueError(

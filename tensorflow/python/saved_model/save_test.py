@@ -334,6 +334,21 @@ class AssetTests(test.TestCase):
         {"output_0": [0.2]},
         _import_and_infer(export_dir, {"x": [0.1]}))
 
+  def test_sensible_graph_building_exception(self):
+    root = util.Checkpoint(v=variables.Variable(2.))
+    root.f = def_function.function(
+        lambda x: 2. * root.v,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    export_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    @def_function.function
+    def _calls_save():
+      save.save(root, export_dir)
+    with self.assertRaisesRegexp(AssertionError, "tf.function"):
+      _calls_save()
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(AssertionError, "enable_eager_execution"):
+        save.save(root, export_dir)
+
 
 class MemoryTests(test.TestCase):
 
