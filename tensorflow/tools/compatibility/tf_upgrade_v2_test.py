@@ -443,6 +443,13 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     )
     self.assertEqual(new_text, expected_text)
 
+  def test_substr(self):
+    text = "tf.substr(input, pos, len, name, unit)\n"
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual("tf.strings.substr(input=input, pos=pos, len=len, "
+                     "name=name, unit=unit)\n", new_text)
+    self.assertEqual(errors, [])
+
   def testColocateGradientsWithOps(self):
     text = "tf.gradients(a, foo=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
