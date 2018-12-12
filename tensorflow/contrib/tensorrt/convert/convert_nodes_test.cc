@@ -2600,11 +2600,14 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     NodeDef node_def = get_strided_slice_nodedef(ok_params[i].begin_mask,
                                                  ok_params[i].end_mask);
     AddTestTensor("input", ok_params[i].input_dims);
-    AddTestWeights<int32>("begin", {ok_params[i].begin.size()},
+    AddTestWeights<int32>("begin",
+                          {static_cast<int>(ok_params[i].begin.size())},
                           ok_params[i].begin);
-    AddTestWeights<int32>("end", {ok_params[i].end.size()}, ok_params[i].end);
+    AddTestWeights<int32>("end", {static_cast<int>(ok_params[i].end.size())},
+                          ok_params[i].end);
     std::vector<int> strides(ok_params[i].input_dims.size(), 1);
-    AddTestWeights<int32>("strides", {strides.size()}, strides);
+    AddTestWeights<int32>("strides", {static_cast<int>(strides.size())},
+                          strides);
     RunValidationAndConversion(node_def);
 
     TRT_TensorOrWeights output;
