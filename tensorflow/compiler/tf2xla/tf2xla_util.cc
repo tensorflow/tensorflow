@@ -557,6 +557,12 @@ bool HasAssociatedFunction(const NodeDef& node_def,
     return true;
   }
 
+  if (node_def.op() == "XlaHostCompute") {
+    // XlaHostCompute has "shape_inference_graph" func attr, but that's not
+    // related to graph execution.
+    return false;
+  }
+
   for (const auto& iter : node_def.attr()) {
     if (iter.second.has_func()) {
       return true;
@@ -578,6 +584,9 @@ std::vector<AssociatedFunctionInfo> GetAssociatedFunctions(
     // This is a SymbolicGradient op.
     AttrValueMap attrs(node.attrs().begin(), node.attrs().end());
     results.emplace_back(AssociatedFunctionInfo::SymbolicGradient(op, attrs));
+  } else if (node.type_string() == "XlaHostCompute") {
+    // XlaHostCompute has "shape_inference_graph" func attr, but that's not
+    // related to graph execution.
   } else {
     // Collect all function attrs for the node.
     for (auto& iter : node.attrs()) {

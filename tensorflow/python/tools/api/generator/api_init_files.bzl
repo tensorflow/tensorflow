@@ -4,6 +4,8 @@
 TENSORFLOW_API_INIT_FILES = [
     # BEGIN GENERATED FILES
     "__init__.py",
+    "autograph/__init__.py",
+    "autograph/experimental/__init__.py",
     "bitwise/__init__.py",
     "compat/__init__.py",
     "data/__init__.py",
@@ -64,10 +66,10 @@ TENSORFLOW_API_INIT_FILES = [
     "lite/constants/__init__.py",
     "losses/__init__.py",
     "math/__init__.py",
-    "metrics/__init__.py",
     "nn/__init__.py",
     "nn/rnn_cell/__init__.py",
     "quantization/__init__.py",
+    "ragged/__init__.py",
     "random/__init__.py",
     "saved_model/__init__.py",
     "sets/__init__.py",

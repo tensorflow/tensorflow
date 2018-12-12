@@ -86,7 +86,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
                                                self.block_length, self.sloppy,
                                                self.buffer_output_elements,
                                                self.prefetch_input_elements)))
-    self.iterator = self.dataset.make_initializable_iterator()
+    self.iterator = dataset_ops.make_initializable_iterator(self.dataset)
     self.init_op = self.iterator.initializer
     self.next_element = self.iterator.get_next()
 
@@ -603,7 +603,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     dataset = dataset.apply(
         interleave_ops.parallel_interleave(
             interleave_fn, cycle_length=16, block_length=2, sloppy=sloppy))
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
     with self.cached_session() as sess:
       output_values = []
@@ -630,9 +630,8 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
           sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
 
     dataset = dataset_ops.Dataset.range(10).map(_map_fn)
-    iterator = dataset.apply(
-        interleave_ops.parallel_interleave(
-            _interleave_fn, cycle_length=1)).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset.apply(
+        interleave_ops.parallel_interleave(_interleave_fn, cycle_length=1)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -701,7 +700,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
                                                self.buffer_output_elements,
                                                self.prefetch_input_elements)))
 
-    self.iterator = self.dataset.make_initializable_iterator()
+    self.iterator = dataset_ops.make_initializable_iterator(self.dataset)
     self.init_op = self.iterator.initializer
     self.next_element = self.iterator.get_next()
 
@@ -750,7 +749,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
                                                self.buffer_output_elements,
                                                self.prefetch_input_elements)))
 
-    self.iterator = self.dataset.make_initializable_iterator()
+    self.iterator = dataset_ops.make_initializable_iterator(self.dataset)
     self.init_op = self.iterator.initializer
     self.next_element = self.iterator.get_next()
 
@@ -789,7 +788,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
             buffer_output_elements=1,
             prefetch_input_elements=0))
     dataset = dataset.batch(32)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     next_element = iterator.get_next()
 
     results = []

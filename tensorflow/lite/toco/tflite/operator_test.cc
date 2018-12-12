@@ -151,6 +151,7 @@ TEST_F(OperatorTest, SimpleOperators) {
                                                    OperatorType::kZerosLike);
   CheckSimpleOperator<FloorModOperator>("FLOOR_MOD", OperatorType::kFloorMod);
   CheckSimpleOperator<RangeOperator>("RANGE", OperatorType::kRange);
+  CheckSimpleOperator<FillOperator>("FILL", OperatorType::kFill);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -613,6 +614,14 @@ TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
   // While the RFFT op is available on desktop, it is not in the kernel
   // set available on mobile and should be excluded.
   EXPECT_FALSE(ShouldExportAsFlexOp(true, "RFFT"));
+}
+
+TEST_F(OperatorTest, BuiltinMirrorPad) {
+  MirrorPadOperator op;
+  op.mode = MirrorPadMode::kReflect;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("MIRROR_PAD", OperatorType::kMirrorPad), op);
+  EXPECT_EQ(op.mode, output_toco_op->mode);
 }
 
 }  // namespace

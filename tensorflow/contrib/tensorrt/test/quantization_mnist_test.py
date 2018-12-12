@@ -191,7 +191,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
               batch_size=batch_size,
               num_parallel_calls=8))
       dataset = dataset.repeat(count=1)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = data.make_one_shot_iterator(dataset)
       features, labels = iterator.get_next()
       return features, labels
 
@@ -205,7 +205,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
               batch_size=batch_size,
               num_parallel_calls=8))
       dataset = dataset.repeat(count=num_epochs)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = data.make_one_shot_iterator(dataset)
       features, labels = iterator.get_next()
       return features, labels
 

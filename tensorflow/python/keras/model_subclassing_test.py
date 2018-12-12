@@ -187,6 +187,7 @@ def get_nested_model_3(input_dim, num_classes):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_v1_only('b/120545219')
 class ModelSubclassingTest(test.TestCase):
 
   def test_custom_build(self):
@@ -456,12 +457,12 @@ class ModelSubclassingTest(test.TestCase):
       model = SimpleTestModel(num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
 
-      x = np.ones((num_samples, input_dim))
-      y = np.zeros((num_samples, num_classes))
+      x = np.ones((num_samples, input_dim), dtype=np.float32)
+      y = np.zeros((num_samples, num_classes), dtype=np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
 
       model.fit(iterator, epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(iterator, steps=10, verbose=0)
@@ -915,6 +916,7 @@ class ModelSubclassingTest(test.TestCase):
       self.assertEqual(1, len(model.get_updates_for(x)))
 
 
+@test_util.run_v1_only('b/120545219')
 class GraphSpecificModelSubclassingTests(test.TestCase):
 
   @test_util.run_deprecated_v1

@@ -105,6 +105,7 @@ class GenerateVocabRemappingTest(test.TestCase):
       self.assertAllEqual(expected_num_present, self.evaluate(num_present))
 
 
+@test_util.run_v1_only('b/120545219')
 class LoadAndRemapMatrixTest(test.TestCase):
   """Tests for the load_and_remap_matrix() op."""
 

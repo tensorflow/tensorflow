@@ -63,8 +63,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from enum import Enum
-from enum import IntEnum
+import enum
 
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import naming
@@ -83,6 +82,7 @@ from tensorflow.python.autograph.pyct.static_analysis import liveness
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.autograph.pyct.static_analysis import type_info
 from tensorflow.python.eager import function
+from tensorflow.python.util.tf_export import tf_export
 
 # TODO(mdan): These contexts can be refactored into first class objects.
 # For example, we could define Program and Entity abstractions that hold on
@@ -91,37 +91,42 @@ from tensorflow.python.eager import function
 # TODO(mdan): Add a test specific to this converter.
 
 
-class Verbosity(IntEnum):
-  """Different levels of verbosity for printing errors.
+@tf_export('autograph.experimental.Verbosity')
+class Verbosity(enum.IntEnum):
+  """Represents conversion verbosity levels.
 
   Attributes:
-   * BRIEF: No logging, minimal error messages.
-   * VERBOSE: Detailed logging of generated code, detailed error messages.
+    BRIEF: No logging, minimal error messages.
+    VERBOSE: Detailed logging of generated code, detailed error messages.
   """
+
   BRIEF = 0
   VERBOSE = 1
 
 
-class Feature(Enum):
-  """Constants to use when selecting AutoGraph features."""
+@tf_export('autograph.experimental.Feature')
+class Feature(enum.Enum):
+  """Represents conversion options that can be toggled on or off.
 
-  ALL = 'Enable all features.'
+  Attributes:
+    ALL: Enable all features.
+    AUTO_CONTROL_DEPS: Insert of control dependencies in the generated code.
+    DECORATORS: Allow decorators in local functions. Note that special
+      decorators, like `tf.function`, are allowed regardless of this toggle.
+    ERROR_REWRITING: Rewrite errors that occur in the generated code to
+      indicate the source code to which the failing code corresponds.
+    LISTS: Convert list idioms, like initializers, slices, append, etc.
+    NAME_SCOPES: Insert name scopes that name ops according to context, like the
+      function they were defined in.
+  """
 
-  AUTO_CONTROL_DEPS = (
-      'Insert of control dependencies in the generated code.')
-  DECORATORS = (
-      'Allow decorators in local functions. Note that special decorators,'
-      ' like ag.convert or tf.function are allowed regardless of this toggle.')
-  ERROR_REWRITING = (
-      'Rewrite errors that occur in the generated code to indicate the source'
-      ' code to which the failing code corresponds.')
-  LISTS = 'Convert list idioms, like initializers, slices, append, etc.'
-  NAME_SCOPES = (
-      'Insert name scopes that name ops according to context, like the'
-      ' function they were defined in.')
+  ALL = 'ALL'
 
-  def __repr__(self):
-    return self.name
+  AUTO_CONTROL_DEPS = 'AUTO_CONTROL_DEPS'
+  DECORATORS = 'DECORATORS'
+  ERROR_REWRITING = 'ERROR_REWRITING'
+  LISTS = 'LISTS'
+  NAME_SCOPES = 'NAME_SCOPES'
 
 
 class ConversionOptions(object):
@@ -157,7 +162,9 @@ class ConversionOptions(object):
     # TODO(mdan): Rename to conversion_recursion_depth?
     self.internal_convert_user_code = internal_convert_user_code
 
-    if isinstance(optional_features, Feature):
+    if optional_features is None:
+      optional_features = ()
+    elif isinstance(optional_features, Feature):
       optional_features = (optional_features,)
     optional_features = frozenset(optional_features)
     self.optional_features = optional_features
@@ -419,7 +426,7 @@ class AnnotatedDef(reaching_definitions.Definition):
     self.directives = {}
 
 
-class AgAnno(Enum):
+class AgAnno(enum.Enum):
   """Annotation labels specific to AutoGraph. See anno.py."""
 
   DIRECTIVES = 'User directives associated with the annotated statement.'

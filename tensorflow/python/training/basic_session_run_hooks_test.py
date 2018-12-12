@@ -1122,6 +1122,7 @@ class StepCounterHookTest(test.TestCase):
         self.assertGreater(summary_value.simple_value, 0)
 
 
+@test_util.run_v1_only('b/120545219')
 class SummarySaverHookTest(test.TestCase):
 
   def setUp(self):
@@ -1148,13 +1149,11 @@ class SummarySaverHookTest(test.TestCase):
       basic_session_run_hooks.SummarySaverHook(
           scaffold=monitored_session.Scaffold(), summary_op=self.summary_op)
 
-  @test_util.run_deprecated_v1
   def test_raise_in_both_secs_and_steps(self):
     with self.assertRaises(ValueError):
       basic_session_run_hooks.SummarySaverHook(
           save_secs=10, save_steps=20, summary_writer=self.summary_writer)
 
-  @test_util.run_deprecated_v1
   def test_raise_in_none_secs_and_steps(self):
     with self.assertRaises(ValueError):
       basic_session_run_hooks.SummarySaverHook(
@@ -1372,7 +1371,7 @@ class FinalOpsHookTest(test.TestCase):
   def test_final_ops_triggers_out_of_range_error(self):
     with ops.Graph().as_default():
       dataset = dataset_ops.Dataset.range(1)
-      iterator = dataset.make_one_shot_iterator()
+      iterator = dataset_ops.make_one_shot_iterator(dataset)
       read_ops = iterator.get_next()
       final_ops = read_ops
 
@@ -1405,6 +1404,7 @@ class FinalOpsHookTest(test.TestCase):
                              hook.final_ops_values.tolist())
 
 
+@test_util.run_v1_only('b/120545219')
 class ResourceSummarySaverHookTest(test.TestCase):
 
   def setUp(self):

@@ -103,7 +103,7 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertDeviceEqual(var_5.device, "/device:GPU:0")
     self.assertDeviceEqual(var_6.device, "/device:CPU:0")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
       var_0 = variables.VariableV1(0)

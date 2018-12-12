@@ -145,14 +145,14 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
     if num_gpus_per_worker > 0:
-      self._compute_devices = [
+      self._compute_devices = tuple(
           "%s/device:GPU:%d" % (self._worker_device, i)
           for i in range(num_gpus_per_worker)
-      ]
+      )
     else:
-      self._compute_devices = [self._worker_device]
+      self._compute_devices = (self._worker_device,)
 
-    self._compute_devices = list(
+    self._compute_devices = tuple(
         map(device_util.resolve, self._compute_devices))
     self._canonical_compute_device_set = set(self._compute_devices)
 
@@ -176,8 +176,8 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     # The `_parameter_devices` is needed for the `parameter_devices` property
     # and is a list of all variable devices. Here parameter devices are all
     # tasks of the "ps" job.
-    self._parameter_devices = map("/job:ps/task:{}".format,
-                                  range(num_ps_replicas))
+    self._parameter_devices = tuple(map("/job:ps/task:{}".format,
+                                        range(num_ps_replicas)))
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
@@ -204,24 +204,24 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
     if num_gpus_per_worker > 0:
-      self._compute_devices = list(
+      self._compute_devices = tuple(
           map("/device:GPU:{}".format, range(num_gpus_per_worker)))
     else:
-      self._compute_devices = [_LOCAL_CPU]
+      self._compute_devices = (_LOCAL_CPU,)
 
-    self._compute_devices = list(
+    self._compute_devices = tuple(
         map(device_util.resolve, self._compute_devices))
     self._canonical_compute_device_set = set(self._compute_devices)
 
     # If there is only one GPU, put everything on that GPU. Otherwise, place
     # variables on CPU.
     if num_gpus_per_worker == 1:
-      assert len(list(self._compute_devices)) == 1
+      assert len(self._compute_devices) == 1
       self._variable_device = _LOCAL_GPU_0
-      self._parameter_devices = [_LOCAL_GPU_0]
+      self._parameter_devices = (_LOCAL_GPU_0,)
     else:
       self._variable_device = _LOCAL_CPU
-      self._parameter_devices = [_LOCAL_CPU]
+      self._parameter_devices = (_LOCAL_CPU,)
 
     self._is_chief = True
     self._cluster_spec = None
@@ -417,9 +417,9 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     if isinstance(val, values.DistributedValues):
       # Return in a deterministic order.
       if set(val.devices) == self._canonical_compute_device_set:
-        return [val.get(device=d) for d in self._compute_devices]
-      return [val.get(device=d) for d in sorted(val.devices)]
-    return [val]
+        return tuple(val.get(device=d) for d in self._compute_devices)
+      return tuple(val.get(device=d) for d in sorted(val.devices))
+    return (val,)
 
   def value_container(self, val):
     if (hasattr(val, "_aggregating_container") and
@@ -497,12 +497,11 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
   @property
   def worker_devices(self):
-    # Make a copy to prevent users from accidentally mutating our copy.
-    return list(self._compute_devices)
+    return self._compute_devices
 
   @property
   def parameter_devices(self):
-    return list(self._parameter_devices)
+    return self._parameter_devices
 
   def non_slot_devices(self, var_list):
     return min(var_list, key=lambda x: x.name)

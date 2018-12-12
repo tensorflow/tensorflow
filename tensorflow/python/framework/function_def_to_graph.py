@@ -174,9 +174,7 @@ def function_def_to_graph_def(fdef, input_shapes=None):
   # Update inputs of all nodes in graph.
   for node_def in graph_def.node:
     for i in range(len(node_def.input)):
-      # TODO(apassos): how can it not be there?
-      if node_def.input[i] in nested_to_flat_tensor_name:
-        node_def.input[i] = nested_to_flat_tensor_name[node_def.input[i]]
+      node_def.input[i] = nested_to_flat_tensor_name[node_def.input[i]]
 
   return graph_def, nested_to_flat_tensor_name
 

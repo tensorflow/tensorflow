@@ -82,3 +82,5 @@ upper_tabs:
       contents:
       - title: API
         path: /api_docs/python/tf/lite
+
+- include: /_upper_tabs_right.yaml

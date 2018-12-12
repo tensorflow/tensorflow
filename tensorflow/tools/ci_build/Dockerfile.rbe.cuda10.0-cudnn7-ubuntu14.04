@@ -31,7 +31,7 @@ ENV PATH /usr/local/cuda/bin:${PATH}
 # -Wl,-rpath-link=/usr/local/cuda/lib64/stubs to all binaries transitively
 # depending on libcuda. Optimally, builds targeting cuda would do that
 # internally.
-ENV LIBRARY_PATH /usr/local/cuda/lib64/stubs
+ENV LD_LIBRARY_PATH /usr/local/cuda/lib64/stubs
 
 LABEL com.nvidia.cudnn.version="${CUDNN_VERSION}"
 

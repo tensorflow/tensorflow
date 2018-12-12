@@ -12,4 +12,5 @@ def repo():
             "https://github.com/keras-team/keras-applications/archive/1.0.6.tar.gz",
         ],
         build_file = "//third_party/keras_applications_archive:BUILD.bazel",
+        system_build_file = "//third_party/keras_applications_archive:BUILD.system",
     )

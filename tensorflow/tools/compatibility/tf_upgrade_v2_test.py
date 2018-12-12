@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import os
 import tempfile
 
 import six
 import tensorflow as tf
 # OSS TF V2 import placeholder.
-
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
@@ -63,6 +63,24 @@ def get_v2_names(symbol):
   return list(names_v2)
 
 
+def get_symbol_for_name(root, name):
+  name_parts = name.split(".")
+  symbol = root
+  # Iterate starting with second item since 1st item is "tf.".
+  for part in name_parts[1:]:
+    symbol = getattr(symbol, part)
+  return symbol
+
+
+def get_args(symbol):
+  if hasattr(inspect, "signature"):
+    signature = inspect.signature(symbol)
+    # Ignore *args and **kwargs for now.
+    return [param.name for param in signature.parameters.values()
+            if param.kind == param.POSITIONAL_OR_KEYWORD]
+  return tf_inspect.getargspec(symbol)[0]
+
+
 def get_func_and_args_from_str(call_str):
   """Parse call string to get function and argument names.
 
@@ -79,6 +97,7 @@ def get_func_and_args_from_str(call_str):
   function_name = call_str[:call_str.find("(")]
   args = call_str[open_paren_index+1:close_paren_index].split(",")
   args = [arg.split("=")[0].strip() for arg in args]
+  args = [arg for arg in args if arg]  # filter out empty strings
   return function_name, args
 
 
@@ -142,6 +161,8 @@ class TestUpgrade(test_util.TensorFlowTestCase):
 
     # Converts all symbols in the v1 namespace to the v2 namespace, raising
     # an error if the target of the conversion is not in the v2 namespace.
+    # Please regenerate the renames file or edit any manual renames if this
+    # test fails.
     def conversion_visitor(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
@@ -160,17 +181,42 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     visitor.private_map["tf.compat"] = ["v1", "v2"]
     traverse.traverse(tf.compat.v1, visitor)
 
-  def testKeywordArgNames(self):
-    if not hasattr(tf.compat, "v2"):
-      return
+  def testAllAPIV1(self):
+    collect = True
+    v1_symbols = set([])
 
+    # Converts all symbols in the v1 namespace to the v2 namespace, raising
+    # an error if the target of the conversion is not in the v1 namespace.
+    def conversion_visitor(unused_path, unused_parent, children):
+      for child in children:
+        _, attr = tf_decorator.unwrap(child[1])
+        api_names = get_v1_names(attr)
+        for name in api_names:
+          if collect:
+            v1_symbols.add("tf." + name)
+          else:
+            _, _, _, text = self._upgrade("tf." + name)
+            if (text and
+                not text.startswith("tf.compat.v1") and
+                not text.startswith("tf.estimator") and
+                text not in v1_symbols):
+              self.assertFalse(
+                  True, "Symbol %s generated from %s not in v1 API" % (
+                      text, name))
+
+    visitor = public_api.PublicAPIVisitor(conversion_visitor)
+    visitor.do_not_descend_map["tf"].append("contrib")
+    visitor.private_map["tf.compat"] = ["v1", "v2"]
+    traverse.traverse(tf.compat.v1, visitor)
+    collect = False
+    traverse.traverse(tf.compat.v1, visitor)
+
+  def testV1KeywordArgNames(self):
     all_keyword_renames = (
         tf_upgrade_v2.TFAPIChangeSpec().function_keyword_renames)
-    v2_name_exceptions = {"verify_shape_is_now_always_true"}
 
-    # Visitor that verifies V1 argument names, converts to V2 and checks
-    # V2 argument names.
-    def conversion_visitor(unused_path, unused_parent, children):
+    # Visitor that verifies V1 argument names.
+    def arg_test_visitor(unused_path, unused_parent, children):
       for child in children:
         _, attr = tf_decorator.unwrap(child[1])
         names_v1 = get_v1_names(attr)
@@ -190,30 +236,117 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                 "%s not found in %s arguments: %s" %
                 (from_name, name, str(arg_names_v1)))
 
+    visitor = public_api.PublicAPIVisitor(arg_test_visitor)
+    visitor.do_not_descend_map["tf"].append("contrib")
+    visitor.private_map["tf.compat"] = ["v1", "v2"]
+    traverse.traverse(tf.compat.v1, visitor)
+
+  def testV2KeywordArgNames(self):
+    # This test converts a call of the form:
+    # tf.foo(arg1=0, arg2=1, ...)
+    # to 2.0. Then, checks that converted function has valid argument names.
+    if not hasattr(tf.compat, "v2"):
+      return
+    v2_arg_exceptions = {
+        "verify_shape_is_now_always_true",
+        # These arguments should not be used, they just specify
+        # that a function takes named arguments.
+        "keyword_required",
+        "_sentinel",
+    }
+    v1_name_exceptions = {
+        "tf.print",  # requires print_function import
+    }
+    function_warnings = (
+        tf_upgrade_v2.TFAPIChangeSpec().function_warnings)
+    function_handles = (
+        tf_upgrade_v2.TFAPIChangeSpec().function_handle)
+    keyword_renames = (
+        tf_upgrade_v2.TFAPIChangeSpec().function_keyword_renames)
+
+    # Visitor that converts to V2 and checks V2 argument names.
+    def conversion_visitor(unused_path, unused_parent, children):
+      for child in children:
+        _, attr = tf_decorator.unwrap(child[1])
+        if not tf_inspect.isfunction(attr):
+          continue
+        names_v1 = get_v1_names(attr)
+        arg_names_v1 = get_args(attr)
+
+        for name in names_v1:
+          tf_name = "tf.%s" % name
+          if tf_name in function_warnings or tf_name in function_handles:
+            continue  # These require manual change
+          if tf_name in v1_name_exceptions:
+            continue
           # Assert that arg names after converting to v2 are present in
           # v2 function.
           # 1. First, create an input of the form:
           #    tf.foo(arg1=val1, arg2=val2, ...)
           args = ",".join(
               ["%s=%d" % (from_name, from_index)
-               for from_index, from_name in enumerate(keyword_renames.keys())])
-          text_input = "%s(%s)" % (name, args)
+               for from_index, from_name in enumerate(arg_names_v1)])
+          text_input = "%s(%s)" % (tf_name, args)
           # 2. Convert the input to V2.
           _, _, _, text = self._upgrade(text_input)
           new_function_name, new_args = get_func_and_args_from_str(text)
+          if new_function_name == "tf.compat.v1.%s" % name:
+            if tf_name in keyword_renames:
+              # If we rename arguments, new function must be available in 2.0.
+              # We should not be using compat.v1 in this case.
+              self.assertFalse(
+                  "Function '%s' is not in 2.0 when converting\n%s\nto\n%s" %
+                  (new_function_name, text_input, text))
+            continue
           # 3. Verify V2 function and arguments.
-          # Note: If we rename arguments, new function must be available in 2.0.
-          # We should not be using compat.v1 in this case.
-          self.assertIn(new_function_name, self.v2_symbols)
-          args_v2 = tf_inspect.getargspec(self.v2_symbols[new_function_name])[0]
-          args_v2.extend(v2_name_exceptions)
+          args_v2 = get_args(self.v2_symbols[new_function_name])
+          args_v2.extend(v2_arg_exceptions)
           for new_arg in new_args:
-            self.assertIn(new_arg, args_v2)
+            self.assertIn(
+                new_arg, args_v2,
+                "Invalid argument '%s' in 2.0 when converting\n%s\nto\n%s.\n"
+                "Supported arguments: %s" % (
+                    new_arg, text_input, text, str(args_v2)))
 
     visitor = public_api.PublicAPIVisitor(conversion_visitor)
     visitor.do_not_descend_map["tf"].append("contrib")
     visitor.private_map["tf.compat"] = ["v1", "v2"]
     traverse.traverse(tf.compat.v1, visitor)
+
+  def testReorderFileNeedsUpdate(self):
+    reordered_function_names = (
+        tf_upgrade_v2.TFAPIChangeSpec().reordered_function_names)
+    function_reorders = (
+        tf_upgrade_v2.TFAPIChangeSpec().function_reorders)
+
+    added_names_message = """Some function names in
+self.reordered_function_names are not in reorders_v2.py.
+Please run the following commands to update reorders_v2.py:
+bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
+bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+"""
+    removed_names_message = """%s in self.reorders_v2 does not match
+any name in self.reordered_function_names.
+Please run the following commands to update reorders_v2.py:
+bazel build tensorflow/tools/compatibility/update:generate_v2_reorders_map
+bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
+"""
+    self.assertTrue(
+        reordered_function_names.issubset(function_reorders),
+        added_names_message)
+    # function_reorders should contain reordered_function_names
+    # and their TensorFlow V1 aliases.
+    for name in function_reorders:
+      # get other names for this function
+      attr = get_symbol_for_name(tf.compat.v1, name)
+      _, attr = tf_decorator.unwrap(attr)
+      v1_names = get_v1_names(attr)
+      self.assertTrue(v1_names)
+      v1_names = ["tf.%s" % n for n in v1_names]
+      # check if any other name is in
+      self.assertTrue(
+          any(n in reordered_function_names for n in v1_names),
+          removed_names_message % name)
 
   def testRenameConstant(self):
     text = "tf.MONOLITHIC_BUILD\n"
@@ -388,6 +521,11 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+    text = "tf.arg_min(input, 0)"
+    expected_text = "tf.argmin(input, 0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testArgmax(self):
     text = "tf.argmax(input, name=n, dimension=1, output_type=type)"
     expected_text = "tf.argmax(input=input, name=n, axis=1, output_type=type)"
@@ -396,6 +534,11 @@ class TestUpgrade(test_util.TensorFlowTestCase):
 
     text = "tf.argmax(input, 0)"
     expected_text = "tf.argmax(input=input, axis=0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.arg_max(input, 0)"
+    expected_text = "tf.argmax(input, 0)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
@@ -441,6 +584,157 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     text = "tf.nn.softmax_cross_entropy_with_logits_v2(labels, logits, dim=2)"
     expected_text = (
         "tf.nn.softmax_cross_entropy_with_logits(labels, logits, axis=2)")
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    self.assertFalse(errors)
+
+  def testSoftMaxCrossEntropyWithLogits(self):
+    text = "tf.nn.softmax_cross_entropy_with_logits(labels, logits, dim=2)"
+    expected_text = (
+        "tf.nn.softmax_cross_entropy_with_logits(labels, logits, dim=2)")
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+    self.assertIn(
+        "tf.nn.softmax_cross_entropy_with_logits requires manual check.",
+        errors[0])
+    self.assertIn(
+        "tf.nn.softmax_cross_entropy_with_logits behavior has changed. ",
+        report)
+
+  def testSparseMatmul(self):
+    text = ("tf.sparse_matmul(a, b, c, d, e, f, g)\n")
+    expected_text = ("tf.linalg.matmul(a=a, b=b, transpose_a=c, transpose_b=d, "
+                     "a_is_sparse=e, b_is_sparse=f, name=g)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testWeightedMoments(self):
+    text = "tf.nn.weighted_moments(x, axes, freq, name, kd)"
+    expected_text = (
+        "tf.nn.weighted_moments(x=x, axes=axes, frequency_weights=freq, "
+        "name=name, keepdims=kd)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSparseAdd(self):
+    text = "tf.sparse.add(a, b, t)"
+    expected_text = "tf.sparse.add(a=a, b=b, threshold=t)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSparseConcat(self):
+    text = "tf.sparse.concat(ax, inp, name, exp, concat)"
+    expected_text = (
+        "tf.sparse.concat(axis=ax, sp_inputs=inp, name=name, "
+        "expand_nonconcat_dims=exp, axis=concat)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSeparableConv2D(self):
+    text = "tf.nn.separable_conv2d(inp, d, pt, strides, pad, rate, name, fmt)"
+    expected_text = (
+        "tf.nn.separable_conv2d(input=inp, depthwise_filter=d, "
+        "pointwise_filter=pt, strides=strides, padding=pad, "
+        "dilations=rate, name=name, data_format=fmt)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSpacetoBatch(self):
+    text = "tf.space_to_batch_nd(input, shape, paddings, name)"
+    expected_text = "tf.space_to_batch(input, shape, paddings, name)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.nn.space_to_batch(input, paddings, block_size, name)"
+    expected_text = (
+        "tf.space_to_batch(input=input, paddings=paddings, "
+        "block_shape=block_size, name=name)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testInTopK(self):
+    text = "tf.math.in_top_k(a, b, c, n)"
+    expected_text = (
+        "tf.math.in_top_k(predictions=a, targets=b, k=c, name=n)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testDepthToSpace(self):
+    text = "tf.nn.depth_to_space(input, block_size, name, data_format)"
+    expected_text = (
+        "tf.nn.depth_to_space(input=input, block_size=block_size, "
+        "name=name, data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testEmbeddingLookup(self):
+    text = ("tf.nn.embedding_lookup(params, ids, partition_strategy, name, "
+            "validate_indices, max_norm)")
+    expected_text = ("tf.nn.embedding_lookup(params=params, ids=ids, "
+                     "partition_strategy=partition_strategy, name=name, "
+                     "validate_indices=validate_indices, max_norm=max_norm)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testEmbeddingLookupSparse(self):
+    text = ("tf.nn.embedding_lookup_sparse(params, sp_ids, sp_weights, "
+            "partition_strategy, name, combiner, max_norm)")
+    expected_text = ("tf.nn.embedding_lookup_sparse(params=params, "
+                     "sp_ids=sp_ids, sp_weights=sp_weights, "
+                     "partition_strategy=partition_strategy, name=name, "
+                     "combiner=combiner, max_norm=max_norm)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testNnInTopK(self):
+    text = "tf.nn.in_top_k(predictions, targets, k, name)"
+    expected_text = ("tf.nn.in_top_k(predictions=predictions, "
+                     "targets=targets, k=k, name=name)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testSpaceToDepth(self):
+    text = "tf.nn.space_to_depth(input, block_size, name, data_format)"
+    expected_text = ("tf.nn.space_to_depth(input=input, block_size=block_size, "
+                     "name=name, data_format=data_format)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testPrint(self):
+    # tf.print() cannot be parsed unless we import print_function
+    text = """from __future__ import print_function
+tf.print()
+tf.print('abc')
+"""
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, text)  # Text should stay the same
+
+  def testSparseSplit(self):
+    text = (
+        "tf.sparse_split(sp_input=sp_input, num_split=num_split, axis=axis, "
+        "name=name)")
+    expected_text = (
+        "tf.sparse.split(sp_input=sp_input, num_split=num_split, axis=axis, "
+        "name=name)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = (
+        "tf.sparse_split(sp_input=sp_input, num_split=num_split, "
+        "name=name, split_dim=axis)")
+    expected_text = (
+        "tf.sparse.split(sp_input=sp_input, num_split=num_split, "
+        "name=name, axis=axis)")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = (
+        "tf.sparse.split(sp_input=sp_input, num_split=num_split, "
+        "name=name, split_dim=axis)")
+    expected_text = (
+        "tf.sparse.split(sp_input=sp_input, num_split=num_split, "
+        "name=name, axis=axis)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 

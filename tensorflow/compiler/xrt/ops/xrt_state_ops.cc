@@ -95,6 +95,20 @@ Copies an allocated tuple from device memory and returns it as a literal.
 'literal' is a serialized xla::LiteralProto proto.
 )");
 
+REGISTER_OP("XRTWriteLiteral")
+    .Input("handle: int64")
+    .Input("literal: string")
+    .Output("output_handle: int64")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Copies the input literal into the device memory pointed to by handle.
+Returns the handle itself.
+
+'handle' is the id returned from the Op that produced the on-device allocation.
+'literal' is a serialized xla::LiteralProto proto to be written to device memory.
+)");
+
 REGISTER_OP("XRTReadLiteralAndRelease")
     .Input("handle: int64")
     .Output("literal: string")

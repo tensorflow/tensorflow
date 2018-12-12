@@ -86,6 +86,10 @@ XlaOp Cosh(XlaOp x);
 // Computes the hyperbolic sine of 'x'.
 XlaOp Sinh(XlaOp x);
 
+// Applies a complex conjugation operation if `a` is complex and `conjugate`
+// is true, otherwise returns its argument.
+xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATH_H_

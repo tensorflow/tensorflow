@@ -143,7 +143,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
                          Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
-    pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<GpuHloSupportChecker>();
@@ -174,6 +173,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true);
+
+      pipeline.AddPass<HloGetDimensionSizeRewriter>();
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
@@ -478,7 +479,8 @@ void WarnIfBadDriverJITVersion() {
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array.
 StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
-                                        int cc_minor) {
+                                        int cc_minor,
+                                        bool disable_ptx_optimizations) {
   tracing::ScopedActivity activity("Compile PTX", /*is_expensive=*/true);
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin", "ptxas");
@@ -517,6 +519,9 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
       absl::StrCat("-arch=sm_", cc_major, cc_minor)};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
+  }
+  if (disable_ptx_optimizations) {
+    ptxas_args.push_back("-O0");
   }
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
@@ -738,8 +743,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     }
   }
 
-  const std::vector<uint8> cubin =
-      CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor);
+  const std::vector<uint8> cubin = CompilePtxOrGetCachedResult(
+      ptx, cc_major, cc_minor,
+      module->config().debug_options().xla_gpu_disable_ptxas_optimizations());
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
@@ -771,9 +777,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   return std::unique_ptr<Executable>(gpu_executable);
 }
 
-std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
-                                                              int cc_major,
-                                                              int cc_minor) {
+std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
+    const string& ptx, int cc_major, int cc_minor,
+    bool disable_ptx_optimizations) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompilePtxOrGetCachedResult");
   tracing::ScopedActivity activity("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
@@ -801,8 +807,8 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        StatusOr<std::vector<uint8>> maybe_cubin =
-            CompilePtx(*cache_ptx, cc_major, cc_minor);
+        StatusOr<std::vector<uint8>> maybe_cubin = CompilePtx(
+            *cache_ptx, cc_major, cc_minor, disable_ptx_optimizations);
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()

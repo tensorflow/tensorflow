@@ -62,7 +62,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
     self.assertEqual(len(graph.node), graph_size)
     self.assertItemsEqual([node.name for node in graph.node], nodes)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testSimpleSwap(self):
     """Check that the swap annotations are followed."""
     a = variables.VariableV1(10, name='a')

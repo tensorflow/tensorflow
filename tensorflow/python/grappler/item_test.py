@@ -108,7 +108,7 @@ class ItemTest(test.TestCase):
     newest_tf_item = grappler_item.tf_item
     self.assertEqual(new_tf_item, newest_tf_item)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testColocationContraints(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant([10])

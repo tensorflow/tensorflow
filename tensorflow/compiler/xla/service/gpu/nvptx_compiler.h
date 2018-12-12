@@ -97,8 +97,9 @@ class NVPTXCompiler : public LLVMCompiler {
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8> CompilePtxOrGetCachedResult(const string& ptx,
-                                                 int cc_major, int cc_minor);
+  std::vector<uint8> CompilePtxOrGetCachedResult(
+      const string& ptx, int cc_major, int cc_minor,
+      bool disable_ptx_optimizations);
 
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
   // -> cubin so we don't recompile the same ptx twice.  This is important for

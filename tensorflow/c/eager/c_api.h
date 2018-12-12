@@ -48,7 +48,7 @@ extern "C" {
 typedef struct TFE_ContextOptions TFE_ContextOptions;
 
 // Return a new options object.
-TF_CAPI_EXPORT extern TFE_ContextOptions* TFE_NewContextOptions();
+TF_CAPI_EXPORT extern TFE_ContextOptions* TFE_NewContextOptions(void);
 
 // Set the config in TF_ContextOptions.options.
 // config should be a serialized tensorflow.ConfigProto proto.

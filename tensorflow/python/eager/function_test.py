@@ -152,8 +152,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
-    # TODO(b/120222989) remove autograph=False.
-    @def_function.function(autograph=False)
+    @def_function.function()
     def pairs_mul(pair_a, pair_b):
       return pair(matmul(pair_a.a, pair_b.a), matmul(pair_a.b, pair_b.b))
 
@@ -429,20 +428,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(value), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.also_run_as_tf_function
   def testInitScopeTensorInitializationInFunction(self):
 
     @def_function.function
     def tensor_init():
       with ops.init_scope():
         const = constant_op.constant(2.0)
+      # Note: this variable bypasses tf.function's variable creation
+      # requirements by bypassing variable_creator_scope by using
+      # ResourceVariable instead of Variable.
       self.v = resource_variable_ops.ResourceVariable(const)
       return self.v.read_value()
 
     value = tensor_init()
-    if not context.executing_eagerly():
-      self.evaluate(variables.global_variables_initializer())
-    self.assertEqual(self.evaluate(value), 2.0)
+    self.assertAllEqual(value, 2.0)
 
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
@@ -544,7 +544,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  def disabled_testRunMetadata(self):
+  def testRunMetadata(self):
 
     @def_function.function
     def f(x):
@@ -963,6 +963,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   # construction. Eager's configuration is controlled in `__main__`.
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 4}))
+  @test_util.run_v1_only('b/120545219')
   def testDeviceAnnotationsRespected(self):
 
     def multi_device_fn():
@@ -1001,6 +1002,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 2}))
+  @test_util.run_v1_only('b/120545219')
   def testCallingGraphFunctionOnDifferentDevice(self):
 
     def func():
@@ -1302,7 +1304,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
-  @test_util.run_deprecated_v1
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
     def foo(a, training=True):
@@ -1311,10 +1312,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       else:
         return -1.0 * a
 
-    signature = [tensor_spec.TensorSpec([], dtypes.float32)] * 2
+    signature = [
+        tensor_spec.TensorSpec([], dtypes.float32),
+        tensor_spec.TensorSpec([], dtypes.bool),
+    ]
     defined = def_function.function(foo, input_signature=signature)
     a = constant_op.constant(1.0)
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'When input_signature is provided, all inputs to '
+        'the Python function must be Tensors.'):
       defined(a, training=True)
 
   def testInputSignatureWithKeywordPositionalArgs(self):

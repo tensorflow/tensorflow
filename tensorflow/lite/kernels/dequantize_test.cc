@@ -25,8 +25,16 @@ using ::testing::ElementsAreArray;
 
 class DequantizeOpModel : public SingleOpModel {
  public:
-  DequantizeOpModel(std::initializer_list<int> shape, float min, float max) {
-    input_ = AddInput({TensorType_UINT8, shape, min, max});
+  DequantizeOpModel(TensorType type, std::initializer_list<int> shape,
+                    float scale, int32_t zero_point) {
+    TensorData input_tensor_data;
+    input_tensor_data.type = type;
+    input_tensor_data.shape = shape;
+    input_tensor_data.min = 0;
+    input_tensor_data.max = 0;
+    input_tensor_data.scale = scale;
+    input_tensor_data.zero_point = zero_point;
+    input_ = AddInput(input_tensor_data);
     output_ = AddOutput({TensorType_FLOAT32, shape});
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
@@ -34,7 +42,8 @@ class DequantizeOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_)});
   }
 
-  void SetInput(std::initializer_list<uint8_t> data) {
+  template <typename T>
+  void SetInput(std::initializer_list<T> data) {
     PopulateTensor(input_, data);
   }
 
@@ -45,10 +54,22 @@ class DequantizeOpModel : public SingleOpModel {
   int output_;
 };
 
-TEST(SplitOpTest, FourDimensional) {
-  DequantizeOpModel m({2, 5}, -63.5, 64);
+TEST(DequantizeOpTest, UINT8) {
+  // [-63.5, 64] -> scale=0.5 zero_point=127 for UINT8
+  DequantizeOpModel m(TensorType_UINT8, {2, 5}, 0.5, 127);
 
-  m.SetInput({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
+  m.SetInput<uint8>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
+}
+
+TEST(DequantizeOpTest, INT8) {
+  // [-63.5, 64] -> scale=0.5, zero_point=1 for INT8
+  DequantizeOpModel m(TensorType_INT8, {2, 5}, 0.5, -1);
+
+  m.SetInput<int8>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(

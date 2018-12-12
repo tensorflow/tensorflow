@@ -671,7 +671,7 @@ def walk(top, in_order=True):
 
 
 @tf_export("io.gfile.walk")
-def walk_v2(top, topdown, onerror=None):
+def walk_v2(top, topdown=True, onerror=None):
   """Recursive directory tree generator for directories.
 
   Args:

@@ -44,32 +44,42 @@ def _product(t):
     return y
 
 
-def _to_numpy(a):
-  """Converts tensors to numpy arrays.
+def _eval_indexed_slices(a):
+  """Converts IndexedSlices to IndexedSlicesValue with numpy indices/values.
 
-  Converts Tensors and EagerTensors to numpy arrays.
   When eager execution is enabled, converts IndexedSlices
-  to IndexedSlicesValue with numpy indices/values
+  to IndexedSlicesValue with numpy indices/values.
+
+  Args:
+    a: any value.
+
+  Returns:
+    If a is IndexedSlices and eager execution is enabled, calls numpy() on a's
+    fields. Otherwise returns a unchanged.
+  """
+  if isinstance(a, ops.IndexedSlices) and context.executing_eagerly():
+    return ops.IndexedSlicesValue(
+        indices=[x.numpy() for x in a.indices],
+        values=[x.numpy() for x in a.values],
+        dense_shape=a.dense_shape)
+  return a
+
+
+def _to_numpy(a):
+  """Converts Tensors and EagerTensors to numpy arrays.
 
   Args:
     a: any value.
 
   Returns:
     If a is EagerTensor or Tensor, returns the evaluation of a by calling
-    numpy() or run().
-    If a is IndexedSlices and eager execution is enabled, calls numpy() on a's
-    fields. Otherwise returns a unchanged.
+    numpy() or run(). Otherwise returns a unchanged.
   """
   if isinstance(a, ops.EagerTensor):
     return a.numpy()
   if isinstance(a, ops.Tensor):
     sess = ops.get_default_session()
     return sess.run(a)
-  if isinstance(a, ops.IndexedSlices) and context.executing_eagerly():
-    return ops.IndexedSlicesValue(
-        indices=[x.numpy() for x in a.indices],
-        values=[x.numpy() for x in a.values],
-        dense_shape=a.dense_shape)
   return a
 
 
@@ -88,14 +98,18 @@ def _prepare(f, xs_dtypes):
     a function that will be evaluated in both graph and eager mode
   """
   if context.executing_eagerly():
-    return f
+
+    def decorated_eager(*xs_data):
+      return f(*map(ops.convert_to_tensor, xs_data))
+
+    return decorated_eager
   xs = [array_ops.placeholder(x_dtype) for x_dtype in xs_dtypes]
   y = f(*xs)
   sess = ops.get_default_session()
-  def decorated(*xs_data):
+  def decorated_graph(*xs_data):
     xs_data = [_to_numpy(a) for a in xs_data]
     return sess.run(y, feed_dict=dict(zip(xs, xs_data)))
-  return decorated
+  return decorated_graph
 
 
 def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
@@ -143,6 +157,7 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
   for col in range(y_size):
     dy_data_flat[col] = 1
     grad = _to_numpy(grad_fn(dy_data, *xs)[0])
+    grad = _eval_indexed_slices(grad)
     dy_data_flat[col] = 0
     if isinstance(grad, ops.IndexedSlicesValue):
       for i, v in zip(grad.indices, grad.values):
@@ -288,6 +303,9 @@ def compute_gradient(f, x, delta=1e-3):
   Raises:
     ValueError: If result is empty but the gradient is nonzero.
   """
+  if not isinstance(x, list):
+    raise ValueError(
+        "`x` must be a list of Tensors (arguments to `f`), not a %s" % type(x))
   return _compute_gradient_list(f, x, delta)
 
 

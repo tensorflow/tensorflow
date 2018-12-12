@@ -39,7 +39,7 @@ class AutotuneBenchmark(test.Benchmark):
                                                                1))).repeat()
     dataset = dataset.map(
         math_ops.matmul, num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     deltas = []
@@ -76,7 +76,7 @@ class AutotuneBenchmark(test.Benchmark):
     options = dataset_ops.Options()
     options.experimental_numa_aware = numa_aware
     dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     deltas = []
@@ -108,7 +108,7 @@ class AutotuneBenchmark(test.Benchmark):
         lambda _: dataset,
         cycle_length=10,
         num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.make_one_shot_iterator()
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     deltas = []
@@ -134,34 +134,34 @@ class AutotuneBenchmark(test.Benchmark):
     a = (np.random.rand(1, 8 * k), np.random.rand(8 * k, 1))
     b = (np.random.rand(1, 4 * k), np.random.rand(4 * k, 1))
     c = (np.random.rand(1, 2 * k), np.random.rand(2 * k, 1))
-    dataset = dataset_ops.Dataset.from_tensors((a, b, c)).repeat()
+    dataset_a = dataset_ops.Dataset.from_tensors(a).repeat()
+    dataset_b = dataset_ops.Dataset.from_tensors(b).repeat()
+    dataset_c = dataset_ops.Dataset.from_tensors(c).repeat()
 
-    def f1(a, b, c):
-      x, y = a
-      return math_ops.matmul(x, y), b, c
+    def f1(x, y):
+      return math_ops.matmul(x, y)
 
-    def f2(a, b, c):
+    def f2(a, b):
       x, y = b
-      return a, math_ops.matmul(x, y), c
+      return a, math_ops.matmul(x, y)
 
-    def f3(a, b, c):
-      x, y = c
-      return a, b, math_ops.matmul(x, y)
-
+    dataset = dataset_a
     dataset = dataset.map(f1, num_parallel_calls=optimization.AUTOTUNE)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,
         num_parallel_calls=optimization.AUTOTUNE,
         cycle_length=2)
 
+    dataset = dataset_ops.Dataset.zip((dataset, dataset_b))
     dataset = dataset.map(f2, num_parallel_calls=optimization.AUTOTUNE)
     dataset = dataset_ops.Dataset.range(1).repeat().interleave(
         lambda _: dataset,
         num_parallel_calls=optimization.AUTOTUNE,
         cycle_length=2)
 
-    dataset = dataset.map(f3, num_parallel_calls=optimization.AUTOTUNE)
-    iterator = dataset.make_one_shot_iterator()
+    dataset = dataset_ops.Dataset.zip((dataset, dataset_c))
+    dataset = dataset.map(f2, num_parallel_calls=optimization.AUTOTUNE)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next()
 
     deltas = []

@@ -1311,9 +1311,8 @@ class Layer(checkpointable.CheckpointableBase):
 
     def _loss_for_variable(v):
       """Creates a regularization loss `Tensor` for variable `v`."""
-      with ops.colocate_with(v):
-        with ops.name_scope(name + '/Regularizer'):
-          regularization = regularizer(v)
+      with ops.name_scope(name + '/Regularizer'):
+        regularization = regularizer(v)
       return regularization
 
     if isinstance(variable, tf_variables.PartitionedVariable):
