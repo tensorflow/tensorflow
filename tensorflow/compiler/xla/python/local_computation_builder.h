@@ -286,6 +286,10 @@ class LocalComputationBuilder {
 
   LocalOp ConstantLiteral(const Literal& literal);
 
+  LocalOp Iota(PrimitiveType element_type, int64 size);
+
+  LocalOp BroadcastedIota(const Shape& shape, int64 dimension);
+
   LocalOp Broadcast(const LocalOp& operand,
                     absl::Span<const int64> broadcast_sizes);
 
