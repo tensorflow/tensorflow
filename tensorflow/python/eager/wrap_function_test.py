@@ -19,6 +19,7 @@ from __future__ import print_function
 
 
 from tensorflow.python.eager import wrap_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -69,6 +70,14 @@ class WrapFunctionTest(test.TestCase):
 
     f_pruned = f_wrapped.prune(x_in[0], [x_out[0]])
     self.assertAllEqual(f_pruned(ops.convert_to_tensor(2.0)), [4.0])
+
+  def testNoArguments(self):
+
+    def f():
+      return constant_op.constant(1.)
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    self.assertAllEqual(1.0, f_wrapped())
 
 
 if __name__ == '__main__':
