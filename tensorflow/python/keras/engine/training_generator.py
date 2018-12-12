@@ -49,7 +49,7 @@ def model_iteration(model,
                     max_queue_size=10,
                     workers=1,
                     use_multiprocessing=False,
-                    shuffle=True,
+                    shuffle=False,
                     initial_epoch=0,
                     mode='train',
                     batch_size=None,
@@ -246,8 +246,10 @@ def model_iteration(model,
 
 # Maintain compatibility with the existing names.
 fit_generator = functools.partial(model_iteration, mode='train')
-evaluate_generator = functools.partial(model_iteration, mode='test')
-predict_generator = functools.partial(model_iteration, mode='predict')
+evaluate_generator = functools.partial(
+    model_iteration, mode='test', shuffle=False)
+predict_generator = functools.partial(
+    model_iteration, mode='predict', shuffle=False)
 
 
 def _get_next_batch(output_generator, mode):
