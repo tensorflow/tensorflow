@@ -8,18 +8,19 @@ mkdir -p ${TASKCLUSTER_ARTIFACTS} || true
 
 cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel_*.log ${TASKCLUSTER_ARTIFACTS}
 
-cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/libtensorflow_cc.so ${TASKCLUSTER_ARTIFACTS}
-cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/graph_transforms/transform_graph ${TASKCLUSTER_ARTIFACTS}
-cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/graph_transforms/summarize_graph ${TASKCLUSTER_ARTIFACTS}
-cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/tools/benchmark/benchmark_model ${TASKCLUSTER_ARTIFACTS}
-
-if [ -f "${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/util/convert_graphdef_memmapped_format" ]; then
-    cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/util/convert_graphdef_memmapped_format ${TASKCLUSTER_ARTIFACTS}
-fi;
-
-if [ -f "${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/lite/toco/toco" ]; then
-    cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/lite/toco/toco ${TASKCLUSTER_ARTIFACTS}
-fi;
+for output_bin in                                                            \
+    tensorflow/libtensorflow_cc.so                                           \
+    tensorflow/contrib/lite/experimental/c/libtensorflowlite_c.so            \
+    tensorflow/tools/graph_transforms/transform_graph                        \
+    tensorflow/tools/graph_transforms/summarize_graph                        \
+    tensorflow/tools/benchmark/benchmark_model                               \
+    tensorflow/contrib/util/convert_graphdef_memmapped_format                \
+    tensorflow/contrib/lite/toco/toco;
+do
+    if [ -f "${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/${output_bin}" ]; then
+        cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/${output_bin} ${TASKCLUSTER_ARTIFACTS}/
+    fi;
+done;
 
 if [ -f "${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/lite/tools/benchmark/benchmark_model" ]; then
     cp ${DS_ROOT_TASK}/DeepSpeech/tf/bazel-bin/tensorflow/contrib/lite/tools/benchmark/benchmark_model ${TASKCLUSTER_ARTIFACTS}/lite_benchmark_model

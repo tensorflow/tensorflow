@@ -23,3 +23,4 @@ apt-get -qq -y install \
 
 add-apt-repository --yes ppa:openjdk-r/ppa && apt-get -qq update
 DEBIAN_FRONTEND=noninteractive apt-get -qq -y --force-yes install openjdk-8-jdk
+java -version && update-ca-certificates -f
