@@ -399,6 +399,17 @@ BigtableTestClient::AsyncMutateRows(
   return nullptr;
 }
 
+std::unique_ptr<grpc::ClientAsyncResponseReaderInterface<
+    google::bigtable::v2::CheckAndMutateRowResponse>>
+BigtableTestClient::AsyncCheckAndMutateRow(
+    grpc::ClientContext* context,
+    const google::bigtable::v2::CheckAndMutateRowRequest& request,
+    grpc::CompletionQueue* cq) {
+  LOG(WARNING) << "Call to InMemoryDataClient::" << __func__
+               << "(); this will likely cause a crash!";
+  return nullptr;
+}
+
 std::shared_ptr<grpc::Channel> BigtableTestClient::Channel() {
   LOG(WARNING) << "Call to InMemoryDataClient::Channel(); this will likely "
                   "cause a crash!";

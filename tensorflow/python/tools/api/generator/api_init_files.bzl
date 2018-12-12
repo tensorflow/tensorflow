@@ -20,6 +20,7 @@ TENSORFLOW_API_INIT_FILES = [
     "graph_util/__init__.py",
     "image/__init__.py",
     "io/__init__.py",
+    "queue/__init__.py",
     "initializers/__init__.py",
     "keras/__init__.py",
     "keras/activations/__init__.py",

@@ -34,7 +34,8 @@ TEST(LogScaleTest, CheckOutputValues) {
                                    kCorrectionBits);
 
   const uint16_t expected[] = {479, 425};
-  for (int i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
+  int i;
+  for (i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
     EXPECT_EQ(output[i], expected[i]);
   }
 }
@@ -50,7 +51,8 @@ TEST(LogScaleTest, CheckOutputValuesNoLog) {
                                    kCorrectionBits);
 
   const uint16_t expected[] = {65535, 45998};
-  for (int i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
+  int i;
+  for (i = 0; i < sizeof(expected) / sizeof(expected[0]); ++i) {
     EXPECT_EQ(output[i], expected[i]);
   }
 }

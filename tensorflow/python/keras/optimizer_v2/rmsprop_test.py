@@ -233,8 +233,11 @@ class RMSpropOptimizerTest(test.TestCase):
       with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-        loss = pred * pred
+
+        def loss():
+          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+          return pred * pred
+
         sgd_op = rmsprop.RMSprop(
             learning_rate=1.0,
             rho=0.0,
@@ -258,8 +261,12 @@ class RMSpropOptimizerTest(test.TestCase):
       with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-        loss = pred * pred
+
+        def loss():
+          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+          return pred * pred
+
+        # loss = lambda: pred * pred  # pylint: disable=cell-var-from-loop
         sgd_op = rmsprop.RMSprop(
             learning_rate=1.0,
             rho=0.0,
@@ -404,6 +411,14 @@ class RMSpropOptimizerTest(test.TestCase):
                 4.0 - (0.01 * 2.0 / math.sqrt(0.00001 + 1.0)) -
                 (0.01 * 2.0 / math.sqrt(0.00001 * 0.9 + 1e-5 + 1.0))
             ]), self.evaluate(var1))
+
+  def testConstructRMSpropWithLR(self):
+    opt = rmsprop.RMSprop(lr=1.0)
+    self.assertEqual(opt.lr, 1.0)
+    opt_2 = rmsprop.RMSprop(learning_rate=0.1, lr=1.0)
+    self.assertEqual(opt_2.lr, 1.0)
+    opt_3 = rmsprop.RMSprop(learning_rate=0.1)
+    self.assertEqual(opt_3.lr, 0.1)
 
 
 if __name__ == "__main__":

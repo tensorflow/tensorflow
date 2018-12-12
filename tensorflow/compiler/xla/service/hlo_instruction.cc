@@ -569,6 +569,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
+
+  TF_RET_CHECK(proto.id() >= 0)
+      << "Instruction with negative id: " << proto.id();
+  TF_RET_CHECK(proto.id() <= INT_MAX)
+      << "Instruction with id > INT_MAX: " << proto.id();
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
@@ -914,12 +919,8 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
                                          HloInstruction* operand,
                                          HloInstruction* update,
                                          HloInstruction* start_indices) {
-  auto instruction = absl::WrapUnique(
-      new HloInstruction(HloOpcode::kDynamicUpdateSlice, shape));
-  instruction->AppendOperand(operand);
-  instruction->AppendOperand(update);
-  instruction->AppendOperand(start_indices);
-  return instruction;
+  return absl::make_unique<HloDynamicUpdateSliceInstruction>(
+      shape, operand, update, start_indices);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConcatenate(
@@ -2057,6 +2058,10 @@ bool HloInstruction::IsElementwiseImpl(
 
 bool HloInstruction::IsCrossModuleAllReduce() const {
   return opcode() == HloOpcode::kCrossReplicaSum && all_reduce_id();
+}
+
+bool HloInstruction::IsCrossReplicaAllReduce() const {
+  return opcode() == HloOpcode::kCrossReplicaSum && !all_reduce_id();
 }
 
 string HloInstruction::ToStringWithCanonicalNameMap(

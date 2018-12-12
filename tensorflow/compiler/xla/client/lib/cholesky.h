@@ -13,30 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_QR_H_
-#define TENSORFLOW_COMPILER_TF2XLA_LIB_QR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_CHOLESKY_H_
+#define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_CHOLESKY_H_
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-namespace tensorflow {
+namespace xla {
 
-// Computes the QR decompositions of a batch of matrices. That is,
-// given a (batched) matrix a, computes an orthonormal matrix Q and an
-// upper-triangular matrix R such that a = QR.
-// `a` must be a (batched) matrix of size [..., m, n].
-// The algorithm implements a blocked QR decomposition; `block_size` is
+// Computes the Cholesky decompositions of a batch of symmetric positive
+// definite matrices.
+// `a` must be a (batched) square matrix; i.e., it must have rank >= 2 with the
+// two minor dimensions equal.
+// The algorithm implements a blocked Cholesky decomposition; `block_size` is
 // the block size to use.
-// TODO(phawkins): handle the complex case.
-struct QRDecompositionResult {
-  xla::XlaOp q;
-  xla::XlaOp r;
-};
-
-xla::StatusOr<QRDecompositionResult> QRDecomposition(
-    xla::XlaOp a, bool full_matrices, int64 block_size = 128,
+// TODO(phawkins): check for negative values on the diagonal and return an
+// error, instead of silently yielding NaNs.
+// TODO(znado): handle the complex Hermitian case
+xla::XlaOp Cholesky(
+    xla::XlaOp a, int64 block_size = 256,
     xla::PrecisionConfig::Precision precision = xla::PrecisionConfig::HIGHEST);
 
-}  // namespace tensorflow
+}  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_QR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_CHOLESKY_H_

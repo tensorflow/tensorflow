@@ -13,10 +13,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "FIFOQueue"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GradientTape"
     mtype: "<type \'type\'>"
   }
@@ -254,6 +250,10 @@ tf_module {
   }
   member {
     name: "quantization"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "queue"
     mtype: "<type \'module\'>"
   }
   member {
@@ -979,10 +979,6 @@ tf_module {
   member_method {
     name: "string_split"
     argspec: "args=[\'source\', \'delimiter\', \'skip_empty\'], varargs=None, keywords=None, defaults=[\' \', \'True\'], "
-  }
-  member_method {
-    name: "substr"
-    argspec: "args=[\'input\', \'pos\', \'len\', \'name\', \'unit\'], varargs=None, keywords=None, defaults=[\'None\', \'BYTE\'], "
   }
   member_method {
     name: "subtract"

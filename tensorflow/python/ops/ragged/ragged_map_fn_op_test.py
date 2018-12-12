@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
@@ -269,6 +270,18 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
           fn,
           elems,
           dtype=ragged.RaggedTensorType(dtype=dtypes.int64, ragged_rank=10))
+
+  def testMapOnSparseTensor(self):
+    s = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [0, 1], [1, 0], [1, 1]],
+        values=[0, 5, 0, 4],
+        dense_shape=[2, 2],
+    )
+    t2 = ragged.RaggedTensor.from_sparse(s)
+    id_t2 = ragged.map_fn(
+        lambda x: x, t2,
+    )
+    self.assertRaggedEqual(id_t2, [[0, 5], [0, 4]])
 
 
 if __name__ == '__main__':

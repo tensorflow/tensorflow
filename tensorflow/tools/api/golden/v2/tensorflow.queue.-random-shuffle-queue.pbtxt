@@ -1,4 +1,4 @@
-path: "tensorflow.io.RandomShuffleQueue"
+path: "tensorflow.queue.RandomShuffleQueue"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.RandomShuffleQueue\'>"
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.QueueBase\'>"

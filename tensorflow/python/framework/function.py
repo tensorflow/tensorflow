@@ -993,17 +993,18 @@ def _call(sig, *inputs, **kwargs):
   name = kwargs.pop("name", None)
   g = ops.get_default_graph()
   func_name = sig.name
+  if name is None:
+    name = func_name
   attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
-  with ops.name_scope(name, func_name, inputs) as name:
-    op = g.create_op(
-        func_name,
-        list(inputs),
-        output_types,
-        name=name,
-        attrs=attrs,
-        op_def=sig,
-        compute_shapes=False)
+  op = g.create_op(
+      func_name,
+      list(inputs),
+      output_types,
+      name=name,
+      attrs=attrs,
+      op_def=sig,
+      compute_shapes=False)
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]
@@ -1046,12 +1047,13 @@ def _from_definition(fdef, grad_func=None):
   c_func = c_api.TF_FunctionImportFunctionDef(serialized)
   result._c_func = c_api_util.ScopedTFFunction(c_func)
   result._extra_inputs = []
+  result._op_def = fdef.signature
   # pylint: enable=protected-access
 
   return result
 
 
-def _from_library(lib):
+def from_library(lib):
   """Creates _DefinedFunctions initialized from a FunctionDefLibrary proto.
 
   This method handles assigning the correct gradient functions to each

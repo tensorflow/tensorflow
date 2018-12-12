@@ -1,4 +1,4 @@
-path: "tensorflow.FIFOQueue"
+path: "tensorflow.queue.FIFOQueue"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.FIFOQueue\'>"
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.QueueBase\'>"

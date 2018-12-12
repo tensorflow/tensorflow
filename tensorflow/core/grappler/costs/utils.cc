@@ -20,12 +20,6 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
-#if GOOGLE_CUDA
-#include "cuda/include/cuda.h"
-#include "cuda/include/cuda_runtime_api.h"
-#include "cuda/include/cudnn.h"
-#endif
-
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"

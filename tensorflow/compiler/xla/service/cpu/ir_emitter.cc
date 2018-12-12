@@ -2271,6 +2271,22 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
               /*isVarArg=*/false)));
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  // Write the tuple table if the output is a tuple.
+  if (ShapeUtil::IsTuple(custom_call->shape())) {
+    std::vector<llvm::Value*> base_ptrs;
+    for (int i = 0; i < ShapeUtil::TupleElementCount(custom_call->shape());
+         ++i) {
+      const Shape& elem_shape =
+          ShapeUtil::GetTupleElementShape(custom_call->shape(), i);
+      TF_RET_CHECK(!ShapeUtil::IsTuple(elem_shape))
+          << "Nested tuples not implemented";
+      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                          assignment_.GetUniqueSlice(custom_call, {i}));
+      llvm::Value* addr = EmitBufferPointer(slice, elem_shape);
+      base_ptrs.push_back(addr);
+    }
+    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_, module_);
+  }
   auto* output_address_arg =
       PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
 

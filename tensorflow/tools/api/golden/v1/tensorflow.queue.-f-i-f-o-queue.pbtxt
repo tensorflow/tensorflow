@@ -1,6 +1,6 @@
-path: "tensorflow.io.PaddingFIFOQueue"
+path: "tensorflow.queue.FIFOQueue"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.PaddingFIFOQueue\'>"
+  is_instance: "<class \'tensorflow.python.ops.data_flow_ops.FIFOQueue\'>"
   is_instance: "<class \'tensorflow.python.ops.data_flow_ops.QueueBase\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -25,7 +25,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'capacity\', \'dtypes\', \'shapes\', \'names\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'padding_fifo_queue\'], "
+    argspec: "args=[\'self\', \'capacity\', \'dtypes\', \'shapes\', \'names\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'fifo_queue\'], "
   }
   member_method {
     name: "close"

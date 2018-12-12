@@ -837,6 +837,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
 
@@ -2117,6 +2118,7 @@ class RefVariable(VariableV1):
                                               new_axis_mask=new_axis_mask,
                                               shrink_axis_mask=shrink_axis_mask)
 
+  @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
 
