@@ -3033,6 +3033,7 @@ py_library(
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
