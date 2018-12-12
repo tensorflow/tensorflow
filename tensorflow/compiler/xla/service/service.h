@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
-#include <set>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"

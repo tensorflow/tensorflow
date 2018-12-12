@@ -23,9 +23,9 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
-#include <set>
 
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -81,8 +81,8 @@ class ClientLibrary {
   //
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
-  //   device_set: Set of device IDs for which the stream executor will be created
-  //   for, for the given platform.
+  //   device_set: Set of device IDs for which the stream executor will be
+  //   created for, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       se::Platform* platform = nullptr, const std::set<int> device_set = {-1});
   static StatusOr<LocalClient*> GetOrCreateLocalClient(

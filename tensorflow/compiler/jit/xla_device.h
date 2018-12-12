@@ -168,7 +168,6 @@ class XlaDevice : public LocalDevice {
 
   bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
 
-
   // A simple RAII handle. On construction the device's
   // outstanding_asynchronous_operations_ field is incremented; on destruction
   // it is decremented.

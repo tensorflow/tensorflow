@@ -160,13 +160,13 @@ Service::Service(const ServiceOptions& options,
     LOG(INFO) << StrFormat(
         "XLA service %p executing computations on platform %s. Devices:", this,
         execute_backend_->platform()->Name());
-    auto stream_executors=execute_backend_->stream_executors();
+    auto stream_executors = execute_backend_->stream_executors();
     for (int i = 0; i < execute_backend_->device_count(); ++i) {
-        se::StreamExecutor* executor =stream_executors.at(i);
-        const auto& description = executor->GetDeviceDescription();
-        LOG(INFO) << StrFormat("  StreamExecutor device (%d): %s, %s", i,
-                               description.name(),
-                               description.platform_version());
+      se::StreamExecutor* executor = stream_executors.at(i);
+      const auto& description = executor->GetDeviceDescription();
+      LOG(INFO) << StrFormat("  StreamExecutor device (%d): %s, %s", i,
+                             description.name(),
+                             description.platform_version());
     }
   } else {
     VLOG(1) << "XLA compile-only service constructed";
