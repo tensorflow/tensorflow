@@ -330,7 +330,6 @@ class OpsTest(test_util.TensorFlowTestCase):
     self.assertEquals(t, dtypes.string)
     self.assertEquals(r[0].dtype, dtypes.string)
 
-  @test_util.run_v1_only('b/120545219')
   def testFlattenLayer(self):
     flatten_layer = core.Flatten()
     x = constant_op.constant([[[-10, -20], [-30, -40]], [[10, 20], [30, 40]]])

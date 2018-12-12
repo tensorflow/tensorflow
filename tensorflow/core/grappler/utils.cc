@@ -144,11 +144,16 @@ void NodeMap::UpdateOutput(const string& node_name,
   outputs.insert(nodes_[NodeName(new_output_name)]);
 }
 
+string TensorIdToString(const TensorId& tensor_id) {
+  return tensor_id.index() == 0 ? string(tensor_id.node())
+                                : tensor_id.ToString();
+}
+
 bool IsSameInput(const string& name1, const string& name2) {
   if (name1 == name2) return true;
   TensorId tensor1 = ParseTensorName(name1);
   TensorId tensor2 = ParseTensorName(name2);
-  return tensor1.node() == tensor2.node() && tensor1.index() == tensor2.index();
+  return tensor1 == tensor2;
 }
 
 bool IsControlInput(const string& name) {

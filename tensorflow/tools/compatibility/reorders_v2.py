@@ -109,6 +109,7 @@ reorders = {
     'tf.strings.length': ['input', 'name', 'unit'],
     'tf.strings.reduce_join': ['inputs', 'axis', 'keep_dims', 'separator', 'name', 'reduction_indices'],
     'tf.strings.substr': ['input', 'pos', 'len', 'name', 'unit'],
+    'tf.substr': ['input', 'pos', 'len', 'name', 'unit'],
     'tf.transpose': ['a', 'perm', 'name', 'conjugate'],
     'tf.tuple': ['tensors', 'name', 'control_inputs'],
     'tf.while_loop': ['cond', 'body', 'loop_vars', 'shape_invariants', 'parallel_iterations', 'back_prop', 'swap_memory', 'name', 'maximum_iterations', 'return_same_structure']

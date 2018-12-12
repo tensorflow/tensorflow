@@ -1994,9 +1994,18 @@ std::unique_ptr<HloInstruction> HloPadInstruction::CloneWithNewOperandsImpl(
 HloDynamicSliceInstruction::HloDynamicSliceInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     absl::Span<const int64> slice_sizes)
-    : HloInstruction(HloOpcode::kDynamicSlice, shape),
+    : HloDynamicIndexInstruction(HloOpcode::kDynamicSlice, shape),
       dynamic_slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
   AppendOperand(operand);
+  AppendOperand(start_indices);
+}
+
+HloDynamicUpdateSliceInstruction::HloDynamicUpdateSliceInstruction(
+    const Shape& shape, HloInstruction* operand, HloInstruction* update,
+    HloInstruction* start_indices)
+    : HloDynamicIndexInstruction(HloOpcode::kDynamicUpdateSlice, shape) {
+  AppendOperand(operand);
+  AppendOperand(update);
   AppendOperand(start_indices);
 }
 

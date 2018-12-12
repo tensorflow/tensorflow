@@ -37,6 +37,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
@@ -510,6 +511,9 @@ def _write_object_graph(root, export_dir, asset_file_def_index):
 
   for obj, obj_proto in zip(checkpointable_objects, proto.nodes):
     _write_object_proto(obj, obj_proto, asset_file_def_index)
+
+  function_serialization.add_polymorphic_functions_to_object_graph_proto(
+      checkpointable_objects, proto)
 
   extra_asset_dir = os.path.join(
       compat.as_bytes(export_dir),

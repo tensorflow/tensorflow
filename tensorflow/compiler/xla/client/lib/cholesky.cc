@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/lib/cholesky.h"
+#include "tensorflow/compiler/xla/client/lib/cholesky.h"
 
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/loops.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-namespace tensorflow {
+namespace xla {
 
 namespace {
 
@@ -50,26 +50,25 @@ namespace {
 //     l[..., j+1:, j] = (a[..., j+1:, j] - np.dot(l[..., j+1:, :j], row_t)) /
 //                       l[..., j, j]
 //   return l
-xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
-                             xla::PrecisionConfig::Precision precision) {
-  xla::XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
-    const int n_dims = xla::ShapeUtil::Rank(a_shape);
-    const int64 n = xla::ShapeUtil::GetDimension(a_shape, -1);
-    auto major_dims = xla::AsInt64Slice(a_shape.dimensions())
+XlaOp CholeskyUnblocked(XlaOp a, PrecisionConfig::Precision precision) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    const int n_dims = ShapeUtil::Rank(a_shape);
+    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    auto major_dims = AsInt64Slice(a_shape.dimensions())
                           .subspan(
                               /*pos=*/0,
                               /*len=*/n_dims - 2);
 
-    xla::XlaOp l = xla::ZerosLike(a);
+    XlaOp l = ZerosLike(a);
 
     // Construct the for loop body to iterate over rows.
-    auto body_fn = [&](xla::XlaOp i, absl::Span<const xla::XlaOp> loop_vars,
-                       xla::XlaBuilder* body_builder)
-        -> xla::StatusOr<std::vector<xla::XlaOp>> {
-      xla::Shape col_shape;
-      xla::Shape row_shape;
+    auto body_fn =
+        [&](XlaOp i, absl::Span<const XlaOp> loop_vars,
+            XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
+      Shape col_shape;
+      Shape row_shape;
       for (int64 d : major_dims) {
         row_shape.add_dimensions(d);
         col_shape.add_dimensions(d);
@@ -77,43 +76,40 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
       row_shape.add_dimensions(1);
       row_shape.add_dimensions(n);
       row_shape.set_element_type(a_shape.element_type());
-      auto mask_zeros_row = xla::Zeros(body_builder, row_shape);
+      auto mask_zeros_row = Zeros(body_builder, row_shape);
 
       col_shape.add_dimensions(n);
       col_shape.add_dimensions(1);
       col_shape.set_element_type(a_shape.element_type());
-      auto mask_zeros_col = xla::Zeros(body_builder, col_shape);
+      auto mask_zeros_col = Zeros(body_builder, col_shape);
 
       std::vector<int32> mask_vector(n);
       std::iota(mask_vector.begin(), mask_vector.end(), 0);
-      auto mask_range = xla::ConstantR1<int32>(body_builder, mask_vector);
+      auto mask_range = ConstantR1<int32>(body_builder, mask_vector);
       auto mask_range_row =
-          xla::Broadcast(xla::Reshape(mask_range, {0}, {1, n}), major_dims);
+          Broadcast(Reshape(mask_range, {0}, {1, n}), major_dims);
       auto mask_range_col =
-          xla::Broadcast(xla::Reshape(mask_range, {0}, {n, 1}), major_dims);
+          Broadcast(Reshape(mask_range, {0}, {n, 1}), major_dims);
       auto body_a = loop_vars[0];
       auto body_l = loop_vars[1];
 
       // row = l[..., i, :i]
       // select the whole i-th row, then mask out all columns past i-1
-      auto zero = xla::ConstantR0<int32>(body_builder, 0);
+      auto zero = ConstantR0<int32>(body_builder, 0);
       auto l_i = DynamicSliceInMinorDims(body_l, {i, zero}, {1, n});
-      auto row = xla::Select(xla::Ge(mask_range_row, i), mask_zeros_row, l_i);
+      auto row = Select(Ge(mask_range_row, i), mask_zeros_row, l_i);
       // a[..., i, i]
       auto a_ii = DynamicSliceInMinorDims(body_a, {i, i}, {1, 1});
       // np.dot(row, np.swapaxes(row, -1, -2))
       auto diag_dot = BatchDot(row, TransposeInMinorDims(row), precision);
       // l[..., i, i] = np.sqrt(a[..., i, i] - np.dot(row,
       //                                              np.swapaxes(row, -1, -2)))
-      auto l_ii =
-          xla::Pow(a_ii - diag_dot,
-                   FloatLiteral(body_builder, a_shape.element_type(), 0.5));
+      auto l_ii = Sqrt(a_ii - diag_dot);
 
       // a[..., i+1:, i]
       // select the whole i-th column, then mask out all rows above i+1
       auto a_0i = DynamicSliceInMinorDims(body_a, {i}, {1});
-      auto a_ip1i =
-          xla::Select(xla::Le(mask_range_col, i), mask_zeros_col, a_0i);
+      auto a_ip1i = Select(Le(mask_range_col, i), mask_zeros_col, a_0i);
 
       // l[..., i+1:, i] = (a[..., i+1:, i] - np.dot(l[..., i+1:, :i], r.T)) /
       //                   l[..., i, i]
@@ -122,8 +118,7 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
       // r.T)
       auto dot = BatchDot(body_l, TransposeInMinorDims(row), precision);
       // np.dot(l[..., i+1:, :i], r.T)
-      auto dot_ip1 =
-          xla::Select(xla::Le(mask_range_col, i), mask_zeros_col, dot);
+      auto dot_ip1 = Select(Le(mask_range_col, i), mask_zeros_col, dot);
 
       body_l =
           DynamicUpdateSliceInMinorDims(body_l, (a_ip1i - dot_ip1) / l_ii, {i});
@@ -131,12 +126,12 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
       // column assign will wrap around and overwrite the diagonal assign.
       body_l = DynamicUpdateSliceInMinorDims(body_l, l_ii, {i, i});
 
-      return std::vector<xla::XlaOp>{body_a, body_l};
+      return std::vector<XlaOp>{body_a, body_l};
     };
 
     TF_ASSIGN_OR_RETURN(
         auto cholesky_while,
-        XlaForEachIndex(n, xla::S32, body_fn, {a, l}, "unblocked", builder));
+        ForEachIndex(n, S32, body_fn, {a, l}, "unblocked", builder));
 
     return cholesky_while[1];
   });
@@ -144,34 +139,35 @@ xla::XlaOp CholeskyUnblocked(xla::XlaOp a,
 
 }  // namespace
 
-xla::XlaOp Cholesky(xla::XlaOp a, int64 block_size,
-                    xla::PrecisionConfig::Precision precision) {
-  xla::XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
-    const int ndims = xla::ShapeUtil::Rank(a_shape);
+XlaOp Cholesky(XlaOp a, int64 block_size,
+               PrecisionConfig::Precision precision) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+    const int ndims = ShapeUtil::Rank(a_shape);
     if (ndims < 2) {
-      return errors::InvalidArgument(
-          "Arguments to Cholesky must have rank >= 2: ", ndims);
+      return InvalidArgument(
+          "Argument to Cholesky must have rank >= 2; shape was %s",
+          a_shape.ToString());
     }
 
-    const int64 n = xla::ShapeUtil::GetDimension(a_shape, -1);
-    if (n != xla::ShapeUtil::GetDimension(a_shape, -2)) {
-      return errors::InvalidArgument(
-          "Arguments to Cholesky must be square matrices: ",
-          xla::ShapeUtil::HumanString(a_shape));
+    const int64 n = ShapeUtil::GetDimension(a_shape, -1);
+    if (n != ShapeUtil::GetDimension(a_shape, -2)) {
+      return InvalidArgument(
+          "Argument to Cholesky must be batched square matrices; got shape %s",
+          ShapeUtil::HumanString(a_shape));
     }
 
     if (block_size < 1) {
-      return errors::InvalidArgument(
-          "block_size argument to Cholesky must be >= 1; got ", block_size);
+      return InvalidArgument(
+          "block_size argument to Cholesky must be >= 1; got %d", block_size);
     }
 
     // Blocked left-looking Cholesky factorization.
     // Algorithm 1 from
     // Haidar, Azzam, et al. "High-performance Cholesky factorization for
     // GPU-only execution." Proceedings of General Purpose GPUs. ACM, 2017.
-    xla::XlaOp l = xla::ZerosLike(a);
+    XlaOp l = ZerosLike(a);
     for (int64 i = 0; i < n; i += block_size) {
       int64 k = std::min(block_size, n - i);
       if (i > 0) {
@@ -207,4 +203,4 @@ xla::XlaOp Cholesky(xla::XlaOp a, int64 block_size,
   });
 }
 
-}  // namespace tensorflow
+}  // namespace xla

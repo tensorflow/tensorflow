@@ -399,7 +399,7 @@ message WaitForExecutionResponse {
 
 message ComputeConstantGraphRequest {
   HloModuleProto computation = 1;
-  Layout output_layout = 2;
+  LayoutProto output_layout = 2;
 }
 
 message ComputeConstantResponse {

@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/lib/qr.h"
+#include "tensorflow/compiler/xla/client/lib/qr.h"
 
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -32,9 +31,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
 
-namespace tensorflow {
+namespace xla {
 
 namespace {
+
+std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
+                                 absl::Span<const int64> ys) {
+  std::vector<int64> output(xs.size() + ys.size());
+  std::copy(xs.begin(), xs.end(), output.begin());
+  std::copy(ys.begin(), ys.end(), output.begin() + xs.size());
+  return output;
+}
 
 // Computes a Householder reflection of the form:
 // H = I - tau v v.T.
@@ -65,52 +72,47 @@ namespace {
 //   return (v, tau, beta)
 // TODO(phawkins): LAPACK's xLARFG implementation has code for handling
 // overflows in the norm/beta calculations. Perhaps do the same here.
-xla::Status House(xla::XlaOp x, xla::XlaOp k,
-                  absl::Span<const int64> batch_dims, const int64 m,
-                  xla::XlaOp* v, xla::XlaOp* tau, xla::XlaOp* beta) {
-  xla::XlaBuilder* const builder = x.builder();
-  TF_ASSIGN_OR_RETURN(xla::Shape x_shape, builder->GetShape(x));
-  const xla::PrimitiveType type = x_shape.element_type();
+Status House(XlaOp x, XlaOp k, absl::Span<const int64> batch_dims,
+             const int64 m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
+  XlaBuilder* const builder = x.builder();
+  TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+  const PrimitiveType type = x_shape.element_type();
 
   std::vector<int64> batch_dim_ids(batch_dims.size());
   std::iota(batch_dim_ids.begin(), batch_dim_ids.end(), 0);
   const int64 minor_dim = batch_dims.size();
 
-  xla::XlaOp zero = xla::ScalarLike(x, 0.0);
-  xla::XlaOp one = xla::ScalarLike(x, 1.0);
+  XlaOp zero = ScalarLike(x, 0.0);
+  XlaOp one = ScalarLike(x, 1.0);
 
   // alpha = x[k]
-  xla::XlaOp alpha =
-      xla::Reshape(DynamicSliceInMinorDims(x, {k}, {1}), batch_dims);
+  XlaOp alpha = Reshape(DynamicSliceInMinorDims(x, {k}, {1}), batch_dims);
 
   // Compute x[k+1:] (padded with zeros in elements 0..k)
-  xla::XlaOp iota = xla::Iota(builder, xla::S32, m);
-  xla::XlaOp x_after_k =
-      xla::Mul(x, xla::ConvertElementType(xla::Gt(iota, k), type),
-               /*broadcast_dimensions=*/{minor_dim});
+  XlaOp iota = Iota(builder, S32, m);
+  XlaOp x_after_k = Mul(x, ConvertElementType(Gt(iota, k), type),
+                        /*broadcast_dimensions=*/{minor_dim});
 
   // sigma = np.dot(x[k+1:], x[k+1:])
-  auto sigma =
-      xla::Reduce(x_after_k * x_after_k, zero,
-                  xla::CreateScalarAddComputation(type, builder), {minor_dim});
+  auto sigma = Reduce(x_after_k * x_after_k, zero,
+                      CreateScalarAddComputation(type, builder), {minor_dim});
   // mu = np.sqrt(x[k]*x[k] + sigma)
-  auto mu = xla::Sqrt(xla::Square(alpha) + sigma);
+  auto mu = Sqrt(Square(alpha) + sigma);
 
-  auto sigma_is_zero = xla::Eq(sigma, zero);
+  auto sigma_is_zero = Eq(sigma, zero);
 
-  *beta = xla::Select(sigma_is_zero, alpha, -xla::Sign(alpha) * mu);
-  *tau = xla::Select(sigma_is_zero, xla::Broadcast(zero, batch_dims),
-                     (*beta - alpha) / *beta);
-  auto divisor = xla::Select(sigma_is_zero, xla::Broadcast(one, batch_dims),
-                             alpha - *beta);
+  *beta = Select(sigma_is_zero, alpha, -Sign(alpha) * mu);
+  *tau = Select(sigma_is_zero, Broadcast(zero, batch_dims),
+                (*beta - alpha) / *beta);
+  auto divisor =
+      Select(sigma_is_zero, Broadcast(one, batch_dims), alpha - *beta);
 
-  auto e_k = xla::Broadcast(xla::ConvertElementType(xla::Eq(iota, k), type),
-                            std::vector<int64>(batch_dims.size(), 1));
+  auto e_k = Broadcast(ConvertElementType(Eq(iota, k), type),
+                       std::vector<int64>(batch_dims.size(), 1));
 
   // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
   // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
-  *v = e_k +
-       xla::Div(x_after_k, divisor, /*broadcast_dimensions=*/batch_dim_ids);
+  *v = e_k + Div(x_after_k, divisor, /*broadcast_dimensions=*/batch_dim_ids);
   return Status::OK();
 }
 
@@ -143,90 +145,86 @@ xla::Status House(xla::XlaOp x, xla::XlaOp k,
 //   return (q, vs, taus)
 struct QRBlockResult {
   // The factored R value
-  xla::XlaOp r;
+  XlaOp r;
 
   // Representation of the Householder matrices I - beta v v.T
-  xla::XlaOp taus;  // Shape: [..., n]
-  xla::XlaOp vs;    // Shape: [..., m, n]
+  XlaOp taus;  // Shape: [..., n]
+  XlaOp vs;    // Shape: [..., m, n]
 };
-xla::StatusOr<QRBlockResult> QRBlock(
-    xla::XlaOp a, xla::PrecisionConfig::Precision precision) {
-  xla::XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
-  const int num_dims = xla::ShapeUtil::Rank(a_shape);
+StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
+  XlaBuilder* builder = a.builder();
+  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  const int num_dims = ShapeUtil::Rank(a_shape);
   if (num_dims < 2) {
-    return errors::InvalidArgument("Arguments to QR must have rank >= 2: ",
-                                   num_dims);
+    return InvalidArgument("Argument to QR must have rank >= 2; got shape %s",
+                           a_shape.ToString());
   }
-  xla::PrimitiveType type = a_shape.element_type();
+  PrimitiveType type = a_shape.element_type();
 
-  const int64 m = xla::ShapeUtil::GetDimension(a_shape, -2);
-  const int64 n = xla::ShapeUtil::GetDimension(a_shape, -1);
+  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
+  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
 
   const int64 num_batch_dims = num_dims - 2;
   std::vector<int64> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
-    batch_dims[i] = xla::ShapeUtil::GetDimension(a_shape, i);
+    batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
   std::vector<int64> batch_dim_indices(num_batch_dims);
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
 
-  auto qr_body_fn =
-      [&](xla::XlaOp j, absl::Span<const xla::XlaOp> values,
-          xla::XlaBuilder* builder) -> xla::StatusOr<std::vector<xla::XlaOp>> {
+  auto qr_body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
+                        XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
     auto a = values[0];
     auto vs = values[1];
     auto taus = values[2];
 
     // v, beta = house(a[:, j], j)
     auto x = DynamicSliceInMinorDims(a, {j}, {1});
-    xla::XlaOp v, tau, beta;
-    TF_RETURN_IF_ERROR(House(xla::Collapse(x, {num_dims - 2, num_dims - 1}), j,
+    XlaOp v, tau, beta;
+    TF_RETURN_IF_ERROR(House(Collapse(x, {num_dims - 2, num_dims - 1}), j,
                              batch_dims, m, &v, &tau, &beta));
 
     std::vector<int64> shape = batch_dims;
     shape.push_back(1);
     shape.push_back(m);
-    auto v_broadcast = xla::Reshape(v, shape);
+    auto v_broadcast = Reshape(v, shape);
     // a[:, :] -= tau * np.dot(v[:, np.newaxis],
     //                          np.dot(v[np.newaxis, :], a[:, :]))
     auto vva = BatchDot(v_broadcast, a, precision);
     vva = BatchDot(TransposeInMinorDims(v_broadcast), vva, precision);
-    a = a - xla::Mul(tau, vva,
-                     /*broadcast_dimensions=*/batch_dim_indices);
+    a = a - Mul(tau, vva,
+                /*broadcast_dimensions=*/batch_dim_indices);
 
     // It is more precise to populate column 'k' explicitly, rather than
     // computing it implicitly by applying the Householder transformation.
     // a[k,k] = beta
     // a[k+1:,k] = np.zeros([m-k-1], dtype=a.dtype)
-    auto iota = xla::Reshape(xla::Iota(a.builder(), xla::S32, m), {m, 1});
-    auto predecessor_mask = xla::ConvertElementType(xla::Lt(iota, j), type);
-    auto mask = xla::Broadcast(xla::ConvertElementType(xla::Eq(iota, j), type),
-                               std::vector<int64>(batch_dims.size(), 1));
-    auto new_x =
-        xla::Mul(x, predecessor_mask,
-                 /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1}) +
-        xla::Mul(beta, mask, /*broadcast_dimensions=*/batch_dim_indices);
+    auto iota = Reshape(Iota(a.builder(), S32, m), {m, 1});
+    auto predecessor_mask = ConvertElementType(Lt(iota, j), type);
+    auto mask = Broadcast(ConvertElementType(Eq(iota, j), type),
+                          std::vector<int64>(batch_dims.size(), 1));
+    auto new_x = Mul(x, predecessor_mask,
+                     /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1}) +
+                 Mul(beta, mask, /*broadcast_dimensions=*/batch_dim_indices);
     a = DynamicUpdateSliceInMinorDims(a, new_x, {j});
 
     // vs[:, j] = v
     vs = DynamicUpdateSliceInMinorDims(
-        vs, xla::Reshape(v, ConcatVectors(batch_dims, {m, 1})), {j});
+        vs, Reshape(v, ConcatVectors(batch_dims, {m, 1})), {j});
     // taus[j] = tau
     taus = DynamicUpdateSliceInMinorDims(
-        taus, xla::Reshape(tau, ConcatVectors(batch_dims, {1})), {j});
-    return std::vector<xla::XlaOp>{a, vs, taus};
+        taus, Reshape(tau, ConcatVectors(batch_dims, {1})), {j});
+    return std::vector<XlaOp>{a, vs, taus};
   };
 
-  auto vs = xla::Zeros(builder, xla::ShapeUtil::MakeShape(
-                                    type, ConcatVectors(batch_dims, {m, n})));
-  auto taus = xla::Zeros(
-      builder, xla::ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {n})));
+  auto vs = Zeros(
+      builder, ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {m, n})));
+  auto taus = Zeros(builder,
+                    ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {n})));
 
-  TF_ASSIGN_OR_RETURN(auto values,
-                      XlaForEachIndex(std::min(m, n), xla::S32, qr_body_fn,
-                                      {a, vs, taus}, "qr", builder));
+  TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(std::min(m, n), S32, qr_body_fn,
+                                                {a, vs, taus}, "qr", builder));
 
   QRBlockResult result;
   result.r = values[0];
@@ -250,24 +248,23 @@ xla::StatusOr<QRBlockResult> QRBlock(
 // return W
 // There is no need to return Y since at termination of the loop it is equal to
 // vs.
-xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
-    xla::PrimitiveType type, absl::Span<const int64> batch_dims, xla::XlaOp vs,
-    xla::XlaOp taus, int64 m, int64 n,
-    xla::PrecisionConfig::Precision precision) {
+StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
+                                        absl::Span<const int64> batch_dims,
+                                        XlaOp vs, XlaOp taus, int64 m, int64 n,
+                                        PrecisionConfig::Precision precision) {
   std::vector<int64> batch_dim_indices(batch_dims.size());
   std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
   int64 n_index = batch_dims.size() + 1;
 
-  auto body_fn =
-      [&](xla::XlaOp j, absl::Span<const xla::XlaOp> values,
-          xla::XlaBuilder* builder) -> xla::StatusOr<std::vector<xla::XlaOp>> {
+  auto body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
+                     XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
     auto w = values[0];
     auto y = values[1];
     const auto vs = values[2];
     const auto taus = values[3];
 
     // Want j values in range [1, ... n).
-    j = j + xla::ConstantR0<int32>(builder, 1);
+    j = j + ConstantR0<int32>(builder, 1);
     // vs has shape [..., m, 1]
     auto v = DynamicSliceInMinorDims(vs, {j}, {1});
     // beta has shape [..., 1]
@@ -278,31 +275,31 @@ xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
     // wyv has shape [..., m, 1]
     auto wyv = BatchDot(w, yv, precision);
 
-    auto z = xla::Mul(
+    auto z = Mul(
         -beta, v + wyv,
         /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
 
     w = DynamicUpdateSliceInMinorDims(w, z, {j});
     y = DynamicUpdateSliceInMinorDims(y, v, {j});
 
-    return std::vector<xla::XlaOp>{w, y, vs, taus};
+    return std::vector<XlaOp>{w, y, vs, taus};
   };
 
-  xla::XlaBuilder* builder = vs.builder();
-  auto w = xla::Zeros(builder, xla::ShapeUtil::MakeShape(
-                                   type, ConcatVectors(batch_dims, {m, n})));
+  XlaBuilder* builder = vs.builder();
+  auto w = Zeros(builder,
+                 ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {m, n})));
   auto y = w;
   auto v = SliceInMinorDims(vs, {0}, {1});
   auto beta = SliceInMinorDims(taus, {0}, {1});
   y = UpdateSliceInMinorDims(y, v, {0});
-  auto bv = xla::Mul(
-      -beta, v,
-      /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
+  auto bv =
+      Mul(-beta, v,
+          /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
   w = UpdateSliceInMinorDims(w, bv, {0});
 
   TF_ASSIGN_OR_RETURN(
-      auto values, XlaForEachIndex(n - 1, xla::S32, body_fn, {w, y, vs, taus},
-                                   "wy", builder));
+      auto values,
+      ForEachIndex(n - 1, S32, body_fn, {w, y, vs, taus}, "wy", builder));
   return values[0];
 }
 
@@ -323,34 +320,34 @@ xla::StatusOr<xla::XlaOp> ComputeWYRepresentation(
 //   return (q, a)
 // TODO(phawkins): consider using UT transformations (in the form I - V U V')
 // rather than WY transformations.
-xla::StatusOr<QRDecompositionResult> QRDecomposition(
-    xla::XlaOp a, bool full_matrices, int64 block_size,
-    xla::PrecisionConfig::Precision precision) {
-  xla::XlaBuilder* builder = a.builder();
-  TF_ASSIGN_OR_RETURN(xla::Shape a_shape, builder->GetShape(a));
-  const int num_dims = xla::ShapeUtil::Rank(a_shape);
+StatusOr<QRDecompositionResult> QRDecomposition(
+    XlaOp a, bool full_matrices, int64 block_size,
+    PrecisionConfig::Precision precision) {
+  XlaBuilder* builder = a.builder();
+  TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
+  const int num_dims = ShapeUtil::Rank(a_shape);
   if (num_dims < 2) {
-    return errors::InvalidArgument("Arguments to QR must have rank >= 2: ",
-                                   num_dims);
+    return InvalidArgument("Arguments to QR must have rank >= 2: got shape %s",
+                           a_shape.ToString());
   }
-  xla::PrimitiveType type = a_shape.element_type();
+  PrimitiveType type = a_shape.element_type();
 
-  const int64 m = xla::ShapeUtil::GetDimension(a_shape, -2);
-  const int64 n = xla::ShapeUtil::GetDimension(a_shape, -1);
+  const int64 m = ShapeUtil::GetDimension(a_shape, -2);
+  const int64 n = ShapeUtil::GetDimension(a_shape, -1);
   const int64 p = std::min(m, n);
 
   if (block_size < 1) {
-    return errors::InvalidArgument(
-        "block_size argument to QR must be >= 1; got ", block_size);
+    return InvalidArgument("block_size argument to QR must be >= 1; got %d",
+                           block_size);
   }
 
   const int64 num_batch_dims = num_dims - 2;
   std::vector<int64> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
-    batch_dims[i] = xla::ShapeUtil::GetDimension(a_shape, i);
+    batch_dims[i] = ShapeUtil::GetDimension(a_shape, i);
   }
 
-  auto q = xla::Broadcast(xla::IdentityMatrix(builder, type, m, m), batch_dims);
+  auto q = Broadcast(IdentityMatrix(builder, type, m, m), batch_dims);
   for (int64 i = 0; i < p; i += block_size) {
     int64 k = std::min(block_size, p - i);
 
@@ -393,4 +390,4 @@ xla::StatusOr<QRDecompositionResult> QRDecomposition(
   return result;
 }
 
-}  // namespace tensorflow
+}  // namespace xla

@@ -34,8 +34,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
-from tensorflow.python.keras.layers.recurrent import UnifiedLSTM
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
@@ -75,7 +73,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
           num_classes=output_shape)
       y_train = keras.utils.to_categorical(y_train, output_shape)
 
-      layer = UnifiedLSTM(rnn_state_size, return_runtime=True)
+      layer = keras.layers.UnifiedLSTM(rnn_state_size, return_runtime=True)
 
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
@@ -122,7 +120,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
           num_classes=output_shape)
       y_train = keras.utils.to_categorical(y_train, output_shape)
 
-      layer = UnifiedLSTM(rnn_state_size, return_runtime=True)
+      layer = keras.layers.UnifiedLSTM(rnn_state_size, return_runtime=True)
 
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
@@ -172,13 +170,14 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
   def test_could_use_defun_backend(self, activation, recurrent_activation,
                                    recurrent_dropout, unroll, use_bias,
                                    bias_regularizer):
-    layer = UnifiedLSTM(1,
-                        activation=activation,
-                        recurrent_activation=recurrent_activation,
-                        recurrent_dropout=recurrent_dropout,
-                        unroll=unroll,
-                        use_bias=use_bias,
-                        bias_regularizer=bias_regularizer)
+    layer = keras.layers.UnifiedLSTM(
+        1,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        recurrent_dropout=recurrent_dropout,
+        unroll=unroll,
+        use_bias=use_bias,
+        bias_regularizer=bias_regularizer)
     self.assertFalse(layer.could_use_cudnn)
 
   def test_unified_lstm_feature_parity_with_canonical_lstm(self):
@@ -272,14 +271,14 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
     with test_util.device(use_gpu=False):
-      layer = UnifiedLSTM(rnn_state_size)
+      layer = keras.layers.UnifiedLSTM(rnn_state_size)
       output = layer(inputs)
       cpu_model = keras.models.Model(inputs, output)
       weights = cpu_model.get_weights()
       y_1 = cpu_model.predict(x_train)
 
     with test_util.device(use_gpu=True):
-      layer = UnifiedLSTM(rnn_state_size)
+      layer = keras.layers.UnifiedLSTM(rnn_state_size)
       output = layer(inputs)
       gpu_model = keras.models.Model(inputs, output)
       gpu_model.set_weights(weights)
@@ -359,7 +358,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
         num_classes=output_shape)
     y_train = keras.utils.to_categorical(y_train, output_shape)
 
-    layer = UnifiedLSTM(rnn_state_size)
+    layer = keras.layers.UnifiedLSTM(rnn_state_size)
 
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
@@ -378,7 +377,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     embedding_dim = 4
     units = 2
     testing_utils.layer_test(
-        UnifiedLSTM,
+        keras.layers.UnifiedLSTM,
         kwargs={
             'units': units,
             'return_sequences': True
@@ -396,7 +395,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     inputs = keras.layers.Dense(
         embedding_dim, input_shape=(timesteps, embedding_dim))
     model.add(inputs)
-    layer = UnifiedLSTM(units, return_sequences=True)
+    layer = keras.layers.UnifiedLSTM(units, return_sequences=True)
     model.add(layer)
     outputs = model.layers[-1].output
     self.assertEqual(outputs.get_shape().as_list(), [None, timesteps, units])
@@ -407,7 +406,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     timesteps = 3
     embedding_dim = 4
     units = 2
-    layer = UnifiedLSTM(units, input_shape=(None, embedding_dim))
+    layer = keras.layers.UnifiedLSTM(units, input_shape=(None, embedding_dim))
     model = keras.models.Sequential()
     model.add(layer)
     model.compile(gradient_descent.GradientDescentOptimizer(0.001), 'mse')
@@ -422,7 +421,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     embedding_dim = 4
     units = 2
     testing_utils.layer_test(
-        UnifiedLSTM,
+        keras.layers.UnifiedLSTM,
         kwargs={
             'units': units,
             'dropout': 0.1,
@@ -438,7 +437,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     embedding_dim = 4
     units = 2
     testing_utils.layer_test(
-        UnifiedLSTM,
+        keras.layers.UnifiedLSTM,
         kwargs={
             'units': units,
             'implementation': implementation_mode
@@ -448,7 +447,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_constraints_LSTM(self):
     embedding_dim = 4
-    layer_class = UnifiedLSTM
+    layer_class = keras.layers.UnifiedLSTM
     k_constraint = keras.constraints.max_norm(0.01)
     r_constraint = keras.constraints.max_norm(0.01)
     b_constraint = keras.constraints.max_norm(0.01)
@@ -467,7 +466,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_with_masking_layer_LSTM(self):
-    layer_class = UnifiedLSTM
+    layer_class = keras.layers.UnifiedLSTM
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
@@ -485,8 +484,8 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
     model = keras.models.Sequential()
-    model.add(UnifiedLSTM(10, return_sequences=True, unroll=False))
-    model.add(UnifiedLSTM(5, return_sequences=True, unroll=False))
+    model.add(keras.layers.UnifiedLSTM(10, return_sequences=True, unroll=False))
+    model.add(keras.layers.UnifiedLSTM(5, return_sequences=True, unroll=False))
     model.compile(
         loss='categorical_crossentropy',
         optimizer=gradient_descent.GradientDescentOptimizer(0.01))
@@ -499,8 +498,8 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     targets /= targets.sum(axis=-1, keepdims=True)
     model = keras.models.Sequential()
     model.add(keras.layers.Masking(input_shape=(3, 4)))
-    model.add(UnifiedLSTM(10, return_sequences=True, unroll=False))
-    model.add(UnifiedLSTM(5, return_sequences=True, unroll=False))
+    model.add(keras.layers.UnifiedLSTM(10, return_sequences=True, unroll=False))
+    model.add(keras.layers.UnifiedLSTM(5, return_sequences=True, unroll=False))
     model.compile(
         loss='categorical_crossentropy',
         optimizer=gradient_descent.GradientDescentOptimizer(0.01))
@@ -508,7 +507,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_from_config_LSTM(self):
-    layer_class = UnifiedLSTM
+    layer_class = keras.layers.UnifiedLSTM
     for stateful in (False, True):
       l1 = layer_class(units=1, stateful=stateful)
       l2 = layer_class.from_config(l1.get_config())
@@ -525,7 +524,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     # Test with Keras tensor
     inputs = keras.Input((timesteps, embedding_dim))
     initial_state = [keras.Input((units,)) for _ in range(num_states)]
-    layer = UnifiedLSTM(units)
+    layer = keras.layers.UnifiedLSTM(units)
     if len(initial_state) == 1:
       output = layer(inputs, initial_state=initial_state[0])
     else:
@@ -558,7 +557,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
         keras.backend.random_normal_variable((num_samples, units), 0, 1)
         for _ in range(num_states)
     ]
-    layer = UnifiedLSTM(units)
+    layer = keras.layers.UnifiedLSTM(units)
     output = layer(inputs, initial_state=initial_state)
 
     model = keras.models.Model(inputs, output)
@@ -578,7 +577,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     units = 3
     num_samples = 2
 
-    layer = UnifiedLSTM(units, stateful=True)
+    layer = keras.layers.UnifiedLSTM(units, stateful=True)
     layer.build((num_samples, timesteps, embedding_dim))
     layer.reset_states()
     assert len(layer.states) == num_states
@@ -612,7 +611,8 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     inputs = keras.Input((timesteps, embedding_dim))
     _ = keras.layers.Masking()(inputs)
     initial_state = [keras.Input((units,)) for _ in range(num_states)]
-    output = UnifiedLSTM(units)(inputs, initial_state=initial_state)
+    output = keras.layers.UnifiedLSTM(units)(
+        inputs, initial_state=initial_state)
 
     model = keras.models.Model([inputs] + initial_state, output)
     model.compile(
@@ -635,7 +635,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     num_samples = 2
 
     inputs = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
-    layer = UnifiedLSTM(units, return_state=True, stateful=True)
+    layer = keras.layers.UnifiedLSTM(units, return_state=True, stateful=True)
     outputs = layer(inputs)
     state = outputs[1:]
     assert len(state) == num_states
@@ -653,10 +653,11 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     num_samples = 2
 
     inputs = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
-    layer = UnifiedLSTM(units, return_state=True, return_sequences=True)
+    layer = keras.layers.UnifiedLSTM(
+        units, return_state=True, return_sequences=True)
     outputs = layer(inputs)
     output, state = outputs[0], outputs[1:]
-    output = UnifiedLSTM(units)(output, initial_state=state)
+    output = keras.layers.UnifiedLSTM(units)(output, initial_state=state)
     model = keras.models.Model(inputs, output)
 
     inputs = np.random.random((num_samples, timesteps, embedding_dim))
@@ -669,7 +670,7 @@ class UnifiedLSTMTest(test.TestCase, parameterized.TestCase):
     units = 3
     num_samples = 2
     num_states = 2
-    layer_class = UnifiedLSTM
+    layer_class = keras.layers.UnifiedLSTM
 
     # Test with Keras tensor
     main_inputs = keras.Input((timesteps, embedding_dim))
@@ -701,7 +702,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
     timesteps = 3
     embedding_dim = 4
     units = 2
-    layer_class = UnifiedLSTM
+    layer_class = keras.layers.UnifiedLSTM
     with self.cached_session(config=_config):
       model = keras.models.Sequential()
       model.add(
@@ -761,7 +762,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
 
   def test_regularizers_LSTM(self):
     embedding_dim = 4
-    layer_class = UnifiedLSTM
+    layer_class = keras.layers.UnifiedLSTM
     with self.cached_session(config=_config):
       layer = layer_class(
           5,
@@ -799,7 +800,7 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
     rnn_state_size = test_config['rnn_state_size']
     timestep = test_config['timestep']
 
-    cudnn_lstm_layer = CuDNNLSTM(rnn_state_size)
+    cudnn_lstm_layer = keras.layers.CuDNNLSTM(rnn_state_size)
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
 
@@ -820,7 +821,7 @@ class UnifiedLSTMPerformanceTest(test.Benchmark):
     rnn_state_size = test_config['rnn_state_size']
     timestep = test_config['timestep']
 
-    layer = UnifiedLSTM(rnn_state_size)
+    layer = keras.layers.UnifiedLSTM(rnn_state_size)
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
 

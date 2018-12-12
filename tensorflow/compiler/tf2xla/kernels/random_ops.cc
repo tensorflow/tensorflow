@@ -20,12 +20,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -175,8 +175,8 @@ class RandomShuffleOp : public XlaOpKernel {
     };
     // for i in range(n):
     auto swap_loop_result =
-        XlaForEachIndex(n, xla::S32, swap_body_fn, {swaps, indices},
-                        "indices_swap_loop", builder)
+        xla::ForEachIndex(n, xla::S32, swap_body_fn, {swaps, indices},
+                          "indices_swap_loop", builder)
             .ValueOrDie();
     auto swapped_indices = swap_loop_result[1];
 

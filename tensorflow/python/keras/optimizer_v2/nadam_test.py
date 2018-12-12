@@ -208,6 +208,18 @@ class NadamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
+  def testConstructNAdamWithLR(self):
+    opt = nadam.Nadam(lr=1.0)
+    self.assertEqual(opt.lr, 1.0)
+    opt_2 = nadam.Nadam(learning_rate=0.1, lr=1.0)
+    self.assertEqual(opt_2.lr, 1.0)
+    opt_3 = nadam.Nadam(learning_rate=0.1)
+    self.assertEqual(opt_3.lr, 0.1)
+
+  def testConstructNAdamWithScheduleDecay(self):
+    opt = nadam.Nadam(schedule_decay=0.2)
+    self.assertEqual(opt.decay, 0.2)
+
 
 if __name__ == "__main__":
   test.main()

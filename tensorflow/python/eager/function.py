@@ -340,7 +340,7 @@ class Function(object):
       TypeError: For invalid positional/keyword argument combinations.
     """
     if self._arg_keywords is None or self._num_positional_args is None:
-      if self._signature:
+      if self._signature is not None:
         if kwargs:
           raise NotImplementedError(
               "Keyword arguments not supported when calling a "
@@ -746,6 +746,19 @@ class Function(object):
     ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
                                 outputs_list)
     return ret
+
+
+class UnknownArgument(object):
+  """Signifies an argument which is not currently handled."""
+  pass
+
+
+def _encode_arg_for_serialization(arg):
+  """A representation for this argument, for serializing signatures."""
+  if isinstance(arg, ops.Tensor):
+    return tensor_spec.TensorSpec(arg.shape, arg.dtype)
+  else:
+    return UnknownArgument()
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -1163,6 +1176,14 @@ class PolymorphicFunction(object):
                 autograph=self._autograph,
                 arg_names=arg_names),
             self._function_attributes)
+        if self._input_signature:
+          python_call_signature = self._input_signature
+        else:
+          python_call_signature = tuple(
+              _encode_arg_for_serialization(arg) for arg in args)
+        # Save information about non-Tensor arguments with the concrete
+        # function. Used to serialize PolymorphicFunctions.
+        graph_function._python_call_signature = python_call_signature  # pylint: disable=protected-access
         self._function_cache[cache_key] = graph_function
       return graph_function, args, kwargs
 

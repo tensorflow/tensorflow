@@ -446,15 +446,19 @@ cc_library(
 )
 
 cc_library(
-    name = "logger",
-    srcs = tf_platform_srcs(["logger.cc"]),
-    hdrs = ["platform/logger.h"] + tf_platform_hdrs(["logger.h"]),
+    name = "logger_interface",
+    hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-    ] + tf_additional_logger_deps(),
+    deps = [":platform_protobuf"],
+)
+
+cc_library(
+    name = "logger",
+    srcs = tf_platform_srcs(["logger.cc"]),
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [":logger_interface"] + tf_additional_logger_deps(),
 )
 
 filegroup(
@@ -1619,7 +1623,6 @@ filegroup(
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/**/logger.cc",
-            "platform/**/logger.h",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
@@ -4059,20 +4062,6 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
-    name = "cuda_libdevice_path_test",
-    size = "small",
-    srcs = ["platform/cuda_libdevice_path_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":cuda_libdevice_path",
-        ":lib",
-        ":test",
-        ":test_main",
-    ],
-)
-
 tf_cuda_only_cc_test(
     name = "util_cuda_kernel_helper_test",
     srcs = [
@@ -4928,7 +4917,7 @@ filegroup(
 
 cc_library(
     name = "cuda_libdevice_path",
-    srcs = ["platform/cuda_libdevice_path.cc"] + tf_additional_libdevice_srcs(),
+    srcs = tf_additional_libdevice_srcs(),
     hdrs = ["platform/cuda_libdevice_path.h"],
     copts = tf_copts(),
     data = tf_additional_libdevice_data(),

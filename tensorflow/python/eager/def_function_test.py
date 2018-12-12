@@ -238,6 +238,25 @@ class DefFunctionTest(test.TestCase):
     concrete = compute.get_concrete_function(
         tensor_spec.TensorSpec(None, dtypes.float32))
     self.assertAllClose(4., concrete(constant_op.constant(2.)))
+    input_signature, = compute._cached_input_signatures
+    self.assertEqual(
+        tuple(input_signature),
+        (tensor_spec.TensorSpec(None, dtypes.float32),))
+
+  def test_serialization_signature_cache(self):
+
+    @def_function.function
+    def f(x, y):
+      return x, y
+
+    f(constant_op.constant([[3., 4.]]), constant_op.constant([2.]))
+    f(constant_op.constant([[3, 4, 5]]), constant_op.constant([2]))
+    self.assertEqual(
+        set(f._cached_input_signatures),
+        set(((tensor_spec.TensorSpec([1, 2], dtypes.float32),
+              tensor_spec.TensorSpec([1], dtypes.float32)),
+             (tensor_spec.TensorSpec([1, 3], dtypes.int32),
+              tensor_spec.TensorSpec([1], dtypes.int32)))))
 
 
 if __name__ == '__main__':

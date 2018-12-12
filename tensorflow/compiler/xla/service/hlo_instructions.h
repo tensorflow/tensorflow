@@ -1171,7 +1171,14 @@ class HloPadInstruction : public HloInstruction {
   PaddingConfig padding_config_;
 };
 
-class HloDynamicSliceInstruction : public HloInstruction {
+class HloDynamicIndexInstruction : public HloInstruction {
+ public:
+  explicit HloDynamicIndexInstruction(HloOpcode opcode, const Shape& shape)
+      : HloInstruction(opcode, shape) {}
+  virtual int64 index_operand_number() const = 0;
+};
+
+class HloDynamicSliceInstruction : public HloDynamicIndexInstruction {
  public:
   explicit HloDynamicSliceInstruction(const Shape& shape,
                                       HloInstruction* operand,
@@ -1189,6 +1196,8 @@ class HloDynamicSliceInstruction : public HloInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
+  int64 index_operand_number() const override { return 1; }
+
  private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
@@ -1204,6 +1213,16 @@ class HloDynamicSliceInstruction : public HloInstruction {
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).
   std::vector<int64> dynamic_slice_sizes_;
+};
+
+class HloDynamicUpdateSliceInstruction : public HloDynamicIndexInstruction {
+ public:
+  explicit HloDynamicUpdateSliceInstruction(const Shape& shape,
+                                            HloInstruction* operand,
+                                            HloInstruction* update,
+                                            HloInstruction* start_indices);
+
+  int64 index_operand_number() const override { return 2; }
 };
 
 class HloGatherInstruction : public HloInstruction {
