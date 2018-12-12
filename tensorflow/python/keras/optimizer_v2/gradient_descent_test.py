@@ -122,8 +122,6 @@ class GradientDescentOptimizerTest(test.TestCase):
         var1 = resource_variable_ops.ResourceVariable([3.0], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         loss = lambda: math_ops.matmul(var0, x) + var1  # pylint: disable=cell-var-from-loop
-        if not context.executing_eagerly():
-          loss = loss()
         sgd = gradient_descent.SGD(1.0)
         sgd_op = sgd.minimize(loss, [var0, var1])
         self.evaluate(variables.global_variables_initializer())
@@ -141,9 +139,12 @@ class GradientDescentOptimizerTest(test.TestCase):
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-        pred += var1
-        loss = pred * pred
+
+        def loss():
+          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+          pred += var1  # pylint: disable=cell-var-from-loop
+          return pred * pred
+
         sgd_op = gradient_descent.SGD(1.0).minimize(loss, [var0, var1])
         self.evaluate(variables.global_variables_initializer())
         # Run 1 step of sgd
@@ -181,7 +182,8 @@ class GradientDescentOptimizerTest(test.TestCase):
         opt = gradient_descent.SGD(3.0)
         values = [1.0, 3.0]
         vars_ = [variables.Variable([v], dtype=dtype) for v in values]
-        grads_and_vars = opt.compute_gradients(vars_[0] + vars_[1], vars_)
+        loss = lambda: vars_[0] + vars_[1]  # pylint: disable=cell-var-from-loop
+        grads_and_vars = opt._compute_gradients(loss, vars_)
         self.evaluate(variables.global_variables_initializer())
         for grad, _ in grads_and_vars:
           self.assertAllCloseAccordingToType([1.0], self.evaluate(grad))
@@ -258,6 +260,14 @@ class GradientDescentOptimizerTest(test.TestCase):
       # This shouldn't fail; in particular, the learning rate tensor should
       # be an EagerTensor once again, not a graph Tensor.
       self.assertEqual(float(step()), -1.0)
+
+  def testConstructSGDWithLR(self):
+    opt = gradient_descent.SGD(lr=1.0)
+    self.assertEqual(opt.lr, 1.0)
+    opt_2 = gradient_descent.SGD(learning_rate=0.1, lr=1.0)
+    self.assertEqual(opt_2.lr, 1.0)
+    opt_3 = gradient_descent.SGD(learning_rate=0.1)
+    self.assertEqual(opt_3.lr, 0.1)
 
 
 class MomentumOptimizerTest(test.TestCase):
@@ -346,7 +356,7 @@ class MomentumOptimizerTest(test.TestCase):
         var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
         accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
         accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
-        loss = 5 * var0 * var0 + 3 * var1
+        loss = lambda: 5 * var0 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
         mom_op = gradient_descent.SGD(
             learning_rate=2.0, momentum=0.9, nesterov=True)
         opt_op = mom_op.minimize(loss, [var0, var1])
@@ -677,11 +687,19 @@ class MomentumOptimizerTest(test.TestCase):
           opt3._get_hyper("momentum"))
       # self.assertEqual(
       #     self.evaluate(opt._get_hyper("decay")), opt3._get_hyper("decay"))
-      self.assertTrue(opt3._nesterov)
+      self.assertTrue(opt3.nesterov)
 
   def testNesterovWithoutMomentum(self):
     with self.assertRaisesRegexp(ValueError, "must be between"):
       gradient_descent.SGD(learning_rate=1.0, momentum=2.0)
+
+  def testConstructMomentumWithLR(self):
+    opt = gradient_descent.SGD(lr=1.0, momentum=0.9)
+    self.assertEqual(opt.lr, 1.0)
+    opt_2 = gradient_descent.SGD(learning_rate=0.1, momentum=0.9, lr=1.0)
+    self.assertEqual(opt_2.lr, 1.0)
+    opt_3 = gradient_descent.SGD(learning_rate=0.1, momentum=0.9)
+    self.assertEqual(opt_3.lr, 0.1)
 
 
 if __name__ == "__main__":

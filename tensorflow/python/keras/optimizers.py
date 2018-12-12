@@ -45,7 +45,6 @@ from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('keras.optimizers.Optimizer')
 class Optimizer(object):
   """Abstract optimizer base class.
 
@@ -159,7 +158,6 @@ class Optimizer(object):
     return cls(**config)
 
 
-@tf_export('keras.optimizers.SGD')
 class SGD(Optimizer):
   """Stochastic gradient descent optimizer.
 
@@ -224,7 +222,6 @@ class SGD(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.RMSprop')
 class RMSprop(Optimizer):
   """RMSProp optimizer.
 
@@ -291,7 +288,6 @@ class RMSprop(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Adagrad')
 class Adagrad(Optimizer):
   """Adagrad optimizer.
 
@@ -358,7 +354,6 @@ class Adagrad(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Adadelta')
 class Adadelta(Optimizer):
   """Adadelta optimizer.
 
@@ -442,7 +437,6 @@ class Adadelta(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Adam')
 class Adam(Optimizer):
   """Adam optimizer.
 
@@ -539,7 +533,6 @@ class Adam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Adamax')
 class Adamax(Optimizer):
   """Adamax optimizer from Adam paper's Section 7.
 
