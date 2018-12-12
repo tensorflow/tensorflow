@@ -266,11 +266,7 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       float box_coord[4];
     };
 
-    auto rc_cmp = [](const ResultCandidate rc_i, const ResultCandidate rc_j) {
-        return rc_i.score < rc_j.score;
-    };
-    std::priority_queue<ResultCandidate, std::vector<ResultCandidate>, 
-      decltype(rc_cmp)> result_candidate_pq(rc_cmp);
+    std::vector<ResultCandidate> result_candidate_vec;
 
     float* scores_data = per_batch_scores.unaligned_flat<float>().data();
     float* boxes_data = per_batch_boxes.unaligned_flat<float>().data();
@@ -310,13 +306,12 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
         float score;
       };
       auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
-        return bs_i.score < bs_j.score;
+        return bs_i.score > bs_j.score;
       };
-      std::priority_queue<Candidate, std::deque<Candidate>, decltype(cmp)>
-        candidate_priority_queue(cmp);
+      std::vector<Candidate> candidate_vector;
       for (int i = 0; i < class_scores_data.size(); ++i) {
         if (class_scores_data[i] > score_threshold) {
-          candidate_priority_queue.emplace(Candidate({i, class_scores_data[i]}));
+          candidate_vector.emplace_back(Candidate({i, class_scores_data[i]}));
         }
       }
 
@@ -324,13 +319,14 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       std::vector<float> selected_boxes;
       Candidate next_candidate;
 
+      std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
       const Tensor const_boxes = boxes;
       typename TTypes<float, 2>::ConstTensor boxes_data = 
         const_boxes.tensor<float, 2>();
+      int candidate_idx = 0;
       while (selected.size() < size_per_class &&
-             !candidate_priority_queue.empty()) {
-        next_candidate = candidate_priority_queue.top();
-        candidate_priority_queue.pop();
+             candidate_idx < candidate_vector.size()) {
+        next_candidate = candidate_vector[candidate_idx++];
 
         // Overlapping boxes are likely to have similar scores,
         // therefore we iterate through the previously selected boxes backwards
@@ -351,15 +347,20 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
           ResultCandidate rc = {next_candidate.box_index, next_candidate.score,
             class_idx, {boxes_data(id, 0), boxes_data(id, 1), boxes_data(id, 2),
             boxes_data(id, 3)}}; 
-          result_candidate_pq.push(rc);
+          result_candidate_vec.push_back(rc);
         }
       }
-
     }
+
+    auto rc_cmp = [](const ResultCandidate rc_i, const ResultCandidate rc_j) {
+        return rc_i.score > rc_j.score;
+    };
+    std::sort(result_candidate_vec.begin(), result_candidate_vec.end(), rc_cmp);
+
     int max_detections = 0;
     // If pad_per_class is false, we always pad to max_total_size
     if (!pad_per_class) {
-      max_detections = std::min((int) result_candidate_pq.size(), 
+      max_detections = std::min((int) result_candidate_vec.size(),
         total_size_per_batch);
       per_batch_size = total_size_per_batch;
     }
@@ -367,17 +368,17 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       per_batch_size = std::min(total_size_per_batch, 
                             max_size_per_class * num_classes);
       max_detections = std::min(per_batch_size, 
-                            (int) result_candidate_pq.size());
+                            (int) result_candidate_vec.size());
     }
 
     final_valid_detections.push_back(max_detections);
 
     int curr_total_size = max_detections;
+    int result_idx = 0;
     // Pick the top max_detections values 
-    while (curr_total_size > 0 && !result_candidate_pq.empty())
+    while (curr_total_size > 0 && result_idx < result_candidate_vec.size())
     {
-      ResultCandidate next_candidate = result_candidate_pq.top();
-      result_candidate_pq.pop();
+      ResultCandidate next_candidate = result_candidate_vec[result_idx++];
       // Add to final output vectors
       nmsed_boxes[batch].push_back(
               std::max(std::min(next_candidate.box_coord[0], clip_window[2]),
