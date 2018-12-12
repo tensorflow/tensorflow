@@ -50,12 +50,17 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @contextlib.contextmanager
-def _enter_graph(g, eager):
+def _enter_graph(g, eager, creator_stack=None):
+  """Context manager for selecting a graph and maybe eager mode."""
   if eager:
     with g.as_default(), context.eager_mode():
+      if creator_stack is not None:
+        g._variable_creator_stack = creator_stack  # pylint: disable=protected-access
       yield
   else:
     with g.as_default():
+      if creator_stack is not None:
+        g._variable_creator_stack = creator_stack  # pylint: disable=protected-access
       yield
 
 
@@ -865,7 +870,6 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
     def run(self):
       # pylint: disable=protected-access
-      self.graph._variable_creator_stack = self._variable_creator_stack
       self.should_run.wait()
       self.should_run.clear()
       try:
@@ -873,7 +877,8 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
           return
         with self.coord.stop_on_exception(), \
             _enter_graph(self._init_graph, self._init_in_eager), \
-            _enter_graph(self.graph, self.in_eager), \
+            _enter_graph(self.graph, self.in_eager,
+                         self._variable_creator_stack), \
             context.context().device_policy(self.context_device_policy), \
             MirroredReplicaContext(self.distribution, constant_op.constant(
                 self.replica_id, dtypes.int32)), \
