@@ -84,9 +84,3 @@ TEST(TestCPUFeature, TestFeature) {
 
 }  // namespace port
 }  // namespace tensorflow
-
-int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
