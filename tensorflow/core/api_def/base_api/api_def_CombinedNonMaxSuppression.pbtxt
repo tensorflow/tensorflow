@@ -3,7 +3,9 @@ op {
   in_arg {
     name: "boxes"
     description: <<END
-A 4-D float tensor of shape `[batch_size, num_boxes, q, 4]`.
+A 4-D float tensor of shape `[batch_size, num_boxes, q, 4]`. If `q` is 1 then 
+same boxes are used for all classes otherwise, if `q` is equal to number of 
+classes, class-specific boxes are used.
 END
   }
   in_arg {
