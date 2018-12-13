@@ -33,6 +33,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat as util_compat
 
 
+# TODO(b/119837791): add eager coverage when supported.
 class CopyToDeviceTest(test_base.DatasetTestBase):
 
   @test_util.run_deprecated_v1

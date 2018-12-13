@@ -31,11 +31,11 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+# TODO(b/119837791): add eager coverage.
 class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunSimple(self):
@@ -253,47 +253,6 @@ class MapDefunTest(test_base.DatasetTestBase):
     expected = x + c
     self.assertAllEqual(self.evaluate(expected), self.evaluate(map_defun_op))
 
-
-class MapDefunBenchmark(test.Benchmark):
-
-  def _run(self, op, name=None, num_iters=3000):
-    with session.Session() as sess:
-      # Warm up the session
-      for _ in range(5):
-        self.evaluate(op)
-      start = time.time()
-      for _ in range(num_iters):
-        self.evaluate(op)
-      end = time.time()
-      mean_us = (end - start) * 1e6 / num_iters
-      self.report_benchmark(
-          name=name,
-          iters=num_iters,
-          wall_time=mean_us,
-          extras={"examples_per_sec": num_iters / (end - start)})
-
-  def benchmarkDefunVsMapFn(self):
-    """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""
-
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
-    def defun(x):
-      return array_ops.identity(x)
-
-    def map_fn(x):
-      return array_ops.identity(x)
-
-    base = math_ops.range(100)
-    for input_size in [10, 100, 1000, 10000]:
-      num_iters = 100000 // input_size
-      map_defun_op = map_defun.map_defun(defun, [base], [dtypes.int32], [()])
-      map_fn_op = functional_ops.map_fn(map_fn, base)
-
-      self._run(
-          map_defun_op,
-          "benchmarkMapDefun_size_%d" % input_size,
-          num_iters=num_iters)
-      self._run(
-          map_fn_op, "benchmarkMapFn_size_%d" % input_size, num_iters=num_iters)
 
 if __name__ == "__main__":
   test.main()

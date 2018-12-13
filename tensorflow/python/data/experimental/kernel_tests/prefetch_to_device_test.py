@@ -29,6 +29,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+# TODO(b/119837791): add eager coverage when supported.
 class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
   @test_util.run_deprecated_v1
