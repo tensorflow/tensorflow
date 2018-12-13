@@ -98,6 +98,23 @@ class LoadTest(test.TestCase):
     self.assertEqual(imported.asset1.asset_path.numpy(),
                      imported.asset2.asset_path.numpy())
 
+  def test_only_implicit_signatures(self):
+    def func(x):
+      return 2 * x
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(func)
+
+    # Add two traces.
+    root.f(constant_op.constant(1.))
+    root.f(constant_op.constant(1))
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir, signatures=dict())
+    imported = load.load(save_dir)
+
+    self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
+    self.assertEqual(14, imported.f(constant_op.constant(7)).numpy())
 
 if __name__ == "__main__":
   test.main()
