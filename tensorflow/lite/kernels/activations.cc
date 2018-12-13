@@ -373,11 +373,8 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
     case kTfLiteFloat32: {
-      size_t elements = input->bytes / sizeof(float);
-      float* in = input->data.f;
-      float* in_end = in + elements;
-      float* out = output->data.f;
-      for (; in < in_end; in++, out++) *out = std::tanh(*in);
+      optimized_ops::Tanh(GetTensorShape(input), GetTensorData<float>(input),
+                          GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteInt16: {
