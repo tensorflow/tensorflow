@@ -601,7 +601,9 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
         [to, copy](StatusCallback done_,
                    // Begin unbound arguments.
                    const Status& s) {
-          *to = std::move(*copy);
+          if (s.ok()) {
+            *to = std::move(*copy);
+          }
           delete copy;
           done_(s);
         },

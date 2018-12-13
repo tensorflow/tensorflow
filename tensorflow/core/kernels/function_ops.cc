@@ -130,6 +130,7 @@ REGISTER_KERNEL_BUILDER(
       Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
 TF_CALL_QUANTIZED_TYPES(REGISTER)
+REGISTER(Variant)
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("input")
@@ -137,6 +138,7 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                RetvalOp);
 REGISTER_KERNEL_BUILDER(
     Name(kDeviceRetOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), RetvalOp);
+
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
                             .TypeConstraint<ResourceHandle>("T")
