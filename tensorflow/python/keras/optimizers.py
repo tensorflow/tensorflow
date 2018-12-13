@@ -799,27 +799,18 @@ def deserialize(config, custom_objects=None):
   Returns:
       A Keras Optimizer instance.
   """
-  if tf2.enabled():
-    all_classes = {
-        'adadelta': adadelta_v2.Adadelta,
-        'adagrad': adagrad_v2.Adagrad,
-        'adam': adam_v2.Adam,
-        'adamax': adamax_v2.Adamax,
-        'nadam': nadam_v2.Nadam,
-        'rmsprop': rmsprop_v2.RMSprop,
-        'sgd': gradient_descent_v2.SGD
-    }
-  else:
-    all_classes = {
-        'adadelta': Adadelta,
-        'adagrad': Adagrad,
-        'adam': Adam,
-        'adamax': Adamax,
-        'nadam': Nadam,
-        'rmsprop': RMSprop,
-        'sgd': SGD,
-        'tfoptimizer': TFOptimizer
-    }
+  all_classes = {
+      'adadelta': adadelta_v2.Adadelta,
+      'adagrad': adagrad_v2.Adagrad,
+      'adam': adam_v2.Adam,
+      'adamax': adamax_v2.Adamax,
+      'nadam': nadam_v2.Nadam,
+      'rmsprop': rmsprop_v2.RMSprop,
+      'sgd': gradient_descent_v2.SGD
+  }
+  if not tf2.enabled():
+    all_classes['nadam'] = Nadam
+
   # Make deserialization case-insensitive for built-in optimizers.
   if config['class_name'].lower() in all_classes:
     config['class_name'] = config['class_name'].lower()

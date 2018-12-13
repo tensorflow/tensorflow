@@ -191,6 +191,7 @@ class Model(Network):
     """
     run_eagerly = kwargs.pop('run_eagerly', None)
     self._run_eagerly = run_eagerly
+    optimizer = optimizers.get(optimizer)
 
     # Validate that arguments passed by the user to `compile` are supported by
     # DistributionStrategy.
@@ -213,13 +214,14 @@ class Model(Network):
 
     loss = loss or {}
     if self.run_eagerly and not isinstance(
-        optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
+        optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer,
+                    optimizer_v2.OptimizerV2)):
       raise ValueError(
           'When running a model in eager execution, the optimizer must be an '
           'instance of tf.train.Optimizer. Received: '
           '%s' % optimizer)
 
-    self.optimizer = optimizers.get(optimizer)
+    self.optimizer = optimizer
     # We've disabled automatic dependency tracking for this method, but do want
     # to add a checkpoint dependency on the optimizer if it's checkpointable.
     if isinstance(self.optimizer, checkpointable.CheckpointableBase):

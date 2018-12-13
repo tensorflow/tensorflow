@@ -510,7 +510,12 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     Returns:
         Python dictionary.
     """
-    return {"name": self._name}
+    config = {"name": self._name}
+    if hasattr(self, "clipnorm"):
+      config["clipnorm"] = self.clipnorm
+    if hasattr(self, "clipvalue"):
+      config["clipvalue"] = self.clipvalue
+    return config
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
@@ -789,7 +794,7 @@ def _filter_grads(grads_and_vars):
   """Filter out iterable with grad equal to None."""
   grads_and_vars = tuple(grads_and_vars)
   if not grads_and_vars:
-    raise ValueError("No variables provided.")
+    return grads_and_vars
   filtered = []
   vars_with_empty_grads = []
   for grad, var in grads_and_vars:
