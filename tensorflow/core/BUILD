@@ -113,7 +113,6 @@ load(
     "tf_additional_device_tracer_test_flags",
     "tf_additional_gdr_lib_defines",
     "tf_additional_human_readable_json_deps",
-    "tf_additional_logger_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
@@ -450,15 +449,27 @@ cc_library(
     hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
-    deps = [":platform_protobuf"],
+    deps = [
+        ":lib_proto_parsing",
+        "@protobuf_archive//:protobuf",
+    ],
+)
+
+cc_library(
+    name = "default_logger",
+    srcs = ["platform/default/logger.cc"],
+    hdrs = ["platform/logger.h"],
+    deps = [
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:logger_interface",
+    ],
 )
 
 cc_library(
     name = "logger",
-    srcs = tf_platform_srcs(["logger.cc"]),
-    copts = tf_copts(),
+    hdrs = ["platform/logger.h"],
     visibility = ["//visibility:public"],
-    deps = [":logger_interface"] + tf_additional_logger_deps(),
+    deps = ["//tensorflow/core/platform/default/build_config:logger"],
 )
 
 filegroup(
