@@ -28,6 +28,7 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import tf_stack
 
 
 # Allow deprecation warnings to be silenced temporarily with a context manager.
@@ -98,21 +99,9 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
-  frame = tf_inspect.currentframe()
-  if frame:
-    # CPython internals are available, use them for performance.
-    # walk back two frames to get to deprecated function caller.
-    frame = frame.f_back
-    if frame.f_back:
-      frame = frame.f_back
-    if outer and frame.f_back:
-      frame = frame.f_back
-    return '%s:%d' % (frame.f_code.co_filename, frame.f_lineno)
-  else:
-    # Slow fallback path
-    stack = tf_inspect.stack(0)  # 0 avoids generating unused context
-    entry = stack[3 if outer else 2]
-    return '%s:%d' % (entry[1], entry[2])
+  stack = tf_stack.extract_stack()
+  frame = stack[-4 if outer else -3]
+  return '{filename}:{lineno}'.format(filename=frame[0], lineno=frame[1])
 
 
 def _wrap_decorator(wrapped_function):

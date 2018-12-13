@@ -92,6 +92,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
 
 class LogSumExpTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testReduceLogSumExp(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
@@ -104,7 +105,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
       with self.cached_session(use_gpu=True):
-        y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=[0])
+        y_tf = math_ops.reduce_logsumexp(x_np, axis=[0])
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
         y_tf_np = self.evaluate(y_tf)
@@ -114,12 +115,13 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
       with self.cached_session(use_gpu=True):
-        y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=0)
+        y_tf = math_ops.reduce_logsumexp(x_np, axis=0)
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
         y_tf_np = self.evaluate(y_tf)
         self.assertAllClose(y_tf_np, y_np)
 
+  @test_util.run_deprecated_v1
   def testKeepDims(self):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
@@ -129,6 +131,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_np = log(np.sum(exp(x_np), keepdims=True))
         self.assertAllClose(y_tf_np, y_np)
 
+  @test_util.run_deprecated_v1
   def testOverflow(self):
     x = [1000, 1001, 1002, 1003]
     for dtype in [np.float16, np.float32, np.double]:
@@ -146,6 +149,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_np = log(np.sum(exp(x_np - max_np))) + max_np
         self.assertAllClose(y_tf_np, y_np)
 
+  @test_util.run_deprecated_v1
   def testUnderflow(self):
     x = [-1000, -1001, -1002, -1003]
     for dtype in [np.float16, np.float32, np.double]:
@@ -163,6 +167,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_np = log(np.sum(exp(x_np - max_np))) + max_np
         self.assertAllClose(y_tf_np, y_np)
 
+  @test_util.run_deprecated_v1
   def testInfinity(self):
     with self.session(use_gpu=True):
       res = math_ops.reduce_logsumexp(-np.inf).eval()
@@ -186,6 +191,7 @@ class RoundTest(test_util.TensorFlowTestCase):
 
 class ModTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testFloat(self):
     x = [0.5, 0.7, 0.3]
     for dtype in [np.float32, np.double]:
@@ -217,11 +223,22 @@ class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSquaredDifference(self):
-    for dtype in [np.int32, np.float16]:
+    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
       with test_util.device(use_gpu=True):
+        z_tf = self.evaluate(math_ops.squared_difference(x, y))
+        self.assertAllClose(z, z_tf)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testComplexSquaredDifference(self):
+    for dtype in [np.complex64, np.complex128]:
+      x = np.array([[1 + 3j, 2 + 2j, 3 + 1j], [4 - 1j, 5 - 2j, 6 - 3j]],
+                   dtype=dtype)
+      y = np.array([-3 + 1j, -2 + 2j, -1 + 3j], dtype=dtype)
+      z = np.conj(x - y) * (x - y)
+      with test_util.device(use_gpu=False):
         z_tf = self.evaluate(math_ops.squared_difference(x, y))
         self.assertAllClose(z, z_tf)
 
@@ -256,6 +273,7 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
         z_tf = self.evaluate(math_ops.approximate_equal(x, y, tolerance=0.0001))
         self.assertAllEqual(z, z_tf)
 
+  @test_util.run_deprecated_v1
   def testApproximateEqualShape(self):
     for dtype in [np.float32, np.double]:
       x = np.array([1, 2], dtype=dtype)
@@ -309,6 +327,7 @@ class ScalarMulTest(test_util.TensorFlowTestCase):
 
 class AccumulateNTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testFloat(self):
     np.random.seed(12345)
     x = [np.random.random((1, 2, 3, 4, 5)) - 0.5 for _ in range(5)]
@@ -317,6 +336,7 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
       self.assertAllClose(sum(x), math_ops.accumulate_n(tf_x).eval())
       self.assertAllClose(x[0] * 5, math_ops.accumulate_n([tf_x[0]] * 5).eval())
 
+  @test_util.run_deprecated_v1
   def testInt(self):
     np.random.seed(54321)
     x = [np.random.randint(-128, 128, (5, 4, 3, 2, 1)) for _ in range(6)]
@@ -328,6 +348,7 @@ class AccumulateNTest(test_util.TensorFlowTestCase):
 
 class AddNTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testPartials(self):
     """Test that previously revealed a bug in buffer forwarding for AddN."""
     partials = []
@@ -341,6 +362,7 @@ class AddNTest(test_util.TensorFlowTestCase):
     with self.session(use_gpu=True):
       self.assertAllEqual(res.eval(), 100)
 
+  @test_util.run_deprecated_v1
   def testFloat(self):
     np.random.seed(12345)
     for num_inputs in range(1, 10):
@@ -351,6 +373,7 @@ class AddNTest(test_util.TensorFlowTestCase):
         self.assertAllClose(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs).eval())
 
+  @test_util.run_deprecated_v1
   def testInt(self):
     np.random.seed(54321)
     for num_inputs in range(1, 10):
@@ -364,6 +387,7 @@ class AddNTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs).eval())
 
+  @test_util.run_deprecated_v1
   def testGrad(self):
     np.random.seed(42)
     for num_inputs in range(1, 10):
@@ -392,6 +416,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     divs = np.arange(-3, 0, .25).reshape(1, 12)
     return nums, divs
 
+  @test_util.run_deprecated_v1
   def testFloorModInt(self):
     nums, divs = self.intTestData()
     with self.cached_session():
@@ -401,6 +426,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = nums % divs
       self.assertAllEqual(tf_result, np_result)
 
+  @test_util.run_deprecated_v1
   def testFloorModFloat(self):
     nums, divs = self.floatTestData()
     with self.cached_session():
@@ -412,6 +438,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       #               % array_ops.constant(divs)).eval()
       # self.assertAllEqual(tf2_result, tf_result)
 
+  @test_util.run_deprecated_v1
   def testTruncateModInt(self):
     nums, divs = self.intTestData()
     with self.cached_session():
@@ -419,6 +446,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.fmod(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
+  @test_util.run_deprecated_v1
   def testTruncateModFloat(self):
     nums, divs = self.floatTestData()
     with self.cached_session():
@@ -426,6 +454,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.fmod(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
+  @test_util.run_deprecated_v1
   def testDivideInt(self):
     nums, divs = self.intTestData()
     with self.cached_session():
@@ -437,12 +466,14 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       #               // array_ops.constant(divs)).eval()
       # self.assertAllEqual(tf2_result, tf_result)
 
+  @test_util.run_deprecated_v1
   def testDivideName(self):
     with self.cached_session():
       op = math_ops.divide(
           array_ops.constant(3), array_ops.constant(4), name="my_cool_divide")
       self.assertEqual(op.name, "my_cool_divide:0")
 
+  @test_util.run_deprecated_v1
   def testRealDiv(self):
     nums, divs = self.floatTestData()
     with self.cached_session():
@@ -450,12 +481,14 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       np_result = np.divide(nums, divs)
       self.assertAllEqual(tf_result, np_result)
 
+  @test_util.run_deprecated_v1
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
     with self.cached_session():
       _ = math_ops.divide(foo, 1.).eval()
       _ = math_ops.div(foo, 2.).eval()
 
+  @test_util.run_deprecated_v1
   def testFloorDivGrad(self):
     with self.cached_session():
       a = variables.Variable(2.)
@@ -471,6 +504,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
             [None if x is None else self.evaluate(x) for x in c_grad],
             [None, None])
 
+  @test_util.run_deprecated_v1
   def testConsistent(self):
     nums, divs = self.intTestData()
     with self.cached_session():
@@ -497,6 +531,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 
 class DivNoNanTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     for dtype in [np.float32, np.float64]:
       nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)

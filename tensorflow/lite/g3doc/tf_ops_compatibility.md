@@ -1,4 +1,3 @@
-
 # TensorFlow Lite & TensorFlow Compatibility Guide
 
 TensorFlow Lite supports a number of TensorFlow operations used in common
@@ -140,6 +139,17 @@ following common ops are not supported at the moment:
 The following TensorFlow Lite operations are fully supported and used in place
 of the TensorFlow operations listed above:
 
+**ABS**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: elementwise abs of the input
+}
+```
+
 **ADD**
 
 ```
@@ -152,6 +162,30 @@ Outputs {
 }
 Options {
   fused_activation_function:  NONE|RELU|RELU6
+}
+```
+
+**ARG_MAX**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of maximum values.
+}
+```
+
+**ARG_MIN**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: A tensor of indices of minium values.
 }
 ```
 
@@ -281,6 +315,18 @@ Outputs {
 }
 ```
 
+**FILL**
+
+```
+Inputs {
+  0: a 1D tensor
+  1: a 0D (scalar) tensor
+}
+Outputs {
+  0: A tensor of shape `tensor 0` filled with the value in `tensor 1`.
+}
+```
+
 **FLOOR**
 
 ```
@@ -289,6 +335,30 @@ inputs {
 }
 outputs: {
   0: result of computing element-wise floor of the input tensor
+}
+```
+
+**FLOOR_DIV**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: result of computing element-wise floor of `tensor 0` divided by `tensor 1`.
+}
+```
+
+**FLOOR_MOD**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: result of computing element-wise floor of `tensor 0` modulo `tensor 1`.
 }
 ```
 
@@ -393,6 +463,20 @@ Options {
 }
 ```
 
+**LEAKY_RELU**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to max(input, input * alpha)
+}
+Options {
+  alpha
+}
+```
+
 **LESS**
 
 ```
@@ -433,6 +517,18 @@ Options {
   bias
   alpha
   beta
+}
+```
+
+**LOGICAL_OR**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: a list of tensors.
+}
+Outputs {
+  0: A tensor of logical_or output tensors.
 }
 ```
 
@@ -513,6 +609,18 @@ Outputs {
 }
 ```
 
+**PACK**
+
+```
+Inputs {
+  0: a list of tensors.
+  1: an integer.
+}
+Outputs {
+  0: A tensor of stacked tensors.
+}
+```
+
 **PAD**
 
 ```
@@ -551,6 +659,35 @@ Inputs {
 Outputs {
   0: a tensor of type bool, true whenever an element of the first tensor is not
   equal to the corresponding element of the second tensor.
+}
+```
+
+**POW**
+
+```
+Inputs {
+  0: a tensor
+  1: a tensor
+}
+Outputs {
+  0: elementwise pow of the input tensors
+}
+```
+
+**RANGE**
+
+```
+Inputs {
+  0: a 0D (scalar) tensor
+  1: a 0D (scalar) tensor
+  2: a 0D (scalar) tensor
+}
+Outputs {
+  0: A 1D tensor of type `dtype` defined by a sequence where `tensor 0` is the
+  start, `tensor 1` is the limit, and `tensor 2` is the delta.
+}
+Options {
+  dtype
 }
 ```
 
@@ -599,6 +736,22 @@ Outputs {
 }
 Options {
   new_shape
+}
+```
+
+**RESIZE_NEAREST_NEIGHBOR**
+
+```
+Inputs {
+  0: a 4D tensor
+  1: a 1D tensor with 2 elements
+}
+Outputs {
+  0: A tensor of type `tensor 0` resized according to `tensor 1` heigh/width values
+  using nearest neighbors interpolation.
+}
+Options {
+  align_corners
 }
 ```
 
@@ -713,6 +866,22 @@ Options {
 }
 ```
 
+**SPLIT_V**
+
+```
+Inputs {
+  0: tensor (input)
+  1: 1-D tensor (size_splits)
+  2: 0-D tensor (axis)
+}
+Outputs {
+  0-N: subtensors built from the input tensors
+}
+Options {
+  num_splits: Specifies number of outputs
+}
+```
+
 **SQRT**
 
 ```
@@ -796,66 +965,6 @@ Outputs {
 }
 ```
 
-**POW**
-
-```
-Inputs {
-  0: a tensor
-  1: a tensor
-}
-Outputs {
-  0: elementwise pow of the input tensors
-}
-```
-
-**ARG_MAX**
-
-```
-Inputs {
-  0: a tensor
-  1: a tensor
-}
-Outputs {
-  0: A tensor of indices of maximum values.
-}
-```
-
-**ARG_MIN**
-
-```
-Inputs {
-  0: a tensor
-  1: a tensor
-}
-Outputs {
-  0: A tensor of indices of minium values.
-}
-```
-
-**PACK**
-
-```
-Inputs {
-  0: a list of tensors.
-  1: an integer.
-}
-Outputs {
-  0: A tensor of stacked tensors.
-}
-```
-
-**LOGICAL_OR**
-
-```
-Inputs {
-  0: a list of tensors.
-  1: a list of tensors.
-}
-Outputs {
-  0: A tensor of logical_or output tensors.
-}
-```
-
 **UNPACK**
 
 ```
@@ -869,18 +978,6 @@ Outputs {
 }
 ```
 
-**FLOOR_DIV**
-
-```
-Inputs {
-  0: a list of tensors.
-  1: a list of tensors.
-}
-Outputs {
-  0: A tensor of floor_div output tensors.
-}
-```
-
 **ZEROS_LIKE**
 
 ```
@@ -889,6 +986,18 @@ Inputs {
 }
 Outputs {
   0: A tensor of the same shape and type as x but filled with zeros
+}
+```
+
+**FILL**
+
+```
+Inputs {
+  0: A Tensor. Must be one of the following types: int32, int64. 1-D. Represents the shape of the output tensor.
+  1: A Tensor. 0-D (scalar). Value to fill the returned tensor.
+}
+Outputs {
+  0: A tensor of the same type as value (input1).
 }
 ```
 

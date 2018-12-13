@@ -270,9 +270,9 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "ctc_loss_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["ctc_loss_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -662,6 +662,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "matrix_square_root_op_test",
+    size = "medium",
+    srcs = ["matrix_square_root_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+)
+
+cuda_py_test(
     name = "matrix_solve_op_test",
     size = "medium",
     srcs = ["matrix_solve_op_test.py"],
@@ -819,6 +831,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:io_ops_gen",
     ],
@@ -1141,6 +1154,21 @@ cuda_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
+    ],
+)
+
+tf_py_test(
+    name = "unicode_encode_op_test",
+    size = "small",
+    srcs = ["unicode_encode_op_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
     ],
 )
 
@@ -1861,6 +1889,22 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "lu_op_test",
+    size = "small",
+    srcs = ["lu_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/ops/linalg",
+    ],
+)
+
+cuda_py_test(
     name = "manip_ops_test",
     size = "small",
     srcs = ["manip_ops_test.py"],
@@ -2045,12 +2089,13 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python:tf2",
     ],
 )
 

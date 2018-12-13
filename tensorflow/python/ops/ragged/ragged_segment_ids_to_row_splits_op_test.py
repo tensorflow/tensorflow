@@ -21,23 +21,23 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedSplitsToSegmentIdsOpTest(ragged_test_util.RaggedTensorTestCase):
 
   def testDocStringExample(self):
     segment_ids = [0, 0, 0, 2, 2, 3, 4, 4, 4]
     expected = [0, 3, 3, 5, 6, 9]
     splits = ragged.segment_ids_to_row_splits(segment_ids)
-    with self.test_session():
-      self.assertEqual(splits.eval().tolist(), expected)
+    self.assertAllEqual(splits, expected)
 
   def testEmptySegmentIds(self):
     # Note: the splits for an empty ragged tensor contains a single zero.
     segment_ids = ragged.segment_ids_to_row_splits([])
-    with self.test_session():
-      self.assertEqual(segment_ids.eval().tolist(), [0])
+    self.assertAllEqual(segment_ids, [0])
 
   def testErrors(self):
     self.assertRaisesRegexp(TypeError,
@@ -54,8 +54,7 @@ class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
     num_segments = 7
     expected = [0, 3, 3, 5, 6, 9, 9, 9]
     splits = ragged.segment_ids_to_row_splits(segment_ids, num_segments)
-    with self.test_session():
-      self.assertEqual(splits.eval().tolist(), expected)
+    self.assertAllEqual(splits, expected)
 
   def testUnsortedSegmentIds(self):
     # Segment ids are not required to be sorted.
@@ -65,9 +64,8 @@ class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
 
     splits2 = ragged.segment_ids_to_row_splits(segment_ids, 7)
     expected2 = [0, 3, 3, 5, 6, 9, 9, 9]
-    with self.test_session():
-      self.assertEqual(splits1.eval().tolist(), expected1)
-      self.assertEqual(splits2.eval().tolist(), expected2)
+    self.assertAllEqual(splits1, expected1)
+    self.assertAllEqual(splits2, expected2)
 
 
 if __name__ == '__main__':

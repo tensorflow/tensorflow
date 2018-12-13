@@ -260,10 +260,10 @@ class MapDefunBenchmark(test.Benchmark):
     with session.Session() as sess:
       # Warm up the session
       for _ in range(5):
-        sess.run(op)
+        self.evaluate(op)
       start = time.time()
       for _ in range(num_iters):
-        sess.run(op)
+        self.evaluate(op)
       end = time.time()
       mean_us = (end - start) * 1e6 / num_iters
       self.report_benchmark(

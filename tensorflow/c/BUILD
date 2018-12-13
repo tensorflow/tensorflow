@@ -121,6 +121,7 @@ tf_cuda_library(
         ":c_api",
         ":c_api_internal",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/contrib/tpu:all_ops",
         "//tensorflow/core:core_cpu",
@@ -175,6 +176,34 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "env",
+    srcs = [
+        "env.cc",
+    ],
+    hdrs = [
+        "env.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = select({
+        "//tensorflow:android": [
+            ":c_api",
+            ":tf_status_helper",
+            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:platform_env",
+            "//tensorflow/core:lib",
+        ],
+        "//conditions:default": [
+            ":c_api",
+            ":tf_status_helper",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:platform_env",
+            "//tensorflow/core:lib",
+        ],
+    }) + [":c_api_internal"],
+)
+
+tf_cuda_library(
     name = "kernels",
     srcs = [
         "kernels.cc",
@@ -187,10 +216,14 @@ tf_cuda_library(
     deps = select({
         "//tensorflow:android": [
             ":c_api",
+            ":c_api_internal",
+            ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api",
+            ":c_api_internal",
+            ":tf_status_helper",
             "//tensorflow/core:framework",
         ],
     }),
@@ -263,7 +296,7 @@ tf_cuda_cc_test(
 
 tf_cc_test(
     name = "c_api_experimental_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_experimental_test.cc"],
     data = ["testdata/tf_record"],
     linkopts = select({
@@ -274,8 +307,11 @@ tf_cc_test(
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":c_api",
         ":c_api_experimental",
         ":c_test_util",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -324,6 +360,27 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
+)
+
+tf_cuda_cc_test(
+    name = "env_test",
+    size = "small",
+    srcs = ["env_test.cc"],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    tags = ["noasan"],
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":c_api",
+        ":env",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_cuda_cc_test(

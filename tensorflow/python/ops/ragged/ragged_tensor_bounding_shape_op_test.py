@@ -20,49 +20,42 @@ from __future__ import print_function
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedTensorBoundingShapeOp(test_util.TensorFlowTestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedTensorBoundingShapeOp(ragged_test_util.RaggedTensorTestCase):
 
   def testDocStringExample(self):
     # This is the example from ragged.bounding_shape.__doc__.
     rt = ragged.constant([[1, 2, 3, 4], [5], [], [6, 7, 8, 9], [10]])
-    with self.test_session():
-      self.assertEqual(ragged.bounding_shape(rt).eval().tolist(), [5, 4])
+    self.assertRaggedEqual(rt.bounding_shape(), [5, 4])
 
   def test2DRaggedTensorWithOneRaggedDimension(self):
     values = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
-    rt1 = ragged.from_row_splits(values, [0, 2, 5, 6, 6, 7])
-    rt2 = ragged.from_row_splits(values, [0, 7])
-    rt3 = ragged.from_row_splits(values, [0, 0, 7, 7])
-    with self.test_session():
-      self.assertEqual(ragged.bounding_shape(rt1).eval().tolist(), [5, 3])
-      self.assertEqual(ragged.bounding_shape(rt2).eval().tolist(), [1, 7])
-      self.assertEqual(ragged.bounding_shape(rt3).eval().tolist(), [3, 7])
+    rt1 = ragged.RaggedTensor.from_row_splits(values, [0, 2, 5, 6, 6, 7])
+    rt2 = ragged.RaggedTensor.from_row_splits(values, [0, 7])
+    rt3 = ragged.RaggedTensor.from_row_splits(values, [0, 0, 7, 7])
+    self.assertRaggedEqual(rt1.bounding_shape(), [5, 3])
+    self.assertRaggedEqual(rt2.bounding_shape(), [1, 7])
+    self.assertRaggedEqual(rt3.bounding_shape(), [3, 7])
 
   def test3DRaggedTensorWithOneRaggedDimension(self):
     values = [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9], [10, 11], [12, 13]]
-    rt1 = ragged.from_row_splits(values, [0, 2, 5, 6, 6, 7])
-    rt2 = ragged.from_row_splits(values, [0, 7])
-    rt3 = ragged.from_row_splits(values, [0, 0, 7, 7])
-    with self.test_session():
-      self.assertEqual(ragged.bounding_shape(rt1).eval().tolist(), [5, 3, 2])
-      self.assertEqual(ragged.bounding_shape(rt2).eval().tolist(), [1, 7, 2])
-      self.assertEqual(ragged.bounding_shape(rt3).eval().tolist(), [3, 7, 2])
-
-  def testNonRaggedTensor(self):
-    dt = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]]
-    with self.test_session():
-      self.assertEqual(ragged.bounding_shape(dt).eval().tolist(), [4, 3])
+    rt1 = ragged.RaggedTensor.from_row_splits(values, [0, 2, 5, 6, 6, 7])
+    rt2 = ragged.RaggedTensor.from_row_splits(values, [0, 7])
+    rt3 = ragged.RaggedTensor.from_row_splits(values, [0, 0, 7, 7])
+    self.assertRaggedEqual(rt1.bounding_shape(), [5, 3, 2])
+    self.assertRaggedEqual(rt2.bounding_shape(), [1, 7, 2])
+    self.assertRaggedEqual(rt3.bounding_shape(), [3, 7, 2])
 
   def testExplicitAxisOptimizations(self):
-    rt = ragged.from_row_splits(b'a b c d e f g'.split(), [0, 2, 5, 6, 6, 7])
-    with self.test_session():
-      self.assertEqual(ragged.bounding_shape(rt, 0).eval().tolist(), 5)
-      self.assertEqual(ragged.bounding_shape(rt, 1).eval().tolist(), 3)
-      self.assertEqual(
-          ragged.bounding_shape(rt, [1, 0]).eval().tolist(), [3, 5])
+    rt = ragged.RaggedTensor.from_row_splits(b'a b c d e f g'.split(),
+                                             [0, 2, 5, 6, 6, 7])
+    self.assertRaggedEqual(rt.bounding_shape(0), 5)
+    self.assertRaggedEqual(rt.bounding_shape(1), 3)
+    self.assertRaggedEqual(rt.bounding_shape([1, 0]), [3, 5])
 
 
 if __name__ == '__main__':

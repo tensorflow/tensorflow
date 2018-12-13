@@ -84,6 +84,8 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       return "TensorSliceDatasetOp::Dataset";
     }
 
+    int64 Cardinality() const override { return tensors_[0].dim_size(0); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

@@ -27,12 +27,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -216,8 +216,8 @@ def map_fn(fn,
         varscope_caching_device_was_none = True
 
     elems_flat = [
-        ragged_factory_ops.convert_to_tensor_or_ragged_tensor(
-            elem, name="elem") for elem in elems_flat
+        ragged_tensor.convert_to_tensor_or_ragged_tensor(elem, name="elem")
+        for elem in elems_flat
     ]
 
     # We can either infer the output, or we can assume that it will be the same
@@ -226,7 +226,7 @@ def map_fn(fn,
 
     # Find the number of iterations, n may be known statically.
     if isinstance(elems_flat[0], ragged_tensor.RaggedTensor):
-      n = ragged_array_ops.nrows(elems_flat[0], out_type=dtypes.int32)
+      n = elems_flat[0].nrows(out_type=dtypes.int32)
     else:
       static_shape = elems_flat[0].shape
       if static_shape.ndims is not None and static_shape.ndims < 1:
@@ -236,8 +236,10 @@ def map_fn(fn,
         else:
           raise ValueError(
               "elements in elems must be 1+ dimensional Tensors, not scalars")
-      n = static_shape[0].value or array_ops.shape(elems_flat[0])[0]
+      n = (tensor_shape.dimension_value(static_shape[0]) or
+           array_ops.shape(elems_flat[0])[0])
 
+    n = math_ops.cast(n, dtype=dtypes.int32)
     # Create a flat list of TAs.
 
     # Flatten the dtype structure to a list.
@@ -254,7 +256,7 @@ def map_fn(fn,
         for t in dtype_components_flat
     ]
 
-    i = constant_op.constant(0)
+    i = constant_op.constant(0, dtype=dtypes.int32)
 
     def compute(i, tas):
       """The loop body of map_fn.
@@ -334,7 +336,7 @@ def map_fn(fn,
 class _RaggedTensorComponents(
     collections.namedtuple(
         "_RaggedTensorComponents",
-        ["inner_values", "nested_row_lengths", "outer_row_length"])):
+        ["flat_values", "nested_row_lengths", "outer_row_length"])):
   """A namedtuple of components which represent a `RaggedTensor`.
 
   _RaggedTensorComponents is a list of components which can be used to create a
@@ -344,7 +346,7 @@ class _RaggedTensorComponents(
 
   The following are a list of components for a `RaggedTensor`:
 
-  inner_values: The flat and inner values of a RaggedTensor. This could be
+  flat_values: The flat and inner values of a RaggedTensor. This could be
     a `Tensor`, a `TensorArray`, or a data type.
   nested_row_lengths: a tuple containing the row lengths of each rank. The
     elements of the tuple could be `Tensor`s or `TensorArray`s.
@@ -357,12 +359,12 @@ class _RaggedTensorComponents(
 
 
 def _concat_ragged_tensor_components(rt_ta):
-  inner_values = rt_ta.inner_values.concat()
+  flat_values = rt_ta.flat_values.concat()
   nested_row_lengths = tuple(
       row_lengths_ta.concat() for row_lengths_ta in rt_ta.nested_row_lengths)
   outer_row_length = rt_ta.outer_row_length.concat()
   return _RaggedTensorComponents(
-      inner_values=inner_values,
+      flat_values=flat_values,
       nested_row_lengths=nested_row_lengths,
       outer_row_length=outer_row_length)
 
@@ -374,17 +376,17 @@ def _maybe_decompose_tensor(rt):
 
   # The three component pieces we need:
   # - inner values
-  inner_values = rt.inner_values
+  flat_values = rt.flat_values
 
   # - row_splits of the RT
   splits = rt.nested_row_splits
   nested_row_lengths = tuple(split[1:] - split[:-1] for split in splits)
 
   # - outer row length
-  outer_row_length = array_ops.expand_dims(ragged_array_ops.nrows(rt), axis=0)
+  outer_row_length = array_ops.expand_dims(rt.nrows(), axis=0)
 
   return _RaggedTensorComponents(
-      inner_values=inner_values,
+      flat_values=flat_values,
       nested_row_lengths=nested_row_lengths,
       outer_row_length=outer_row_length,
   )
@@ -395,11 +397,12 @@ def _maybe_recompose_tensor(t):
   if not isinstance(t, _RaggedTensorComponents):
     return t
 
-  values = t.inner_values
+  values = t.flat_values
   nested_row_lengths = tuple(t.nested_row_lengths)
   for nested_row_length in reversed(nested_row_lengths):
-    values = ragged_factory_ops.from_row_lengths(values, nested_row_length)
-  return ragged_factory_ops.from_row_lengths(values, t.outer_row_length)
+    values = ragged_tensor.RaggedTensor.from_row_lengths(
+        values, nested_row_length)
+  return ragged_tensor.RaggedTensor.from_row_lengths(values, t.outer_row_length)
 
 
 def _maybe_decompose_dtype(d):
@@ -408,7 +411,7 @@ def _maybe_decompose_dtype(d):
     return d
 
   result = _RaggedTensorComponents(
-      inner_values=d.dtype,
+      flat_values=d.dtype,
       nested_row_lengths=tuple(dtypes.int64 for i in range(d.ragged_rank - 1)),
       outer_row_length=dtypes.int64,
   )
@@ -435,10 +438,13 @@ def _convert_declared(fn_output_flat, output_declared):
               "The declared ragged rank (%d) mismatches the result (1)" %
               declared.ragged_rank)
 
-        row_length = array_ops.expand_dims(
-            ragged_array_ops.nrows(current), axis=0)
+        if isinstance(current, ragged_tensor.RaggedTensor):
+          nrows = current.nrows()
+        else:
+          nrows = array_ops.shape(current, out_type=dtypes.int64)[0]
+        row_length = array_ops.expand_dims(nrows, axis=0)
         rt = _RaggedTensorComponents(
-            inner_values=current,
+            flat_values=current,
             nested_row_lengths=(),
             outer_row_length=row_length)
         yield rt

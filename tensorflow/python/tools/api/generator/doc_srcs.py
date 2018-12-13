@@ -37,7 +37,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'app': DocSource(docstring_module_name='platform.app'),
     'bitwise': DocSource(docstring_module_name='ops.bitwise_ops'),
     'compat': DocSource(docstring_module_name='util.compat'),
-    'distribute': DocSource(docstring_module_name='training.distribute'),
+    'distribute': DocSource(docstring_module_name='distribute.distribute_lib'),
     'distributions': DocSource(
         docstring_module_name='ops.distributions.distributions'),
     'errors': DocSource(docstring_module_name='framework.errors'),
@@ -54,6 +54,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'nn': DocSource(docstring_module_name='ops.nn_ops'),
     'nn.rnn_cell': DocSource(docstring_module_name='ops.rnn_cell'),
     'python_io': DocSource(docstring_module_name='lib.io.python_io'),
+    'ragged': DocSource(docstring_module_name='ops.ragged'),
     'resource_loader': DocSource(
         docstring_module_name='platform.resource_loader'),
     'sets': DocSource(docstring_module_name='ops.sets'),

@@ -23,10 +23,12 @@ import numpy as np
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedConstantValueOpTest(ragged_test_util.RaggedTensorTestCase,
                                 parameterized.TestCase):
 
   @parameterized.parameters(
@@ -144,7 +146,7 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                        inner_shape=None,
                        expected_shape=None,
                        expected_dtype=None):
-    """Tests that `ragged_value(pylist).tolist() == pylist`."""
+    """Tests that `ragged_value(pylist).to_list() == pylist`."""
     rt = ragged.constant_value(
         pylist, dtype=dtype, ragged_rank=ragged_rank, inner_shape=inner_shape)
 
@@ -164,7 +166,7 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
     # If inner_shape was explicitly specified, check it.
     if inner_shape is not None:
       if isinstance(rt, ragged.RaggedTensorValue):
-        self.assertEqual(rt.inner_values.shape[1:], inner_shape)
+        self.assertEqual(rt.flat_values.shape[1:], inner_shape)
       else:
         self.assertEqual(rt.shape, inner_shape)
 
@@ -172,7 +174,10 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
       self.assertEqual(tuple(rt.shape), expected_shape)
 
     if rt.shape:
-      self.assertEqual(rt.tolist(), pylist)
+      if isinstance(rt, ragged.RaggedTensorValue):
+        self.assertEqual(rt.to_list(), pylist)
+      else:
+        self.assertEqual(rt.tolist(), pylist)
       if expected_shape is not None:
         self.assertEqual(rt.shape, expected_shape)
     else:

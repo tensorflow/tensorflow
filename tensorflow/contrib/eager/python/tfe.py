@@ -41,6 +41,8 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@add_execution_callback
 @@clear_execution_callbacks
+@@errstate
+@@ExecutionCallback
 @@inf_callback
 @@inf_nan_callback
 @@nan_callback
@@ -119,6 +121,8 @@ from tensorflow.python.eager.context import set_server_def
 from tensorflow.python.eager.def_function import function
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
+from tensorflow.python.eager.execution_callbacks import errstate
+from tensorflow.python.eager.execution_callbacks import ExecutionCallback
 from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback

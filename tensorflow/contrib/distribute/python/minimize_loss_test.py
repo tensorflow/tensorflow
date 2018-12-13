@@ -232,7 +232,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         fetches = distribution.unwrap(
             distribution.call_for_each_replica(model_fn, args=inputs))
         if update_ops_in_cross_replica_mode:
-          fetches += ops.get_collection(ops.GraphKeys.UPDATE_OPS)
+          fetches += tuple(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
         return control_flow_ops.group(fetches)
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
@@ -344,7 +344,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       run_step()
 
       v = all_vars[0]
-      self.assertTrue(all([v is vi for vi in all_vars[1:]]))
+      self.assertTrue(all(v is vi for vi in all_vars[1:]))
       weight = numpy.squeeze(self.evaluate(v))
       # Our model is:
       #   predict = x * w
@@ -443,7 +443,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             step_fn, iterator, iterations=2,
             initial_loop_values=initial_loop_values)
 
-        self.assertEqual({key1: [value1]}, ctx.non_tensor_outputs)
+        self.assertEqual({key1: (value1,)}, ctx.non_tensor_outputs)
         self._verify_loss_output(
             initial_loss(),
             loss_output=ctx.last_step_outputs["replica_loss_reduced"],
@@ -486,12 +486,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     if not reduced:
       self.assertLen(distribution.unwrap(loss_output),
                      distribution.num_replicas_in_sync)
-      loss_output = distribution.reduce(
-          reduce_util.ReduceOp.MEAN, loss_output, destinations="/device:CPU:0")
-
-    unwrapped_output = distribution.unwrap(loss_output)
-    self.assertLen(unwrapped_output, 1)
-    loss_tensor = unwrapped_output[0]
+      loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output)
+    else:
+      unwrapped_output = distribution.unwrap(loss_output)
+      self.assertLen(unwrapped_output, 1)
+      loss_tensor = unwrapped_output[0]
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)
     self.assertEqual(initial_loss.shape, loss_tensor.shape)
 

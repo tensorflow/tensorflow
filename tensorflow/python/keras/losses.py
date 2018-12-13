@@ -19,14 +19,380 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
+
 import six
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.keras.utils.losses_utils import compute_weighted_loss
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.util.tf_export import tf_export
+
+
+class Loss(object):
+  """Loss base class.
+
+  To be implemented by subclasses:
+  * `call()`: Contains the logic for loss calculation using `y_true`, `y_pred`.
+
+  Example subclass implementation:
+  ```
+  class MeanSquaredError(Loss):
+    def call(self, y_true, y_pred):
+      y_pred = ops.convert_to_tensor(y_pred)
+      y_true = math_ops.cast(y_true, y_pred.dtype)
+      return K.mean(math_ops.square(y_pred - y_true), axis=-1)
+  ```
+
+  Args:
+    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
+      `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
+  """
+
+  def __init__(self,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    self.reduction = reduction
+    self.name = name
+
+  def __call__(self, y_true, y_pred, sample_weight=None):
+    """Invokes the `Loss` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional `Tensor` whose rank is either 0, or the same rank
+        as `y_true`, or is broadcastable to `y_true`. `sample_weight` acts as a
+        coefficient for the loss. If a scalar is provided, then the loss is
+        simply scaled by the given value. If `sample_weight` is a tensor of size
+        `[batch_size]`, then the total loss for each sample of the batch is
+        rescaled by the corresponding element in the `sample_weight` vector. If
+        the shape of `sample_weight` matches the shape of `y_pred`, then the
+        loss of each measurable element of `y_pred` is scaled by the
+        corresponding value of `sample_weight`.
+
+    Returns:
+      Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+        shape as `y_true`; otherwise, it is scalar.
+
+    Raises:
+      ValueError: If the shape of `sample_weight` is invalid.
+    """
+    with ops.name_scope(self.name, format(self.__class__.__name__),
+                        (y_pred, y_true, sample_weight)):
+      losses = self.call(y_true, y_pred)
+      return compute_weighted_loss(
+          losses, sample_weight, reduction=self.reduction)
+
+  @classmethod
+  def from_config(cls, config):
+    """Instantiates a `Loss` from its config (output of `get_config()`).
+
+    Args:
+        config: Output of `get_config()`.
+
+    Returns:
+        A `Loss` instance.
+    """
+    return cls(**config)
+
+  def get_config(self):
+    return {'reduction': self.reduction, 'name': self.name}
+
+  @abc.abstractmethod
+  def call(self, y_true, y_pred):
+    """Invokes the `Loss` instance.
+
+    Args:
+      y_true: Ground truth values, with the same shape as 'y_pred'.
+      y_pred: The predicted values.
+    """
+    NotImplementedError('Must be implemented in subclasses.')
+
+
+@tf_export('keras.losses.MeanSquaredError')
+class MeanSquaredError(Loss):
+  """Computes the mean of squares of errors between labels and predictions.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean squared error value is 3/4 (0.75).
+
+  Usage:
+
+  ```python
+  mse = tf.keras.losses.MeanSquaredError()
+  loss = mse([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 0.75
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.MeanSquaredError())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Invokes the `MeanSquaredError` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Mean squared error losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return mean_squared_error(y_true, y_pred)
+
+
+@tf_export('keras.losses.MeanAbsoluteError')
+class MeanAbsoluteError(Loss):
+  """Computes the mean of absolute difference between labels and predictions.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean absolute error value is 3/4 (0.75).
+
+  Usage:
+
+  ```python
+  mae = tf.keras.losses.MeanAbsoluteError()
+  loss = mae([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 0.75
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.MeanAbsoluteError())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Invokes the `MeanAbsoluteError` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Mean absolute error losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return mean_absolute_error(y_true, y_pred)
+
+
+@tf_export('keras.losses.MeanAbsolutePercentageError')
+class MeanAbsolutePercentageError(Loss):
+  """Computes the mean absolute percentage error between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean absolute percentage error value is 5e+08.
+
+  Usage:
+
+  ```python
+  mape = tf.keras.losses.MeanAbsolutePercentageError()
+  loss = mape([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 5e+08
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.MeanAbsolutePercentageError())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Invokes the `MeanAbsolutePercentageError` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Mean absolute percentage error losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return mean_absolute_percentage_error(y_true, y_pred)
+
+
+@tf_export('keras.losses.MeanSquaredLogarithmicError')
+class MeanSquaredLogarithmicError(Loss):
+  """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 0., 1., 1.] and `y_pred` is [1., 1., 1., 0.]
+  then the mean squared logarithmic error value is 0.36034.
+
+  Usage:
+
+  ```python
+  msle = tf.keras.losses.MeanSquaredLogarithmicError()
+  loss = msle([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 0.36034
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.MeanSquaredLogarithmicError())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Invokes the `MeanSquaredLogarithmicError` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Mean squared logarithmic error losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return mean_squared_logarithmic_error(y_true, y_pred)
+
+
+@tf_export('keras.losses.BinaryCrossentropy')
+class BinaryCrossentropy(Loss):
+  """Computes the binary cross entropy loss between the labels and predictions.
+
+  Usage:
+
+  ```python
+  bce = tf.keras.losses.BinaryCrossentropy()
+  loss = bce([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Loss: ', loss.numpy())  # Loss: 12.007
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.BinaryCrossentropy())
+  ````
+
+  Args:
+    from_logits: Whether `output` is expected to be a logits tensor. By default,
+      we consider that `output` encodes a probability distribution.
+    label_smoothing: If greater than `0` then smooth the labels.
+    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
+      `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
+  """
+
+  def __init__(self,
+               from_logits=False,
+               label_smoothing=0,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    super(BinaryCrossentropy, self).__init__(reduction=reduction, name=name)
+    self.from_logits = from_logits
+    self.label_smoothing = label_smoothing
+
+  def call(self, y_true, y_pred):
+    """Invokes the `BinaryCrossentropy` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Binary cross entropy losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+
+    if self.label_smoothing > 0:
+      y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
+
+    return binary_crossentropy(y_true, y_pred, from_logits=self.from_logits)
+
+
+@tf_export('keras.losses.CategoricalCrossentropy')
+class CategoricalCrossentropy(Loss):
+  """Computes categorical cross entropy loss between the `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  cce = tf.keras.losses.CategoricalCrossentropy()
+  loss = cce(
+    [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
+    [[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]])
+  print('Loss: ', loss.numpy())  # Loss: 0.3239
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.CategoricalCrossentropy())
+  ````
+
+  Args:
+    from_logits: Whether `output` is expected to be a logits tensor. By default,
+      we consider that `output` encodes a probability distribution.
+    label_smoothing: If greater than `0` then smooth the labels. This option is
+      currently not supported when `y_pred` is a sparse input (not one-hot).
+    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
+      `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
+  """
+
+  def __init__(self,
+               from_logits=False,
+               label_smoothing=0,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    super(CategoricalCrossentropy, self).__init__(
+        reduction=reduction, name=name)
+    self.from_logits = from_logits
+    self.label_smoothing = label_smoothing
+
+  def call(self, y_true, y_pred):
+    """Invokes the `CategoricalCrossentropy` instance.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Categorical cross entropy losses.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = ops.convert_to_tensor(y_true)
+    is_sparse = y_pred.shape != y_true.shape
+
+    if is_sparse:
+      return sparse_categorical_crossentropy(
+          y_true, y_pred, from_logits=self.from_logits)
+    else:
+      y_true = math_ops.cast(y_true, y_pred.dtype)
+      if self.label_smoothing > 0:
+        num_classes = math_ops.cast(array_ops.shape(y_true)[1], y_pred.dtype)
+        smooth_positives = 1.0 - self.label_smoothing
+        smooth_negatives = self.label_smoothing / num_classes
+        y_true = y_true * smooth_positives + smooth_negatives
+
+      return categorical_crossentropy(
+          y_true, y_pred, from_logits=self.from_logits)
 
 
 @tf_export('keras.metrics.mean_squared_error',
@@ -116,20 +482,22 @@ def logcosh(y_true, y_pred):
 
 @tf_export('keras.metrics.categorical_crossentropy',
            'keras.losses.categorical_crossentropy')
-def categorical_crossentropy(y_true, y_pred):
-  return K.categorical_crossentropy(y_true, y_pred)
+def categorical_crossentropy(y_true, y_pred, from_logits=False):
+  return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
 
 @tf_export('keras.metrics.sparse_categorical_crossentropy',
            'keras.losses.sparse_categorical_crossentropy')
-def sparse_categorical_crossentropy(y_true, y_pred):
-  return K.sparse_categorical_crossentropy(y_true, y_pred)
+def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False):
+  return K.sparse_categorical_crossentropy(
+      y_true, y_pred, from_logits=from_logits)
 
 
 @tf_export('keras.metrics.binary_crossentropy',
            'keras.losses.binary_crossentropy')
-def binary_crossentropy(y_true, y_pred):
-  return K.mean(K.binary_crossentropy(y_true, y_pred), axis=-1)
+def binary_crossentropy(y_true, y_pred, from_logits=False):
+  return K.mean(
+      K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
 
 
 @tf_export('keras.metrics.kullback_leibler_divergence',
@@ -157,6 +525,40 @@ def cosine_proximity(y_true, y_pred):
   y_true = nn.l2_normalize(y_true, axis=-1)
   y_pred = nn.l2_normalize(y_pred, axis=-1)
   return -math_ops.reduce_sum(y_true * y_pred, axis=-1)
+
+
+class CosineProximity(Loss):
+  """Computes the cosine distance between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  cosine_loss = tf.losses.CosineProximity()
+  loss = cosine_loss([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: -0.5
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.CosineProximity())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Calculates the cosine proximity loss.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Cosine distance loss.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return cosine_proximity(y_true, y_pred)
 
 
 # Aliases.
@@ -197,3 +599,9 @@ def get(identifier):
   else:
     raise ValueError('Could not interpret '
                      'loss function identifier:', identifier)
+
+
+LABEL_DTYPES_FOR_LOSSES = {
+    losses_impl.sparse_softmax_cross_entropy: 'int32',
+    sparse_categorical_crossentropy: 'int32'
+}

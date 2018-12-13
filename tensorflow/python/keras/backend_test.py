@@ -1069,13 +1069,13 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                                              initial_states,
                                                              **kwargs)
         # check static shape inference
-        self.assertEquals(last_output.get_shape().as_list(),
-                          [num_samples, output_dim])
-        self.assertEquals(outputs.get_shape().as_list(),
-                          [num_samples, timesteps, output_dim])
+        self.assertEqual(last_output.get_shape().as_list(),
+                         [num_samples, output_dim])
+        self.assertEqual(outputs.get_shape().as_list(),
+                         [num_samples, timesteps, output_dim])
         for state in new_states:
-          self.assertEquals(state.get_shape().as_list(),
-                            [num_samples, output_dim])
+          self.assertEqual(state.get_shape().as_list(),
+                           [num_samples, output_dim])
 
         last_output_list[i].append(keras.backend.eval(last_output))
         outputs_list[i].append(keras.backend.eval(outputs))
@@ -1173,7 +1173,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(outputs.get_shape().as_list(),
                          [num_samples, timesteps, output_dim])
         # for state in new_states:
-        #   self.assertEquals(state.get_shape().as_list(),
+        #   self.assertEqual(state.get_shape().as_list(),
         #                     [num_samples, output_dim])
         self.assertEqual(new_states[0].get_shape().as_list(),
                          [num_samples, output_dim])
@@ -1222,6 +1222,121 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
 
       for s, u_s in zip(additional_state_list[2], additional_state_list[3]):
         self.assertAllClose(s, u_s, atol=1e-04)
+
+  def test_rnn_output_and_state_masking_independent(self):
+    num_samples = 2
+    num_timesteps = 4
+    state_and_io_size = 2
+    mask_last_num_timesteps = 2  # for second sample only
+
+    # a step function that just outputs inputs,
+    # but increments states +1 per timestep
+    def step_function(inputs, states):
+      return inputs, [s + 1 for s in states]
+
+    inputs_vals = np.random.random((num_samples, num_timesteps,
+                                    state_and_io_size))
+    initial_state_vals = np.random.random((num_samples, state_and_io_size))
+    # masking of two last timesteps for second sample only
+    mask_vals = np.ones((num_samples, num_timesteps))
+    mask_vals[1, -mask_last_num_timesteps:] = 0
+
+    # outputs expected to be same as inputs for the first sample
+    expected_outputs = inputs_vals.copy()
+    # but for the second sample all outputs in masked region should be the same
+    # as last output before masked region
+    expected_outputs[1, -mask_last_num_timesteps:] = \
+        expected_outputs[1, -(mask_last_num_timesteps + 1)]
+
+    expected_last_state = initial_state_vals.copy()
+    # first state should be incremented for every timestep (no masking)
+    expected_last_state[0] += num_timesteps
+    # second state should not be incremented for last two timesteps
+    expected_last_state[1] += (num_timesteps - mask_last_num_timesteps)
+
+    # verify same expected output for `unroll=true/false`
+    inputs = keras.backend.variable(inputs_vals)
+    initial_states = [keras.backend.variable(initial_state_vals)]
+    mask = keras.backend.variable(mask_vals)
+    for unroll in [True, False]:
+      _, outputs, last_states = keras.backend.rnn(
+          step_function,
+          inputs,
+          initial_states,
+          mask=mask,
+          unroll=unroll,
+          input_length=num_timesteps if unroll else None)
+
+      self.assertAllClose(keras.backend.eval(outputs), expected_outputs)
+      self.assertAllClose(
+          keras.backend.eval(last_states[0]), expected_last_state)
+
+  def test_rnn_output_num_dim_larger_than_2_masking(self):
+    num_samples = 3
+    num_timesteps = 4
+    num_features = 5
+
+    def step_function(inputs, states):
+      outputs = keras.backend.tile(keras.backend.expand_dims(inputs), [1, 1, 2])
+      return outputs, [keras.backend.identity(s) for s in states]
+      # Note: cannot just return states (which can be a problem) ->
+      # tensorflow/python/ops/resource_variable_ops.py", line 824, in set_shape
+      # NotImplementedError: ResourceVariable does not implement set_shape()
+
+    inputs_vals = np.random.random((num_samples, num_timesteps, num_features))
+    initial_state_vals = np.random.random((num_samples, 6))
+    mask_vals = np.ones((num_samples, num_timesteps))
+    mask_vals[-1, -1] = 0  # final timestep masked for last sample
+
+    expected_outputs = np.repeat(inputs_vals[..., None], repeats=2, axis=-1)
+    # for the last sample, the final timestep (in masked region) should be the
+    # same as the second to final output (before masked region)
+    expected_outputs[-1, -1] = expected_outputs[-1, -2]
+
+    inputs = keras.backend.variable(inputs_vals)
+    initial_states = [keras.backend.variable(initial_state_vals)]
+    mask = keras.backend.variable(mask_vals)
+    for unroll in [True, False]:
+      _, outputs, _ = keras.backend.rnn(
+          step_function,
+          inputs,
+          initial_states,
+          mask=mask,
+          unroll=unroll,
+          input_length=num_timesteps if unroll else None)
+
+      self.assertAllClose(keras.backend.eval(outputs), expected_outputs)
+
+  def test_rnn_state_num_dim_larger_than_2_masking(self):
+    num_samples = 3
+    num_timesteps = 4
+
+    def step_function(inputs, states):
+      return inputs, [s + 1 for s in states]
+
+    inputs_vals = np.random.random((num_samples, num_timesteps, 5))
+    initial_state_vals = np.random.random((num_samples, 6, 7))
+    mask_vals = np.ones((num_samples, num_timesteps))
+    mask_vals[0, -2:] = 0  # final two timesteps masked for first sample
+
+    expected_last_state = initial_state_vals.copy()
+    expected_last_state[0] += (num_timesteps - 2)
+    expected_last_state[1:] += num_timesteps
+
+    inputs = keras.backend.variable(inputs_vals)
+    initial_states = [keras.backend.variable(initial_state_vals)]
+    mask = keras.backend.variable(mask_vals)
+    for unroll in [True, False]:
+      _, _, last_states = keras.backend.rnn(
+          step_function,
+          inputs,
+          initial_states,
+          mask=mask,
+          unroll=unroll,
+          input_length=num_timesteps if unroll else None)
+
+      self.assertAllClose(
+          keras.backend.eval(last_states[0]), expected_last_state)
 
   def test_normalize_batch_in_training(self):
     val = np.random.random((10, 3, 10, 10))
@@ -1307,6 +1422,7 @@ class TestCTC(test.TestCase):
                 decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
       self.assertAllClose(log_prob_truth, log_prob_pred)
 
+  @test_util.run_v1_only('b/120545219')
   def test_ctc_batch_cost(self):
     with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)
@@ -1392,6 +1508,7 @@ class TestRandomOps(test.TestCase):
 
 class BackendGraphTests(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_is_placeholder(self):
     x = keras.backend.placeholder(shape=(1,))
     self.assertEqual(keras.backend.is_placeholder(x), True)
@@ -1431,6 +1548,7 @@ class BackendGraphTests(test.TestCase):
     output_values = f([None, None])
     self.assertEqual(output_values, [5., 6.])
 
+  @test_util.run_deprecated_v1
   def test_function_tf_feed_symbols(self):
     # Test Keras backend functions with TF tensor inputs.
     with self.cached_session():
@@ -1464,6 +1582,7 @@ class BackendGraphTests(test.TestCase):
       outs = f([y5, y2, None])
       self.assertEqual(outs, [11., 2.])
 
+  @test_util.run_deprecated_v1
   def test_function_tf_fetches(self):
     # Additional operations can be passed to tf.Session().run() via its
     # `fetches` arguments. In contrast to `updates` argument of
@@ -1486,6 +1605,7 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
                        [11., 5.])
 
+  @test_util.run_deprecated_v1
   def test_function_tf_feed_dict(self):
     # Additional substitutions can be passed to `tf.Session().run()` via its
     # `feed_dict` arguments. Note that the feed_dict is passed once in the
@@ -1518,6 +1638,7 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(keras.backend.get_session().run(fetches=[x, y]),
                        [30., 40.])
 
+  @test_util.run_deprecated_v1
   def test_function_tf_run_options_with_run_metadata(self):
     with self.cached_session():
       x_placeholder = keras.backend.placeholder(shape=())
@@ -1543,6 +1664,7 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(output1, [30.])
       self.assertEqual(len(run_metadata.partition_graphs), 0)
 
+  @test_util.run_deprecated_v1
   def test_function_fetch_callbacks(self):
 
     class CallbackStub(object):
@@ -1573,12 +1695,46 @@ class BackendGraphTests(test.TestCase):
       self.assertEqual(callback.times_called, 1)
       self.assertEqual(callback.callback_result, 200)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_dict_outputs(self):
+    x_ph = keras.backend.placeholder(shape=(), name='x')
+    y_ph = keras.backend.placeholder(shape=(), name='y')
+    outputs = {'x*y': y_ph * x_ph, 'x*x': x_ph * x_ph}
+
+    f = keras.backend.function(inputs=[x_ph, y_ph], outputs=outputs)
+    x, y = 2., 5.
+    results = f([x, y])
+
+    self.assertEqual(results['x*y'], 10.)
+    self.assertEqual(results['x*x'], 4)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_dict_inputs(self):
+    placeholders = {
+        'x': keras.backend.placeholder(shape=()),
+        'y': keras.backend.placeholder(shape=())
+    }
+    outputs = [placeholders['x'] * placeholders['y']]
+
+    f = keras.backend.function(inputs=placeholders, outputs=outputs)
+    results = f({'x': 2., 'y': 3.})
+    self.assertEqual(results[0], 6.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_single_input_output(self):
+    x_ph = keras.backend.placeholder(shape=(), name='x')
+    output = x_ph * x_ph
+    f = keras.backend.function(x_ph, output)
+    result = f(2.)
+    self.assertEqual(result, 4.)
+
   def test_placeholder(self):
     x = keras.backend.placeholder(shape=(3, 4))
     self.assertEqual(x.get_shape().as_list(), [3, 4])
     x = keras.backend.placeholder(shape=(3, 4), sparse=True)
     self.assertEqual(x.get_shape().as_list(), [3, 4])
 
+  @test_util.run_deprecated_v1
   def test_batch_normalization(self):
     # No eager CPU kernel.
     g_val = np.random.random((3,))

@@ -13,16 +13,6 @@ load(
     "tf_cc_test",
 )
 
-tf_kernel_library(
-    name = "stats_aggregator_ops",
-    srcs = ["stats_aggregator_ops.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
 # TODO(mrry): Remove this empty forwarding library.
 cc_library(
     name = "dataset",
@@ -140,58 +130,9 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "slide_dataset_op",
-    srcs = ["slide_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "padded_batch_dataset_op",
     srcs = ["padded_batch_dataset_op.cc"],
     deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
-    name = "dense_to_sparse_batch_dataset_op",
-    srcs = ["dense_to_sparse_batch_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
-    name = "group_by_reducer_dataset_op",
-    srcs = ["group_by_reducer_dataset_op.cc"],
-    deps = [
-        ":captured_function",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
-    name = "group_by_window_dataset_op",
-    srcs = ["group_by_window_dataset_op.cc"],
-    deps = [
-        ":captured_function",
-        ":window_dataset",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -238,21 +179,6 @@ tf_kernel_library(
     ],
 )
 
-tf_kernel_library(
-    name = "map_and_batch_dataset_op",
-    srcs = ["map_and_batch_dataset_op.cc"],
-    deps = [
-        ":captured_function",
-        ":dataset_utils",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:inplace_ops",
-    ],
-)
-
 cc_library(
     name = "parallel_map_iterator",
     srcs = ["parallel_map_iterator.cc"],
@@ -264,16 +190,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_kernel_library(
-    name = "parse_example_dataset_op",
-    srcs = ["parse_example_dataset_op.cc"],
-    deps = [
-        ":parallel_map_iterator",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
     ],
 )
 
@@ -297,19 +213,6 @@ tf_kernel_library(
     name = "generator_dataset_op",
     srcs = ["generator_dataset_op.cc"],
     hdrs = ["generator_dataset_op.h"],
-    deps = [
-        ":captured_function",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
-    name = "scan_dataset_op",
-    srcs = ["scan_dataset_op.cc"],
     deps = [
         ":captured_function",
         "//tensorflow/core:core_cpu_internal",
@@ -359,7 +262,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -431,39 +333,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "stats_dataset_ops",
-    srcs = ["stats_dataset_ops.cc"],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_kernel_library(
-    name = "stats_aggregator_dataset_op",
-    srcs = ["stats_aggregator_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
-    name = "random_dataset_op",
-    srcs = ["random_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "range_dataset_op",
     srcs = ["range_dataset_op.cc"],
     deps = [
@@ -507,34 +376,12 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "tensor_queue_dataset_op",
-    srcs = ["tensor_queue_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "tensor_slice_dataset_op",
     srcs = ["tensor_slice_dataset_op.cc"],
     deps = [
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-    ],
-)
-
-tf_kernel_library(
-    name = "unbatch_dataset_op",
-    srcs = ["unbatch_dataset_op.cc"],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -572,20 +419,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "sql_dataset_ops",
-    srcs = [
-        "sql_dataset_ops.cc",
-    ],
-    deps = [
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/data/sql",
-    ],
-)
-
-tf_kernel_library(
     name = "iterator_ops",
     srcs = ["iterator_ops.cc"],
     hdrs = ["iterator_ops.h"],
@@ -600,6 +433,7 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -620,6 +454,10 @@ tf_kernel_library(
     name = "optional_ops",
     srcs = ["optional_ops.cc"],
     hdrs = ["optional_ops.h"],
+    gpu_srcs = [
+        "optional_ops.cu.cc",
+        "optional_ops.h",
+    ],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -627,6 +465,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
 )
 
@@ -649,7 +488,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:graph_view",
@@ -658,19 +496,8 @@ tf_kernel_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core/grappler/optimizers/data",
+        "//tensorflow/core/grappler/optimizers/data:function_utils",
         "//tensorflow/core/grappler/optimizers/data:graph_utils",
-    ],
-)
-
-tf_kernel_library(
-    name = "matching_files_dataset_op",
-    srcs = ["matching_files_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -706,19 +533,14 @@ tf_kernel_library(
         ":cache_dataset_ops",
         ":concatenate_dataset_op",
         ":dataset_ops",
-        ":dense_to_sparse_batch_dataset_op",
         ":filter_by_component_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
         ":generator_dataset_op",
-        ":group_by_reducer_dataset_op",
-        ":group_by_window_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",
-        ":map_and_batch_dataset_op",
         ":map_dataset_op",
         ":map_defun_op",
-        ":matching_files_dataset_op",
         ":model_dataset_op",
         ":multi_device_iterator_ops",
         ":optimize_dataset_op",
@@ -726,42 +548,19 @@ tf_kernel_library(
         ":padded_batch_dataset_op",
         ":parallel_interleave_dataset_op",
         ":parallel_map_dataset_op",
-        ":parse_example_dataset_op",
         ":prefetch_dataset_op",
-        ":random_dataset_op",
         ":range_dataset_op",
         ":reader_dataset_ops",
         ":repeat_dataset_op",
-        ":scan_dataset_op",
         ":shuffle_dataset_op",
         ":skip_dataset_op",
-        ":slide_dataset_op",
         ":sparse_tensor_slice_dataset_op",
-        ":sql_dataset_ops",
-        ":stats_aggregator_dataset_op",
-        ":stats_aggregator_ops",
-        ":stats_dataset_ops",
         ":take_dataset_op",
         ":tensor_dataset_op",
-        ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
-        ":unbatch_dataset_op",
         ":window_dataset_op",
-        ":writer_ops",
         ":zip_dataset_op",
         "//tensorflow/core/kernels/data/experimental:dataset_kernels",
-    ],
-)
-
-tf_kernel_library(
-    name = "writer_ops",
-    srcs = ["writer_ops.cc"],
-    deps = [
-        ":dataset_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

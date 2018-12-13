@@ -53,6 +53,11 @@ inline bool* GetTensorData(TfLiteTensor* tensor) {
   return tensor != nullptr ? tensor->data.b : nullptr;
 }
 
+template <>
+inline int8_t* GetTensorData(TfLiteTensor* tensor) {
+  return tensor != nullptr ? tensor->data.int8 : nullptr;
+}
+
 template <typename T>
 inline const T* GetTensorData(const TfLiteTensor* tensor);
 

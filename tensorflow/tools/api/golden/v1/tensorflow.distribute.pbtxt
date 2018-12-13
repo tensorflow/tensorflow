@@ -9,11 +9,19 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "MirroredStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ReduceOp"
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
     name: "ReplicaContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Server"
     mtype: "<type \'type\'>"
   }
   member {

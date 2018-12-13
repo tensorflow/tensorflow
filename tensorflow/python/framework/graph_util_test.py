@@ -29,6 +29,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops as math_ops_lib
@@ -102,6 +103,7 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertDeviceEqual(var_5.device, "/device:GPU:0")
     self.assertDeviceEqual(var_6.device, "/device:CPU:0")
 
+  @test_util.run_v1_only("b/120545219")
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
       var_0 = variables.VariableV1(0)
@@ -210,7 +212,7 @@ class DeviceFunctionsTest(test.TestCase):
 
       with session.Session() as sess:
         init = variables.variables_initializer([variable_node])
-        sess.run(init)
+        self.evaluate(init)
         output = self.evaluate(output_node)
         self.assertNear(4.0, output, 0.00001)
         variable_graph_def = sess.graph.as_graph_def()

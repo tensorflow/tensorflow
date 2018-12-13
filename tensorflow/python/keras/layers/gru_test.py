@@ -81,6 +81,29 @@ class GRULayerTest(test.TestCase):
                   'implementation': mode},
           input_shape=(num_samples, timesteps, embedding_dim))
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_reset_after_GRU(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=num_samples,
+        test_samples=0,
+        input_shape=(timesteps, embedding_dim),
+        num_classes=units)
+    y_train = keras.utils.to_categorical(y_train, units)
+
+    inputs = keras.layers.Input(shape=[timesteps, embedding_dim])
+    gru_layer = keras.layers.GRU(units,
+                                 reset_after=True)
+    output = gru_layer(inputs)
+    gru_model = keras.models.Model(inputs, output)
+    gru_model.compile('rmsprop', 'mse')
+    gru_model.fit(x_train, y_train)
+    gru_model.predict(x_train)
+
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3

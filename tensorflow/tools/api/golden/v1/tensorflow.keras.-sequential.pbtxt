@@ -259,6 +259,10 @@ tf_class {
     argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\'], varargs=None, keywords=None, defaults=[\'32\', \'0\'], "
   }
   member_method {
+    name: "reset_metrics"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "reset_states"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -280,7 +284,7 @@ tf_class {
   }
   member_method {
     name: "test_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "to_json"
@@ -292,6 +296,6 @@ tf_class {
   }
   member_method {
     name: "train_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
   }
 }

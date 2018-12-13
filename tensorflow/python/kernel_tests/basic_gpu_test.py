@@ -159,6 +159,7 @@ class BroadcastSimpleTest(test.TestCase):
     with self.cached_session(use_gpu=True) as sess:
       return sess.run(broadcast_gradient_args(xs, ys))
 
+  @test_util.run_deprecated_v1
   def testBroadcast(self):
     r0, r1 = self._GetGradientArgs([2, 3, 5], [1])
     self.assertAllEqual(r0, [])
@@ -219,6 +220,7 @@ class BroadcastSimpleTest(test.TestCase):
     self.assertShapeEqual(np_ans, out)
     # TODO(zhifengc/ke): make gradient checker work on GPU.
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
         [1, 3, 2])
@@ -255,6 +257,7 @@ class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
           if len(results) != 1:
             break
 
+  @test_util.run_deprecated_v1
   def testConcurrentSessions(self):
     n_threads = 4
     threads = []

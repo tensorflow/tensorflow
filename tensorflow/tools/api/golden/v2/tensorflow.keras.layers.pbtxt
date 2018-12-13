@@ -117,10 +117,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CuDNNLSTM"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Dense"
     mtype: "<type \'type\'>"
   }

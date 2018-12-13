@@ -50,9 +50,11 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -65,8 +67,8 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -75,6 +77,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
@@ -405,42 +408,12 @@ def enable_control_flow_v2(fn):
   """
 
   def wrapper(*args, **kwargs):
-    enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
-    enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
-    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-    control_flow_ops.ENABLE_COND_V2 = True
-    control_flow_ops.ENABLE_WHILE_V2 = True
-    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
+    enable_control_flow_v2_old = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
-      control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
-
-  return wrapper
-
-
-def enable_tensor_array_v2(fn):
-  """Decorator for enabling _GraphTensorArrayV2 on a test.
-
-  Note this enables _GraphTensorArrayV2 after running the test class's
-  setup/teardown methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  def wrapper(*args, **kwargs):
-    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
-    try:
-      fn(*args, **kwargs)
-    finally:
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
+      control_flow_util.ENABLE_CONTROL_FLOW_V2 = enable_control_flow_v2_old
 
   return wrapper
 
@@ -489,11 +462,12 @@ def with_control_flow_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
+  if control_flow_util.ENABLE_CONTROL_FLOW_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
-    if (callable(value) and name.startswith("test") and
+    if (callable(value) and
+        name.startswith(unittest.TestLoader.testMethodPrefix) and
         not getattr(value, "_disable_control_flow_v2", False)):
       setattr(cls, name + "WithControlFlowV2", enable_control_flow_v2(value))
   return cls
@@ -892,8 +866,10 @@ def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith(
-        "test") and not name.startswith("testSkipEager"):
+    if (callable(value) and
+        name.startswith(unittest.TestLoader.testMethodPrefix) and
+        not (name.startswith("testSkipEager")
+             or name.startswith("test_skip_eager"))):
       setattr(cls, name, base_decorator(value))
   return cls
 
@@ -960,7 +936,7 @@ def run_in_graph_and_eager_modes(func=None,
   def decorator(f):
     if tf_inspect.isclass(f):
       raise ValueError(
-          "`run_test_in_graph_and_eager_modes` only supports test methods. "
+          "`run_in_graph_and_eager_modes` only supports test methods. "
           "Did you mean to use `run_all_in_graph_and_eager_modes`?")
 
     def decorated(self, *args, **kwargs):
@@ -996,6 +972,235 @@ def run_in_graph_and_eager_modes(func=None,
           self.setUp()
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def py_func_if_in_function(f):
+
+  def decorated(*args, **kwds):
+    if not ops.get_default_graph()._building_function:
+      return f(*args, **kwds)
+
+    tensor_args, tensor_indices = zip(
+        *[(x, i) for i, x in enumerate(args)
+          if isinstance(x, (ops.Tensor, variables.Variable))])
+
+    def inner_f(*inner_tensor_args):
+      my_args = list(args)
+      for i, n in zip(tensor_indices, inner_tensor_args):
+        my_args[i] = n
+      return f(*my_args, **kwds)
+
+    return script_ops.py_func(inner_f, tensor_args, [])
+
+  return tf_decorator.make_decorator(f, decorated)
+
+
+def also_run_as_tf_function(f):
+  """Runs the decorated test twice--once as is, once inside a tf.function.
+
+  This allows you to run a test both in eager execution and inside a
+  tf.function, exercising the two execution modes supported in tf 2.0. The test
+  assertions are automatically done inside tf.py_funcs, and tf.function ensures
+  that they run in the proper order and with the proper side effects.
+
+  Currently variable creation is not supported in tests annotated with this
+  decorator since it's tricky to ensure the variable doesn't get repeatedly
+  created when retracing the tf.function.
+
+  Args:
+    f: the test method to be decorated
+
+  Returns:
+    The decorated test method, which will run both in eager and inside a
+    tf.function.
+  """
+
+  def decorated(*args, **kwds):
+    with context.eager_mode():
+      # Running in eager mode
+      f(*args, **kwds)
+
+      defun_f = def_function.function(f)
+      defun_f(*args, **kwds)
+
+  return decorated
+
+
+def run_deprecated_v1(func=None):
+  """Execute the decorated test in graph mode.
+
+  This function returns a decorator intended to be applied to tests that have
+  not been updated to a style that is compatible with both TensorFlow 1.x and
+  2.x. When this decorated is applied, the test body will be run in
+  an environment where API calls construct graphs instead of executing eagerly.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+  Returns:
+    Returns a decorator that will run the decorated test method in graph mode.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_deprecated_v1` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if tf2.enabled():
+        with context.graph_mode():
+          f(self, *args, **kwargs)
+      else:
+        f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_v1_only(reason, func=None):
+  """Execute the decorated test only if running in v1 mode.
+
+  This function is intended to be applied to tests that exercise v1 only
+  functionality. If the test is run in v2 mode it will simply be skipped.
+
+  Args:
+    reason: string giving a reason for limiting the test to v1 only.
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      setup = f.__dict__.get("setUp")
+      if setup is not None:
+        setattr(f, "setUp", decorator(setup))
+
+      for name, value in f.__dict__.copy().items():
+        if (callable(value) and
+            name.startswith(unittest.TestLoader.testMethodPrefix)):
+          setattr(f, name, decorator(value))
+
+      return f
+
+    def decorated(self, *args, **kwargs):
+      if tf2.enabled():
+        self.skipTest(reason)
+
+      f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_v2_only(func=None):
+  """Execute the decorated test only if running in v2 mode.
+
+  This function is intended to be applied to tests that exercise v2 only
+  functionality. If the test is run in v1 mode it will simply be skipped.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_v2_only` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if not tf2.enabled():
+        self.skipTest("Test is only comptaible in v2")
+
+      f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_gpu_only(func=None):
+  """Execute the decorated test only if a GPU is available.
+
+  This function is intended to be applied to tests that require the precense
+  of a GPU. If a GPU is absent, it will simply be skipped.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_gpu_only` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if not is_gpu_available():
+        self.skipTest("Test requires GPU")
+
+      f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_cuda_only(func=None):
+  """Execute the decorated test only if a GPU is available.
+
+  This function is intended to be applied to tests that require the precense
+  of a CUDA GPU. If a CUDA GPU is absent, it will simply be skipped.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError("`run_cuda_only` only supports test methods.")
+
+    def decorated(self, *args, **kwargs):
+      if not is_gpu_available(cuda_only=True):
+        self.skipTest("Test requires CUDA GPU")
+
+      f(self, *args, **kwargs)
 
     return decorated
 
@@ -1044,7 +1249,7 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
         return True
     return False
   except errors_impl.NotFoundError as e:
-    if not all([x in str(e) for x in ["CUDA", "not find"]]):
+    if not all(x in str(e) for x in ["CUDA", "not find"]):
       raise e
     else:
       logging.error(str(e))
@@ -1062,6 +1267,27 @@ def device(use_gpu):
     yield
 
 
+@contextlib.contextmanager
+def use_gpu():
+  """Uses gpu when requested and available."""
+  with device(use_gpu=True):
+    yield
+
+
+@contextlib.contextmanager
+def force_gpu():
+  """Force the gpu to be used."""
+  with ops.device("/device:GPU:0"):
+    yield
+
+
+@contextlib.contextmanager
+def force_cpu():
+  """Force the cpu to be used."""
+  with ops.device("/device:CPU:0"):
+    yield
+
+
 class CapturedWrites(object):
   """A utility class to load the captured writes made to a stream."""
 
@@ -1073,6 +1299,63 @@ class CapturedWrites(object):
     with open(self.capture_location) as tmp_file:
       output_data = "".join(tmp_file.readlines())
     return output_data
+
+
+class FakeEagerSession(object):
+  """Fake session so tests that conditionally use placeholders can use eager.
+
+  There are a number of tests that conditionally use placeholders for shape
+  inference. The pattern is demonstrated here:
+
+  ```python
+  with self.cached_session() as sess:
+    if static_shape:
+      y = math_ops.matmul(x, ...)
+      feed_dict = {}
+    else:
+      x_ph = array_ops.placeholder(...)
+      y = math_ops.matmul(x_ph, ...)
+      feed_dict = {x_ph: x}
+    val = sess.run(y, feed_dict=feed_dict)
+  ```
+
+  Since the feed_dict is empty when not using placeholders we should be able to
+  call self.evaluate(), however this requires rewriting the test case.
+  This class shold be considered a stop-gap solution to get tests running with
+  eager with minimal changes to the actual test.
+  """
+
+  def __init__(self, test_case):
+    self._test_case = test_case
+
+  def run(self, fetches, *args, **kwargs):
+    """Evalaute `fetches`.
+
+    Fail if additional args are specified.
+
+    Args:
+      fetches: A Tensor or a nested list/tuple of Tensors.
+      *args: Positional arguments
+      **kwargs: Keyword arguments
+
+    Raises:
+      RuntimeError: If args or kwargs are specified.
+
+    Returns:
+      Tensors as numpy values.
+    """
+    feed_dict = kwargs.pop("feed_dict", {})
+    if feed_dict:
+      raise RuntimeError(
+          "feed_dict is not supported when eager execution is enabled "
+          "(in this case, sess.run(t) is shorthand for t.numpy()")
+
+    if args or kwargs:
+      raise RuntimeError(
+          "Optional args are not supported when eager execution is enabled "
+          "(in this case, sess.run(t) is shorthand for t.numpy()")
+
+    return self._test_case.evaluate(fetches)
 
 
 class ErrorLoggingSession(session.Session):
@@ -1115,6 +1398,10 @@ class TensorFlowTestCase(googletest.TestCase):
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
     random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+
+    # Avoiding calling setUp() for the poorly named test_session method.
+    if self.id().endswith(".test_session"):
+      self.skipTest("Not a test.")
 
   def tearDown(self):
     for thread in self._threads:
@@ -1382,7 +1669,7 @@ class TensorFlowTestCase(googletest.TestCase):
       the graph building and execution code in a test case.
     """
     if context.executing_eagerly():
-      yield None
+      yield FakeEagerSession(self)
     else:
       sess = self._get_cached_session(
           graph, config, force_gpu, crash_if_inconsistent_args=True)
@@ -1401,7 +1688,6 @@ class TensorFlowTestCase(googletest.TestCase):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):
       self.skipTest("Not a test.")
-
     if context.executing_eagerly():
       yield None
     else:
@@ -1524,8 +1810,8 @@ class TensorFlowTestCase(googletest.TestCase):
     return ret
 
 
-# pylint: enable=invalid-name
-
+  # pylint: enable=invalid-name
+  @py_func_if_in_function
   def assertNear(self, f1, f2, err, msg=None):
     """Asserts that two floats are near each other.
 
@@ -1544,6 +1830,7 @@ class TensorFlowTestCase(googletest.TestCase):
         "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
                                if msg is not None else ""))
 
+  @py_func_if_in_function
   def assertArrayNear(self, farray1, farray2, err, msg=None):
     """Asserts that two float arrays are near each other.
 
@@ -1563,6 +1850,7 @@ class TensorFlowTestCase(googletest.TestCase):
   def _NDArrayNear(self, ndarray1, ndarray2, err):
     return np.linalg.norm(ndarray1 - ndarray2) < err
 
+  @py_func_if_in_function
   def assertNDArrayNear(self, ndarray1, ndarray2, err, msg=None):
     """Asserts that two numpy arrays have near values.
 
@@ -1578,7 +1866,7 @@ class TensorFlowTestCase(googletest.TestCase):
     # If a is a tensor then convert it to ndarray
     if isinstance(a, ops.Tensor):
       if isinstance(a, ops._EagerTensorBase):
-        return a.numpy()
+        a = a.numpy()
       else:
         a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
@@ -1700,6 +1988,7 @@ class TensorFlowTestCase(googletest.TestCase):
         e.args = ((e.args[0] + " : " + msg,) + e.args[1:])
         raise
 
+  @py_func_if_in_function
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
     """Asserts that two structures of numpy arrays or Tensors, have near values.
 
@@ -1725,6 +2014,7 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol, msg=msg)
 
+  @py_func_if_in_function
   def assertAllCloseAccordingToType(self,
                                     a,
                                     b,
@@ -1772,6 +2062,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
+  @py_func_if_in_function
   def assertNotAllClose(self, a, b, **kwargs):
     """Assert that two numpy arrays, or or Tensors, do not have near values.
 
@@ -1790,6 +2081,7 @@ class TensorFlowTestCase(googletest.TestCase):
       return
     raise AssertionError("The two values are close at all elements")
 
+  @py_func_if_in_function
   def assertAllEqual(self, a, b, msg=None):
     """Asserts that two numpy arrays or Tensors have the same values.
 
@@ -1832,6 +2124,7 @@ class TensorFlowTestCase(googletest.TestCase):
       msgs.append("not equal rhs = {}".format(y))
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
+  @py_func_if_in_function
   def assertAllGreater(self, a, comparison_target):
     """Assert element values are all greater than a target value.
 
@@ -1843,6 +2136,7 @@ class TensorFlowTestCase(googletest.TestCase):
     a = self._GetNdArray(a)
     self.assertGreater(np.min(a), comparison_target)
 
+  @py_func_if_in_function
   def assertAllLess(self, a, comparison_target):
     """Assert element values are all less than a target value.
 
@@ -1854,6 +2148,7 @@ class TensorFlowTestCase(googletest.TestCase):
     a = self._GetNdArray(a)
     self.assertLess(np.max(a), comparison_target)
 
+  @py_func_if_in_function
   def assertAllGreaterEqual(self, a, comparison_target):
     """Assert element values are all greater than or equal to a target value.
 
@@ -1865,6 +2160,7 @@ class TensorFlowTestCase(googletest.TestCase):
     a = self._GetNdArray(a)
     self.assertGreaterEqual(np.min(a), comparison_target)
 
+  @py_func_if_in_function
   def assertAllLessEqual(self, a, comparison_target):
     """Assert element values are all less than or equal to a target value.
 
@@ -1907,6 +2203,7 @@ class TensorFlowTestCase(googletest.TestCase):
       lines.append(prefix + "...")
     return lines
 
+  @py_func_if_in_function
   def assertAllInRange(self,
                        target,
                        lower_bound,
@@ -1965,6 +2262,7 @@ class TensorFlowTestCase(googletest.TestCase):
           "Subscript(s) and value(s) of the offending elements:\n" +
           "\n".join(self._format_subscripts(violation_subscripts, target)))
 
+  @py_func_if_in_function
   def assertAllInSet(self, target, expected_set):
     """Assert that elements of a Tensor are all in a given closed set.
 
@@ -1986,6 +2284,7 @@ class TensorFlowTestCase(googletest.TestCase):
       raise AssertionError("%d unique element(s) are not in the set %s: %s" %
                            (np.size(diff), expected_set, diff))
 
+  @py_func_if_in_function
   def assertDTypeEqual(self, target, expected_dtype):
     """Assert ndarray data type is equal to expected.
 

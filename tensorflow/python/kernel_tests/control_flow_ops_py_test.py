@@ -43,6 +43,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
@@ -129,6 +130,7 @@ def isum(s, maximum_iterations=None):
 @test_util.with_control_flow_v2
 class ControlFlowTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testRefIdentity(self):
     with self.cached_session():
       v = variables.VariableV1(7)
@@ -141,6 +143,7 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertEqual(9, self.evaluate(v2))
 
+  @test_util.run_v1_only("b/120545219")
   def testRefEnter(self):
     with self.cached_session():
       v = variables.VariableV1(7)
@@ -154,6 +157,7 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertEqual(9, self.evaluate(v3))
 
+  @test_util.run_v1_only("b/120545219")
   def testRefSwitch(self):
     with self.cached_session():
       v = variables.VariableV1(7)
@@ -176,6 +180,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(exit_op)
     self.assertAllEqual(np.array([x * 5 for x in [1, 2, 3, 4, 5, 6]]), result)
 
+  @test_util.run_deprecated_v1
   def testEnterShapePropagation(self):
     with self.cached_session():
       v = variables.Variable([0.0, 0.0], dtype=dtypes.float32)
@@ -190,6 +195,7 @@ class ControlFlowTest(test.TestCase):
           v, "frame2", is_constant=False)
       self.assertEqual(enter_v_non_constant.shape, None)
 
+  @test_util.run_v1_only("b/120545219")
   def testSwitchMergeIndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant([1, 2, 3, 4, 5, 6])
@@ -204,6 +210,7 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(np.arange(1, 7), val)
     self.assertAllEqual(np.arange(0, 12, 2), ind)
 
+  @test_util.run_v1_only("b/120545219")
   def testSwitchDeadBranch(self):
     with self.cached_session():
       data = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -216,6 +223,7 @@ class ControlFlowTest(test.TestCase):
           lambda e: "Retval[0] does not have value" in str(e)):
         self.evaluate(dead_branch)
 
+  @test_util.run_v1_only("b/120545219")
   def testSwitchMergeLess(self):
     with self.cached_session():
       data = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -228,6 +236,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(merge_op)
     self.assertAllEqual(np.arange(1, 7), result)
 
+  @test_util.run_v1_only("b/120545219")
   def testSwitchMergeAddIdentity(self):
     with self.cached_session():
       data = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -241,6 +250,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(merge_op)
     self.assertAllEqual(np.array([x + 1 for x in [1, 2, 3, 4, 5, 6]]), result)
 
+  @test_util.run_v1_only("b/120545219")
   def testSwitchMergeAddMul(self):
     with self.cached_session():
       data = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -255,6 +265,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(merge_op)
     self.assertAllEqual(np.array([x * 5 for x in [1, 2, 3, 4, 5, 6]]), result)
 
+  @test_util.run_v1_only("b/120545219")
   def testLoop_false(self):
     with self.cached_session():
       false = ops.convert_to_tensor(False)
@@ -272,6 +283,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(exit_n)
     self.assertAllEqual(10, result)
 
+  @test_util.run_deprecated_v1
   def testLoop_1(self):
     with self.cached_session():
       zero = constant_op.constant(0)
@@ -298,6 +310,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(exit_i)
     self.assertAllEqual(10, result)
 
+  @test_util.run_v1_only("b/120545219")
   def testLoop_2(self):
     with self.cached_session():
       zero = constant_op.constant(0)
@@ -324,6 +337,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(exit_i)
     self.assertAllEqual(10, result)
 
+  @test_util.run_v1_only("b/120545219")
   def testDifferentFrame(self):
     with self.cached_session():
       data = array_ops.placeholder(dtypes.float32, shape=[])
@@ -333,6 +347,7 @@ class ControlFlowTest(test.TestCase):
       with self.assertRaisesOpError("has inputs from different frames"):
         res.eval(feed_dict={data: 1.0})
 
+  @test_util.run_deprecated_v1
   def testCondBool(self):
     values = constant_op.constant(10)
     fn1 = lambda: math_ops.add(values, 1)
@@ -340,6 +355,7 @@ class ControlFlowTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
       _ = control_flow_ops.cond(False, fn1, fn2)
 
+  @test_util.run_deprecated_v1
   def testCondInt(self):
     p = array_ops.placeholder(dtypes.bool, shape=[])
     v = constant_op.constant(10)
@@ -356,6 +372,7 @@ class ControlFlowTest(test.TestCase):
         lambda: math_ops.subtract(x, 1.))
     self.assertEqual(b.shape, tensor_shape.scalar())
 
+  @test_util.run_v1_only("b/120545219")
   def testFetchable(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
@@ -372,6 +389,7 @@ class ControlFlowTest(test.TestCase):
               sess.run(t, feed_dict={x: 3})
 
   @test_util.disable_control_flow_v2("Not relevant")
+  @test_util.run_v1_only("b/120545219")
   def testFeedable(self):
     with self.cached_session() as sess:
       c = constant_op.constant(2)
@@ -389,6 +407,7 @@ class ControlFlowTest(test.TestCase):
             with self.assertRaisesRegexp(ValueError, "may not be fed"):
               sess.run(r, feed_dict={t: 3})
 
+  @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant(10)
@@ -404,6 +423,7 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(11, val)
     self.assertAllEqual(0, ind)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondSparseTensor(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -421,6 +441,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual([[1], [4]], r.indices.eval())
       self.assertAllEqual(r.values.get_shape(), (2,))
 
+  @test_util.run_v1_only("b/120545219")
   def testCondResource(self):
 
     with self.cached_session():
@@ -435,7 +456,22 @@ class ControlFlowTest(test.TestCase):
 
       self.assertEqual(1.0, control_flow_ops.cond(rv, case, lambda: t).eval())
 
+  @test_util.run_v1_only("b/120545219")
+  def testCondWithTensorArrayGrad(self):
+    with self.cached_session() as sess:
+      with ops.device(test.gpu_device_name()):
+        pred = array_ops.placeholder(dtypes.bool, [])
+        x = constant_op.constant([1.0, 2.0, 3.0])
+        y = control_flow_ops.cond(
+            pred, lambda: functional_ops.map_fn(lambda z: z * 2.0, x),
+            lambda: constant_op.constant([1.0, 1.0, 1.0]))
+        g = gradients_impl.gradients(y, x)[0]
+
+      self.assertAllEqual(sess.run(g, {pred: True}), [2.0, 2.0, 2.0])
+      self.assertAllEqual(sess.run(g, {pred: False}), [0.0, 0.0, 0.0])
+
   @test_util.disable_control_flow_v2("b/113293074")
+  @test_util.run_v1_only("b/120545219")
   def testCondIndexedSlicesDifferentTypes(self):
     with self.cached_session():
       values = constant_op.constant(10)
@@ -453,6 +489,7 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(0, ind)
     self.assertTrue(ind.dtype == np.int64)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondColocation(self):
     with self.session(use_gpu=True):
       with ops.device("/cpu:0"):
@@ -557,6 +594,7 @@ class ControlFlowTest(test.TestCase):
         alive, count = body(i)
       self.assertAllEqual(4, self.evaluate(count))
 
+  @test_util.run_v1_only("b/120545219")
   def testCond_6(self):
     with self.cached_session():
       v1 = variables.Variable([7])
@@ -614,6 +652,7 @@ class ControlFlowTest(test.TestCase):
       test_result = self.evaluate(r)
       self.assertDictEqual({"a": 210, "b": 210}, test_result)
 
+  @test_util.run_deprecated_v1
   def testEmbeddedListOutput(self):
     with self.cached_session() as sess:
       x = constant_op.constant(10)
@@ -651,6 +690,7 @@ class ControlFlowTest(test.TestCase):
       test_result = self.evaluate(r)
       self.assertDictEqual({"a": {"c": 210}, "b": {"d": 210}}, test_result)
 
+  @test_util.run_v1_only("b/120545219")
   def testCheckNestedOutputStruct(self):
     with self.cached_session() as sess:
       x = constant_op.constant(10)
@@ -661,10 +701,12 @@ class ControlFlowTest(test.TestCase):
       v1_msg = "The two structures don't have the same nested structure"
       v2_msg = "Outputs of true_fn and false_fn must have the same structure"
       with self.assertRaisesRegexp(
-          ValueError, v2_msg if control_flow_ops.ENABLE_COND_V2 else v1_msg):
+          ValueError,
+          v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
         r = control_flow_ops.cond(pred, fn1, fn2)
         self.evaluate(r)
 
+  @test_util.run_deprecated_v1
   def testCondRef(self):
 
     with self.cached_session():
@@ -680,6 +722,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual([2.0], self.evaluate(r))
 
   @test_util.disable_control_flow_v2("b/79881896 (control deps)")
+  @test_util.run_v1_only("b/120545219")
   def testCondWithControl(self):
     with self.cached_session():
       control_holder = array_ops.placeholder(dtypes.float32, shape=())
@@ -695,6 +738,7 @@ class ControlFlowTest(test.TestCase):
           lambda: constant_op.constant(1))
       self.assertEqual(5, self.evaluate(r))
 
+  @test_util.run_v1_only("b/120545219")
   def testUninitializedRefIdentity(self):
     with self.cached_session() as sess:
       v = gen_state_ops.variable(
@@ -717,7 +761,7 @@ class ControlFlowTest(test.TestCase):
       with ops.control_dependencies([v_t_op]):
         orig_v = array_ops.identity(v)
       merged_op = control_flow_ops.merge([assign_v, orig_v])
-      self.assertAllEqual([1.0], sess.run(merged_op.output))
+      self.assertAllEqual([1.0], self.evaluate(merged_op.output))
 
   def testCondSwitchIdentity(self):
     # Make sure the recv identity is not removed by optimization.
@@ -731,7 +775,7 @@ class ControlFlowTest(test.TestCase):
         return control_flow_ops.Assert(False, ["Wrong branch!!!"])
 
       r = control_flow_ops.cond(pred, fn1, fn2)
-      sess.run(r)
+      self.evaluate(r)
 
   def testCondRecvIdentity(self):
     # Make sure the switch identity is not removed by optimization.
@@ -747,8 +791,9 @@ class ControlFlowTest(test.TestCase):
           return control_flow_ops.Assert(False, ["Wrong branch!!!"])
 
       r = control_flow_ops.cond(pred, fn1, fn2)
-      sess.run(r)
+      self.evaluate(r)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondGrad_1(self):
     with self.cached_session():
       x = constant_op.constant(10.0, name="x")
@@ -760,6 +805,7 @@ class ControlFlowTest(test.TestCase):
       grad = gradients_impl.gradients(r, [x])[0]
       self.assertAllEqual(1.0, self.evaluate(grad))
 
+  @test_util.run_deprecated_v1
   def testCondGrad_2(self):
     with self.cached_session():
       c = array_ops.placeholder(dtypes.int32, shape=[])
@@ -775,6 +821,7 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.disable_control_flow_v2(
       "b/110550782 (gradient w.r.t external variable)")
+  @test_util.run_deprecated_v1
   def testCondGrad_3(self):
     with self.cached_session():
       c = array_ops.placeholder(dtypes.int32, shape=[])
@@ -792,6 +839,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(980.0, r.eval(feed_dict={c: 1}))
       self.assertAllEqual(30.0, r.eval(feed_dict={c: 3}))
 
+  @test_util.run_deprecated_v1
   def testCondGradMultiDevice(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 2},
                                     allow_soft_placement=True)
@@ -806,20 +854,21 @@ class ControlFlowTest(test.TestCase):
       with ops.device("/cpu:1"):
         grad = gradients_impl.gradients(z, x)[0]
 
-      self.assertEqual(sess.run(grad, {pred: True, x: 1.0, y: 2.0}), 4.0)
-      self.assertEqual(sess.run(grad, {pred: False, x: 1.0, y: 2.0}), 0.0)
-
       with ops.device("/cpu:0"):
         grad_grad = gradients_impl.gradients(grad, x)[0]
 
+      self.assertEqual(sess.run(grad, {pred: True, x: 1.0, y: 2.0}), 4.0)
+      self.assertEqual(sess.run(grad, {pred: False, x: 1.0, y: 2.0}), 0.0)
+
       # v1 control flow gets None second derivative for some reason.
-      if not control_flow_ops.ENABLE_COND_V2:
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
         self.assertIsNone(grad_grad)
         return
 
       self.assertEqual(sess.run(grad_grad, {pred: True, x: 1.0, y: 2.0}), 0.0)
       self.assertEqual(sess.run(grad_grad, {pred: False, x: 1.0, y: 2.0}), 0.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testNestedCond_Simple(self):
     with self.cached_session():
       x = constant_op.constant(0., name="X")
@@ -836,6 +885,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(1.0, self.evaluate(result))
 
   @test_util.disable_control_flow_v2("b/113327884")
+  @test_util.run_v1_only("b/120545219")
   def testCondGrad_Gather(self):
     with self.cached_session() as sess:
       v1 = variables.Variable([1.0, 42.0])
@@ -849,16 +899,17 @@ class ControlFlowTest(test.TestCase):
       # Should just be [1, 1], but possibly a sparse representation
       gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 1})
       dense_gv = [
-          sum([y for (x, y) in zip(gi, gv) if x == i]) for i in range(2)
+          sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
       ]
       self.assertAllEqual(dense_gv, [1.0, 1.0])
       # Should be [0, 2], as the else forwards v1[1] twice
       gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 3})
       dense_gv = [
-          sum([y for (x, y) in zip(gi, gv) if x == i]) for i in range(2)
+          sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
       ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
+  @test_util.run_v1_only("b/120545219")
   def testCondPredicateTensor(self):
     """Regression test for lowering predicate from non-first output of an op."""
 
@@ -900,7 +951,7 @@ class ControlFlowTest(test.TestCase):
 
     # In defuns, all prints should execute in program order.
     # This doesn't work with legacy control flow.
-    if control_flow_ops.ENABLE_COND_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
 
       @eager_function.defun
       def cond():
@@ -954,7 +1005,7 @@ class ControlFlowTest(test.TestCase):
 
     # In defuns, all prints should execute in program order.
     # This doesn't work with legacy control flow.
-    if control_flow_ops.ENABLE_WHILE_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
 
       @eager_function.defun
       def while_loop():
@@ -985,6 +1036,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(10000, self.evaluate(r))
 
   @test_util.disable_control_flow_v2("b/79881896 (control deps)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileExternalControlDependencies(self):
     with self.cached_session():
       v = variables.Variable(0.0)
@@ -1001,6 +1053,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(v.eval(), 1.0)
 
   @test_util.disable_control_flow_v2("b/79881896 (control deps)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileExternalControlDependenciesNoInput(self):
     with self.cached_session():
       v = variables.Variable(0.0)
@@ -1017,6 +1070,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(v.eval(), 1.0)
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileWithRefs_1(self):
     with self.cached_session() as sess:
       x = variables.VariableV1(0)._ref()  # pylint: disable=protected-access
@@ -1053,6 +1107,7 @@ class ControlFlowTest(test.TestCase):
       r = isum(s, maximum_iterations=3)
       self.assertAllEqual([1 + 3, 2 + 3, 3 + 3, 4 + 3, 5 + 3], self.evaluate(r))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileWithMaximumIterationsAndSingleArgument(self):
     with self.cached_session():
       r = control_flow_ops.while_loop(
@@ -1060,6 +1115,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(1, self.evaluate(r))
 
   @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
+  @test_util.run_v1_only("b/120545219")
   def testSingleNestedMaximumIterationsWhileLoopGradientInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -1085,6 +1141,7 @@ class ControlFlowTest(test.TestCase):
     # Should execute without issue.
     self.assertEqual(3, self.evaluate(loop_execute))
 
+  @test_util.run_v1_only("b/120545219")
   def testInvalidMaximumIterationsWhileLoopGradientInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -1106,7 +1163,7 @@ class ControlFlowTest(test.TestCase):
     gs = gradients_impl.gradients(loop_no_xla, v)
     self.evaluate(gs)  # This should execute without error.
 
-    if control_flow_ops.ENABLE_WHILE_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
       with self.assertRaisesRegexp(
@@ -1145,6 +1202,7 @@ class ControlFlowTest(test.TestCase):
           r"context '.*' \(currently defined in '.*'\)"):
         _ = gradients_impl.gradients(loop_with_maxiter, v)
 
+  @test_util.run_v1_only("b/120545219")
   def testInvalidMaximumIterationsFromSiblingContextWhileLoopInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -1163,7 +1221,7 @@ class ControlFlowTest(test.TestCase):
           lambda i, x: (i + 1, v * x), (0, 1.0),
           maximum_iterations=max_iter_holder[0])
 
-    if control_flow_ops.ENABLE_WHILE_V2:
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
       xla_context = control_flow_ops.XLAControlFlowContext()
       xla_context.Enter()
       with self.assertRaisesRegexp(
@@ -1188,6 +1246,7 @@ class ControlFlowTest(test.TestCase):
         _ = gradients_impl.gradients(loop, v)
 
   @test_util.disable_control_flow_v2("b/118457764")
+  @test_util.run_v1_only("b/120545219")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
     v = constant_op.constant(1.0)
 
@@ -1256,6 +1315,7 @@ class ControlFlowTest(test.TestCase):
 
   # Have more than 10 parallel iterations and hence exercise k-bound
   # most of the time.
+  @test_util.run_deprecated_v1
   def testWhile_3(self):
     with self.cached_session():
 
@@ -1276,6 +1336,7 @@ class ControlFlowTest(test.TestCase):
       result = r[3].eval()
     self.assertAllEqual(10100, result)
 
+  @test_util.run_deprecated_v1
   def testWhile_4(self):
     with self.cached_session():
 
@@ -1297,6 +1358,7 @@ class ControlFlowTest(test.TestCase):
       result = r[3].eval()
     self.assertAllEqual(42, result)
 
+  @test_util.run_v1_only("b/120545219")
   def testWhile_5(self):
     with self.cached_session():
 
@@ -1322,6 +1384,7 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(np.array([0, 1, 2, 3, 4, 5, 6]), result)
 
   @test_util.disable_control_flow_v2("b/116338794 (buffer_reuse)")
+  @test_util.run_v1_only("b/120545219")
   def testBufferForwarding(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -1389,6 +1452,7 @@ class ControlFlowTest(test.TestCase):
       r = r[1] * array_ops.ones([8, 8])
       self.assertAllEqual(np.ones((8, 8)), self.evaluate(r))
 
+  @test_util.run_deprecated_v1
   def testWhileWithNonTensorInput_Scalar(self):
     with self.cached_session():
       n = 0
@@ -1405,6 +1469,7 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual([10000], self.evaluate(r))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileShapeInference(self):
     with self.cached_session():
       i = constant_op.constant(0)
@@ -1431,6 +1496,7 @@ class ControlFlowTest(test.TestCase):
         r = control_flow_ops.while_loop(c, b, [i, m])
 
   @test_util.disable_control_flow_v2("b/116328420 (SparseTensor)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileShapeInferenceSparseTensor(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -1450,12 +1516,12 @@ class ControlFlowTest(test.TestCase):
         ]
 
       _, r = control_flow_ops.while_loop(c, b, [i, x])
-      self.assertEqual(r.dense_shape.get_shape()[0].value, 1)
+      self.assertEqual(r.dense_shape.get_shape()[0], 1)
 
       _, r = control_flow_ops.while_loop(
           c, b, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([None])])
-      self.assertTrue(r.dense_shape.get_shape()[0].value is None)
+      self.assertEqual(r.dense_shape.get_shape().as_list(), [None])
 
       with self.assertRaisesRegexp(ValueError, "is not compatible with"):
         _, r = control_flow_ops.while_loop(
@@ -1463,6 +1529,7 @@ class ControlFlowTest(test.TestCase):
             [i.get_shape(), tensor_shape.TensorShape([5])])
 
   @test_util.disable_control_flow_v2("b/116282023 (IndexedSlices)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileShapeInferenceIndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant([[2.0, 4.0], [3.0, 5.0]], name="values")
@@ -1481,15 +1548,14 @@ class ControlFlowTest(test.TestCase):
         ]
 
       _, r = control_flow_ops.while_loop(c, b, [i, x])
-      self.assertEqual(r.dense_shape.get_shape()[0].value, 2)
+      self.assertEqual(r.dense_shape.get_shape()[0], 2)
       self.assertEqual(r.values.get_shape(), tensor_shape.TensorShape([2, 2]))
 
       _, r = control_flow_ops.while_loop(
           c, b, [i, x],
           [i.get_shape(), tensor_shape.TensorShape([None, 2])])
-      self.assertEqual(r.dense_shape.get_shape()[0].value, 2)
-      self.assertTrue(r.values.get_shape()[0].value is None)
-      self.assertEqual(r.values.get_shape()[1].value, 2)
+      self.assertEqual(r.dense_shape.get_shape()[0], 2)
+      self.assertEqual(r.values.get_shape().as_list(), [None, 2])
 
       with self.assertRaisesRegexp(ValueError, "is not compatible with"):
         _, r = control_flow_ops.while_loop(
@@ -1553,6 +1619,7 @@ class ControlFlowTest(test.TestCase):
     self._testNestedWhile_2(use_gpu=False)
     self._testNestedWhile_2(use_gpu=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileWithControl_1(self):
     with self.cached_session():
       n = constant_op.constant(0)
@@ -1569,6 +1636,7 @@ class ControlFlowTest(test.TestCase):
           condition, body, [n, r], parallel_iterations=1)
       self.assertAllEqual(12, res[1].eval())
 
+  @test_util.run_deprecated_v1
   def testWhileWithControl_2(self):
     with self.cached_session():
       r = constant_op.constant(0)
@@ -1583,6 +1651,7 @@ class ControlFlowTest(test.TestCase):
           condition, body, [r], parallel_iterations=1)
       self.assertAllEqual(12, self.evaluate(res))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileWithControl_3(self):
     with self.cached_session() as sess:
       b = array_ops.placeholder(dtypes.bool)
@@ -1592,6 +1661,7 @@ class ControlFlowTest(test.TestCase):
         r = control_flow_ops.while_loop(lambda x: x < 10, lambda x: x + c, [x0])
       self.assertEqual(10, sess.run(r, {b: True}))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileWithControl_4(self):
     with self.cached_session() as sess:
       b = array_ops.placeholder(dtypes.bool)
@@ -1603,6 +1673,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(10, sess.run(r, {b: True}))
 
   @test_util.disable_control_flow_v2("b/79881896 (control_deps)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileWithControl_5(self):
     with self.cached_session() as sess:
       b = array_ops.placeholder(dtypes.bool)
@@ -1631,6 +1702,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(0, self.evaluate(loop))
 
   @test_util.disable_control_flow_v2("b/113324949 (ref vars)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileCondWithControl_1(self):
     with self.cached_session():
       v = variable_scope.get_variable(
@@ -1654,6 +1726,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(65536.0, self.evaluate(v))
 
   @test_util.disable_control_flow_v2("b/113324949 (ref vars)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileCondExitControl(self):
 
     with self.cached_session():
@@ -1723,6 +1796,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual([2.0], sess.run(r1, {p: False}))
 
   @test_util.disable_control_flow_v2("b/116743589")
+  @test_util.run_deprecated_v1
   def testCondWhile_3(self):
     self._testCondWhile_3(use_gpu=False)
     self._testCondWhile_3(use_gpu=True)
@@ -1766,6 +1840,7 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n])
       self.assertAllEqual(10, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
   def testWhileCondGradMultiDevice(self):
     config = config_pb2.ConfigProto(device_count={"CPU": 2},
                                     allow_soft_placement=True)
@@ -1783,20 +1858,21 @@ class ControlFlowTest(test.TestCase):
       with ops.device("/cpu:1"):
         grad = gradients_impl.gradients(z, x_init)[0]
 
+      with ops.device("/cpu:0"):
+        grad_grad = gradients_impl.gradients(grad, x_init)[0]
+
       self.assertEqual(sess.run(grad, {pred: True}), 8.0)
       self.assertEqual(sess.run(grad, {pred: False}), 0.0)
 
-      if not control_flow_ops.ENABLE_WHILE_V2:
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
         return
-
-      with ops.device("/cpu:0"):
-        grad_grad = gradients_impl.gradients(grad, x_init)[0]
 
       self.assertEqual(sess.run(grad_grad, {pred: True}), 0.0)
       self.assertEqual(sess.run(grad_grad, {pred: False}), 0.0)
 
   # NOTE: It is ok to have parallel_iterations > 1
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_deprecated_v1
   def testWhileUpdateVariable_1(self):
     with self.cached_session():
       select = variables.Variable([3.0, 4.0, 5.0])
@@ -1820,6 +1896,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(np.array([10.0, 10.0, 10.0]), result)
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileUpdateVariable_2(self):
     with self.cached_session():
       select1 = variables.Variable([3.0, 4.0, 5.0])
@@ -1847,6 +1924,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(np.array([10.0, 10.0, 10.0]), result2)
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileUpdateVariable_3(self):
     with self.cached_session():
       select = variables.Variable([3.0, 4.0, 5.0])
@@ -1869,6 +1947,7 @@ class ControlFlowTest(test.TestCase):
     self.assertAllClose(np.array([10.0, 10.0, 10.0]), result)
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileUpdateVariable_4(self):
     with self.cached_session():
       var_a = variables.Variable(0, name="a")
@@ -1897,6 +1976,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(10, self.evaluate(var_b))
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileUpdateVariable_5(self):
     with self.cached_session():
       # Create some variables.
@@ -1927,6 +2007,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(10, self.evaluate(var_b))
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileUpdateVariable_6(self):
     with self.cached_session():
       # Create some variables.
@@ -1956,6 +2037,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(55, self.evaluate(var_b))
       self.assertEqual(10, self.evaluate(var_a))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileQueue_1(self):
     with self.cached_session():
       q = data_flow_ops.FIFOQueue(-1, dtypes.int32)
@@ -1974,7 +2056,19 @@ class ControlFlowTest(test.TestCase):
       for i in xrange(10):
         self.assertEqual([i], q.dequeue().eval())
 
+  @test_util.run_v1_only("b/120545219")
+  def testWhileTimeOut(self):
+    run_options = config_pb2.RunOptions(timeout_in_ms=1)
+    with self.cached_session() as sess:
+      n = constant_op.constant(0)
+      c = lambda x: True
+      b = lambda x: math_ops.add(x, 1)
+      r = control_flow_ops.while_loop(c, b, [n])
+      with self.assertRaises(errors_impl.DeadlineExceededError):
+        sess.run(r, options=run_options)
+
   @test_util.disable_control_flow_v2("b/117119329 (stack)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileStack_1(self):
     with self.cached_session():
       s = gen_data_flow_ops.stack_v2(-1, dtypes.int32, stack_name="foo")
@@ -2044,10 +2138,12 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(1024.0, self.evaluate(r))
 
   @test_util.disable_control_flow_v2("b/116351701 (colocation)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_ColocateGradients(self):
     self._testWhileGrad_ColocateGradients(colocate=False)
     self._testWhileGrad_ColocateGradients(colocate=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_Square(self):
     with self.cached_session():
       v = constant_op.constant(2.0, name="v")
@@ -2059,6 +2155,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(1024.0, self.evaluate(r))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_Shape(self):
     with self.cached_session():
       x = array_ops.placeholder(dtypes.float32, shape=[None])
@@ -2076,6 +2173,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual([None], r.get_shape().as_list())
       self.assertAllClose([810.0, 2560.0], r.eval(feed_dict={x: [3.0, 4.0]}))
 
+  @test_util.run_deprecated_v1
   def testWhileGrad_BaseShape(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32, [None])
@@ -2088,6 +2186,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients([r, y], x)[0]
       self.assertAllClose([2.0, 4.0], sess.run(r, feed_dict={x: [1.0, 2.0]}))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_MultipleUses(self):
     with self.cached_session():
       v = constant_op.constant(2.0, name="v")
@@ -2099,6 +2198,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertEqual(524288.0, self.evaluate(r))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_LoopAdd(self):
     with self.cached_session():
       v = constant_op.constant(2.0, name="v")
@@ -2119,11 +2219,12 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [v], parallel_iterations=p_iters)
 
       grad_a, grad_v = gradients_impl.gradients(r, [a, v])
-      grad_a_val, grad_v_val = sess.run([grad_a, grad_v])
+      grad_a_val, grad_v_val = self.evaluate([grad_a, grad_v])
       self.assertAllClose(216.0, grad_a_val)
       self.assertAllClose(81.0, grad_v_val)
 
   @test_util.disable_control_flow_v2("b/116630618 (parallel_iters: times out)")
+  @test_util.run_deprecated_v1
   def testWhileGrad_Mul(self):
     self._testWhileGrad_Mul(use_gpu=False, p_iters=1)
     self._testWhileGrad_Mul(use_gpu=False, p_iters=10)
@@ -2153,15 +2254,15 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(512.0, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
   def testNestedWhileCondWhileGrad(self):
-    if control_flow_ops.ENABLE_WHILE_V2 and test_util.is_gpu_available():
-      self.skipTest("b/118459209")
     self._testNestedWhileCondWhileGrad(use_gpu=False)
 
-  @test_util.disable_control_flow_v2("b/118459209")
+  @test_util.run_deprecated_v1
   def testNestedWhileCondWhileGradGpu(self):
     self._testNestedWhileCondWhileGrad(use_gpu=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_Variable(self):
     with self.cached_session():
       a = variables.Variable(3.0)
@@ -2174,6 +2275,7 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose(216.0, r[0].eval())
 
+  @test_util.run_deprecated_v1
   def testWhileGrad_ResourceVariable(self):
     with self.cached_session():
       a = resource_variable_ops.ResourceVariable(3.0)
@@ -2186,6 +2288,7 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose(216.0, g[0].eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGradInCond(self):
 
     with self.cached_session():
@@ -2203,6 +2306,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
   @test_util.disable_control_flow_v2("b/116340060")
+  @test_util.run_v1_only("b/120545219")
   def testGradInWhileWrtInitialLoopVal(self):
     with self.cached_session():
       x = array_ops.placeholder(dtypes.float32, shape=(), name="x")
@@ -2220,6 +2324,7 @@ class ControlFlowTest(test.TestCase):
           "loop invariants or wrt the input parameters to the loop body."):
         control_flow_ops.while_loop(lambda i, x: i < 3, body, [0, y])
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGradInWhile(self):
     with self.cached_session():
       n = ops.convert_to_tensor(1.0, name="n")
@@ -2236,6 +2341,7 @@ class ControlFlowTest(test.TestCase):
                                       [tensor_shape.unknown_shape()])
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
 
+  @test_util.run_v1_only("b/120545219")
   def testCondGradInNestedWhiles(self):
 
     def outer_body(i, x):
@@ -2250,9 +2356,52 @@ class ControlFlowTest(test.TestCase):
     i, x = control_flow_ops.while_loop(lambda i, x: i < 3, outer_body, [0, 0.0])
 
     with self.cached_session() as sess:
-      i_val, x_val = sess.run([i, x])
+      i_val, x_val = self.evaluate([i, x])
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
+
+  def testNestedResourceAccess(self):
+    var = resource_variable_ops.ResourceVariable(constant_op.constant(3.0))
+
+    @eager_function.defun
+    def test_fn():
+      x = constant_op.constant(0.0)
+      r = control_flow_ops.while_loop(
+          # Outer loop condition
+          lambda i, y: i < 2,
+          # Outer loop body
+          lambda i, y: (i + 1, y + control_flow_ops.cond(
+              constant_op.constant(True),
+              # True branch
+              lambda: control_flow_ops.while_loop(
+                  # Inner loop condition
+                  lambda j, z: j < 3,
+                  # Inner loop body
+                  lambda j, z: (j + 1, z + math_ops.square(var)),
+                  # Inner initial loop value
+                  [0, y])[1],
+              # False branch
+              lambda: (0.0))),
+          # Outer initial loop value
+          [0, x])[1]
+
+      grad = gradients_impl.gradients(r, x)[0]
+      return r, grad
+
+    self.evaluate(variables.global_variables_initializer())
+    r, grad = self.evaluate(test_fn())
+    # 2 * 3 * 3^2
+    self.assertEqual(r, 81.0)
+    # v1 control flow gets the wrong answer!!!
+    # Gradient computation:
+    #   f(x) = x + 3^2
+    #   inner_loop(x) = f(f(f(x))) = x + 3*3^2 = x + 27
+    #   g(x) = x + inner_loop(x) = 2x + 27
+    #   outer_loop(x) = g(g(x)) = 4x + 81
+    #   outer_loop'(x) = 4
+    # Note that v1 control flow gets 4.0 as well if the cond is removed.
+    if control_flow_util.ENABLE_CONTROL_FLOW_V2:
+      self.assertEqual(grad, 4.0)
 
   def testWhile_NestedInput(self):
     with self.cached_session() as sess:
@@ -2279,8 +2428,9 @@ class ControlFlowTest(test.TestCase):
 
       r_flattened = nest.flatten(r)
       self.assertEqual([100.0, 1.0, 102.0, 3.0, 4.0 + 100 * 2.0],
-                       sess.run(r_flattened))
+                       self.evaluate(r_flattened))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhile_NestedBadArityFails(self):
     with self.cached_session():
       named = collections.namedtuple("named", ("a", "b"))
@@ -2297,6 +2447,7 @@ class ControlFlowTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, "the same number of elements"):
         control_flow_ops.while_loop(c, b, loop_vars)
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_ys_xs(self):
     with self.cached_session():
       x = constant_op.constant(3.0, name="x")
@@ -2320,6 +2471,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients([rx], y)
       self.assertAllClose(120.0, r[0].eval())
 
+  @test_util.run_deprecated_v1
   def testWhileGrad_Dependency(self):
     with self.cached_session():
       i = constant_op.constant(0, name="i")
@@ -2340,6 +2492,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(1024.0, r[0].eval())
 
   @test_util.disable_control_flow_v2("b/116355153 (back_prop flag)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_NoGradient(self):
     with self.cached_session():
       v = constant_op.constant(2.0, name="v")
@@ -2351,6 +2504,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(1.0, r[0].eval())
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_NoDependency(self):
     with self.cached_session() as sess:
       variable = variables.Variable(array_ops.ones([2, 3]))
@@ -2371,6 +2525,7 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose(np.ones([2, 3]), sess.run(grad[0]))
 
+  @test_util.run_deprecated_v1
   def testWhileGrad_Const(self):
     with self.cached_session() as sess:
       c0 = constant_op.constant(0.0, name="c0")
@@ -2390,6 +2545,7 @@ class ControlFlowTest(test.TestCase):
       grad = gradients_impl.gradients(cost, [c0])
       self.assertAllClose(0.0, sess.run(grad[0]))
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_SerialTwoLoops(self):
     with self.cached_session():
       i = constant_op.constant(0, name="i")
@@ -2408,6 +2564,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients([rx], x)
       self.assertAllClose(1024.0, r[0].eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_ParallelTwoLoops(self):
     with self.cached_session():
       i = constant_op.constant(0, name="i")
@@ -2427,6 +2584,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients([rx], x)
       self.assertAllClose(64.0, r[0].eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_OneOutputWithControlDependencyOnSecond(self):
     with self.cached_session():
       i = constant_op.constant(0, name="i")
@@ -2465,10 +2623,12 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(8.0, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
   def testNestedWhileGrad_Simple(self):
     self._testNestedWhileGrad_Simple(use_gpu=False)
     self._testNestedWhileGrad_Simple(use_gpu=True)
 
+  @test_util.run_v1_only("b/120545219")
   def testNestedWhileGrad_SerialInner(self):
     with self.cached_session():
       v = constant_op.constant(1.0)
@@ -2492,6 +2652,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(256.0, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
   def testNestedWhileGrad_ParallelInner(self):
     with self.cached_session():
       v = constant_op.constant(1.0)
@@ -2515,6 +2676,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(512.0, self.evaluate(r))
 
+  @test_util.run_v1_only("b/120545219")
   def testNestedWhileGrad_ParallelIterations(self):
     # Make sure the stack pushes and pops of an inner loop are executed in
     # the sequential order of the iterations of its outer loop.
@@ -2554,11 +2716,13 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(1024.0, self.evaluate(r))
 
   @test_util.disable_control_flow_v2("b/117519152")
+  @test_util.run_deprecated_v1
   def testWhileCondGrad_Simple(self):
     self._testWhileCondGrad_Simple(use_gpu=False)
     self._testWhileCondGrad_Simple(use_gpu=True)
 
   @test_util.disable_control_flow_v2("b/117276490")
+  @test_util.run_deprecated_v1
   def testWhileCondGrad_UnknownShape(self):
     with self.cached_session() as sess:
       v = array_ops.placeholder(dtypes.float32)
@@ -2576,6 +2740,7 @@ class ControlFlowTest(test.TestCase):
       r = sess.run(r, feed_dict={v: 2.0})
       self.assertAllClose(1024.0, r)
 
+  @test_util.run_deprecated_v1
   def testWhileGrad_Concat(self):
     with self.cached_session() as sess:
       x = variable_scope.get_variable("x", initializer=[[1., 2.]])
@@ -2593,13 +2758,15 @@ class ControlFlowTest(test.TestCase):
           [i0.get_shape(), tensor_shape.TensorShape([None, 2])])
       s = math_ops.reduce_sum(h)
 
-      self.evaluate(variables.global_variables_initializer())
       optimizer = gradient_descent.GradientDescentOptimizer(0.01)
       op = optimizer.minimize(s)
-      sess.run(op)
+
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(op)
       self.assertAllClose([[0.98000002, 1.98000002]], self.evaluate(x))
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileWithRefsWithGradients_1(self):
     with self.cached_session() as sess:
       x = variables.VariableV1(0.)._ref()  # pylint: disable=protected-access
@@ -2629,6 +2796,7 @@ class ControlFlowTest(test.TestCase):
     self.assertEqual(73, value_x_grad)
 
   @test_util.disable_control_flow_v2("b/116282023 (IndexedSlices)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_IndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -2651,6 +2819,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
   @test_util.disable_control_flow_v2("b/116328420 (SparseTensor)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileGrad_SparseTensor(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -2674,6 +2843,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(np.array([1024.0, 1024.0]), self.evaluate(r))
 
   @test_util.disable_control_flow_v2("b/115920078 (gradients)")
+  @test_util.run_v1_only("b/120545219")
   def testCallGradInLoop(self):
     with self.cached_session() as sess:
       i0 = constant_op.constant(0)
@@ -2693,6 +2863,7 @@ class ControlFlowTest(test.TestCase):
           c, b, [i0, constant_op.constant(0.0)])
       self.assertAllClose(600.0, self.evaluate(output_grad)[1])
 
+  @test_util.run_deprecated_v1
   def testWhileAndTensorArray(self):
     with self.cached_session() as sess:
       param = constant_op.constant(2.0)
@@ -2712,6 +2883,7 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, param)[0]
       self.assertAllClose(107520.0, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
   def testWhileGrad_StopGrad(self):
     with self.cached_session():
       x = constant_op.constant(3.0, name="x")
@@ -2755,6 +2927,8 @@ class ControlFlowTest(test.TestCase):
           math_ops.add(array_ops.stop_gradient(rx), ry), y)[0]
       self.assertEqual(32.0, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
+  @test_util.disable_control_flow_v2("b/118712257")
   def testWhileGrad_StopGradInside(self):
     with self.cached_session():
       x = constant_op.constant(3.0, name="x")
@@ -2774,6 +2948,8 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(rx, x)[0]
       self.assertAllClose(156.0, self.evaluate(r))
 
+  @test_util.run_deprecated_v1
+  @test_util.disable_control_flow_v2("b/118712257")
   def testWhileGrad_StopGradInsideNoShape(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
@@ -2795,9 +2971,10 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose([156.0, 400.0], sess.run(r, feed_dict=feed_dict))
       name = "gradients/while/stopped_grad"
       all_ops = x.graph.get_operations()
-      self.assertFalse(any([name in op.name for op in all_ops]))
+      self.assertFalse(any(name in op.name for op in all_ops))
 
   @test_util.disable_control_flow_v2("b/117954949")
+  @test_util.run_deprecated_v1
   def testWhileGradGradFail(self):
     theta = variables.Variable(initial_value=1.)
 
@@ -2806,12 +2983,13 @@ class ControlFlowTest(test.TestCase):
 
     result = functional_ops.scan(fn, np.array([1., 2., 3.], dtype=np.float32))
     grad_theta = gradients_impl.gradients(result, theta)
-    if not control_flow_ops.ENABLE_WHILE_V2:
+    if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
       with self.assertRaisesRegexp(TypeError, "Second-order gradient"):
         gradients_impl.gradients(grad_theta, theta)
     grad_theta_stopped = array_ops.stop_gradient(grad_theta)
     gradients_impl.gradients(grad_theta_stopped, theta)
 
+  @test_util.run_deprecated_v1
   def testStopGradOnWhileGrad(self):
     with self.cached_session():
       x = constant_op.constant(2.0, name="x")
@@ -2829,6 +3007,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(388.0, self.evaluate(r))
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_deprecated_v1
   def testWhileGradientWithNontrainablePath1(self):
     q = variables.Variable([7., 8.])
 
@@ -2847,6 +3026,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose([0., 0.], self.evaluate(dy_dq))
 
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
+  @test_util.run_v1_only("b/120545219")
   def testWhileGradientWithNontrainablePath2(self):
     q = variables.Variable([7., 8.])
 
@@ -2865,6 +3045,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose([1., 1.], self.evaluate(dy_dq))
 
   @test_util.disable_control_flow_v2("b/115920078 (gradients)")
+  @test_util.run_v1_only("b/120545219")
   def testIssue16504(self):
     c = constant_op.constant(np.arange(100), dtype=dtypes.float32)
     w = variables.Variable(
@@ -2888,6 +3069,7 @@ class ControlFlowTest(test.TestCase):
     grad, = gradients_impl.gradients(w, c)
     self.assertIsNotNone(grad)
 
+  @test_util.run_v1_only("b/120545219")
   def testStopGradMultiFlows(self):
     with self.cached_session():
 
@@ -2914,6 +3096,7 @@ class ControlFlowTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertEqual(5.0, self.evaluate(result))
 
+  @test_util.run_v1_only("b/120545219")
   def testOneValueCond(self):
 
     with self.cached_session():
@@ -2930,6 +3113,7 @@ class ControlFlowTest(test.TestCase):
       # False case: c = 0 is not >= 1
       self.assertEqual([2], i.eval(feed_dict={c: 0}))
 
+  @test_util.run_deprecated_v1
   def testExampleCond(self):
 
     with self.cached_session():
@@ -2946,6 +3130,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose(4.0, i.eval(feed_dict={d: 1}))
       self.assertAllClose(2.0 * math.sqrt(2), i.eval(feed_dict={d: 2}))
 
+  @test_util.run_v1_only("b/120545219")
   def testCase(self):
     with self.cached_session():
       x = constant_op.constant(1)
@@ -2998,6 +3183,7 @@ class ControlFlowTest(test.TestCase):
 
       self.assertAllEqual(r6.eval(), 0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCaseSideEffects(self):
     with self.cached_session() as sess:
       v0 = variables.Variable(-1)
@@ -3019,21 +3205,22 @@ class ControlFlowTest(test.TestCase):
           ((x > y, a), (x > y, b)), default=c, exclusive=True)
 
       variables.global_variables_initializer().run()
-      self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
+      self.assertAllEqual(self.evaluate([v0, v1, v2]), [-1] * 3)
       self.assertEqual(2, self.evaluate(r2))
-      self.assertAllEqual(sess.run([v0, v1, v2]), [-1, -1, 2])
+      self.assertAllEqual(self.evaluate([v0, v1, v2]), [-1, -1, 2])
 
       variables.global_variables_initializer().run()
-      self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
+      self.assertAllEqual(self.evaluate([v0, v1, v2]), [-1] * 3)
       self.assertEqual(1, self.evaluate(r1))
-      self.assertAllEqual(sess.run([v0, v1, v2]), [-1, 1, -1])
+      self.assertAllEqual(self.evaluate([v0, v1, v2]), [-1, 1, -1])
 
       variables.global_variables_initializer().run()
-      self.assertAllEqual(sess.run([v0, v1, v2]), [-1] * 3)
+      self.assertAllEqual(self.evaluate([v0, v1, v2]), [-1] * 3)
       self.assertEqual(0, self.evaluate(r0))
-      self.assertAllEqual(sess.run([v0, v1, v2]), [0, -1, -1])
+      self.assertAllEqual(self.evaluate([v0, v1, v2]), [0, -1, -1])
 
   @test_util.disable_control_flow_v2("b/113324949 (ref vars)")
+  @test_util.run_v1_only("b/120545219")
   def testOneOpCond(self):
     with self.cached_session():
       v = variables.Variable(0)
@@ -3062,6 +3249,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(2, i.eval(feed_dict={c.name: 0}))
       self.assertEqual(2, self.evaluate(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testWithOpsDependencies(self):
     with self.cached_session() as sess:
       v = variables.VariableV1(0.0)
@@ -3069,7 +3257,7 @@ class ControlFlowTest(test.TestCase):
 
       # Fetching v directly will result in an uninitialized error
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
-        sess.run([c, v])
+        self.evaluate([c, v])
 
       # Use a control dependency to ensure init_variable is run
       # while asking for c
@@ -3077,7 +3265,7 @@ class ControlFlowTest(test.TestCase):
           name="real_tensor",
           output_tensor=v._ref(),  # pylint: disable=protected-access
           dependencies=[v.initializer])
-      c_val, real_v_val = sess.run([c, real_v])
+      c_val, real_v_val = self.evaluate([c, real_v])
 
     # Ensure the result of 'real_c' is the same as 'c'
     self.assertAllEqual(10, c_val)
@@ -3085,6 +3273,7 @@ class ControlFlowTest(test.TestCase):
     # Ensure that 'v' is initialized
     self.assertAllClose(0.0, real_v_val)
 
+  @test_util.run_v1_only("b/120545219")
   def testWithTensorDependencies(self):
     with self.cached_session():
       v = variables.VariableV1(0.0)
@@ -3111,6 +3300,7 @@ class ControlFlowTest(test.TestCase):
       # Ensure that 'v' is initialized
       self.assertAllClose(0.0, self.evaluate(v))
 
+  @test_util.run_v1_only("b/120545219")
   def testWithIndexedSlicesDependencies(self):
     with self.cached_session():
       v = variables.VariableV1(
@@ -3157,6 +3347,7 @@ class ControlFlowTest(test.TestCase):
         self.assertDeviceEqual("", with_vdef_dep.device)
         self.assertEqual([b"loc:@vdef"], with_vdef_dep.op.colocation_groups())
 
+  @test_util.run_v1_only("b/120545219")
   def testGroup(self):
     with self.cached_session() as sess:
       v1 = variables.VariableV1([0.0])
@@ -3170,17 +3361,19 @@ class ControlFlowTest(test.TestCase):
 
       # Runs "init" before fetching v1 and v2.
       init.run()
-      v1_val, v2_val = sess.run([v1, v2])
+      v1_val, v2_val = self.evaluate([v1, v2])
 
     # Ensure that v1 and v2 are initialized
     self.assertAllClose([0.0], v1_val)
     self.assertAllClose([1.0], v2_val)
 
+  @test_util.run_v1_only("b/120545219")
   def testGroupEmpty(self):
     op = control_flow_ops.group()
     self.assertEqual(op.type, "NoOp")
     self.assertEqual(op.control_inputs, [])
 
+  @test_util.run_deprecated_v1
   def testMergeShapes(self):
     # All inputs unknown.
     p1 = array_ops.placeholder(dtypes.float32)
@@ -3235,6 +3428,7 @@ class ControlFlowTest(test.TestCase):
     self.assertEqual([None, None], m.get_shape().as_list())
     self.assertEqual([], index.get_shape())
 
+  @test_util.run_v1_only("b/120545219")
   def testRefSelect(self):
     index = array_ops.placeholder(dtypes.int32)
 
@@ -3268,6 +3462,7 @@ class ControlFlowTest(test.TestCase):
     s = control_flow_ops.ref_select(index, [v1, v2])
     self.assertEqual(None, s.get_shape())
 
+  @test_util.run_deprecated_v1
   def testRunLoopTensor(self):
     with self.cached_session() as sess:
       tensor_list = []
@@ -3288,6 +3483,7 @@ class ControlFlowTest(test.TestCase):
       with self.assertRaises(ValueError):
         sess.run(tensor_list[0])
 
+  @test_util.run_v1_only("b/120545219")
   def testWhilePyFuncBasic(self):
 
     def func(x):
@@ -3301,6 +3497,7 @@ class ControlFlowTest(test.TestCase):
           [tensor_shape.unknown_shape(), tensor_shape.unknown_shape()])
       self.assertEqual(r[1].eval(), 65536.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileFuncBasic(self):
 
     @function.Defun(dtypes.float32)
@@ -3314,25 +3511,26 @@ class ControlFlowTest(test.TestCase):
           [constant_op.constant(0), x],
           [tensor_shape.unknown_shape(),
            tensor_shape.unknown_shape()])
+      grad = gradients_impl.gradients(r, x)[0]
       self.assertEqual(r[1].eval(), 65536.0)
-
-      r = gradients_impl.gradients(r, x)[0]
-      self.assertEqual(r.eval(), 524288.0)
+      self.assertEqual(grad.eval(), 524288.0)
       # while_v2 does not have stacks.
-      if not control_flow_ops.ENABLE_WHILE_V2:
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
         self.assertEqual(
             len([op for op in x.graph.get_operations() if op.type == "StackV2"
                 ]), 1)
 
 
+  @test_util.run_v1_only("b/120545219")
   def testQIntSwitchMerge(self):
     with self.cached_session(force_gpu=test.is_gpu_available()) as sess:
       constant_qint = constant_op.constant(np.array([42]), dtypes.qint8)
       cond = constant_op.constant(True, dtypes.bool)
       v_f, v_t = control_flow_ops.switch(constant_qint, cond)
       result = control_flow_ops.merge([v_f, v_t])
-      sess.run(result)
+      self.evaluate(result)
 
+  @test_util.run_v1_only("b/120545219")
   def testQIntRefSwitchMerge(self):
     with self.cached_session(use_gpu=test.is_gpu_available()) as sess:
       var_qint = gen_state_ops.variable(
@@ -3344,8 +3542,18 @@ class ControlFlowTest(test.TestCase):
       cond = constant_op.constant(True, dtypes.bool)
       v_f, v_t = control_flow_ops.ref_switch(var_qint, cond)
       result = control_flow_ops.ref_merge([v_f, v_t])
-      sess.run(result)
+      self.evaluate(result)
 
+  @test_util.run_v1_only("b/120545219")
+  def testUInt64SwitchMerge(self):
+    with self.cached_session(force_gpu=test.is_gpu_available()) as sess:
+      constant_uint64 = constant_op.constant(np.array([42]), dtypes.uint64)
+      cond = constant_op.constant(True, dtypes.bool)
+      v_f, v_t = control_flow_ops.switch(constant_uint64, cond)
+      result = control_flow_ops.merge([v_f, v_t])
+      self.evaluate(result)
+
+  @test_util.run_deprecated_v1
   def testQIntArgAndRet(self):
 
     @function.Defun(dtypes.qint8)
@@ -3355,7 +3563,7 @@ class ControlFlowTest(test.TestCase):
     with self.cached_session(force_gpu=test.is_gpu_available()) as sess:
       qint = constant_op.constant(np.array([42]), dtypes.qint8)
       result = func(qint)
-      sess.run(result)
+      self.evaluate(result)
 
 
 class ControlFlowContextCheckTest(test.TestCase):
@@ -3384,6 +3592,7 @@ class ControlFlowContextCheckTest(test.TestCase):
         math_ops.less(1, 2), true_fn, lambda: constant_op.constant(0))
     return cond_tensor[0]
 
+  @test_util.run_v1_only("b/120545219")
   def testInvalidContext(self):
     # Accessing a while loop tensor outside of control flow is illegal.
     while_tensor = self._getWhileTensor()
@@ -3393,6 +3602,7 @@ class ControlFlowContextCheckTest(test.TestCase):
         "is in a while loop. See info log for more details."):
       math_ops.add(1, while_tensor)
 
+  @test_util.run_v1_only("b/120545219")
   def testInvalidContextInCond(self):
     # Accessing a while loop tensor in cond is illegal.
     while_tensor = self._getWhileTensor()
@@ -3405,6 +3615,7 @@ class ControlFlowContextCheckTest(test.TestCase):
           math_ops.less(1, 2), lambda: math_ops.add(1, while_tensor),
           lambda: constant_op.constant(0))
 
+  @test_util.run_v1_only("b/120545219")
   def testInvalidContextInWhile(self):
     # Accessing a while loop tensor in a different while loop is illegal.
     while_tensor = self._getWhileTensor()
@@ -3439,6 +3650,7 @@ class ControlFlowContextCheckTest(test.TestCase):
 
     control_flow_ops.cond(math_ops.less(1, 2), branch_fn, branch_fn)
 
+  @test_util.run_v1_only("b/120545219")
   def testValidWhileContext(self):
     # Accessing a tensor in a nested while is OK.
     def body(_):
@@ -3447,6 +3659,7 @@ class ControlFlowContextCheckTest(test.TestCase):
 
     control_flow_ops.while_loop(lambda i: i < 5, body, [0])
 
+  @test_util.run_v1_only("b/120545219")
   def testValidNestedContexts(self):
     # Accessing a tensor from a cond context in a while context, all inside an
     # outer while context, is OK.
@@ -3461,6 +3674,7 @@ class ControlFlowContextCheckTest(test.TestCase):
 
     control_flow_ops.while_loop(lambda i: i < 5, body, [0])
 
+  @test_util.run_v1_only("b/120545219")
   def testInvalidNestedContexts(self):
     # Accessing a tensor from a while context in a different while context, all
     # inside a cond context, is illegal.
@@ -3479,6 +3693,7 @@ class ControlFlowContextCheckTest(test.TestCase):
 
 class TupleTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testTensors(self):
     for v1_first in [True, False]:
       with self.cached_session():
@@ -3509,6 +3724,7 @@ class TupleTest(test.TestCase):
           self.assertAllClose([30.0], self.evaluate(t2))
           self.assertAllClose([1.0], self.evaluate(v1))
 
+  @test_util.run_v1_only("b/120545219")
   def testIndexedSlices(self):
     for v1_first in [True, False]:
       with self.cached_session():
@@ -3564,6 +3780,7 @@ class TupleTest(test.TestCase):
 
 class AssertTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGuardedAssertDoesNotCopyWhenTrue(self):
     with self.session(use_gpu=True) as sess:
       with ops.device(test.gpu_device_name()):
@@ -3679,11 +3896,11 @@ class WhileOpBenchmark(test.Benchmark):
 
       for _ in xrange(3):
         # exclude warm up time
-        sess.run(r)
+        self.evaluate(r)
 
       start_time = time.time()
       for _ in xrange(num_iters):
-        sess.run(r)
+        self.evaluate(r)
       return (time.time() - start_time) / num_iters
 
   def benchmarkWhileOpCrossDevicePlacement(self):
@@ -3759,6 +3976,7 @@ class EagerTest(test.TestCase):
           isum(tensor, maximum_iterations=3).numpy(),
           [1 + 3, 2 + 3, 3 + 3, 4 + 3, 5 + 3])
 
+  @test_util.run_v1_only("b/120545219")
   def testWhileWithMaximumIterationsAndSingleArgument(self):
     with context.eager_mode():
       tensor = constant_op.constant(0)
@@ -3781,6 +3999,7 @@ class EagerTest(test.TestCase):
       self.assertAllEqual(t1.numpy(), tup1.numpy())
       self.assertAllEqual(t2.numpy(), tup2.numpy())
 
+  @test_util.run_v1_only("b/120545219")
   def testCase(self):
     with context.eager_mode():
       x = constant_op.constant(1)

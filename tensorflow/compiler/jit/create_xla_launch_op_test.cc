@@ -59,8 +59,9 @@ class CreateXlaLaunchOpTest : public ::testing::Test {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 1});
+    std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices_));
+        options, "/job:localhost/replica:0/task:0", &devices));
 
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) {
@@ -69,7 +70,7 @@ class CreateXlaLaunchOpTest : public ::testing::Test {
     lib_def_ = absl::make_unique<FunctionLibraryDefinition>(
         OpRegistry::Global(), proto);
     OptimizerOptions opts;
-    device_mgr_ = absl::make_unique<DeviceMgr>(devices_);
+    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
     pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
         device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
         opts, /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
@@ -77,7 +78,6 @@ class CreateXlaLaunchOpTest : public ::testing::Test {
   }
 
   FunctionLibraryRuntime* flr_;
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;

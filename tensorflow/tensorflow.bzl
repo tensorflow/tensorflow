@@ -203,8 +203,12 @@ def if_override_eigen_strong_inline(a):
         "//conditions:default": [],
     })
 
-def if_not_tx2_llvm_or_windows_cuda(a):
-    return if_not_windows_cuda(a)
+def if_nccl(a):
+    return select({
+        "//tensorflow:no_nccl_support": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": a,
+    })
 
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
@@ -2028,3 +2032,6 @@ register_extension_info(
     extension_name = "cc_library_with_android_deps",
     label_regex_for_dep = "{extension_name}",
 )
+
+def tensorflow_opensource_extra_deps():
+    return []

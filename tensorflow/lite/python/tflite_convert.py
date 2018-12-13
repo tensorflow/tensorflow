@@ -25,7 +25,6 @@ import sys
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.platform import app
 
 
@@ -39,6 +38,27 @@ def _parse_set(values):
   if values is not None:
     return set([item for item in values.split(",") if item])
   return None
+
+
+def _parse_inference_type(value, flag):
+  """Converts the inference type to the value of the constant.
+
+  Args:
+    value: str representing the inference type.
+    flag: str representing the flag name.
+
+  Returns:
+    tf.dtype.
+
+  Raises:
+    ValueError: Unsupported value.
+  """
+  if value == "FLOAT":
+    return lite_constants.FLOAT
+  if value == "QUANTIZED_UINT8":
+    return lite_constants.QUANTIZED_UINT8
+  raise ValueError("Unsupported value for --{0}. Only FLOAT and "
+                   "QUANTIZED_UINT8 are supported.".format(flag))
 
 
 def _get_toco_converter(flags):
@@ -101,10 +121,11 @@ def _convert_model(flags):
   # Create converter.
   converter = _get_toco_converter(flags)
   if flags.inference_type:
-    converter.inference_type = _types_pb2.IODataType.Value(flags.inference_type)
+    converter.inference_type = _parse_inference_type(flags.inference_type,
+                                                     "inference_type")
   if flags.inference_input_type:
-    converter.inference_input_type = _types_pb2.IODataType.Value(
-        flags.inference_input_type)
+    converter.inference_input_type = _parse_inference_type(
+        flags.inference_input_type, "inference_input_type")
   if flags.output_format:
     converter.output_format = _toco_flags_pb2.FileFormat.Value(
         flags.output_format)
@@ -115,7 +136,7 @@ def _convert_model(flags):
 
     # In quantized inference, mean_value has to be integer so that the real
     # value 0.0 is exactly representable.
-    if flags.inference_type == lite_constants.QUANTIZED_UINT8:
+    if converter.inference_type == lite_constants.QUANTIZED_UINT8:
       mean_values = _parse_array(flags.mean_values, type_fn=int)
     else:
       mean_values = _parse_array(flags.mean_values, type_fn=float)
@@ -156,7 +177,7 @@ def _convert_model(flags):
 
   if flags.post_training_quantize:
     converter.post_training_quantize = flags.post_training_quantize
-    if flags.inference_type == lite_constants.QUANTIZED_UINT8:
+    if converter.inference_type == lite_constants.QUANTIZED_UINT8:
       print("--post_training_quantize quantizes a graph of inference_type "
             "FLOAT. Overriding inference type QUANTIZED_UINT8 to FLOAT.")
       converter.inference_type = lite_constants.FLOAT

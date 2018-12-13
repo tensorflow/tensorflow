@@ -1,6 +1,6 @@
 path: "tensorflow.distribute.StrategyExtended"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.distribute.DistributionStrategyExtended\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.DistributionStrategyExtended\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "experimental_between_graph"

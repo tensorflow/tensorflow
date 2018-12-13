@@ -18,147 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
+
+from tensorflow.python.client import session as session_lib
+from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-
-
-class TrainingUtilTest(test.TestCase):
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_convert_to_iterator_single_numpy(self):
-    batch_size = 2
-    a = np.ones([10, 10])
-    iterator, steps_per_epoch = training_utils.convert_to_iterator(
-        x=a, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
-
-    expected_batch = a[:batch_size, :]
-    actual_batch, = iterator.get_next()
-    self.assertAllEqual(expected_batch, actual_batch)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_convert_to_iterator_single_tensor(self):
-    batch_size = 2
-    a = ops.convert_to_tensor(np.ones([10, 10]))
-    iterator, steps_per_epoch = training_utils.convert_to_iterator(
-        x=a, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
-
-    expected_batch = a[:batch_size, :]
-    actual_batch, = iterator.get_next()
-    self.assertAllEqual(expected_batch, actual_batch)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_convert_to_iterator_y(self):
-    batch_size = 2
-    a = np.ones([10, 100])
-    b = np.ones([10, 10])
-    iterator, steps_per_epoch = training_utils.convert_to_iterator(
-        x=a, y=b, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
-
-    expected_x = a[:batch_size, :]
-    expected_y = b[:batch_size, :]
-    actual_x, actual_y = iterator.get_next()
-    self.assertAllEqual(expected_x, actual_x)
-    self.assertAllEqual(expected_y, actual_y)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_convert_to_iterator_sample_weights(self):
-    batch_size = 2
-    a = ops.convert_to_tensor(np.ones([10, 100]))
-    b = ops.convert_to_tensor(np.ones([10, 10]))
-    sw = ops.convert_to_tensor(np.ones([10]))
-    iterator, steps_per_epoch = training_utils.convert_to_iterator(
-        x=a, y=b, sample_weights=sw, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
-
-    expected_x = a[:batch_size, :]
-    expected_y = b[:batch_size, :]
-    expected_sw = sw[:batch_size]
-    actual_x, actual_y, actual_sw = iterator.get_next()
-    self.assertAllEqual(expected_x, actual_x)
-    self.assertAllEqual(expected_y, actual_y)
-    self.assertAllEqual(expected_sw, actual_sw)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_convert_to_iterator_nested(self):
-    batch_size = 2
-    x = {'1': np.ones([10, 100]), '2': [np.zeros([10, 10]), np.ones([10, 20])]}
-    iterator, steps_per_epoch = training_utils.convert_to_iterator(
-        x=x, batch_size=batch_size)
-    self.assertEquals(steps_per_epoch, 5)
-
-    expected_x1 = x['1'][:batch_size, :]
-    expected_x2_0 = x['2'][0][:batch_size, :]
-    expected_x2_1 = x['2'][1][:batch_size, :]
-
-    actual_x, = iterator.get_next()
-    actual_x1 = actual_x['1'][:batch_size, :]
-    actual_x2_0 = actual_x['2'][0][:batch_size, :]
-    actual_x2_1 = actual_x['2'][1][:batch_size, :]
-
-    self.assertAllEqual(expected_x1, actual_x1)
-    self.assertAllEqual(expected_x2_0, actual_x2_0)
-    self.assertAllEqual(expected_x2_1, actual_x2_1)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_convert_to_iterator_epochs(self):
-    batch_size = 2
-    a = np.ones([10, 10])
-    iterator, steps_per_epoch = training_utils.convert_to_iterator(
-        x=a, batch_size=batch_size, epochs=2)
-    self.assertEquals(steps_per_epoch, 5)
-
-    expected_batch = a[:batch_size, :]
-    # loop through one whole epoch
-    for _ in range(6):
-      actual_batch, = iterator.get_next()
-    self.assertAllEqual(expected_batch, actual_batch)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_convert_to_iterator_insufficient_info(self):
-    # with batch_size and steps_per_epoch not set
-    with self.assertRaises(ValueError):
-      a = np.ones([10, 10])
-      _ = training_utils.convert_to_iterator(x=a)
-
-  def test_nested_all(self):
-    nested_data = {'a': True, 'b': [True, True, (False, True)]}
-    all_true = training_utils._nested_all(nested_data, lambda x: x)
-    self.assertEquals(all_true, False)
-
-    nested_data = {'a': True, 'b': [True, True, (True, True)]}
-    all_true = training_utils._nested_all(nested_data, lambda x: x)
-    self.assertEquals(all_true, True)
-
-  def test_nested_any(self):
-    nested_data = [False, {'a': False, 'b': (False, True)}]
-    any_true = training_utils._nested_any(nested_data, lambda x: x)
-    self.assertEquals(any_true, True)
-
-    nested_data = [False, {'a': False, 'b': (False, False)}]
-    any_true = training_utils._nested_any(nested_data, lambda x: x)
-    self.assertEquals(any_true, False)
-
-  def test_check_array_lengths(self):
-    training_utils.check_array_lengths(None, None, None)
-    a_np = np.random.random((4, 3, 3))
-    training_utils.check_array_lengths(a_np, a_np, a_np)
-    training_utils.check_array_lengths(
-        [a_np, a_np], [a_np, a_np], [a_np, a_np])
-    training_utils.check_array_lengths([None], [None], [None])
-
-    b_np = np.random.random((3, 4))
-    with self.assertRaises(ValueError):
-      training_utils.check_array_lengths([a_np], [b_np], None)
+from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import save as save_lib
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 
 
 class ModelInputsTest(test.TestCase):
@@ -166,28 +49,28 @@ class ModelInputsTest(test.TestCase):
   def test_single_thing(self):
     a = np.ones(10)
     model_inputs = training_utils.ModelInputs(a)
-    self.assertEquals(['input_1'], model_inputs.get_input_names())
+    self.assertEqual(['input_1'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals))
     vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
-    self.assertEquals(1, len(vals))
+    self.assertEqual(1, len(vals))
     self.assertTrue(tensor_util.is_tensor(vals[0]))
 
   def test_single_thing_eager(self):
     with context.eager_mode():
       a = np.ones(10)
       model_inputs = training_utils.ModelInputs(a)
-      self.assertEquals(['input_1'], model_inputs.get_input_names())
+      self.assertEqual(['input_1'], model_inputs.get_input_names())
       val = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(val))
       vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
-      self.assertEquals(1, len(vals))
+      self.assertEqual(1, len(vals))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
 
   def test_list(self):
     a = [np.ones(10), np.ones(20)]
     model_inputs = training_utils.ModelInputs(a)
-    self.assertEquals(['input_1', 'input_2'], model_inputs.get_input_names())
+    self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals[0]))
     self.assertTrue(tensor_util.is_tensor(vals[1]))
@@ -196,7 +79,7 @@ class ModelInputsTest(test.TestCase):
     with context.eager_mode():
       a = [np.ones(10), np.ones(20)]
       model_inputs = training_utils.ModelInputs(a)
-      self.assertEquals(['input_1', 'input_2'], model_inputs.get_input_names())
+      self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[1]))
@@ -204,7 +87,7 @@ class ModelInputsTest(test.TestCase):
   def test_dict(self):
     a = {'b': np.ones(10), 'a': np.ones(20)}
     model_inputs = training_utils.ModelInputs(a)
-    self.assertEquals(['a', 'b'], model_inputs.get_input_names())
+    self.assertEqual(['a', 'b'], model_inputs.get_input_names())
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals['a']))
     self.assertTrue(tensor_util.is_tensor(vals['b']))
@@ -213,11 +96,174 @@ class ModelInputsTest(test.TestCase):
     with context.eager_mode():
       a = {'b': np.ones(10), 'a': np.ones(20)}
       model_inputs = training_utils.ModelInputs(a)
-      self.assertEquals(['a', 'b'], model_inputs.get_input_names())
+      self.assertEqual(['a', 'b'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['a']))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['b']))
 
+
+class TraceModelCallTest(keras_parameterized.TestCase):
+
+  def _assert_all_close(self, expected, actual):
+    if not context.executing_eagerly():
+      with self.cached_session() as sess:
+        K._initialize_variables(sess)
+        self.assertAllClose(expected, actual)
+    else:
+      self.assertAllClose(expected, actual)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_trace_model_outputs(self):
+    input_dim = 5 if testing_utils.get_model_type() == 'functional' else None
+    model = testing_utils.get_small_mlp(10, 3, input_dim)
+    inputs = array_ops.ones((8, 5))
+
+    if input_dim is None:
+      with self.assertRaisesRegexp(ValueError,
+                                   'input shapes have not been set'):
+        training_utils.trace_model_call(model)
+      model._set_inputs(inputs)
+
+    fn = training_utils.trace_model_call(model)
+    signature_outputs = fn(inputs)
+    expected_outputs = {model.output_names[0]: model(inputs)}
+
+    self._assert_all_close(expected_outputs, signature_outputs)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_trace_model_outputs_after_fitting(self):
+    input_dim = 5 if testing_utils.get_model_type() == 'functional' else None
+    model = testing_utils.get_small_mlp(10, 3, input_dim)
+    model.compile(optimizer='sgd', loss='mse')
+    model.fit(x=np.random.random((8, 5)),
+              y=np.random.random((8, 3)), epochs=2)
+
+    inputs = array_ops.ones((8, 5))
+
+    fn = training_utils.trace_model_call(model)
+    signature_outputs = fn(inputs)
+    expected_outputs = {model.output_names[0]: model(inputs)}
+
+    self._assert_all_close(expected_outputs, signature_outputs)
+
+  @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
+  @keras_parameterized.run_all_keras_modes
+  def test_trace_multi_io_model_outputs(self):
+    input_dim = 5
+    num_classes = 3
+    num_classes_b = 4
+    input_a = keras.layers.Input(shape=(input_dim,), name='input_a')
+    input_b = keras.layers.Input(shape=(input_dim,), name='input_b')
+
+    dense = keras.layers.Dense(num_classes, name='dense')
+    dense2 = keras.layers.Dense(num_classes_b, name='dense2')
+    dropout = keras.layers.Dropout(0.5, name='dropout')
+    branch_a = [input_a, dense]
+    branch_b = [input_b, dense, dense2, dropout]
+
+    model = testing_utils.get_multi_io_model(branch_a, branch_b)
+
+    input_a_np = np.random.random((10, input_dim)).astype(np.float32)
+    input_b_np = np.random.random((10, input_dim)).astype(np.float32)
+
+    if testing_utils.get_model_type() == 'subclass':
+      with self.assertRaisesRegexp(ValueError,
+                                   'input shapes have not been set'):
+        training_utils.trace_model_call(model)
+
+    model.compile(optimizer='sgd', loss='mse')
+    model.fit(x=[np.random.random((8, input_dim)).astype(np.float32),
+                 np.random.random((8, input_dim)).astype(np.float32)],
+              y=[np.random.random((8, num_classes)).astype(np.float32),
+                 np.random.random((8, num_classes_b)).astype(np.float32)],
+              epochs=2)
+
+    fn = training_utils.trace_model_call(model)
+    signature_outputs = fn([input_a_np, input_b_np])
+    outputs = model([input_a_np, input_b_np])
+    expected_outputs = {model.output_names[0]: outputs[0],
+                        model.output_names[1]: outputs[1]}
+
+    self._assert_all_close(expected_outputs, signature_outputs)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_specify_input_signature(self):
+    model = testing_utils.get_small_sequential_mlp(10, 3, None)
+    inputs = array_ops.ones((8, 5))
+
+    with self.assertRaisesRegexp(ValueError, 'input shapes have not been set'):
+      training_utils.trace_model_call(model)
+
+    fn = training_utils.trace_model_call(
+        model, [tensor_spec.TensorSpec(shape=[None, 5], dtype=dtypes.float32)])
+    signature_outputs = fn(inputs)
+    expected_outputs = {model.output_names[0]: model(inputs)}
+    self._assert_all_close(expected_outputs, signature_outputs)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_subclassed_model_with_input_signature(self):
+
+    class Model(keras.Model):
+
+      def __init__(self):
+        super(Model, self).__init__()
+        self.dense = keras.layers.Dense(3, name='dense')
+
+      @def_function.function(
+          input_signature=[[tensor_spec.TensorSpec([None, 5], dtypes.float32),
+                            tensor_spec.TensorSpec([None], dtypes.float32)]],)
+      def call(self, inputs, *args):
+        x, y = inputs
+        return self.dense(x) + y
+
+    model = Model()
+    fn = training_utils.trace_model_call(model)
+    x = array_ops.ones((8, 5), dtype=dtypes.float32)
+    y = array_ops.ones((3,), dtype=dtypes.float32)
+    expected_outputs = {'output_1': model([x, y])}
+    signature_outputs = fn([x, y])
+    self._assert_all_close(expected_outputs, signature_outputs)
+
+
+def _import_and_infer(save_dir, inputs):
+  """Import a SavedModel into a TF 1.x-style graph and run `signature_key`."""
+  graph = ops.Graph()
+  with graph.as_default(), session_lib.Session() as session:
+    model = loader.load(session, [tag_constants.SERVING], save_dir)
+    signature = model.signature_def[
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+    assert set(inputs.keys()) == set(signature.inputs.keys())
+    feed_dict = {}
+    for arg_name in inputs.keys():
+      feed_dict[graph.get_tensor_by_name(signature.inputs[arg_name].name)] = (
+          inputs[arg_name])
+    output_dict = {}
+    for output_name, output_tensor_info in signature.outputs.items():
+      output_dict[output_name] = graph.get_tensor_by_name(
+          output_tensor_info.name)
+    return session.run(output_dict, feed_dict=feed_dict)
+
+
+class ModelSaveTest(keras_parameterized.TestCase):
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_model_save(self):
+    input_dim = 5
+    model = testing_utils.get_small_mlp(10, 3, input_dim)
+    inputs = array_ops.ones((8, 5))
+
+    if testing_utils.get_model_type() == 'subclass':
+      model._set_inputs(inputs)
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save_lib.save(model, save_dir)
+
+    self.assertAllClose(
+        {model.output_names[0]: model.predict_on_batch(inputs)},
+        _import_and_infer(save_dir, {model.input_names[0]: np.ones((8, 5))}))
 
 if __name__ == '__main__':
   test.main()

@@ -103,7 +103,13 @@ class NcclManager {
   struct NcclStream;
   struct Participant;
 
-  Communicator* GetCommunicator(Collective* collective);
+  // Gets the `Communicator` object that will be used to enqueue NCCL kernels
+  // for `collective`, and returns it via `communicator`.
+  //
+  // This may involve creating CUDA streams and NCCL initialization.  If a NCCL
+  // or CUDA error occurs in the process, this returns an INTERNAL error with
+  // the corresponding NCCL/CUDA error string.
+  Status GetCommunicator(Collective* collective, Communicator** communicator);
 
   void AddParticipant(int num_devices, const string& key,
                       std::unique_ptr<Participant> participant,

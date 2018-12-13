@@ -318,7 +318,7 @@ tf_module {
   }
   member_method {
     name: "reduce_std"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "reduce_sum"
@@ -326,7 +326,7 @@ tf_module {
   }
   member_method {
     name: "reduce_variance"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "rint"
@@ -342,7 +342,7 @@ tf_module {
   }
   member_method {
     name: "scalar_mul"
-    argspec: "args=[\'scalar\', \'x\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'scalar\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "segment_max"

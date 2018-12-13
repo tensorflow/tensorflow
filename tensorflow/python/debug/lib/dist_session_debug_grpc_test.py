@@ -44,6 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
+@test_util.run_v1_only("b/120545219")
 class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
   """Test the debugging of distributed sessions."""
 
@@ -131,8 +132,8 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     with session.Session(
         config=self.session_config, graph=graph,
         target=self.server_target) as sess:
-      self.evaluate(self.a.initializer)
-      self.evaluate(self.b.initializer)
+      sess.run(self.a.initializer)
+      sess.run(self.b.initializer)
 
       run_options = config_pb2.RunOptions()
       debug_utils.watch_graph(
@@ -198,8 +199,8 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     with session.Session(
         config=self.session_config, graph=graph,
         target=self.server_target) as sess:
-      self.evaluate(self.a.initializer)
-      self.evaluate(self.b.initializer)
+      sess.run(self.a.initializer)
+      sess.run(self.b.initializer)
 
       def watch_fn(feeds, fetch_keys):
         del feeds, fetch_keys

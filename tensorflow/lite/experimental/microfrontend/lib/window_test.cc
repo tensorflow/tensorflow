@@ -48,7 +48,8 @@ TEST_F(WindowTest, CheckCoefficients) {
                               3843, 3541, 3145, 2681, 2177, 1664, 1176,
                               743,  391,  144,  16};
   ASSERT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < state.size; ++i) {
+  int i;
+  for (i = 0; i < state.size; ++i) {
     EXPECT_EQ(state.coefficients[i], expected[i]);
   }
 
@@ -64,7 +65,8 @@ TEST_F(WindowTest, CheckResidualInput) {
       &state, kFakeAudioData,
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]), &num_samples_read));
 
-  for (int i = kStepSamples; i < kWindowSamples; ++i) {
+  int i;
+  for (i = kStepSamples; i < kWindowSamples; ++i) {
     EXPECT_EQ(state.input[i - kStepSamples], kFakeAudioData[i]);
   }
 
@@ -84,7 +86,8 @@ TEST_F(WindowTest, CheckOutputValues) {
       0, 1151,   0, -5944, 0, 13311,  0, -21448, 0, 28327, 0, -32256, 0, 32255,
       0, -28328, 0, 21447, 0, -13312, 0, 5943,   0, -1152, 0};
   ASSERT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < state.size; ++i) {
+  int i;
+  for (i = 0; i < state.size; ++i) {
     EXPECT_EQ(state.output[i], expected[i]);
   }
 
@@ -122,7 +125,8 @@ TEST_F(WindowTest, CheckConsecutiveWindow) {
       0, -1152, 0, 5943,   0, -13312, 0, 21447, 0, -28328, 0, 32255, 0, -32256,
       0, 28327, 0, -21448, 0, 13311,  0, -5944, 0, 1151,   0};
   ASSERT_EQ(state.size, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < state.size; ++i) {
+  int i;
+  for (i = 0; i < state.size; ++i) {
     EXPECT_EQ(state.output[i], expected[i]);
   }
 

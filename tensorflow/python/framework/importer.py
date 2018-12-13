@@ -21,6 +21,7 @@ import contextlib
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
@@ -253,7 +254,9 @@ def _ProcessNewOps(graph):
     # Find any device in the list of colocated ops that have a device, if it
     # exists.  We assume that if multiple ops have devices, they refer to the
     # same device.  Otherwise, a runtime error will occur since the colocation
-    # property cannot be guaranteed.
+    # property cannot be guaranteed.  Note in TF2 colocations have been removed
+    # from the public API and will be considered a hint, so there is no runtime
+    # error.
     #
     # One possible improvement is to try to check for compatibility of all
     # devices in this list at import time here, which would require
@@ -262,6 +265,10 @@ def _ProcessNewOps(graph):
       try:
         coloc_op = graph._get_operation_by_name_unsafe(coloc_op_name)  # pylint: disable=protected-access
       except KeyError:
+        # Do not error in TF2 if the colocation cannot be guaranteed
+        if tf2.enabled():
+          continue
+
         raise ValueError('Specified colocation to an op that '
                          'does not exist during import: %s in %s' %
                          (coloc_op_name, op.name))
@@ -435,11 +442,9 @@ def import_graph_def(graph_def,
     _ProcessNewOps(graph)
 
   if graph_def.library and graph_def.library.function:
-    # pylint: disable=protected-access
-    functions = function._from_library(graph_def.library)
+    functions = function.from_library(graph_def.library)
     for f in functions:
       f.add_to_graph(graph)
-    # pylint: enable=protected-access
 
   # Treat input mappings that don't appear in the graph as an error, because
   # they are likely to be due to a typo.

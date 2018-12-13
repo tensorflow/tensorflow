@@ -41,15 +41,13 @@ namespace {
 
 // Internal helper for GetDefaultLayoutForShape and SetToDefaultLayout. Sets
 // minor_to_major to the value that represents the default layout.
-void SetDefaultLayoutToContainer(
-    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-        minor_to_major) {
+void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
   // The default XLA layout is major-to-minor (dim 0 is major).
   // For more information on XLA layouts, see:
   // https://www.tensorflow.org/performance/xla/shapes
   const int64 size = minor_to_major->size();
   for (int64 i = 0; i < size; ++i) {
-    minor_to_major->Set(i, size - 1 - i);
+    (*minor_to_major)[i] = size - 1 - i;
   }
 }
 
@@ -94,9 +92,8 @@ namespace {
 Layout CreateDefaultLayoutForRank(int64 rank) {
   Layout layout;
   layout.set_format(DENSE);
-  tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-      minor_to_major = layout.mutable_minor_to_major();
-  minor_to_major->Resize(rank, 0);
+  std::vector<int64>* minor_to_major = layout.mutable_minor_to_major();
+  minor_to_major->resize(rank, 0);
   SetDefaultLayoutToContainer(minor_to_major);
   return layout;
 }
@@ -139,9 +136,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
     shape->clear_layout();
   } else if (ShapeUtil::IsArray(*shape)) {
     shape->mutable_layout()->set_format(DENSE);
-    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>*
-        minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
-    minor_to_major->Resize(shape->dimensions_size(), 0);
+    auto* minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
+    minor_to_major->resize(shape->dimensions_size(), 0);
     SetDefaultLayoutToContainer(minor_to_major);
   } else {
     // Opaque, token types etc. have no layout.
@@ -210,9 +206,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   }
 
   if (layout.format() == INVALID_FORMAT || !Format_IsValid(layout.format())) {
-    return InvalidArgument(
-        "Layout has an invalid format (%d) in layout {%s}, shape {%s}",
-        layout.format(), layout.ShortDebugString(), shape.ShortDebugString());
+    return InvalidArgument("Layout has an invalid format (%d)",
+                           layout.format());
   }
 
   if (layout.format() == DENSE) {
@@ -316,7 +311,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ bool LayoutUtil::Equal(const Layout& lhs, const Layout& rhs) {
-  return protobuf_util::ProtobufEquals(lhs, rhs);
+  return lhs == rhs;
 }
 
 /* static */ absl::Span<const int64> LayoutUtil::MinorToMajor(
@@ -358,11 +353,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ string LayoutUtil::HumanString(const Layout& layout) {
-  if (IsSparse(layout)) {
-    return absl::StrCat("sparse{", layout.max_sparse_elements(), "}");
-  }
-  CHECK(IsDense(layout));
-  return absl::StrCat("{", absl::StrJoin(layout.minor_to_major(), ","), "}");
+  return layout.ToString();
 }
 
 namespace {
@@ -444,11 +435,6 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   return true;
 }
 
-std::ostream& operator<<(std::ostream& out, const Layout& layout) {
-  out << LayoutUtil::HumanString(layout);
-  return out;
-}
-
 /*static*/ size_t LayoutUtil::Hash(const Layout& layout) {
   using tensorflow::hash;
   using tensorflow::Hash64Combine;
@@ -459,6 +445,13 @@ std::ostream& operator<<(std::ostream& out, const Layout& layout) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
   hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
+
+  for (Tile tile : layout.tiles()) {
+    for (int64 tile_dim : tile.dimensions()) {
+      hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));
+    }
+  }
+  hash_value = Hash64Combine(hash_value, layout.element_size_in_bits());
 
   return hash_value;
 }

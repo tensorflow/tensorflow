@@ -45,6 +45,7 @@ class TensorBuffer;
 class TensorCApi;
 class TensorDescription;
 class TensorProto;
+class Var;
 
 namespace batch_util {
 Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
@@ -581,11 +582,16 @@ class Tensor {
   friend class XlaTensor;             // For access to RefCountIsOne().
   friend class XlaTensorBuffer;  // For access to the private constructor taking
                                  // the buffer
+  friend class Var;
   template <typename Device, typename T>
   friend class AssignVariableOp;  // For access to RefCountIsOne().
   template <typename Device, typename T>
   friend Status PrepareToUpdateVariable(
-      OpKernelContext* ctx, Tensor* tensor);  // For access to RefCountIsOne().
+      OpKernelContext* ctx, Tensor* tensor,
+      bool copy_on_read_mode);  // For access to RefCountIsOne().
+  template <typename Device, typename T>
+  friend Status EnsureSparseVariableAccess(
+      OpKernelContext* ctx, Var* var);  // For access to RefCountIsOne().
   friend Status batch_util::CopyElementToSlice(
       Tensor element, Tensor* parent,
       int64 index);                // For access to RefCountIsOne().
@@ -636,10 +642,15 @@ class Tensor {
 // Interface to access the raw ref-counted data buffer.
 class TensorBuffer : public core::RefCounted {
  public:
+  explicit TensorBuffer(void* data_ptr) : data_(data_ptr) {}
   ~TensorBuffer() override {}
 
   // data() points to a memory region of size() bytes.
-  virtual void* data() const = 0;
+  //
+  // NOTE(mrry): The `data()` method is not virtual for performance reasons.
+  // It can be called multiple times when the contents of a `Tensor` are
+  // accessed, and so making it non-virtual allows the body to be inlined.
+  void* data() const { return data_; }
   virtual size_t size() const = 0;
 
   // If this TensorBuffer is sub-buffer of another TensorBuffer,
@@ -657,6 +668,9 @@ class TensorBuffer : public core::RefCounted {
 
   // Whether this TensorBuffer owns the underlying memory.
   virtual bool OwnsMemory() const { return true; }
+
+ private:
+  void* const data_;
 };
 
 template <typename T>
@@ -874,6 +888,7 @@ inline Tensor::Tensor(Tensor&& other)
 
 class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
  public:
+  using TensorBuffer::TensorBuffer;
   void FillAllocationDescription(AllocationDescription* proto) const final;
 };
 
@@ -884,8 +899,7 @@ template <typename T>
 struct Tensor::ValueAndTensorBuffer {
   class HostScalarTensorBuffer : public Tensor::HostScalarTensorBufferBase {
    public:
-    HostScalarTensorBuffer(void* data) : data_(data) {}
-    void* data() const final { return const_cast<void*>(data_); }
+    HostScalarTensorBuffer(void* data) : HostScalarTensorBufferBase(data) {}
     size_t size() const final { return sizeof(T); }
     TensorBuffer* root_buffer() final { return this; }
 
@@ -904,8 +918,7 @@ struct Tensor::ValueAndTensorBuffer {
     }
 
    private:
-    ~HostScalarTensorBuffer() override { static_cast<T*>(data_)->~T(); }
-    void* const data_;
+    ~HostScalarTensorBuffer() override { static_cast<T*>(data())->~T(); }
   };
 
   T value;

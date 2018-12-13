@@ -1111,7 +1111,7 @@ def validate_inference_rewrite_for_variables(graph):
   Raises:
     RuntimeError: if validation failed.
   """
-  if not any([x.type == "GuaranteeConst" for x in graph.get_operations()]):
+  if not any(x.type == "GuaranteeConst" for x in graph.get_operations()):
     raise RuntimeError(
         "No GuaranteeConst ops found in the graph after running "
         "tpu.rewrite_for_inference(...). Please check that you are using "

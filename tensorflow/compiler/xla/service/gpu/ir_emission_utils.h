@@ -155,6 +155,10 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder);
 
+// Emits code that determines whether the current thread is thread 0 within
+// block 0 of the kernel.
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
+
 }  // namespace gpu
 }  // namespace xla
 

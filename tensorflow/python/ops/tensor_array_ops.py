@@ -20,10 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import os
 import weakref
 
-from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,16 +30,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
-
-
-ENABLE_TENSOR_ARRAY_V2 = (
-    tf2.enabled() or os.getenv("TF_ENABLE_TENSOR_ARRAY_V2") is not None)
 
 
 # _GraphTensorArray accesses many of the hidden generated ops, but is in
@@ -586,7 +581,11 @@ class _GraphTensorArrayV2(object):
 
   def concat(self, name=None):
     """See TensorArray."""
-    raise NotImplementedError("TensorArray.concat")
+    value = list_ops.tensor_list_concat(
+        input_handle=self._flow, element_dtype=self._dtype, name=name)
+    if self._element_shape and self._element_shape[0].dims is not None:
+      value.set_shape([None] + self._element_shape[0].dims[1:])
+    return value
 
   @tf_should_use.should_use_result
   def unstack(self, value, name=None):
@@ -630,7 +629,30 @@ class _GraphTensorArrayV2(object):
   @tf_should_use.should_use_result
   def split(self, value, lengths, name=None):
     """See TensorArray."""
-    raise NotImplementedError("TensorArray.split")
+    with ops.name_scope(name, "TensorArraySplit", [self._flow, value, lengths]):
+      value = ops.convert_to_tensor(value, name="value")
+      lengths_64 = math_ops.to_int64(lengths)
+      if self._infer_shape and not context.executing_eagerly():
+        clengths = tensor_util.constant_value(lengths_64)
+        if value.shape.dims is not None:
+          if clengths is not None and clengths.max() == clengths.min():
+            self._merge_element_shape(
+                tensor_shape.TensorShape([clengths[0]]).concatenate(
+                    value.shape[1:]))
+      flow_out = list_ops.tensor_list_split(
+          tensor=value,
+          lengths=lengths_64,
+          element_shape=self._element_shape[0] if self._element_shape else None,
+          name=name)
+      ta = TensorArray(
+          dtype=self._dtype,
+          handle=self.handle,
+          flow=flow_out,
+          colocate_with_first_write_call=self._colocate_with_first_write_call)
+      ta._infer_shape = self._infer_shape
+      ta._element_shape = self._element_shape
+      ta._colocate_with = self._colocate_with
+      return ta
 
   def size(self, name=None):
     """See TensorArray."""
@@ -986,7 +1008,7 @@ class TensorArray(object):
     if context.executing_eagerly():
       implementation = _EagerTensorArray
     else:
-      if ENABLE_TENSOR_ARRAY_V2:
+      if control_flow_util.ENABLE_CONTROL_FLOW_V2:
         implementation = _GraphTensorArrayV2
       else:
         implementation = _GraphTensorArray

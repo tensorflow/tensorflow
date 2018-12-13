@@ -380,9 +380,9 @@ class Interpreter {
                                TfLiteBufferHandle* buffer_handle,
                                TfLiteDelegate** delegate);
 
-  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+  void SetProfiler(profiling::Profiler* profiler);
 
-  profiling::Profiler* GetProfiler() { return profiler_; }
+  profiling::Profiler* GetProfiler();
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
@@ -422,23 +422,40 @@ class Interpreter {
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
+  // Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
+  // entries. The value pointed to by `first_new_subgraph_index` will be set to
+  // the index of the first new subgraph if `first_new_subgraph_index` is
+  // non-null.
+  // WARNING: This is an experimental API and subject to change.
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr);
+
+  // Return the number of subgraphs in the model.
+  // WARNING: This is an experimental API and subject to change.
+  size_t subgraphs_size() const { return subgraphs_.size(); }
+
+  // Get a pointer to a subgraph if in bounds.
+  // WARNING: This is an experimental API and subject to change.
+  Subgraph* subgraph(int subgraph_index) {
+    if (subgraph_index < 0 ||
+        static_cast<size_t>(subgraph_index) >= subgraphs_size())
+      return nullptr;
+    return &*subgraphs_[subgraph_index];
+  }
+
+  // WARNING: Experimental interface, subject to change
+  Subgraph& primary_subgraph() {
+    return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
+  }
+
+  // WARNING: Experimental interface, subject to change
+  const Subgraph& primary_subgraph() const {
+    return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
+  }
+
  private:
   friend class InterpreterBuilder;
   friend class InterpreterTest;
-
-  Subgraph& primary_subgraph() {
-    return subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
-  }
-
-  const Subgraph& primary_subgraph() const {
-    return subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
-  }
-
-  // Tensors needed by the interpreter. Use `AddTensors` to add more blank
-  // tensor entries. Note, `tensors_.data()` needs to be synchronized to the
-  // `context_` whenever this std::vector is reallocated. Currently this
-  // only happens in `AddTensors()`.
-  // std::vector<TfLiteTensor> tensors_;
 
   // Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -472,14 +489,11 @@ class Interpreter {
 
   bool allow_buffer_handle_output_ = false;
 
-  // Profiler for this interpreter instance.
-  profiling::Profiler* profiler_ = nullptr;
-
   // List of active external contexts.
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
 
   // Subgraphs
-  std::vector<Subgraph> subgraphs_;
+  std::vector<std::unique_ptr<Subgraph>> subgraphs_;
 };
 
 }  // namespace tflite

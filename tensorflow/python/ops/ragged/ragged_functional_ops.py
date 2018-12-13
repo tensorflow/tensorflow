@@ -19,15 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util.tf_export import tf_export
 
 
-def map_inner_values(op, *args, **kwargs):
+@tf_export("ragged.map_flat_values")
+def map_flat_values(op, *args, **kwargs):
   """Applies `op` to the inner values of one or more RaggedTensors.
 
-  Replaces any `RaggedTensor` in `args` or `kwargs` with its `inner_values`
+  Replaces any `RaggedTensor` in `args` or `kwargs` with its `flat_values`
   tensor, and then calls `op`.  Returns a `RaggedTensor` that is constructed
   from the input `RaggedTensor`s' `splits` and the value returned by
   the `op`.
@@ -39,20 +40,20 @@ def map_inner_values(op, *args, **kwargs):
 
   ```python
   >>> rt = ragged.constant([[1, 2, 3], [], [4, 5], [6]])
-  >>> ragged.map_inner_values(tf.ones_like, rt).eval().tolist()
+  >>> ragged.map_flat_values(tf.ones_like, rt).eval().tolist()
   [[1, 1, 1], [], [1, 1], [1]]
-  >>> ragged.map_inner_values(tf.multiply, rt, rt).eval().tolist()
+  >>> ragged.map_flat_values(tf.multiply, rt, rt).eval().tolist()
   [[1, 4, 9], [], [16, 25], [36]]
-  >>> ragged.map_inner_values(tf.add, rt, 5).eval().tolist()
+  >>> ragged.map_flat_values(tf.add, rt, 5).eval().tolist()
   [[6, 7, 8], [], [9, 10], [11]]
   ```
 
   Args:
-    op: The operation that should be applied to the RaggedTensor `inner_values`.
+    op: The operation that should be applied to the RaggedTensor `flat_values`.
       `op` is typically an element-wise operation (such as math_ops.add), but
       any operation that preserves the size of the outermost dimension can be
       used.  I.e., `shape[0]` of the value returned by `op` must match
-      `shape[0]` of the `RaggedTensor`s' `inner_values` tensors.
+      `shape[0]` of the `RaggedTensor`s' `flat_values` tensors.
     *args: Arguments for `op`.
     **kwargs: Keyword arguments for `op`.
 
@@ -66,8 +67,8 @@ def map_inner_values(op, *args, **kwargs):
   # Replace RaggedTensors with their values; and collect the splits tensors
   # from each RaggedTensor.
   nested_splits_lists = []
-  inner_args = _replace_ragged_with_inner_values(args, nested_splits_lists)
-  inner_kwargs = _replace_ragged_with_inner_values(kwargs, nested_splits_lists)
+  inner_args = _replace_ragged_with_flat_values(args, nested_splits_lists)
+  inner_kwargs = _replace_ragged_with_flat_values(kwargs, nested_splits_lists)
   if not nested_splits_lists:
     return op(*args, **kwargs)
 
@@ -75,15 +76,15 @@ def map_inner_values(op, *args, **kwargs):
       ragged_util.assert_splits_match(nested_splits_lists)):
     # Delegate to op, and then compose the result from the transformed values
     # and the splits.
-    return ragged_factory_ops.from_nested_row_splits(
+    return ragged_tensor.RaggedTensor.from_nested_row_splits(
         op(*inner_args, **inner_kwargs), nested_splits_lists[0])
 
 
-def _replace_ragged_with_inner_values(value, nested_splits_lists):
-  """Replace RaggedTensors with their inner_values, and record their splits.
+def _replace_ragged_with_flat_values(value, nested_splits_lists):
+  """Replace RaggedTensors with their flat_values, and record their splits.
 
   Returns a copy of `value`, with any nested `RaggedTensor`s replaced by their
-  `inner_values` tensor.  Looks inside lists, tuples, and dicts.
+  `flat_values` tensor.  Looks inside lists, tuples, and dicts.
 
   Appends each `RaggedTensor`'s `nested_splits` to `nested_splits_lists`.
 
@@ -97,13 +98,13 @@ def _replace_ragged_with_inner_values(value, nested_splits_lists):
   """
   # Base case
   if ragged_tensor.is_ragged(value):
-    value = ragged_factory_ops.convert_to_tensor_or_ragged_tensor(value)
+    value = ragged_tensor.convert_to_tensor_or_ragged_tensor(value)
     nested_splits_lists.append(value.nested_row_splits)
-    return value.inner_values
+    return value.flat_values
 
   # Recursion cases
   def recurse(v):
-    return _replace_ragged_with_inner_values(v, nested_splits_lists)
+    return _replace_ragged_with_flat_values(v, nested_splits_lists)
 
   if isinstance(value, list):
     return [recurse(v) for v in value]

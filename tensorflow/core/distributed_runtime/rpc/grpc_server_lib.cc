@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <vector>
 
 #include "grpc/support/alloc.h"
 #include "grpcpp/grpcpp.h"
@@ -109,6 +110,8 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.compute_pool
 }
 
+void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
+
 Status GrpcServer::Init(
     ServiceInitFunction service_func,
     const RendezvousMgrCreationFunction& rendezvous_mgr_func,
@@ -156,10 +159,12 @@ Status GrpcServer::Init(
   string name_prefix =
       strings::StrCat("/job:", server_def_.job_name(), "/replica:0",
                       "/task:", server_def_.task_index());
-  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
-                                               &master_env_.local_devices));
-  worker_env_.local_devices = master_env_.local_devices;
-  worker_env_.device_mgr = new DeviceMgr(worker_env_.local_devices);
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_RETURN_IF_ERROR(
+      DeviceFactory::AddDevices(sess_opts, name_prefix, &devices));
+  worker_env_.device_mgr = new DeviceMgr(std::move(devices));
+  master_env_.local_devices = worker_env_.device_mgr->ListDevices();
+  worker_env_.local_devices = worker_env_.device_mgr->ListDevices();
   worker_env_.rendezvous_mgr = rendezvous_mgr_func == nullptr
                                    ? new RpcRendezvousMgr(&worker_env_)
                                    : rendezvous_mgr_func(&worker_env_);
@@ -188,6 +193,11 @@ Status GrpcServer::Init(
   builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port),
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIME_MS,
+                             std::numeric_limits<int>::max());
+  builder.AddChannelArgument(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
+                             std::numeric_limits<int>::max());
+
   builder.SetOption(
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
   // Allow subclasses to specify more args to pass to the gRPC server.
