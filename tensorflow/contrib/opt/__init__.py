@@ -23,6 +23,7 @@ from tensorflow.contrib.opt.python.training.adam_gs_optimizer import *
 from tensorflow.contrib.opt.python.training.adamax import *
 from tensorflow.contrib.opt.python.training.addsign import *
 from tensorflow.contrib.opt.python.training.agn_optimizer import *
+from tensorflow.contrib.opt.python.training.delay_compensated_gradient_descent import *
 from tensorflow.contrib.opt.python.training.drop_stale_gradient_optimizer import *
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
 from tensorflow.contrib.opt.python.training.external_optimizer import *

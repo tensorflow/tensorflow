@@ -18,6 +18,7 @@ py_library(
         "python/training/adamax.py",
         "python/training/addsign.py",
         "python/training/agn_optimizer.py",
+		    "python/training/delay_compensated_gradient_descent.py",
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/elastic_average_optimizer.py",
         "python/training/external_optimizer.py",
@@ -91,6 +92,22 @@ py_test(
         "//third_party/py/numpy",
     ],
 )
+
+py_test(
+    name = "delay_compensated_gradient_descent_test",
+    srcs = ["python/training/delay_compensated_gradient_descent_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//third_party/py/numpy",
+    ],
+)
+
 
 py_test(
     name = "external_optimizer_test",
