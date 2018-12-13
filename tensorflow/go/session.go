@@ -71,6 +71,15 @@ type Device struct {
 	MemoryLimitBytes int64
 }
 
+// String describes d and implements fmt.Stringer.
+func (d Device) String() string {
+	memStr := "no memory limit"
+	if d.MemoryLimitBytes >= 0 {
+		memStr = fmt.Sprintf("memory limit %d bytes", d.MemoryLimitBytes)
+	}
+	return fmt.Sprintf("(Device: name \"%s\", type %s, %s)", d.Name, d.Type, memStr)
+}
+
 // Return list of devices associated with a Session
 func (s *Session) ListDevices() ([]Device, error) {
 	var devices []Device
