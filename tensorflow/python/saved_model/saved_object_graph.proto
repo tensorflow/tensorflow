@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+import "tensorflow/core/protobuf/checkpointable_object_graph.proto";
+
+option cc_enable_arenas = true;
+
+package tensorflow;
+
+// A SavedObjectGraph is part of object-based SavedModels in TF 2.0. It
+// describes the directed graph of Python objects (or equivalent in other
+// languages) that make up a model, with nodes[0] at the root.
+
+// SavedObjectGraph shares some structure with CheckpointableObjectGraph, but
+// ObjectGraph belongs to the SavedModel and contains pointers to functions and
+// type information, while CheckpointableObjectGraph lives in the checkpoint and
+// contains pointers only to variable values.
+
+// NOTE: This protocol buffer format is experimental and subject to change.
+
+message SavedObjectGraph {
+  // List of objects in the SavedModel.
+  //
+  // The position of the object in this list indicates its id.
+  // Nodes[0] is considered the root node.
+  repeated SavedObject nodes = 1;
+}
+
+message SavedObject {
+  // Objects which this object depends on: named edges in the dependency
+  // graph.
+  //
+  // Note: only valid if kind == "object".
+  repeated CheckpointableObjectGraph.CheckpointableObject.ObjectReference
+      children = 1;
+
+  // Removed when forking from CheckpointableObjectGraph.
+  reserved "attributes";
+  reserved 2;
+
+  // Slot variables owned by this object. This describes the three-way
+  // (optimizer, variable, slot variable) relationship; none of the three
+  // depend on the others directly.
+  //
+  // Note: only valid if kind == "object".
+  repeated CheckpointableObjectGraph.CheckpointableObject.SlotVariableReference
+      slot_variables = 3;
+
+  oneof kind {
+    SavedUserObject user_object = 4;
+    SavedAsset asset = 5;
+    SavedPolymorphicFunction function = 6;
+  }
+}
+
+// A SavedUserObject is an object (in the object-oriented language of the
+// TensorFlow program) of some user- or framework-defined class other than
+// those handled specifically by the other kinds of SavedObjects.
+//
+// This object cannot be evaluated as a tensor, and therefore cannot be bound
+// to an input of a function.
+message SavedUserObject {}
+
+// A SavedAsset represents a file in a SavedModel.
+//
+// When bound to a function this object evaluates to a Variable from which the
+// absolute filename can be read. Users should not expect the filename to be
+// maintained.
+message SavedAsset {
+  // Index into `MetaGraphDef.asset_file_def[]` that describes the Asset.
+  //
+  // Only the field `AssetFileDef.filename` is used. Other fields, such as
+  // `AssetFileDef.tensor_info`, MUST be ignored.
+  uint32 asset_file_def_index = 1;
+}
+
+// A function with multiple signatures, possibly with non-Tensor arguments.
+message SavedPolymorphicFunction {
+  repeated SavedMonomorphicFunction monomorphic_function = 1;
+}
+
+message SavedMonomorphicFunction {
+  // A reference to a TensorFlow function in the MetaGraph's FunctionDefLibrary
+  string concrete_function = 1;
+}

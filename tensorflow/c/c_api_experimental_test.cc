@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -171,6 +173,127 @@ TEST(CAPI_EXPERIMENTAL, IsStateful) {
   int id = TF_OpIsStateful("Identity", status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   EXPECT_EQ(id, 0);
+}
+
+TEST(CAPI_EXPERIMENTAL, TFE_ExecuteOpInNewThreadTest_Simple) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+
+  TFE_Op* matmul_op = MatMulOp(ctx, m, m);
+
+  TFE_TensorHandle* retvals[1] = {nullptr};
+  int num_retvals = 1;
+
+  auto* r =
+      TFE_ExecuteOpInNewThread(matmul_op, &retvals[0], &num_retvals, status);
+
+  TFE_ExecuteOpNotificationWaitAndDelete(r, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  float product[4] = {0};
+  EXPECT_EQ(sizeof(product), TF_TensorByteSize(t));
+  memcpy(&product[0], TF_TensorData(t), TF_TensorByteSize(t));
+  TF_DeleteTensor(t);
+  EXPECT_EQ(7, product[0]);
+  EXPECT_EQ(10, product[1]);
+  EXPECT_EQ(15, product[2]);
+  EXPECT_EQ(22, product[3]);
+
+  TFE_DeleteOp(matmul_op);
+  TFE_DeleteTensorHandle(m);
+
+  TFE_DeleteTensorHandle(retvals[0]);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+}
+
+// Perform a send/recv test. Recv blocks, so they need to be executed
+// asynchronously.
+TEST(CAPI_EXPERIMENTAL, TFE_ExecuteOpInNewThreadTest_Blocking) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  // Returns a 2x2 float32 Tensor on the CPU, with data 1., 2., 3., 4.
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+
+  // Build a send op.
+  TFE_Op* send_op = TFE_NewOp(ctx, "_Send", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(send_op, m, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  string tensor_name = "Tensor";
+  TFE_OpSetAttrType(send_op, "T", TF_FLOAT);
+  TFE_OpSetAttrString(send_op, "tensor_name", tensor_name.c_str(),
+                      tensor_name.size());
+  string send_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+  TFE_OpSetAttrString(send_op, "send_device", send_device.c_str(),
+                      send_device.size());
+  TFE_OpSetAttrInt(send_op, "send_device_incarnation", 1234);
+  string recv_device = "/job:localhost/replica:0/task:0/device:CPU:0";
+  TFE_OpSetAttrString(send_op, "recv_device", recv_device.c_str(),
+                      recv_device.size());
+  TFE_OpSetAttrBool(send_op, "client_terminated", true);
+
+  // Build a recv op.
+  TFE_Op* recv_op = TFE_NewOp(ctx, "_Recv", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_OpSetAttrType(recv_op, "tensor_type", TF_FLOAT);
+  TFE_OpSetAttrString(recv_op, "tensor_name", tensor_name.c_str(),
+                      tensor_name.size());
+  TFE_OpSetAttrString(recv_op, "send_device", send_device.c_str(),
+                      send_device.size());
+  TFE_OpSetAttrInt(recv_op, "send_device_incarnation", 1234);
+  TFE_OpSetAttrString(recv_op, "recv_device", recv_device.c_str(),
+                      recv_device.size());
+  TFE_OpSetAttrBool(recv_op, "client_terminated", true);
+
+  TFE_TensorHandle* send_retvals;
+  int send_num_retvals = 0;
+  auto* send_result = TFE_ExecuteOpInNewThread(send_op, &send_retvals,
+                                               &send_num_retvals, status);
+
+  TFE_TensorHandle* recv_retvals[1] = {nullptr};
+  int recv_num_retvals = 1;
+  auto* recv_result = TFE_ExecuteOpInNewThread(recv_op, &recv_retvals[0],
+                                               &recv_num_retvals, status);
+
+  TFE_ExecuteOpNotificationWaitAndDelete(send_result, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_ExecuteOpNotificationWaitAndDelete(recv_result, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TF_Tensor* t = TFE_TensorHandleResolve(recv_retvals[0], status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  float product[4] = {0};
+  EXPECT_EQ(sizeof(product), TF_TensorByteSize(t));
+  memcpy(&product[0], TF_TensorData(t), TF_TensorByteSize(t));
+  TF_DeleteTensor(t);
+  EXPECT_EQ(1, product[0]);
+  EXPECT_EQ(2, product[1]);
+  EXPECT_EQ(3, product[2]);
+  EXPECT_EQ(4, product[3]);
+
+  TFE_DeleteOp(send_op);
+  TFE_DeleteOp(recv_op);
+  TFE_DeleteTensorHandle(m);
+
+  TFE_DeleteTensorHandle(recv_retvals[0]);
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
 }
 
 }  // namespace

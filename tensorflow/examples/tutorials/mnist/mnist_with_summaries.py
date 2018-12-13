@@ -183,7 +183,8 @@ def main(_):
   if tf.gfile.Exists(FLAGS.log_dir):
     tf.gfile.DeleteRecursively(FLAGS.log_dir)
   tf.gfile.MakeDirs(FLAGS.log_dir)
-  train()
+  with tf.Graph().as_default():
+    train()
 
 
 if __name__ == '__main__':

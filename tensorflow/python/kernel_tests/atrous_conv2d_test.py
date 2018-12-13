@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_impl
@@ -58,6 +59,7 @@ def _upsample_filters(filters, rate):
 
 class AtrousConv2DTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAtrousConv2DForward(self):
     with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
@@ -82,6 +84,7 @@ class AtrousConv2DTest(test.TestCase):
                 self.assertAllClose(
                     y1.eval(), self.evaluate(y2), rtol=1e-3, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testAtrousSequence(self):
     """Tests optimization of sequence of atrous convolutions.
 
@@ -135,6 +138,7 @@ class AtrousConv2DTest(test.TestCase):
               self.assertAllClose(
                   y1.eval(), self.evaluate(y2), rtol=1e-2, atol=1e-2)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
@@ -162,6 +166,7 @@ class AtrousConv2DTest(test.TestCase):
 
 class AtrousConv2DTransposeTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAtrousConv2DTransposeForward(self):
     with self.session(use_gpu=True):
       # Input: [batch, height, width, input_depth]
@@ -201,6 +206,7 @@ class AtrousConv2DTransposeTest(test.TestCase):
 
 class AtrousDepthwiseConv2DTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAtrousDepthwiseConv2DForward(self):
     strides = [1, 1, 1, 1]
     with self.session(use_gpu=True):

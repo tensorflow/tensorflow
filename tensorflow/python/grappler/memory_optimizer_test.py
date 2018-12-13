@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -37,6 +38,7 @@ from tensorflow.python.training import training as train
 class MemoryOptimizerSwapTest(test.TestCase):
   """Tests the Grappler memory optimizer."""
 
+  @test_util.run_deprecated_v1
   def testNoSwapping(self):
     """Make sure the graph is preserved when there is nothing to swap."""
     a = variables.VariableV1(10, name='a')
@@ -60,6 +62,7 @@ class MemoryOptimizerSwapTest(test.TestCase):
     self.assertEqual(len(graph.node), graph_size)
     self.assertItemsEqual([node.name for node in graph.node], nodes)
 
+  @test_util.run_v1_only('b/120545219')
   def testSimpleSwap(self):
     """Check that the swap annotations are followed."""
     a = variables.VariableV1(10, name='a')

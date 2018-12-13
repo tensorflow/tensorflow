@@ -26,6 +26,7 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import cross_device_utils
@@ -56,9 +57,6 @@ class CollectiveAllReduceStrategyTestBase(
   collective_key_base = 0
 
   def setUp(self):
-    self._run_options = config_pb2.RunOptions()
-    self._run_options.experimental.collective_graph_key = 6
-
     # We use a different key_base for each test so that collective keys won't be
     # reused.
     # TODO(yuefengz, tucker): enable it to reuse collective keys in different
@@ -84,7 +82,8 @@ class CollectiveAllReduceStrategyTestBase(
         instance_key_with_id_start=num_gpus * 10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     distribution.extended._collective_keys = collective_keys
-    distribution.extended._cross_device_ops._collective_keys = collective_keys
+    distribution.extended._cross_device_ops._collective_keys = (
+        collective_keys)
     if task_type and task_id is not None:
       return distribution, 'grpc://' + self._cluster_spec[task_type][
           task_id], session_config
@@ -133,7 +132,7 @@ class CollectiveAllReduceStrategyTestBase(
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
-            g = d.reduce(
+            g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
@@ -145,11 +144,10 @@ class CollectiveAllReduceStrategyTestBase(
       if context.num_gpus() < d.extended._num_gpus_per_worker:
         return True
 
-      sess.run(
-          variables.global_variables_initializer(), options=self._run_options)
+      sess.run(variables.global_variables_initializer())
 
       for i in range(10):
-        b, a = sess.run((before_out, after_out), options=self._run_options)
+        b, a = sess.run((before_out, after_out))
         if i == 0:
           before, = b
         after, = a
@@ -228,17 +226,12 @@ class CollectiveAllReduceStrategyTestBase(
         return array_ops.identity(x)
 
       x = distribution.call_for_each_replica(model_fn)
-      reduced_x = distribution.unwrap(
-          distribution.reduce(
-              reduce_util.ReduceOp.MEAN, x,
-              destinations='/cpu:0'))[0]
+      reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x)
       x = distribution.unwrap(x)[0]
 
-      sess.run(
-          variables.global_variables_initializer(), options=self._run_options)
+      sess.run(variables.global_variables_initializer())
 
-      x_value, reduced_x_value = sess.run([x, reduced_x],
-                                          options=self._run_options)
+      x_value, reduced_x_value = sess.run([x, reduced_x])
       self.assertTrue(
           np.allclose(x_value, reduced_x_value, atol=1e-5),
           msg=('x_value = %r, reduced_x_value = %r' % (x_value,
@@ -249,7 +242,7 @@ class CollectiveAllReduceStrategyTestBase(
                               expected_values):
     distribution, master_target, config = self._get_test_object(
         task_type, task_id, num_gpus)
-    devices = distribution.worker_devices
+    devices = distribution.extended.worker_devices
 
     with ops.Graph().as_default(), \
          self.cached_session(config=config,
@@ -342,6 +335,32 @@ class DistributedCollectiveAllReduceStrategyTest(
     self._test_input_fn_iterator('worker', 1, num_gpus,
                                  input_fn, expected_values)
 
+  def testUpdateConfigProto(self):
+    distribution = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        num_gpus_per_worker=2)
+    distribution.configure(
+        cluster_spec=self._cluster_spec, task_type='worker', task_id=1)
+
+    config_proto = config_pb2.ConfigProto(device_filters=['to_be_overridden'])
+    rewrite_options = config_proto.graph_options.rewrite_options
+    rewrite_options.scoped_allocator_opts.enable_op.append('to_be_removed')
+
+    new_config = distribution.update_config_proto(config_proto)
+
+    # Verify group leader
+    self.assertEqual('/job:worker/replica:0/task:0',
+                     new_config.experimental.collective_group_leader)
+
+    # Verify device filters.
+    self.assertEqual(['/job:worker/task:1'], new_config.device_filters)
+
+    # Verify rewrite options.
+    new_rewrite_options = new_config.graph_options.rewrite_options
+    self.assertEqual(rewriter_config_pb2.RewriterConfig.ON,
+                     new_rewrite_options.scoped_allocator_optimization)
+    self.assertEqual(['CollectiveReduce'],
+                     new_rewrite_options.scoped_allocator_opts.enable_op)
+
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(
     CollectiveAllReduceStrategyTestBase, parameterized.TestCase):
@@ -351,10 +370,6 @@ class DistributedCollectiveAllReduceStrategyTestWithChief(
     """Create a local cluster with 3 workers and 1 chief."""
     cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
         num_workers=3, num_ps=0, has_chief=True)
-
-  def setUp(self):
-    super(DistributedCollectiveAllReduceStrategyTestWithChief, self).setUp()
-    self._run_options.experimental.collective_graph_key = 7
 
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2], required_gpus=1))

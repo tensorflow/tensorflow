@@ -184,12 +184,6 @@ class PartitionedCallOp : public AsyncOpKernel {
             OptimizationPassRegistry::Global()->RunGrouping(
                 OptimizationPassRegistry::POST_PLACEMENT, optimization_options),
             done);
-        OP_REQUIRES_OK_ASYNC(
-            ctx,
-            OptimizationPassRegistry::Global()->RunGrouping(
-                OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
-                optimization_options),
-            done);
 
         Device* cpu_device;
         OP_REQUIRES_OK_ASYNC(
@@ -197,10 +191,19 @@ class PartitionedCallOp : public AsyncOpKernel {
 
         // Run grappler passes on the graph. It is possible that these are
         // optimized by the graph executor already.
-        OP_REQUIRES_OK_ASYNC(ctx,
-                             OptimizeGraph(ctx, fbody->ret_nodes, overlay_lib,
-                                           device_set, cpu_device, &graph),
-                             done);
+        Status optimized = OptimizeGraph(ctx, fbody->ret_nodes, overlay_lib,
+                                         device_set, cpu_device, &graph);
+        if (!optimized.ok()) {
+          LOG(WARNING) << "Grappler optimization failed. Error: "
+                       << optimized.error_message();
+        }
+
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            OptimizationPassRegistry::Global()->RunGrouping(
+                OptimizationPassRegistry::POST_REWRITE_FOR_EXEC,
+                optimization_options),
+            done);
 
         std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
         OP_REQUIRES_OK_ASYNC(
@@ -453,7 +456,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         },
         rendez, std::move(done), std::placeholders::_1);
     auto* refcounted_done = new ReffedStatusCallback(std::move(callback));
-    for (int i = 1; i < handles->size(); ++i) {
+    for (int i = 0; i < handles->size(); ++i) {
       refcounted_done->Ref();
     }
 
@@ -507,6 +510,7 @@ class PartitionedCallOp : public AsyncOpKernel {
             });
       }
     }
+    refcounted_done->Unref();
   }
 
   string UniquifyFunctionName(const FunctionLibraryDefinition* function_library,
@@ -529,6 +533,12 @@ class PartitionedCallOp : public AsyncOpKernel {
     }
 
     tensorflow::grappler::GrapplerItem item;
+
+    // Add all available devices so that inlined function can be placed.
+    for (const Device* d : device_set.devices()) {
+      Status added_device = item.AddDevice(d->name());
+      if (!added_device.ok()) VLOG(3) << added_device.error_message();
+    }
 
     // Add fetches so that the graph can be pruned.
     for (Node* node : ret_nodes) {

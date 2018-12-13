@@ -157,10 +157,12 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
       stream_ptr.get(), Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
+  ExecutableBuildOptions build_options;
+  build_options.mutable_debug_options()->set_xla_hlo_profile(true);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Compile(computation, {&lhs_arg_shape, &rhs_arg_shape},
-                      ExecutableBuildOptions().set_hlo_profile(true)));
+                      build_options));
 
   Executable* executable = local_executable->executable();
   HloExecutionProfile hlo_execution_profile(
@@ -208,7 +210,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, lhs_shape,
                          rhs_shape);
-
+  VLOG(4) << "Profile Output:\n" << profile_output;
   std::vector<string> profile_output_lines =
       absl::StrSplit(profile_output, '\n');
 

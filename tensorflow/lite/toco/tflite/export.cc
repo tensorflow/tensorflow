@@ -126,7 +126,6 @@ OperatorKey::OperatorKey(
     type_ = builtin_ops.at(name);
     return;
   }
-
   // The logic below is all for custom ops or Flex ops.
   is_custom_op_ = true;
   type_ = BuiltinOperator_CUSTOM;

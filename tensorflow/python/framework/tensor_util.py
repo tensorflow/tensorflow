@@ -371,8 +371,10 @@ def _AssertCompatible(values, dtype):
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
 
 
+# pylint: disable=invalid-name
 @tf_export(v1=["make_tensor_proto"])
-def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
+def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
+                      allow_broadcast=False):
   """Create a TensorProto.
 
   Args:
@@ -380,6 +382,8 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     dtype:          Optional tensor_pb2 DataType value.
     shape:          List of integers representing the dimensions of tensor.
     verify_shape:   Boolean that enables verification of a shape of values.
+    allow_broadcast:Boolean that enables allowing scalars and 1 length vector
+        broadcasting. Cannot be true when verify_shape is true.
 
   Returns:
     A `TensorProto`. Depending on the type, it may contain data in the
@@ -416,6 +420,8 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   can not have more elements than what "shape" specifies.
 
   """
+  if allow_broadcast and verify_shape:
+    raise ValueError("allow_broadcast and verify_shape are not both allowed.")
   if isinstance(values, tensor_pb2.TensorProto):
     return values
 
@@ -504,15 +510,22 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     shape_size = np.prod(shape, dtype=np.int64)
     is_same_size = shape_size == nparray.size
 
-    if verify_shape:
-      if not nparray.shape == tuple(shape):
+    if allow_broadcast:
+      if nparray.shape == (1,) or nparray.shape == tuple():
+        pass
+      elif nparray.size != shape_size:
         raise TypeError("Expected Tensor's shape: %s, got %s." %
                         (tuple(shape), nparray.shape))
 
-    if nparray.size > shape_size:
-      raise ValueError(
-          "Too many elements provided. Needed at most %d, but received %d" %
-          (shape_size, nparray.size))
+    else:
+      if verify_shape and nparray.shape != tuple(shape):
+        raise TypeError("Expected Tensor's shape: %s, got %s." %
+                        (tuple(shape), nparray.shape))
+
+      if nparray.size > shape_size:
+        raise ValueError(
+            "Too many elements provided. Needed at most %d, but received %d" %
+            (shape_size, nparray.size))
 
   tensor_proto = tensor_pb2.TensorProto(
       dtype=numpy_dtype.as_datatype_enum,
@@ -560,6 +573,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   append_fn(tensor_proto, proto_values)
 
   return tensor_proto
+# pylint: enable=invalid-name
 
 
 @tf_export("make_ndarray")

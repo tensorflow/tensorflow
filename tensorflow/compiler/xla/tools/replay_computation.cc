@@ -82,13 +82,17 @@ struct Options {
 std::unique_ptr<LocalExecutable> CompileExecutable(const HloSnapshot& module,
                                                    LocalClient* client) {
   XlaComputation computation(module.hlo().hlo_module());
-  std::vector<const Shape*> argument_layouts;
-  for (const auto& param :
+  std::vector<Shape> argument_layouts;
+  argument_layouts.reserve(
+      computation.proto().host_program_shape().parameters_size());
+  std::vector<const Shape*> argument_layout_ptrs;
+  for (const ShapeProto& param :
        computation.proto().host_program_shape().parameters()) {
-    argument_layouts.push_back(&param);
+    argument_layouts.push_back(Shape(param));
+    argument_layout_ptrs.push_back(&argument_layouts.back());
   }
   return client
-      ->Compile(computation, argument_layouts, ExecutableBuildOptions())
+      ->Compile(computation, argument_layout_ptrs, ExecutableBuildOptions())
       .ValueOrDie();
 }
 
@@ -114,7 +118,12 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   std::vector<std::unique_ptr<GlobalData>> global_data_arguments;
   std::vector<const ShapedBuffer*> argument_ptrs;
   if (opts.use_fake_data) {
-    global_data_arguments = MakeFakeArgumentsOrDie(computation, client);
+    // Run fake computations with debug options ignoring XLA_FLAGS.  Users very
+    // likely want XLA_FLAGS only to apply to the "real" computation being run,
+    // not to the fake computations we use for generating arguments.
+    auto debug_opts = DefaultDebugOptionsIgnoringFlags();
+    global_data_arguments =
+        MakeFakeArgumentsOrDie(computation, client, &debug_opts);
     for (const auto& data : global_data_arguments) {
       argument_ptrs.push_back(
           client->GlobalDataToShapedBuffer(data->handle(), /*device_ordinal=*/0)
@@ -149,7 +158,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
               << "--generate_fake_infeed only works if the model has 0 or 1 "
                  "infeed ops, but this one has >= 2.";
           provide_infeed = true;
-          infeed_shape = instruction.shape();
+          infeed_shape = Shape(instruction.shape());
           LOG(INFO) << "Generating fake infeed shape for inferred shape: "
                     << ShapeUtil::HumanString(infeed_shape);
         }
@@ -315,9 +324,10 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
       if (snapshot.has_result()) {
         Literal literal =
             Literal::CreateFromProto(snapshot.result()).ConsumeValueOrDie();
-        fprintf(stdout, "was %s:%s\n",
-                ShapeUtil::HumanString(snapshot.result().shape()).c_str(),
-                literal.ToString().c_str());
+        fprintf(
+            stdout, "was %s:%s\n",
+            ShapeUtil::HumanString(Shape(snapshot.result().shape())).c_str(),
+            literal.ToString().c_str());
       }
     }
   }

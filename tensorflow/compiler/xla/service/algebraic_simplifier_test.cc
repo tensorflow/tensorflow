@@ -27,9 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -42,8 +44,7 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
-
-namespace op = xla::testing::opcode_matchers;
+namespace m = match;
 
 AlgebraicSimplifierOptions::ValidBitcastCallback bitcasting_callback() {
   return [](const Shape&, const Shape&) { return true; };
@@ -77,6 +78,128 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
+}
+
+TEST_F(AlgebraicSimplifierTest, FactorIntegerAddition) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[8] parameter(0)
+      p1 = s32[8] parameter(1)
+      p2 = s32[8] parameter(2)
+      x = s32[8] multiply(p0, p2)
+      y = s32[8] multiply(p1, p2)
+      ROOT sum = s32[8] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MultiplyAnyOrder(
+          m::AddAnyOrder(m::Parameter(0), m::Parameter(1)), m::Parameter(2))));
+}
+
+// A*C + B*C => (A+B)*C if C is a floating-point power of 2.
+TEST_F(AlgebraicSimplifierTest, FactorFpAddition) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      c = f32[] constant(0.125)
+      x = f32[] multiply(p0, c)
+      y = f32[] multiply(p1, c)
+      ROOT sum = f32[] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                  m::ConstantScalar(0.125))));
+}
+
+// A*C + B*C => (A+B)*C if C is a broadcast of a floating-point power of 2.
+TEST_F(AlgebraicSimplifierTest, FactorFpAdditionWithBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      c = f32[] constant(0.125)
+      b = f32[4] broadcast(c), dimensions={}
+      x = f32[4] multiply(p0, b)
+      y = f32[4] multiply(p1, b)
+      ROOT sum = f32[4] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                  m::Broadcast(m::ConstantScalar(0.125)))));
+}
+
+// A*C + B*C => (A+B)*C simplification should not happen if C is not a
+// floating-point power of 2.
+TEST_F(AlgebraicSimplifierTest, FactorFpAdditionNotPowerOf2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      c = f32[] constant(0.3)
+      x = f32[] multiply(p0, c)
+      y = f32[] multiply(p1, c)
+      ROOT sum = f32[] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+// A*C + B*C => (A+B)*C simplification should not happen if A, B, and C are
+// complex numbers.
+TEST_F(AlgebraicSimplifierTest, FactorFpAdditionComplex) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = c64[8] parameter(0)
+      p1 = c64[8] parameter(1)
+      p2 = c64[8] parameter(2)
+      x = c64[8] multiply(p0, p2)
+      y = c64[8] multiply(p1, p2)
+      ROOT sum = c64[8] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
+// A*C + B*C => (A+B)*C simplification is OK if A, B, and C are complex.
+TEST_F(AlgebraicSimplifierTest, FactorFpAdditionBfloat16) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[4] parameter(0)
+      p1 = bf16[4] parameter(1)
+      c = bf16[] constant(0.125)
+      b = bf16[4] broadcast(c), dimensions={}
+      x = bf16[4] multiply(p0, b)
+      y = bf16[4] multiply(p1, b)
+      ROOT sum = bf16[4] add(x, y)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
+                  m::Broadcast(m::ConstantScalar(0.125)))));
 }
 
 // Test that A * 0 is simplified to 0
@@ -197,7 +320,7 @@ TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   HloInstruction* root = m->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Reduce(param, zero));
+  EXPECT_THAT(root, GmockMatch(m::Reduce(m::Parameter(0), m::Op().Is(zero))));
   EXPECT_EQ(root->dimensions(), std::vector<int64>({0, 2, 3}));
 }
 
@@ -219,7 +342,7 @@ TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Add(param0, op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0), m::Constant())));
 }
 
 // Test that [(A + C1) + C2] => [A + (C1 + C2)] for constants C1 and C2.
@@ -245,7 +368,9 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeConstants) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Add(param0, op::Add(constant1, constant2)));
+  EXPECT_THAT(root, GmockMatch(m::Add(
+                        m::Op().Is(param0),
+                        m::Add(m::Op().Is(constant1), m::Op().Is(constant2)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
@@ -303,7 +428,8 @@ TEST_F(AlgebraicSimplifierTest, InlineTrivialMap) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Add(param0, op::Broadcast(zero)));
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0),
+                                      m::Broadcast(m::Op().Is(zero)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
@@ -336,11 +462,11 @@ TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
 
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Broadcast(op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
   EXPECT_EQ(3.14f, root->operand(0)->literal().GetFirstElement<float>());
 }
 
@@ -352,11 +478,11 @@ TEST_F(AlgebraicSimplifierTest, ConstantNotToBroadcast) {
 
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
 }
 
 TEST_F(AlgebraicSimplifierTest, IotaToBroadcast) {
@@ -367,11 +493,11 @@ TEST_F(AlgebraicSimplifierTest, IotaToBroadcast) {
 
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Iota());
+  EXPECT_THAT(root, GmockMatch(m::Iota()));
 }
 
 // Test that A - 0 is simplified to A
@@ -413,7 +539,8 @@ TEST_F(AlgebraicSimplifierTest, SubConstCanonicalization) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Add(param0, op::Negate(constant)));
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0),
+                                      m::Negate(m::Op().Is(constant)))));
 }
 
 // Test that (A/B)/C is simplified to A/(B*C).
@@ -435,13 +562,16 @@ TEST_F(AlgebraicSimplifierTest, LhsDivOfDiv) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Divide(op::Divide(param0, param1), param2));
+              GmockMatch(m::Divide(m::Divide(m::Parameter(0), m::Parameter(1)),
+                                   m::Parameter(2))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Divide(param0, op::Multiply(param1, param2)));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Divide(m::Parameter(0),
+                           m::Multiply(m::Parameter(1), m::Parameter(2)))));
 }
 
 // Test that A/(B/C) is simplified to (A*C)/B.
@@ -462,14 +592,18 @@ TEST_F(AlgebraicSimplifierTest, RhsDivOfDiv) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Divide(param0, op::Divide(param1, param2)));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Divide(m::Parameter(0),
+                           m::Divide(m::Parameter(1), m::Parameter(2)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Divide(op::Multiply(param0, param2), param1));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Divide(m::Multiply(m::Parameter(0), m::Parameter(2)),
+                           m::Parameter(1))));
 }
 
 // Test that (A/B)/(C/D) is simplified to (A*D)/(B*C).
@@ -496,14 +630,16 @@ TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
 
   EXPECT_THAT(
       computation->root_instruction(),
-      op::Divide(op::Divide(param0, param1), op::Divide(param2, param3)));
+      GmockMatch(m::Divide(m::Divide(m::Parameter(0), m::Parameter(1)),
+                           m::Divide(m::Parameter(2), m::Parameter(3)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(
       computation->root_instruction(),
-      op::Divide(op::Multiply(param0, param3), op::Multiply(param1, param2)));
+      GmockMatch(m::Divide(m::Multiply(m::Parameter(0), m::Parameter(3)),
+                           m::Multiply(m::Parameter(1), m::Parameter(2)))));
 }
 
 // Test that A/exp(B) is simplified to A*exp(-B).
@@ -523,13 +659,14 @@ TEST_F(AlgebraicSimplifierTest, DivOfExp) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Divide(param0, op::Exp(param1)));
+              GmockMatch(m::Divide(m::Parameter(0), m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(param0, op::Exp(op::Negate(param1))));
+              GmockMatch(m::Multiply(m::Parameter(0),
+                                     m::Exp(m::Negate(m::Parameter(1))))));
 }
 
 // Test that A/pow(B,C) is simplified to A*pow(B,-C).
@@ -550,14 +687,18 @@ TEST_F(AlgebraicSimplifierTest, DivOfPower) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Divide(param0, op::Power(param1, param2)));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Divide(m::Parameter(0),
+                           m::Power(m::Parameter(1), m::Parameter(2)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(param0, op::Power(param1, op::Negate(param2))));
+              GmockMatch(m::Multiply(
+                  m::Parameter(0),
+                  m::Power(m::Parameter(1), m::Negate(m::Parameter(2))))));
 }
 
 // Test that broadcasting is done on the right step when simplifying A/pow(B,C)
@@ -579,14 +720,18 @@ TEST_F(AlgebraicSimplifierTest, DivOfBroadcastingPower) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Divide(param0, op::Power(param1, param2)));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Divide(m::Parameter(0),
+                           m::Power(m::Parameter(1), m::Parameter(2)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   ASSERT_THAT(computation->root_instruction(),
-              op::Multiply(param0, op::Power(param1, op::Negate(param2))));
+              GmockMatch(m::Multiply(
+                  m::Parameter(0),
+                  m::Power(m::Parameter(1), m::Negate(m::Parameter(2))))));
 }
 
 // A / Const => A * InvertedConst
@@ -608,7 +753,7 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(param0, op::Constant()));
+              GmockMatch(m::Multiply(m::Parameter(0), m::Constant())));
 }
 
 // pow(pow(A, X), Y) => pow(A, X*Y)
@@ -630,8 +775,10 @@ TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
   auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction(),
-              op::Power(base, op::Multiply(exp1, exp2)));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Power(m::Op().Is(base),
+                          m::Multiply(m::Op().Is(exp1), m::Op().Is(exp2)))));
 }
 
 // Don't simplify pow(pow(A, X), Y) => pow(A, X*Y) if X and Y are complex
@@ -794,7 +941,7 @@ TEST_F(AlgebraicSimplifierTest, SelectMakeTuple) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Add(param1, param2));
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(1), m::Parameter(2))));
 }
 
 // Test that exp(A)/exp(B) is simplified to exp(A-B)
@@ -815,14 +962,16 @@ TEST_F(AlgebraicSimplifierTest, ExpDiv) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Divide(op::Exp(param0), op::Exp(param1)));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Divide(m::Exp(m::Parameter(0)), m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Exp(op::Subtract(param0, param1)));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Exp(m::Subtract(m::Parameter(0), m::Parameter(1)))));
 }
 
 // Test that exp(A)*exp(B) is simplified to exp(A+B)
@@ -844,13 +993,14 @@ TEST_F(AlgebraicSimplifierTest, ExpMul) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Exp(param0), op::Exp(param1)));
+              GmockMatch(m::Multiply(m::Exp(m::Parameter(0)),
+                                     m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Exp(op::Add(param0, param1)));
+              GmockMatch(m::Exp(m::Add(m::Parameter(0), m::Parameter(1)))));
 }
 
 // Test that pow(exp(A), B) is simplified to exp(A*B)
@@ -870,13 +1020,14 @@ TEST_F(AlgebraicSimplifierTest, PowExp) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Power(op::Exp(param0), param1));
+              GmockMatch(m::Power(m::Exp(m::Parameter(0)), m::Parameter(1))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Exp(op::Multiply(param0, param1)));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Exp(m::Multiply(m::Parameter(0), m::Parameter(1)))));
 }
 
 // Test that ln(pow(A, B)) is simplified to ln(A)*B
@@ -896,13 +1047,14 @@ TEST_F(AlgebraicSimplifierTest, LnPow) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Log(op::Power(param0, param1)));
+              GmockMatch(m::Log(m::Power(m::Parameter(0), m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(),
-              op::Multiply(op::Log(param0), param1));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Multiply(m::Log(m::Parameter(0)), m::Parameter(1))));
 }
 
 // Test that ln(exp(A)) is simplified to A
@@ -919,7 +1071,8 @@ TEST_F(AlgebraicSimplifierTest, LnExp) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Log(op::Exp(param0)));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Log(m::Exp(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -948,12 +1101,14 @@ TEST_F(AlgebraicSimplifierTest, LnExpDiv) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Log(op::Divide(op::Exp(param0), op::Exp(param1))));
+              GmockMatch(m::Log(m::Divide(m::Exp(m::Parameter(0)),
+                                          m::Exp(m::Parameter(1))))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Subtract(param0, param1));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Subtract(m::Parameter(0), m::Parameter(1))));
 }
 
 // Test that pow(A, 0) where A is a scalar is simplified to the scalar
@@ -971,13 +1126,14 @@ TEST_F(AlgebraicSimplifierTest, Pow0Scalar) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Power(param0, zero));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Power(m::Parameter(0), m::Op().Is(zero))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
   EXPECT_EQ(root->literal().GetFirstElement<float>(), 1);
 }
 
@@ -995,13 +1151,14 @@ TEST_F(AlgebraicSimplifierTest, Pow0Vector) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Power(param0, zero));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Power(m::Parameter(0), m::Op().Is(zero))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Broadcast());
+  EXPECT_THAT(root, GmockMatch(m::Broadcast()));
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), r1f32))
       << ShapeUtil::HumanString(root->shape());
   EXPECT_EQ(root->dimensions().size(), 0);
@@ -1023,7 +1180,8 @@ TEST_F(AlgebraicSimplifierTest, Pow1) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Power(param0, one));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Power(m::Parameter(0), m::Op().Is(one))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1045,12 +1203,14 @@ TEST_F(AlgebraicSimplifierTest, Pow2) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Power(param0, two));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Power(m::Parameter(0), m::Op().Is(two))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Multiply(param0, param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
 // Test that pow(A, -1) is simplified to 1/A.
@@ -1067,13 +1227,14 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Power(param0, negative_one));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Power(m::Parameter(0), m::Op().Is(negative_one))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
-  EXPECT_THAT(root, op::Divide(op::Broadcast(), param0));
+  EXPECT_THAT(root, GmockMatch(m::Divide(m::Broadcast(), m::Parameter(0))));
   EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kBroadcast);
   EXPECT_EQ(root->operand(0)->operand(0)->literal().GetFirstElement<float>(),
             1);
@@ -1116,10 +1277,10 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   m->AddEntryComputation(builder.Build());
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              op::Convolution(lhs, rhs));
+              GmockMatch(m::Convolution(m::Op().Is(lhs), m::Op().Is(rhs))));
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              op::Broadcast(op::Constant()));
+              GmockMatch(m::Broadcast(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
@@ -1158,10 +1319,10 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
   m->AddEntryComputation(builder.Build());
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              op::ReduceWindow(param, op::Constant()));
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              op::Broadcast(op::Constant()));
+              GmockMatch(m::Broadcast(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
@@ -1184,11 +1345,11 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
       padding));
   m->AddEntryComputation(builder.Build());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              op::Pad(param, op::Constant()));
+              GmockMatch(m::Pad(m::Parameter(0), m::Constant())));
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              op::Broadcast(op::Constant()));
+              GmockMatch(m::Broadcast(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
@@ -1209,7 +1370,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
   m->AddEntryComputation(std::move(computation));
 
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              op::Reshape(op::Broadcast(op::Reshape(op))));
+              GmockMatch(m::Reshape(m::Broadcast(m::Reshape(m::Op().Is(op))))));
 
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1228,7 +1389,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Convert(input));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Convert(m::Op().Is(input))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1248,7 +1410,8 @@ TEST_F(AlgebraicSimplifierTest, RemoveCopy) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1269,21 +1432,24 @@ TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
   *copy->mutable_shape()->mutable_layout() =
       LayoutUtil::MakeLayout({1, 2, 0, 3});
   auto computation = m->AddEntryComputation(builder.Build());
-  EXPECT_THAT(computation->root_instruction(), op::Copy(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 
   AlgebraicSimplifierOptions options(non_bitcasting_callback());
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier1(options);
   ASSERT_FALSE(simplifier1.Run(m.get()).ValueOrDie());
   // Verify that the copy is not replaced.
-  EXPECT_THAT(computation->root_instruction(), op::Copy(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 
   AlgebraicSimplifierOptions options2(bitcasting_callback());
   options2.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier2(options2);
   ASSERT_TRUE(simplifier2.Run(m.get()).ValueOrDie());
   // Verify that the copy is replaced.
-  EXPECT_THAT(computation->root_instruction(), op::Bitcast(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Bitcast(m::Parameter(0))));
 }
 
 // Test that unary concatenates are removed.
@@ -1298,7 +1464,8 @@ TEST_F(AlgebraicSimplifierTest, RemoveUnaryConcatenate) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Concatenate(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Concatenate(m::Parameter(0))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1327,15 +1494,17 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(
-      computation->root_instruction(),
-      op::Concatenate(empty_literal, param0, param0, empty_slice, param1));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Concatenate(
+                  m::Op().Is(empty_literal), m::Parameter(0), m::Parameter(0),
+                  m::Op().Is(empty_slice), m::Parameter(1))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Concatenate(param0, param0, param1));
+              GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(0),
+                                        m::Parameter(1))));
 }
 
 // Test that reduce of concat is simplified.
@@ -1383,8 +1552,9 @@ TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
 
   EXPECT_THAT(
       computation->root_instruction(),
-      op::Map(op::Map(op::Reduce(param0, zero), op::Reduce(param1, zero)),
-              op::Reduce(param2, zero)));
+      GmockMatch(m::Map(m::Map(m::Reduce(m::Parameter(0), m::Op().Is(zero)),
+                               m::Reduce(m::Parameter(1), m::Op().Is(zero))),
+                        m::Reduce(m::Parameter(2), m::Op().Is(zero)))));
 }
 
 // Test a concatenate with only empty operands is removed.
@@ -1407,7 +1577,8 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Concatenate(empty_literal, empty_slice));
+              GmockMatch(m::Concatenate(m::Op().Is(empty_literal),
+                                        m::Op().Is(empty_slice))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1434,7 +1605,78 @@ TEST_F(AlgebraicSimplifierTest, ConcatenateOfBroadcastBecomesPad) {
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction(), op::Pad(param0, param1));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Pad(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SimplifyConcatenateOfSlices) {
+  auto m = CreateNewVerifiedModule();
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {100, 99});
+  Shape concat_shape = ShapeUtil::MakeShape(F32, {50, 80});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r2f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r2f32, "param1"));
+
+  HloInstruction* slice0 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{0, 0},
+      /*limit_indices=*/{50, 10}, /*strides=*/{1, 1}));
+
+  // Cannot merge 'slice0' and 'slice1' because of different start indices in
+  // dimension 0.
+  HloInstruction* slice1 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 10},
+      /*limit_indices=*/{100, 20}, /*strides=*/{1, 1}));
+
+  // Cannot merge 'slice1' and 'slice2' because of stride in dimension 2.
+  HloInstruction* slice2 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 20},
+      /*limit_indices=*/{100, 40}, /*strides=*/{1, 2}));
+
+  // Cannot merge 'slice2' and 'slice3' because of stride in dimension 2.
+  HloInstruction* slice3 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 40},
+      /*limit_indices=*/{100, 50}, /*strides=*/{1, 1}));
+
+  // Can merge 'slice3' and 'slice4'.
+  HloInstruction* slice4 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 50},
+      /*limit_indices=*/{100, 60}, /*strides=*/{1, 1}));
+
+  // Can merge 'slice4' and 'slice5'.
+  HloInstruction* slice5 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 60},
+      /*limit_indices=*/{100, 70}, /*strides=*/{1, 1}));
+
+  // Cannot merge 'slice5' and 'slice6' because of overlap.
+  HloInstruction* slice6 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param0, /*start_indices=*/{50, 69},
+      /*limit_indices=*/{100, 79}, /*strides=*/{1, 1}));
+
+  // Cannot merge 'slice6' and 'slice7' because of slicing from a different
+  // parameter.
+  HloInstruction* slice7 = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {50, 10}), param1, /*start_indices=*/{50, 79},
+      /*limit_indices=*/{100, 89}, /*strides=*/{1, 1}));
+
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      concat_shape,
+      {slice0, slice1, slice2, slice3, slice4, slice5, slice6, slice7}, 1));
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  auto s = m::Slice(m::Parameter(0));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Concatenate(s, s, s, s, s, m::Slice(m::Parameter(1)))));
+  // The operand 3 should be a merge of 'slice3', 'slice4' and 'slice5', so its
+  // shape should have dimensions {50, 30}.
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->operand(3)->shape(),
+                       ShapeUtil::MakeShape(F32, {50, 30})));
+  EXPECT_EQ(computation->root_instruction()->operand(3)->slice_starts(1), 40);
 }
 
 // Test that a simplification which changes layouts is not performed if layout
@@ -1454,7 +1696,8 @@ TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {
   *param0->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
   *copy->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({1, 0});
 
-  EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 
   AlgebraicSimplifierOptions options(non_bitcasting_callback());
   options.set_is_layout_sensitive(true);
@@ -1462,7 +1705,8 @@ TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   // Copy has not been removed.
-  EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 }
 
 // Test that a simplification which preserves layouts is performed if layout
@@ -1482,7 +1726,8 @@ TEST_F(AlgebraicSimplifierTest, CopyWithSameLayout) {
   *param0->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
   *copy->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
 
-  EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 
   AlgebraicSimplifierOptions options(non_bitcasting_callback());
   options.set_is_layout_sensitive(true);
@@ -1511,7 +1756,8 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Parameter(0))));
 
   AlgebraicSimplifierOptions options(non_bitcasting_callback());
   options.set_is_layout_sensitive(true);
@@ -1519,7 +1765,8 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   // Reshape is not replaced with a bitcast.
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Parameter(0))));
 }
 
 // Test transforming reshapes and transposes of rng.
@@ -1547,9 +1794,9 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
       (AlgebraicSimplifierOptions(bitcasting_callback())));
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  // Verify that that reshape(transpose(rng)) is replace by a single rng of the
+  // Verify that reshape(transpose(rng)) is replace by a single rng of the
   // same shape as the reshape.
-  EXPECT_THAT(computation->root_instruction(), op::Rng());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Rng()));
   EXPECT_TRUE(ShapeUtil::Equal(computation->root_instruction()->shape(),
                                reshape_shape));
 }
@@ -1591,8 +1838,9 @@ TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Tuple(transformable_reshape, dimensions_wrong_reshape,
-                        layout_wrong_reshape));
+              GmockMatch(m::Tuple(m::Op().Is(transformable_reshape),
+                                  m::Op().Is(dimensions_wrong_reshape),
+                                  m::Op().Is(layout_wrong_reshape))));
 
   AlgebraicSimplifierOptions options(bitcasting_callback());
   options.set_is_layout_sensitive(true);
@@ -1602,7 +1850,8 @@ TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
   // Verify that only the first reshape is replaced.
   EXPECT_THAT(
       computation->root_instruction(),
-      op::Tuple(op::Bitcast(), dimensions_wrong_reshape, layout_wrong_reshape));
+      GmockMatch(m::Tuple(m::Bitcast(), m::Op().Is(dimensions_wrong_reshape),
+                          m::Op().Is(layout_wrong_reshape))));
 }
 
 // Regression test for a bug where if we failed to sink a reshape, we'd set the
@@ -1671,7 +1920,8 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Transpose(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Transpose(m::Parameter(0))));
 
   AlgebraicSimplifierOptions options(bitcasting_callback());
   options.set_is_layout_sensitive(true);
@@ -1679,7 +1929,8 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   // Verify that the reshape is replaced.
-  EXPECT_THAT(computation->root_instruction(), op::Bitcast(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Bitcast(m::Parameter(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
@@ -1699,7 +1950,8 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Transpose(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Transpose(m::Parameter(0))));
 
   AlgebraicSimplifierOptions options(bitcasting_callback());
   options.set_is_layout_sensitive(true);
@@ -1707,7 +1959,8 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   // Verify that the reshape is replaced.
-  EXPECT_THAT(computation->root_instruction(), op::Bitcast(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Bitcast(m::Parameter(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, ReshapesMerged) {
@@ -1727,12 +1980,13 @@ TEST_F(AlgebraicSimplifierTest, ReshapesMerged) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Reshape(param0)));
+              GmockMatch(m::Reshape(m::Reshape(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Parameter(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
@@ -1753,14 +2007,16 @@ TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Copy(op::Copy(param0)));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Copy(m::Parameter(0)))));
 
   AlgebraicSimplifierOptions options(non_bitcasting_callback());
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Copy(m::Parameter(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
@@ -1779,12 +2035,14 @@ TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Transpose(transpose1));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Transpose(m::Op().Is(transpose1))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Transpose(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Transpose(m::Parameter(0))));
   EXPECT_EQ(std::vector<int64>({2, 1, 0}),
             computation->root_instruction()->dimensions());
 }
@@ -1803,12 +2061,13 @@ TEST_F(AlgebraicSimplifierTest, ReshapeAndBroadcastMerged) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Broadcast(op::Reshape(param0)));
+              GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Broadcast(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))));
 }
 
 // Test merging broadcast and reshape.
@@ -1825,12 +2084,13 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshapeMerged) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Broadcast(param0)));
+              GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Broadcast(param0));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x1_3) {
@@ -1846,13 +2106,13 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x1_3) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Broadcast(param)));
+              GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Broadcast(param)));
+              GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4_6x1x1x4) {
@@ -1868,12 +2128,13 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4_6x1x1x4) {
   HloComputation* computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Broadcast(param)));
+              GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Broadcast(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))));
   EXPECT_THAT(computation->root_instruction()->dimensions(),
               ::testing::ElementsAre(3));
 }
@@ -1891,12 +2152,13 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
   HloComputation* computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Broadcast(param)));
+              GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Broadcast(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))));
   const std::vector<int64> broadcast_dims =
       computation->root_instruction()->dimensions();
   EXPECT_EQ(1, broadcast_dims.size());
@@ -1916,13 +2178,13 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {
   HloComputation* computation = m->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Broadcast(param)));
+              GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
-              op::Reshape(op::Broadcast(param)));
+              GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
@@ -1935,12 +2197,13 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
   EXPECT_TRUE(
       ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
 }
@@ -1954,13 +2217,13 @@ TEST_F(AlgebraicSimplifierTest, IotaEffectiveScalar) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   auto root = computation->root_instruction();
-  EXPECT_THAT(root, op::Broadcast(op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
   EXPECT_EQ(0.0f, root->operand(0)->literal().GetFirstElement<float>());
   EXPECT_TRUE(
       ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
@@ -1976,12 +2239,14 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2_6) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
 }
 
 TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4_6x1x1x4) {
@@ -1994,12 +2259,13 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4_6x1x1x4) {
 
   HloComputation* computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
   EXPECT_EQ(Cast<HloIotaInstruction>(computation->root_instruction())
                 ->iota_dimension(),
             3);
@@ -2015,12 +2281,13 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x2_6x1x1x2) {
 
   HloComputation* computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Iota());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
   const int64 iota_dim =
       Cast<HloIotaInstruction>(computation->root_instruction())
           ->iota_dimension();
@@ -2037,12 +2304,14 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4x2_6x8) {
 
   HloComputation* computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
 }
 
 TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
@@ -2065,7 +2334,8 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Pad(param, zero));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
@@ -2109,14 +2379,52 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
     return false;
   };
 
-  EXPECT_THAT(computation->root_instruction(), op::Pad(param, zero));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
   EXPECT_TRUE(has_negative_padding(pad));
 
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Slice(op::Pad(param, zero)));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Pad(m::Parameter(0), m::Op().Is(zero)))));
   EXPECT_FALSE(
       has_negative_padding(computation->root_instruction()->operand(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialInteriorPadding) {
+  // Verify that a pad instruction with interior padding on one-sized
+  // dimensions, removes the interior padding.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {2, 1}), "param"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  PaddingConfig padding;
+  for (int i = 0; i < 2; ++i) {
+    auto dimension = padding.add_dimensions();
+    dimension->set_edge_padding_low(3);
+    dimension->set_edge_padding_high(3);
+    dimension->set_interior_padding(i * 3);
+  }
+  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(F32, {8, 7}), param, zero, padding));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(default_options_);
+
+  ASSERT_THAT(computation->root_instruction(),
+              GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
+  ASSERT_TRUE(HasInteriorPadding(pad->padding_config()));
+
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
+  EXPECT_FALSE(
+      HasInteriorPadding(computation->root_instruction()->padding_config()));
 }
 
 TEST_F(AlgebraicSimplifierTest, RemoveNoopReshape) {
@@ -2130,7 +2438,8 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopReshape) {
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Parameter(0))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
@@ -2152,7 +2461,8 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Slice(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Parameter(0))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
@@ -2180,12 +2490,14 @@ TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Slice(op::Slice(param)));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Slice(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Slice(param));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Parameter(0))));
   EXPECT_EQ(computation->root_instruction()->slice_starts(0), 3);
   EXPECT_EQ(computation->root_instruction()->slice_starts(1), 5);
   EXPECT_EQ(computation->root_instruction()->slice_limits(0), dim0 - 2);
@@ -2211,12 +2523,14 @@ TEST_F(AlgebraicSimplifierTest, SliceOfReshapeToReshapeOfSlice) {
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Slice(op::Reshape(param)));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Reshape(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
-  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Slice(param)));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Slice(m::Parameter(0)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfReshapeUnchanged) {
@@ -2235,7 +2549,8 @@ TEST_F(AlgebraicSimplifierTest, SliceOfReshapeUnchanged) {
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_THAT(computation->root_instruction(), op::Slice(op::Reshape(param)));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Reshape(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
@@ -2276,10 +2591,10 @@ TEST_F(AlgebraicSimplifierTest, ReplacePermutationSortWithScatter) {
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
-              op::Tuple(op::Iota(),
-                        op::Scatter(op::Iota(),
-                                    op::Concatenate(op::Iota(), op::Reshape()),
-                                    op::Reshape())));
+              GmockMatch(m::Tuple(
+                  m::Iota(),
+                  m::Scatter(m::Iota(), m::Concatenate(m::Iota(), m::Reshape()),
+                             m::Reshape()))));
 }
 
 TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortIfNonIntegral) {
@@ -2347,7 +2662,8 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
-              op::Tuple(keys, values0, values1));
+              GmockMatch(m::Tuple(m::Op().Is(keys), m::Op().Is(values0),
+                                  m::Op().Is(values1))));
 }
 
 // Test that A && True is simplified to A
@@ -2649,7 +2965,8 @@ TEST_P(ConvInputPaddingTest, DoTest) {
     ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
     auto* conv = module->entry_computation()->root_instruction();
     SCOPED_TRACE(module->ToString());
-    ASSERT_THAT(conv, op::Convolution(op::Parameter(), op::Parameter()));
+    ASSERT_THAT(conv,
+                GmockMatch(m::Convolution(m::Parameter(), m::Parameter())));
     EXPECT_EQ(window_util::ToString(conv->window()),
               absl::StrCat("size=3x3 ", testcase.expected_conv_window));
   }
@@ -2766,7 +3083,8 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
     ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
     auto* conv = module->entry_computation()->root_instruction();
     SCOPED_TRACE(module->ToString());
-    ASSERT_THAT(conv, op::Convolution(op::Parameter(), op::Parameter()));
+    ASSERT_THAT(conv,
+                GmockMatch(m::Convolution(m::Parameter(), m::Parameter())));
     EXPECT_EQ(window_util::ToString(conv->window()),
               absl::StrFormat("size=%dx%d %s",
                               conv->operand(1)->shape().dimensions(2),
@@ -3038,10 +3356,9 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
 
   // Running simplification again should not result in any further changes.
   ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
-
-  root = computation->root_instruction();
-  EXPECT_THAT(root, op::Broadcast(scalar_param));
-  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), slice_shape));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Broadcast(m::Op().Is(scalar_param))
+                             .WithShapeEqualTo(&slice_shape)));
 }
 
 // Test that reshape(transpose(broadcast(/*scalar value*/))) simplifies to a
@@ -3072,10 +3389,9 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
 
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-
-  root = computation->root_instruction();
-  EXPECT_THAT(root, op::Broadcast(forty_two));
-  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reshape_shape));
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Broadcast(m::Op().Is(forty_two))
+                             .WithShapeEqualTo(&reshape_shape)));
 }
 
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
@@ -3144,7 +3460,8 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 
   // Verify the result
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::ReduceWindow(operand, op::Constant()));
+  EXPECT_THAT(root,
+              GmockMatch(m::ReduceWindow(m::Op().Is(operand), m::Constant())));
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reduce_window_shape))
       << ShapeUtil::HumanString(root->shape()) << " vs "
       << ShapeUtil::HumanString(reduce_window_shape);
@@ -3229,7 +3546,8 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
 
   // Verify the result
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::ReduceWindow(op::Convert(parameter), op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::ReduceWindow(m::Convert(m::Parameter(0)),
+                                               m::Constant())));
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reduce_window_shape))
       << ShapeUtil::HumanString(root->shape()) << " vs "
       << ShapeUtil::HumanString(reduce_window_shape);
@@ -3310,7 +3628,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantTupleBecomesTupleOfConstants) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
-              op::Tuple(op::Constant(), op::Constant()));
+              GmockMatch(m::Tuple(m::Constant(), m::Constant())));
 }
 
 // A dynamic-slice is trivial if its start indices are all zeroes and the size
@@ -3332,7 +3650,7 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
   auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
-  EXPECT_THAT(computation->root_instruction(), op::Parameter());
+  EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Parameter()));
 }
 
 // A dynamic-update-slice is trivial if its start indices are all zeroes and the
@@ -3366,7 +3684,7 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
-              op::DynamicSlice(op::Parameter(), op::Parameter()));
+              GmockMatch(m::DynamicSlice(m::Parameter(), m::Parameter())));
 }
 
 // Test that two consecutive broadcasts can be merged to one.
@@ -3388,7 +3706,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Broadcast(op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
   EXPECT_THAT(root->dimensions(), ElementsAre(2));
 }
 
@@ -3414,7 +3732,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts2) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Broadcast(op::Parameter(0)));
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Parameter(0))));
   EXPECT_THAT(root->dimensions(), ElementsAre(1, 3));
 }
 
@@ -3434,7 +3752,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Iota());
+  EXPECT_THAT(root, GmockMatch(m::Iota()));
   EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
 }
 
@@ -3455,7 +3773,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota2) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
-  EXPECT_THAT(root, op::Iota());
+  EXPECT_THAT(root, GmockMatch(m::Iota()));
   EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
 }
 
@@ -3477,7 +3795,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Reshape(op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadHigh) {
@@ -3498,7 +3816,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadHigh) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Reshape(op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadMidNonScalar) {
@@ -3538,7 +3856,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalar) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Parameter());
+  EXPECT_THAT(root, GmockMatch(m::Parameter()));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfConcatScalarInput) {
@@ -3560,7 +3878,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatScalarInput) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Parameter(1));
+  EXPECT_THAT(root, GmockMatch(m::Parameter(1)));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfConcatNonScalarInput) {
@@ -3582,7 +3900,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatNonScalarInput) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Slice(op::Parameter(2)));
+  EXPECT_THAT(root, GmockMatch(m::Slice(m::Parameter(2))));
   EXPECT_EQ(root->slice_starts(0), 1);
   EXPECT_EQ(root->slice_limits(0), 2);
 }
@@ -3604,7 +3922,7 @@ TEST_F(AlgebraicSimplifierTest, NegateNegate) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Parameter(0));
+  EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
 }
 
 TEST_F(AlgebraicSimplifierTest, NotNot) {
@@ -3624,7 +3942,7 @@ TEST_F(AlgebraicSimplifierTest, NotNot) {
   AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Parameter(0));
+  EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
 }
 
 struct PadReduceWindowEffectiveBroadcastCase {
@@ -3728,10 +4046,10 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
       ShapeUtil::Equal(computation->root_instruction()->shape(), output_shape));
 
   if (param.should_become_broadcast) {
-    EXPECT_THAT(computation->root_instruction(), op::Broadcast(::testing::_));
+    EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Broadcast()));
   } else {
     EXPECT_THAT(computation->root_instruction(),
-                op::ReduceWindow(::testing::_, zero));
+                GmockMatch(m::ReduceWindow(m::Op(), m::Op().Is(zero))));
   }
 }
 
@@ -3885,11 +4203,12 @@ TEST_P(DotOfConcatSimplificationTest, ConstantLHS) {
   EXPECT_TRUE(
       ShapeUtil::Equal(computation->root_instruction()->shape(), dot_shape));
 
-  auto match_dot_0 = op::Dot(op::Slice(op::Constant()), op::Parameter(0));
-  auto match_dot_1 = op::Dot(op::Slice(op::Constant()), op::Parameter(1));
-  auto match_dot_2 = op::Dot(op::Slice(op::Constant()), op::Parameter(2));
-  EXPECT_THAT(computation->root_instruction(),
-              op::Add(op::Add(match_dot_0, match_dot_1), match_dot_2));
+  auto match_dot_0 = m::Dot(m::Slice(m::Constant()), m::Parameter(0));
+  auto match_dot_1 = m::Dot(m::Slice(m::Constant()), m::Parameter(1));
+  auto match_dot_2 = m::Dot(m::Slice(m::Constant()), m::Parameter(2));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Add(m::Add(match_dot_0, match_dot_1), match_dot_2)));
 }
 
 // Test that we transform
@@ -3948,13 +4267,14 @@ TEST_P(DotOfConcatSimplificationTest, ConstantRHS) {
   EXPECT_TRUE(
       ShapeUtil::Equal(computation->root_instruction()->shape(), dot_shape));
 
-  auto match_dot_0 = op::Dot(op::Parameter(0), op::Slice(op::Constant()));
-  auto match_dot_1 = op::Dot(op::Parameter(1), op::Slice(op::Constant()));
-  auto match_dot_2 = op::Dot(op::Parameter(2), op::Slice(op::Constant()));
-  auto match_dot_3 = op::Dot(op::Parameter(3), op::Slice(op::Constant()));
-  EXPECT_THAT(computation->root_instruction(),
-              op::Add(op::Add(op::Add(match_dot_0, match_dot_1), match_dot_2),
-                      match_dot_3));
+  auto match_dot_0 = m::Dot(m::Parameter(0), m::Slice(m::Constant()));
+  auto match_dot_1 = m::Dot(m::Parameter(1), m::Slice(m::Constant()));
+  auto match_dot_2 = m::Dot(m::Parameter(2), m::Slice(m::Constant()));
+  auto match_dot_3 = m::Dot(m::Parameter(3), m::Slice(m::Constant()));
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Add(m::Add(m::Add(match_dot_0, match_dot_1), match_dot_2),
+                        match_dot_3)));
 }
 
 DotOfConcatTestSpec kDotOfConcatTestSpecs[] = {
@@ -4071,8 +4391,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
               HloOpcode::kDynamicSlice);
   } else {
     EXPECT_THAT(computation->root_instruction(),
-                op::DynamicSlice(op::Dot(op::Constant(), op::Constant()),
-                                 op::Concatenate()));
+                GmockMatch(m::DynamicSlice(m::Dot(m::Constant(), m::Constant()),
+                                           m::Concatenate())));
   }
 }
 
@@ -4141,8 +4461,8 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
               HloOpcode::kDynamicSlice);
   } else {
     EXPECT_THAT(computation->root_instruction(),
-                op::DynamicSlice(op::Dot(op::Constant(), op::Constant()),
-                                 op::Concatenate()));
+                GmockMatch(m::DynamicSlice(m::Dot(m::Constant(), m::Constant()),
+                                           m::Concatenate())));
   }
 }
 

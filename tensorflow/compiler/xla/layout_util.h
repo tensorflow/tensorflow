@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -193,8 +195,6 @@ class LayoutUtil {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };
-
-std::ostream& operator<<(std::ostream& out, const Layout& layout);
 
 }  // namespace xla
 

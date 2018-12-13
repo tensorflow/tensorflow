@@ -15,6 +15,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -782,6 +783,97 @@ void ProcessTensorFlowSplitOperator(Model* model, TensorFlowSplitOperator* op) {
 
   CHECK_EQ(op->outputs.size(), op->num_split);
   for (const auto& output : op->outputs) {
+    model->GetArray(output).copy_shape(output_shape);
+  }
+}
+
+void ProcessTensorFlowSplitVOperator(Model* model,
+                                     TensorFlowSplitVOperator* op) {
+  CHECK_EQ(op->inputs.size(), 3);
+
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+  const Shape& input_shape = input_array.shape();
+
+  // Yield until size_splits is constant.
+  if (!IsConstantParameterArray(*model, op->inputs[1])) {
+    return;
+  }
+  const auto& size_array = model->GetArray(op->inputs[1]);
+  // Yield until size_splits dims have been resolved.
+  if (!size_array.has_shape()) {
+    return;
+  }
+  const Shape& size_shape = size_array.shape();
+
+  CHECK(size_array.data_type == ArrayDataType::kInt32 ||
+        size_array.data_type == ArrayDataType::kInt64)
+      << "size_splits must be int32, int64";
+  CHECK_EQ(size_shape.dimensions_count(), 1) << "size_splits must be 1-D";
+
+  std::vector<int64> size_splits_vector;
+  if (size_array.data_type == ArrayDataType::kInt32) {
+    for (const auto each_size :
+         size_array.GetBuffer<ArrayDataType::kInt32>().data) {
+      size_splits_vector.push_back(each_size);
+    }
+  } else {
+    size_splits_vector = size_array.GetBuffer<ArrayDataType::kInt64>().data;
+  }
+
+  // Yield until axis is constant.
+  if (!IsConstantParameterArray(*model, op->inputs[2])) {
+    return;
+  }
+  const auto& axis_array = model->GetArray(op->inputs[2]);
+  // Yield until axis dims have been resolved.
+  if (!axis_array.has_shape()) {
+    return;
+  }
+
+  CHECK(axis_array.data_type == ArrayDataType::kInt32)
+      << "Axis array must be int32.";
+  CHECK_EQ(RequiredBufferSizeForShape(axis_array.shape()), 1)
+      << "Axis array must be scalar.";
+
+  int axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+  if (axis < 0) {
+    axis += input_shape.dimensions_count();
+  }
+
+  CHECK_EQ(op->num_split, size_splits_vector.size());
+
+  int64_t minus_one_count = 0, size_splits_sum = 0;
+  for (auto size : size_splits_vector) {
+    if (size == -1) {
+      ++minus_one_count;
+    } else {
+      size_splits_sum += size;
+    }
+  }
+
+  const int input_size = input_shape.dims(axis);
+
+  CHECK_LE(minus_one_count, 1) << "size_splits can contain at most one -1.";
+
+  if (minus_one_count == 1) {
+    CHECK_LE(size_splits_sum, input_size);
+    auto iter =
+        std::find(size_splits_vector.begin(), size_splits_vector.end(), -1);
+    *iter = input_size - size_splits_sum;
+  } else {
+    CHECK_EQ(size_splits_sum, input_size);
+  }
+
+  CHECK_EQ(op->outputs.size(), op->num_split);
+
+  for (int i = 0; i < op->outputs.size(); ++i) {
+    const auto& output = op->outputs[i];
+    Shape output_shape = input_shape;
+    (*output_shape.mutable_dims())[axis] = size_splits_vector.at(i);
     model->GetArray(output).copy_shape(output_shape);
   }
 }
@@ -1691,6 +1783,51 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
   }
 }
 
+void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  const auto& padding_matrix = model->GetArray(op->inputs[1]);
+
+  // Yield until input dims have been resolved.
+  if (!input_array.has_shape()) {
+    return;
+  }
+
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // If output already computed or padding matrix is non
+  // const then return.
+  if (output_array.has_shape() ||
+      !IsConstantParameterArray(*model, op->inputs[1])) {
+    return;
+  }
+  Shape output_shape = input_array.shape();
+  std::vector<int>& dims = *output_shape.mutable_dims();
+
+  std::vector<int64_t> padding;
+  if (padding_matrix.data_type == ArrayDataType::kInt32) {
+    const auto& data = padding_matrix.GetBuffer<ArrayDataType::kInt32>().data;
+    for (auto elem : data) {
+      padding.push_back(static_cast<int64_t>(elem));
+    }
+  } else if (padding_matrix.data_type == ArrayDataType::kInt64) {
+    const auto& data = padding_matrix.GetBuffer<ArrayDataType::kInt64>().data;
+    for (auto elem : data) {
+      padding.push_back(elem);
+    }
+  } else {
+    CHECK(padding_matrix.data_type == ArrayDataType::kInt64 ||
+          padding_matrix.data_type == ArrayDataType::kInt32);
+  }
+  CHECK_EQ(padding_matrix.shape().dimensions_count(), 2);
+  CHECK_EQ(input_array.shape().dimensions_count(),
+           padding_matrix.shape().dims(0));
+  for (int i = 0; i < input_array.shape().dimensions_count(); ++i) {
+    dims[i] += padding[i * 2] + padding[i * 2 + 1];
+  }
+
+  output_array.copy_shape(output_shape);
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -1707,6 +1844,7 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
   }
 
   switch (op->type) {
+    case OperatorType::kAbs:
     case OperatorType::kBatchNormalization:
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:
@@ -1836,6 +1974,10 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
       ProcessTensorFlowSplitOperator(model,
                                      static_cast<TensorFlowSplitOperator*>(op));
       break;
+    case OperatorType::kSplitV:
+      ProcessTensorFlowSplitVOperator(
+          model, static_cast<TensorFlowSplitVOperator*>(op));
+      break;
     case OperatorType::kSqueeze:
       ProcessSqueezeOperator(model, static_cast<SqueezeOperator*>(op));
       break;
@@ -1957,6 +2099,9 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
       break;
     case OperatorType::kUnpack:
       ProcessUnpackOperator(model, static_cast<UnpackOperator*>(op));
+      break;
+    case OperatorType::kMirrorPad:
+      ProcessMirrorPadOperator(model, static_cast<MirrorPadOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

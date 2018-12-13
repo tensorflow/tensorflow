@@ -19,6 +19,7 @@ from __future__ import print_function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -29,6 +30,7 @@ TIMEOUT = 1
 
 class MapStageTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSimple(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -50,6 +52,7 @@ class MapStageTest(test.TestCase):
         _, yval = sess.run([stage, y], feed_dict={x: i, pi: i + 1, gi: i})
         self.assertAllClose(4 * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
+  @test_util.run_deprecated_v1
   def testMultiple(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -72,6 +75,7 @@ class MapStageTest(test.TestCase):
         self.assertAllClose(
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
+  @test_util.run_deprecated_v1
   def testDictionary(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -121,6 +125,7 @@ class MapStageTest(test.TestCase):
 
     G.finalize()
 
+  @test_util.run_deprecated_v1
   def testPeek(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -148,8 +153,9 @@ class MapStageTest(test.TestCase):
       for i in range(n):
         self.assertTrue(sess.run(peek, feed_dict={gi: i})[0] == i)
 
-      self.assertTrue(self.evaluate(size) == 10)
+      self.assertTrue(sess.run(size) == 10)
 
+  @test_util.run_deprecated_v1
   def testSizeAndClear(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -170,12 +176,13 @@ class MapStageTest(test.TestCase):
 
     with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1, pi: 3})
-      self.assertEqual(self.evaluate(size), 1)
+      self.assertEqual(sess.run(size), 1)
       sess.run(stage, feed_dict={x: -1, pi: 1})
-      self.assertEqual(self.evaluate(size), 2)
+      self.assertEqual(sess.run(size), 2)
       sess.run(clear)
-      self.assertEqual(self.evaluate(size), 0)
+      self.assertEqual(sess.run(size), 0)
 
+  @test_util.run_deprecated_v1
   def testCapacity(self):
     capacity = 3
 
@@ -231,14 +238,15 @@ class MapStageTest(test.TestCase):
                                              capacity))
 
       # Should have capacity elements in the staging area
-      self.assertTrue(self.evaluate(size) == capacity)
+      self.assertTrue(sess.run(size) == capacity)
 
       # Clear the staging area completely
       for i in range(n):
         sess.run(get)
 
-      self.assertTrue(self.evaluate(size) == 0)
+      self.assertTrue(sess.run(size) == 0)
 
+  @test_util.run_deprecated_v1
   def testMemoryLimit(self):
     memory_limit = 512 * 1024  # 512K
     chunk = 200 * 1024  # 256K
@@ -295,14 +303,15 @@ class MapStageTest(test.TestCase):
                                              capacity))
 
       # Should have capacity elements in the staging area
-      self.assertTrue(self.evaluate(size) == capacity)
+      self.assertTrue(sess.run(size) == capacity)
 
       # Clear the staging area completely
       for i in range(n):
         sess.run(get)
 
-      self.assertTrue(self.evaluate(size) == 0)
+      self.assertTrue(sess.run(size) == 0)
 
+  @test_util.run_deprecated_v1
   def testOrdering(self):
     import six
     import random
@@ -332,15 +341,16 @@ class MapStageTest(test.TestCase):
       for i in keys:
         sess.run(stage, feed_dict={pi: i, x: i})
 
-      self.assertTrue(self.evaluate(size) == n)
+      self.assertTrue(sess.run(size) == n)
 
       # Check that key, values come out in ascending order
       for i, k in enumerate(reversed(keys)):
-        get_key, values = self.evaluate(get)
+        get_key, values = sess.run(get)
         self.assertTrue(i == k == get_key == values)
 
-      self.assertTrue(self.evaluate(size) == 0)
+      self.assertTrue(sess.run(size) == 0)
 
+  @test_util.run_deprecated_v1
   def testPartialDictInsert(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -400,6 +410,7 @@ class MapStageTest(test.TestCase):
               'v': 3
           }])
 
+  @test_util.run_deprecated_v1
   def testPartialIndexInsert(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -443,6 +454,7 @@ class MapStageTest(test.TestCase):
       # We can now obtain tuple associated with key 1
       self.assertTrue(sess.run([key, ret], feed_dict={gi: 1}) == [1, [1, 3, 2]])
 
+  @test_util.run_deprecated_v1
   def testPartialDictGetsAndPeeks(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
@@ -540,6 +552,7 @@ class MapStageTest(test.TestCase):
       # Nothing is left
       self.assertTrue(sess.run([size, isize]) == [0, 0])
 
+  @test_util.run_deprecated_v1
   def testPartialIndexGets(self):
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):

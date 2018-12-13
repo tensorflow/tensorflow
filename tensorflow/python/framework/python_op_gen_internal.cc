@@ -804,8 +804,8 @@ void GenPythonOp::AddDocStringOutputs() {
 }
 
 void GenPythonOp::AddBody(const string& prefix) {
-  const string apply_prefix =
-      strings::StrCat(prefix, "_result = _op_def_lib.apply_op(");
+  const string apply_prefix = strings::StrCat(
+      prefix, "_result = _op_def_lib.apply_op(\"", op_def_.name(), "\", ");
   AddBodyNoReturn(apply_prefix);
   if (num_outs_ > 1) {
     strings::StrAppend(&result_, prefix, "_result = _", op_def_.name(),
@@ -815,7 +815,7 @@ void GenPythonOp::AddBody(const string& prefix) {
 }
 
 void GenPythonOp::AddBodyNoReturn(const string& apply_prefix) {
-  string args = strings::StrCat("\"", op_def_.name(), "\", ");
+  string args;
   for (size_t i = 0; i < param_names_.size(); ++i) {
     strings::StrAppend(&args, AvoidPythonReserved(param_names_[i].GetName()),
                        "=", param_names_[i].GetRenameTo(), ", ");

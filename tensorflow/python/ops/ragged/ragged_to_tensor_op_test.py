@@ -24,22 +24,19 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedTensorToTensorOpTest(ragged_test_util.RaggedTensorTestCase,
                                  parameterized.TestCase):
 
   def testDocStringExamples(self):
     """Example from ragged_to_tensor.__doc__."""
     rt = ragged.constant([[9, 8, 7], [], [6, 5], [4]])
-    dt = ragged.to_tensor(rt)
-    with self.test_session():
-      self.assertEqual(str(dt.eval()),
-                       '[[9 8 7]\n'
-                       ' [0 0 0]\n'
-                       ' [6 5 0]\n'
-                       ' [4 0 0]]')  # pyformat: disable
+    dt = rt.to_tensor()
+    self.assertAllEqual(dt, [[9, 8, 7], [0, 0, 0], [6, 5, 0], [4, 0, 0]])
 
   @parameterized.parameters(
       {
@@ -104,15 +101,14 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
                                default=None,
                                expected_shape=None):
     rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
-    dt = ragged.to_tensor(rt, default)
-    self.assertEqual(type(dt), ops.Tensor)
+    dt = rt.to_tensor(default)
+    self.assertIsInstance(dt, ops.Tensor)
     self.assertEqual(rt.dtype, dt.dtype)
     self.assertTrue(dt.shape.is_compatible_with(rt.shape))
-    with self.test_session():
-      self.assertEqual(dt.eval().tolist(), expected)
-      if expected_shape is not None:
-        dt_shape = array_ops.shape(dt)
-        self.assertEqual(dt_shape.eval().tolist(), expected_shape)
+    self.assertAllEqual(self.eval_to_list(dt), expected)
+    if expected_shape is not None:
+      dt_shape = array_ops.shape(dt)
+      self.assertAllEqual(dt_shape, expected_shape)
 
   @parameterized.parameters(
       {
@@ -129,13 +125,13 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
       {
           'rt_input': [[1, 2, 3]],
           'default': 'a',
-          'error': (TypeError, "Expected int32, got 'a' of type 'str' instead"),
+          'error': (TypeError, '.*'),
       },
   )
   def testError(self, rt_input, default, error, ragged_rank=None):
     rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
     with self.assertRaisesRegexp(error[0], error[1]):
-      ragged.to_tensor(rt, default)
+      rt.to_tensor(default)
 
 
 if __name__ == '__main__':

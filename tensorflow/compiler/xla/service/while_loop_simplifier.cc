@@ -526,16 +526,14 @@ static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
   // performance by forcing us to copy constants.
   absl::flat_hash_map<int, const HloInstruction*> index_to_constant;
   for (int i = 0; i < root_operands.size(); i++) {
-    HloInstruction* instr = root_operands[i];
-    if (instr->opcode() == HloOpcode::kGetTupleElement &&
-        instr->tuple_index() == i && instr->operand(0) == while_body_param &&
-        ShapeUtil::IsScalar(instr->shape())) {
-      auto tuple_element = while_init->operand(i);
-      if (tuple_element->IsConstant()) {
-        VLOG(3) << "Found loop invariant tuple element " << i << " "
-                << tuple_element->ToString();
-        index_to_constant[i] = tuple_element;
-      }
+    const HloInstruction* init_tuple_elem = nullptr;
+    if (Match(root_operands[i],
+              m::GetTupleElement(m::Op().Is(while_body_param), i)
+                  .WithShape(m::Shape().IsScalar())) &&
+        Match(while_init->operand(i), m::Constant(&init_tuple_elem))) {
+      VLOG(3) << "Found loop invariant tuple element " << i << " "
+              << init_tuple_elem->ToString();
+      index_to_constant[i] = init_tuple_elem;
     }
   }
 
@@ -793,16 +791,11 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   // Maps the tuple index of each induction variable to its constant increment.
   absl::flat_hash_map<int64, const HloConstantInstruction*> induction_vars;
   for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
-    const auto& elem_shape = while_body_root->operand(i)->shape();
-    if (!ShapeUtil::IsEffectiveScalar(elem_shape) ||
-        elem_shape.element_type() != elem_ty) {
-      continue;
-    }
-
     HloInstruction* constant;
     if (!Match(while_body_root->mutable_operand(i),
                m::AddAnyOrder(m::GetTupleElement(m::Parameter(), i),
-                              m::Constant(&constant)))) {
+                              m::ConstantScalar(&constant))
+                   .WithShape(m::Shape().WithElementType(elem_ty)))) {
       continue;
     }
     if (!trip_counter && constant->literal().IsAll(1) &&

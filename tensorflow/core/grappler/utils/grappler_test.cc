@@ -114,9 +114,13 @@ void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) const {
   for (int i = 0; i < want.node_size(); ++i) {
     EXPECT_EQ(want.node(i).op(), got.node(i).op());
     EXPECT_EQ(want.node(i).name(), got.node(i).name());
+    EXPECT_EQ(want.node(i).device(), got.node(i).device());
+
     ASSERT_EQ(want.node(i).input_size(), got.node(i).input_size());
     for (int j = 0; j < want.node(i).input_size(); ++j) {
-      EXPECT_TRUE(IsSameInput(want.node(i).input(j), got.node(i).input(j)));
+      const TensorId want_tensor = ParseTensorName(want.node(i).input(j));
+      const TensorId got_tensor = ParseTensorName(got.node(i).input(j));
+      EXPECT_EQ(want_tensor.ToString(), got_tensor.ToString());
     }
   }
 }

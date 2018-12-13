@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -60,16 +61,19 @@ class LinearOperatorIdentityTest(
 
     return operator, mat
 
+  @test_util.run_deprecated_v1
   def test_assert_positive_definite(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
       operator.assert_positive_definite().run()  # Should not fail
 
+  @test_util.run_deprecated_v1
   def test_assert_non_singular(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
       operator.assert_non_singular().run()  # Should not fail
 
+  @test_util.run_deprecated_v1
   def test_assert_self_adjoint(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
@@ -109,6 +113,7 @@ class LinearOperatorIdentityTest(
     with self.assertRaisesRegexp(ValueError, "must be non-negative"):
       linalg_lib.LinearOperatorIdentity(num_rows=2, batch_shape=[-2])
 
+  @test_util.run_deprecated_v1
   def test_non_scalar_num_rows_raises_dynamic(self):
     with self.cached_session():
       num_rows = array_ops.placeholder(dtypes.int32)
@@ -117,6 +122,7 @@ class LinearOperatorIdentityTest(
       with self.assertRaisesOpError("must be a 0-D Tensor"):
         operator.to_dense().eval(feed_dict={num_rows: [2]})
 
+  @test_util.run_deprecated_v1
   def test_negative_num_rows_raises_dynamic(self):
     with self.cached_session():
       num_rows = array_ops.placeholder(dtypes.int32)
@@ -125,6 +131,7 @@ class LinearOperatorIdentityTest(
       with self.assertRaisesOpError("must be non-negative"):
         operator.to_dense().eval(feed_dict={num_rows: -2})
 
+  @test_util.run_deprecated_v1
   def test_non_1d_batch_shape_raises_dynamic(self):
     with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
@@ -133,6 +140,7 @@ class LinearOperatorIdentityTest(
       with self.assertRaisesOpError("must be a 1-D"):
         operator.to_dense().eval(feed_dict={batch_shape: 2})
 
+  @test_util.run_deprecated_v1
   def test_negative_batch_shape_raises_dynamic(self):
     with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
@@ -147,6 +155,7 @@ class LinearOperatorIdentityTest(
     with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
       operator.matmul(x)
 
+  @test_util.run_deprecated_v1
   def test_wrong_matrix_dimensions_raises_dynamic(self):
     num_rows = array_ops.placeholder(dtypes.int32)
     x = array_ops.placeholder(dtypes.float32)
@@ -170,8 +179,9 @@ class LinearOperatorIdentityTest(
       expected = x
 
       self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, expected]))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
+  @test_util.run_deprecated_v1
   def test_default_batch_shape_broadcasts_with_everything_dynamic(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
@@ -207,8 +217,9 @@ class LinearOperatorIdentityTest(
 
       operator_matmul = operator.matmul(x)
       self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, expected]))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
+  @test_util.run_deprecated_v1
   def test_broadcast_matmul_dynamic_shapes(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
@@ -309,6 +320,7 @@ class LinearOperatorScaledIdentityTest(
 
     return operator, matrix
 
+  @test_util.run_deprecated_v1
   def test_assert_positive_definite_does_not_raise_when_positive(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
@@ -322,6 +334,7 @@ class LinearOperatorScaledIdentityTest(
       with self.assertRaisesOpError("not positive definite"):
         operator.assert_positive_definite().run()
 
+  @test_util.run_deprecated_v1
   def test_assert_non_singular_does_not_raise_when_non_singular(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
@@ -335,6 +348,7 @@ class LinearOperatorScaledIdentityTest(
       with self.assertRaisesOpError("was singular"):
         operator.assert_non_singular().run()
 
+  @test_util.run_deprecated_v1
   def test_assert_self_adjoint_does_not_raise_when_self_adjoint(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
@@ -372,6 +386,7 @@ class LinearOperatorScaledIdentityTest(
     with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
       operator.matmul(x)
 
+  @test_util.run_deprecated_v1
   def test_wrong_matrix_dimensions_raises_dynamic(self):
     num_rows = array_ops.placeholder(dtypes.int32)
     x = array_ops.placeholder(dtypes.float32)
@@ -403,13 +418,13 @@ class LinearOperatorScaledIdentityTest(
       expected = x * 2.2 + zeros
       operator_matmul = operator.matmul(x)
       self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, expected]))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2 + zeros
       operator_solve = operator.solve(x)
       self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_solve, expected]))
+      self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_broadcast_matmul_and_solve_scalar_scale_multiplier(self):
     # These cannot be done in the automated (base test class) tests since they
@@ -429,13 +444,13 @@ class LinearOperatorScaledIdentityTest(
       expected = x * 2.2
       operator_matmul = operator.matmul(x)
       self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_matmul, expected]))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2
       operator_solve = operator.solve(x)
       self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
-      self.assertAllClose(*sess.run([operator_solve, expected]))
+      self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_is_x_flags(self):
     operator = linalg_lib.LinearOperatorScaledIdentity(

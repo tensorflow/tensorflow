@@ -20,7 +20,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.util.tf_export import tf_export
 
+
+@tf_export(v1=["ragged.RaggedTensorValue"])
 class RaggedTensorValue(object):
   """Represents the value of a `RaggedTensor`.
 
@@ -53,7 +56,7 @@ class RaggedTensorValue(object):
       doc="""The numpy dtype of values in this tensor.""")
 
   @property
-  def inner_values(self):
+  def flat_values(self):
     """The innermost `values` array for this ragged tensor value."""
     rt_values = self.values
     while isinstance(rt_values, RaggedTensorValue):
@@ -82,15 +85,18 @@ class RaggedTensorValue(object):
     return (self._row_splits.shape[0] - 1,) + (None,) + self._values.shape[1:]
 
   def __str__(self):
-    return "<RaggedTensorValue %s>" % self.tolist()
+    return "<tf.RaggedTensorValue %s>" % self.to_list()
 
   def __repr__(self):
-    return "RaggedTensorValue(values=%r, row_splits=%r)" % (self._values,
-                                                            self._row_splits)
+    return "tf.RaggedTensorValue(values=%r, row_splits=%r)" % (self._values,
+                                                               self._row_splits)
 
-  def tolist(self):
+  def to_list(self):
     """Returns this ragged tensor value as a nested Python list."""
-    values_as_list = self._values.tolist()
+    if isinstance(self._values, RaggedTensorValue):
+      values_as_list = self._values.to_list()
+    else:
+      values_as_list = self._values.tolist()
     return [
         values_as_list[self._row_splits[i]:self._row_splits[i + 1]]
         for i in range(len(self._row_splits) - 1)

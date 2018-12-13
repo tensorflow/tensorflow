@@ -72,6 +72,11 @@ struct OperationFilter {
   // to resort to a dummy implementation. Currently Assert and CheckNumerics ops
   // have dummy XLA implementations.
   bool allow_dummy_ops;
+
+  // Whether ops that produce or consume DT_VARIANT values are allowed.  We
+  // don't auto-cluster these ops because we don't yet support live-in or
+  // live-out DT_VARIANT values.
+  bool allow_ops_producing_or_consuming_variant;
 };
 
 bool IsDummyImplOp(absl::string_view op_name) {
@@ -81,7 +86,13 @@ bool IsDummyImplOp(absl::string_view op_name) {
 bool IsStatefulRandomOp(absl::string_view op_name) {
   return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
          op_name == "RandomUniformInt" || op_name == "RandomStandardNormal" ||
-         op_name == "TruncatedNormal";
+         op_name == "TruncatedNormal" || op_name == "Multinomial";
+}
+
+bool OpProducesOrConsumesVariant(const Node& node) {
+  auto is_variant = [](DataType dtype) { return dtype == DT_VARIANT; };
+  return absl::c_any_of(node.input_types(), is_variant) ||
+         absl::c_any_of(node.output_types(), is_variant);
 }
 
 bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
@@ -244,6 +255,10 @@ bool IsCompilableCall(const NodeDef& call_def,
       return false;
     }
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
+      return false;
+    }
+    if (!op_filter.allow_ops_producing_or_consuming_variant &&
+        OpProducesOrConsumesVariant(*node)) {
       return false;
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
@@ -470,16 +485,15 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
 
+    bool always_auto_cluster = registration->autoclustering_policy ==
+                               XlaOpRegistry::AutoclusteringPolicy::kAlways;
+
     OperationFilter op_filter;
     op_filter.allow_resource_ops = registration->compile_resource_ops;
-    op_filter.allow_stateful_rng_ops =
-        (registration->autoclustering_policy ==
-         XlaOpRegistry::AutoclusteringPolicy::kAlways);
-    op_filter.allow_control_trigger =
-        (registration->autoclustering_policy ==
-         XlaOpRegistry::AutoclusteringPolicy::kAlways);
-    op_filter.allow_dummy_ops = (registration->autoclustering_policy ==
-                                 XlaOpRegistry::AutoclusteringPolicy::kAlways);
+    op_filter.allow_stateful_rng_ops = always_auto_cluster;
+    op_filter.allow_control_trigger = always_auto_cluster;
+    op_filter.allow_dummy_ops = always_auto_cluster;
+    op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
 
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
@@ -501,6 +515,12 @@ Status FindCompilationCandidates(
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
       VLOG(2) << "Rejecting " << node->name() << ": dummy op ("
               << node->type_string() << ")";
+      continue;
+    }
+    if (!op_filter.allow_ops_producing_or_consuming_variant &&
+        OpProducesOrConsumesVariant(*node)) {
+      VLOG(2) << "Rejecting " << node->name()
+              << ": produces or consumes DT_VARIANT";
       continue;
     }
 
@@ -639,6 +659,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   op_filter.allow_stateful_rng_ops = true;
   op_filter.allow_control_trigger = true;
   op_filter.allow_dummy_ops = true;
+  op_filter.allow_ops_producing_or_consuming_variant = true;
 
   return IsCompilableCall(ndef, jit_device_type, op_filter, 0, flr);
 }

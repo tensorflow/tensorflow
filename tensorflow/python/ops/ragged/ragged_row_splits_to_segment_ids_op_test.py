@@ -21,23 +21,23 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedSplitsToSegmentIdsOpTest(ragged_test_util.RaggedTensorTestCase):
 
   def testDocStringExample(self):
     splits = [0, 3, 3, 5, 6, 9]
     expected = [0, 0, 0, 2, 2, 3, 4, 4, 4]
     segment_ids = ragged.row_splits_to_segment_ids(splits)
-    with self.test_session():
-      self.assertEqual(segment_ids.eval().tolist(), expected)
+    self.assertAllEqual(segment_ids, expected)
 
   def testEmptySplits(self):
     # Note: the splits for an empty ragged tensor contains a single zero.
     segment_ids = ragged.row_splits_to_segment_ids([0])
-    with self.test_session():
-      self.assertEqual(segment_ids.eval().tolist(), [])
+    self.assertAllEqual(segment_ids, [])
 
   def testErrors(self):
     self.assertRaisesRegexp(ValueError, r'Invalid row_splits: \[\]',

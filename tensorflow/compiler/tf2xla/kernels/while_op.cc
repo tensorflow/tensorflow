@@ -41,8 +41,7 @@ Status MakeXlaCompilerArgumentsFromInputs(
   *has_uninitialized_vars = false;
   *has_tensor_arrays = false;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
-    VLOG(2) << " Input " << i
-            << " type: " << DataTypeString(ctx->input_type(i))
+    VLOG(2) << " Input " << i << " type: " << DataTypeString(ctx->input_type(i))
             << " shape: " << ctx->InputShape(i).DebugString();
     XlaCompiler::Argument& arg = (*args)[i];
     DataType type = ctx->input_type(i);
@@ -64,7 +63,7 @@ Status MakeXlaCompilerArgumentsFromInputs(
       if (!arg.initialized) {
         *has_uninitialized_vars = true;
       }
-      arg.tensor_array_size = resource->tensor_array_size();
+      arg.max_array_size = resource->max_array_size();
       for (const auto& gradient : resource->tensor_array_gradients()) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
@@ -233,13 +232,22 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           xla::ShapeUtil::HumanString(body_input_shape), " vs. ",
           xla::ShapeUtil::HumanString(body.xla_output_shape)));
 
-  xla::Shape expected_cond_output_shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::PRED, {})});
+  xla::Shape expected_cond_output_shape_without_side_effect =
+      xla::ShapeUtil::MakeTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::PRED, {})});
+  xla::Shape expected_cond_output_shape_with_side_effect =
+      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::PRED, {}),
+                                      xla::ShapeUtil::MakeTokenShape()});
   OP_REQUIRES(ctx,
-              xla::ShapeUtil::Compatible(cond.xla_output_shape,
-                                         expected_cond_output_shape),
+              xla::ShapeUtil::Compatible(
+                  cond.xla_output_shape,
+                  expected_cond_output_shape_without_side_effect) ||
+                  xla::ShapeUtil::Compatible(
+                      cond.xla_output_shape,
+                      expected_cond_output_shape_with_side_effect),
               errors::InvalidArgument(
-                  "Output shape of loop condition should be (pred[]), got: ",
+                  "Output shape of loop condition should be (pred[]) or "
+                  "(pred[], token[]), got: ",
                   xla::ShapeUtil::HumanString(cond.xla_output_shape)));
 
   int num_inputs = body.input_mapping.size();

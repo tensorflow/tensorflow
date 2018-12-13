@@ -42,6 +42,7 @@ except ImportError:
 
 class TopologyConstructionTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_get_updates(self):
 
     class MyLayer(keras.layers.Layer):
@@ -106,6 +107,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(network.updates), 5)
     self.assertEqual(len(network.get_updates_for(x4)), 2)
 
+  @test_util.run_v1_only('b/120545219')
   def test_get_updates_bn(self):
     x1 = input_layer_lib.Input(shape=(1,))
     layer = keras.layers.BatchNormalization()
@@ -115,6 +117,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 0)
 
+  @test_util.run_deprecated_v1
   def test_get_losses(self):
 
     class MyLayer(keras.layers.Layer):
@@ -268,6 +271,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(test_layer.input_shape, [(None, 32), (None, 32)])
     self.assertEqual(test_layer.output_shape, (None, 32))
 
+  @test_util.run_deprecated_v1
   def testBasicNetwork(self):
     # minimum viable network
     x = input_layer_lib.Input(shape=(32,))
@@ -341,6 +345,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertListEqual(model.trainable_weights, [])
     self.assertListEqual(model.non_trainable_weights, weights)
 
+  @test_util.run_deprecated_v1
   def test_layer_call_arguments(self):
     # Test the ability to pass and serialize arguments to `call`.
     inp = keras.layers.Input(shape=(2,))
@@ -491,6 +496,7 @@ class TopologyConstructionTest(test.TestCase):
       fn_outputs = fn([input_a_np, input_b_np])
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
+  @test_util.run_deprecated_v1
   def test_recursion(self):
     with self.cached_session():
       a = keras.layers.Input(shape=(32,), name='input_a')
@@ -675,6 +681,7 @@ class TopologyConstructionTest(test.TestCase):
     with self.assertRaises(Exception):
       keras.models.Model([j, k], [m, n, 0])
 
+  @test_util.run_deprecated_v1
   def test_raw_tf_compatibility(self):
     # test calling layers/models on TF tensors
     a = keras.layers.Input(shape=(32,), name='input_a')
@@ -719,6 +726,7 @@ class TopologyConstructionTest(test.TestCase):
     model = keras.models.Model(a, b)
     self.assertEqual(model.output_mask.get_shape().as_list(), [None, 10])
 
+  @test_util.run_deprecated_v1
   def testMaskingSingleInput(self):
 
     class MaskedLayer(keras.layers.Layer):
@@ -756,6 +764,7 @@ class TopologyConstructionTest(test.TestCase):
       y_2 = network(x_2)
       self.assertEqual(y_2.get_shape().as_list(), [None, 32])
 
+  @test_util.run_deprecated_v1
   def test_activity_regularization_with_model_composition(self):
 
     def reg(x):
@@ -825,6 +834,7 @@ class TopologyConstructionTest(test.TestCase):
       output_val_2 = m2.predict(x_val)
       self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
+  @test_util.run_v1_only('b/120545219')
   def test_explicit_training_argument(self):
     with self.cached_session():
       a = keras.layers.Input(shape=(2,))
@@ -1145,6 +1155,7 @@ class DefaultShapeInferenceBehaviorTest(test.TestCase):
 
 class GraphUtilsTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGetReachableFromInputs(self):
 
     with self.cached_session():

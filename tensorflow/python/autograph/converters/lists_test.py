@@ -123,7 +123,7 @@ class ListTest(converter_testing.TestCase):
 
     with self.compiled(node, {}, array_ops.stack, dtypes.int32) as result:
       with self.cached_session() as sess:
-        self.assertAllEqual(sess.run(result.test_fn()), [1, 2, 3])
+        self.assertAllEqual(self.evaluate(result.test_fn()), [1, 2, 3])
 
   # TODO(mdan): Add a test with tf.stack with axis kwarg.
 

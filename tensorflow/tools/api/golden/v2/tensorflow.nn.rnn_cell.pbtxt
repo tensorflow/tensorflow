@@ -13,10 +13,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "MultiRNNCell"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "RNNCell"
     mtype: "<type \'type\'>"
   }

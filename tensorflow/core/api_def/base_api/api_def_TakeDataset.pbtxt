@@ -1,5 +1,6 @@
 op {
   graph_op_name: "TakeDataset"
+  visibility: HIDDEN
   in_arg {
     name: "count"
     description: <<END

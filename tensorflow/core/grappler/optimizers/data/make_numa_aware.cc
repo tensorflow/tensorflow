@@ -44,7 +44,7 @@ Status MakeNumaAware::Optimize(Cluster* cluster, const GrapplerItem& item,
   std::set<string> nodes_to_delete;
 
   for (const NodeDef& node : item.graph.node()) {
-    if (node.op() != "MapAndBatchDatasetV2") continue;
+    if (node.op() != "ExperimentalMapAndBatchDataset") continue;
 
     auto* numa_node = graph.AddNode(MakeNumaAwareNode(node, &graph));
     graph.UpdateFanouts(node.name(), numa_node->name());

@@ -29,6 +29,7 @@ from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import coordinator
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
 
@@ -245,7 +246,7 @@ class _WorkerContext(object):
     else:
       session_config = self._session_config
 
-    if not self._strategy or self._strategy.should_init:
+    if not self._strategy or self._strategy.extended.experimental_should_init:
       logging.info("Creating chief session creator with config: %r", config)
       return monitored_session.ChiefSessionCreator(
           scaffold,
@@ -306,19 +307,19 @@ class _WorkerContext(object):
     return self._num_workers
 
   @property
-  def should_init(self):
+  def experimental_should_init(self):
     """Whether to run init ops."""
-    return self._strategy.should_init
+    return self._strategy.extended.experimental_should_init
 
   @property
   def should_checkpoint(self):
     """Whether to save checkpoint."""
-    return self._strategy.should_checkpoint
+    return self._strategy.extended.should_checkpoint
 
   @property
   def should_save_summary(self):
     """Whether to save summaries."""
-    return self._strategy.should_save_summary
+    return self._strategy.extended.should_save_summary
 
 
 def _run_single_worker(worker_fn,
@@ -328,7 +329,8 @@ def _run_single_worker(worker_fn,
                        task_id,
                        session_config,
                        rpc_layer="",
-                       worker_barrier=None):
+                       worker_barrier=None,
+                       coord=None):
   """Runs a single worker by calling `worker_fn` under context."""
   session_config = copy.deepcopy(session_config)
   strategy = copy.deepcopy(strategy)
@@ -350,7 +352,11 @@ def _run_single_worker(worker_fn,
       rpc_layer=rpc_layer,
       worker_barrier=worker_barrier)
   with context:
-    return worker_fn(strategy)
+    if coord:
+      with coord.stop_on_exception():
+        return worker_fn(strategy)
+    else:
+      return worker_fn(strategy)
 
 
 def _split_cluster_for_evaluator(cluster_spec, task_type):
@@ -423,6 +429,7 @@ def _run_std_server(cluster_spec=None,
 def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
                               cluster_spec, session_config, rpc_layer):
   """Runs a standalone client for between-graph replication."""
+  coord = coordinator.Coordinator()
   eval_thread = None
   if _TaskType.EVALUATOR in cluster_spec.jobs:
     eval_thread = threading.Thread(
@@ -431,6 +438,7 @@ def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
               session_config),
         kwargs={
             "rpc_layer": rpc_layer,
+            "coord": coord,
         })
     eval_thread.start()
 
@@ -444,18 +452,18 @@ def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
                 session_config),
           kwargs={
               "rpc_layer": rpc_layer,
-              "worker_barrier": worker_barrier
+              "worker_barrier": worker_barrier,
+              "coord": coord,
           })
       t.start()
       threads.append(t)
 
-  # TODO(yuefengz): wrap threads into thread coordinator?
-  for t in threads:
-    t.join()
-
-  # TODO(yuefengz): is it necessary to join eval thread?
   if eval_thread:
-    eval_thread.join()
+    # TODO(yuefengz): is it necessary to join eval thread?
+    threads_to_join = threads + [eval_thread]
+  else:
+    threads_to_join = threads
+  coord.join(threads_to_join)
 
   # TODO(yuefengz): we probably want to return results from all workers?
   return None
@@ -464,6 +472,7 @@ def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
 def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
                          cluster_spec, session_config, rpc_layer):
   """Runs a standalone client for in-graph replication."""
+  coord = coordinator.Coordinator()
   eval_thread = None
   if _TaskType.EVALUATOR in cluster_spec.jobs:
     eval_thread = threading.Thread(
@@ -472,6 +481,7 @@ def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
               session_config),
         kwargs={
             "rpc_layer": rpc_layer,
+            "coord": coord,
         })
     eval_thread.start()
 
@@ -482,9 +492,12 @@ def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
       None,
       None,
       session_config,
-      rpc_layer=rpc_layer)
+      rpc_layer=rpc_layer,
+      coord=coord)
+
   if eval_thread:
-    eval_thread.join()
+    coord.join([eval_thread])
+
   return worker_result
 
 
@@ -632,10 +645,10 @@ def run_distribute_coordinator(worker_fn,
   The `strategy` object is expected to be a DistributionStrategy object which
   has implemented methods needed by distributed coordinator such as
   `configure(session_config, cluster_spec, task_type, task_id)` which configures
-  the strategy object for a specific task and `should_init` property which
-  instructs the distribute coordinator whether to run init ops for a task. The
-  distribute coordinator will make a copy of the `strategy` object, call its
-  `configure` method and pass it to `worker_fn` as an argument.
+  the strategy object for a specific task and `experimental_should_init`
+  property which instructs the distribute coordinator whether to run init ops
+  for a task. The distribute coordinator will make a copy of the `strategy`
+  object, call its `configure` method and pass it to `worker_fn` as an argument.
 
   The `worker_fn` defines the training logic and is called under a its own
   worker context which can be accessed to via `get_current_worker_context`. A
@@ -758,7 +771,7 @@ def run_distribute_coordinator(worker_fn,
     # The client must know the cluster but servers in the cluster don't have to
     # know the client.
     if task_type in [_TaskType.CLIENT, None]:
-      if strategy.between_graph:
+      if strategy.extended.experimental_between_graph:
         return _run_between_graph_client(worker_fn, strategy, eval_fn,
                                          eval_strategy, cluster_spec,
                                          session_config, rpc_layer)
@@ -804,7 +817,7 @@ def run_distribute_coordinator(worker_fn,
         environment=environment)
 
     if task_type in [_TaskType.CHIEF, _TaskType.WORKER]:
-      if strategy.between_graph:
+      if strategy.extended.experimental_between_graph:
         # All jobs run `worker_fn` if between-graph.
         _run_single_worker(worker_fn, strategy, cluster_spec, task_type,
                            task_id, session_config, rpc_layer)

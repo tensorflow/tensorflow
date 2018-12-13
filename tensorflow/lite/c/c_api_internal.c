@@ -59,7 +59,7 @@ void TfLiteIntArrayPrint(const char* s, TfLiteIntArray* a) {
   printf("]\n");
 }
 
-TfLiteIntArray* TfLiteIntArrayCopy(TfLiteIntArray* src) {
+TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
   if (!src) return NULL;
   TfLiteIntArray* ret = TfLiteIntArrayCreate(src->size);
   if (ret) {
@@ -139,3 +139,14 @@ const char* TfLiteTypeGetName(TfLiteType type) {
   return "Unknown type";
 }
 
+TfLiteDelegate TfLiteDelegateCreate() {
+  TfLiteDelegate d = {
+      .data_ = NULL,
+      .Prepare = NULL,
+      .CopyFromBufferHandle = NULL,
+      .CopyToBufferHandle = NULL,
+      .FreeBufferHandle = NULL,
+      .flags = kTfLiteDelegateFlagsNone,
+  };
+  return d;
+}

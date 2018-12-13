@@ -50,6 +50,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":cross_device_utils",
+        ":device_util",
         ":reduce_util",
         ":values",
         "//tensorflow/python:array_ops",
@@ -58,8 +59,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -80,6 +79,80 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+    ],
+)
+
+py_library(
+    name = "device_util",
+    srcs = ["device_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:device",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "device_util_test",
+    srcs = ["device_util_test.py"],
+    additional_deps = [
+        ":device_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+py_library(
+    name = "distribute",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":distribute_lib",
+        ":mirrored_strategy",
+    ],
+)
+
+py_library(
+    name = "distribute_lib",
+    srcs = [
+        "distribute_lib.py",
+        "distribution_strategy_context.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":device_util",
+        ":reduce_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/ops/losses",
+        "//tensorflow/tools/docs:doc_controls",
+    ],
+)
+
+py_test(
+    name = "distribute_lib_test",
+    size = "small",
+    srcs = ["distribute_lib_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:variable_scope",
     ],
 )
 
@@ -140,6 +213,35 @@ py_library(
 )
 
 py_library(
+    name = "mirrored_strategy",
+    srcs = ["mirrored_strategy.py"],
+    deps = [
+        ":cross_device_ops",
+        ":device_util",
+        ":distribute_lib",
+        ":multi_worker_util",
+        ":reduce_util",
+        ":shared_variable_creator",
+        ":values",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:device",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
+    ],
+)
+
+py_library(
     name = "multi_worker_util",
     srcs = [
         "multi_worker_util.py",
@@ -156,6 +258,7 @@ py_library(
     srcs = ["input_ops.py"],
     deps = [
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/experimental/ops:filter_for_shard_ops",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -166,12 +269,12 @@ cuda_py_test(
     additional_deps = [
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:readers",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python/data/ops:readers",
         "//tensorflow/python:util",
     ],
     tags = [
@@ -242,11 +345,11 @@ py_library(
     name = "values",
     srcs = ["values.py"],
     deps = [
+        ":device_util",
+        ":distribute_lib",
         ":input_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:device_util",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",

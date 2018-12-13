@@ -27,7 +27,10 @@ public enum DataType {
   UINT8(3),
 
   /** 64-bit signed integer. */
-  INT64(4);
+  INT64(4),
+
+  /** Strings. */
+  STRING(5);
 
   private final int value;
 
@@ -46,6 +49,8 @@ public enum DataType {
         return 1;
       case INT64:
         return 8;
+      case STRING:
+        return -1;
     }
     throw new IllegalArgumentException(
         "DataType error: DataType " + this + " is not supported yet");
@@ -82,6 +87,8 @@ public enum DataType {
         return "byte";
       case INT64:
         return "long";
+      case STRING:
+        return "string";
     }
     throw new IllegalArgumentException(
         "DataType error: DataType " + this + " is not supported yet");

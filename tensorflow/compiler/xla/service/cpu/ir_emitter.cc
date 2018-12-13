@@ -111,10 +111,9 @@ IrEmitter::IrEmitter(
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, const string& function_name_prefix,
     bool is_top_level_computation,
-    const std::vector<HloInstruction*>* instruction_order) {
+    absl::Span<HloInstruction* const> instruction_order) {
   string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
-  VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix
-          << "]; ordered? " << (instruction_order != nullptr);
+  VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
   num_dynamic_loop_bounds_ = 0;
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
@@ -141,11 +140,7 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   bool use_rdtscp = arch_type_ == llvm::Triple::ArchType::x86 ||
                     arch_type_ == llvm::Triple::ArchType::x86_64;
   profiling_state_ = ProfilingState(use_rdtscp);
-  if (instruction_order == nullptr) {
-    TF_RETURN_IF_ERROR(computation->Accept(this));
-  } else {
-    TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, *instruction_order));
-  }
+  TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
   InsertOrDie(&emitted_functions_, computation, ir_function);
   // Delete 'compute_function', finalizing 'ir_function' and restoring caller
@@ -2271,6 +2266,22 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
               /*isVarArg=*/false)));
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  // Write the tuple table if the output is a tuple.
+  if (ShapeUtil::IsTuple(custom_call->shape())) {
+    std::vector<llvm::Value*> base_ptrs;
+    for (int i = 0; i < ShapeUtil::TupleElementCount(custom_call->shape());
+         ++i) {
+      const Shape& elem_shape =
+          ShapeUtil::GetTupleElementShape(custom_call->shape(), i);
+      TF_RET_CHECK(!ShapeUtil::IsTuple(elem_shape))
+          << "Nested tuples not implemented";
+      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                          assignment_.GetUniqueSlice(custom_call, {i}));
+      llvm::Value* addr = EmitBufferPointer(slice, elem_shape);
+      base_ptrs.push_back(addr);
+    }
+    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_, module_);
+  }
   auto* output_address_arg =
       PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
 
@@ -2565,10 +2576,17 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleAfterAll(HloInstruction* gen_token) {
-  TF_RET_CHECK(ByteSizeOf(gen_token->shape()) == 0);
+Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
+  TF_RET_CHECK(ByteSizeOf(after_all->shape()) == 0);
   // No code to generate, but we need to emit an address for book-keeping.
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(gen_token));
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(after_all));
+  return Status::OK();
+}
+
+Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
+  // AddDedendency just forwards its zero-th operand.
+  emitted_value_[add_dependency] =
+      GetEmittedValueFor(add_dependency->operand(0));
   return Status::OK();
 }
 

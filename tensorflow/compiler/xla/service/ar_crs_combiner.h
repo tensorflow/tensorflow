@@ -25,9 +25,12 @@ limitations under the License.
 
 namespace xla {
 
-// Combine an AllReduce and a CrossReplicaSum when they are close to each other
-// in the graph, to use an efficient CrossReplicaSum implementation that
-// fully utilizes the interconnect bandwidth.
+// When the HLO graph contains an AllReduce, followed by some simple linear
+// operations, followed by a CrossReplicaSum, we can combine the AR and the CRS,
+// to use an efficient CrossReplicaSum implementation that fully utilizes the
+// interconnect bandwidth.
+// Such sequences appear in spatially partitioned models.
+// This pass must run right after spatial partitioning.
 class ArCrsCombiner : public HloModulePass {
  public:
   ArCrsCombiner(int num_spatial_partitions)

@@ -24,19 +24,20 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class DenseToSparseBatchTest(test_base.DatasetTestBase):
 
+  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([x], x)).apply(
-            batching.dense_to_sparse_batch(4, [12]))
-        .make_initializable_iterator())
+            batching.dense_to_sparse_batch(4, [12])))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -56,15 +57,15 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
                             results.dense_shape)
 
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
+  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: array_ops.fill([x, x], x)).apply(
-            batching.dense_to_sparse_batch(
-                4, [5, None])).make_initializable_iterator())
+            batching.dense_to_sparse_batch(4, [5, None])))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -89,20 +90,22 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
         ], results.dense_shape)
 
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
+  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
     with self.assertRaisesRegexp(ValueError, "Dimension -2 must be >= 0"):
-      dataset_ops.Dataset.from_tensors(input_tensor).apply(
-          batching.dense_to_sparse_batch(4, [-2])).make_initializable_iterator()
+      dataset_ops.make_initializable_iterator(
+          dataset_ops.Dataset.from_tensors(input_tensor).apply(
+              batching.dense_to_sparse_batch(4, [-2])))
 
+  @test_util.run_deprecated_v1
   def testDenseToSparseBatchDatasetShapeErrors(self):
     input_tensor = array_ops.placeholder(dtypes.int32)
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensors(input_tensor).apply(
-            batching.dense_to_sparse_batch(4, [12]))
-        .make_initializable_iterator())
+            batching.dense_to_sparse_batch(4, [12])))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -111,13 +114,13 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
       sess.run(init_op, feed_dict={input_tensor: [[1]]})
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "incompatible with the row shape"):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
       # Initialize with an input tensor that is larger than `row_shape`.
       sess.run(init_op, feed_dict={input_tensor: range(13)})
       with self.assertRaisesRegexp(errors.DataLossError,
                                    "larger than the row shape"):
-        sess.run(get_next)
+        self.evaluate(get_next)
 
 
 if __name__ == "__main__":

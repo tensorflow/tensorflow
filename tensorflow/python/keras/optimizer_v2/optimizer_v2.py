@@ -24,24 +24,49 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
-from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribution_strategy_context
-from tensorflow.python.training import optimizer as optimizer_v1
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
+
+
+def _deduplicate_indexed_slices(values, indices):
+  """Sums `values` associated with any non-unique `indices`.
+
+  Args:
+    values: A `Tensor` with rank >= 1.
+    indices: A one-dimensional integer `Tensor`, indexing into the first
+      dimension of `values` (as in an IndexedSlices object).
+
+  Returns:
+    A tuple of (`summed_values`, `unique_indices`) where `unique_indices` is a
+    de-duplicated version of `indices` and `summed_values` contains the sum of
+    `values` slices associated with each unique index.
+  """
+  unique_indices, new_index_positions = array_ops.unique(indices)
+  summed_values = math_ops.unsorted_segment_sum(
+      values, new_index_positions,
+      array_ops.shape(unique_indices)[0])
+  return (summed_values, unique_indices)
 
 
 @six.add_metaclass(abc.ABCMeta)
-class OptimizerV2(optimizer_v1.Optimizer):
+@tf_export("keras.optimizers.Optimizer")
+class OptimizerV2(checkpointable.CheckpointableBase):
   """Updated base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -114,7 +139,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   """
 
-  def __init__(self, name):
+  def __init__(self, name, **kwargs):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -128,6 +153,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Args:
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
+      **kwargs: keyword arguments. Allowed to be {`decay`}
 
     Raises:
       ValueError: If name is malformed.
@@ -135,20 +161,21 @@ class OptimizerV2(optimizer_v1.Optimizer):
           _create_vars.
     """
     self._use_locking = True
-    super(OptimizerV2, self).__init__(self._use_locking, name)
+    self._name = name
     self._hyper = {}
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
     self._weights = []
+
+    decay = kwargs.pop("decay", 0.0)
+    if decay < 0.:
+      raise ValueError("decay cannot be less than 0: {}".format(decay))
+    self._initial_decay = decay
+    self.__dict__.update(kwargs)
+
     self._prepared = False
 
-  def minimize(self,
-               loss,
-               var_list,
-               aggregation_method=None,
-               colocate_gradients_with_ops=False,
-               name=None,
-               grad_loss=None):
+  def minimize(self, loss, var_list, grad_loss=None, name=None):
     """Add operations to minimize `loss` by updating `var_list`.
 
     This method simply combines calls `compute_gradients()` and
@@ -157,15 +184,11 @@ class OptimizerV2(optimizer_v1.Optimizer):
     of using this function.
 
     Args:
-      loss: A `Tensor` containing the value to minimize.
+      loss: A callable taking no arguments which returns the value to minimize.
       var_list: list or tuple of `Variable` objects to update to minimize
         `loss`.
-      aggregation_method: Specifies the method used to combine gradient terms.
-        Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
-      name: Optional name for the returned operation.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
+      name: Optional name for the returned operation.
 
     Returns:
       An Operation that updates the variables in `var_list`.  If `global_step`
@@ -177,29 +200,16 @@ class OptimizerV2(optimizer_v1.Optimizer):
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
     takes no arguments and computes the value to be minimized. Minimization (and
-    gradient computation) is done with respect to the elements of `var_list` if
-    not None, else with respect to any trainable variables created during the
-    execution of the `loss` function. `gate_gradients`, `aggregation_method`,
-    `colocate_gradients_with_ops` and `grad_loss` are ignored when eager
-    execution is enabled.
+    gradient computation) is done with respect to the elements of `var_list`.
+    `grad_loss` is ignored when eager execution is enabled.
     @end_compatibility
     """
-    grads_and_vars = self.compute_gradients(
-        loss,
-        var_list=var_list,
-        aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
-        grad_loss=grad_loss)
+    grads_and_vars = self._compute_gradients(
+        loss, var_list=var_list, grad_loss=grad_loss)
 
     return self.apply_gradients(grads_and_vars, name=name)
 
-  def compute_gradients(self,
-                        loss,
-                        var_list,
-                        aggregation_method=None,
-                        colocate_gradients_with_ops=False,
-                        grad_loss=None,
-                        stop_gradients=None):
+  def _compute_gradients(self, loss, var_list, grad_loss=None):
     """Compute gradients of `loss` for the variables in `var_list`.
 
     This is the first part of `minimize()`.  It returns a list
@@ -209,19 +219,11 @@ class OptimizerV2(optimizer_v1.Optimizer):
     given variable.
 
     Args:
-      loss: A Tensor containing the value to minimize or a callable taking no
-        arguments which returns the value to minimize. When eager execution is
-        enabled it must be a callable.
-      var_list: Optional list or tuple of `tf.Variable` to update to minimize
+      loss: A callable taking no arguments which returns the value to minimize.
+      var_list: List or tuple of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph under
         the key `GraphKeys.TRAINABLE_VARIABLES`.
-      aggregation_method: Specifies the method used to combine gradient terms.
-        Valid values are defined in the class `AggregationMethod`.
-      colocate_gradients_with_ops: If True, try colocating gradients with the
-        corresponding op.
       grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
-      stop_gradients: Optional. A Tensor or list of tensors not to differentiate
-        through.
 
     Returns:
       A list of (gradient, variable) pairs. Variable is always present, but
@@ -230,36 +232,22 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid, or var_list is None.
-      RuntimeError: If called with eager execution enabled and `loss` is
-        not callable.
-
-    @compatibility(eager)
-    When eager execution is enabled, `aggregation_method`, and
-    `colocate_gradients_with_ops` are ignored.
-    @end_compatibility
     """
     var_list = nest.flatten(var_list)
     # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-    if callable(loss):
-      with backprop.GradientTape() as tape:
-        tape.watch(var_list)
-        loss_value = loss()
-      grads = tape.gradient(loss_value, var_list, grad_loss)
-    else:
-      if context.executing_eagerly():
-        raise RuntimeError("`loss` passed to Optimizer.compute_gradients "
-                           "should be a function when eager execution is "
-                           "enabled.")
-      self._assert_valid_dtypes([loss])
-      if grad_loss is not None:
-        self._assert_valid_dtypes([grad_loss])
-      grads = gradients.gradients(
-          loss,
-          var_list,
-          grad_ys=grad_loss,
-          aggregation_method=aggregation_method,
-          colocate_gradients_with_ops=colocate_gradients_with_ops,
-          stop_gradients=stop_gradients)
+    with backprop.GradientTape() as tape:
+      tape.watch(var_list)
+      loss_value = loss()
+      loss_value = self._scale_loss(loss_value)
+    grads = tape.gradient(loss_value, var_list, grad_loss)
+
+    if hasattr(self, "clipnorm"):
+      grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
+    if hasattr(self, "clipvalue"):
+      grads = [
+          clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
+          for g in grads
+      ]
 
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes([
@@ -268,6 +256,46 @@ class OptimizerV2(optimizer_v1.Optimizer):
     ])
 
     return grads_and_vars
+
+  @staticmethod
+  def _scale_loss(loss_value):
+    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+      num_replicas = \
+        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      if num_replicas > 1:
+        loss_value *= (1. / num_replicas)
+    return loss_value
+
+  def get_gradients(self, loss, params):
+    """Returns gradients of `loss` with respect to `params`.
+
+    Arguments:
+      loss: Loss tensor.
+      params: List of variables.
+
+    Returns:
+      List of gradient tensors.
+
+    Raises:
+      ValueError: In case any gradient cannot be computed (e.g. if gradient
+        function not implemented).
+    """
+    loss = self._scale_loss(loss)
+    grads = gradients.gradients(loss, params)
+    if None in grads:
+      raise ValueError("An operation has `None` for gradient. "
+                       "Please make sure that all of your ops have a "
+                       "gradient defined (i.e. are differentiable). "
+                       "Common ops without gradient: "
+                       "K.argmax, K.round, K.eval.")
+    if hasattr(self, "clipnorm"):
+      grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
+    if hasattr(self, "clipvalue"):
+      grads = [
+          clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
+          for g in grads
+      ]
+    return grads
 
   def apply_gradients(self, grads_and_vars, name=None):
     """Apply gradients to variables.
@@ -291,11 +319,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
     """
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
-    if distribution_strategy_context.has_distribution_strategy():
+    if distribute_ctx.has_distribution_strategy():
       reduced_grads = merge_grads(grads_and_vars)
       grads_and_vars = zip(reduced_grads, var_list)
 
     with ops.init_scope():
+      self._prepare()
       self._create_slots(var_list)
     update_ops = []
 
@@ -317,11 +346,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
         return update_op
 
     with ops.name_scope(name, self._name) as name:
-      self._prepare()
       for grad, var in grads_and_vars:
         scope_name = ("" if ops.executing_eagerly_outside_functions() else
                       "_" + var.op.name)
-        with ops.name_scope("update" + scope_name), ops.colocate_with(var):
+        with ops.name_scope("update" + scope_name):
           update_ops.append(update_grad_to_var(grad, var))
       # control dependencies does not work in per replica mode, please change
       # this once b/118841692 is fixed.
@@ -331,7 +359,13 @@ class OptimizerV2(optimizer_v1.Optimizer):
       return apply_updates
 
   def get_updates(self, loss, params):
-    return [self.minimize(loss, params)]
+    grads = self.get_gradients(loss, params)
+    grads_and_vars = list(zip(grads, params))
+    self._assert_valid_dtypes([
+        v for g, v in grads_and_vars
+        if g is not None and v.dtype != dtypes.resource
+    ])
+    return [self.apply_gradients(grads_and_vars)]
 
   def _set_hyper(self, name, value):
     """set hyper `name` to value. value can be callable, tensor, numeric."""
@@ -345,9 +379,14 @@ class OptimizerV2(optimizer_v1.Optimizer):
       else:
         backend.set_value(self._hyper[name], value)
 
-  def _get_hyper(self, name):
+  def _get_hyper(self, name, dtype=None):
     value = self._hyper[name]
-    return self._call_if_callable(value)
+    if callable(value):
+      value = value()
+    if dtype:
+      return math_ops.cast(value, dtype)
+    else:
+      return value
 
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""
@@ -413,7 +452,6 @@ class OptimizerV2(optimizer_v1.Optimizer):
             trainable=False,
             initializer=value,
             aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-        self._weights.append(self._hyper[name])
     self._prepared = True
 
   @property
@@ -421,6 +459,15 @@ class OptimizerV2(optimizer_v1.Optimizer):
     if not self._prepared:
       self._prepare()
     return self._iterations
+
+  def _decayed_lr(self, var_dtype):
+    """Get decayed learning rate as a Tensor with dtype=var_dtype."""
+    lr_t = self._get_hyper("learning_rate", var_dtype)
+    if self._initial_decay > 0.:
+      local_step = math_ops.cast(self.iterations, var_dtype)
+      decay_t = self._get_hyper("decay", var_dtype)
+      lr_t = lr_t / (1. + decay_t * local_step)
+    return lr_t
 
   @abc.abstractmethod
   def get_config(self):
@@ -453,6 +500,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
     Returns:
         An optimizer instance.
     """
+    if "lr" in config:
+      config["learning_rate"] = config.pop("lr")
     return cls(**config)
 
   def _serialize_hyperparameter(self, hyperparameter_name):
@@ -528,7 +577,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     variable = self._add_variable_with_custom_getter(
         name=name,
         shape=shape,
-        getter=base_layer.make_variable,
+        getter=base_layer_utils.make_variable,
         overwrite=True,
         initializer=initializer,
         dtype=dtype,
@@ -539,6 +588,95 @@ class OptimizerV2(optimizer_v1.Optimizer):
     backend.track_variable(variable)
 
     return variable
+
+  def _assert_valid_dtypes(self, tensors):
+    """Asserts tensors are all valid types (see `_valid_dtypes`).
+
+    Args:
+      tensors: Tensors to check.
+
+    Raises:
+      ValueError: If any tensor is not a valid type.
+    """
+    valid_dtypes = self._valid_dtypes()
+    for t in tensors:
+      dtype = t.dtype.base_dtype
+      if dtype not in valid_dtypes:
+        raise ValueError("Invalid type %r for %s, expected: %s." %
+                         (dtype, t.name, [v for v in valid_dtypes]))
+
+  def _valid_dtypes(self):
+    """Valid types for loss, variables and gradients.
+
+    Subclasses should override to allow other float types.
+
+    Returns:
+      Valid types for loss, variables and gradients.
+    """
+    return set(
+        [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64])
+
+  def _call_if_callable(self, param):
+    """Call the function if param is callable."""
+    return param() if callable(param) else param
+
+  def _resource_apply_dense(self, grad, handle):
+    """Add ops to apply dense gradients to the variable `handle`.
+
+    Args:
+      grad: a `Tensor` representing the gradient.
+      handle: a `Tensor` of dtype `resource` which points to the variable to be
+        updated.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
+    raise NotImplementedError()
+
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+    """Add ops to apply sparse gradients to `handle`, with repeated indices.
+
+    Optimizers which override this method must deal with repeated indices. See
+    the docstring of `_apply_sparse_duplicate_indices` for details. By default
+    the correct behavior, to sum non-unique indices and their associated
+    gradients, is enforced by first pre-processing `grad` and `indices` and
+    passing them on to `_resource_apply_sparse`. Optimizers which deal correctly
+    with duplicate indices may instead override this method to avoid the
+    overhead of summing.
+
+    Args:
+      grad: a `Tensor` representing the gradient for the affected indices.
+      handle: a `Tensor` of dtype `resource` which points to the variable to be
+        updated.
+      indices: a `Tensor` of integral type representing the indices for which
+        the gradient is nonzero. Indices may be repeated.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
+    summed_grad, unique_indices = _deduplicate_indexed_slices(
+        values=grad, indices=indices)
+    return self._resource_apply_sparse(summed_grad, handle, unique_indices)
+
+  def _resource_apply_sparse(self, grad, handle, indices):
+    """Add ops to apply sparse gradients to the variable `handle`.
+
+    Similar to `_apply_sparse`, the `indices` argument to this method has been
+    de-duplicated. Optimizers which deal correctly with non-unique indices may
+    instead override `_resource_apply_sparse_duplicate_indices` to avoid this
+    overhead.
+
+    Args:
+      grad: a `Tensor` representing the gradient for the affected indices.
+      handle: a `Tensor` of dtype `resource` which points to the variable to be
+        updated.
+      indices: a `Tensor` of integral type representing the indices for which
+        the gradient is nonzero. Indices are unique.
+
+    Returns:
+      An `Operation` which updates the value of the variable.
+    """
+    raise NotImplementedError()
 
 
 def _filter_grads(grads_and_vars):
@@ -575,7 +713,7 @@ def merge_update_step(update_ops, local_step):
       incre_op = local_step.assign_add(1).op
     return incre_op
 
-  return distribution_strategy_context.get_replica_context().merge_call(
+  return distribute_ctx.get_replica_context().merge_call(
       merge_update_step_fn, args=(update_ops, local_step))
 
 
@@ -583,11 +721,11 @@ def merge_grads(grads_and_vars):
   """Merge gradients from different replicas."""
 
   def merge_grad_fn(strategy, grads_and_vars):
-    reduced_grads = strategy.batch_reduce(
-        ds_reduce_util.ReduceOp.MEAN, grads_and_vars)
+    reduced_grads = strategy.batch_reduce(ds_reduce_util.ReduceOp.SUM,
+                                          grads_and_vars)
     return reduced_grads
 
-  return distribution_strategy_context.get_replica_context().merge_call(
+  return distribute_ctx.get_replica_context().merge_call(
       merge_grad_fn, args=(grads_and_vars,))
 
 
@@ -606,7 +744,7 @@ def _var_key(var):
   """
 
   # pylint: disable=protected-access
-  if distribution_strategy_context.has_distribution_strategy() and hasattr(
+  if distribute_ctx.has_distribution_strategy() and hasattr(
       var, "_primary_var"):
     var = var._primary_var
   if hasattr(var, "op"):

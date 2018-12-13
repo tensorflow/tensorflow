@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -439,7 +440,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           item.graph)
           .ToProto();
 
-  GrapplerItem trimmed_item(item, std::move(trimmed_graph));
+  GrapplerItem trimmed_item = item.WithGraph(std::move(trimmed_graph));
 
   VLOG(1) << absl::Substitute(
       "Deleted $0 unreachable functions from the graph (library size = $1)",
@@ -462,6 +463,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // optimize TPU functions with Grappler, this check preserves that.
   if (IsTPUGraphDef(*optimized_graph)) {
     VLOG(2) << "Skipping optimizing funcs for TPU graphs";
+    if (VLOG_IS_ON(1)) {
+      DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+    }
     return Status::OK();
   }
 
@@ -520,8 +524,19 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // can't perform non-differentiable rewrites.
       if (differentiable_functions.find(func_name) !=
           differentiable_functions.end()) {
-        func_item.allowed_optimizations.non_differentiable_rewrites = false;
+        func_item.allowed_optimizations().non_differentiable_rewrites = false;
       }
+
+      // Function item is allowed to use all devices from the main graph.
+      Status added_devices = func_item.AddDevices(item);
+      if (!added_devices.ok()) {
+        VLOG(3) << added_devices.error_message();
+      }
+
+      // We are not allowed to prune side effects from the graph instantiated
+      // by the function definition, because we must guarantee function
+      // execution semantics wrt side effects (see function_optimizer.cc).
+      func_item.allowed_optimizations().prune_ops_with_side_effects = false;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -555,6 +570,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << str_util::Join(optimized_funcs, ", ");
 
+  if (VLOG_IS_ON(1)) {
+    DumpGraphDefToFile("after_MetaOptimizer", *optimized_graph);
+  }
   return Status::OK();
 }
 

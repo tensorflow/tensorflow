@@ -668,7 +668,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
         sequences = centers + noise
 
         inputs = array_ops.expand_dims(sequences, 2)
-        labels = math_ops.reduce_mean(sequences, reduction_indices=[1])
+        labels = math_ops.reduce_mean(sequences, axis=[1])
         return {'inputs': inputs}, labels
 
       return input_fn
@@ -722,8 +722,8 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
         inputs = array_ops.expand_dims(math_ops.to_float(random_sequence), 2)
         labels = math_ops.to_int32(
             array_ops.squeeze(
-                math_ops.reduce_sum(
-                    inputs, reduction_indices=[1]) > (sequence_length / 2.0)))
+                math_ops.reduce_sum(inputs, axis=[1]) > (
+                    sequence_length / 2.0)))
         return {'inputs': inputs}, labels
 
       return input_fn

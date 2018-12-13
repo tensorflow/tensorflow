@@ -21,14 +21,18 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedGatherNdOpTest(ragged_test_util.RaggedTensorTestCase,
                            parameterized.TestCase):
 
   DOCSTRING_PARAMS = [[['000', '001'], ['010']],
@@ -185,14 +189,11 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
   ])  # pyformat: disable
   def testRaggedGatherNd(self, descr, params, indices, expected):
     result = ragged.gather_nd(params, indices)
-    self.assertEqual(
-        getattr(result, 'ragged_rank', 0), getattr(expected, 'ragged_rank', 0))
-    with self.test_session() as sess:
-      if hasattr(expected, 'tolist'):
-        expected = expected.tolist()
-      self.assertEqual(self.evaluate(result).tolist(), expected)
+    self.assertRaggedEqual(result, expected)
 
   def testRaggedGatherNdUnknownRankError(self):
+    if context.executing_eagerly():
+      return
     params = ragged.constant([['a', 'b'], ['c', 'd']])
     indices1 = array_ops.placeholder(dtypes.int32, shape=None)
     indices2 = array_ops.placeholder(dtypes.int32, shape=[None])
@@ -208,21 +209,20 @@ class RaggedGatherNdOpTest(test_util.TensorFlowTestCase,
       dict(
           params=['a'],
           indices=0,
-          message='Shape must be at least rank 1 but is rank 0'
-          " for 'GatherNd'"),
+          error=(ValueError, errors.InvalidArgumentError)),
       dict(
           params=ragged.constant_value([['a']]),
           indices=0,
           message='indices.rank must be at least 1.'),
       dict(
           params=['a', 'b', 'c'],
-          indices=ragged.constant([[0]]),
+          indices=ragged.constant_value([[0]]),
           message='The innermost dimension of indices may not be ragged'),
   ])
   def testRaggedGatherNdStaticError(self,
                                     params,
                                     indices,
-                                    message,
+                                    message=None,
                                     error=ValueError):
     with self.assertRaisesRegexp(error, message):
       ragged.gather_nd(params, indices)

@@ -33,15 +33,28 @@ namespace gpu {
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
                                          const HloInstruction& reduce);
 
-// Whether `instr` is fusible as root of a reduce input fusions, i.e. `instr`
-// is either an unfused reduction-to-vector op, an input fusion rooted at a
-// reduction-to-vector op, or a multi-output input fusion with at least one
-// reduction-to-vector op root.
 // Note that reduction ops are lowered in different ways. Reduce input fusions
 // are lowered by IrEmitterUnnested::EmitReductionToVector and must be rooted at
 // reduction-to-vector ops. Other reduction ops are lowered by
 // GpuElementalIrEmitter and fused like elementwise ops.
+
+// Whether `instr` is an input fusion rooted at a reduction-to-vector op or a
+// multi-output input fusion with at least one reduction-to-vector op root.
+bool IsReduceInputFusion(const HloInstruction& instr);
+
+// Whether `instr` is fusible as root of a reduce input fusions, i.e. `instr`
+// is either an unfused reduction-to-vector op or a reduce input fusion.
 bool IsInputFusibleReduction(const HloInstruction& instr);
+
+// Whether instruction shapes are compatible for multi-output fusion, i.e.
+// whether the emitters support lowering the resulting fusion.
+// This function works for both, sibling and producer-conumser multi-output
+// fusion.
+// So far, multi-output fusion is supported for loop fusions and reduce
+// input fusions only. It is up to the caller to ensure the instructions
+// themselves are fusible!
+bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
+                                          const HloInstruction& instr2);
 
 }  // namespace gpu
 }  // namespace xla

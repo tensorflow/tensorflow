@@ -2325,7 +2325,7 @@ def concatenate(tensors, axis=-1):
     else:
       axis = 0
 
-  if py_all([is_sparse(x) for x in tensors]):
+  if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
@@ -2926,17 +2926,12 @@ class GraphExecutionFunction(object):
   def __init__(self, inputs, outputs, updates=None, name=None,
                **session_kwargs):
     updates = updates or []
-    if not isinstance(inputs, (list, tuple)):
-      raise TypeError('`inputs` to a Keras backend function '
-                      'should be a list or tuple.')
-    if not isinstance(outputs, (list, tuple)):
-      raise TypeError('`outputs` of a Keras backend function '
-                      'should be a list or tuple.')
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
-    self.inputs = list(inputs)
-    self.outputs = list(outputs)
+    self.inputs = nest.flatten(inputs)
+    self._outputs_structure = outputs
+    self.outputs = nest.flatten(outputs)
     with ops.control_dependencies(self.outputs):
       updates_ops = []
       for update in updates:
@@ -3033,8 +3028,7 @@ class GraphExecutionFunction(object):
         self.fetch_callbacks[fetch](output)
 
   def __call__(self, inputs):
-    if not isinstance(inputs, (list, tuple)):
-      raise TypeError('`inputs` should be a list or tuple.')
+    inputs = nest.flatten(inputs)
 
     session = get_session()
     feed_arrays = []
@@ -3077,7 +3071,8 @@ class GraphExecutionFunction(object):
     fetched = self._callable_fn(*array_vals,
                                 run_metadata=self.run_metadata)
     self._call_fetch_callbacks(fetched[-len(self._fetches):])
-    return fetched[:len(self.outputs)]
+    return nest.pack_sequence_as(self._outputs_structure,
+                                 fetched[:len(self.outputs)])
 
 
 class EagerExecutionFunction(object):
@@ -3093,17 +3088,12 @@ class EagerExecutionFunction(object):
 
   def __init__(self, inputs, outputs, updates=None, name=None):
     updates = updates or []
-    if not isinstance(inputs, (list, tuple)):
-      raise TypeError('`inputs` to a Keras backend function '
-                      'should be a list or tuple.')
-    if not isinstance(outputs, (list, tuple)):
-      raise TypeError('`outputs` of a Keras backend function '
-                      'should be a list or tuple.')
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
-    self.inputs = list(inputs)
-    self.outputs = list(outputs)
+    self.inputs = nest.flatten(inputs)
+    self._outputs_structure = outputs
+    self.outputs = nest.flatten(outputs)
     self.name = name
 
     graph = get_graph()
@@ -3153,6 +3143,7 @@ class EagerExecutionFunction(object):
               x.op.inputs[0])
 
   def __call__(self, inputs):
+    inputs = nest.flatten(inputs)
     converted_inputs = []
     for tensor, value in zip(self.inputs, inputs):
       if value is None:
@@ -3161,14 +3152,16 @@ class EagerExecutionFunction(object):
         if value is None:
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
-      value = ops.convert_to_tensor(value, dtype=tensor.dtype)
+      if not isinstance(value, ops.Tensor):
+        value = ops.convert_to_tensor(value, dtype=tensor.dtype)
       if value.dtype != tensor.dtype:
         # Temporary workaround due to `convert_to_tensor` not casting floats.
         # See b/119637405
         value = math_ops.cast(value, tensor.dtype)
       converted_inputs.append(value)
     outputs = self._graph_fn(*converted_inputs)
-    return [x.numpy() for x in outputs]
+    return nest.pack_sequence_as(self._outputs_structure,
+                                 [x.numpy() for x in outputs])
 
 
 @tf_export('keras.backend.function')
@@ -3188,7 +3181,7 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
   Raises:
       ValueError: if invalid kwargs are passed in or if in eager execution.
   """
-  if context.executing_eagerly():
+  if ops.executing_eagerly_outside_functions():
     if kwargs:
       raise ValueError('Session keyword arguments are not support during '
                        'eager execution. You passed: %s' % (kwargs,))
@@ -3347,9 +3340,9 @@ def rnn(step_function,
     assert not nest.is_sequence(input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
-      mask_t = array_ops.expand_dims(mask_t)
-    expand_dims = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
-    return array_ops.tile(mask_t, expand_dims)
+      mask_t = array_ops.expand_dims(mask_t, -1)
+    multiples = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
+    return array_ops.tile(mask_t, multiples)
 
   if unroll:
     if not time_steps:

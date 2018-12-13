@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OP_TYPES_H_
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -180,7 +181,9 @@ bool IsCommutative(const NodeDef& node);
 // value.
 bool IsPersistent(const NodeDef& node);
 
-bool IsFreeOfSideEffect(const NodeDef& node);
+bool IsFreeOfSideEffect(const NodeDef& node,
+                        const OpRegistryInterface* op_registry);
+bool IsFreeOfSideEffect(const NodeDef& node);  // use OpRegistry::Global()
 
 // Returns true if the takes a tensor reference as input, or if looking up its
 // OpDef failed.

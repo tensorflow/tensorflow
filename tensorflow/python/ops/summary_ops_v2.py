@@ -58,7 +58,6 @@ _RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
 _USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
 
 
-@tf_export("summary.should_record_summaries", v1=[])
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
   global _SHOULD_RECORD_SUMMARIES
@@ -67,9 +66,8 @@ def should_record_summaries():
   return should() if callable(should) else should
 
 
-@tf_export("summary.record_summaries", v1=[])
 @tf_contextlib.contextmanager
-def record_summaries(boolean=True):
+def _record_summaries(boolean=True):
   """Sets summary recording on or off per the provided boolean value.
 
   The provided value can be a python boolean, a scalar boolean Tensor, or
@@ -105,17 +103,17 @@ def record_summaries_every_n_global_steps(n, global_step=None):
     should = lambda: math_ops.equal(global_step % n, 0)
     if not context.executing_eagerly():
       should = should()
-  return record_summaries(should)
+  return _record_summaries(should)
 
 
 def always_record_summaries():
   """Sets the should_record_summaries Tensor to always true."""
-  return record_summaries(True)
+  return _record_summaries(True)
 
 
 def never_record_summaries():
   """Sets the should_record_summaries Tensor to always false."""
-  return record_summaries(False)
+  return _record_summaries(False)
 
 
 @tf_export("summary.SummaryWriter", v1=[])

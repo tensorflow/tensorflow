@@ -420,7 +420,7 @@ def sum_gradients_all_reduce(dev_prefixes, replica_grads, num_workers, alg,
   Returns:
     list of reduced tensors
   """
-  alg_contains_shuffle = any([n in alg for n in ['pscpu', 'psgpu']])
+  alg_contains_shuffle = any(n in alg for n in ['pscpu', 'psgpu'])
   is_hierarchical = '/' in alg
   if 'pscpu' in alg:
     aux_devices = [prefix + '/cpu:0' for prefix in dev_prefixes]

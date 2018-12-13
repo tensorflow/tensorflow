@@ -38,7 +38,7 @@ tf_module {
   }
   member_method {
     name: "crop_and_resize"
-    argspec: "args=[\'image\', \'boxes\', \'box_ind\', \'crop_size\', \'method\', \'extrapolation_value\', \'name\'], varargs=None, keywords=None, defaults=[\'bilinear\', \'0\', \'None\'], "
+    argspec: "args=[\'image\', \'boxes\', \'box_indices\', \'crop_size\', \'method\', \'extrapolation_value\', \'name\'], varargs=None, keywords=None, defaults=[\'bilinear\', \'0\', \'None\'], "
   }
   member_method {
     name: "crop_to_bounding_box"
@@ -86,7 +86,7 @@ tf_module {
   }
   member_method {
     name: "extract_image_patches"
-    argspec: "args=[\'images\', \'ksizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'images\', \'sizes\', \'strides\', \'rates\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "extract_jpeg_shape"
@@ -206,7 +206,7 @@ tf_module {
   }
   member_method {
     name: "sample_distorted_bounding_box"
-    argspec: "args=[\'image_size\', \'bounding_boxes\', \'seed\', \'seed2\', \'min_object_covered\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0.1\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'image_size\', \'bounding_boxes\', \'seed\', \'min_object_covered\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0.1\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "sobel_edges"

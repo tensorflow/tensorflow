@@ -79,13 +79,13 @@ bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
          indices_.subspan(0, prefix.size()) == prefix.indices_;
 }
 
-namespace {
-
-// Returns whether the given primitive type corresponds to an array shape.
-bool IsArrayPrimitiveType(PrimitiveType primitive_type) {
+/* static */ bool ShapeUtil::IsArrayPrimitiveType(
+    PrimitiveType primitive_type) {
   return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
          primitive_type != OPAQUE && primitive_type != TOKEN;
 }
+
+namespace {
 
 // Recursive helper for comparing the equality of two shapes. Returns true if
 // the shapes are the same. If compare_layouts is true, then layouts must also
@@ -121,6 +121,23 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
         return false;
       }
+
+      const auto& lhs_tiles = lhs.layout().tiles();
+      const auto& rhs_tiles = rhs.layout().tiles();
+      if (lhs_tiles.size() != rhs_tiles.size()) {
+        return false;
+      }
+      for (int64 i = 0; i < lhs_tiles.size(); i++) {
+        if (!absl::c_equal(lhs_tiles[i].dimensions(),
+                           rhs_tiles[i].dimensions())) {
+          return false;
+        }
+      }
+
+      if (lhs.layout().element_size_in_bits() !=
+          rhs.layout().element_size_in_bits()) {
+        return false;
+      }
     }
   }
 
@@ -147,9 +164,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
   auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
-  min2maj->Clear();
+  min2maj->clear();
   for (int64 value : minor_to_major) {
-    min2maj->Add(value);
+    min2maj->push_back(value);
   }
   if (!shape.has_layout()) {
     return InvalidArgument("Shape has no layout.");
@@ -203,7 +220,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 /* static */ ProgramShape ShapeUtil::MakeProgramShape(
     std::initializer_list<Shape> parameters, Shape result) {
   ProgramShape program_shape;
-  for (const auto& shape : parameters) {
+  for (const Shape& shape : parameters) {
     *program_shape.add_parameters() = shape;
   }
   *program_shape.mutable_result() = std::move(result);
@@ -272,7 +289,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
-  result.mutable_tuple_shapes()->Reserve(shapes.size());
+  result.mutable_tuple_shapes()->reserve(shapes.size());
   for (const auto& shape : shapes) {
     AppendShapeToTuple(shape, &result);
   }
@@ -567,7 +584,7 @@ namespace {
 // Parses shapes with simple recursive descent structure -- consumes from the
 // front of s and passes that view recursively as required.
 StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
-  *s = StripLeadingAsciiWhitespace(*s);
+  *s = absl::StripLeadingAsciiWhitespace(*s);
 
   if (absl::ConsumePrefix(s, "(")) {  // Tuple.
     std::vector<Shape> shapes;
@@ -580,7 +597,7 @@ StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
-      *s = StripLeadingAsciiWhitespace(*s);
+      *s = absl::StripLeadingAsciiWhitespace(*s);
       must_end = !absl::ConsumePrefix(s, ",");
     }
     return ShapeUtil::MakeTupleShape(shapes);
@@ -1151,7 +1168,7 @@ Status ForEachMutableSubshapeHelper(
   // Let the argument `permutation` be P.  This is a permutation over `shape`'s
   // dimensions, so our return value will be a shape with dims P.I = P.  Our
   // goal is to construct a layout permutation L* that we can apply to P such
-  // that that the physical dimension ordering of the returned shape is the same
+  // that the physical dimension ordering of the returned shape is the same
   // as that of the original shape, namely L'.
   //
   // Our returned shape has dims P and layout L*, so its in-memory layout is
@@ -1596,14 +1613,15 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 /* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
                                               Shape shape) {
   CHECK(IsArray(shape));
-  shape.mutable_dimensions()->erase(shape.dimensions().begin() + dim_to_delete);
+  shape.mutable_dimensions()->erase(shape.mutable_dimensions()->begin() +
+                                    dim_to_delete);
   if (LayoutUtil::HasLayout(shape)) {
     Layout* layout = shape.mutable_layout();
     layout->set_format(DENSE);
-    for (size_t i = 0; i < layout->minor_to_major().size();) {
+    for (int64 i = 0; i < layout->minor_to_major().size();) {
       if (layout->minor_to_major(i) == dim_to_delete) {
         layout->mutable_minor_to_major()->erase(
-            layout->minor_to_major().begin() + i);
+            layout->mutable_minor_to_major()->begin() + i);
         continue;
       }
       if (layout->minor_to_major(i) > dim_to_delete) {
@@ -1628,11 +1646,6 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     shape = DeleteDimension(dim, shape);
   }
   return shape;
-}
-
-std::ostream& operator<<(std::ostream& out, const Shape& shape) {
-  out << ShapeUtil::HumanStringWithLayout(shape);
-  return out;
 }
 
 /*static*/ size_t ShapeUtil::Hash(const Shape& shape) {

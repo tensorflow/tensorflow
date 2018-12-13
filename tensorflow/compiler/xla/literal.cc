@@ -63,6 +63,14 @@ void ConvertEndianShort(char* bytes, int64 size) {
   }
 }
 
+// Since Eigen::half doesn't satisfy the absl::bit_cast contract, we need to be
+// able to transparently access the raw 16-bit value contained within.
+template <typename T>
+T GetRawValue(T val) {
+  return val;
+}
+uint16 GetRawValue(Eigen::half val) { return val.x; }
+
 }  // namespace
 
 LiteralBase::~LiteralBase() {}
@@ -284,16 +292,17 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
-  if (ShapeUtil::HasPrimitiveType(proto.shape(), OPAQUE)) {
+  Shape shape(proto.shape());
+  if (ShapeUtil::HasPrimitiveType(shape, OPAQUE)) {
     return InvalidArgument("Literal shape cannot include OPAQUE sub-shape");
   }
-  if (!LayoutUtil::HasLayout(proto.shape())) {
+  if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("LiteralProto has no layout");
   }
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(proto.shape()));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
-  Literal literal(proto.shape());
+  Literal literal(shape);
 
   TF_RETURN_IF_ERROR(literal.root_piece_->ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
@@ -1123,7 +1132,6 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
             }
           }
           pieces->push_back(brace_to_string("}"));
-          return;
         }
       };
 
@@ -1207,13 +1215,29 @@ Literal ConvertBetweenNativeTypes(const LiteralBase& src_literal) {
 }
 
 template <typename NativeSrcT, typename NativeDestT>
-typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT)),
+typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT) &&
+                         !std::is_same<NativeDestT, Eigen::half>::value),
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) {
-    return absl::bit_cast<NativeDestT>(src);
+    return absl::bit_cast<NativeDestT>(GetRawValue(src));
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
+      src_literal, converter);
+}
+
+template <typename NativeSrcT, typename NativeDestT>
+typename std::enable_if<(sizeof(NativeSrcT) == sizeof(Eigen::half) &&
+                         std::is_same<NativeDestT, Eigen::half>::value),
+                        Literal>::type
+BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
+  // Eigen::half doesn't satisfy the absl::bit_cast contract, so explicitly
+  // cast to unsigned short and then use raw_uint16_to_half.
+  auto converter = [](NativeSrcT src) {
+    return Eigen::half_impl::raw_uint16_to_half(
+        absl::bit_cast<uint16>(GetRawValue(src)));
+  };
+  return ConvertBetweenNativeTypesWithConverter<NativeSrcT, Eigen::half>(
       src_literal, converter);
 }
 
@@ -1771,7 +1795,7 @@ void CopyToRepeatedField(RepeatedFieldT* dest,
 }  // namespace
 
 void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
-  *proto->mutable_shape() = subshape();
+  *proto->mutable_shape() = subshape().ToProto();
   switch (subshape().element_type()) {
     case PRED:
       CopyToRepeatedField(proto->mutable_preds(), data<bool>());
@@ -1877,8 +1901,9 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   // These conditions should have been checked in
   // MutableLiteralBase::CreateFromProto.
   TF_RET_CHECK(proto.has_shape());
-  TF_RET_CHECK(LayoutUtil::HasLayout(proto.shape()));
-  TF_RET_CHECK(ShapeUtil::Equal(proto.shape(), subshape()));
+  Shape shape(proto.shape());
+  TF_RET_CHECK(LayoutUtil::HasLayout(shape));
+  TF_RET_CHECK(ShapeUtil::Equal(shape, subshape()));
 
   if (LayoutUtil::IsSparseArray(subshape())) {
     // Compute the number of elements (indices) in the sparse shape and reserve

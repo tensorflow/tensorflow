@@ -105,14 +105,14 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
               boundaries,
               batch_sizes,
               no_padding=no_padding))
-      batch, = dataset.make_one_shot_iterator().get_next()
+      batch, = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
       with self.cached_session() as sess:
         batches = []
         for _ in range(4):
-          batches.append(sess.run(batch))
+          batches.append(self.evaluate(batch))
         with self.assertRaises(errors.OutOfRangeError):
-          sess.run(batch)
+          self.evaluate(batch)
       batch_sizes_val = []
       lengths_val = []
       for batch in batches:
@@ -155,14 +155,14 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
             grouping.bucket_by_sequence_length(
                 element_len, boundaries, batch_sizes,
                 pad_to_bucket_boundary=True))
-    batch, = dataset.make_one_shot_iterator().get_next()
+    batch, = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       batches = []
       for _ in range(3):
-        batches.append(sess.run(batch))
+        batches.append(self.evaluate(batch))
       with self.assertRaisesOpError("bucket_boundaries"):
-        sess.run(batch)
+        self.evaluate(batch)
     batch_sizes_val = []
     lengths_val = []
     for batch in batches:
@@ -192,14 +192,14 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
             grouping.bucket_by_sequence_length(
                 element_len, boundaries, batch_sizes,
                 pad_to_bucket_boundary=True))
-    batch, = dataset.make_one_shot_iterator().get_next()
+    batch, = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
     with self.cached_session() as sess:
       batches = []
       for _ in range(5):
-        batches.append(sess.run(batch))
+        batches.append(self.evaluate(batch))
       with self.assertRaises(errors.OutOfRangeError):
-        sess.run(batch)
+        self.evaluate(batch)
 
     self.assertAllEqual(batches[0], [[1, 0],
                                      [1, 1]])
@@ -295,7 +295,7 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
 
     def _compute_batches(dataset):
       """Computes actual batch outputs of dataset and stores in a set."""
-      batch = dataset.make_one_shot_iterator().get_next()
+      batch = dataset_ops.make_one_shot_iterator(dataset).get_next()
       all_sparse_tensors = set()
       with self.cached_session() as sess:
         with self.assertRaises(errors.OutOfRangeError):

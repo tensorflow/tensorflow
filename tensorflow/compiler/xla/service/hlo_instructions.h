@@ -743,6 +743,8 @@ class HloFusionInstruction : public HloInstruction {
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const override;
+  uint64 InnerHash() const override;
+
   // Implementation for non-common logic of CloneWithNewOperands.
   std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
@@ -955,6 +957,7 @@ class HloConvolutionInstruction : public HloInstruction {
   // information but it is presumed that the alternate lowering is strictly
   // superior.
   const PrecisionConfig& precision_config() const { return precision_config_; }
+  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
 
   string ToCategory() const override;
   // Returns a serialized representation of this instruction.
@@ -1168,7 +1171,14 @@ class HloPadInstruction : public HloInstruction {
   PaddingConfig padding_config_;
 };
 
-class HloDynamicSliceInstruction : public HloInstruction {
+class HloDynamicIndexInstruction : public HloInstruction {
+ public:
+  explicit HloDynamicIndexInstruction(HloOpcode opcode, const Shape& shape)
+      : HloInstruction(opcode, shape) {}
+  virtual int64 index_operand_number() const = 0;
+};
+
+class HloDynamicSliceInstruction : public HloDynamicIndexInstruction {
  public:
   explicit HloDynamicSliceInstruction(const Shape& shape,
                                       HloInstruction* operand,
@@ -1186,6 +1196,8 @@ class HloDynamicSliceInstruction : public HloInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
+  int64 index_operand_number() const override { return 1; }
+
  private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
@@ -1201,6 +1213,16 @@ class HloDynamicSliceInstruction : public HloInstruction {
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).
   std::vector<int64> dynamic_slice_sizes_;
+};
+
+class HloDynamicUpdateSliceInstruction : public HloDynamicIndexInstruction {
+ public:
+  explicit HloDynamicUpdateSliceInstruction(const Shape& shape,
+                                            HloInstruction* operand,
+                                            HloInstruction* update,
+                                            HloInstruction* start_indices);
+
+  int64 index_operand_number() const override { return 2; }
 };
 
 class HloGatherInstruction : public HloInstruction {
@@ -1326,6 +1348,7 @@ class HloDotInstruction : public HloInstruction {
   // information but it is presumed that the alternate lowering is strictly
   // superior.
   const PrecisionConfig& precision_config() const { return precision_config_; }
+  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
 
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;

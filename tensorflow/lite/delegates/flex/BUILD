@@ -83,8 +83,10 @@ cc_library(
         ":delegate_data",
         ":kernel",
         ":util",
+        "@com_google_absl//absl/strings:strings",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
     ] + select({
         "//tensorflow:android": [
@@ -116,6 +118,7 @@ cc_library(
     hdrs = ["delegate_data.h"],
     deps = [
         ":buffer_map",
+        "@com_google_absl//absl/memory",
         "//tensorflow/core/common_runtime/eager:context",
     ] + select({
         "//tensorflow:android": [

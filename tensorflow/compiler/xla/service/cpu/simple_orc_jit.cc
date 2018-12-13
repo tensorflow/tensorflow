@@ -128,8 +128,18 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 }
 
 llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
-  void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  void* func_addr = nullptr;
+  if (name.size() > 1 && name.front() == data_layout_.getGlobalPrefix()) {
+    // On Mac OS X, 'name' may have a leading underscore prefix, even though the
+    // registered name may not.
+    std::string stripped_name(name.begin() + 1, name.end());
+    func_addr = CustomCallTargetRegistry::Global()->Lookup(stripped_name);
+  } else {
+    func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+  }
+
   if (func_addr == nullptr) {
+    VLOG(2) << "Unable to resolve runtime symbol: " << name;
     return nullptr;
   }
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
@@ -286,6 +296,9 @@ bool RegisterKnownJITSymbols() {
   REGISTER_LIBM_SYMBOL(sin, double (*)(double));
 #ifdef __APPLE__
   REGISTER_LIBM_SYMBOL(__sincos, void (*)(double, double*, double*));
+  registry->Register("__sincosf_stret",
+                     reinterpret_cast<void*>(__sincosf_stret));
+  registry->Register("__sincos_stret", reinterpret_cast<void*>(__sincos_stret));
 #else
   REGISTER_LIBM_SYMBOL(sincos, void (*)(double, double*, double*));
 #endif
@@ -301,6 +314,12 @@ bool RegisterKnownJITSymbols() {
   registry->Register("memcpy", reinterpret_cast<void*>(memcpy));
   registry->Register("memmove", reinterpret_cast<void*>(memmove));
   registry->Register("memset", reinterpret_cast<void*>(memset));
+
+#ifdef __APPLE__
+  registry->Register("memset_pattern16",
+                     reinterpret_cast<void*>(memset_pattern16));
+#endif
+
   return true;
 }
 

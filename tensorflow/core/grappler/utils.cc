@@ -40,8 +40,8 @@ namespace {
 template <typename T>
 bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
-  if (value > static_cast<double>(std::numeric_limits<RealType>::max()) ||
-      value < static_cast<double>(std::numeric_limits<RealType>::min())) {
+  if (value > static_cast<double>(Eigen::NumTraits<RealType>::highest()) ||
+      value < static_cast<double>(Eigen::NumTraits<RealType>::lowest())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);
@@ -144,11 +144,16 @@ void NodeMap::UpdateOutput(const string& node_name,
   outputs.insert(nodes_[NodeName(new_output_name)]);
 }
 
+string TensorIdToString(const TensorId& tensor_id) {
+  return tensor_id.index() == 0 ? string(tensor_id.node())
+                                : tensor_id.ToString();
+}
+
 bool IsSameInput(const string& name1, const string& name2) {
   if (name1 == name2) return true;
   TensorId tensor1 = ParseTensorName(name1);
   TensorId tensor2 = ParseTensorName(name2);
-  return tensor1.node() == tensor2.node() && tensor1.index() == tensor2.index();
+  return tensor1 == tensor2;
 }
 
 bool IsControlInput(const string& name) {

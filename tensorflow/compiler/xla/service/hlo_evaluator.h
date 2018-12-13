@@ -144,6 +144,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Operations that are type-agnostic or always return a specific type, such as
   // HandleIsFinite where boolean is always returned.
   //
+  Status HandleBitcast(HloInstruction* bitcast) override;
+
   Status HandleParameter(HloInstruction* parameter) override;
 
   Status HandleConstant(HloInstruction* constant) override;
@@ -180,7 +182,9 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 
-  Status HandleAfterAll(HloInstruction* token) override;
+  Status HandleAfterAll(HloInstruction* after_all) override;
+
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status HandleSort(HloInstruction* sort) override;
 

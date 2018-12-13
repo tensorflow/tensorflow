@@ -2736,7 +2736,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   using FixedPointScaledDiff =
       gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
@@ -3664,8 +3663,10 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const RuntimeShape& unextended_output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Mean");
 
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  // Current implementation only supports dimension equals 4 and simultaneous
+  // reduction over width and height.
+  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
   const RuntimeShape output_shape =
@@ -3679,8 +3680,6 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
 
-  // The current implementation only supports simultaneous reduction over
-  // width and height.
   TFLITE_DCHECK_EQ(op_params.axis_count, 2);
   TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
                 (op_params.axis[0] == 2 && op_params.axis[1] == 1));
@@ -4611,6 +4610,16 @@ inline void BroadcastPrelu4DSlow(const PreluParams& params,
         }
       }
     }
+  }
+}
+
+template <typename T>
+void Fill(const RuntimeShape& value_shape, const T* value_data,
+          const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_EQ(value_shape.DimensionsCount(), 0);
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = *value_data;
   }
 }
 

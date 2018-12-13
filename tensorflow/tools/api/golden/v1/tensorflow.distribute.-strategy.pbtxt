@@ -1,6 +1,6 @@
 path: "tensorflow.distribute.Strategy"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.distribute.DistributionStrategy\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.DistributionStrategy\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "between_graph"
@@ -75,6 +75,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_run"
+    argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "finalize"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -104,7 +108,7 @@ tf_class {
   }
   member_method {
     name: "reduce"
-    argspec: "args=[\'self\', \'aggregation\', \'value\', \'destinations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "run_steps_on_dataset"
@@ -121,6 +125,10 @@ tf_class {
   member_method {
     name: "update"
     argspec: "args=[\'self\', \'var\', \'fn\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "update_config_proto"
+    argspec: "args=[\'self\', \'config_proto\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "update_non_slot"

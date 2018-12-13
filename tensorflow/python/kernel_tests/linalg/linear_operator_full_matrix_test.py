@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -69,6 +70,7 @@ class SquareLinearOperatorFullMatrixTest(
     # Auto-detected.
     self.assertTrue(operator.is_square)
 
+  @test_util.run_deprecated_v1
   def test_assert_non_singular_raises_if_cond_too_big_but_finite(self):
     with self.cached_session():
       tril = linear_operator_test_util.random_tril_matrix(
