@@ -890,7 +890,7 @@ def _SliceHelperVar(var, slice_spec):
 
   """
 
-  return _slice_helper(var._AsTensor(), slice_spec, var)
+  return _slice_helper(var.value(), slice_spec, var)
 
 
 ops.Tensor._override_operator("__getitem__", _slice_helper)

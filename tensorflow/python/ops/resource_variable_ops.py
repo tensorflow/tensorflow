@@ -809,9 +809,6 @@ class ResourceVariable(variables.RefVariable):
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
 
-  def _AsTensor(self):
-    return self.value()
-
   def _ref(self):
     """Unsupported."""
     raise NotImplementedError("ResourceVariable does not implement _ref()")
