@@ -82,7 +82,6 @@ tensorflow/third_party/gpus/crosstool/CROSSTOOL_hipcc.tpl
 tensorflow/third_party/gpus/crosstool/LICENSE
 tensorflow/third_party/gpus/crosstool/remote.BUILD.tpl
 tensorflow/third_party/gpus/crosstool/windows/msvc_wrapper_for_nvcc.py.tpl
-tensorflow/third_party/gpus/crosstool/windows/msvc_wrapper_for_nvcc.bat.tpl
 tensorflow/third_party/gpus/crosstool/BUILD.tpl
 tensorflow/third_party/gpus/crosstool/BUILD
 tensorflow/third_party/gpus/cuda/LICENSE
