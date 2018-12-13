@@ -932,7 +932,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     def _run_op(a, *args, **kwargs):
       # pylint: disable=protected-access
-      return tensor_oper(a._AsTensor(), *args, **kwargs)
+      return tensor_oper(a.value(), *args, **kwargs)
 
     functools.update_wrapper(_run_op, tensor_oper)
     setattr(cls, operator, _run_op)
@@ -1602,16 +1602,6 @@ class RefVariable(VariableV1):
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
     return self._variable
-
-  def _AsTensor(self):  # pylint: disable=invalid-name
-    """Converts this variable to a Tensor.
-
-    See `tf.Variable.value`.
-
-    Returns:
-      A `Tensor` containing the value of the variable.
-    """
-    return self._snapshot
 
   def value(self):
     """Returns the last snapshot of this variable.
