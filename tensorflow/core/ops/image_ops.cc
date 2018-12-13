@@ -132,12 +132,12 @@ Status NMSShapeFn(InferenceContext* c) {
 }
 
 Status CombinedNMSShapeFn(InferenceContext* c) {
-  //Get inputs and validate ranks
+  // Get inputs and validate ranks
   ShapeHandle boxes;
-  //boxes is a tensor of Dimensions [batch_size, num_anchors, q, 4]
+  // boxes is a tensor of Dimensions [batch_size, num_anchors, q, 4]
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &boxes));
   ShapeHandle scores;
-  //scores is a tensor of Dimensions [batch_size, num_anchors, num_classes]
+  // scores is a tensor of Dimensions [batch_size, num_anchors, num_classes]
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &scores));
   ShapeHandle max_output_size_per_class;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size_per_class));
@@ -148,9 +148,9 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused_shape));
 
   DimensionHandle unused;
-  //boxes[0] and scores[0] are both batch_size
+  // boxes[0] and scores[0] are both batch_size
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
-  //boxes[1] and scores[1] are both num_anchors
+  // boxes[1] and scores[1] are both num_anchors
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(boxes, 1), c->Dim(scores, 1), &unused));
   // The boxes[3] is 4.
   TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 3), 4, &unused));
@@ -159,8 +159,9 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   DimensionHandle class_dim = c->Dim(scores, 2);
   if (c->ValueKnown(d) && c->ValueKnown(class_dim)) {
     if (c->Value(d) != 1 && c->Value(d) != c->Value(class_dim)) {
-       return errors::InvalidArgument("third dimension of boxes must be either "
-           "1 or equal to the third dimension of scores");
+      return errors::InvalidArgument(
+          "third dimension of boxes must be either "
+          "1 or equal to the third dimension of scores");
     }
   }
   DimensionHandle output_dim;
@@ -177,15 +178,15 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   bool pad_per_class;
   TF_RETURN_IF_ERROR(c->GetAttr("pad_per_class", &pad_per_class));
   if (!pad_per_class) {
-    output_size =  c->Value(output_dim);
-  }
-  else {
+    output_size = c->Value(output_dim);
+  } else {
     if (c->ValueKnown(size_per_class) && c->Value(size_per_class) <= 0) {
-      return errors::InvalidArgument("max_output_size_per_class must be > 0 "
-             "if pad_per_class is set to true ");
+      return errors::InvalidArgument(
+          "max_output_size_per_class must be > 0 "
+          "if pad_per_class is set to true ");
     }
     output_size = std::min(c->Value(output_dim),
-        c->Value(size_per_class) * c->Value(class_dim));
+                           c->Value(size_per_class) * c->Value(class_dim));
   }
   c->set_output(0, c->MakeShape({batch_dim, output_size, 4}));
   c->set_output(1, c->MakeShape({batch_dim, output_size}));
@@ -194,7 +195,6 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   c->set_output(4, c->MakeShape({batch_dim, output_size}));
   return Status::OK();
 }
-
 
 }  // namespace
 
