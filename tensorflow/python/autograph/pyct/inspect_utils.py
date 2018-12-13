@@ -101,7 +101,7 @@ def getnamespace(f):
   return namespace
 
 
-def getqualifiedname(namespace, object_, max_depth=7, visited=None):
+def getqualifiedname(namespace, object_, max_depth=5, visited=None):
   """Returns the name by which a value can be referred to in a given namespace.
 
   If the object defines a parent module, the function attempts to use it to
@@ -149,7 +149,7 @@ def getqualifiedname(namespace, object_, max_depth=7, visited=None):
     # Iterating over a copy prevents "changed size due to iteration" errors.
     # It's unclear why those occur - suspecting new modules may load during
     # iteration.
-    for name in tuple(namespace.keys()):
+    for name in namespace.keys():
       value = namespace[name]
       if tf_inspect.ismodule(value) and id(value) not in visited:
         visited.add(id(value))

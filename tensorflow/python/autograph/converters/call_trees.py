@@ -183,7 +183,7 @@ class CallTreeTransformer(converter.Base):
       for dec in target_node.decorator_list:
         decorator_fn = self._resolve_decorator_name(dec)
         if (decorator_fn is not None and
-            decorator_fn in self.ctx.program.options.strip_decorators):
+            self.ctx.program.options.should_strip(decorator_fn)):
           return False
 
     return True
