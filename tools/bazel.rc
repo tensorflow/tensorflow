@@ -76,7 +76,6 @@ build:nonccl --define=no_nccl_support=true
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
-build --define=grpc_no_ares=true
 
 build --spawn_strategy=standalone
 build --genrule_strategy=standalone
