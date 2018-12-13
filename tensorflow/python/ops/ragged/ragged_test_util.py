@@ -24,7 +24,8 @@ import numpy as np
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 
 
 class RaggedTensorTestCase(test_util.TensorFlowTestCase):
@@ -32,14 +33,14 @@ class RaggedTensorTestCase(test_util.TensorFlowTestCase):
 
   def _GetPyList(self, a):
     """Converts a to a nested python list."""
-    if isinstance(a, ragged.RaggedTensor):
+    if isinstance(a, ragged_tensor.RaggedTensor):
       return self.evaluate(a).to_list()
     elif isinstance(a, ops.Tensor):
       a = self.evaluate(a)
       return a.tolist() if isinstance(a, np.ndarray) else a
     elif isinstance(a, np.ndarray):
       return a.tolist()
-    elif isinstance(a, ragged.RaggedTensorValue):
+    elif isinstance(a, ragged_tensor_value.RaggedTensorValue):
       return a.to_list()
     else:
       return np.array(a).tolist()
@@ -51,8 +52,8 @@ class RaggedTensorTestCase(test_util.TensorFlowTestCase):
     self.assertEqual(a_list, b_list)
 
     if not (isinstance(a, (list, tuple)) or isinstance(b, (list, tuple))):
-      a_ragged_rank = a.ragged_rank if ragged.is_ragged(a) else 0
-      b_ragged_rank = b.ragged_rank if ragged.is_ragged(b) else 0
+      a_ragged_rank = a.ragged_rank if ragged_tensor.is_ragged(a) else 0
+      b_ragged_rank = b.ragged_rank if ragged_tensor.is_ragged(b) else 0
       self.assertEqual(a_ragged_rank, b_ragged_rank)
 
   def assertRaggedAlmostEqual(self, a, b, places=7):
@@ -61,8 +62,8 @@ class RaggedTensorTestCase(test_util.TensorFlowTestCase):
     self.assertNestedListAlmostEqual(a_list, b_list, places, context='value')
 
     if not (isinstance(a, (list, tuple)) or isinstance(b, (list, tuple))):
-      a_ragged_rank = a.ragged_rank if ragged.is_ragged(a) else 0
-      b_ragged_rank = b.ragged_rank if ragged.is_ragged(b) else 0
+      a_ragged_rank = a.ragged_rank if ragged_tensor.is_ragged(a) else 0
+      b_ragged_rank = b.ragged_rank if ragged_tensor.is_ragged(b) else 0
       self.assertEqual(a_ragged_rank, b_ragged_rank)
 
   def assertNestedListAlmostEqual(self, a, b, places=7, context='value'):
@@ -79,7 +80,7 @@ class RaggedTensorTestCase(test_util.TensorFlowTestCase):
 
   def eval_to_list(self, tensor):
     value = self.evaluate(tensor)
-    if ragged.is_ragged(value):
+    if ragged_tensor.is_ragged(value):
       return value.to_list()
     elif isinstance(value, np.ndarray):
       return value.tolist()
@@ -87,8 +88,8 @@ class RaggedTensorTestCase(test_util.TensorFlowTestCase):
       return value
 
   def _eval_tensor(self, tensor):
-    if ragged.is_ragged(tensor):
-      return ragged.RaggedTensorValue(
+    if ragged_tensor.is_ragged(tensor):
+      return ragged_tensor_value.RaggedTensorValue(
           self._eval_tensor(tensor.values),
           self._eval_tensor(tensor.row_splits))
     else:
