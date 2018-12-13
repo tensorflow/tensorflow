@@ -16,12 +16,12 @@ limitations under the License.
 // See docs in ../ops/nn_ops.cc.
 #ifdef INTEL_MKL
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
@@ -866,9 +866,9 @@ class MklReluOpBase : public OpKernel {
       // execute eltwise
       eltwise_fwd->Execute(src_data, dst_data);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -1034,9 +1034,9 @@ class MklReluGradOpBase : public OpKernel {
       // execute eltwise bwd
       eltwise_bwd->Execute(src_data, diff_dst_data, diff_src_data);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -1353,7 +1353,7 @@ class MklLeakyReluOp : public MklReluOpBase<Device, T, eltwise_relu> {
     AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
                               src_tensor.shape(), dnn_shape_dst);
     T* out_o = dst_tensor->flat<T>().data();
-    out_o[0] = user_i[0] >= 0 ? user_g[0] : user_g[0] * this->alpha_;
+    out_o[0] = user_i[0] >= 0 ? user_i[0] : user_i[0] * this->alpha_;
     return;
   }
 };
