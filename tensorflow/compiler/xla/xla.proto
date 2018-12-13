@@ -227,7 +227,10 @@ message DebugOptions {
   // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
   bool xla_hlo_dump_as_html = 105;
 
-  // Next id: 106
+  // Enable fast math with eigen in the HLO evaluator.
+  bool xla_hlo_evaluator_use_fast_path = 106;
+
+  // Next id: 107
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
