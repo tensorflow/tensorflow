@@ -74,6 +74,9 @@ ClientLibraryTestBase::ClientLibraryTestBase(
   // default.
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
+
+  execution_options_.mutable_debug_options()
+      ->set_xla_hlo_evaluator_use_fast_path(true);
 }
 
 ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
@@ -88,6 +91,9 @@ ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
 
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
+
+  execution_options_.mutable_debug_options()
+      ->set_xla_hlo_evaluator_use_fast_path(true);
 }
 
 string ClientLibraryTestBase::TestName() const {

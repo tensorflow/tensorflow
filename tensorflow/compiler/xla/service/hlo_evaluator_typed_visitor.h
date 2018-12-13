@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
@@ -1154,6 +1155,78 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleDot(HloInstruction* dot) override {
+    if (parent_->use_fast_path_) {
+      return HandleDot<ReturnT>(dot);
+    }
+    return HandleDotSlowPath(dot);
+  }
+
+  template <typename NativeT, typename std::enable_if<std::is_same<
+                                  NativeT, float>::value>::type* = nullptr>
+  Status HandleDot(HloInstruction* dot) {
+    const HloInstruction* lhs = dot->operand(0);
+    const HloInstruction* rhs = dot->operand(1);
+    CHECK(ShapeUtil::IsArray(dot->shape()));
+    CHECK(ShapeUtil::IsArray(lhs->shape()));
+    CHECK(ShapeUtil::IsArray(rhs->shape()));
+
+    const auto& dnums = dot->dot_dimension_numbers();
+
+    const int64 lhs_rank = ShapeUtil::Rank(lhs->shape());
+    const int64 rhs_rank = ShapeUtil::Rank(rhs->shape());
+
+    CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
+    CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
+
+    // There must be 1 and only 1 Contracting dimension for lhs and rhs.
+    CHECK_EQ(dnums.lhs_contracting_dimensions_size(), 1);
+    CHECK_EQ(dnums.rhs_contracting_dimensions_size(), 1);
+    const int64 lhs_contracting_dimension = dnums.lhs_contracting_dimensions(0);
+    const int64 rhs_contracting_dimension = dnums.rhs_contracting_dimensions(0);
+    // Contracted dimension sizes must be the same.
+    CHECK_EQ(lhs->shape().dimensions(lhs_contracting_dimension),
+             rhs->shape().dimensions(rhs_contracting_dimension))
+        << "lhs contracted dimension: "
+        << lhs->shape().dimensions(lhs_contracting_dimension)
+        << " rhs contracted dimension: "
+        << rhs->shape().dimensions(rhs_contracting_dimension);
+
+    // The fast path is for a simple rank 2 dot with default layout operands.
+    if (lhs_rank == 2 && rhs_rank == 2 && lhs_contracting_dimension == 1 &&
+        rhs_contracting_dimension == 0 &&
+        LayoutUtil::Equal(lhs->shape().layout(),
+                          LayoutUtil::GetDefaultLayoutForR2()) &&
+        LayoutUtil::Equal(rhs->shape().layout(),
+                          LayoutUtil::GetDefaultLayoutForR2()) &&
+        LayoutUtil::Equal(dot->shape().layout(),
+                          LayoutUtil::GetDefaultLayoutForR2())) {
+      const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
+      const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
+      const int64 contracted_dimension_size =
+          lhs->shape().dimensions(lhs_contracting_dimension);
+      Array2D<NativeT> lhs_array(lhs->shape().dimensions(0),
+                                 contracted_dimension_size);
+      lhs_array.SetValues(lhs_literal.data<NativeT>());
+      Array2D<NativeT> rhs_array(contracted_dimension_size,
+                                 rhs->shape().dimensions(1));
+      rhs_array.SetValues(rhs_literal.data<NativeT>());
+      std::unique_ptr<Array2D<NativeT>> result_array =
+          HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
+      Literal result(dot->shape());
+      result.PopulateR2FromArray2D(*result_array);
+      parent_->evaluated_[dot] = std::move(result);
+      return Status::OK();
+    }
+    return HandleDotSlowPath(dot);
+  }
+
+  template <typename NativeT, typename std::enable_if<!std::is_same<
+                                  NativeT, float>::value>::type* = nullptr>
+  Status HandleDot(HloInstruction* dot) {
+    return HandleDotSlowPath(dot);
+  }
+
+  Status HandleDotSlowPath(HloInstruction* dot) {
     auto lhs = dot->operand(0);
     auto rhs = dot->operand(1);
     CHECK(ShapeUtil::IsArray(dot->shape()));
