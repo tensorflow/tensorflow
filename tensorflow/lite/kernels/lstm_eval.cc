@@ -1118,7 +1118,7 @@ TfLiteStatus EvalHybrid(
             cell_to_output_weights_scale, input_gate_bias_ptr,
             forget_gate_bias_ptr, cell_bias_ptr, output_gate_bias_ptr,
             projection_weights_ptr, projection_weights_scale,
-            projection_bias_ptr, params, n_batch, n_cell, n_input,
+            projection_bias_ptr, params, /*n_batch=*/1, n_cell, n_input,
             aux_input_size, n_output, output_batch_leading_dim,
             input_gate_scratch, forget_gate_scratch, cell_scratch,
             output_gate_scratch, scaling_factors_ptr, prod_scaling_factors_ptr,
