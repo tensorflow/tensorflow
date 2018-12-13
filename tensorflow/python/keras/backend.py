@@ -568,6 +568,10 @@ def _get_available_gpus():
   Returns:
       A list of available GPU devices.
   """
+  if ops.executing_eagerly_outside_functions():
+    # Returns names of devices directly.
+    return [name for name in context.list_devices() if 'GPU' in name]
+
   global _LOCAL_DEVICES
   if _LOCAL_DEVICES is None:
     _LOCAL_DEVICES = get_session().list_devices()

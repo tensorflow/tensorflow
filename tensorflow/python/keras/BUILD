@@ -369,7 +369,7 @@ py_test(
     name = "convolutional_test",
     size = "large",
     srcs = ["layers/convolutional_test.py"],
-    shard_count = 4,
+    shard_count = 11,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
