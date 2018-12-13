@@ -26,7 +26,7 @@ from tensorflow.contrib.feature_column.python.feature_column import sequence_fea
 from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column_v2 as sfc
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_lib as fc
-from tensorflow.python.feature_column.feature_column import _LazyBuilder
+from tensorflow.python.feature_column.feature_column_v2_test import _TestStateManager
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -131,7 +131,7 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         feature_columns=[embedding_column_b, embedding_column_a])
 
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
+    self.assertCountEqual(
         ('sequence_input_layer/aaa_embedding/embedding_weights:0',
          'sequence_input_layer/bbb_embedding/embedding_weights:0'),
         tuple([v.name for v in global_vars]))
@@ -223,7 +223,7 @@ class SequenceInputLayerTest(test.TestCase, parameterized.TestCase):
         feature_columns=shared_embedding_columns)
 
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(
+    self.assertCountEqual(
         ('sequence_input_layer/aaa_bbb_shared_embedding/embedding_weights:0',),
         tuple([v.name for v in global_vars]))
     with monitored_session.MonitoredSession() as sess:
@@ -670,6 +670,23 @@ def _assert_sparse_tensor_indices_shape(test_case, expected, actual):
   test_case.assertAllEqual(expected.dense_shape, actual.dense_shape)
 
 
+def _get_sequence_dense_tensor(column, features):
+  return column.get_sequence_dense_tensor(
+      fc.FeatureTransformationCache(features), None)
+
+
+def _get_sequence_dense_tensor_state(column, features):
+  state_manager = _TestStateManager()
+  column.create_state(state_manager)
+  return column.get_sequence_dense_tensor(
+      fc.FeatureTransformationCache(features), state_manager)
+
+
+def _get_sparse_tensors(column, features):
+  return column.get_sparse_tensors(
+      fc.FeatureTransformationCache(features), None)
+
+
 class SequenceCategoricalColumnWithIdentityTest(
     test.TestCase, parameterized.TestCase):
 
@@ -698,7 +715,7 @@ class SequenceCategoricalColumnWithIdentityTest(
     expected = sparse_tensor.SparseTensorValue(**expected_args)
     column = sfc.sequence_categorical_column_with_identity('aaa', num_buckets=9)
 
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+    id_weight_pair = _get_sparse_tensors(column, {'aaa': inputs})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
@@ -737,7 +754,7 @@ class SequenceCategoricalColumnWithHashBucketTest(
     column = sfc.sequence_categorical_column_with_hash_bucket(
         'aaa', hash_bucket_size=10)
 
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+    id_weight_pair = _get_sparse_tensors(column, {'aaa': inputs})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
@@ -790,7 +807,7 @@ class SequenceCategoricalColumnWithVocabularyFileTest(
         vocabulary_file=self._wire_vocabulary_file_name,
         vocabulary_size=self._wire_vocabulary_size)
 
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+    id_weight_pair = _get_sparse_tensors(column, {'aaa': inputs})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
@@ -814,8 +831,7 @@ class SequenceCategoricalColumnWithVocabularyFileTest(
     input_placeholder_shape[1] = None
     input_placeholder = array_ops.sparse_placeholder(
         dtypes.string, shape=input_placeholder_shape)
-    id_weight_pair = column._get_sparse_tensors(
-        _LazyBuilder({'aaa': input_placeholder}))
+    id_weight_pair = _get_sparse_tensors(column, {'aaa': input_placeholder})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
@@ -855,7 +871,7 @@ class SequenceCategoricalColumnWithVocabularyListTest(
         key='aaa',
         vocabulary_list=('omar', 'stringer', 'marlo'))
 
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
+    id_weight_pair = _get_sparse_tensors(column, {'aaa': inputs})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
     with monitored_session.MonitoredSession() as sess:
@@ -922,13 +938,12 @@ class SequenceEmbeddingColumnTest(
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc_old._embedding_column(
-        categorical_column,
-        dimension=embedding_dimension,
+    embedding_column = fc.embedding_column(
+        categorical_column, dimension=embedding_dimension,
         initializer=_initializer)
 
-    embedding_lookup, _ = embedding_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': inputs}))
+    embedding_lookup, _ = _get_sequence_dense_tensor_state(
+        embedding_column, {'aaa': inputs})
 
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertItemsEqual(
@@ -961,10 +976,11 @@ class SequenceEmbeddingColumnTest(
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc_old._embedding_column(categorical_column, dimension=2)
+    embedding_column = fc.embedding_column(
+        categorical_column, dimension=2)
 
-    _, sequence_length = embedding_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': inputs}))
+    _, sequence_length = _get_sequence_dense_tensor_state(
+        embedding_column, {'aaa': inputs})
 
     with monitored_session.MonitoredSession() as sess:
       sequence_length = sess.run(sequence_length)
@@ -988,10 +1004,11 @@ class SequenceEmbeddingColumnTest(
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    embedding_column = fc_old._embedding_column(categorical_column, dimension=2)
+    embedding_column = fc.embedding_column(
+        categorical_column, dimension=2)
 
-    _, sequence_length = embedding_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
+    _, sequence_length = _get_sequence_dense_tensor_state(
+        embedding_column, {'aaa': sparse_input})
 
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(
@@ -1058,22 +1075,18 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc.shared_embedding_columns_v2(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
         initializer=_initializer)
 
-    embedding_lookup_a = shared_embedding_columns[0]._get_sequence_dense_tensor(
-        _LazyBuilder({
-            'aaa': sparse_input_a
-        }))[0]
-    embedding_lookup_b = shared_embedding_columns[1]._get_sequence_dense_tensor(
-        _LazyBuilder({
-            'bbb': sparse_input_b
-        }))[0]
+    embedding_lookup_a = _get_sequence_dense_tensor(
+        shared_embedding_columns[0], {'aaa': sparse_input_a})[0]
+    embedding_lookup_b = _get_sequence_dense_tensor(
+        shared_embedding_columns[1], {'bbb': sparse_input_b})[0]
 
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(('embedding_weights:0',),
+    self.assertItemsEqual(('aaa_bbb_shared_embedding:0',),
                           tuple([v.name for v in global_vars]))
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(embedding_values, global_vars[0].eval(session=sess))
@@ -1104,17 +1117,13 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
     expected_sequence_length_b = [2, 1]
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc.shared_embedding_columns_v2(
         [categorical_column_a, categorical_column_b], dimension=2)
 
-    sequence_length_a = shared_embedding_columns[0]._get_sequence_dense_tensor(
-        _LazyBuilder({
-            'aaa': sparse_input_a
-        }))[1]
-    sequence_length_b = shared_embedding_columns[1]._get_sequence_dense_tensor(
-        _LazyBuilder({
-            'bbb': sparse_input_b
-        }))[1]
+    sequence_length_a = _get_sequence_dense_tensor(
+        shared_embedding_columns[0], {'aaa': sparse_input_a})[1]
+    sequence_length_b = _get_sequence_dense_tensor(
+        shared_embedding_columns[1], {'bbb': sparse_input_b})[1]
 
     with monitored_session.MonitoredSession() as sess:
       sequence_length_a = sess.run(sequence_length_a)
@@ -1155,17 +1164,13 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
     categorical_column_b = sfc.sequence_categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
 
-    shared_embedding_columns = fc.shared_embedding_columns(
+    shared_embedding_columns = fc.shared_embedding_columns_v2(
         [categorical_column_a, categorical_column_b], dimension=2)
 
-    sequence_length_a = shared_embedding_columns[0]._get_sequence_dense_tensor(
-        _LazyBuilder({
-            'aaa': sparse_input_a
-        }))[1]
-    sequence_length_b = shared_embedding_columns[1]._get_sequence_dense_tensor(
-        _LazyBuilder({
-            'bbb': sparse_input_b
-        }))[1]
+    sequence_length_a = _get_sequence_dense_tensor(
+        shared_embedding_columns[0], {'aaa': sparse_input_a})[1]
+    sequence_length_b = _get_sequence_dense_tensor(
+        shared_embedding_columns[1], {'bbb': sparse_input_b})[1]
 
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(
@@ -1221,10 +1226,10 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc_old._indicator_column(categorical_column)
+    indicator_column = fc.indicator_column(categorical_column)
 
-    indicator_tensor, _ = indicator_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': inputs}))
+    indicator_tensor, _ = _get_sequence_dense_tensor(
+        indicator_column, {'aaa': inputs})
 
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(expected, indicator_tensor.eval(session=sess))
@@ -1253,10 +1258,10 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc_old._indicator_column(categorical_column)
+    indicator_column = fc.indicator_column(categorical_column)
 
-    _, sequence_length = indicator_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': inputs}))
+    _, sequence_length = _get_sequence_dense_tensor(
+        indicator_column, {'aaa': inputs})
 
     with monitored_session.MonitoredSession() as sess:
       sequence_length = sess.run(sequence_length)
@@ -1282,17 +1287,12 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     indicator_column = fc.indicator_column(categorical_column)
 
-    _, sequence_length = indicator_column._get_sequence_dense_tensor(
-        _LazyBuilder({'aaa': sparse_input}))
+    _, sequence_length = _get_sequence_dense_tensor(
+        indicator_column, {'aaa': sparse_input})
 
     with monitored_session.MonitoredSession() as sess:
       self.assertAllEqual(
           expected_sequence_length, sequence_length.eval(session=sess))
-
-
-def _get_sequence_dense_tensor(column, features):
-  return column.get_sequence_dense_tensor(
-      fc.FeatureTransformationCache(features), None)
 
 
 class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
