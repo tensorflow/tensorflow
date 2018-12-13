@@ -31,6 +31,7 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import error_handling
@@ -489,6 +490,15 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
   def _create_infeed_controller(self, name, target, args):
     return _OpQueueContext(name=name, target=target, args=args)
 
+  def _assertCompilationSucceeded(self, result, coord):
+    proto = tpu_compilation_result.CompilationResultProto()
+    proto.ParseFromString(result)
+    if proto.status_error_message:
+      logging.error('Compilation failed: {}'.format(proto.status_error_message))
+      coord.request_stop()
+    else:
+      logging.info('Compilation succeeded')
+
   def after_create_session(self, session, coord):
     if self._should_initialize_tpu:
       logging.info('Init TPU system')
@@ -504,7 +514,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
     if os.environ.get('TPU_SPLIT_COMPILE_AND_EXECUTE', '') == '1':
       logging.info('Compiling user program: this may take a while...')
-      logging.info('Compile finished: %s', session.run(self._tpu_compile_op))
+      self._assertCompilationSucceeded(session.run(self._tpu_compile_op), coord)
 
     self._infeed_controller = self._create_infeed_controller(
         name='InfeedController', target=self._run_infeed, args=(session,))
