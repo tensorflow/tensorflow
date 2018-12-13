@@ -1712,26 +1712,26 @@ class Options(options_lib.OptionsBase):
   experimental_optimization = options_lib.create_option(
       name="experimental_optimization",
       ty=optimization_options.OptimizationOptions,
-      docstring="Associates the given optimization options with the dataset.")
+      docstring="Associates the given optimization options with the dataset.",
+      default_factory=optimization_options.OptimizationOptions)
 
   experimental_stats = options_lib.create_option(
       name="experimental_stats",
       ty=stats_options.StatsOptions,
-      docstring="Associates the given statistics options with the dataset.")
+      docstring="Associates the given statistics options with the dataset.",
+      default_factory=stats_options.StatsOptions)
 
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=threading_options.ThreadingOptions,
-      docstring="Associates the given threading options with the dataset.")
+      docstring="Associates the given threading options with the dataset.",
+      default_factory=threading_options.ThreadingOptions)
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
 
     result = []
-    exp_optimization_options = (
-        self.experimental_optimization or
-        optimization_options.OptimizationOptions())  # If not set, use default
-    result.extend(exp_optimization_options._static_optimizations())  # pylint: disable=protected-access
+    result.extend(self.experimental_optimization._static_optimizations())  # pylint: disable=protected-access
 
     if self.experimental_numa_aware:
       result.append("make_numa_aware")

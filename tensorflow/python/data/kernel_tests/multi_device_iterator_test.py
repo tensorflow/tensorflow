@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
@@ -275,7 +274,6 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
     dataset = dataset.cache()
 
     options = dataset_ops.Options()
-    options.experimental_optimization = OptimizationOptions()
     options.experimental_optimization.noop_elimination = True
     dataset = dataset.with_options(options)
 

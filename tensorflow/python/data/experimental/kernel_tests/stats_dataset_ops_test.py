@@ -26,7 +26,6 @@ from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_ops
-from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -47,7 +46,6 @@ def function_set_stats_aggregator(dataset,
 
 def function_apply_options(dataset, aggregator, prefix="", counter_prefix=""):
   options = dataset_ops.Options()
-  options.experimental_stats = stats_options.StatsOptions()
   options.experimental_stats.aggregator = aggregator
   options.experimental_stats.prefix = prefix
   options.experimental_stats.counter_prefix = counter_prefix

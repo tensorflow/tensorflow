@@ -26,12 +26,14 @@ from tensorflow.python.util.tf_export import tf_export
 class OptimizationOptions(options.OptionsBase):
   """Represents options for dataset optimizations.
 
-  You can apply `OptimizationOptions` to a `dataset` object, as follows:
+  You can set the optimization options of a dataset through the
+  `experimental_optimization` property of `tf.data.Options`; the property is
+  an instance of `tf.data.experimental.OptimizationOptions`.
 
   ```python
   options = tf.data.Options()
-  options.optimization = tf.data.experimental.OptimizationOptions()
-  options.optimization.map_and_batch_fusion = True
+  options.experimental_optimization.map_vectorization = True
+  options.apply_default_optimizations = False
   dataset = dataset.with_options(options)
   ```
   """
