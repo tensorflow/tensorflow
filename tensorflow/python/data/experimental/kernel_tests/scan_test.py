@@ -70,7 +70,7 @@ class ScanTest(test_base.DatasetTestBase):
     self.assertEqual(5, self.evaluate(next_element()))
     self.assertEqual(8, self.evaluate(next_element()))
 
-  # TODO(b/119837791): Add coverage for eager.
+  # TODO(b/117581999): Add coverage for eager.
   @test_util.run_deprecated_v1
   def testSkipEagerSparseCount(self):
 
