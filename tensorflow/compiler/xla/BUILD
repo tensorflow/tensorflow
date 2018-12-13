@@ -109,7 +109,7 @@ cc_library(
     name = "status_macros",
     srcs = ["status_macros.cc"],
     hdrs = ["status_macros.h"],
-    visibility = [":friends"],
+    visibility = ["//visibility:public"],
     deps = [
         ":statusor",
         ":types",
