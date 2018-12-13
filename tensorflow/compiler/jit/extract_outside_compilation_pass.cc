@@ -634,17 +634,14 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
   return s;
 }
 
-// Rewrites shape inference graph for outside compilation.
-// 1. If the outside compilation is a "top-level" one (not in a function of any
-//    If/While/etc.), this shape inference graph might have host computation to
-//    outside compilation placeholder nodes, which will cause shape inference to
-//    fail. However, those nodes are not in `host_graph` any more (because we
-//    have executed `PostprocessForEncapsultion`). In this case, we clear the
-//    graph, and copy SendFromHost with all its predecessors from `host_graph`.
-//    This case is detected by whether the SendFromHost node exists in
-//    `host_graph` as well.
-// 2. Remove control edges, and prune nodes that are not useful for shape
-//    inference.
+// Rewrites shape inference graph for outside compilation:
+// 1) If XlaSendFromHost also exists in `host_graph`, copy nodes from
+//    `host_graph`. Because we might still have outside compilation to outside
+//    compilation placeholder nodes in shape inference graph, which will prevent
+//    us from inferring XlaSendFromHost shape. But in `host_graph`, we already
+//    removed those placeholder nodes.
+// 2) Remove control edges.
+// 3) Prune nodes that are not useful for shape inference.
 Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
                                   Graph* host_graph,
                                   FunctionLibraryDefinition* fld) {
@@ -744,6 +741,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
       g->RemoveEdge(e);
     }
   }
+
   // Nodes that are not reverse reachable from SendFromHost are not useful for
   // shape inference. Prune them.
   PruneForReverseReachability(g,
@@ -1580,14 +1578,6 @@ Status ExtractOutsideCompilation(
         ExpandHostGraphIntoMainGraph(g, fld, host_graph_func_name, n));
     TF_RETURN_IF_ERROR(fld->RemoveFunction(host_graph_func_name));
   }
-
-  if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile("extract_outside_compilation_expanded", *g,
-                                fld);
-  }
-
-  TF_RETURN_IF_ERROR(PostprocessForEncapsulation(
-      g, xla_cluster_attr_name, outside_compilation_attr_name, clusters));
 
   for (auto shape_inference_graph_name : shape_inference_graphs) {
     TF_RETURN_IF_ERROR(

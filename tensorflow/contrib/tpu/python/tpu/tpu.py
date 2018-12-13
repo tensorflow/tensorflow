@@ -646,6 +646,10 @@ def split_compile_and_replicate(computation,
           array_ops.identity(x, name="replicated_input_{}".format(i))
           for i, x in enumerate(computation_inputs)
       ]
+      for i in computation_inputs:
+        # pylint: disable=protected-access
+        i.op._set_attr("_tpu_input_identity", attr_value_pb2.AttrValue(b=True))
+        # pylint: enable=protected-access
 
       # If there is an infeed queue, adds the dequeued values to the
       # computation's inputs.
@@ -726,7 +730,11 @@ def split_compile_and_replicate(computation,
     new_output_tensors = []
     for t in output_tensors:
       with ops.device(t.device if t.device else core(0)):
-        new_output_tensors.append(array_ops.identity(t))
+        o = array_ops.identity(t)
+        # pylint: disable=protected-access
+        o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
+        # pylint: enable=protected-access
+        new_output_tensors.append(o)
     output_tensors = new_output_tensors
     context.ExitResult(output_tensors)
   finally:
