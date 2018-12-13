@@ -1190,8 +1190,15 @@ tf_py_test(
     srcs = ["unicode_decode_op_test.py"],
     additional_deps = [
         "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/ops/ragged:ragged",
+        "//tensorflow/python/ops/ragged:ragged_test_util",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
     ],
 )

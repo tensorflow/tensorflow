@@ -67,6 +67,12 @@ class documentation.
 @@broadcast_to
 @@broadcast_dynamic_shape
 
+<!-- String ops -->
+@@unicode_decode
+@@unicode_decode_with_offsets
+@@unicode_split
+@@unicode_split_with_offsets
+
 <!-- Modules -->
 @@ragged_dispatch
 @@ragged_factory_ops
@@ -127,6 +133,11 @@ from tensorflow.python.ops.ragged.ragged_math_ops import segment_min
 from tensorflow.python.ops.ragged.ragged_math_ops import segment_prod
 from tensorflow.python.ops.ragged.ragged_math_ops import segment_sqrt_n
 from tensorflow.python.ops.ragged.ragged_math_ops import segment_sum
+
+from tensorflow.python.ops.ragged.ragged_string_ops import unicode_decode
+from tensorflow.python.ops.ragged.ragged_string_ops import unicode_decode_with_offsets
+from tensorflow.python.ops.ragged.ragged_string_ops import unicode_split
+from tensorflow.python.ops.ragged.ragged_string_ops import unicode_split_with_offsets
 
 from tensorflow.python.ops.ragged.ragged_tensor import convert_to_tensor_or_ragged_tensor
 from tensorflow.python.ops.ragged.ragged_tensor import is_ragged
