@@ -30,7 +30,7 @@ class FuzzExampleProtoFastParsing : public FuzzSession {
   void BuildGraph(const Scope& scope) final {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
     // The serialized proto.
-    auto input = Placeholder(scope.WithOpName("input1"), DT_STRING);
+    auto input = Placeholder(scope.WithOpName("input"), DT_STRING);
 
     auto in_expanded = ExpandDims(scope, input, Const<int>(scope, 0));
 
@@ -53,8 +53,7 @@ class FuzzExampleProtoFastParsing : public FuzzSession {
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<string>()() =
         string(reinterpret_cast<const char*>(data), size);
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    RunOneInput(input_tensor).IgnoreError();
+    RunInputs({{"input", input_tensor}}).IgnoreError();
   }
 };
 

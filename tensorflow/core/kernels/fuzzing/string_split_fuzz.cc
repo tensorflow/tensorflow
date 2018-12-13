@@ -22,16 +22,16 @@ namespace fuzzing {
 class FuzzStringSplit : public FuzzSession {
   void BuildGraph(const Scope& scope) override {
     auto input =
-        tensorflow::ops::Placeholder(scope.WithOpName("input1"), DT_STRING);
-    auto delimeter =
-        tensorflow::ops::Placeholder(scope.WithOpName("input2"), DT_STRING);
+        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_STRING);
+    auto delimiter =
+        tensorflow::ops::Placeholder(scope.WithOpName("delimiter"), DT_STRING);
     (void)tensorflow::ops::StringSplit(scope.WithOpName("output"), input,
-                                       delimeter);
+                                       delimiter);
   }
 
   void FuzzImpl(const uint8_t* data, size_t size) final {
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
-    Tensor delimeter_tensor(tensorflow::DT_STRING, TensorShape({}));
+    Tensor delimiter_tensor(tensorflow::DT_STRING, TensorShape({}));
 
     if (size > 0) {
       // The spec for split is that the delimeter should be 0 or 1 characters.
@@ -42,14 +42,14 @@ class FuzzStringSplit : public FuzzSession {
       if (delim_len > size) {
         delim_len = size - 1;
       }
-      delimeter_tensor.scalar<string>()() =
+      delimiter_tensor.scalar<string>()() =
           string(reinterpret_cast<const char*>(data), delim_len);
       input_tensor.scalar<string>()() = string(
           reinterpret_cast<const char*>(data + delim_len), size - delim_len);
     }
 
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    RunTwoInputs(input_tensor, delimeter_tensor).IgnoreError();
+    RunInputs({{"input", input_tensor}, {"delimiter", delimiter_tensor}})
+        .IgnoreError();
   }
 };
 

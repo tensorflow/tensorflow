@@ -23,7 +23,7 @@ namespace fuzzing {
 class FuzzCheckNumerics : public FuzzSession {
   void BuildGraph(const Scope& scope) override {
     auto input =
-        tensorflow::ops::Placeholder(scope.WithOpName("input1"), DT_FLOAT);
+        tensorflow::ops::Placeholder(scope.WithOpName("input"), DT_FLOAT);
     auto prefix = "Error: ";
     (void)tensorflow::ops::CheckNumerics(scope.WithOpName("output"), input,
                                          prefix);
@@ -40,7 +40,7 @@ class FuzzCheckNumerics : public FuzzSession {
     for (size_t i = 0; i < num_floats; i++) {
       flat_tensor(i) = float_data[i];
     }
-    RunOneInput(input_tensor).IgnoreError();
+    RunInputs({{"input", input_tensor}}).IgnoreError();
   }
 };
 
