@@ -3262,9 +3262,9 @@ def combined_non_max_suppression(boxes,
       the scores for the boxes.
     'nmsed_classes': A [batch_size, max_detections] float32 tensor
       containing the class for boxes.
-    'num_detections': A [batch_size] int32 tensor indicating the number of
-      valid detections per batch item. Only the top num_detections[i] entries in
-      nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
+    'valid_detections': A [batch_size] int32 tensor indicating the number of
+      valid detections per batch item. Only the top valid_detections[i] entries
+      in nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
       entries are zero paddings.
     'selected_indices':  A [batch_size, max_detections] int32 tensor
       containing the indices of the selected boxes
