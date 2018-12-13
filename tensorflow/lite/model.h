@@ -80,8 +80,26 @@ class FlatBufferModel {
   // is destroyed. Caller retains ownership of `error_reporter` and must ensure
   // its lifetime is longer than the FlatBufferModel instance.
   // Returns a nullptr in case of failure.
+  // NOTE: this does NOT validate the buffer so it should NOT be called on
+  // invalid/untrusted input. Use VerifyAndBuildFromBuffer in that case
   static std::unique_ptr<FlatBufferModel> BuildFromBuffer(
       const char* buffer, size_t buffer_size,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
+
+  // Verifies whether the content of the buffer is legit, then builds a model
+  // based on the pre-loaded flatbuffer.
+  // The verifier argument is an additional optional verifier for the buffer. By
+  // default, we always check with tflite::VerifyModelBuffer. If verifier is
+  // supplied, the buffer is checked against the verifier after the check
+  // against tflite::VerifyModelBuilder.
+  // The caller retains ownership of the buffer and should keep it alive until
+  // the returned object is destroyed. Caller retains ownership of
+  // `error_reporter` and must ensure its lifetime is longer than the
+  // FlatBufferModel instance.
+  // Returns a nullptr in case of failure.
+  static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromBuffer(
+      const char* buffer, size_t buffer_size,
+      TfLiteVerifier* verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Builds a model directly from a flatbuffer pointer. The caller retains

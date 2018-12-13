@@ -121,6 +121,24 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
   return model;
 }
 
+std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
+    const char* buffer, size_t buffer_size, TfLiteVerifier* verifier,
+    ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
+  flatbuffers::Verifier base_verifier(reinterpret_cast<const uint8_t*>(buffer),
+                                      buffer_size);
+  if (!VerifyModelBuffer(base_verifier)) {
+    return nullptr;
+  }
+
+  if (verifier && !verifier->Verify(buffer, buffer_size, error_reporter)) {
+    return nullptr;
+  }
+
+  return BuildFromBuffer(buffer, buffer_size, error_reporter);
+}
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
     const tflite::Model* model_spec, ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
