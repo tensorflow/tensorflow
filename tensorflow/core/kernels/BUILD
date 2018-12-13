@@ -3714,7 +3714,6 @@ NN_DEPS = [
     ":bounds_check",
     ":conv_2d",
     ":eigen_contraction_kernel",
-    ":fused_batch_norm_util_gpu",
     ":ops_util",
     ":pooling_ops",
     "//tensorflow/core:framework",
