@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import random
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -69,9 +71,13 @@ def _get_record_shape(sparse):
   return tensor_shape.TensorShape([None])
 
 
-class BucketBySequenceLengthTest(test_base.DatasetTestBase):
+class BucketBySequenceLengthTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def testBucketDropReminder(self):
+  @parameterized.named_parameters(
+    ("WithoutPadding", True),
+    ("WithPadding", False),
+  )
+  def testBucketDropReminder(self, param_no_padding):
 
     boundaries = [10, 20, 30]
     batch_sizes = [10, 8, 4, 2]
@@ -192,10 +198,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
                        .format(sorted(expected_lengths),
                                sorted(generated_lengths)))
 
-    for no_padding in (True, False):
-      _test_bucket_by_padding(no_padding)
+    _test_bucket_by_padding(param_no_padding)
 
-  def testBucket(self):
+  @parameterized.named_parameters(
+      ("WithoutPadding", True),
+      ("WithPadding", False),
+  )
+  def testBucket(self, param_no_padding):
 
     boundaries = [10, 20, 30]
     batch_sizes = [10, 8, 4, 2]
@@ -251,8 +260,7 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
       self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
       self.assertEqual(sorted(lengths), sorted(lengths_val))
 
-    for no_padding in (True, False):
-      _test_bucket_by_padding(no_padding)
+    _test_bucket_by_padding(param_no_padding)
 
   def testPadToBoundary(self):
 
@@ -336,7 +344,11 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
     self.assertAllEqual(batches[4], [[1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
                                      [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
 
-  def testTupleElements(self):
+  @parameterized.named_parameters(
+      ("WithoutPadding", True),
+      ("WithPadding", False),
+  )
+  def testTupleElements(self, param_no_padding):
 
     def build_dataset(sparse):
       def _generator():
@@ -364,10 +376,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
       self.assertEqual([None, None], shapes[0].as_list())
       self.assertEqual([None], shapes[1].as_list())
 
-    for no_padding in (True, False):
-      _test_tuple_elements_by_padding(no_padding)
+    _test_tuple_elements_by_padding(param_no_padding)
 
-  def testBucketSparse(self):
+  @parameterized.named_parameters(
+      ("DoDropRemainder", True),
+      ("DoNotDropRemainder", False),
+  )
+  def testBucketSparse(self, param_drop_remainder):
     """Tests bucketing of sparse tensors (case where `no_padding` == True).
 
     Test runs on following dataset:
@@ -435,18 +450,17 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
             all_sparse_tensors.add(sprs_tensor)
       return all_sparse_tensors
 
-    for drop_remainder in (True, False):
-      dataset = _build_dataset()
-      boundaries = range(min_len + bucket_size + 1, max_len, bucket_size)
-      dataset = dataset.apply(grouping.bucket_by_sequence_length(
-          _element_length_fn,
-          boundaries,
-          [batch_size] * (len(boundaries) + 1),
-          no_padding=True,
-          drop_remainder=drop_remainder))
-      batches = _compute_batches(dataset)
-      expected_batches = _compute_expected_batches(drop_remainder)
-      self.assertEqual(batches, expected_batches)
+    dataset = _build_dataset()
+    boundaries = range(min_len + bucket_size + 1, max_len, bucket_size)
+    dataset = dataset.apply(grouping.bucket_by_sequence_length(
+        _element_length_fn,
+        boundaries,
+        [batch_size] * (len(boundaries) + 1),
+        no_padding=True,
+        drop_remainder=param_drop_remainder))
+    batches = _compute_batches(dataset)
+    expected_batches = _compute_expected_batches(param_drop_remainder)
+    self.assertEqual(batches, expected_batches)
 
 
 if __name__ == "__main__":
