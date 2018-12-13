@@ -24,14 +24,14 @@ limitations under the License.
 
 namespace xla {
 
-LocalClientOptions::LocalClientOptions(se::Platform* platform,
-                                       int number_of_replicas,
-                                       int intra_op_parallelism_threads,
-                                       std::set<int> device_set)
+LocalClientOptions::LocalClientOptions(
+    se::Platform* platform, int number_of_replicas,
+    int intra_op_parallelism_threads,
+    const absl::optional<std::set<int>>& allowed_devices)
     : platform_(platform),
       number_of_replicas_(number_of_replicas),
       intra_op_parallelism_threads_(intra_op_parallelism_threads),
-      allowed_devices_(device_set) {}
+      allowed_devices_(allowed_devices) {}
 
 LocalClientOptions& LocalClientOptions::set_platform(se::Platform* platform) {
   platform_ = platform;
@@ -61,12 +61,13 @@ int LocalClientOptions::intra_op_parallelism_threads() const {
 }
 
 LocalClientOptions& LocalClientOptions::set_allowed_devices(
-    std::set<int> device_set) {
-  allowed_devices_ = device_set;
+    const absl::optional<std::set<int>>& allowed_devices) {
+  allowed_devices_ = allowed_devices;
   return *this;
 }
 
-std::set<int> LocalClientOptions::get_allowed_devices() const {
+const absl::optional<std::set<int>>& LocalClientOptions::allowed_devices()
+    const {
   return allowed_devices_;
 }
 
@@ -79,7 +80,7 @@ ClientLibrary::ClientLibrary() = default;
 ClientLibrary::~ClientLibrary() = default;
 
 /* static */ StatusOr<LocalClient*> ClientLibrary::GetOrCreateLocalClient(
-    se::Platform* platform, const std::set<int> device_set) {
+    se::Platform* platform, const absl::optional<std::set<int>>& device_set) {
   LocalClientOptions default_options;
   default_options.set_platform(platform);
   default_options.set_allowed_devices(device_set);
@@ -107,7 +108,7 @@ ClientLibrary::~ClientLibrary() = default;
   service_options.set_number_of_replicas(replica_count);
   service_options.set_intra_op_parallelism_threads(
       options.intra_op_parallelism_threads());
-  service_options.set_allowed_devices(options.get_allowed_devices());
+  service_options.set_allowed_devices(options.allowed_devices());
   auto instance = absl::make_unique<LocalInstance>();
   TF_ASSIGN_OR_RETURN(instance->service,
                       LocalService::NewService(service_options));

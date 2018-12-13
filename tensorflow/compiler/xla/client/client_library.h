@@ -27,6 +27,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/compile_only_service.h"
@@ -47,7 +48,7 @@ class LocalClientOptions {
   LocalClientOptions(se::Platform* platform = nullptr,
                      int number_of_replicas = 1,
                      int intra_op_parallelism_threads = -1,
-                     std::set<int> device_set = {-1});
+                     const absl::optional<std::set<int>>& allowed_devices = {});
 
   // Set the platform backing the service, or nullptr for the default platform.
   LocalClientOptions& set_platform(se::Platform* platform);
@@ -63,15 +64,16 @@ class LocalClientOptions {
   int intra_op_parallelism_threads() const;
 
   // Sets the allowed_devices set for creation of stream executors.
-  LocalClientOptions& set_allowed_devices(const std::set<int> device_set);
+  LocalClientOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
 
-  std::set<int> get_allowed_devices() const;
+  const absl::optional<std::set<int>>& allowed_devices() const;
 
  private:
   se::Platform* platform_;
   int number_of_replicas_;
   int intra_op_parallelism_threads_;
-  std::set<int> allowed_devices_;
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 class ClientLibrary {
@@ -84,7 +86,8 @@ class ClientLibrary {
   //   device_set: Set of device IDs for which the stream executor will be
   //   created for, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
-      se::Platform* platform = nullptr, const std::set<int> device_set = {-1});
+      se::Platform* platform = nullptr,
+      const absl::optional<std::set<int>>& allowed_devices = {});
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 
