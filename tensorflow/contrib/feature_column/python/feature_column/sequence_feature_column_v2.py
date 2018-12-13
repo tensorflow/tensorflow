@@ -203,7 +203,8 @@ def sequence_categorical_column_with_identity(
   columns = [watches_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+  sequence_feature_layer = SequenceFeatureLayer(columns)
+  input_layer, sequence_length = sequence_feature_layer(features)
 
   rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
   outputs, state = tf.nn.dynamic_rnn(
@@ -219,15 +220,17 @@ def sequence_categorical_column_with_identity(
       `[0, num_buckets)`, and will replace out-of-range inputs.
 
   Returns:
-    A `_SequenceCategoricalColumn`.
+    A `SequenceCategoricalColumn`.
 
   Raises:
     ValueError: if `num_buckets` is less than one.
     ValueError: if `default_value` is not in range `[0, num_buckets)`.
   """
-  return fc_old._SequenceCategoricalColumn(
-      fc_old._categorical_column_with_identity(
-          key=key, num_buckets=num_buckets, default_value=default_value))
+  return fc.SequenceCategoricalColumn(
+      fc.categorical_column_with_identity(
+          key=key,
+          num_buckets=num_buckets,
+          default_value=default_value))
 
 
 def sequence_categorical_column_with_hash_bucket(
@@ -247,7 +250,8 @@ def sequence_categorical_column_with_hash_bucket(
   columns = [tokens_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+  sequence_feature_layer = SequenceFeatureLayer(columns)
+  input_layer, sequence_length = sequence_feature_layer(features)
 
   rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
   outputs, state = tf.nn.dynamic_rnn(
@@ -260,15 +264,17 @@ def sequence_categorical_column_with_hash_bucket(
     dtype: The type of features. Only string and integer types are supported.
 
   Returns:
-    A `_SequenceCategoricalColumn`.
+    A `SequenceCategoricalColumn`.
 
   Raises:
     ValueError: `hash_bucket_size` is not greater than 1.
     ValueError: `dtype` is neither string nor integer.
   """
-  return fc_old._SequenceCategoricalColumn(
-      fc_old._categorical_column_with_hash_bucket(
-          key=key, hash_bucket_size=hash_bucket_size, dtype=dtype))
+  return fc.SequenceCategoricalColumn(
+      fc.categorical_column_with_hash_bucket(
+          key=key,
+          hash_bucket_size=hash_bucket_size,
+          dtype=dtype))
 
 
 def sequence_categorical_column_with_vocabulary_file(
@@ -290,7 +296,8 @@ def sequence_categorical_column_with_vocabulary_file(
   columns = [states_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+  sequence_feature_layer = SequenceFeatureLayer(columns)
+  input_layer, sequence_length = sequence_feature_layer(features)
 
   rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
   outputs, state = tf.nn.dynamic_rnn(
@@ -314,7 +321,7 @@ def sequence_categorical_column_with_vocabulary_file(
     dtype: The type of features. Only string and integer types are supported.
 
   Returns:
-    A `_SequenceCategoricalColumn`.
+    A `SequenceCategoricalColumn`.
 
   Raises:
     ValueError: `vocabulary_file` is missing or cannot be opened.
@@ -323,8 +330,8 @@ def sequence_categorical_column_with_vocabulary_file(
     ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: `dtype` is neither string nor integer.
   """
-  return fc_old._SequenceCategoricalColumn(
-      fc_old._categorical_column_with_vocabulary_file(
+  return fc.SequenceCategoricalColumn(
+      fc.categorical_column_with_vocabulary_file(
           key=key,
           vocabulary_file=vocabulary_file,
           vocabulary_size=vocabulary_size,
@@ -351,7 +358,8 @@ def sequence_categorical_column_with_vocabulary_list(
   columns = [colors_embedding]
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
-  input_layer, sequence_length = sequence_input_layer(features, columns)
+  sequence_feature_layer = SequenceFeatureLayer(columns)
+  input_layer, sequence_length = sequence_feature_layer(features)
 
   rnn_cell = tf.nn.rnn_cell.BasicRNNCell(hidden_size)
   outputs, state = tf.nn.dynamic_rnn(
@@ -375,7 +383,7 @@ def sequence_categorical_column_with_vocabulary_list(
       with `default_value`.
 
   Returns:
-    A `_SequenceCategoricalColumn`.
+    A `SequenceCategoricalColumn`.
 
   Raises:
     ValueError: if `vocabulary_list` is empty, or contains duplicate keys.
@@ -383,8 +391,8 @@ def sequence_categorical_column_with_vocabulary_list(
     ValueError: `num_oov_buckets` and `default_value` are both specified.
     ValueError: if `dtype` is not integer or string.
   """
-  return fc_old._SequenceCategoricalColumn(
-      fc_old._categorical_column_with_vocabulary_list(
+  return fc.SequenceCategoricalColumn(
+      fc.categorical_column_with_vocabulary_list(
           key=key,
           vocabulary_list=vocabulary_list,
           dtype=dtype,
