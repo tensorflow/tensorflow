@@ -162,8 +162,8 @@ def bucket_by_sequence_length(element_length_func,
     no_padding: `bool`, indicates whether to pad the batch features (features
       need to be either of type `tf.SparseTensor` or of same shape).
     drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-      whether the last batch should be dropped in the case its has fewer than
-      batch_size` elements; the default behavior is not to drop the smaller
+      whether the last batch should be dropped in the case it has fewer than
+      `batch_size` elements; the default behavior is not to drop the smaller
       batch.
 
   Returns:
