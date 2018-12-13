@@ -661,6 +661,10 @@ TEST_F(GraphTest, BuildNodeNameIndex) {
 }
 
 REGISTER_OP("Input").Output("y: float");
+REGISTER_OP("Output")
+    .Input("x: N * float")
+    .Attr("N: int >= 1")
+    .Output("y: float");
 REGISTER_OP("In2Out1").Input("a: float").Input("b: float").Output("y: float");
 REGISTER_OP("In4Out1")
     .Input("a: float")
@@ -713,7 +717,14 @@ GraphDef CreateGraphDef(int num_nodes, int num_edges_per_node) {
     }
     s += strings::Printf("'in%04d' ] } ", rnd.Uniform(kNumInNodes));
   }
-
+  // Add a single sink node. Otherwise a lot of time is spent in
+  // FixupSourceAndSinkEdges().
+  s += strings::Printf("node { name: 'out' op: 'Output' input: [ ");
+  for (int op = 0; op < num_nodes - 1; op++) {
+    s += strings::Printf("'op%05d', ", op);
+  }
+  s += strings::Printf("'op%05d' ], attr: { key: 'N' value { i: %d } } } ",
+                       num_nodes - 1, num_nodes);
   GraphDef graph_def;
   CHECK(protobuf::TextFormat::ParseFromString(s, &graph_def));
   return graph_def;
