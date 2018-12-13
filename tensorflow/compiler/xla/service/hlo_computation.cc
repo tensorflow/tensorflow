@@ -711,8 +711,6 @@ bool HloComputation::operator==(const HloComputation& other) const {
   return eq(root_instruction(), other.root_instruction());
 }
 
-uint64 HloComputation::Hash() const { return root_instruction()->Hash(); }
-
 Status HloComputation::ReplaceWithNewInstruction(
     HloInstruction* old_instruction,
     std::unique_ptr<HloInstruction> new_instruction) {
