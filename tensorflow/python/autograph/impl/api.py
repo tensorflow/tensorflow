@@ -279,11 +279,11 @@ def converted_call(f, owner, options, *args, **kwargs):
   converted_f = to_graph(
       target_entity,
       recursive=options.recursive,
-      verbose=options.verbose,
       arg_values=arg_values,
       arg_types=arg_types,
-      strip_decorators=options.strip_decorators,
-      optional_features=options.optional_features,
+      experimental_optional_features=options.optional_features,
+      experimental_strip_decorators=options.strip_decorators,
+      experimental_verbose=options.verbose,
       experimental_partial_types=partial_types)
 
   result = converted_f(*effective_args, **kwargs)
@@ -316,11 +316,11 @@ def _is_not_callable(obj):
 @tf_export('autograph.to_graph')
 def to_graph(entity,
              recursive=True,
-             verbose=converter.Verbosity.VERBOSE,
              arg_values=None,
              arg_types=None,
-             strip_decorators=None,
-             optional_features=converter.Feature.ALL,
+             experimental_optional_features=converter.Feature.ALL,
+             experimental_strip_decorators=None,
+             experimental_verbose=converter.Verbosity.BRIEF,
              experimental_partial_types=None):
   """Converts a Python entity into a TensorFlow graph.
 
@@ -368,21 +368,21 @@ def to_graph(entity,
     entity: Python callable or class to convert.
     recursive: Whether to recursively convert any functions that the
       converted function may call.
-    verbose: The level of printing verbosity to use, as a
-      `tf.autograph.experimental.Verbosity` value.
     arg_values: Optional dict of value hints for symbols including
       function arguments mapping string names to actual values. For example,
       `arg_values={'a': 1}` will map the variable `a` to the value `1`.
     arg_types: Optional dict of type hints for symbols including function
       arguments. Type hints allow specifying just the type of a variable, rather
       than a specific value.
-    strip_decorators: A tuple specifying decorators that should be
+    experimental_optional_features: `None`, a tuple of, or a single
+      `tf.autograph.experimental.Feature` value. Controls the use of
+      optional features in the conversion process.
+    experimental_strip_decorators: A tuple specifying decorators that should be
       excluded from the compiled output. By default, when converting a function
       before the decorators are applied, the compiled output will include those
       decorators.
-    optional_features: `None`, a tuple of, or a single
-      `tf.autograph.experimental.Feature` value. Controls the use of
-      optional features in the conversion process.
+    experimental_verbose: The level of printing verbosity to use, as a
+      `tf.autograph.experimental.Verbosity` value.
     experimental_partial_types: A `set` of `type` values, reserved for internal
       use.
 
@@ -392,16 +392,16 @@ def to_graph(entity,
   Raises:
     ValueError: If the entity could not be converted.
   """
-  if strip_decorators is None:
-    strip_decorators = ()
-  strip_decorators += (convert, do_not_convert, converted_call)
+  if experimental_strip_decorators is None:
+    experimental_strip_decorators = ()
+  experimental_strip_decorators += (convert, do_not_convert, converted_call)
 
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
           recursive=recursive,
-          verbose=verbose,
-          strip_decorators=strip_decorators,
-          optional_features=optional_features),
+          verbose=experimental_verbose,
+          strip_decorators=experimental_strip_decorators,
+          optional_features=experimental_optional_features),
       partial_types=experimental_partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
@@ -460,7 +460,7 @@ def to_code(entity,
             arg_values=None,
             arg_types=None,
             indentation='  ',
-            optional_features=converter.Feature.ALL,
+            experimental_optional_features=converter.Feature.ALL,
             experimental_partial_types=None):
   """Similar to `to_graph`, but returns Python source code as a string.
 
@@ -481,7 +481,7 @@ def to_code(entity,
       than a specific value.
     indentation: The string to use for indenting. Typically two or four spaces,
       or just the tab character.
-    optional_features: `None`, a tuple of, or a single
+    experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value. Controls the use of
       optional features in the conversion process.
     experimental_partial_types: A `set` of `type` values, reserved for internal
@@ -495,7 +495,7 @@ def to_code(entity,
           recursive=recursive,
           verbose=converter.Verbosity.BRIEF,
           strip_decorators=(convert, do_not_convert, converted_call),
-          optional_features=optional_features),
+          optional_features=experimental_optional_features),
       partial_types=experimental_partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
