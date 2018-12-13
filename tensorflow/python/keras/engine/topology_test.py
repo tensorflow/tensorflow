@@ -26,6 +26,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
 from tensorflow.python.ops import array_ops
@@ -40,7 +42,7 @@ except ImportError:
   yaml = None
 
 
-class TopologyConstructionTest(test.TestCase):
+class TopologyConstructionTest(keras_parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_get_updates(self):
@@ -107,7 +109,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(network.updates), 5)
     self.assertEqual(len(network.get_updates_for(x4)), 2)
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_in_graph_and_eager_modes()
   def test_get_updates_bn(self):
     x1 = input_layer_lib.Input(shape=(1,))
     layer = keras.layers.BatchNormalization()
@@ -180,6 +182,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(len(network.losses), 5)
     self.assertEqual(len(network.get_losses_for(x4)), 2)
 
+  @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributes(self):
     # test layer attributes / methods related to cross-layer connectivity.
     a = input_layer_lib.Input(shape=(32,), name='input_a')
@@ -237,6 +240,7 @@ class TopologyConstructionTest(test.TestCase):
       b_2 = dense(b)
       _ = new_dense.output_shape
 
+  @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributesMultiOutputLayer(self):
 
     class PowersLayer(keras.layers.Layer):
@@ -253,6 +257,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(test_layer.input_shape, (None, 32))
     self.assertEqual(test_layer.output_shape, [(None, 32), (None, 32)])
 
+  @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributesMultiInputLayer(self):
 
     class AddLayer(keras.layers.Layer):
@@ -304,6 +309,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(network.non_trainable_weights,
                      dense.trainable_weights + dense.non_trainable_weights)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_trainable_weights(self):
     a = keras.layers.Input(shape=(2,))
     b = keras.layers.Dense(1)(a)
@@ -424,6 +430,7 @@ class TopologyConstructionTest(test.TestCase):
     self.assertEqual(dense.get_output_mask_at(0), None)
     self.assertEqual(dense.get_output_mask_at(1), None)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_multi_input_layer(self):
     with self.cached_session():
       # test multi-input layer
@@ -558,6 +565,7 @@ class TopologyConstructionTest(test.TestCase):
       fn_outputs = fn([input_a_np, input_b_np])
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 7), (10, 64)])
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_multi_input_multi_output_recursion(self):
     with self.cached_session():
       # test multi-input multi-output
@@ -631,6 +639,7 @@ class TopologyConstructionTest(test.TestCase):
         yaml_str = model.to_yaml()
         keras.models.model_from_yaml(yaml_str)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_invalid_graphs(self):
     a = keras.layers.Input(shape=(32,), name='input_a')
     b = keras.layers.Input(shape=(32,), name='input_b')
@@ -720,6 +729,7 @@ class TopologyConstructionTest(test.TestCase):
     x = keras.layers.Input(tensor=x)
     keras.layers.Dense(2)(x)
 
+  @test_util.run_in_graph_and_eager_modes()
   def test_basic_masking(self):
     a = keras.layers.Input(shape=(10, 32), name='input_a')
     b = keras.layers.Masking()(a)
@@ -786,121 +796,128 @@ class TopologyConstructionTest(test.TestCase):
     loss = model_b.evaluate(x)
     self.assertEqual(loss, 4.)
 
+  @keras_parameterized.run_all_keras_modes
   def test_layer_sharing_at_heterogenous_depth(self):
-    with self.cached_session():
-      x_val = np.random.random((10, 5))
+    x_val = np.random.random((10, 5))
 
-      x = input_layer_lib.Input(shape=(5,))
-      a = keras.layers.Dense(5, name='A')
-      b = keras.layers.Dense(5, name='B')
-      output = a(b(a(b(x))))
-      m = keras.models.Model(x, output)
+    x = input_layer_lib.Input(shape=(5,))
+    a = keras.layers.Dense(5, name='A')
+    b = keras.layers.Dense(5, name='B')
+    output = a(b(a(b(x))))
+    m = keras.models.Model(x, output)
+    m.run_eagerly = testing_utils.should_run_eagerly()
 
-      output_val = m.predict(x_val)
+    output_val = m.predict(x_val)
 
-      config = m.get_config()
-      weights = m.get_weights()
+    config = m.get_config()
+    weights = m.get_weights()
 
-      m2 = keras.models.Model.from_config(config)
-      m2.set_weights(weights)
+    m2 = keras.models.Model.from_config(config)
+    m2.set_weights(weights)
 
-      output_val_2 = m2.predict(x_val)
-      self.assertAllClose(output_val, output_val_2, atol=1e-6)
+    output_val_2 = m2.predict(x_val)
+    self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
+  @keras_parameterized.run_all_keras_modes
   def test_layer_sharing_at_heterogenous_depth_with_concat(self):
-    with self.cached_session():
-      input_shape = (16, 9, 3)
-      input_layer = input_layer_lib.Input(shape=input_shape)
+    input_shape = (16, 9, 3)
+    input_layer = input_layer_lib.Input(shape=input_shape)
 
-      a = keras.layers.Dense(3, name='dense_A')
-      b = keras.layers.Dense(3, name='dense_B')
-      c = keras.layers.Dense(3, name='dense_C')
+    a = keras.layers.Dense(3, name='dense_A')
+    b = keras.layers.Dense(3, name='dense_B')
+    c = keras.layers.Dense(3, name='dense_C')
 
-      x1 = b(a(input_layer))
-      x2 = a(c(input_layer))
-      output = keras.layers.concatenate([x1, x2])
+    x1 = b(a(input_layer))
+    x2 = a(c(input_layer))
+    output = keras.layers.concatenate([x1, x2])
 
-      m = keras.models.Model(inputs=input_layer, outputs=output)
+    m = keras.models.Model(inputs=input_layer, outputs=output)
+    m.run_eagerly = testing_utils.should_run_eagerly()
 
-      x_val = np.random.random((10, 16, 9, 3))
-      output_val = m.predict(x_val)
+    x_val = np.random.random((10, 16, 9, 3))
+    output_val = m.predict(x_val)
 
-      config = m.get_config()
-      weights = m.get_weights()
+    config = m.get_config()
+    weights = m.get_weights()
 
-      m2 = keras.models.Model.from_config(config)
-      m2.set_weights(weights)
+    m2 = keras.models.Model.from_config(config)
+    m2.set_weights(weights)
 
-      output_val_2 = m2.predict(x_val)
-      self.assertAllClose(output_val, output_val_2, atol=1e-6)
+    output_val_2 = m2.predict(x_val)
+    self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
-  @test_util.run_v1_only('b/120545219')
+  @keras_parameterized.run_all_keras_modes
   def test_explicit_training_argument(self):
-    with self.cached_session():
-      a = keras.layers.Input(shape=(2,))
-      b = keras.layers.Dropout(0.5)(a)
-      base_model = keras.models.Model(a, b)
+    a = keras.layers.Input(shape=(2,))
+    b = keras.layers.Dropout(0.5)(a)
+    base_model = keras.models.Model(a, b)
 
-      a = keras.layers.Input(shape=(2,))
-      b = base_model(a, training=False)
-      model = keras.models.Model(a, b)
+    a = keras.layers.Input(shape=(2,))
+    b = base_model(a, training=False)
+    model = keras.models.Model(a, b)
 
-      x = np.ones((100, 2))
-      y = np.ones((100, 2))
-      model.compile(optimizer='sgd', loss='mse')
-      loss = model.train_on_batch(x, y)
-      self.assertEqual(loss, 0)  # In inference mode, output is equal to input.
+    x = np.ones((100, 2))
+    y = np.ones((100, 2))
+    model.compile(
+        optimizer='sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    loss = model.train_on_batch(x, y)
+    self.assertEqual(loss, 0)  # In inference mode, output is equal to input.
 
-      a = keras.layers.Input(shape=(2,))
-      b = base_model(a, training=True)
-      model = keras.models.Model(a, b)
-      preds = model.predict(x)
-      self.assertEqual(np.min(preds), 0.)  # At least one unit was dropped.
+    a = keras.layers.Input(shape=(2,))
+    b = base_model(a, training=True)
+    model = keras.models.Model(a, b)
+    preds = model.predict(x)
+    self.assertEqual(np.min(preds), 0.)  # At least one unit was dropped.
 
+  @keras_parameterized.run_all_keras_modes
   def test_multi_output_model_with_none_masking(self):
+    def func(x):
+      return [x * 0.2, x * 0.3]
 
-    with self.cached_session():
+    def output_shape(input_shape):
+      return [input_shape, input_shape]
 
-      def func(x):
-        return [x * 0.2, x * 0.3]
+    i = keras.layers.Input(shape=(3, 2, 1))
+    o = keras.layers.Lambda(function=func, output_shape=output_shape)(i)
 
-      def output_shape(input_shape):
-        return [input_shape, input_shape]
+    self.assertEqual(keras.backend.int_shape(o[0]), (None, 3, 2, 1))
+    self.assertEqual(keras.backend.int_shape(o[1]), (None, 3, 2, 1))
 
-      i = keras.layers.Input(shape=(3, 2, 1))
-      o = keras.layers.Lambda(function=func, output_shape=output_shape)(i)
+    o = keras.layers.add(o)
+    model = keras.Model(i, o)
+    model.run_eagerly = testing_utils.should_run_eagerly()
 
-      self.assertEqual(keras.backend.int_shape(o[0]), (None, 3, 2, 1))
-      self.assertEqual(keras.backend.int_shape(o[1]), (None, 3, 2, 1))
+    i2 = keras.layers.Input(shape=(3, 2, 1))
+    o2 = model(i2)
+    model2 = keras.Model(i2, o2)
+    model2.run_eagerly = testing_utils.should_run_eagerly()
 
-      o = keras.layers.add(o)
-      model = keras.Model(i, o)
+    x = np.random.random((4, 3, 2, 1))
+    out = model2.predict(x)
+    assert out.shape == (4, 3, 2, 1)
+    self.assertAllClose(out, x * 0.2 + x * 0.3, atol=1e-4)
 
-      i2 = keras.layers.Input(shape=(3, 2, 1))
-      o2 = model(i2)
-      model2 = keras.Model(i2, o2)
-
-      x = np.random.random((4, 3, 2, 1))
-      out = model2.predict(x)
-      assert out.shape == (4, 3, 2, 1)
-      self.assertAllClose(out, x * 0.2 + x * 0.3, atol=1e-4)
-
+  @keras_parameterized.run_all_keras_modes
   def test_constant_initializer_with_numpy(self):
+    initializer = keras.initializers.Constant(np.ones((3, 2)))
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Dense(2, input_shape=(3,), kernel_initializer=initializer))
+    model.add(keras.layers.Dense(3))
+    model.compile(
+        loss='mse',
+        optimizer='sgd',
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
 
-    with self.cached_session():
-      initializer = keras.initializers.Constant(np.ones((3, 2)))
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_shape=(3,),
-                                   kernel_initializer=initializer))
-      model.add(keras.layers.Dense(3))
-      model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
+    json_str = model.to_json()
+    keras.models.model_from_json(json_str)
 
-      json_str = model.to_json()
-      keras.models.model_from_json(json_str)
-
-      if yaml is not None:
-        yaml_str = model.to_yaml()
-        keras.models.model_from_yaml(yaml_str)
+    if yaml is not None:
+      yaml_str = model.to_yaml()
+      keras.models.model_from_yaml(yaml_str)
 
 
 class DeferredModeTest(test.TestCase):
@@ -929,7 +946,7 @@ class DeferredModeTest(test.TestCase):
       self.assertEqual(outputs.shape.as_list(), [10, 4])
 
   @test_util.run_in_graph_and_eager_modes()
-  def testMultiIONetworkbuilding(self):
+  def testMultiIONetworkBuilding(self):
     input_a = input_layer_lib.Input(shape=(32,))
     input_b = input_layer_lib.Input(shape=(16,))
     a = keras.layers.Dense(16)(input_a)
@@ -954,7 +971,7 @@ class DeferredModeTest(test.TestCase):
       self.assertEqual(outputs[1].shape.as_list(), [10, 2])
 
 
-class DefaultShapeInferenceBehaviorTest(test.TestCase):
+class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
 
   def _testShapeInference(self, model, input_shape, expected_output_shape):
     input_value = np.random.random(input_shape)
@@ -1122,7 +1139,7 @@ class DefaultShapeInferenceBehaviorTest(test.TestCase):
     output = model(sample_input)
     self.assertEqual(output.shape, (1, 3))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @keras_parameterized.run_all_keras_modes
   def test_sequential_as_downstream_of_masking_layer(self):
     inputs = keras.layers.Input(shape=(3, 4))
     x = keras.layers.Masking(mask_value=0., input_shape=(3, 4))(inputs)
@@ -1132,7 +1149,10 @@ class DefaultShapeInferenceBehaviorTest(test.TestCase):
 
     x = keras.layers.wrappers.TimeDistributed(s)(x)
     model = keras.Model(inputs=inputs, outputs=x)
-    model.compile(optimizer=rmsprop.RMSPropOptimizer(1e-3), loss='mse')
+    model.compile(
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
 
     model_input = np.random.randint(
         low=1, high=5, size=(10, 3, 4)).astype('float32')
