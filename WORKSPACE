@@ -44,7 +44,7 @@ remote_config_workspace()
 # files, in case the parsing of those build files depends on the bazel
 # version we require here.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
-check_bazel_version_at_least("0.15.0")
+check_bazel_version_at_least("0.18.0")
 
 load("//tensorflow:workspace.bzl", "tf_workspace")
 

@@ -92,3 +92,11 @@ build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 build --define=PREFIX=/usr
 build --define=LIBDIR=$(PREFIX)/lib
 build --define=INCLUDEDIR=$(PREFIX)/include
+
+# Default options should come above this line
+
+# Options from ./configure
+try-import %workspace%/.tf_configure.bazelrc
+
+# Put user-specific options in .bazelrc.user
+try-import %workspace%/.bazelrc.user
