@@ -1761,7 +1761,12 @@ bool HloInstruction::IdenticalSlowPath(
   return false;
 }
 
-uint64 HloInstruction::Hash() const {
+static uint64 HashOperand(const HloInstruction* hlo) {
+  return ShapeUtil::Hash(hlo->shape());
+}
+
+uint64 HloInstruction::Hash(
+    const std::function<uint64(const HloInstruction*)>& hash_operand) const {
   using tensorflow::Hash64Combine;
 
   uint64 hash_value = Hash64Combine(0, static_cast<uint64>(opcode()));
@@ -1770,13 +1775,18 @@ uint64 HloInstruction::Hash() const {
   if (!IsCrossModuleAllReduce()) {
     if (!operands().empty()) {
       for (size_t i = 0; i < operands().size(); ++i) {
-        hash_value = Hash64Combine(hash_value, operand(i)->Hash());
+        hash_value = Hash64Combine(hash_value, hash_operand(operand(i)));
       }
     }
   }
 
   hash_value = Hash64Combine(hash_value, InnerHash());
   return hash_value;
+}
+
+uint64 HloInstruction::Hash() const {
+  // Use HashOperand as an argument to prevent non-termination.
+  return Hash(HashOperand);
 }
 
 uint64 HloInstruction::InnerHash() const { return 13; }
