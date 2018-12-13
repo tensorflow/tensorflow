@@ -237,7 +237,9 @@ def _hipcc_env(repository_ctx):
     """
     hipcc_env = ""
     for name in ["HIP_CLANG_PATH", "DEVICE_LIB_PATH", "HIP_VDI_HOME",\
-                 "HIPCC_VERBOSE", "HIPCC_COMPILE_FLAGS_APPEND"]:
+                 "HIPCC_VERBOSE", "HIPCC_COMPILE_FLAGS_APPEND", \
+                 "HIPPCC_LINK_FLAGS_APPEND", "HCC_AMDGPU_TARGET", \
+                 "HIP_PLATFORM"]:
         if name in repository_ctx.os.environ:
             hipcc_env = hipcc_env + " " + name + "=\"" + \
                     repository_ctx.os.environ[name].strip() + "\";"
