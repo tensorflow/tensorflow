@@ -26,12 +26,9 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import readers as core_readers
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.lib.io import python_io
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.util import compat
 
@@ -322,21 +319,6 @@ class TFRecordDatasetTestBase(test_base.DatasetTestBase):
     self._num_records = 7
 
     self.test_filenames = self._createFiles()
-
-    self.filenames = array_ops.placeholder(dtypes.string, shape=[None])
-    self.num_epochs = array_ops.placeholder_with_default(
-        constant_op.constant(1, dtypes.int64), shape=[])
-    self.compression_type = array_ops.placeholder_with_default("", shape=[])
-    self.batch_size = array_ops.placeholder(dtypes.int64, shape=[])
-
-    repeat_dataset = core_readers.TFRecordDataset(
-        self.filenames, self.compression_type).repeat(self.num_epochs)
-    batch_dataset = repeat_dataset.batch(self.batch_size)
-
-    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
-    self.init_op = iterator.make_initializer(repeat_dataset)
-    self.init_batch_op = iterator.make_initializer(batch_dataset)
-    self.get_next = iterator.get_next()
 
   def _record(self, f, r):
     return compat.as_bytes("Record %d of file %d" % (r, f))
