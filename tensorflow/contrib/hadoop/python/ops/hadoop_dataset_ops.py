@@ -23,11 +23,16 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 
 
 class SequenceFileDataset(dataset_ops.DatasetSource):
   """A Sequence File Dataset that reads the sequence file."""
 
+  @deprecation.deprecated(
+      None,
+      "tf.contrib.hadoop will be removed in 2.0, the support for Apache Hadoop "
+      "will continue to be provided through the tensorflow/io GitHub project.")
   def __init__(self, filenames):
     """Create a `SequenceFileDataset`.
 
