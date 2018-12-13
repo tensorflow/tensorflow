@@ -502,8 +502,10 @@ public:
   /// hyper-rectangular on the specified contiguous set of identifiers.
   bool isHyperRectangular(unsigned pos, unsigned num) const;
 
-  // More expensive ones.
-  void removeDuplicates();
+  /// Removes duplicates and trivially true constraints: a constraint of the
+  /// form <non-negative constant> >= 0 is considered a trivially true
+  /// constraint.
+  void removeTrivialRedundancy();
 
   void print(raw_ostream &os) const;
   void dump() const;

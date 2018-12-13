@@ -92,3 +92,39 @@ mlfunc @test_semi_affine_bailout(%N : index) {
   }
   return
 }
+
+// CHECK-LABEL: mlfunc @multi_mod_floordiv
+mlfunc @multi_mod_floordiv() {
+  %A = alloc() : memref<2x2xi32>
+  for %ii = 0 to 64 {
+      %idx = affine_apply (d0) -> ((d0 mod 147456) floordiv 1152,
+                                  ((d0 mod 147456) mod 1152) floordiv 384) (%ii)
+      %v = load %A[%idx#0, %idx#1] : memref<2x2xi32>
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @delinearize_mod_floordiv
+mlfunc @delinearize_mod_floordiv() {
+  %c0 = constant 0 : index
+  %in = alloc() : memref<2x2x3x3x16x1xi32>
+  %out = alloc() : memref<64x9xi32>
+
+  // Reshape '%in' into '%out'.
+  for %ii = 0 to 64 {
+    for %jj = 0 to 9 {
+      %a0 = affine_apply (d0, d1) -> (d0 * (9 * 1024) + d1 * 128) (%ii, %jj)
+      %a1 = affine_apply (d0) ->
+        (d0 floordiv (2 * 3 * 3 * 128 * 128),
+        (d0 mod 294912) floordiv (3 * 3 * 128 * 128),
+        (((d0 mod 294912) mod 147456) floordiv 1152) floordiv 8,
+        (((d0 mod 294912) mod 147456) mod 1152) floordiv 384,
+        ((((d0 mod 294912) mod 147456) mod 1152) mod 384) floordiv 128,
+        (((((d0 mod 294912) mod 147456) mod 1152) mod 384) mod 128)
+          floordiv 128) (%a0)
+      %v0 = load %in[%a1#0, %a1#1, %a1#3, %a1#4, %a1#2, %a1#5]
+        : memref<2x2x3x3x16x1xi32>
+    }
+  }
+  return
+}

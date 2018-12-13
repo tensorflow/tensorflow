@@ -1477,7 +1477,8 @@ bool FlatAffineConstraints::isHyperRectangular(unsigned pos,
 void FlatAffineConstraints::print(raw_ostream &os) const {
   assert(hasConsistentState());
   os << "\nConstraints (" << getNumDimIds() << " dims, " << getNumSymbolIds()
-     << " symbols, " << getNumLocalIds() << " locals): \n";
+     << " symbols, " << getNumLocalIds() << " locals), (" << getNumConstraints()
+     << " constraints)\n";
   os << "(";
   for (unsigned i = 0, e = getNumIds(); i < e; i++) {
     if (ids[i] == None)
@@ -1485,7 +1486,7 @@ void FlatAffineConstraints::print(raw_ostream &os) const {
     else
       os << "MLValue ";
   }
-  os << ")\n";
+  os << " const)\n";
   for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
     for (unsigned j = 0, f = getNumCols(); j < f; ++j) {
       os << atEq(i, j) << " ";
@@ -1503,8 +1504,51 @@ void FlatAffineConstraints::print(raw_ostream &os) const {
 
 void FlatAffineConstraints::dump() const { print(llvm::errs()); }
 
-void FlatAffineConstraints::removeDuplicates() {
-  // TODO(mlir-team): remove redundant constraints.
+/// Removes duplicate constraints and trivially true constraints: a constraint
+/// of the form <non-negative constant> >= 0 is considered a trivially true
+/// constraint.
+//  Uses a DenseSet to hash and detect duplicates followed by a linear scan to
+//  remove duplicates in place.
+void FlatAffineConstraints::removeTrivialRedundancy() {
+  DenseSet<ArrayRef<int64_t>> rowSet;
+
+  // Check if constraint is of the form <non-negative-constant> >= 0.
+  auto isTriviallyValid = [&](unsigned r) -> bool {
+    for (unsigned c = 0, e = getNumCols() - 1; c < e; c++) {
+      if (atIneq(r, c) != 0)
+        return false;
+    }
+    return atIneq(r, getNumCols() - 1) >= 0;
+  };
+
+  // Detect and mark redundant constraints.
+  std::vector<bool> redunIneq(getNumInequalities(), false);
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
+    int64_t *rowStart = inequalities.data() + numReservedCols * r;
+    auto row = ArrayRef<int64_t>(rowStart, getNumCols());
+    if (isTriviallyValid(r) || !rowSet.insert(row).second) {
+      redunIneq[r] = true;
+    }
+  }
+
+  auto copyRow = [&](unsigned src, unsigned dest) {
+    if (src == dest)
+      return;
+    for (unsigned c = 0, e = getNumCols(); c < e; c++) {
+      atIneq(dest, c) = atIneq(src, c);
+    }
+  };
+
+  // Scan to get rid of all rows marked redundant, in-place.
+  unsigned pos = 0;
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
+    if (!redunIneq[r])
+      copyRow(r, pos++);
+  }
+  inequalities.resize(numReservedCols * pos);
+
+  // TODO(bondhugula): consider doing this for equalities as well, but probably
+  // not worth the savings.
 }
 
 void FlatAffineConstraints::clearAndCopyFrom(
@@ -1733,10 +1777,44 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
     newFac.addEquality(eq);
   }
 
-  newFac.removeDuplicates();
+  newFac.removeTrivialRedundancy();
   clearAndCopyFrom(newFac);
   LLVM_DEBUG(llvm::dbgs() << "FM output:\n");
   LLVM_DEBUG(dump());
+}
+
+/// Returns the position of the identifier that has the minimum <number of lower
+/// bounds> times <number of upper bounds> from the specified range of
+/// identifiers [start, end). It is often best to eliminate in the increasing
+/// order of these counts when doing Fourier-Motzkin elimination since FM adds
+/// that many new constraints.
+static unsigned getBestIdToEliminate(const FlatAffineConstraints &cst,
+                                     unsigned start, unsigned end) {
+  assert(start < cst.getNumIds() && end < cst.getNumIds() + 1);
+
+  auto getProductOfNumLowerUpperBounds = [&](unsigned pos) {
+    unsigned numLb = 0;
+    unsigned numUb = 0;
+    for (unsigned r = 0, e = cst.getNumInequalities(); r < e; r++) {
+      if (cst.atIneq(r, pos) > 0) {
+        ++numLb;
+      } else if (cst.atIneq(r, pos) < 0) {
+        ++numUb;
+      }
+    }
+    return numLb * numUb;
+  };
+
+  unsigned minLoc = start;
+  unsigned min = getProductOfNumLowerUpperBounds(start);
+  for (unsigned c = start + 1; c < end; c++) {
+    unsigned numLbUbProduct = getProductOfNumLowerUpperBounds(c);
+    if (numLbUbProduct < min) {
+      min = numLbUbProduct;
+      minLoc = c;
+    }
+  }
+  return minLoc;
 }
 
 void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
@@ -1747,12 +1825,33 @@ void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
   assert(pos <= getNumCols() - 2 && "invalid position");
   assert(pos + num < getNumCols() && "invalid range");
 
-  for (unsigned i = 0; i < num; i++)
-    FourierMotzkinEliminate(pos);
+  // Eliminate as many identifiers as possible using Gaussian elimination.
+  unsigned currentPos = pos;
+  unsigned numToEliminate = num;
+  unsigned numGaussianEliminated = 0;
+  do {
+    unsigned curNumEliminated =
+        gaussianEliminateIds(currentPos, currentPos + numToEliminate);
+    if (curNumEliminated == 0) {
+      ++currentPos;
+      --numToEliminate;
+    } else {
+      numToEliminate -= curNumEliminated;
+    }
+    numGaussianEliminated += curNumEliminated;
+  } while (numToEliminate != 0);
+
+  // Eliminate the remaining using Fourier-Motzkin.
+  for (unsigned i = 0; i < num - numGaussianEliminated; i++) {
+    unsigned elimId = getBestIdToEliminate(*this, pos, getNumIds());
+    FourierMotzkinEliminate(elimId);
+  }
 
   // Fast/trivial simplifications.
-  normalizeConstraintsByGCD();
   GCDTightenInequalities();
+  // Normalize constraints after tightening since the latter impacts this, but
+  // not the other way round.
+  normalizeConstraintsByGCD();
 }
 
 void FlatAffineConstraints::projectOut(MLValue *id) {
