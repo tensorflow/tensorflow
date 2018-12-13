@@ -76,6 +76,8 @@ def _get_arg_infos(func, arg_names):
 
 def _is_convertible_to_tensor(value):
   """Returns true if `value` is convertible to a `Tensor`."""
+  if value is None:
+    return True
   if isinstance(value,
                 (ops.Tensor, variables.Variable, np.ndarray, int, float, str)):
     return True
