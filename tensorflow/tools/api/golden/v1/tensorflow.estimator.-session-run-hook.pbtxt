@@ -1,4 +1,4 @@
-path: "tensorflow.train.SessionRunHook"
+path: "tensorflow.estimator.SessionRunHook"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunHook\'>"
   is_instance: "<type \'object\'>"
