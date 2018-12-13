@@ -611,8 +611,6 @@ cuda_py_test(
         "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
-        # TODO(b/120943676): Re-enable after fixing InvalidArgumentError.
-        "noguitar",
         "notsan",
     ],
 )
