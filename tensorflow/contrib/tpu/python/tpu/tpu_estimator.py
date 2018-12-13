@@ -2280,7 +2280,7 @@ class TPUEstimator(estimator_lib.Estimator):
           (k, _export_output_to_tensors(v))
           for k, v in six.iteritems(estimator_spec.export_outputs))
       tensors = nest.flatten(tensors_dict)
-      tpu_tensors = [t for t in tensors if _is_tpu_tensor(t)]
+      tpu_tensors = [t for t in tensors if t is not None]
 
       # We cannot return anything other than `tpu_tensors` here so we capture
       # the rest for later use.
@@ -2294,18 +2294,10 @@ class TPUEstimator(estimator_lib.Estimator):
     # `tpu_tensors_on_cpu`.
     new_tensors = []
     for t in tensors:
-      if _is_tpu_tensor(t):
-        new_tensors.append(tpu_tensors_on_cpu.pop(0))
-      elif t is None:
+      if t is None:
         new_tensors.append(None)
       else:
-        # Only fetching `tpu_tensors_on_cpu` does not trigger
-        # TPU computation and blocks, so we add the control dependency here.
-        control_inputs = (
-            tpu_tensors_on_cpu if _is_iterable(tpu_tensors_on_cpu) else
-            (tpu_tensors_on_cpu,))
-        with ops.control_dependencies(control_inputs):
-          new_tensors.append(array_ops.identity(t))
+        new_tensors.append(tpu_tensors_on_cpu.pop(0))
 
     # Reconstruct `tensors_dict`.
     new_tensors_dict = nest.pack_sequence_as(tensors_dict, new_tensors)
@@ -2796,17 +2788,6 @@ class TPUEstimator(estimator_lib.Estimator):
             scaffold=scaffold)
 
     return _model_fn
-
-
-def _is_tpu_tensor(tensor):
-  if not isinstance(tensor, ops.Tensor):
-    return False
-  try:
-    tensor.op.get_attr(tpu._OUTSIDE_COMPILATION_ATTR)  # pylint: disable=protected-access
-  except ValueError:
-    return True
-  else:
-    return False
 
 
 def _export_output_to_tensors(export_output):
