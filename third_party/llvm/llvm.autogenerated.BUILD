@@ -2241,7 +2241,6 @@ cc_library(
     deps = [
         ":code_gen",
         ":config",
-        ":core",
         ":support",
     ],
 )
