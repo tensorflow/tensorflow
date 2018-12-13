@@ -27,7 +27,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras.models import Sequential
@@ -40,98 +39,11 @@ from tensorflow.python.training.checkpointable import util as checkpointable_uti
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
-class KerasMetricsTest(test.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class KerasMeanTest(test.TestCase):
 
-  def test_metrics(self):
-    with self.cached_session():
-      y_a = K.variable(np.random.random((6, 7)))
-      y_b = K.variable(np.random.random((6, 7)))
-      for metric in [metrics.binary_accuracy, metrics.categorical_accuracy]:
-        output = metric(y_a, y_b)
-        self.assertEqual(K.eval(output).shape, (6,))
-
-  def test_sparse_categorical_accuracy_int(self):
-    with self.cached_session():
-      metric = metrics.sparse_categorical_accuracy
-      y_true = K.variable(np.random.randint(0, 7, (6,)))
-      y_pred = K.variable(np.random.random((6, 7)))
-      self.assertEqual(K.eval(metric(y_true, y_pred)).shape, (6,))
-
-      # Test correctness if the shape of y_true is (num_samples,)
-      y_true = K.variable([1., 0., 0., 0.])
-      y_pred = K.variable([[0.8, 0.2], [0.6, 0.4], [0.7, 0.3], [0.9, 0.1]])
-      print(K.eval(metric(y_true, y_pred)))
-      self.assertAllEqual(K.eval(metric(y_true, y_pred)), [0., 1., 1., 1.])
-
-      # Test correctness if the shape of y_true is (num_samples, 1)
-      y_true = K.variable([[1.], [0.], [0.], [0.]])
-      y_pred = K.variable([[0.8, 0.2], [0.6, 0.4], [0.7, 0.3], [0.9, 0.1]])
-      print(K.eval(metric(y_true, y_pred)))
-      self.assertAllEqual(K.eval(metric(y_true, y_pred)), [0., 1., 1., 1.])
-
-  def test_sparse_categorical_accuracy_float(self):
-    with self.cached_session():
-      metric = metrics.sparse_categorical_accuracy
-      y_true = K.variable(np.random.random((6,)))
-      y_pred = K.variable(np.random.random((6, 7)))
-      self.assertEqual(K.eval(metric(y_true, y_pred)).shape, (6,))
-
-  def test_sparse_categorical_accuracy_eager(self):
-    """Tests that ints passed in via Eager return results. See b/113504761."""
-    with context.eager_mode():
-      metric = metrics.sparse_categorical_accuracy
-      y_true = np.arange(6).reshape([6, 1])
-      y_pred = np.arange(36).reshape([6, 6])
-      self.assertAllEqual(metric(y_true, y_pred), [0., 0., 0., 0., 0., 1.])
-
-  def test_sparse_categorical_accuracy_float_eager(self):
-    """Tests that floats passed in via Eager return results. See b/113504761."""
-    with context.eager_mode():
-      metric = metrics.sparse_categorical_accuracy
-      y_true = np.arange(6, dtype=np.float32).reshape([6, 1])
-      y_pred = np.arange(36).reshape([6, 6])
-      self.assertAllEqual(metric(y_true, y_pred), [0., 0., 0., 0., 0., 1.])
-
-  def test_sparse_top_k_categorical_accuracy(self):
-    with self.cached_session():
-      # Test correctness if the shape of y_true is (num_samples, 1)
-      y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
-      y_true = K.variable(np.array([[1], [0]]))
-      result = K.eval(
-          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=3))
-      self.assertEqual(result, 1)
-      result = K.eval(
-          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=2))
-      self.assertEqual(result, 0.5)
-      result = K.eval(
-          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=1))
-      self.assertEqual(result, 0.)
-
-      # Test correctness if the shape of y_true is (num_samples,)
-      y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
-      y_true = K.variable(np.array([1, 0]))
-      result = K.eval(
-          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=3))
-      self.assertEqual(result, 1)
-      result = K.eval(
-          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=2))
-      self.assertEqual(result, 0.5)
-      result = K.eval(
-          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=1))
-      self.assertEqual(result, 0.)
-
-  def test_top_k_categorical_accuracy(self):
-    with self.cached_session():
-      y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
-      y_true = K.variable(np.array([[0, 1, 0], [1, 0, 0]]))
-      result = K.eval(metrics.top_k_categorical_accuracy(y_true, y_pred, k=3))
-      self.assertEqual(result, 1)
-      result = K.eval(metrics.top_k_categorical_accuracy(y_true, y_pred, k=2))
-      self.assertEqual(result, 0.5)
-      result = K.eval(metrics.top_k_categorical_accuracy(y_true, y_pred, k=1))
-      self.assertEqual(result, 0.)
-
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  # TODO(b/120949004): Re-enable garbage collection check
+  # @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def test_mean(self):
     m = metrics.Mean(name='my_mean')
 
@@ -163,7 +75,6 @@ class KerasMetricsTest(test.TestCase):
     self.assertEqual(self.evaluate(m.total), 0)
     self.assertEqual(self.evaluate(m.count), 0)
 
-  @test_util.run_in_graph_and_eager_modes
   def test_mean_with_sample_weight(self):
     m = metrics.Mean(dtype=dtypes.float64)
     self.assertEqual(m.dtype, dtypes.float64)
@@ -227,7 +138,6 @@ class KerasMetricsTest(test.TestCase):
       self.assertAlmostEqual(self.evaluate(m.count), 1.7, 2)  # 0.5 + 1.2
       self.assertAlmostEqual(result, 52 / 1.7, 2)
 
-  @test_util.run_in_graph_and_eager_modes
   def test_save_restore(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
@@ -258,7 +168,10 @@ class KerasMetricsTest(test.TestCase):
     self.assertEqual(200., self.evaluate(restore_mean.result()))
     self.assertEqual(3, self.evaluate(restore_mean.count))
 
-  @test_util.run_in_graph_and_eager_modes
+
+@test_util.run_all_in_graph_and_eager_modes
+class KerasAccuracyTest(test.TestCase):
+
   def test_accuracy(self):
     acc_obj = metrics.Accuracy(name='my acc')
 
@@ -280,7 +193,6 @@ class KerasMetricsTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.96, 2)  # 4.5/4.7
 
-  @test_util.run_in_graph_and_eager_modes
   def test_binary_accuracy(self):
     acc_obj = metrics.BinaryAccuracy(name='my acc')
 
@@ -313,7 +225,6 @@ class KerasMetricsTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.67, 2)  # 4.5/6.7
 
-  @test_util.run_in_graph_and_eager_modes
   def test_binary_accuracy_threshold(self):
     acc_obj = metrics.BinaryAccuracy(threshold=0.7)
     self.evaluate(variables.variables_initializer(acc_obj.variables))
@@ -321,7 +232,6 @@ class KerasMetricsTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.5, 2)
 
-  @test_util.run_in_graph_and_eager_modes
   def test_categorical_accuracy(self):
     acc_obj = metrics.CategoricalAccuracy(name='my acc')
 
@@ -345,7 +255,6 @@ class KerasMetricsTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
-  @test_util.run_in_graph_and_eager_modes
   def test_sparse_categorical_accuracy(self):
     acc_obj = metrics.SparseCategoricalAccuracy(name='my acc')
 
@@ -689,7 +598,7 @@ class PrecisionTest(test.TestCase):
   def test_config(self):
     p_obj = metrics.Precision(name='my_precision', thresholds=[0.4, 0.9])
     self.assertEqual(p_obj.name, 'my_precision')
-    self.assertLen(p_obj.variables, 2)
+    self.assertEqual(len(p_obj.variables), 2)
     self.assertEqual([v.name for v in p_obj.variables],
                      ['true_positives:0', 'false_positives:0'])
     self.assertEqual(p_obj.thresholds, [0.4, 0.9])
@@ -813,7 +722,7 @@ class RecallTest(test.TestCase):
   def test_config(self):
     r_obj = metrics.Recall(name='my_recall', thresholds=[0.4, 0.9])
     self.assertEqual(r_obj.name, 'my_recall')
-    self.assertLen(r_obj.variables, 2)
+    self.assertEqual(len(r_obj.variables), 2)
     self.assertEqual([v.name for v in r_obj.variables],
                      ['true_positives:0', 'false_negatives:0'])
     self.assertEqual(r_obj.thresholds, [0.4, 0.9])
