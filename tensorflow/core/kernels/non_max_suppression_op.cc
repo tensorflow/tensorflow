@@ -376,8 +376,7 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
     int curr_total_size = max_detections;
     int result_idx = 0;
     // Pick the top max_detections values 
-    while (curr_total_size > 0 && result_idx < result_candidate_vec.size())
-    {
+    while (curr_total_size > 0 && result_idx < result_candidate_vec.size()) {
       ResultCandidate next_candidate = result_candidate_vec[result_idx++];
       // Add to final output vectors
       nmsed_boxes[batch].push_back(
