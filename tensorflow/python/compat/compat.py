@@ -160,7 +160,7 @@ def enable_v2_behavior():
 
 @tf_export(v1=["disable_v2_behavior"])
 def disable_v2_behavior():
-  """Enables TensorFlow 2.x behaviors.
+  """Disables TensorFlow 2.x behaviors.
 
   This function can be called at the beginning of the program (before `Tensors`,
   `Graphs` or other structures have been created, and before devices have been
