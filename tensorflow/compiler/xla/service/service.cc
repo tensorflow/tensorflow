@@ -113,12 +113,13 @@ int ServiceOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
 }
 
-ServiceOptions& ServiceOptions::set_allowed_devices(std::set<int> device_set) {
-  allowed_devices_ = device_set;
+ServiceOptions& ServiceOptions::set_allowed_devices(
+    const absl::optional<std::set<int>>& allowed_devices) {
+  allowed_devices_ = allowed_devices;
   return *this;
 }
 
-std::set<int> ServiceOptions::get_allowed_devices() const {
+const absl::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
   return allowed_devices_;
 }
 
@@ -138,7 +139,7 @@ std::set<int> ServiceOptions::get_allowed_devices() const {
   }
   BackendOptions backend_options;
   backend_options.set_platform(platform);
-  backend_options.set_allowed_devices(options.get_allowed_devices());
+  backend_options.set_allowed_devices(options.allowed_devices());
   TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
 
   std::unique_ptr<Service> service(

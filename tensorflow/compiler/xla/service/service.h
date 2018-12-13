@@ -63,15 +63,16 @@ class ServiceOptions {
   int intra_op_parallelism_threads() const;
 
   // Sets the allowed_devices set for creation of stream executors.
-  ServiceOptions& set_allowed_devices(const std::set<int> device_set);
+  ServiceOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
 
-  std::set<int> get_allowed_devices() const;
+  const absl::optional<std::set<int>>& allowed_devices() const;
 
  private:
   se::Platform* platform_ = nullptr;
   int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
-  std::set<int> allowed_devices_ = {-1};
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // The XLA service object, which is the same across all platforms. It maintains

@@ -55,14 +55,15 @@ class BackendOptions {
   int intra_op_parallelism_threads() const;
 
   // Sets the allowed_devices set for creation of stream executors.
-  BackendOptions& set_allowed_devices(const std::set<int> device_set);
+  BackendOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
 
-  std::set<int> get_allowed_devices() const;
+  const absl::optional<std::set<int>>& allowed_devices() const;
 
  private:
   se::Platform* platform_ = nullptr;
   int intra_op_parallelism_threads_ = -1;
-  std::set<int> allowed_devices_ = {-1};
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // Class which encapsulates an XLA backend. It includes everything necessary
@@ -113,12 +114,6 @@ class Backend {
   // can be > 1).
   se::StreamExecutor* default_stream_executor() const {
     CHECK(!stream_executors_.empty());
-
-    for (se::StreamExecutor* e : stream_executors_) {
-      if (e) {
-        return e;
-      }
-    }
     return stream_executors_[0];
   }
 

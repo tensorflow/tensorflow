@@ -26,6 +26,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 #include <set>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -124,8 +125,11 @@ class XlaDevice : public LocalDevice {
     // If padded_shape_fn is empty, a default implementation that returns
     // the logical on-device shape without padding is used.
     PaddedShapeFn padded_shape_fn;
-    // Set of allowed devices. -1 is all devices
-    std::set<int> allowed_devices = {-1};
+
+    // Set of devices to use. This controls which of the devices given type in
+    // the system will have resources allocated for. For GPUs this will be
+    // filled from visible_gpu_devices list from session configuration.
+    absl::optional<std::set<int>> allowed_devices;
   };
 
   // Creates a new XLA Device.
@@ -260,8 +264,10 @@ class XlaDevice : public LocalDevice {
   int64 outstanding_asynchronous_operations_ GUARDED_BY(mu_) = 0;
   condition_variable outstanding_asynchronous_operations_cv_;
 
-  // Set of allowed gpu devices at the time of construction.
-  std::set<int> allowed_devices_ = {-1};
+  // Set of devices to use. This controls which of the devices of current type
+  // in the system will have resources allocated for. For GPUs this will be
+  // filled from visible_gpu_devices list from session configuration.
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

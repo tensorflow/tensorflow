@@ -54,7 +54,7 @@ namespace xla {
   BackendOptions backend_options;
   backend_options.set_platform(platform)
       .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads())
-      .set_allowed_devices(options.get_allowed_devices());
+      .set_allowed_devices(options.allowed_devices());
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
                       Backend::CreateBackend(backend_options));
