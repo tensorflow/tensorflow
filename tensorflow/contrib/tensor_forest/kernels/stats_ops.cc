@@ -183,8 +183,8 @@ void UpdateStats(FertileStatsResource* fertile_stats_resource,
     }
 
     bool is_finished;
-    fertile_stats_resource->AddExampleToStatsAndInitialize(
-        data, &target, {example_id}, leaf_id, &is_finished);
+    fertile_stats_resource->AddExampleToStats(data, &target, {example_id},
+                                              leaf_id, &is_finished);
     leaf_lock->unlock();
     if (is_finished) {
       set_lock->lock();
@@ -210,8 +210,8 @@ void UpdateStatsCollated(
   while (it != end_it) {
     int32 leaf_id = it->first;
     bool is_finished;
-    fertile_stats_resource->AddExampleToStatsAndInitialize(
-        data, &target, it->second, leaf_id, &is_finished);
+    fertile_stats_resource->AddExampleToStats(data, &target, it->second,
+                                              leaf_id, &is_finished);
     if (is_finished) {
       set_lock->lock();
       ready_to_split->insert(leaf_id);
@@ -277,11 +277,14 @@ class ProcessInputOp : public OpKernel {
     std::unordered_map<int32, std::vector<int>> leaf_examples;
     if (param_proto_.collate_examples()) {
       for (int i = 0; i < num_data; ++i) {
-        leaf_examples[leaf_ids(i)].push_back(i);
+        const int32 id = leaf_ids(i);
+        leaf_examples[id].push_back(i);
+        fertile_stats_resource->Initialize(data_set, target, i, id);
       }
     } else {
       for (int i = 0; i < num_data; ++i) {
         const int32 id = leaf_ids(i);
+        fertile_stats_resource->Initialize(data_set, target, i, id);
         if (FindOrNull(locks, id) == nullptr) {
           // TODO(gilberth): Consider using a memory pool for these.
           locks[id] = std::unique_ptr<mutex>(new mutex);
@@ -302,7 +305,6 @@ class ProcessInputOp : public OpKernel {
     mutex set_lock;
 
     TensorInputTarget target(input_labels, input_weights, num_targets);
-
     // TODO(gilberth): This is a rough approximation based on measurements
     // from a digits run on local desktop.  Heuristics might be necessary
     // if it really matters that much.

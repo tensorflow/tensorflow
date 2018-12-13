@@ -19,24 +19,20 @@
 namespace tensorflow {
 namespace tensorforest {
 
+void FertileStatsResource::Initialize(
+    const std::unique_ptr<TensorDataSet>& input_data, const InputTarget* target,
+    const int32 example, int32 node_id) {
+  if (!collection_op_->IsInitialized(node_id)) {
+    collection_op_->CreateAndInitializeCandidateWithExample(input_data, target,
+                                                            example, node_id);
+  }
+}
+
 void FertileStatsResource::AddExampleToStatsAndInitialize(
     const std::unique_ptr<TensorDataSet>& input_data, const InputTarget* target,
     const std::vector<int>& examples, int32 node_id, bool* is_finished) {
   // Update stats or initialize if needed.
-  if (collection_op_->IsInitialized(node_id)) {
-    collection_op_->AddExample(input_data, target, examples, node_id);
-  } else {
-    // This throws away any extra examples, which is more inefficient towards
-    // the top but gradually becomes less of an issue as the tree grows.
-    for (int example : examples) {
-      collection_op_->CreateAndInitializeCandidateWithExample(
-          input_data, target, example, node_id);
-      if (collection_op_->IsInitialized(node_id)) {
-        break;
-      }
-    }
-  }
-
+  collection_op_->AddExample(input_data, target, examples, node_id);
   *is_finished = collection_op_->IsFinished(node_id);
 }
 

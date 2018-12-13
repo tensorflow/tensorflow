@@ -60,14 +60,20 @@ class FertileStatsResource : public ResourceBase {
 
   void MaybeInitialize();
 
+  // Initialize split candidate with examples
+  // if not being initialized
+  void FertileStatsResource::Initialize(
+      const std::unique_ptr<TensorDataSet>& input_data,
+      const InputTarget* target, const int32 example, int32 node_id);
+
   // Applies the example to the given leaf's statistics. Also applies it to the
-  // node's fertile slot's statistics if or initializes a split candidate,
+  // node's fertile slot's statistics,
   // where applicable.  Returns if the node is finished or if it's ready to
   // allocate to a fertile slot.
-  void AddExampleToStatsAndInitialize(
-      const std::unique_ptr<TensorDataSet>& input_data,
-      const InputTarget* target, const std::vector<int>& examples,
-      int32 node_id, bool* is_finished);
+  void AddExampleToStats(const std::unique_ptr<TensorDataSet>& input_data,
+                         const InputTarget* target,
+                         const std::vector<int>& examples, int32 node_id,
+                         bool* is_finished);
 
   // Allocate a fertile slot for each ready node, then new children up to
   // max_fertile_nodes_.
