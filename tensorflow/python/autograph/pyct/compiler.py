@@ -72,6 +72,7 @@ def ast_to_source(node, indentation='  '):
   # Reference cycles are quite disliked by TensorFlow's tests.
   if hasattr(generator, 'write'):
     generator.write = None
+  del generator
 
   return code
 
