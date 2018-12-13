@@ -481,8 +481,20 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
   # variables, but want any operations associated with the save/restore to be in
   # the exported graph (thus the `to_graph` argument).
   saver = object_saver.freeze(object_map=object_map, to_graph=exported_graph)
+
+  # We must resolve the concrete function to add to MetaGraph while in eager
+  # mode.
+  concrete_functions = []
+  for accessible_object in accessible_objects:
+    for function in function_serialization.list_all_polymorphic_functions(
+        accessible_object).values():
+      concrete_functions.extend(
+          function_serialization.list_all_concrete_functions(function))
+
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
+    for concrete_function in concrete_functions:
+      concrete_function.add_to_graph()
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
   graph_def = exported_graph.as_graph_def(add_shapes=True)
