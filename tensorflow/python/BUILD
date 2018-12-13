@@ -5322,6 +5322,20 @@ py_test(
 )
 
 py_test(
+    name = "quantized_ops_test",
+    size = "small",
+    srcs = ["ops/quantized_ops_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "quantized_conv_ops_test",
     size = "small",
     srcs = ["ops/quantized_conv_ops_test.py"],
