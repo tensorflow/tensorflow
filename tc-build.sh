@@ -11,7 +11,7 @@ build_android_arm64=no
 build_linux_arm=no
 build_linux_arm64=no
 
-if [ "$1" = "--gpu" ]; then
+if [ "$1" = "--cuda" ]; then
     build_amd64=yes
     build_cuda=yes
     build_android_arm=no
