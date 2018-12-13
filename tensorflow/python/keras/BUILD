@@ -301,15 +301,23 @@ py_test(
 )
 
 py_test(
+    name = "metrics_functional_test",
+    size = "medium",
+    srcs = ["metrics_functional_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "metrics_test",
     size = "medium",
     srcs = ["metrics_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "no_oss",
-        "notap",
-    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
