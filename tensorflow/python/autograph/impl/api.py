@@ -494,6 +494,7 @@ def to_code(entity,
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
           recursive=recursive,
+          verbose=converter.Verbosity.BRIEF,
           strip_decorators=(convert, do_not_convert, converted_call),
           optional_features=optional_features),
       partial_types=experimental_partial_types,
