@@ -63,6 +63,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import weakref
+
 import enum
 
 from tensorflow.python.autograph.core import config
@@ -175,6 +177,16 @@ class ConversionOptions(object):
     # TODO(mdan): Revert if function.defun becomes a public symbol.
     return self._strip_decorators + (function.defun,)
 
+  def should_strip(self, decorator):
+    for blacklisted in self.strip_decorators:
+      if blacklisted is decorator:
+        return True
+      if isinstance(blacklisted, weakref.ref):
+        blacklisted_deref = blacklisted()
+        if (blacklisted_deref is not None and blacklisted_deref is decorator):
+          return True
+    return False
+
   def uses(self, feature):
     return (Feature.ALL in self.optional_features or
             feature in self.optional_features)
@@ -208,7 +220,7 @@ class ConversionOptions(object):
       if not name:
         # TODO(mdan): This needs to account for the symbols defined locally.
         name = ctx.namer.new_symbol(o.__name__, ())
-        ctx.program.add_symbol(name, o)
+        ctx.program.add_symbol(name, weakref.ref(o))
       return name
 
     def list_of_names(values):
