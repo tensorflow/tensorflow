@@ -375,7 +375,9 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
 
   @combinations.generate(combinations.combine(
       distribution=[
+          combinations.mirrored_strategy_with_gpu_and_cpu,
           combinations.mirrored_strategy_with_two_gpus,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu,
           combinations.core_mirrored_strategy_with_two_gpus],
       mode=['graph']))
   def test_train_functional_with_distribution_strategy(self, distribution):
@@ -403,7 +405,9 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
 
   @combinations.generate(combinations.combine(
       distribution=[
+          combinations.mirrored_strategy_with_gpu_and_cpu,
           combinations.mirrored_strategy_with_two_gpus,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu,
           combinations.core_mirrored_strategy_with_two_gpus],
       mode=['graph']))
   def test_train_sequential_with_distribution_strategy(self, distribution):
@@ -430,8 +434,8 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
 
   @combinations.generate(combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
       mode=['graph']))
   def test_multi_inputs_multi_outputs_with_input_fn_as_dict(self, distribution):
     train_data, test_data = get_multi_inputs_multi_outputs_data()
@@ -482,8 +486,8 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
 
   @combinations.generate(combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
       mode=['graph']))
   def test_keras_optimizer_with_distribution_strategy(self, distribution):
     keras_model = simple_sequential_model()
@@ -904,10 +908,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
   @combinations.generate(combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
       mode=['graph', 'eager']))
-  def test_dataset_wrong_input_shape(self, distribution):
+  # TODO(b/120943676, b/120957836): Re-enable once the validation code is
+  # restored.
+  def DISABLED_test_dataset_wrong_input_shape(self, distribution):
     with self.cached_session():
       model = get_model()
 
@@ -927,9 +933,11 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(combinations.combine(
-      distribution=[combinations.mirrored_strategy_with_two_gpus],
+      distribution=[combinations.mirrored_strategy_with_gpu_and_cpu],
       mode=['graph', 'eager']))
-  def test_dataset_no_batch_input_validation(self, distribution):
+  # TODO(b/120943676, b/120957836): Re-enable once the validation code is
+  # restored.
+  def DISABLED_test_dataset_no_batch_input_validation(self, distribution):
     with self.cached_session():
       model = get_model()
 
@@ -967,7 +975,9 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
   @combinations.generate(combinations.combine(
       distribution=[
+          combinations.mirrored_strategy_with_gpu_and_cpu,
           combinations.mirrored_strategy_with_two_gpus,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu,
           combinations.core_mirrored_strategy_with_two_gpus],
       mode=['graph', 'eager']))
   def test_learning_phase_value(self, distribution):
@@ -1170,8 +1180,8 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
   # work for TPU due to some invalid datatype.
   @combinations.generate(combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
       mode=['graph', 'eager']))
   def test_masking(self, distribution):
     with self.cached_session():
