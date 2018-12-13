@@ -1069,6 +1069,25 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "summary_ops_test",
+    size = "small",
+    srcs = ["summary_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+tf_py_test(
     name = "summary_v1_ops_test",
     size = "small",
     srcs = ["summary_v1_ops_test.py"],

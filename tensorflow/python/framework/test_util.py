@@ -1023,12 +1023,13 @@ def also_run_as_tf_function(f):
   """
 
   def decorated(*args, **kwds):
+    def bound_f():
+      f(*args, **kwds)
     with context.eager_mode():
       # Running in eager mode
-      f(*args, **kwds)
-
-      defun_f = def_function.function(f)
-      defun_f(*args, **kwds)
+      bound_f()
+      # Running as TF function
+      def_function.function(bound_f)()
 
   return decorated
 
