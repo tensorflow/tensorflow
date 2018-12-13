@@ -31,6 +31,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
+from tensorflow.python.keras import optimizers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -481,7 +482,7 @@ class TestCloneAndBuildModel(test.TestCase):
     self.assert_optimizer_iterations_increases(adam.AdamOptimizer(0.01))
 
   def test_replace_keras_optimizer_iterations_variable(self):
-    self.assert_optimizer_iterations_increases('adam')
+    self.assert_optimizer_iterations_increases(optimizers.Adam())
 
   def test_clone_and_build_sequential_model_without_inputs_defined(self):
     with self.cached_session():
