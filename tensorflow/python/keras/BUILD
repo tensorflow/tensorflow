@@ -503,6 +503,7 @@ py_test(
     name = "gru_test",
     size = "large",
     srcs = ["layers/gru_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # http://b/62136390
     deps = [
