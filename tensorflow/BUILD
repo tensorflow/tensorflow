@@ -606,9 +606,11 @@ py_library(
     name = "tensorflow_py",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = select({
+        "api_version_2": [],
+        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+    }) + [
         ":tensorflow_py_no_contrib",
-        "//tensorflow/contrib:contrib_py",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
