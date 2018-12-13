@@ -31,7 +31,8 @@ class OptionsBase(object):
   """
 
   def __init__(self):
-    self._options = {}
+    # NOTE: Cannot use `self._options` here as we override `__setattr__`
+    object.__setattr__(self, "_options", {})
 
   def __eq__(self, other):
     if not isinstance(other, self.__class__):
@@ -46,6 +47,13 @@ class OptionsBase(object):
       return not self.__eq__(other)
     else:
       return NotImplemented
+
+  def __setattr__(self, name, value):
+    if hasattr(self, name):
+      object.__setattr__(self, name, value)
+    else:
+      raise AttributeError(
+          "Cannot set the property %s on %s." % (name, type(self).__name__))
 
 
 def create_option(name, ty, docstring, default_factory=lambda: None):

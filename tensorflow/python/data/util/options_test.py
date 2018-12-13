@@ -94,6 +94,13 @@ class OptionsTest(test.TestCase):
     with self.assertRaises(TypeError):
       options.merge_options(options1, options2)
 
+  def testNoSpuriousAttrs(self):
+    test_options = _TestOptions()
+    with self.assertRaises(AttributeError):
+      test_options.wrong_attr = True
+    with self.assertRaises(AttributeError):
+      _ = test_options.wrong_attr
+
 
 if __name__ == "__main__":
   test.main()

@@ -1695,36 +1695,43 @@ class Options(options_lib.OptionsBase):
       ty=bool,
       docstring=
       "Whether to dynamically adjust the values of tunable parameters (e.g. "
-      "degrees of parallelism).")
+      "degrees of parallelism). If None, defaults to True.")
 
   experimental_deterministic = options_lib.create_option(
       name="experimental_deterministic",
       ty=bool,
       docstring=
-      "Whether the outputs need to be produced in deterministic order."
-  )
+      "Whether the outputs need to be produced in deterministic order. If None,"
+      " defaults to True.")
 
   experimental_numa_aware = options_lib.create_option(
       name="experimental_numa_aware",
       ty=bool,
-      docstring="Whether to use NUMA-aware operations.")
+      docstring=
+      "Whether to use NUMA-aware operations. If None, defaults to False.")
 
   experimental_optimization = options_lib.create_option(
       name="experimental_optimization",
       ty=optimization_options.OptimizationOptions,
-      docstring="Associates the given optimization options with the dataset.",
+      docstring=
+      "The optimization options associated with the dataset. See "
+      "`tf.data.experimental.OptimizationOptions` for more details.",
       default_factory=optimization_options.OptimizationOptions)
 
   experimental_stats = options_lib.create_option(
       name="experimental_stats",
       ty=stats_options.StatsOptions,
-      docstring="Associates the given statistics options with the dataset.",
+      docstring=
+      "The statistics options associated with the dataset. See "
+      "`tf.data.experimental.StatsOptions` for more details.",
       default_factory=stats_options.StatsOptions)
 
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=threading_options.ThreadingOptions,
-      docstring="Associates the given threading options with the dataset.",
+      docstring=
+      "The threading options associated with the dataset. See "
+      "`tf.data.experimental.ThreadingOptions` for more details.",
       default_factory=threading_options.ThreadingOptions)
 
   def _static_optimizations(self):

@@ -65,4 +65,5 @@ class StatsOptions(options.OptionsBase):
   latency_all_edges = options.create_option(
       name="latency_all_edges",
       ty=bool,
-      docstring="Whether to add latency measurements on all edges.")
+      docstring=
+      "Whether to add latency measurements on all edges. Defaults to False.")
