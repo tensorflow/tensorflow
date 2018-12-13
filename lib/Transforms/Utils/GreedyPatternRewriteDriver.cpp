@@ -40,6 +40,10 @@ public:
   void simplifyFunction(Function *currentFunction, WorklistRewriter &rewriter);
 
   void addToWorklist(Operation *op) {
+    // Check to see if the worklist already contains this op.
+    if (worklistMap.count(op))
+      return;
+
     worklistMap[op] = worklist.size();
     worklist.push_back(op);
   }
