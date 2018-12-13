@@ -89,6 +89,8 @@ if 'tf_nightly' in project_name:
       REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
     if 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
+    if 'tensorflow_estimator' in pkg and '2.0' in project_name:
+      REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
 
 # weakref.finalize and enum were introduced in Python 3.4
 if sys.version_info < (3, 4):
