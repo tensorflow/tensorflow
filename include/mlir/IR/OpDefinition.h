@@ -960,17 +960,6 @@ protected:
            OpTrait::HasNoSideEffect, Traits...>(state) {}
 };
 
-// These functions are out-of-line implementations of the methods in GenericOp,
-// which avoids them being template instantiated/duplicated.
-namespace impl {
-void buildGenericOp(Builder *builder, OperationState *result,
-                    SmallVectorImpl<SSAValue *> &operands,
-                    SmallVectorImpl<NamedAttribute> &attrs,
-                    SmallVectorImpl<Type> &types);
-bool parseGenericOp(OpAsmParser *parser, OperationState *result);
-void printGenericOp(const Operation *op, OpAsmPrinter *p);
-} // namespace impl
-
 } // end namespace mlir
 
 #endif
