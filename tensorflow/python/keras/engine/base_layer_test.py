@@ -23,11 +23,14 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 class DynamicLayer1(base_layer.Layer):
@@ -63,35 +66,48 @@ class InvalidLayer(base_layer.Layer):
     return input_shape
 
 
-class BaseLayerTest(test.TestCase):
+class BaseLayerTest(keras_parameterized.TestCase):
 
-  def test_dynamic_layer_in_functional_model_in_graph_mode(self):
-    with context.graph_mode():
-      inputs = keras.Input((3,))
+  def _assert_static_graph_unfriendly_model(self, model):
+    self.assertEqual(model._static_graph_friendly, False)
+    if not testing_utils.should_run_eagerly():
+      with self.assertRaisesRegexp(
+          ValueError, 'can only be successfully run in eager execution'):
+        model.compile(rmsprop.RMSprop(0.001), loss='mse',
+                      run_eagerly=testing_utils.should_run_eagerly())
+    else:
+      model.compile(rmsprop.RMSprop(0.001), loss='mse',
+                    run_eagerly=testing_utils.should_run_eagerly())
+      model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+
+  @test_util.run_v1_only
+  def test_dynamic_layer_fails_in_v1(self):
+    inputs = keras.Input((3,))
+
+    if not context.executing_eagerly():
       with self.assertRaisesRegexp(
           TypeError, 'Using a `tf.Tensor` as a Python `bool` is not allowed'):
-        _ = DynamicLayer1()(inputs)
-
-      inputs = keras.Input((3,))
+        DynamicLayer1()(inputs)
       with self.assertRaisesRegexp(
           TypeError, 'Tensor objects are only iterable when eager'):
-        _ = DynamicLayer2()(inputs)
+        DynamicLayer2()(inputs)
 
-  def test_dynamic_layer_in_functional_model_in_eager_mode(self):
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_dynamic_layer(self):
     inputs = keras.Input((3,))
     outputs = DynamicLayer1()(inputs)
     model = keras.Model(inputs, outputs)
-    self.assertEqual(model._static_graph_friendly, False)
-    model.compile(RMSPropOptimizer(0.001), loss='mse')
-    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    self.assertAllClose([[0], [4], [9]], model.predict_on_batch([0, 2, -3]))
+    self._assert_static_graph_unfriendly_model(model)
 
     inputs = keras.Input((3,))
     outputs = DynamicLayer2()(inputs)
     model = keras.Model(inputs, outputs)
-    self.assertEqual(model._static_graph_friendly, False)
-    model.compile(RMSPropOptimizer(0.001), loss='mse')
-    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    self.assertAllClose([[0], [4], [9]], model.predict_on_batch([0, 2, -3]))
+    self._assert_static_graph_unfriendly_model(model)
 
+  # TODO(b/120985967): Test fails for nested models due to _set_mask_metadata.
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def nested_dynamic_layers_in_eager_mode(self):
     inputs = keras.Input((3,))
     outputs = DynamicLayer1()(inputs)
@@ -103,8 +119,13 @@ class BaseLayerTest(test.TestCase):
 
     model = keras.Model(inputs, outputs)
     self.assertEqual(model._static_graph_friendly, False)
-    model.compile(RMSPropOptimizer(0.001), loss='mse')
-    model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    if testing_utils.should_run_eagerly():
+      model.compile(rmsprop.RMSprop(0.001), loss='mse', run_eagerly=True)
+      model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    else:
+      with self.assertRaisesRegexp(
+          ValueError, 'only be successfully run in eager execution'):
+        model.compile(rmsprop.RMSprop(0.001), loss='mse', run_eagerly=False)
 
   def test_invalid_forward_pass_in_graph_mode(self):
     with context.graph_mode():
@@ -112,14 +133,20 @@ class BaseLayerTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
         _ = InvalidLayer()(inputs)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_invalid_forward_pass_in_eager_mode(self):
     inputs = keras.Input((3,))
     outputs = InvalidLayer()(inputs)
     model = keras.Model(inputs, outputs)
     self.assertEqual(model._static_graph_friendly, False)
-    model.compile(RMSPropOptimizer(0.001), loss='mse')
-    with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
-      model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    if testing_utils.should_run_eagerly():
+      model.compile(rmsprop.RMSprop(0.001), loss='mse', run_eagerly=True)
+      with self.assertRaisesRegexp(ValueError, 'You did something wrong!'):
+        model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
+    else:
+      with self.assertRaisesRegexp(
+          ValueError, 'only be successfully run in eager execution'):
+        model.compile(rmsprop.RMSprop(0.001), loss='mse', run_eagerly=False)
 
   def test_using_symbolic_tensors_with_tf_ops(self):
     # Single-input.
@@ -164,6 +191,7 @@ class BaseLayerTest(test.TestCase):
                                  'objects other than \'EagerTensor\''):
       math_ops.matmul(x1, x2)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_mixing_keras_symbolic_tensors_and_eager_tensors(self):
     x1 = keras.Input((3,))
     x2 = array_ops.ones((3, 3))
@@ -176,6 +204,7 @@ class BaseLayerTest(test.TestCase):
                         np.matmul(x_val, y_val),
                         atol=1e-5)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_mixing_keras_symbolic_tensors_and_numpy_arrays(self):
     x1 = keras.Input((3,))
     x2 = np.ones((3, 3), dtype='float32')
