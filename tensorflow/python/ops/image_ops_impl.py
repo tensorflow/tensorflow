@@ -3223,7 +3223,7 @@ def combined_non_max_suppression(boxes,
   """Greedily selects a subset of bounding boxes in descending order of score.
 
   This operation performs non_max_suppression on the inputs per batch, across
-  all classes. 
+  all classes.
   Prunes away boxes that have high intersection-over-union (IOU) overlap
   with previously selected boxes.  Bounding boxes are supplied as
   [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
@@ -3233,14 +3233,14 @@ def combined_non_max_suppression(boxes,
   this algorithm is invariant to orthogonal transformations and translations
   of the coordinate system; thus translating or reflections of the coordinate
   system result in the same boxes being selected by the algorithm.
-  The output of this operation is the final boxes, scores and classes tensor 
+  The output of this operation is the final boxes, scores and classes tensor
   returned after performing non_max_suppression.
 
   Args:
     boxes: A 4-D float `Tensor` of shape `[batch_size, num_boxes, q, 4]`.
-    scores: A 3-D float `Tensor` of shape `[batch_size, num_boxes, num_classes]` 
+    scores: A 3-D float `Tensor` of shape `[batch_size, num_boxes, num_classes]`
     representing a single score corresponding to each box (each row of boxes).
-    max_output_size_per_class: A scalar integer `Tensor` representing the 
+    max_output_size_per_class: A scalar integer `Tensor` representing the
     maximum number of boxes to be selected by non max suppression per class
     max_total_size: A scalar representing maximum number of boxes retained over
     all classes.
@@ -3274,5 +3274,8 @@ def combined_non_max_suppression(boxes,
     score_threshold = ops.convert_to_tensor(
         score_threshold, name='score_threshold')
     return gen_image_ops.combined_non_max_suppression(boxes, scores,
-            max_output_size_per_class, max_total_size, iou_threshold,
-            score_threshold, pad_per_class)
+                                                      max_output_size_per_class,
+                                                      max_total_size,
+                                                      iou_threshold,
+                                                      score_threshold,
+                                                      pad_per_class)

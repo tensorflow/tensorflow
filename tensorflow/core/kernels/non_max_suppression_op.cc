@@ -74,9 +74,9 @@ static inline void ParseAndCheckBoxSizes(OpKernelContext* context,
               errors::InvalidArgument("boxes must have 4 columns"));
 }
 
-static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context, 
-                                          int num_boxes,
-                                          const Tensor& scores) {
+static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context,
+                                              int num_boxes,
+                                              const Tensor& scores) {
   // The shape of 'scores' is [batch_size, num_boxes, num_classes]
   OP_REQUIRES(context, scores.dims() == 3,
               errors::InvalidArgument("scores must be 3-D",
@@ -86,8 +86,9 @@ static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context,
 }
 
 static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
-                                         const Tensor& boxes, int* num_boxes, 
-                                         const int num_classes) {
+                                                    const Tensor& boxes,
+                                                    int* num_boxes,
+                                                    const int num_classes) {
   // The shape of 'boxes' is [batch_size, num_boxes, q, 4]
   OP_REQUIRES(context, boxes.dims() == 4,
               errors::InvalidArgument("boxes must be 4-D",
@@ -97,7 +98,7 @@ static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
   OP_REQUIRES(context, box_check,
               errors::InvalidArgument(
                   "third dimension of boxes must be either 1 or num classes"));
-  *num_boxes = boxes.dim_size(1); 
+  *num_boxes = boxes.dim_size(1);
   OP_REQUIRES(context, boxes.dim_size(3) == 4,
               errors::InvalidArgument("boxes must have 4 columns"));
 }
@@ -222,23 +223,18 @@ void DoNonMaxSuppressionOp(
   std::copy_n(selected.begin(), selected.size(), output_indices_data.data());
 }
 
-void BatchedNonMaxSuppressionOp(OpKernelContext* context,
-                                const Tensor& inp_boxes,
-                                const Tensor& inp_scores,
-                                int num_boxes,
-                                const int max_size_per_class,
-                                const int total_size_per_batch,
-                                const float score_threshold,
-                                const float iou_threshold,
-                                bool pad_per_class = false) {
-
+void BatchedNonMaxSuppressionOp(
+    OpKernelContext* context, const Tensor& inp_boxes, const Tensor& inp_scores,
+    int num_boxes, const int max_size_per_class, const int total_size_per_batch,
+    const float score_threshold, const float iou_threshold,
+    bool pad_per_class = false) {
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
   const int num_batches = inp_boxes.dim_size(0);
 
   // Default clip window of [0, 0, 1, 1] if none specified
   std::vector<float> clip_window{0, 0, 1, 1};
-  
+
   // [num_batches, per_batch_size * 4]
   std::vector<std::vector<float>> nmsed_boxes(num_batches);
   // [num_batches, per_batch_size]
@@ -280,23 +276,22 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
         // Get the scores per class
         // class_scores_data dim is [num_boxes].
         class_scores_data.push_back(scores_data[box * num_classes + class_idx]);
-        for (int cid = 0; cid < 4; ++cid){
-          if (q > 1){
+        for (int cid = 0; cid < 4; ++cid) {
+          if (q > 1) {
             // Get the boxes per class. class_boxes_data dims is [num_boxes, 4]
-            class_boxes_data.push_back(boxes_data[(box * q + class_idx) * 4
-                                                  + cid]);
-          }
-          else {
-              class_boxes_data.push_back(boxes_data[box * 4 + cid]);
+            class_boxes_data.push_back(
+                boxes_data[(box * q + class_idx) * 4 + cid]);
+          } else {
+            class_boxes_data.push_back(boxes_data[box * 4 + cid]);
           }
         }
       }
-        
+
       // Copy class_boxes_data to a tensor
       TensorShape boxesShape({num_boxes, 4});
       Tensor boxes(per_batch_boxes.dtype(), boxesShape);
       std::copy_n(class_boxes_data.begin(), class_boxes_data.size(),
-          boxes.unaligned_flat<float>().data());
+                  boxes.unaligned_flat<float>().data());
 
       const int size_per_class = std::min(max_size_per_class, num_boxes);
       // Do NMS, get the candidate indices of form vector<int>
@@ -321,8 +316,8 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
       std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
       const Tensor const_boxes = boxes;
-      typename TTypes<float, 2>::ConstTensor boxes_data = 
-        const_boxes.tensor<float, 2>();
+      typename TTypes<float, 2>::ConstTensor boxes_data =
+          const_boxes.tensor<float, 2>();
       int candidate_idx = 0;
       while (selected.size() < size_per_class &&
              candidate_idx < candidate_vector.size()) {
@@ -333,8 +328,8 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
         // in order to see if `next_candidate` should be suppressed.
         bool should_select = true;
         for (int j = selected.size() - 1; j >= 0; --j) {
-          if (IOUGreaterThanThreshold(boxes_data, next_candidate.box_index, 
-              selected[j], iou_threshold)) {
+          if (IOUGreaterThanThreshold(boxes_data, next_candidate.box_index,
+                                      selected[j], iou_threshold)) {
             should_select = false;
             break;
           }
@@ -344,53 +339,54 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
           selected.push_back(next_candidate.box_index);
           // Add the selected box to the result candidate. Sorted by score
           int id = next_candidate.box_index;
-          ResultCandidate rc = {next_candidate.box_index, next_candidate.score,
-            class_idx, {boxes_data(id, 0), boxes_data(id, 1), boxes_data(id, 2),
-            boxes_data(id, 3)}}; 
+          ResultCandidate rc = {next_candidate.box_index,
+                                next_candidate.score,
+                                class_idx,
+                                {boxes_data(id, 0), boxes_data(id, 1),
+                                 boxes_data(id, 2), boxes_data(id, 3)}};
           result_candidate_vec.push_back(rc);
         }
       }
     }
 
     auto rc_cmp = [](const ResultCandidate rc_i, const ResultCandidate rc_j) {
-        return rc_i.score > rc_j.score;
+      return rc_i.score > rc_j.score;
     };
     std::sort(result_candidate_vec.begin(), result_candidate_vec.end(), rc_cmp);
 
     int max_detections = 0;
     // If pad_per_class is false, we always pad to max_total_size
     if (!pad_per_class) {
-      max_detections = std::min((int) result_candidate_vec.size(),
-        total_size_per_batch);
+      max_detections =
+          std::min((int)result_candidate_vec.size(), total_size_per_batch);
       per_batch_size = total_size_per_batch;
-    }
-    else {
-      per_batch_size = std::min(total_size_per_batch, 
-                            max_size_per_class * num_classes);
-      max_detections = std::min(per_batch_size, 
-                            (int) result_candidate_vec.size());
+    } else {
+      per_batch_size =
+          std::min(total_size_per_batch, max_size_per_class * num_classes);
+      max_detections =
+          std::min(per_batch_size, (int)result_candidate_vec.size());
     }
 
     final_valid_detections.push_back(max_detections);
 
     int curr_total_size = max_detections;
     int result_idx = 0;
-    // Pick the top max_detections values 
+    // Pick the top max_detections values
     while (curr_total_size > 0 && result_idx < result_candidate_vec.size()) {
       ResultCandidate next_candidate = result_candidate_vec[result_idx++];
       // Add to final output vectors
       nmsed_boxes[batch].push_back(
-              std::max(std::min(next_candidate.box_coord[0], clip_window[2]),
-                       clip_window[0]));
+          std::max(std::min(next_candidate.box_coord[0], clip_window[2]),
+                   clip_window[0]));
       nmsed_boxes[batch].push_back(
-              std::max(std::min(next_candidate.box_coord[1], clip_window[3]),
-                       clip_window[1]));
+          std::max(std::min(next_candidate.box_coord[1], clip_window[3]),
+                   clip_window[1]));
       nmsed_boxes[batch].push_back(
-              std::max(std::min(next_candidate.box_coord[2], clip_window[2]),
-                       clip_window[0]));
+          std::max(std::min(next_candidate.box_coord[2], clip_window[2]),
+                   clip_window[0]));
       nmsed_boxes[batch].push_back(
-              std::max(std::min(next_candidate.box_coord[3], clip_window[3]),
-                       clip_window[1]));
+          std::max(std::min(next_candidate.box_coord[3], clip_window[3]),
+                   clip_window[1]));
       nmsed_scores[batch].push_back(next_candidate.score);
       nmsed_classes[batch].push_back(next_candidate.class_idx);
       selected_indices[batch].push_back(next_candidate.box_index);
@@ -422,13 +418,13 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
   Tensor* valid_detections_t = nullptr;
   TensorShape valid_detections_shape({num_batches});
-  OP_REQUIRES_OK(context, context->allocate_output(3, valid_detections_shape, 
-                 &valid_detections_t));
+  OP_REQUIRES_OK(context, context->allocate_output(3, valid_detections_shape,
+                                                   &valid_detections_t));
   auto valid_detections_flat = valid_detections_t->template flat<int>();
 
   Tensor* selected_indices_t = nullptr;
-  OP_REQUIRES_OK(context,
-                context->allocate_output(4, scores_shape, &selected_indices_t));
+  OP_REQUIRES_OK(
+      context, context->allocate_output(4, scores_shape, &selected_indices_t));
   auto selected_indices_flat = selected_indices_t->template flat<int>();
   for (int i = 0; i < num_batches; ++i) {
     valid_detections_flat(i) = final_valid_detections[i];
@@ -437,8 +433,8 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
       nmsed_classes_flat(i * per_batch_size + j) = nmsed_classes[i][j];
       selected_indices_flat(i * per_batch_size + j) = selected_indices[i][j];
       for (int k = 0; k < 4; ++k) {
-        nmsed_boxes_flat(i * per_batch_size * 4 + j * 4 + k) = 
-          nmsed_boxes[i][j * 4 + k]; 
+        nmsed_boxes_flat(i * per_batch_size * 4 + j * 4 + k) =
+            nmsed_boxes[i][j * 4 + k];
       }
     }
   }
@@ -689,8 +685,7 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
  public:
   explicit CombinedNonMaxSuppressionOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("pad_per_class",
-                                             &pad_per_class_));
+    OP_REQUIRES_OK(context, context->GetAttr("pad_per_class", &pad_per_class_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -698,9 +693,9 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     const Tensor& boxes = context->input(0);
     // scores: [batch_size, num_anchors, num_classes]
     const Tensor& scores = context->input(1);
-    OP_REQUIRES(context, (boxes.dim_size(0) == scores.dim_size(0)),
-              errors::InvalidArgument(
-                "boxes and scores must have same batch size"));
+    OP_REQUIRES(
+        context, (boxes.dim_size(0) == scores.dim_size(0)),
+        errors::InvalidArgument("boxes and scores must have same batch size"));
 
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
@@ -743,15 +738,15 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes, 
-                               max_size_per_class, max_total_size_per_batch, 
-                               score_threshold_val, iou_threshold_val, 
+    BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes,
+                               max_size_per_class, max_total_size_per_batch,
+                               score_threshold_val, iou_threshold_val,
                                pad_per_class_);
   }
+
  private:
   bool pad_per_class_;
 };
-
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppression").Device(DEVICE_CPU),
                         NonMaxSuppressionOp<CPUDevice>);
@@ -785,6 +780,6 @@ REGISTER_KERNEL_BUILDER(
     NonMaxSuppressionWithOverlapsOp<CPUDevice>);
 
 REGISTER_KERNEL_BUILDER(Name("CombinedNonMaxSuppression").Device(DEVICE_CPU),
-        CombinedNonMaxSuppressionOp<CPUDevice>);
+                        CombinedNonMaxSuppressionOp<CPUDevice>);
 
 }  // namespace tensorflow
