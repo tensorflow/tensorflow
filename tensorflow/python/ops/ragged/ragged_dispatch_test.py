@@ -556,6 +556,10 @@ class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase,
                 ragged_factory_ops.constant_value([[b'a', b'b'], [b'c']])),
           expected=ragged_factory_ops.constant_value([[b'A', b'b'], [b'C']])),
       dict(
+          op=array_ops.where,
+          args=(ragged_factory_ops.constant_value([[True, False], [True]]),),
+          expected=[[0, 0], [1, 0]]),
+      dict(
           op=math_ops.unsorted_segment_sum,
           kwargs={
               'data': ragged_factory_ops.constant_value([[1, 2], [3]]),
