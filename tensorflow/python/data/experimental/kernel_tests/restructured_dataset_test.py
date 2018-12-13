@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
+# TODO(b/119837791): Add eager coverage
 class RestructuredDatasetTest(test_base.DatasetTestBase):
 
   @test_util.run_deprecated_v1

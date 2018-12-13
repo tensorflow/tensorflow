@@ -88,6 +88,7 @@ class DatasetTestBase(test.TestCase):
   def assertDatasetProduces(self,
                             dataset,
                             expected_output=None,
+                            expected_shapes=None,
                             expected_error=None,
                             requires_initialization=False,
                             num_test_iterations=1,
@@ -98,6 +99,8 @@ class DatasetTestBase(test.TestCase):
       dataset: A dataset to check for the expected output / error.
       expected_output: A list of elements that the dataset is expected to
         produce.
+      expected_shapes: A list of TensorShapes which is expected to match
+        output_shapes of dataset.
       expected_error: A tuple `(type, predicate)` identifying the expected error
         `dataset` should raise. The `type` should match the expected exception
         type, while `predicate` should either be 1) a unary function that inputs
@@ -126,6 +129,8 @@ class DatasetTestBase(test.TestCase):
             dataset, requires_initialization=requires_initialization)
         self.evaluate(get_next())
       return
+    if expected_shapes:
+      self.assertEqual(expected_shapes, dataset.output_shapes)
     self.assertGreater(num_test_iterations, 0)
     for _ in range(num_test_iterations):
       get_next = self.getNext(
