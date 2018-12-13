@@ -196,11 +196,11 @@ class Traits<list<string> Traits> {
   list<string> traits = Traits;
 }
 
+class UnaryOp<string mnemonic, list<OpProperty> props> :
+    Op<mnemonic, props>, Operands<[Tensor]>, Results<[Tensor]>;
+
 class BinaryOp<string mnemonic, list<OpProperty> props> :
     Op<mnemonic, props>, Operands<[Tensor, Tensor]>, Results<[Tensor]>;
 
 class TernaryOp<string mnemonic, list<OpProperty> props> :
     Op<mnemonic, props>, Operands<[Tensor, Tensor, Tensor]>;
-
-class UnaryOp<string mnemonic, list<OpProperty> props> :
-    Op<mnemonic, props>, Operands<[Tensor]>, Results<[Tensor]>;

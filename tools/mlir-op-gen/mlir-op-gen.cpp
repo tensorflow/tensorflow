@@ -400,10 +400,33 @@ void OpEmitter::emitTraits() {
     break;
   }
 
-  // Add operand size trait.
+  // Add explicitly added traits. Note that some traits might implicitly defines
+  // the number of operands.
+  // TODO(jpienaar): Improve Trait specification to make adding them in the
+  // tblgen file better.
+  bool hasVariadicOperands = false;
+  bool hasAtLeastNOperands = false;
+  auto *recordVal = def.getValue("traits");
+  if (recordVal && recordVal->getValue()) {
+    auto traitList = dyn_cast<ListInit>(recordVal->getValue())->getValues();
+    for (Init *trait : traitList) {
+      auto traitStr = StringRef(trait->getAsUnquotedString()).trim();
+      hasVariadicOperands = traitStr.contains("VariadicOperands");
+      hasAtLeastNOperands = traitStr.contains("AtLeastNOperands");
+      os << ", OpTrait::" << traitStr.trim();
+    }
+  }
+
+  if ((hasVariadicOperands || hasAtLeastNOperands) && !operandTypes.empty()) {
+    PrintFatalError(def.getLoc(),
+                    "Operands number definition is not consistent.");
+  }
+
+  // Add operand size trait if defined explicitly.
   switch (operandTypes.size()) {
   case 0:
-    os << ", OpTrait::ZeroOperands";
+    if (!hasVariadicOperands && !hasAtLeastNOperands)
+      os << ", OpTrait::ZeroOperands";
     break;
   case 1:
     os << ", OpTrait::OneOperand";
@@ -422,16 +445,6 @@ void OpEmitter::emitTraits() {
       os << ", OpTrait::HasNoSideEffect";
     }
   }
-
-  // Add explicitly added traits.
-  // TODO(jpienaar): Improve Trait specification to make adding them in the
-  // tblgen file better.
-  auto *recordVal = def.getValue("traits");
-  if (!recordVal || !recordVal->getValue())
-    return;
-  auto traitList = dyn_cast<ListInit>(recordVal->getValue())->getValues();
-  for (Init *trait : traitList)
-    os << ", OpTrait::" << StringRef(trait->getAsUnquotedString()).trim();
 }
 
 // Emits the opcode enum and op classes.
