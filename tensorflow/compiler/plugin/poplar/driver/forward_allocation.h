@@ -12,6 +12,7 @@
 namespace xla {
 
 class HloModule;
+class HloComputation;
 class HloInstruction;
 
 namespace poplarplugin {
@@ -25,6 +26,8 @@ class ForwardAllocation : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
+  StatusOr<bool> Run(HloComputation* comp);
+
   const CompilerAnnotations& annotations;
   TensorAllocationMap& tensor_allocation_map;
 };

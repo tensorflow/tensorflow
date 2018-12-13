@@ -1443,6 +1443,166 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_EQ(t.backward_path.size(), 0);
 }
 
+TEST_F(AllocationFinderTest, ForwardAllocationMultipleUsesOneTarget) {
+  // In this test we check that %arg2.36.24 still has a layout even though
+  // it has two targets but only one is a layout sensitive target.
+  std::string hlo = R"(
+HloModule top
+%Sum-reduction48 (x.48.45: f32[2], y.48.46: f32[2]) -> f32[2] {
+  %x.48.45 = f32[2]{0} parameter(0)
+  %y.48.46 = f32[2]{0} parameter(1)
+  ROOT %add.48.47 = f32[2]{0} add(f32[2]{0} %x.48.45, f32[2]{0} %y.48.46)
+}
+
+ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[1,2], arg3.36.25: f32[1,2], arg4.36.26: f32[2], arg5.36.27: f32[2]) -> f32[2] {
+ %arg0.36.22 = f32[1,4,4,2]{3,2,1,0} parameter(0)
+ %arg1.36.23 = f32[1,1,2,2]{3,2,1,0} parameter(1)
+ %convolution.36.29 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %arg0.36.22, f32[1,1,2,2]{3,2,1,0} %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="vs/conv2d/Conv2D"}
+ %arg2.36.24 = f32[1,2]{1,0} parameter(2)
+ %arg2.36.24_r = f32[2]{0} reshape(%arg2.36.24)
+ %arg3.36.25 = f32[1,2]{1,0} parameter(3)
+ %arg3.36.25_r = f32[2]{0} reshape(%arg3.36.25)
+ %arg4.36.26 = f32[2]{0} parameter(4)
+ %arg5.36.27 = f32[2]{0} parameter(5)
+ %batch-norm-inference.36.31 = f32[1,4,4,2]{3,2,1,0} batch-norm-inference(f32[1,4,4,2]{3,2,1,0} %convolution.36.29, f32[2]{0} %arg2.36.24_r, f32[2]{0} %arg3.36.25_r, f32[2]{0} %arg4.36.26, f32[2]{0} %arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
+ ROOT %reduce.78.49 = f32[2]{0} reduce(f32[1,4,4,2]{3,2,1,0} %batch-norm-inference.36.31, f32[2]{0} %arg2.36.24_r), dimensions={1,2,3}, to_apply=%Sum-reduction48, metadata={op_type="Sum" op_name="Sum"}
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(2);
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* reduce = root;
+  const auto* bn = reduce->operand(0);
+  const auto* conv = bn->operand(0);
+  const auto* ip0 = conv->operand(0);
+  const auto* ip1 = conv->operand(1);
+  const auto* reshape1 = bn->operand(1);
+  const auto* reshape2 = bn->operand(2);
+  const auto* ip2 = reshape1->operand(0);
+  const auto* ip3 = reshape2->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  unsigned num_succesful_runs = 0;
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    VLOG(0) << module0->ToString();
+    num_succesful_runs++;
+  }
+
+  // Depending on the order we either expect this to be executed successfully 1
+  // or 2 times.
+  EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
+
+  // We have added one new entry for the bias add
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, bn);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], reshape1);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip3, 0));
+  EXPECT_EQ(t.tgt, bn);
+  EXPECT_EQ(t.input_index, 2);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], reshape2);
+}
+
+TEST_F(AllocationFinderTest, ForwardAllocationMultipleUsesMultipleTargets) {
+  // In this test we check that %arg2.36.24 can't have a layout.
+  std::string hlo = R"(
+HloModule top
+%Sum-reduction48 (x.48.45: f32[2], y.48.46: f32[2]) -> f32[2] {
+  %x.48.45 = f32[2]{0} parameter(0)
+  %y.48.46 = f32[2]{0} parameter(1)
+  ROOT %add.48.47 = f32[2]{0} add(f32[2]{0} %x.48.45, f32[2]{0} %y.48.46)
+}
+
+ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[1,2], arg3.36.25: f32[1,2], arg4.36.26: f32[2], arg5.36.27: f32[2], arg6.36.28: f32[1,4,4,2]) -> (f32[1,4,4,2], f32[1,4,4,2]) {
+ %arg0.36.22 = f32[1,4,4,2]{3,2,1,0} parameter(0)
+ %arg1.36.23 = f32[1,1,2,2]{3,2,1,0} parameter(1)
+ %convolution.36.29 = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %arg0.36.22, f32[1,1,2,2]{3,2,1,0} %arg1.36.23), window={size=1x1}, dim_labels=b01f_01io->b01f, metadata={op_type="Conv2D" op_name="vs/conv2d/Conv2D"}
+ %arg2.36.24 = f32[1,2]{1,0} parameter(2)
+ %arg2.36.24_r = f32[2]{0} reshape(%arg2.36.24)
+ %arg3.36.25 = f32[1,2]{1,0} parameter(3)
+ %arg3.36.25_r = f32[2]{0} reshape(%arg3.36.25)
+ %arg4.36.26 = f32[2]{0} parameter(4)
+ %arg5.36.27 = f32[2]{0} parameter(5)
+ %arg6.36.28 = f32[1,4,4,2]{3,2,1,0} parameter(6)
+ %batch-norm-inference.36.31 = f32[1,4,4,2]{3,2,1,0} batch-norm-inference(f32[1,4,4,2]{3,2,1,0} %convolution.36.29, f32[2]{0} %arg2.36.24_r, f32[2]{0} %arg3.36.25_r, f32[2]{0} %arg4.36.26, f32[2]{0} %arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
+ %batch-norm-inference.36.32 = f32[1,4,4,2]{3,2,1,0} batch-norm-inference(f32[1,4,4,2]{3,2,1,0} %convolution.36.29, f32[2]{0} %arg2.36.24_r, f32[2]{0} %arg3.36.25_r, f32[2]{0} %arg4.36.26, f32[2]{0} %arg5.36.27), epsilon=0.001, feature_index=3, metadata={op_type="FusedBatchNorm" op_name="vs/batch_normalization/FusedBatchNorm"}
+ ROOT %tuple = (f32[1,4,4,2]{3,2,1,0}, f32[1,4,4,2]{3,2,1,0}) tuple(f32[1,4,4,2]{3,2,1,0} %batch-norm-inference.36.31, f32[1,4,4,2]{3,2,1,0} %batch-norm-inference.36.32)
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(2);
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* bn1 = root->operand(0);
+  const auto* bn2 = root->operand(1);
+  const auto* conv = bn2->operand(0);
+  const auto* ip0 = conv->operand(0);
+  const auto* ip1 = conv->operand(1);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  unsigned count = 0;
+  ForwardAllocation fwd_finder(annotations);
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    count++;
+  }
+
+  // Expect no forward allocations were made.
+  EXPECT_TRUE(count == 0);
+}
+
 // TODO:
 // - can forward path traverse TUPLEs
 // - can forward path traverse in-place ops
