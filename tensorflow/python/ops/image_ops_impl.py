@@ -3237,7 +3237,9 @@ def combined_non_max_suppression(boxes,
   returned after performing non_max_suppression.
 
   Args:
-    boxes: A 4-D float `Tensor` of shape `[batch_size, num_boxes, q, 4]`.
+    boxes: A 4-D float `Tensor` of shape `[batch_size, num_boxes, q, 4]`. If `q`
+    is 1 then same boxes are used for all classes otherwise, if `q` is equal to
+    number of classes, class-specific boxes are used.
     scores: A 3-D float `Tensor` of shape `[batch_size, num_boxes, num_classes]`
     representing a single score corresponding to each box (each row of boxes).
     max_output_size_per_class: A scalar integer `Tensor` representing the
