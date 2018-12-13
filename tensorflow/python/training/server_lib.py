@@ -344,6 +344,9 @@ class ClusterSpec(object):
     ret = {}
     for job in self.jobs:
       task_indices = self.task_indices(job)
+      if len(task_indices) == 0:
+        ret[job] = {}
+        continue
       if max(task_indices) + 1 == len(task_indices):
         # Return a list because the task indices are dense. This
         # matches the behavior of `as_dict()` before support for
