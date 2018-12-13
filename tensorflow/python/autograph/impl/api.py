@@ -160,8 +160,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
-  if options.verbose >= converter.Verbosity.VERBOSE:
-    logging.info('Converted call: {}; owner: {}'.format(f, owner))
+  logging.vlog(logging.DEBUG, 'Converted call: %s; owner: %s', f, owner)
 
   if owner is not None:
     if not isinstance(f, str):
