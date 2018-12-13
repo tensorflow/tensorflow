@@ -551,6 +551,9 @@ class ShapeUtil {
   // (dimensions with bound 1).
   static bool HasDegenerateDimensions(const Shape& shape);
 
+  // Drops any degenerate dimensions (i.e. dimensions of size 1)
+  static Shape DropDegenerateDimensions(const Shape& shape);
+
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i].
   //
