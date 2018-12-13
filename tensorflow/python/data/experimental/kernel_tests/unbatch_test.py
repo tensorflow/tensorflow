@@ -68,7 +68,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         data, [(i, compat.as_bytes(str(i)), i) for i in range(10)])
 
-  # TODO(b/119837791): Add eager coverage.
+  # TODO(b/117581999): Add eager coverage.
   @test_util.run_deprecated_v1
   def testSkipEagerUnbatchDatasetWithSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
@@ -90,7 +90,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element)
 
-  # TODO(b/119837791): Add eager coverage.
+  # TODO(b/117581999): Add eager coverage.
   @test_util.run_deprecated_v1
   def testSkipEagerUnbatchDatasetWithDenseAndSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
@@ -150,7 +150,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       data.apply(batching.unbatch())
 
-  # TODO(b/119837791): eager mode doesnt capture raised error, debug.
+  # TODO(b/117581999): eager mode doesnt capture raised error, debug.
   @test_util.run_deprecated_v1
   def testSkipEagerUnbatchDynamicShapeMismatch(self):
     ph1 = array_ops.placeholder(dtypes.int32, shape=[None])

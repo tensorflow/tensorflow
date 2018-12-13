@@ -35,7 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-# TODO(b/119837791): add eager coverage.
+# TODO(b/117581999): add eager coverage.
 class MapDefunTest(test_base.DatasetTestBase):
 
   def testMapDefunSimple(self):
