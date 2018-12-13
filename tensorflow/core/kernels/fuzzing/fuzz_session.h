@@ -118,6 +118,11 @@ class FuzzSession {
                          {"output"}, nullptr);
   }
 
+  Status RunMultipleInputs(
+      const std::vector<std::pair<string, Tensor> >& inputs) {
+    return session_->Run(inputs, {}, {"output"}, nullptr);
+  }
+
   // Dispatches to FuzzImpl;  small amount of sugar to keep the code
   // of the per-op fuzzers tiny.
   int Fuzz(const uint8_t* data, size_t size) {
