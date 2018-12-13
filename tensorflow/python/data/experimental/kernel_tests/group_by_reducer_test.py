@@ -38,70 +38,70 @@ class GroupByReducerTest(test_base.DatasetTestBase):
 
   def testSum(self):
     reducer = grouping.Reducer(
-      init_func=lambda _: np.int64(0),
-      reduce_func=lambda x, y: x + y,
-      finalize_func=lambda x: x)
+        init_func=lambda _: np.int64(0),
+        reduce_func=lambda x, y: x + y,
+        finalize_func=lambda x: x)
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.range(2 * i).apply(
-        grouping.group_by_reducer(lambda x: x % 2, reducer))
+          grouping.group_by_reducer(lambda x: x % 2, reducer))
       self.assertDatasetProduces(
-        dataset,
-        expected_shapes=tensor_shape.scalar(),
-        expected_output=[(i - 1) * i, i * i])
+          dataset,
+          expected_shapes=tensor_shape.scalar(),
+          expected_output=[(i - 1) * i, i * i])
 
   def testAverage(self):
 
     def reduce_fn(x, y):
       return (x[0] * x[1] + math_ops.cast(y, dtypes.float32)) / (
-        x[1] + 1), x[1] + 1
+          x[1] + 1), x[1] + 1
 
     reducer = grouping.Reducer(
-      init_func=lambda _: (0.0, 0.0),
-      reduce_func=reduce_fn,
-      finalize_func=lambda x, _: x)
+        init_func=lambda _: (0.0, 0.0),
+        reduce_func=reduce_fn,
+        finalize_func=lambda x, _: x)
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.range(2 * i).apply(
-        grouping.group_by_reducer(
-          lambda x: math_ops.cast(x, dtypes.int64) % 2, reducer))
+          grouping.group_by_reducer(
+              lambda x: math_ops.cast(x, dtypes.int64) % 2, reducer))
       self.assertDatasetProduces(
-        dataset,
-        expected_shapes=tensor_shape.scalar(),
-        expected_output=[i - 1, i])
+          dataset,
+          expected_shapes=tensor_shape.scalar(),
+          expected_output=[i - 1, i])
 
   def testConcat(self):
     components = np.array(list("abcdefghijklmnopqrst")).view(np.chararray)
     reducer = grouping.Reducer(
-      init_func=lambda x: "",
-      reduce_func=lambda x, y: x + y[0],
-      finalize_func=lambda x: x)
+        init_func=lambda x: "",
+        reduce_func=lambda x, y: x + y[0],
+        finalize_func=lambda x: x)
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.zip(
-        (dataset_ops.Dataset.from_tensor_slices(components),
-         dataset_ops.Dataset.range(2 * i))).apply(
-        grouping.group_by_reducer(lambda x, y: y % 2, reducer))
+          (dataset_ops.Dataset.from_tensor_slices(components),
+           dataset_ops.Dataset.range(2 * i))).apply(
+               grouping.group_by_reducer(lambda x, y: y % 2, reducer))
       self.assertDatasetProduces(
-        dataset,
-        expected_shapes=tensor_shape.scalar(),
-        expected_output=[b"acegikmoqs" [:i], b"bdfhjlnprt" [:i]])
+          dataset,
+          expected_shapes=tensor_shape.scalar(),
+          expected_output=[b"acegikmoqs" [:i], b"bdfhjlnprt" [:i]])
 
   def testSparseSum(self):
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
-        indices=np.array([[0, 0]]),
-        values=(i * np.array([1], dtype=np.int64)),
-        dense_shape=np.array([1, 1]))
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1], dtype=np.int64)),
+          dense_shape=np.array([1, 1]))
 
     reducer = grouping.Reducer(
-      init_func=lambda _: _sparse(np.int64(0)),
-      reduce_func=lambda x, y: _sparse(x.values[0] + y.values[0]),
-      finalize_func=lambda x: x.values[0])
+        init_func=lambda _: _sparse(np.int64(0)),
+        reduce_func=lambda x, y: _sparse(x.values[0] + y.values[0]),
+        finalize_func=lambda x: x.values[0])
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.range(2 * i).map(_sparse).apply(
-        grouping.group_by_reducer(lambda x: x.values[0] % 2, reducer))
+          grouping.group_by_reducer(lambda x: x.values[0] % 2, reducer))
       self.assertDatasetProduces(
-        dataset,
-        expected_shapes=tensor_shape.scalar(),
-        expected_output=[(i - 1) * i, i * i])
+          dataset,
+          expected_shapes=tensor_shape.scalar(),
+          expected_output=[(i - 1) * i, i * i])
 
   def testChangingStateShape(self):
 
@@ -113,13 +113,13 @@ class GroupByReducerTest(test_base.DatasetTestBase):
       return larger_dim, larger_rank
 
     reducer = grouping.Reducer(
-      init_func=lambda x: ([0], 1),
-      reduce_func=reduce_fn,
-      finalize_func=lambda x, y: (x, y))
+        init_func=lambda x: ([0], 1),
+        reduce_func=reduce_fn,
+        finalize_func=lambda x, y: (x, y))
 
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.from_tensors(np.int64(0)).repeat(i).apply(
-        grouping.group_by_reducer(lambda x: x, reducer))
+          grouping.group_by_reducer(lambda x: x, reducer))
       self.assertEqual([None], dataset.output_shapes[0].as_list())
       self.assertIs(None, dataset.output_shapes[1].ndims)
       get_next = self.getNext(dataset)
@@ -131,42 +131,42 @@ class GroupByReducerTest(test_base.DatasetTestBase):
 
   def testTypeMismatch(self):
     reducer = grouping.Reducer(
-      init_func=lambda x: constant_op.constant(1, dtype=dtypes.int32),
-      reduce_func=lambda x, y: constant_op.constant(1, dtype=dtypes.int64),
-      finalize_func=lambda x: x)
+        init_func=lambda x: constant_op.constant(1, dtype=dtypes.int32),
+        reduce_func=lambda x, y: constant_op.constant(1, dtype=dtypes.int64),
+        finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegexp(
-      TypeError,
-      "The element types for the new state must match the initial state."):
+        TypeError,
+        "The element types for the new state must match the initial state."):
       dataset.apply(
-        grouping.group_by_reducer(lambda _: np.int64(0), reducer))
+          grouping.group_by_reducer(lambda _: np.int64(0), reducer))
 
   # TODO(b/78665031): Remove once non-scalar keys are supported.
   def testInvalidKeyShape(self):
     reducer = grouping.Reducer(
-      init_func=lambda x: np.int64(0),
-      reduce_func=lambda x, y: x + y,
-      finalize_func=lambda x: x)
+        init_func=lambda x: np.int64(0),
+        reduce_func=lambda x, y: x + y,
+        finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegexp(
-      ValueError, "`key_func` must return a single tf.int64 tensor."):
+        ValueError, "`key_func` must return a single tf.int64 tensor."):
       dataset.apply(
-        grouping.group_by_reducer(lambda _: np.int64((0, 0)), reducer))
+          grouping.group_by_reducer(lambda _: np.int64((0, 0)), reducer))
 
   # TODO(b/78665031): Remove once non-int64 keys are supported.
   def testInvalidKeyType(self):
     reducer = grouping.Reducer(
-      init_func=lambda x: np.int64(0),
-      reduce_func=lambda x, y: x + y,
-      finalize_func=lambda x: x)
+        init_func=lambda x: np.int64(0),
+        reduce_func=lambda x, y: x + y,
+        finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
     with self.assertRaisesRegexp(
-      ValueError, "`key_func` must return a single tf.int64 tensor."):
+        ValueError, "`key_func` must return a single tf.int64 tensor."):
       dataset.apply(
-        grouping.group_by_reducer(lambda _: "wrong", reducer))
+          grouping.group_by_reducer(lambda _: "wrong", reducer))
 
   def testTuple(self):
     def init_fn(_):
@@ -182,8 +182,8 @@ class GroupByReducerTest(test_base.DatasetTestBase):
 
     reducer = grouping.Reducer(init_fn, reduce_fn, finalize_fn)
     dataset = dataset_ops.Dataset.zip(
-      (dataset_ops.Dataset.range(10), dataset_ops.Dataset.range(10))).apply(
-      grouping.group_by_reducer(lambda x, y: np.int64(0), reducer))
+        (dataset_ops.Dataset.range(10), dataset_ops.Dataset.range(10))).apply(
+            grouping.group_by_reducer(lambda x, y: np.int64(0), reducer))
     get_next = self.getNext(dataset)
     x, y = self.evaluate(get_next())
     self.assertAllEqual(x, np.asarray([x for x in range(10)]))
