@@ -236,16 +236,13 @@ class PolymorphicFunction(object):
   def _defun_with_scope(self, scope):
     """Creates a defun wrapped inside a variable creator scope."""
 
-    # TODO(b/120990892): Remove this conditional
-    if self._autograph:
-      def wrapped_fn(*args, **kwds):
-        with variable_scope.variable_creator_scope(scope):
-          return wrapped_fn.__wrapped__(*args, **kwds)
-    else:
-      python_function = self._python_function
-      def wrapped_fn(*args, **kwds):
-        with variable_scope.variable_creator_scope(scope):
-          return python_function(*args, **kwds)
+    weak_wrapped_fn = None
+    def wrapped_fn(*args, **kwds):
+      with variable_scope.variable_creator_scope(scope):
+        # __wrapped__ allows AutoGraph to swap in a converted function. We give
+        # the function a weak reference to itself to avoid a reference cycle.
+        return weak_wrapped_fn().__wrapped__(*args, **kwds)
+    weak_wrapped_fn = weakref.ref(wrapped_fn)
 
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
