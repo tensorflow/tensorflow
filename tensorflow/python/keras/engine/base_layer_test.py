@@ -30,6 +30,8 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -216,6 +218,92 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertAllClose(fn([x_val])[0],
                         np.matmul(x_val, y_val),
                         atol=1e-5)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NestedTrackingTest(test.TestCase):
+
+  def test_nested_layer_variable_tracking(self):
+    # Test that variables from nested sublayers are
+    # being tracked by subclassed layers.
+
+    class MyLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(MyLayer, self).__init__()
+        self.dense1 = keras.layers.Dense(1)
+        self.dense2 = keras.layers.BatchNormalization()
+
+      def build(self, input_shape):
+        self.v1 = self.add_weight('v1', shape=input_shape[1:].as_list())
+        self.v2 = variables.Variable(
+            name='v2',
+            initial_value=np.zeros(input_shape[1:].as_list(), dtype='float32'),
+            trainable=False)
+
+      def call(self, inputs):
+        x = self.dense1(inputs) + self.dense2(inputs)
+        return x + self.v1 + self.v2
+
+    layer = MyLayer()
+    inputs = keras.Input((1,))
+    _ = layer(inputs)
+
+    self.assertEqual(len(layer.weights), 8)
+    self.assertEqual(len(layer.trainable_weights), 5)
+    self.assertEqual(len(layer.non_trainable_weights), 3)
+
+    layer.dense1.trainable = False
+    self.assertEqual(len(layer.weights), 8)
+    self.assertEqual(len(layer.trainable_weights), 3)
+    self.assertEqual(len(layer.non_trainable_weights), 5)
+
+    layer.trainable = False
+    self.assertEqual(len(layer.weights), 8)
+    self.assertEqual(len(layer.trainable_weights), 0)
+    self.assertEqual(len(layer.non_trainable_weights), 8)
+
+  def test_nested_layer_updates_losses_tracking(self):
+    # Test that updates and losses from nested sublayers are
+    # being tracked by subclassed layers.
+
+    class UpdateAndLossLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.v1 = self.add_weight('v1', shape=())
+
+      def call(self, inputs):
+        self.add_loss(math_ops.reduce_sum(inputs))
+        self.add_update(state_ops.assign_add(self.v1, 1))
+        return inputs + 1
+
+    class MyLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.v1 = self.add_weight('v1', shape=())
+
+      def __init__(self):
+        super(MyLayer, self).__init__()
+        self.ul1 = UpdateAndLossLayer()
+        self.ul2 = UpdateAndLossLayer()
+
+      def call(self, inputs):
+        self.add_loss(math_ops.reduce_sum(inputs))
+        self.add_update(state_ops.assign_add(self.v1, 1))
+        x = self.ul1(inputs)
+        return self.ul2(x)
+
+    layer = MyLayer()
+
+    if context.executing_eagerly():
+      inputs = array_ops.ones((3, 1))
+      _ = layer(inputs)
+      self.assertEqual(len(layer.losses), 3)
+    else:
+      inputs = keras.Input((1,))
+      _ = layer(inputs)
+      self.assertEqual(len(layer.losses), 3)
+      self.assertEqual(len(layer.updates), 3)
 
 
 if __name__ == '__main__':

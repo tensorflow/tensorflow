@@ -43,7 +43,6 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -327,71 +326,31 @@ class Network(base_layer.Layer):
       self._track_checkpointable(
           layer, name='layer-%d' % layer_index, overwrite=True)
 
-  def _no_dependency(self, value):
-    """Override to allow `Layer` to disable dependency tracking.
-
-    `CheckpointableBase` defines this method, whose semantics are "if a subclass
-    does dependency tracking, this method exempts `value`." Layer uses
-    `_no_dependency` to exempt some of its attribute assignments (conditional on
-    attribute assignment causing tracking in the subclass).
-
-    Args:
-      value: An object which will be assigned to an object attribute, whose
-        value should not be tracked.
-
-    Returns:
-      A wrapped object which, when assigned to an attribute, will not be
-      tracked (`value` will be stored in the attribute).
-    """
-    return data_structures.NoDependency(value)
-
   def __setattr__(self, name, value):
     if not getattr(self, '_setattr_tracking', True):
       super(Network, self).__setattr__(name, value)
       return
-    no_dependency = isinstance(value, data_structures.NoDependency)
-    value = data_structures.sticky_attribute_assignment(
-        checkpointable=self, value=value, name=name)
     if (isinstance(value, (base_layer.Layer,
-                           Network,
                            data_structures.CheckpointableDataStructure))
         or checkpointable_layer_utils.has_weights(value)):
       try:
-        is_graph_network = self._is_graph_network
+        self._is_graph_network
       except AttributeError:
         raise RuntimeError('It looks like you are subclassing `Model` and you '
                            'forgot to call `super(YourClass, self).__init__()`.'
                            ' Always start with this line.')
-      if not is_graph_network:
-        # We need to check object identity to avoid de-duplicating empty
-        # container types which compare equal.
-        if not any((layer is value for layer in self._layers)):
-          self._layers.append(value)
-          if hasattr(value, '_use_resource_variables'):
-            # In subclassed models, legacy layers (tf.layers) must always use
-            # resource variables.
-            value._use_resource_variables = True
-    if (not no_dependency
-        and isinstance(value, checkpointable.CheckpointableBase)):
-      if (  # For subclassed models only, users may add extra weights/variables
-            # simply by assigning them to attributes.
-          not self._is_graph_network
-          and isinstance(value, variables.Variable)):
-        if value.trainable:
-          # Could already be added via `add_weight`.
-          if value not in self._trainable_weights:
-            self._trainable_weights.append(value)
-        else:
-          if value not in self._non_trainable_weights:
-            self._non_trainable_weights.append(value)
+    # Keep track of checkpointable objects,
+    # for the needs of `self.save/save_weights`.
+    value = data_structures.sticky_attribute_assignment(
+        checkpointable=self, value=value, name=name)
+    super(Network, self).__setattr__(name, value)
 
-    # Keeping track of metric instance created in subclassed model/layer.
+    # Keep track of metric instance created in subclassed model/layer.
     # We do this so that we can maintain the correct order of metrics by adding
     # the instance to the `metrics` list as soon as it is created.
     from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
     if isinstance(value, metrics_module.Metric):
       self._metrics.append(value)
-    super(Network, self).__setattr__(name, value)
 
   @property
   def stateful(self):
