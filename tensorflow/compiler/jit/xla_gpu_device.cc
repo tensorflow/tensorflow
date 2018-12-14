@@ -53,8 +53,8 @@ xla::StatusOr<std::set<int>> XlaGpuDeviceFactory::ParseVisibleDeviceList(
     if (!absl::SimpleAtoi(platform_gpu_id_str, &platform_gpu_id)) {
       return errors::InvalidArgument(
           "Could not parse entry in 'visible_device_list': '",
-          platform_gpu_id_str,
-          "'. visible_device_list = ", visible_device_list);
+          platform_gpu_id_str, "'. visible_device_list = ",
+          visible_device_list);
     }
     gpu_ids.insert(platform_gpu_id);
   }

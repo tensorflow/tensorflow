@@ -45,10 +45,10 @@ namespace xla {
 // Options to configure the local client when it is created.
 class LocalClientOptions {
  public:
-  LocalClientOptions(se::Platform* platform = nullptr,
-                     int number_of_replicas = 1,
-                     int intra_op_parallelism_threads = -1,
-                     const absl::optional<std::set<int>>& allowed_devices = {});
+  LocalClientOptions(
+      se::Platform* platform = nullptr, int number_of_replicas = 1,
+      int intra_op_parallelism_threads = -1,
+      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
 
   // Set the platform backing the service, or nullptr for the default platform.
   LocalClientOptions& set_platform(se::Platform* platform);
@@ -66,7 +66,6 @@ class LocalClientOptions {
   // Sets the allowed_devices set for creation of stream executors.
   LocalClientOptions& set_allowed_devices(
       const absl::optional<std::set<int>>& allowed_devices);
-
   const absl::optional<std::set<int>>& allowed_devices() const;
 
  private:
@@ -87,7 +86,7 @@ class ClientLibrary {
   //   created for, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       se::Platform* platform = nullptr,
-      const absl::optional<std::set<int>>& allowed_devices = {});
+      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 

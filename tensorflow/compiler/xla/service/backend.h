@@ -57,7 +57,6 @@ class BackendOptions {
   // Sets the allowed_devices set for creation of stream executors.
   BackendOptions& set_allowed_devices(
       const absl::optional<std::set<int>>& allowed_devices);
-
   const absl::optional<std::set<int>>& allowed_devices() const;
 
  private:
