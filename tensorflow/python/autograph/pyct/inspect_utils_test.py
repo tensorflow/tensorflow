@@ -407,10 +407,12 @@ class InspectUtilsTest(test.TestCase):
         Superclass)
 
   def test_isbuiltin(self):
-    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(enumerate))
     self.assertTrue(inspect_utils.isbuiltin(float))
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
+    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(zip))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
 
   def test_super_wrapper_for_dynamic_attrs(self):
