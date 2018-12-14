@@ -321,7 +321,6 @@ class LSTMLayerTest(keras_parameterized.TestCase):
 
 class LSTMLayerGraphOnlyTest(test.TestCase):
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_statefulness_LSTM(self):
     num_samples = 2
     timesteps = 3

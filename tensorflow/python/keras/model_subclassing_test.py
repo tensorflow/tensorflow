@@ -187,7 +187,6 @@ def get_nested_model_3(input_dim, num_classes):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-@test_util.run_v1_only('b/120545219')
 class ModelSubclassingTest(test.TestCase):
 
   def test_custom_build(self):
@@ -916,7 +915,6 @@ class ModelSubclassingTest(test.TestCase):
       self.assertEqual(1, len(model.get_updates_for(x)))
 
 
-@test_util.run_v1_only('b/120545219')
 class GraphSpecificModelSubclassingTests(test.TestCase):
 
   @test_util.run_deprecated_v1

@@ -230,7 +230,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
           np.reshape(initializing_values, (num_rows, num_cols)),
           self.evaluate(remapped_matrix))
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_remapping(self):
     """Tests that errors are raised when an ID maps to multiple new IDs.
 
@@ -262,7 +262,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     with self.cached_session(), self.assertRaises(errors.UnimplementedError):
       self.evaluate(remapped_matrix)
 
-  @test_util.run_v1_only('b/120545219')
+  @test_util.run_deprecated_v1
   def test_load_and_remap_incorrect_initializing_values(self):
     """Tests that errors are raised with incorrect number of init values."""
     remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(

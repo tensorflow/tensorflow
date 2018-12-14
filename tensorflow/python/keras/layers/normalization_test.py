@@ -253,7 +253,6 @@ def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
 
-@tf_test_util.run_v1_only('b/120545219')
 class NormalizationLayersGraphModeOnlyTest(test.TestCase):
 
   def test_shared_batchnorm(self):
@@ -328,6 +327,7 @@ class NormalizationLayersGraphModeOnlyTest(test.TestCase):
       x2 = model.predict(val_a)
       self.assertAllClose(x1, x2, atol=1e-7)
 
+  @tf_test_util.run_deprecated_v1
   def test_batchnorm_trainable(self):
     """Tests that batchnorm layer is trainable when learning phase is enabled.
 
