@@ -506,7 +506,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
       A `Tensor` holding the value of this variable after its initializer
       has run.
     """
-    raise NotImplementedError
+    with ops.init_scope():
+      return control_flow_ops.cond(is_variable_initialized(self),
+                                   self.read_value,
+                                   lambda: self.initial_value)
 
   @property
   def initial_value(self):
@@ -962,6 +965,18 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def name(self):
     """The name of this variable."""
     raise NotImplementedError
+
+  @property
+  def _shared_name(self):
+    """The shared name of the variable.
+
+      Unlike name(), shared_name doesn't have ":0" suffix. It is user-specified
+      name with name scope prefix.
+
+    Returns:
+      variable name.
+    """
+    return self.name[:self.name.index(":")]
 
   @property
   def initializer(self):
@@ -1694,30 +1709,6 @@ class RefVariable(VariableV1):
     """
     return self._variable.eval(session=session)
 
-  def initialized_value(self):
-    """Returns the value of the initialized variable.
-
-    You should use this instead of the variable itself to initialize another
-    variable with a value that depends on the value of this variable.
-
-    ```python
-    # Initialize 'v' with a random tensor.
-    v = tf.Variable(tf.truncated_normal([10, 40]))
-    # Use `initialized_value` to guarantee that `v` has been
-    # initialized before its value is used to initialize `w`.
-    # The random values are picked only once.
-    w = tf.Variable(v.initialized_value() * 2.0)
-    ```
-
-    Returns:
-      A `Tensor` holding the value of this variable after its initializer
-      has run.
-    """
-    with ops.init_scope():
-      return control_flow_ops.cond(is_variable_initialized(self),
-                                   self.read_value,
-                                   lambda: self.initial_value)
-
   @property
   def initial_value(self):
     """Returns the Tensor used as the initial value for the variable.
@@ -2329,18 +2320,6 @@ class RefVariable(VariableV1):
   def name(self):
     """The name of this variable."""
     return self._variable.name
-
-  @property
-  def _shared_name(self):
-    """The shared name of the variable.
-
-      Unlike name(), shared_name doesn't have ":0" suffix. It is user-specified
-      name with name scope prefix.
-
-    Returns:
-      variable name.
-    """
-    return self.name[:-2]
 
   @property
   def initializer(self):
