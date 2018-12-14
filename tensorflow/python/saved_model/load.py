@@ -22,12 +22,15 @@ import os
 
 from tensorflow.python.framework import function as function_lib
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.checkpointable import util
 from tensorflow.python.util import compat
 
 
@@ -47,6 +50,7 @@ class _Loader(object):
       defined_function.add_to_graph(None)
       self._defined_functions[defined_function.name] = defined_function
     self._load_all()
+    self._restore_checkpoint()
 
   def _load_all(self):
     self._nodes = [self._recreate(proto) for proto in self._proto.nodes]
@@ -55,14 +59,21 @@ class _Loader(object):
       for reference in object_proto.children:
         setattr(obj, reference.local_name, self._nodes[reference.node_id])
 
+  def _restore_checkpoint(self):
+    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    saver = util.CheckpointableSaver(self.get(0))
+    saver.restore(variables_path).assert_consumed()
+
   def get(self, node_id):
     return self._nodes[node_id]
 
   def _recreate(self, proto):
+    """Creates a Python object from a SavedObject protocol buffer."""
     factory = {
         "user_object": lambda: self._recreate_user_object(proto.user_object),
         "asset": lambda: self._recreate_asset(proto.asset),
-        "function": lambda: self._recreate_function(proto.function)
+        "function": lambda: self._recreate_function(proto.function),
+        "variable": lambda: self._recreate_variable(proto.variable),
     }
     kind = proto.WhichOneof("kind")
     if kind not in factory:
@@ -82,6 +93,11 @@ class _Loader(object):
   def _recreate_function(self, proto):
     return function_deserialization.recreate_polymorphic_function(
         proto, self._defined_functions)
+
+  def _recreate_variable(self, proto):
+    # TODO(andresp): Can we use the checkpointed value as initializer?
+    dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
+    return variables.Variable(dummy_value)
 
 
 def _load_saved_object_graph_proto(filename):

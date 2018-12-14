@@ -1,6 +1,8 @@
 syntax = "proto3";
 
 import "tensorflow/core/protobuf/checkpointable_object_graph.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
 
 option cc_enable_arenas = true;
 
@@ -49,6 +51,7 @@ message SavedObject {
     SavedUserObject user_object = 4;
     SavedAsset asset = 5;
     SavedPolymorphicFunction function = 6;
+    SavedVariable variable = 7;
   }
 }
 
@@ -81,4 +84,13 @@ message SavedPolymorphicFunction {
 message SavedMonomorphicFunction {
   // A reference to a TensorFlow function in the MetaGraph's FunctionDefLibrary
   string concrete_function = 1;
+}
+
+// Represents a Variable that is initialized by loading the contents from the
+// SavedModel checkpoint.
+message SavedVariable {
+  DataType dtype = 1;
+  TensorShapeProto shape = 2;
+
+  // TODO(andresp): Add "trainable" and save_slice_info_def.
 }

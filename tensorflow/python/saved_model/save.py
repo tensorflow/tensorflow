@@ -541,6 +541,10 @@ def _write_object_proto(obj, proto, asset_file_def_index):
   if isinstance(obj, tracking.TrackableAsset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
+  elif resource_variable_ops.is_resource_variable(obj):
+    proto.variable.SetInParent()
+    proto.variable.dtype = obj.dtype.as_datatype_enum
+    proto.variable.shape.CopyFrom(obj.shape.as_proto())
   else:
     proto.user_object.SetInParent()
 
