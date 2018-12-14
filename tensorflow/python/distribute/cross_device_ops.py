@@ -53,7 +53,8 @@ def validate_destinations(destinations):
   if not isinstance(
       destinations,
       (value_lib.DistributedValues, resource_variable_ops.ResourceVariable,
-       value_lib.AggregatingVariable, six.string_types, list, tuple)):
+       value_lib.AggregatingVariable, six.string_types, list, tuple,
+       value_lib.TPUMirroredVariable)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, a device string, a list or tuple "
                      "of device strings")
