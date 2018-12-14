@@ -81,6 +81,79 @@ class GRULayerTest(test.TestCase):
                   'implementation': mode},
           input_shape=(num_samples, timesteps, embedding_dim))
 
+<<<<<<< HEAD
+=======
+  def test_reset_after_GRU(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=num_samples,
+        test_samples=0,
+        input_shape=(timesteps, embedding_dim),
+        num_classes=units)
+    y_train = keras.utils.to_categorical(y_train, units)
+
+    inputs = keras.layers.Input(shape=[timesteps, embedding_dim])
+    gru_layer = keras.layers.GRU(units,
+                                 reset_after=True)
+    output = gru_layer(inputs)
+    gru_model = keras.models.Model(inputs, output)
+    gru_model.compile(RMSPropOptimizer(0.01), 'mse',
+                      run_eagerly=testing_utils.should_run_eagerly())
+    gru_model.fit(x_train, y_train)
+    gru_model.predict(x_train)
+
+  def test_with_masking_layer_GRU(self):
+    layer_class = keras.layers.GRU
+    inputs = np.random.random((2, 3, 4))
+    targets = np.abs(np.random.random((2, 3, 5)))
+    targets /= targets.sum(axis=-1, keepdims=True)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Masking(input_shape=(3, 4)))
+    model.add(layer_class(units=5, return_sequences=True, unroll=False))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=RMSPropOptimizer(0.01),
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
+
+
+@tf_test_util.run_all_in_graph_and_eager_modes
+class GRULayerGenericTest(test.TestCase):
+
+  def test_constraints_GRU(self):
+    embedding_dim = 4
+    layer_class = keras.layers.GRU
+    k_constraint = keras.constraints.max_norm(0.01)
+    r_constraint = keras.constraints.max_norm(0.01)
+    b_constraint = keras.constraints.max_norm(0.01)
+    layer = layer_class(
+        5,
+        return_sequences=False,
+        weights=None,
+        input_shape=(None, embedding_dim),
+        kernel_constraint=k_constraint,
+        recurrent_constraint=r_constraint,
+        bias_constraint=b_constraint)
+    layer.build((None, None, embedding_dim))
+    self.assertEqual(layer.cell.kernel.constraint, k_constraint)
+    self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
+    self.assertEqual(layer.cell.bias.constraint, b_constraint)
+
+  def test_from_config_GRU(self):
+    layer_class = keras.layers.GRU
+    for stateful in (False, True):
+      l1 = layer_class(units=1, stateful=stateful)
+      l2 = layer_class.from_config(l1.get_config())
+      assert l1.get_config() == l2.get_config()
+
+
+class GRULayerGraphOnlyTest(test.TestCase):
+
+  @tf_test_util.run_v1_only('b/120545219')
+>>>>>>> ef255d358b... Fixing tf nightly build.
   def test_statefulness_GRU(self):
     num_samples = 2
     timesteps = 3
