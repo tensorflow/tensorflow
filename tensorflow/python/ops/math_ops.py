@@ -2640,6 +2640,8 @@ def _as_indexed_slices_list(inputs, optimize=True):
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
+  Converts `IndexedSlices` objects into dense tensors prior to adding.
+
   Args:
     inputs: A list of `Tensor` or `IndexedSlices` objects, each with same shape
       and type.
@@ -2662,7 +2664,7 @@ def add_n(inputs, name=None):
 
   if len(inputs) == 1:
     if isinstance(inputs[0], ops.IndexedSlices):
-      values = inputs[0].values
+      values = ops.convert_to_tensor(inputs[0])
     else:
       values = inputs[0]
     if name:
