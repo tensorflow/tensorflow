@@ -99,7 +99,6 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
     self.assertEqual(layer.cell.bias.constraint, b_constraint)
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_with_masking_layer_SimpleRNN(self):
     layer_class = keras.layers.SimpleRNN
     inputs = np.random.random((2, 3, 4))
