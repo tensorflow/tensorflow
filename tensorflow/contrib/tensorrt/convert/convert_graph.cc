@@ -326,7 +326,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 struct EdgePtrCompare {
   bool operator()(const tensorflow::Edge* lhs,
                   const tensorflow::Edge* rhs) const {
-    return (lhs->id() < rhs->id());
+    return lhs->id() < rhs->id();
   }
 };
 

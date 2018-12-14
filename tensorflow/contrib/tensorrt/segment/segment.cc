@@ -232,14 +232,14 @@ SimpleGraph::~SimpleGraph() {
 // cause a mismatch between the calibration tables of the conversions.
 struct SimpleEdgePtrCompare {
   bool operator()(const SimpleEdge* lhs, const SimpleEdge* rhs) const {
-    return (lhs->id() < rhs->id());
+    return lhs->id() < rhs->id();
   }
 };
 
 struct NodePtrCompare {
   bool operator()(const tensorflow::Node* lhs,
                   const tensorflow::Node* rhs) const {
-    return (lhs->name() < rhs->name());
+    return lhs->name() < rhs->name();
   }
 };
 
