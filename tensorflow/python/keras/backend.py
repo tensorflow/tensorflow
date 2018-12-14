@@ -673,7 +673,11 @@ def variable(value, dtype=None, name=None, constraint=None):
       dtype: Tensor type.
       name: Optional name string for the tensor.
       constraint: Optional projection function to be
-          applied to the variable after an optimizer update.
+          applied to the variable after an optimizer update. The function
+          must take as input the unprojected tensor representing the value
+          of the variable and return the tensor for the projected value
+          (which must have the same shape). Constraints are not safe to
+          use when doing asynchronous distributed training.
 
   Returns:
       A variable instance (with Keras metadata included).
@@ -706,8 +710,8 @@ def variable(value, dtype=None, name=None, constraint=None):
   v = resource_variable_ops.ResourceVariable(
       value,
       dtype=dtypes_module.as_dtype(dtype),
-      name=name,
-      constraint=constraint)
+      name=name)
+  v._constraint = constraint
   if isinstance(value, np.ndarray):
     v._keras_shape = value.shape
   elif hasattr(value, 'shape'):
@@ -763,6 +767,29 @@ def _initialize_variables(session):
       v._keras_initialized = True
     if uninitialized_vars:
       session.run(variables_module.variables_initializer(uninitialized_vars))
+
+
+def _has_constraint(v):
+  """Returns `True` if a variable has a constraint and `False` otherwise."""
+  return getattr(v, '_constraint', None) is not None
+
+
+def _maybe_enforce_constraint(v):
+  """Enforces a constraint for a variable.
+
+  Args:
+    v: A variable.
+
+  Returns:
+    A `Tensor` which corresponds to the value of this variable with
+    the constraint enforced, or the current value of this variable,
+    if no constraint is present.
+  """
+  constraint = getattr(v, '_constraint', None)
+  if constraint is None:
+    return array_ops.identity(v)
+  else:
+    return v.assign(constraint(v))
 
 
 @tf_export('keras.backend.constant')

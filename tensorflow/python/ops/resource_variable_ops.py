@@ -256,13 +256,7 @@ class ResourceVariable(variables.RefVariable):
         arguments (except for import_scope) are mutually exclusive.
       import_scope: Optional `string`. Name scope to add to the
         ResourceVariable. Only used when `variable_def` is provided.
-      constraint: An optional projection function to be applied to the variable
-        after being updated by an `Optimizer` (e.g. used to implement norm
-        constraints or value constraints for layer weights). The function must
-        take as input the unprojected Tensor representing the value of the
-        variable and return the Tensor for the projected value
-        (which must have the same shape). Constraints are not safe to
-        use when doing asynchronous distributed training.
+      constraint: Ignored. Provided for compatibility with tf.Variable.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -274,6 +268,10 @@ class ResourceVariable(variables.RefVariable):
     collections.
     @end_compatibility
     """
+    if constraint is not None:
+      raise RuntimeError(  # pylint: disable=g-doc-exception
+          "`ResourceVariable` does not support `constraint` argument.")
+
     if variable_def:
       if initial_value is not None:
         raise ValueError("variable_def and initial_value are mutually "
@@ -290,8 +288,7 @@ class ResourceVariable(variables.RefVariable):
           validate_shape=validate_shape,
           caching_device=caching_device,
           name=name,
-          dtype=dtype,
-          constraint=constraint)
+          dtype=dtype)
 
   # pylint: disable=unused-argument
   def _init_from_args(self,
@@ -301,8 +298,7 @@ class ResourceVariable(variables.RefVariable):
                       validate_shape=True,
                       caching_device=None,
                       name=None,
-                      dtype=None,
-                      constraint=None):
+                      dtype=None):
     """Creates a variable.
 
     Args:
@@ -329,13 +325,6 @@ class ResourceVariable(variables.RefVariable):
         If None, either the datatype will be kept (if initial_value is
        a Tensor) or float32 will be used (if it is a Python object convertible
        to a Tensor).
-      constraint: An optional projection function to be applied to the variable
-        after being updated by an `Optimizer` (e.g. used to implement norm
-        constraints or value constraints for layer weights). The function must
-        take as input the unprojected Tensor representing the value of the
-        variable and return the Tensor for the projected value
-        (which must have the same shape). Constraints are not safe to
-        use when doing asynchronous distributed training.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -367,8 +356,6 @@ class ResourceVariable(variables.RefVariable):
       raise ValueError(
           "collections argument to Variable constructor must be a list, tuple, "
           "or set. Got %s of type %s" % (collections, type(collections)))
-    if constraint is not None and not callable(constraint):
-      raise ValueError("The `constraint` argument must be a callable.")
 
     if isinstance(initial_value, checkpointable.CheckpointInitialValue):
       self._maybe_initialize_checkpointable()
@@ -425,7 +412,6 @@ class ResourceVariable(variables.RefVariable):
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
         self._dtype = initial_value.dtype.base_dtype
-        self._constraint = constraint
 
         if self._in_graph_mode:
           with ops.name_scope("IsInitialized"):
@@ -543,7 +529,6 @@ class ResourceVariable(variables.RefVariable):
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
-    self._constraint = None
     self._cached_shape_as_list = None
 
   @contextlib.contextmanager
@@ -577,7 +562,6 @@ class ResourceVariable(variables.RefVariable):
     copied_variable = ResourceVariable(
         initial_value=self.read_value(),
         trainable=self._trainable,
-        constraint=self._constraint,
         dtype=self._dtype,
         name=self._shared_name + "_copy")
     memo[self._unique_id] = copied_variable
@@ -658,16 +642,6 @@ class ResourceVariable(variables.RefVariable):
     if context.executing_eagerly():
       raise RuntimeError("initial_value not supported in EAGER mode.")
     return self._initial_value
-
-  @property
-  def constraint(self):
-    """Returns the constraint function associated with this variable.
-
-    Returns:
-      The constraint function that was passed to the variable constructor.
-      Can be `None` if no constraint was passed.
-    """
-    return self._constraint
 
   @property
   def op(self):
@@ -1244,7 +1218,6 @@ class _UnreadVariable(ResourceVariable):
       self._handle_name = self._handle.name
     self._unique_id = unique_id
     self._dtype = dtype
-    self._constraint = None
     self._cached_value = None
     self._is_initialized_op = None
     self._initializer_op = None
@@ -1331,7 +1304,6 @@ class _MixedPrecisionVariable(ResourceVariable):
       self._handle_name = self.handle.name
     self._unique_id = var._unique_id  # pylint: disable=protected-access
     self._dtype = var.dtype
-    self._constraint = None
     self._cached_value = None
     self._is_initialized_op = var._is_initialized_op  # pylint: disable=protected-access
     self._initializer_op = var._initializer_op  # pylint: disable=protected-access
@@ -1495,7 +1467,6 @@ def copy_to_graph_uninitialized(var):
           shape=var.shape, dtype=var.dtype,
           name="unused_initial_variable_value"),
       trainable=var.trainable,
-      constraint=var._constraint,
       dtype=var.dtype,
       name=var._shared_name)
   new_variable._maybe_initialize_checkpointable()

@@ -136,8 +136,8 @@ class VariableScopeTest(test.TestCase):
         self.evaluate(variables_lib.variables_initializer([w]))
         self.assertAllClose(self.evaluate(w.value()), 0.3)
 
-  @test_util.run_in_graph_and_eager_modes
-  @run_inside_wrap_function_in_eager_mode
+  @test_util.run_v1_only(
+      "`ResourceVariable` does not support `constraint` argument.")
   def testVarScopeConstraint(self):
     constraint = lambda x: 0. * x
     with variable_scope.variable_scope("tower1") as tower:

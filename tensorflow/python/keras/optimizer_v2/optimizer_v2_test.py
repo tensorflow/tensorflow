@@ -235,10 +235,8 @@ class OptimizerTest(test.TestCase):
     constraint_01 = lambda x: clip_ops.clip_by_value(x, -0.1, 0.)
     constraint_0 = lambda x: clip_ops.clip_by_value(x, 0., 1.)
     with self.cached_session():
-      var0 = variables.Variable([1.0, 2.0],
-                                constraint=constraint_01)
-      var1 = variables.Variable([3.0, 4.0],
-                                constraint=constraint_0)
+      var0 = backend.variable([1.0, 2.0], constraint=constraint_01)
+      var1 = backend.variable([3.0, 4.0], constraint=constraint_0)
       loss = lambda: 5 * var0 + 3 * var1
       sgd = gradient_descent.SGD(3.0)
 
