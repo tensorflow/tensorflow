@@ -237,7 +237,7 @@ class MapDefunTest(test_base.DatasetTestBase):
       thread = self.checkedThread(
           self._assert_op_cancelled, args=(sess, map_defun_op))
       thread.start()
-      time.sleep(0.1)
+      time.sleep(0.2)
       sess.close()
       thread.join()
 
