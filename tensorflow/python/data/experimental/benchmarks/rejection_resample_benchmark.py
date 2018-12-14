@@ -22,13 +22,13 @@ import time
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import resampling
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.platform import test
 
 
-def _time_resampling(
-    test_obj, data_np, target_dist, init_dist, num_to_sample):
+def _time_resampling(data_np, target_dist, init_dist, num_to_sample):  # pylint: disable=missing-docstring
   dataset = dataset_ops.Dataset.from_tensor_slices(data_np).repeat()
 
   # Reshape distribution via rejection sampling.
@@ -41,7 +41,7 @@ def _time_resampling(
 
   get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
-  with test_obj.test_session() as sess:
+  with session.Session() as sess:
     start_time = time.time()
     for _ in xrange(num_to_sample):
       sess.run(get_next)
@@ -62,7 +62,7 @@ class RejectionResampleBenchmark(test.Benchmark):
     data_np = np.random.choice(num_classes, num_samples, p=init_dist)
 
     resample_time = _time_resampling(
-        self, data_np, target_dist, init_dist, num_to_sample=1000)
+        data_np, target_dist, init_dist, num_to_sample=1000)
 
     self.report_benchmark(iters=1000, wall_time=resample_time, name="resample")
 
