@@ -17,6 +17,11 @@ if [ "$1" = "--cuda" ]; then
     install_cuda=yes
 fi
 
+install_android=
+if [ "$1" = "--android" ]; then
+    install_android=yes
+fi
+
 # $1 url
 # $2 sha256
 download()
@@ -34,6 +39,11 @@ if [ ! -z "${install_cuda}" ]; then
     download $CUDA_URL $CUDA_SHA256
     download $CUDNN_URL $CUDNN_SHA256
     download $NCCL_URL $NCCL_SHA256
+fi;
+
+if [ ! -z "${install_android}" ]; then
+    download $ANDROID_NDK_URL $ANDROID_NDK_SHA256
+    download $ANDROID_SDK_URL $ANDROID_SDK_SHA256
 fi;
 
 # For debug
@@ -79,6 +89,23 @@ if [ ! -z "${install_cuda}" ]; then
 
 else
     echo "No CUDA/CuDNN to install"
+fi
+
+if [ ! -z "${install_android}" ]; then
+    mkdir -p ${DS_ROOT_TASK}/DeepSpeech/Android/SDK || true
+    ANDROID_NDK_FILE=`basename ${ANDROID_NDK_URL}`
+    ANDROID_SDK_FILE=`basename ${ANDROID_SDK_URL}`
+
+    pushd ${DS_ROOT_TASK}/DeepSpeech/Android
+        unzip ${DS_ROOT_TASK}/dls/${ANDROID_NDK_FILE}
+    popd
+
+    pushd ${DS_ROOT_TASK}/DeepSpeech/Android/SDK
+        unzip ${DS_ROOT_TASK}/dls/${ANDROID_SDK_FILE}
+        yes | ./tools/bin/sdkmanager --licenses
+        ./tools/bin/sdkmanager --update
+        ./tools/bin/sdkmanager --install "platforms;android-16" "build-tools;28.0.3"
+    popd
 fi
 
 mkdir -p ${TASKCLUSTER_ARTIFACTS} || true

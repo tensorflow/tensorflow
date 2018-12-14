@@ -1,0 +1,12 @@
+build:
+  template_file: linux-opt-base.tyml
+  routes:
+    - "index.project.deepspeech.tensorflow.pip.${event.head.branch}.android-arm64"
+    - "index.project.deepspeech.tensorflow.pip.${event.head.branch}.${event.head.sha}.android-arm64"
+    - "index.project.deepspeech.tensorflow.pip.android-arm64.${event.head.sha}"
+  args:
+    tcsetup: "--android"
+    tcbuild: "--android-arm64"
+  metadata:
+    name: "TensorFlow Android ARM64"
+    description: "Building TensorFlow for Android ARM64, optimized version"
