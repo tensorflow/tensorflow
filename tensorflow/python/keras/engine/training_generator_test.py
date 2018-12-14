@@ -33,8 +33,8 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training_generator
+from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.platform import test
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.util import nest
 
 
@@ -74,7 +74,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
         num_hidden=3, num_classes=4, input_dim=2)
     model.compile(
         loss='mse',
-        optimizer='sgd',
+        optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()])
 
     model.fit_generator(custom_generator(),
@@ -115,7 +115,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
         num_hidden=3, num_classes=4, input_dim=2)
     model.compile(
         loss='mse',
-        optimizer='sgd',
+        optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
 
@@ -143,11 +143,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
   def test_predict_generator_method(self):
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
-    model.compile(
-        loss='mse',
-        optimizer='sgd',
-        metrics=['mae', metrics_module.CategoricalAccuracy()],
-        run_eagerly=testing_utils.should_run_eagerly())
+    model.run_eagerly = testing_utils.should_run_eagerly()
 
     model.predict_generator(custom_generator(),
                             steps=5,
@@ -185,7 +181,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
         num_hidden=3, num_classes=4, input_dim=2)
     model.compile(
         loss='mse',
-        optimizer='sgd',
+        optimizer=rmsprop.RMSprop(1e-3),
         metrics=['mae', metrics_module.CategoricalAccuracy()],
         run_eagerly=testing_utils.should_run_eagerly())
 
@@ -223,7 +219,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
 
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
-    model.compile(loss='mse', optimizer='sgd',
+    model.compile(loss='mse', optimizer=rmsprop.RMSprop(1e-3),
                   run_eagerly=testing_utils.should_run_eagerly())
 
     with self.assertRaises(ValueError):
@@ -266,7 +262,7 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
     model = testing_utils.get_small_mlp(
         num_hidden=10, num_classes=1, input_dim=10)
 
-    model.compile(RMSPropOptimizer(0.001), 'binary_crossentropy',
+    model.compile(rmsprop.RMSprop(0.001), 'binary_crossentropy',
                   run_eagerly=testing_utils.should_run_eagerly())
     model.fit(
         ones_generator(),
@@ -294,7 +290,7 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
 
     model = testing_utils.get_small_mlp(
         num_hidden=3, num_classes=4, input_dim=2)
-    model.compile(loss='mse', optimizer='sgd')
+    model.compile(loss='mse', optimizer=rmsprop.RMSprop(1e-3))
 
     model.fit_generator(DummySequence(),
                         steps_per_epoch=10,
@@ -328,7 +324,7 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
     model = testing_utils.get_small_mlp(
         num_hidden=10, num_classes=1, input_dim=10)
 
-    model.compile(RMSPropOptimizer(0.001), 'binary_crossentropy')
+    model.compile(rmsprop.RMSprop(0.001), 'binary_crossentropy')
     model.fit(CustomSequence(), validation_data=val_data, epochs=2)
     model.evaluate(CustomSequence())
     model.predict(CustomSequence())
