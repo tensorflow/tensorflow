@@ -893,6 +893,7 @@ class Model(Network):
                verbose=1,
                sample_weight=None,
                steps=None,
+               callbacks=None,
                max_queue_size=10,
                workers=1,
                use_multiprocessing=False):
@@ -943,6 +944,9 @@ class Model(Network):
             Total number of steps (batches of samples)
             before declaring the evaluation round finished.
             Ignored with the default value of `None`.
+        callbacks: List of `keras.callbacks.Callback` instances.
+            List of callbacks to apply during evaluation.
+            See [callbacks](/api_docs/python/tf/keras/callbacks).
         max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
             input only. Maximum size for the generator queue.
             If unspecified, `max_queue_size` will default to 10.
@@ -1002,7 +1006,8 @@ class Model(Network):
           steps=steps,
           batch_size=batch_size,
           verbose=verbose,
-          workers=0)
+          workers=0,
+          callbacks=callbacks)
     elif distributed_training_utils.is_tpu_strategy(
         self._distribution_strategy):
       return training_distributed.experimental_test_loop(
@@ -1015,13 +1020,15 @@ class Model(Network):
           sample_weights=sample_weights,
           batch_size=batch_size,
           verbose=verbose,
-          steps=steps)
+          steps=steps,
+          callbacks=callbacks)
 
   def predict(self,
               x,
               batch_size=None,
               verbose=0,
               steps=None,
+              callbacks=None,
               max_queue_size=10,
               workers=1,
               use_multiprocessing=False):
@@ -1048,6 +1055,9 @@ class Model(Network):
         steps: Total number of steps (batches of samples)
             before declaring the prediction round finished.
             Ignored with the default value of `None`.
+        callbacks: List of `keras.callbacks.Callback` instances.
+            List of callbacks to apply during prediction.
+            See [callbacks](/api_docs/python/tf/keras/callbacks).
         max_queue_size: Integer. Used for generator or `keras.utils.Sequence`
             input only. Maximum size for the generator queue.
             If unspecified, `max_queue_size` will default to 10.
@@ -1110,14 +1120,20 @@ class Model(Network):
           steps=steps,
           batch_size=batch_size,
           verbose=verbose,
-          workers=0)
+          workers=0,
+          callbacks=callbacks)
     elif distributed_training_utils.is_tpu_strategy(
         self._distribution_strategy):
       return training_distributed.experimental_predict_loop(
           self, x, verbose=verbose, steps=steps)
     else:
       return training_arrays.predict_loop(
-          self, x, batch_size=batch_size, verbose=verbose, steps=steps)
+          self,
+          x,
+          batch_size=batch_size,
+          verbose=verbose,
+          steps=steps,
+          callbacks=callbacks)
 
   def reset_metrics(self):
     """Resets the state of metrics."""
@@ -1440,6 +1456,7 @@ class Model(Network):
   def evaluate_generator(self,
                          generator,
                          steps=None,
+                         callbacks=None,
                          max_queue_size=10,
                          workers=1,
                          use_multiprocessing=False,
@@ -1459,6 +1476,9 @@ class Model(Network):
             to yield from `generator` before stopping.
             Optional for `Sequence`: if unspecified, will use
             the `len(generator)` as a number of steps.
+        callbacks: List of `keras.callbacks.Callback` instances.
+            List of callbacks to apply during evaluation.
+            See [callbacks](/api_docs/python/tf/keras/callbacks).
         max_queue_size: maximum size for the generator queue
         workers: Integer. Maximum number of processes to spin up
             when using process-based threading.
@@ -1494,11 +1514,13 @@ class Model(Network):
         max_queue_size=max_queue_size,
         workers=workers,
         use_multiprocessing=use_multiprocessing,
-        verbose=verbose)
+        verbose=verbose,
+        callbacks=callbacks)
 
   def predict_generator(self,
                         generator,
                         steps=None,
+                        callbacks=None,
                         max_queue_size=10,
                         workers=1,
                         use_multiprocessing=False,
@@ -1516,6 +1538,9 @@ class Model(Network):
             to yield from `generator` before stopping.
             Optional for `Sequence`: if unspecified, will use
             the `len(generator)` as a number of steps.
+        callbacks: List of `keras.callbacks.Callback` instances.
+            List of callbacks to apply during prediction.
+            See [callbacks](/api_docs/python/tf/keras/callbacks).
         max_queue_size: Maximum size for the generator queue.
         workers: Integer. Maximum number of processes to spin up
             when using process-based threading.
@@ -1545,7 +1570,8 @@ class Model(Network):
         max_queue_size=max_queue_size,
         workers=workers,
         use_multiprocessing=use_multiprocessing,
-        verbose=verbose)
+        verbose=verbose,
+        callbacks=callbacks)
 
   def _get_callback_model(self):
     """Returns the Callback Model for this Model."""

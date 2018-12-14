@@ -198,7 +198,7 @@ def model_iteration(model,
       aggregator.aggregate(batch_outs)
 
       # Callbacks batch end.
-      batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+      batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
       callbacks._call_batch_hook(mode, 'end', step, batch_logs)
       progbar.on_batch_end(step, batch_logs)
 
@@ -207,7 +207,7 @@ def model_iteration(model,
 
     aggregator.finalize()
     results = aggregator.results
-    epoch_logs.update(training_utils.make_logs(model, results, mode))
+    epoch_logs = cbks.make_logs(model, epoch_logs, results, mode)
     if len(results) == 1:
       results = results[0]
 
@@ -222,15 +222,20 @@ def model_iteration(model,
           workers=workers,
           use_multiprocessing=use_multiprocessing,
           max_queue_size=max_queue_size,
+          callbacks=callbacks,
+          verbose=0,
           mode='test')
 
       if not isinstance(val_results, list):
         val_results = [val_results]
-      epoch_logs.update(
-          training_utils.make_logs(model, val_results, mode, prefix='val_'))
+      epoch_logs = cbks.make_logs(
+          model, epoch_logs, val_results, mode, prefix='val_')
 
-    callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
-    progbar.on_epoch_end(epoch, epoch_logs)
+    if mode == 'train':
+      # Epochs only apply to `fit`.
+      callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
+      progbar.on_epoch_end(epoch, epoch_logs)
+
   callbacks._call_end_hook(mode)
 
   if enqueuer is not None:

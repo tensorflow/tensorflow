@@ -136,18 +136,6 @@ class OutputsAggregator(Aggregator):
       self.results = [np.concatenate(result, axis=0) for result in self.results]
 
 
-def make_logs(model, outputs, mode, prefix=''):
-  """Computes logs for sending to `on_batch_end` methods."""
-  logs = {}
-  # TODO(omalleyt): handle outputs in prediction when Callback
-  # hooks are ready.
-  if mode in ['train', 'test']:
-    if hasattr(model, 'metrics_names'):
-      for label, output in zip(model.metrics_names, outputs):
-        logs[prefix + label] = output
-  return logs
-
-
 def get_progbar(model, count_mode):
   """Get Progbar."""
   stateful_metric_names = None
