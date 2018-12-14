@@ -3972,19 +3972,6 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
-tf_kernel_library(
-    name = "fused_batch_norm_util",
-    gpu_srcs = [
-        "fused_batch_norm_op.h",
-        "fused_batch_norm_op.cu.cc",
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
-    ],
-)
-
 cc_library(
     name = "pooling_ops_hdrs",
     hdrs = [
