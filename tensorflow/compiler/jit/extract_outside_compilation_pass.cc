@@ -1255,6 +1255,11 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     n->AddAttr(kXlaTokenInputNodesAttrName,
                std::vector<string>{send_pred_node->name()});
 
+    // Add a control edge from `send_pred_node` to If node, so XlaCompiler will
+    // visit If node after `send_pred_node`, thus the token output for
+    // `send_pred_node` has been generated.
+    g->AddControlEdge(send_pred_node, n);
+
     // Build host side graph for the "If" node.
     string oc_host_graph_name = absl::StrCat("oc_if_host_graph_", n->name());
     TF_RETURN_IF_ERROR(BuildHostGraphForIfNode(
