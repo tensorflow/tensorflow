@@ -3272,9 +3272,10 @@ def combined_non_max_suppression(boxes,
       containing the indices of the selected boxes
   """
   with ops.name_scope(name, 'combined_non_max_suppression'):
-    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    iou_threshold = ops.convert_to_tensor(
+        iou_threshold, dtype=dtypes.float32, name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
-        score_threshold, name='score_threshold')
+        score_threshold, dtype=dtypes.float32, name='score_threshold')
     return gen_image_ops.combined_non_max_suppression(boxes, scores,
                                                       max_output_size_per_class,
                                                       max_total_size,
