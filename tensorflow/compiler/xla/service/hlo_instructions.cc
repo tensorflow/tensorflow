@@ -905,7 +905,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
-    string tmp = literal().ToString();
+    string tmp = literal().ToStringWithoutShape();
     std::replace(tmp.begin(), tmp.end(), '\n', ' ');
     std::vector<string> v = absl::StrSplit(tmp, ' ');
     bool first = true;

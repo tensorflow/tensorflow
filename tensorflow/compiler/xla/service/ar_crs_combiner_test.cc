@@ -32,8 +32,8 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   %p = f32[2,2] parameter(0)
-  %constant.f32.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
-  %constant.f32.2 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32.1 = f32[2,2] constant({{1, 2}, {3, 4}})
+  %constant.f32.2 = f32[2,2] constant({{1, 2}, {3, 4}})
   ROOT %tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32.1, %constant.f32.2)
 }
 )";
@@ -91,7 +91,7 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> ((f32[2,2]), (f32[2,2], f32[2,2])) {
   %p = f32[2,2] parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %tuple1 = (f32[2,2]) tuple(%constant.f32)
   %tuple2 = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   ROOT %tuple = ((f32[2,2]), (f32[2,2], f32[2,2])) tuple(%tuple1, %tuple2)
@@ -152,7 +152,7 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   %p = f32[2,2] parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %tuple.1 = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%tuple.1), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%tuple.1), index=0
@@ -174,7 +174,7 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   %p = f32[2,2] parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %tuple.1 = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%tuple.1), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%tuple.1), index=1
@@ -196,8 +196,8 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   %p = f32[2,2] parameter(0)
-  %constant.f32.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
-  %constant.f32.2 = f32[2,2] constant(f32[2,2] {{2, 3}, {4, 5}})
+  %constant.f32.1 = f32[2,2] constant({{1, 2}, {3, 4}})
+  %constant.f32.2 = f32[2,2] constant({{2, 3}, {4, 5}})
   %tuple.1 = (f32[2,2], f32[2,2]) tuple(%constant.f32.1, %constant.f32.2)
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%tuple.1), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%tuple.1), index=1
@@ -226,7 +226,7 @@ HloModule foobar
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
   %x = (f32[2,2], f32[2,2]) parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%x), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%x), index=1
   %add.1 = f32[2,2] add(%get-tuple-element.1, %constant.f32)
@@ -235,7 +235,7 @@ HloModule foobar
 }
 
 ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{3, 4}, {5, 6}})
+  %constant.f32 = f32[2,2] constant({{3, 4}, {5, 6}})
   %init.tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   ROOT %while = (f32[2,2], f32[2,2]) while(%init.tuple), condition=%condition, body=%body
 }
@@ -263,7 +263,7 @@ HloModule foobar
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
   %x = (f32[2,2], f32[2,2]) parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%x), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%x), index=1
   %add.1 = f32[2,2] add(%get-tuple-element.1, %constant.f32)
@@ -272,8 +272,8 @@ HloModule foobar
 }
 
 ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
-  %constant.f32.1 = f32[2,2] constant(f32[2,2] {{3, 4}, {5, 6}})
-  %constant.f32.2 = f32[2,2] constant(f32[2,2] {{3, 4}, {7, 8}})
+  %constant.f32.1 = f32[2,2] constant({{3, 4}, {5, 6}})
+  %constant.f32.2 = f32[2,2] constant({{3, 4}, {7, 8}})
   %init.tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32.1, %constant.f32.2)
   ROOT %while = (f32[2,2], f32[2,2]) while(%init.tuple), condition=%condition, body=%body
 }
@@ -301,8 +301,8 @@ HloModule foobar
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
   %x = (f32[2,2], f32[2,2]) parameter(0)
-  %constant.f32.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
-  %constant.f32.2 = f32[2,2] constant(f32[2,2] {{3, 4}, {1, 2}})
+  %constant.f32.1 = f32[2,2] constant({{1, 2}, {3, 4}})
+  %constant.f32.2 = f32[2,2] constant({{3, 4}, {1, 2}})
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%x), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%x), index=1
   %add.1 = f32[2,2] add(%get-tuple-element.1, %constant.f32.1)
@@ -311,7 +311,7 @@ HloModule foobar
 }
 
 ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{3, 4}, {5, 6}})
+  %constant.f32 = f32[2,2] constant({{3, 4}, {5, 6}})
   %init.tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   ROOT %while = (f32[2,2], f32[2,2]) while(%init.tuple), condition=%condition, body=%body
 }

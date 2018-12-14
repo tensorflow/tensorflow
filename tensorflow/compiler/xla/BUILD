@@ -293,6 +293,22 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "primitive_util_test",
+    srcs = ["primitive_util_test.cc"],
+    deps = [
+        ":shape_util",
+        ":status_macros",
+        ":test",
+        ":test_helpers",
+        ":types",
+        ":util",
+        ":xla_data_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "layout_util_test",
     srcs = ["layout_util_test.cc"],
     deps = [
@@ -593,6 +609,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/memory",

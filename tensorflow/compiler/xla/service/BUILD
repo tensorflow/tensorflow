@@ -1014,6 +1014,7 @@ cc_library(
     srcs = ["name_uniquer.cc"],
     hdrs = ["name_uniquer.h"],
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1785,6 +1786,7 @@ tf_cc_test(
         ":hlo_cse",
         ":hlo_dce",
         ":hlo_matchers",
+        ":hlo_parser",
         ":hlo_pass",
         ":hlo_pass_pipeline",
         ":tuple_simplifier",
@@ -3628,7 +3630,6 @@ cc_library(
     srcs = ["hlo_lexer.cc"],
     hdrs = [
         "hlo_lexer.h",
-        "hlo_token.h",
     ],
     deps = [
         "//tensorflow/compiler/xla:shape_util",

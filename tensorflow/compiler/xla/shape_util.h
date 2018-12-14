@@ -241,10 +241,6 @@ class ShapeUtil {
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static string HumanString(const ProgramShape& program_shape);
 
-  // Parses a ShapeUtil::HumanString-format shape string back into a shape
-  // object.
-  static StatusOr<Shape> ParseShapeString(absl::string_view s);
-
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
   // Precondition: IsArray(lhs) && IsArray(rhs)

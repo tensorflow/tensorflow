@@ -139,9 +139,9 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
 HloModule FoldDotTransposeConstant
 
 ENTRY entry_computation {
-  constant = f32[2,1]{1,0} constant(f32[2,1] { { 1 }, { 2 } })
+  constant = f32[2,1]{1,0} constant({ { 1 }, { 2 } })
   transpose = f32[1,2]{1,0} transpose(constant), dimensions={1,0}
-  constant.1 = f32[3,2]{1,0} constant(f32[3,2] { { 1, 2 }, { 3, 4 }, { 5, 6 } })
+  constant.1 = f32[3,2]{1,0} constant({ { 1, 2 }, { 3, 4 }, { 5, 6 } })
   transpose.1 = f32[2,3]{1,0} transpose(constant.1), dimensions={1,0}
   ROOT dot = f32[1,3]{1,0} dot(transpose, transpose.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
