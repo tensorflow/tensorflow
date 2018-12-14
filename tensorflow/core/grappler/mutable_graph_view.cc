@@ -68,7 +68,7 @@ void MutableGraphView::UpdateFanouts(absl::string_view from_node,
 }
 
 void MutableGraphView::UpdateFanouts(NodeDef* from_node, NodeDef* to_node) {
-  VLOG(0) << absl::Substitute("Update fanouts from '$0' to '$1'.",
+  VLOG(2) << absl::Substitute("Update fanouts from '$0' to '$1'.",
                               from_node->name(), to_node->name());
 
   // Update internal state with the new output_port->input_port edge.
