@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import time
 
+from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import map_defun
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -34,18 +35,19 @@ class MapDefunBenchmark(test.Benchmark):
   """Benchmarks for MapDefunOp."""
 
   def _run(self, op, name=None, num_iters=3000):
-    for _ in range(5):
-      self.evaluate(op)
-    start = time.time()
-    for _ in range(num_iters):
-      self.evaluate(op)
-    end = time.time()
-    mean_us = (end - start) * 1e6 / num_iters
-    self.report_benchmark(
-        name=name,
-        iters=num_iters,
-        wall_time=mean_us,
-        extras={"examples_per_sec": num_iters / (end - start)})
+    with session.Session() as sess:
+      for _ in range(5):
+        sess.run(op)
+      start = time.time()
+      for _ in range(num_iters):
+        sess.run(op)
+      end = time.time()
+      mean_us = (end - start) * 1e6 / num_iters
+      self.report_benchmark(
+          name=name,
+          iters=num_iters,
+          wall_time=mean_us,
+          extras={"examples_per_sec": num_iters / (end - start)})
 
   def benchmarkDefunVsMapFn(self):
     """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""

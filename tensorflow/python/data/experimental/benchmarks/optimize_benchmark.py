@@ -121,8 +121,8 @@ class OptimizationBenchmark(test.Benchmark):
   def benchmarkFilterFusion(self):
     chain_lengths = [0, 1, 2, 5, 10, 20, 50]
     for chain_length in chain_lengths:
-      self._benchmarkFilters(chain_length, False)
-      self._benchmarkFilters(chain_length, True)
+      self._benchmarkFilterFusion(chain_length, False)
+      self._benchmarkFilterFusion(chain_length, True)
 
   def _benchmarkFilterFusion(self, chain_length, optimize_dataset):
     with ops.Graph().as_default():
@@ -137,24 +137,25 @@ class OptimizationBenchmark(test.Benchmark):
       iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
 
-      for _ in range(10):
-        self.evaluate(next_element.op)
-      deltas = []
-      for _ in range(100):
-        start = time.time()
+      with session.Session() as sess:
+        for _ in range(10):
+          sess.run(next_element.op)
+        deltas = []
         for _ in range(100):
-          self.evaluate(next_element.op)
-        end = time.time()
-        deltas.append(end - start)
+          start = time.time()
+          for _ in range(100):
+            sess.run(next_element.op)
+          end = time.time()
+          deltas.append(end - start)
 
-      median_wall_time = np.median(deltas) / 100
-      opt_mark = "opt" if optimize_dataset else "no-opt"
-      print("Filter dataset {} chain length: {} Median wall time: {}".format(
-          opt_mark, chain_length, median_wall_time))
-      self.report_benchmark(
-          iters=1000,
-          wall_time=median_wall_time,
-          name="chain_length_{}_{}".format(opt_mark, chain_length))
+        median_wall_time = np.median(deltas) / 100
+        opt_mark = "opt" if optimize_dataset else "no-opt"
+        print("Filter dataset {} chain length: {} Median wall time: {}".format(
+            opt_mark, chain_length, median_wall_time))
+        self.report_benchmark(
+            iters=1000,
+            wall_time=median_wall_time,
+            name="chain_length_{}_{}".format(opt_mark, chain_length))
 
 
 if __name__ == "__main__":
