@@ -34,17 +34,17 @@ class XlaGpuDeviceFactory : public DeviceFactory {
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override;
   // Returns a set containing the device ids contained in visible_device_list or
-  // -1 if the string is empty.
-  static xla::StatusOr<std::set<int>> ParseVisibleDeviceList(
+  // nullopt if it is empty. It returns error in case of malformed configuration
+  // string.
+  static xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
       const string& visible_device_list);
 };
 
-xla::StatusOr<std::set<int>> XlaGpuDeviceFactory::ParseVisibleDeviceList(
-    const string& visible_device_list) {
+xla::StatusOr<absl::optional<std::set<int>>>
+XlaGpuDeviceFactory::ParseVisibleDeviceList(const string& visible_device_list) {
   std::set<int> gpu_ids;
-  if (visible_device_list.length() == 0) {
-    gpu_ids.insert(-1);
-    return gpu_ids;
+  if (visible_device_list.empty()) {
+    return absl::optional<std::set<int>>(absl::nullopt);
   }
   const std::vector<string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
@@ -53,12 +53,12 @@ xla::StatusOr<std::set<int>> XlaGpuDeviceFactory::ParseVisibleDeviceList(
     if (!absl::SimpleAtoi(platform_gpu_id_str, &platform_gpu_id)) {
       return errors::InvalidArgument(
           "Could not parse entry in 'visible_device_list': '",
-          platform_gpu_id_str, "'. visible_device_list = ",
-          visible_device_list);
+          platform_gpu_id_str,
+          "'. visible_device_list = ", visible_device_list);
     }
     gpu_ids.insert(platform_gpu_id);
   }
-  return gpu_ids;
+  return absl::optional<std::set<int>>(gpu_ids);
 }
 
 Status XlaGpuDeviceFactory::CreateDevices(
@@ -83,14 +83,16 @@ Status XlaGpuDeviceFactory::CreateDevices(
   }
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
+  auto parsed_gpus=ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
+  // We want to fill the gpu_ids set with all devices if config string is empty.
   std::set<int> gpu_ids;
   int num_visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
-  if (allowed_gpus.empty()) {
+  if (!parsed_gpus) {
     for (int i = 0; i < num_visible_devices; ++i) {
       gpu_ids.insert(i);
     }
   } else {
-    gpu_ids = ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
+    gpu_ids = *parsed_gpus;
   }
   for (int i : gpu_ids) {
     XlaDevice::Options options;

@@ -62,7 +62,8 @@ class ServiceOptions {
   ServiceOptions& set_intra_op_parallelism_threads(int num_threads);
   int intra_op_parallelism_threads() const;
 
-  // Sets the allowed_devices set for creation of stream executors.
+  // Sets the allowed_devices set for selectively constructing stream executors
+  // on the platform.
   ServiceOptions& set_allowed_devices(
       const absl::optional<std::set<int>>& allowed_devices);
   const absl::optional<std::set<int>>& allowed_devices() const;
