@@ -31,15 +31,18 @@ from tensorflow.python.util import tf_inspect
 
 # These functions test negative for isinstance(*, types.BuiltinFunctionType)
 # and inspect.isbuiltin, and are generally not visible in globals().
+# TODO(mdan): Find a more generic way to test this - just enumerate __builtin__?
 SPECIAL_BUILTINS = {
     'dict': dict,
+    'enumerate': enumerate,
     'float': float,
     'int': int,
     'len': len,
     'list': list,
     'print': print,
     'range': range,
-    'tuple': tuple
+    'tuple': tuple,
+    'zip': zip
 }
 
 if six.PY2:
