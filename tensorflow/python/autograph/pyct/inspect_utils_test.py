@@ -277,16 +277,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = TestClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.static_method),
         TestClass)
@@ -335,16 +335,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = LocalClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        test_obj)
+        LocalClass)
 
   def test_getmethodclass_callables(self):
     class TestCallable(object):
@@ -367,12 +367,13 @@ class InspectUtilsTest(test.TestCase):
       return self
 
     bound_method = types.MethodType(test_fn, WeakrefWrapper())
-    self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
+    self.assertEqual(inspect_utils.getmethodclass(bound_method), TestClass)
 
   def test_getmethodclass_no_bool_conversion(self):
 
     tensor = constant_op.constant([1])
-    self.assertEqual(inspect_utils.getmethodclass(tensor.get_shape), tensor)
+    self.assertEqual(
+        inspect_utils.getmethodclass(tensor.get_shape), type(tensor))
 
   def test_getdefiningclass(self):
     class Superclass(object):

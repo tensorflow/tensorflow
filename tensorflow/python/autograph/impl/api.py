@@ -187,8 +187,8 @@ def converted_call(f, owner, options, *args, **kwargs):
     # When conversion is skipped, `self` is not necessary, because the
     # original bound method is being executed. This code removes it.
     if tf_inspect.ismethod(f) and args:
-      f_class = inspect_utils.getmethodclass(f)
-      if args[0] is f_class:
+      f_self = inspect_utils.getmethodself(f)
+      if args[0] is f_self:
         args = args[1:]
 
     return f(*args, **kwargs)
@@ -215,10 +215,10 @@ def converted_call(f, owner, options, *args, **kwargs):
     # Regular functions
     target_entity = f
     arg_map_target = f
-    f_class = inspect_utils.getmethodclass(f)
+    f_self = inspect_utils.getmethodself(f)
 
     # TODO(b/119246461): This may be more elegantly handled using __get__?
-    if f_class is not None:
+    if f_self is not None:
       # If this is a method call, it may or may not include self.
       #
       # Example when self is included:
@@ -233,11 +233,11 @@ def converted_call(f, owner, options, *args, **kwargs):
         # When the owner is not specified, use the result of
         # inspect_utils.getmethodclass.
         # TODO(b/119246461): Make sure an owner is always specified.
-        if not args or args[0] is not f_class:
-          effective_args = (f_class,) + args
+        if not args or args[0] is not f_self:
+          effective_args = (f_self,) + args
         else:
-          effective_args = (f_class,) + args[1:]
-      partial_types = (f_class,)
+          effective_args = (f_self,) + args[1:]
+      partial_types = (f_self,)
     else:
       effective_args = args
       partial_types = ()

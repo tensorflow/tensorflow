@@ -183,6 +183,27 @@ def getdefiningclass(m, owner_class):
   return owner_class
 
 
+def isweakrefself(m):
+  """Tests whether an object is a "weakref self" wrapper, see getmethodself."""
+  return hasattr(m, '__self__') and hasattr(m.__self__, 'ag_self_weakref__')
+
+
+def getmethodself(m):
+  """An extended version of inspect.getmethodclass."""
+  if not hasattr(m, '__self__'):
+    return None
+  if m.__self__ is None:
+    return None
+
+  # A fallback allowing methods to be actually bound to a type different
+  # than __self__. This is useful when a strong reference from the method
+  # to the object is not desired, for example when caching is involved.
+  if isweakrefself(m):
+    return m.__self__.ag_self_weakref__()
+
+  return m.__self__
+
+
 def getmethodclass(m):
   """Resolves a function's owner, e.g. a method's class.
 
@@ -213,16 +234,12 @@ def getmethodclass(m):
     if isinstance(m.__class__, six.class_types):
       return m.__class__
 
-  # Instance method and class methods: should be bound to a non-null "self".
-  if hasattr(m, '__self__'):
-    if m.__self__ is not None:
-      # A fallback allowing methods to be actually bound to a type different
-      # than __self__. This is useful when a strong reference from the method
-      # to the object is not desired, for example when caching is involved.
-      if hasattr(m.__self__, 'ag_self_weakref__'):
-        return m.__self__.ag_self_weakref__()
-
-      return m.__self__
+  # Instance method and class methods: return the class of "self".
+  m_self = getmethodself(m)
+  if m_self is not None:
+    if tf_inspect.isclass(m_self):
+      return m_self
+    return m_self.__class__
 
   # Class, static and unbound methods: search all defined classes in any
   # namespace. This is inefficient but more robust method.
