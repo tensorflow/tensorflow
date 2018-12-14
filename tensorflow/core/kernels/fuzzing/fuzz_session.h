@@ -61,7 +61,7 @@ namespace fuzzing {
 //   SINGLE_INPUT_OP_BUILDER(DT_INT8, Identity);
 //   void FuzzImpl(const uint8_t* data, size_t size) {
 //      ... convert data and size to a Tensor, pass it to:
-//      RunInputs({{"input", input_tensor}}).IgnoreError();
+//      RunInputs({{"input", input_tensor}});
 //
 class FuzzSession {
  public:
@@ -109,11 +109,14 @@ class FuzzSession {
   // Runs the TF session by pulling on the "output" node, attaching
   // the supplied input_tensor to the input node(s), and discarding
   // any returned output.
-  Status RunInputs(const std::vector<std::pair<string, Tensor> >& inputs) {
-    return session_->Run(inputs, {}, {"output"}, nullptr);
+  // Note: We are ignoring Status from Run here since fuzzers don't need to
+  // check it (as that will slow them down and printing/logging is useless).
+  void RunInputs(const std::vector<std::pair<string, Tensor> >& inputs) {
+    RunInputsWithStatus(inputs).IgnoreError();
   }
 
-  Status RunMultipleInputs(
+  // Same as RunInputs but don't ignore status
+  Status RunInputsWithStatus(
       const std::vector<std::pair<string, Tensor> >& inputs) {
     return session_->Run(inputs, {}, {"output"}, nullptr);
   }
@@ -144,7 +147,7 @@ class FuzzStringInputOp : public FuzzSession {
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<string>()() =
         string(reinterpret_cast<const char*>(data), size);
-    RunInputs({{"input", input_tensor}}).IgnoreError();
+    RunInputs({{"input", input_tensor}});
   }
 };
 

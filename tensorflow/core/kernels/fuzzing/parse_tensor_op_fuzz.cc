@@ -62,7 +62,7 @@ class FuzzParseTensor : public FuzzSession {
     // Now we can do the actual fuzz implementation
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<string>()() = as_string;
-    RunInputs({{"input", input_tensor}}).IgnoreError();
+    RunInputs({{"input", input_tensor}});
   }
 };
 

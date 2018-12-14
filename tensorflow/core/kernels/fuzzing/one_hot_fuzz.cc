@@ -68,8 +68,7 @@ class FuzzOneHot : public FuzzSession {
     RunInputs({{"input", input_tensor},
                {"depth", depth_tensor},
                {"on", on_tensor},
-               {"off", off_tensor}})
-        .IgnoreError();
+               {"off", off_tensor}});
   }
 };
 

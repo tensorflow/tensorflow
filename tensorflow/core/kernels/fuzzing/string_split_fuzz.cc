@@ -48,8 +48,7 @@ class FuzzStringSplit : public FuzzSession {
           reinterpret_cast<const char*>(data + delim_len), size - delim_len);
     }
 
-    RunInputs({{"input", input_tensor}, {"delimiter", delimiter_tensor}})
-        .IgnoreError();
+    RunInputs({{"input", input_tensor}, {"delimiter", delimiter_tensor}});
   }
 };
 
