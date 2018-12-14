@@ -248,21 +248,6 @@ class CorrectnessTest(keras_parameterized.TestCase):
     layer(1.)  # Plain-value inputs are only valid in eager mode.
     self.assertEqual(1, len(layer.losses))
 
-  def test_predict_correctness(self):
-    i1 = keras.layers.Input(shape=(4, 5))
-    i2 = keras.layers.Input(shape=(4, 5))
-    i3 = keras.layers.Input(shape=(4, 5))
-    o = keras.layers.add([i1, i2, i3])
-    model = keras.models.Model([i1, i2, i3], o)
-    model.run_eagerly = True
-
-    x1 = np.random.random((2, 4, 5))
-    x2 = np.random.random((2, 4, 5))
-    x3 = np.random.random((2, 4, 5))
-    out = model.predict([x1, x2, x3])
-
-    self.assertAllClose(out, x1 + x2 + x3)
-
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

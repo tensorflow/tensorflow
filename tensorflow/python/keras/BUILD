@@ -770,6 +770,21 @@ py_test(
 )
 
 py_test(
+    name = "correctness_test",
+    size = "medium",
+    srcs = ["engine/correctness_test.py"],
+    shard_count = 2,
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "training_test",
     size = "medium",
     srcs = ["engine/training_test.py"],
