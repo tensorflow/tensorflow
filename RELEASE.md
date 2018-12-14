@@ -289,7 +289,7 @@ Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, A
     [here](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/layers) for more details
 * `tf.data`:
   * `Dataset.from_generator()` now accepts an `args` list, in order to create nested generators.
-  * `Dataset.list_files()` now produces determinstic results when `shuffle=False` or a `seed` is passed.
+  * `Dataset.list_files()` now produces deterministic results when `shuffle=False` or a `seed` is passed.
   * `tf.contrib.data.sample_from_datasets()` and `tf.contrib.data.choose_from_datasets()` make it easier to sample or deterministically choose elements from multiple datasets.
   * `tf.contrib.data.make_csv_dataset()` now supports line breaks in quoted strings, and two infrequently used arguments removed.
   * (C++) `DatasetBase::DebugString()` is now `const`.
