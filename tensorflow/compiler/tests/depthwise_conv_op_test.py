@@ -350,8 +350,13 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
       self._CompareBackpropInput(input_size, filter_size, output_size, stride,
                                  padding)
 
-  def _CompareBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
-                             stride, padding):
+  def _CompareBackpropFilter(self,
+                             input_sizes,
+                             filter_sizes,
+                             output_sizes,
+                             stride,
+                             padding,
+                             data_format="NHWC"):
     x0 = np.random.rand(*input_sizes).astype(np.float32)
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
@@ -360,13 +365,30 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
         t0 = array_ops.placeholder(np.float32, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = array_ops.placeholder(np.float32, shape=output_sizes)
+        native_t0 = t0
+        native_t2 = t2
+        strides = [1, stride, stride, 1]
+
         if use_xla:
+          if data_format == "NCHW":
+            # Transpose from NWHC input to NCHW
+            # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
+            native_t0 = array_ops.transpose(t0, [0, 3, 1, 2])
+            native_t2 = array_ops.transpose(t2, [0, 3, 1, 2])
+            strides = [1, 1, stride, stride]
           with self.test_scope():
             backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
-                t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
+                native_t0,
+                t1,
+                native_t2,
+                strides=strides,
+                padding=padding,
+                data_format=data_format)
         else:
+          # For CPU, the format NCHW is not supported. Therefore we always use
+          # NHWC here.
           backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
-              t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
+              native_t0, t1, native_t2, strides=strides, padding=padding)
         ret = backprop.eval({t0: x0, t2: x2})
         self.assertShapeEqual(ret, backprop)
         return ret
@@ -384,6 +406,19 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
       self._CompareBackpropFilter(input_size, filter_size, output_size,
                                   stride, padding)
 
+  def testDepthwiseConv2DFilterGradFormatNCHWCompare(self):
+    for index, (input_size, filter_size, output_size, stride,
+                padding) in enumerate(ConfigsToTest()):
+      print("Testing DepthwiseConv2DFilterGradFormatNCHWCompare,", index,
+            "th config:", input_size, "*", filter_size, "producing output",
+            output_size, "stride:", stride, "padding:", padding)
+      self._CompareBackpropFilter(
+          input_size,
+          filter_size,
+          output_size,
+          stride,
+          padding,
+          data_format="NCHW")
 
 if __name__ == "__main__":
   test.main()

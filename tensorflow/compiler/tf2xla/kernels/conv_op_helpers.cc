@@ -434,8 +434,10 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   }
 
   // We use this approach only for depthwise convolutions where feature counts
-  // are large but space dimensions are small.
+  // are large but space dimensions are small. The conversion logic below
+  // assumes that the data format is NHWC, so we also check that here.
   bool should_perform_depthwise_conv =
+      attrs.data_format == FORMAT_NHWC &&
       (total_spatial_size < dims.in_depth) &&
       filter_tensor_shape.dim_size(num_dims - 1) == 1 && attrs.depthwise;
 
