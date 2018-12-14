@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/custom_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
@@ -408,32 +409,34 @@ static StatusOr<poplar::Tensor> AddConvolutionWeights(
 
 static StatusOr<poplar::Tensor> AddConvAddBiasTensor(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* conv, const TensorMap& tensor_map) {
-  OutVector outputs = FindInstructionOutputs(tensor_map, conv);
+    const HloInstruction* layout, int64 layout_output_idx,
+    const TensorMap& tensor_map) {
+  OutVector outputs = FindInstructionOutputs(tensor_map, layout);
 
-  if (outputs.size() != 1) {
+  if (layout_output_idx < 0 || outputs.size() <= layout_output_idx) {
     return xla::FailedPrecondition("Convolution %s output not found for %s",
-                                   conv->name(), debug_name);
+                                   layout->name(), debug_name);
   }
 
-  poplar::Tensor acts = outputs[0];
+  poplar::Tensor acts = outputs[layout_output_idx];
 
-  acts = ShuffleConvolutionOutputToPoplar(conv, acts);
+  acts = ShuffleConvolutionOutputToPoplar(layout, acts);
 
   return poplin::createBiases(graph, acts, debug_name);
 }
 
 static StatusOr<poplar::Tensor> AddMatMulAddBiasTensor(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* matmul, const TensorMap& tensor_map) {
-  OutVector outputs = FindInstructionOutputs(tensor_map, matmul);
+    const HloInstruction* layout, int64 layout_output_idx,
+    const TensorMap& tensor_map) {
+  OutVector outputs = FindInstructionOutputs(tensor_map, layout);
 
-  if (outputs.size() != 1) {
+  if (layout_output_idx < 0 || outputs.size() <= layout_output_idx) {
     return xla::FailedPrecondition("Matmul %s output not found for %s",
-                                   matmul->name(), debug_name);
+                                   layout->name(), debug_name);
   }
 
-  poplar::Tensor acts = outputs[0];
+  poplar::Tensor acts = outputs[layout_output_idx];
 
   return poplin::createBiases(graph, acts, debug_name);
 }
@@ -468,21 +471,23 @@ static StatusOr<poplar::Tensor> AddRightMatMul(poplar::Graph& graph,
                                       &resources.dot_cache);
 }
 
-static StatusOr<poplar::Tensor> AddBatchNormScale(
-    poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* target, const HloInstruction* activations,
-    const TensorMap& tensor_map) {
-  OutVector outputs = FindInstructionOutputs(tensor_map, activations);
+static StatusOr<poplar::Tensor> AddBatchNormScale(poplar::Graph& graph,
+                                                  const std::string& debug_name,
+                                                  const HloInstruction* target,
+                                                  const HloInstruction* layout,
+                                                  int64 layout_output_idx,
+                                                  const TensorMap& tensor_map) {
+  OutVector outputs = FindInstructionOutputs(tensor_map, layout);
 
-  if (outputs.size() != 1) {
+  if (layout_output_idx < 0 || outputs.size() <= layout_output_idx) {
     return xla::FailedPrecondition(
-        "Batch Norm %s activations input not found for %s", activations->name(),
+        "Batch Norm %s layout input not found for %s", layout->name(),
         debug_name);
   }
 
   const auto* bn = Cast<HloBatchNormInstruction>(target);
 
-  poplar::Tensor acts = outputs[0];
+  poplar::Tensor acts = outputs[layout_output_idx];
   auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
 
   return popnn::bn::createBatchNormGamma(graph, pair.first);
@@ -490,22 +495,38 @@ static StatusOr<poplar::Tensor> AddBatchNormScale(
 
 static StatusOr<poplar::Tensor> AddBatchNormOffset(
     poplar::Graph& graph, const std::string& debug_name,
-    const HloInstruction* target, const HloInstruction* activations,
-    const TensorMap& tensor_map) {
-  OutVector outputs = FindInstructionOutputs(tensor_map, activations);
+    const HloInstruction* target, const HloInstruction* layout,
+    int64 layout_output_idx, const TensorMap& tensor_map) {
+  OutVector outputs = FindInstructionOutputs(tensor_map, layout);
 
-  if (outputs.size() != 1) {
+  if (layout_output_idx < 0 || outputs.size() <= layout_output_idx) {
     return xla::FailedPrecondition(
-        "Batch Norm %s activations input not found for %s", activations->name(),
+        "Batch Norm %s layout input not found for %s", layout->name(),
         debug_name);
   }
 
   const auto* bn = Cast<HloBatchNormInstruction>(target);
 
-  poplar::Tensor acts = outputs[0];
+  poplar::Tensor acts = outputs[layout_output_idx];
   auto pair = ShuffleBatchNormInputToPoplar(acts, bn->feature_index());
 
   return popnn::bn::createBatchNormBeta(graph, pair.first);
+}
+
+static StatusOr<poplar::Tensor> AddElementwiseBinary(
+    poplar::Graph& graph, const std::string& debug_name,
+    const HloInstruction* layout, int64 layout_output_idx,
+    const TensorMap& tensor_map) {
+  OutVector outputs = FindInstructionOutputs(tensor_map, layout);
+
+  if (layout_output_idx < 0 || outputs.size() <= layout_output_idx) {
+    return xla::FailedPrecondition(
+        "Elementwise %s layout input not found for %s", layout->name(),
+        debug_name);
+  }
+
+  poplar::Tensor other_side = outputs[layout_output_idx];
+  return graph.clone(other_side, debug_name);
 }
 
 static StatusOr<poplar::Tensor> PathTransform(
@@ -555,20 +576,25 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
   if (target != resources.annotations.tensor_allocation_map.end()) {
     const auto* tgt = target->second.tgt;
     auto tshape = tgt->operand(target->second.input_index)->shape();
+    const auto optional_layout = target->second.layout;
+    const auto optional_layout_output_idx = target->second.layout_output_idx;
+
     switch (tgt->opcode()) {
       case HloOpcode::kBatchNormInference:
       case HloOpcode::kBatchNormTraining: {
         switch (target->second.input_index) {
           case 1: {
-            const auto* acts = target->second.layout;
             TF_ASSIGN_OR_RETURN(
-                out, AddBatchNormScale(graph, name, tgt, acts, tensor_map));
+                out,
+                AddBatchNormScale(graph, name, tgt, *optional_layout,
+                                  *optional_layout_output_idx, tensor_map));
             break;
           }
           case 2: {
-            const auto* acts = target->second.layout;
             TF_ASSIGN_OR_RETURN(
-                out, AddBatchNormOffset(graph, name, tgt, acts, tensor_map));
+                out,
+                AddBatchNormOffset(graph, name, tgt, *optional_layout,
+                                   *optional_layout_output_idx, tensor_map));
             break;
           }
           default:
@@ -660,13 +686,20 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                     src.first->name().c_str());
             }
           } else if (IsPopOpsCall(comp, "conv_biasadd")) {
-            const auto* conv = target->second.layout;
             TF_ASSIGN_OR_RETURN(
-                out, AddConvAddBiasTensor(graph, name, conv, tensor_map));
+                out,
+                AddConvAddBiasTensor(graph, name, *optional_layout,
+                                     *optional_layout_output_idx, tensor_map));
           } else if (IsPopOpsCall(comp, "matmul_biasadd")) {
-            const auto* matmul = target->second.layout;
             TF_ASSIGN_OR_RETURN(
-                out, AddMatMulAddBiasTensor(graph, name, matmul, tensor_map));
+                out, AddMatMulAddBiasTensor(graph, name, *optional_layout,
+                                            *optional_layout_output_idx,
+                                            tensor_map));
+          } else if (IsPopOpsCall(comp, "scaled_inplace")) {
+            TF_ASSIGN_OR_RETURN(
+                out,
+                AddElementwiseBinary(graph, name, *optional_layout,
+                                     *optional_layout_output_idx, tensor_map));
           } else {
             return xla::FailedPrecondition(
                 "Unknown poplibs fusion for tensor %s: %s",
@@ -688,9 +721,16 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
         break;
       }
       default:
-        return xla::FailedPrecondition("Unknown tensor target for %s: %s",
-                                       src.first->name().c_str(),
-                                       tgt->name().c_str());
+        if (IsPopOpsElementwiseBinary(tgt)) {
+          TF_ASSIGN_OR_RETURN(
+              out,
+              AddElementwiseBinary(graph, name, *optional_layout,
+                                   *optional_layout_output_idx, tensor_map));
+        } else {
+          return xla::FailedPrecondition("Unknown tensor target for %s: %s",
+                                         src.first->name().c_str(),
+                                         tgt->name().c_str());
+        }
     }
 
     TF_ASSIGN_OR_RETURN(

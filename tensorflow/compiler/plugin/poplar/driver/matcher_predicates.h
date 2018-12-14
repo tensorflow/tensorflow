@@ -41,6 +41,9 @@ bool IsScalarConstantNegativeInfinity(const HloInstruction*);
 bool IsScalarConstantOne(const HloInstruction*);
 bool IsPaddingReduceWindow(const HloInstruction*);
 bool IsBiasAdd(const HloInstruction*);
+bool IsPopOpsBiasAdd(const xla::HloInstruction*);
+bool IsPopOpsElementwise(const xla::HloInstruction*);
+bool IsPopOpsElementwiseBinary(const xla::HloInstruction*);
 
 }  // namespace poplarplugin
 }  // namespace xla

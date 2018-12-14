@@ -1,19 +1,36 @@
-#include "forward_allocation.h"
+/* Copyright 2018 Graphcore Ltd
+ */
 
-#include <limits>
-#include <vector>
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "tensorflow/compiler/plugin/poplar/driver/forward_allocation.h"
+#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/classification_predicates.h"
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
-#include "tensorflow/compiler/plugin/poplar/driver/util.h"
-#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include <limits>
+#include <vector>
 
 namespace xla {
 namespace poplarplugin {
@@ -217,59 +234,46 @@ static std::vector<const HloInstruction*> shortest_path(
   return std::vector<const HloInstruction*>(path.begin(), path.end());
 }
 
-// TODO - this should probably be in a more central location
-static bool IsLayoutProducer(const HloInstruction* inst) {
-  switch (inst->opcode()) {
-    case HloOpcode::kConvolution:
-    case HloOpcode::kDot:
-      return true;
-    default:
-      break;
-  }
-
-  if (IsPopOpsCall(inst, "depthwise_conv")) {
-    return true;
-  }
-
-  if (IPUCustomKernelsUtil::IsPoplibsOp(inst)) {
-    // For custom ops, they are layout producers if they have allocating
-    // operands.
-    auto attribute_map = IPUCustomKernelsUtil::AttributeMap(inst);
-    auto statusor =
-        attribute_map.GetAttributeAsInt64FlatHashSet("allocating_indexes");
-    if (!statusor.ok()) {
-      LOG(FATAL) << "Custom Poplibs op " << inst->ToString()
-                 << " is missing \'allocating_indexes\' field.";
-    }
-    return statusor.ValueOrDie().size() > 0;
-  }
-  return false;
-}
-
 // TODO - fix this.  it needs to take into account the indices of the path
 // from one op to the next. and probably do something to do with in-place ops
-static bool IsPathOk(const std::vector<const HloInstruction*>& path) {
-  for (auto* inst : path) {
-    switch (inst->opcode()) {
-      case HloOpcode::kBatchNormInference:
-      case HloOpcode::kBatchNormTraining:
-      case HloOpcode::kReshape:
-      case HloOpcode::kTranspose:
-        break;
-      case HloOpcode::kCall:
-        if (!IsPopOpsBiasAdd(inst)) {
-          return false;
-        }
-        break;
-      default:
-        if (!inst->IsElementwise()) {
-          return false;
-        }
-        break;
+// Returns the tensor index of the last instruction in the path.
+static absl::optional<int64> IsPathOk(
+    const std::vector<const HloInstruction*>& path,
+    bool allow_gte_at_the_end = false) {
+  int64 tensor_index = 0;
+  for (unsigned i = 0; i < path.size(); i++) {
+    auto* inst = path[i];
+    // Element-wise ops are ok.
+    if (!IsPopOpsElementwise(inst)) {
+      switch (inst->opcode()) {
+        case HloOpcode::kGetTupleElement:
+          // We only allow GTEs at the end of the path
+          if (!(allow_gte_at_the_end && i == (path.size() - 1))) {
+            return absl::nullopt;
+          }
+          tensor_index = inst->tuple_index();
+        case HloOpcode::kReshape:
+        case HloOpcode::kTranspose:
+          break;
+        default:
+          return absl::nullopt;
+          break;
+      }
     }
   }
-  return true;
+  return tensor_index;
 };
+
+static absl::optional<int64> IsPrefixPathOk(
+    const std::vector<const HloInstruction*>& path) {
+  return IsPathOk(path, false);
+}
+
+// We allow the suffix path to have a GTE at the end of the path.
+static absl::optional<int64> IsSuffixPathOk(
+    const std::vector<const HloInstruction*>& path) {
+  return IsPathOk(path, true);
+}
 
 // TODO - this should probably be in a more central location
 static bool IsLayoutSensitiveTarget(const HloInstruction* target) {
@@ -280,16 +284,15 @@ static bool IsLayoutSensitiveTarget(const HloInstruction* target) {
     default:
       break;
   }
-  return IsPopOpsBiasAdd(target);
+  return IsPopOpsElementwiseBinary(target);
 }
 
 // TODO - this should probably be in a more central location
 static absl::optional<int64> IsLayoutSensitiveOperand(
     const HloInstruction* target, const HloInstruction* operand) {
   const auto op_idx = target->operand_index(operand);
-  if (IsPopOpsBiasAdd(target) && op_idx == 1) {
-    // Only layout sensitive target on operand index 1
-    return 1;
+  if (IsPopOpsElementwiseBinary(target)) {
+    return op_idx;
   }
   switch (target->opcode()) {
     case HloOpcode::kBatchNormInference:
@@ -305,7 +308,8 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
   return absl::nullopt;
 }
 
-StatusOr<bool> ForwardAllocation::Run(HloComputation* comp) {
+StatusOr<bool> ForwardAllocation::Run(
+    HloComputation* comp, std::set<const HloInstruction*>& ops_with_layout) {
   bool found_targets = false;
   const auto is_param_no_layout_pred = [this](HloInstruction* inst) {
     return inst->opcode() == HloOpcode::kParameter &&
@@ -313,9 +317,14 @@ StatusOr<bool> ForwardAllocation::Run(HloComputation* comp) {
                tensor_allocation_map.end();
   };
 
+  const auto is_layout_producer =
+      [&ops_with_layout](const HloInstruction* inst) {
+        return ops_with_layout.count(inst);
+      };
+
   const auto g = create_graph(comp);
   const auto g_tr = transpose(g);
-  const auto layout_producing_ops = find_vertices(g, IsLayoutProducer);
+  const auto layout_producing_ops = find_vertices(g, is_layout_producer);
 
   std::unique_ptr<HloReachabilityMap> reachability_map =
       comp->ComputeReachability();
@@ -323,8 +332,10 @@ StatusOr<bool> ForwardAllocation::Run(HloComputation* comp) {
   // Get everything that depends upon an op with a special layout
   Graph<HloInstruction*> layout_op_consumers;
   for (const auto& inst : layout_producing_ops) {
-    layout_op_consumers[inst] = find_consumers(
-        g, inst, [](HloInstruction* inst) { return !IsLayoutProducer(inst); });
+    layout_op_consumers[inst] =
+        find_consumers(g, inst, [is_layout_producer](HloInstruction* inst) {
+          return !is_layout_producer(inst);
+        });
   }
 
   const auto alloc_dependencies = transpose(layout_op_consumers);
@@ -333,14 +344,15 @@ StatusOr<bool> ForwardAllocation::Run(HloComputation* comp) {
   // Get everything that depends on a source op
   Graph<HloInstruction*> source_consumers;
   for (const auto& inst : source_ops) {
-    source_consumers[inst] = find_consumers(
-        g, inst,
-        [layout_producing_ops, alloc_dependencies](HloInstruction* inst) {
-          return !IsLayoutProducer(inst) &&
-                 !alloc_dependencies.contains(inst) &&
-                 !layout_producing_ops.contains(inst);
-        },
-        true);
+    source_consumers[inst] =
+        find_consumers(g, inst,
+                       [is_layout_producer, layout_producing_ops,
+                        alloc_dependencies](HloInstruction* inst) {
+                         return !is_layout_producer(inst) &&
+                                !alloc_dependencies.contains(inst) &&
+                                !layout_producing_ops.contains(inst);
+                       },
+                       true);
   }
 
   for (const auto& edges : source_consumers) {
@@ -386,12 +398,15 @@ StatusOr<bool> ForwardAllocation::Run(HloComputation* comp) {
           prefix.pop_back();
           suffix.erase(suffix.begin());
           suffix.pop_back();
-          auto src = std::make_pair(source, 0);
-          auto t =
-              TensorTarget(target, op_idx, layout_producer, suffix, prefix);
-          if (IsPathOk(prefix) && IsPathOk(suffix)) {
+          const auto prefix_path_ok = IsPrefixPathOk(prefix);
+          const auto suffix_path_ok = IsSuffixPathOk(suffix);
+          if (prefix_path_ok && suffix_path_ok) {
             if (!source_consumers[source].contains(layout_producer)) {
-              tensor_allocation_map[src] = t;
+              auto layout_output_idx = *suffix_path_ok;
+              auto src = std::make_pair(source, 0);
+              tensor_allocation_map[src] =
+                  TensorTarget(target, op_idx, layout_producer,
+                               layout_output_idx, suffix, prefix);
               // Make sure the layout_producer is executed before the source
               // instruction.
               layout_producer->AddControlDependencyTo(source);
@@ -413,9 +428,23 @@ ForwardAllocation::ForwardAllocation(CompilerAnnotations& annotations)
 
 StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   bool found_targets = false;
+
+  // An op with a layout is an op that has been identified by the Allocation
+  // Finder to have a layout, a Tensor allocation target or any op that is in
+  // the path between the two.
+  std::set<const HloInstruction*> ops_with_layout;
+  for (auto& ta : tensor_allocation_map) {
+    ops_with_layout.insert(ta.first.first);
+    ops_with_layout.insert(ta.second.tgt);
+    for (auto& inst : ta.second.forward_path) {
+      ops_with_layout.insert(inst);
+    }
+  }
+
   for (const auto& computation : module->computations()) {
     if (!IsPopOpsCall(computation)) {
-      TF_ASSIGN_OR_RETURN(bool found_targets_in_computation, Run(computation));
+      TF_ASSIGN_OR_RETURN(bool found_targets_in_computation,
+                          Run(computation, ops_with_layout));
       found_targets |= found_targets_in_computation;
     }
   }

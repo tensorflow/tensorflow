@@ -273,5 +273,22 @@ bool IsBiasAdd(const HloInstruction* inst) {
   return true;
 }
 
+bool IsPopOpsBiasAdd(const HloInstruction* inst) {
+  return IsPopOpsCall(inst, "matmul_biasadd") ||
+         IsPopOpsCall(inst, "conv_biasadd");
+}
+
+bool IsPopOpsElementwise(const HloInstruction* inst) {
+  return IsPopOpsBiasAdd(inst) || IsPopOpsCall(inst, "scaled_inplace") ||
+         inst->IsElementwise();
+}
+
+bool IsPopOpsElementwiseBinary(const HloInstruction* inst) {
+  // Scaled inplace is a special case because it has 3 operands but the 3rd one
+  // is always constant - we consider it a binary op.
+  return (IsPopOpsElementwise(inst) && inst->operand_count() == 2) ||
+         IsPopOpsCall(inst, "scaled_inplace");
+}
+
 }  // namespace poplarplugin
 }  // namespace xla

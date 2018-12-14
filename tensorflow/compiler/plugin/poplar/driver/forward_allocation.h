@@ -26,7 +26,8 @@ class ForwardAllocation : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  StatusOr<bool> Run(HloComputation* comp);
+  StatusOr<bool> Run(HloComputation* comp,
+                     std::set<const HloInstruction*>& ops_with_layout);
 
   const CompilerAnnotations& annotations;
   TensorAllocationMap& tensor_allocation_map;

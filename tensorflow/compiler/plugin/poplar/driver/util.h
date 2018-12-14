@@ -45,8 +45,6 @@ StatusOr<double> LiteralScalarDoubleToDouble(const xla::Literal& lit);
 
 bool IsPopOpsCall(const xla::HloComputation*, const std::string& postfix = "");
 bool IsPopOpsCall(const xla::HloInstruction*, const std::string& postfix = "");
-bool IsPopOpsBiasAdd(const xla::HloComputation*);
-bool IsPopOpsBiasAdd(const xla::HloInstruction*);
 
 // This function returns true if the environment variable has been set. Using
 // synthetic data means that *no data* will be copied to/from the device.

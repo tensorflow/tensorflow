@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
+#include "absl/types/optional.h"
+
 #include <vector>
 
 namespace xla {
@@ -39,7 +41,11 @@ struct TensorTarget {
   // A node in the graph which produces a tensor that influences the
   // construction of the tensor.  Example: bias tensors should match the layout
   // of a convolution output.  'layout' points to the convolution parameter.
-  const HloInstruction* layout;
+  absl::optional<const HloInstruction*> layout;
+
+  // Layout can have multiple output tensors - this index identifies which
+  // output tensor to use.
+  absl::optional<int64> layout_output_idx;
 
   // A vector of operations between the source and target operations.  Sometimes
   // it is possible to allocate a tensor for consumption by a target, and then
@@ -51,15 +57,27 @@ struct TensorTarget {
   // it into something that can be used to make a layout-dependent allocation
   // at the target site.
   std::vector<const HloInstruction*> backward_path;
+
   TensorTarget(const HloInstruction* tgt, int64 input_index,
-               const HloInstruction* layout,
+               const HloInstruction* layout, const int64 layout_output_idx,
                const std::vector<const HloInstruction*>& forward_path,
                const std::vector<const HloInstruction*>& backward_path)
       : tgt(tgt),
         input_index(input_index),
         layout(layout),
+        layout_output_idx(layout_output_idx),
         forward_path(forward_path),
         backward_path(backward_path) {}
+
+  TensorTarget(const HloInstruction* tgt, int64 input_index,
+               const std::vector<const HloInstruction*>& backward_path)
+      : tgt(tgt),
+        input_index(input_index),
+        layout(absl::nullopt),
+        layout_output_idx(absl::nullopt),
+        forward_path({}),
+        backward_path(backward_path) {}
+
   TensorTarget() = default;
 };
 

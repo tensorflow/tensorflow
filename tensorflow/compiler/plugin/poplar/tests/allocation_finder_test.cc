@@ -875,6 +875,7 @@ ENTRY c1 {
   EXPECT_EQ(t.tgt, call);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
 }
 
 TEST_F(AllocationFinderTest, BiasAddAndMultiply) {
@@ -952,6 +953,7 @@ ENTRY c1 {
   EXPECT_EQ(t.tgt, call);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
 
@@ -959,6 +961,7 @@ ENTRY c1 {
   EXPECT_EQ(t.tgt, call1);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 1);
   EXPECT_EQ(t.forward_path[0], call);
   EXPECT_EQ(t.backward_path.size(), 0);
@@ -1031,6 +1034,7 @@ ENTRY c1 {
   EXPECT_EQ(t.tgt, call);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape);
@@ -1097,6 +1101,7 @@ HloModule top
   EXPECT_EQ(t.tgt, call);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, dot);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
 }
@@ -1164,6 +1169,7 @@ HloModule top
   EXPECT_EQ(t.tgt, call);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, dot);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape);
@@ -1227,6 +1233,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.tgt, bn);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
 
@@ -1234,6 +1241,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.tgt, bn);
   EXPECT_EQ(t.input_index, 2);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
 }
@@ -1300,6 +1308,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.tgt, bn);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape1);
@@ -1308,6 +1317,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.tgt, bn);
   EXPECT_EQ(t.input_index, 2);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape2);
@@ -1432,6 +1442,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_EQ(t.tgt, bn_tr);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
 
@@ -1439,6 +1450,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_EQ(t.tgt, bn_tr);
   EXPECT_EQ(t.input_index, 2);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 0);
 }
@@ -1507,7 +1519,6 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   ForwardAllocation fwd_finder(annotations);
   unsigned num_succesful_runs = 0;
   while (fwd_finder.Run(module0).ValueOrDie()) {
-    VLOG(0) << module0->ToString();
     num_succesful_runs++;
   }
 
@@ -1522,6 +1533,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.tgt, bn);
   EXPECT_EQ(t.input_index, 1);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape1);
@@ -1530,6 +1542,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_EQ(t.tgt, bn);
   EXPECT_EQ(t.input_index, 2);
   EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
   EXPECT_EQ(t.forward_path.size(), 0);
   EXPECT_EQ(t.backward_path.size(), 1);
   EXPECT_EQ(t.backward_path[0], reshape2);
@@ -1601,6 +1614,187 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 
   // Expect no forward allocations were made.
   EXPECT_TRUE(count == 0);
+}
+
+TEST_F(AllocationFinderTest, ForwardAllocationElementwiseGetsALayout) {
+  // Check the layout is forwarded to the element wise op argument.
+  std::string hlo = R"(
+HloModule top
+
+_pop_op_conv_biasadd {
+  %arg_0 = f16[1,16,16,4] parameter(0)
+  %arg_1 = f16[4] parameter(1)
+  bcast = f16[1,16,16,4] broadcast(arg_1), dimensions={3}
+  ROOT %add = f16[1,16,16,4] add(arg_0, bcast)
+}
+
+ENTRY c1 {
+  p0 = f16[1,16,16,2] parameter(0)
+  p1 = f16[3,3,2,4] parameter(1)
+  p2 = f16[2,2] parameter(2)
+  p2_r = f16[4] reshape(p2)
+
+  conv = f16[1,16,16,4] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  call = f16[1,16,16,64] call(conv, p2_r), to_apply=_pop_op_conv_biasadd
+  p3 = f16[1,16,16,64] parameter(3)
+  ROOT add = f16[1,16,16,64] add(p3, call)
+}
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(3);
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* add = root;
+  const auto* ip3 = add->operand(0);
+  const auto* call = add->operand(1);
+  const auto* conv = call->operand(0);
+  const auto* ip2_r = call->operand(1);
+  const auto* ip2 = ip2_r->operand(0);
+  const auto* ip1 = conv->operand(1);
+  const auto* ip0 = conv->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  unsigned num_succesful_runs = 0;
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    num_succesful_runs++;
+  }
+
+  // Depending on the order we either expect this to be executed successfully 1
+  // or 2 times.
+  EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
+
+  // We have added one new entry for the bias add
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, call);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 1);
+  EXPECT_EQ(t.backward_path[0], ip2_r);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip3, 0));
+  EXPECT_EQ(t.tgt, add);
+  EXPECT_EQ(t.input_index, 0);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 1);
+  EXPECT_EQ(t.forward_path[0], call);
+  EXPECT_EQ(t.backward_path.size(), 0);
+}
+
+TEST_F(AllocationFinderTest, ForwardAllocationElementwiseGetsALayoutWithGTE) {
+  // Check the layout is forwarded to the element wise op argument with a GTE.
+  std::string hlo = R"(
+HloModule top
+ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f32[2], arg3: f32[2]) -> f32[2] {
+  %arg0 = f32[1,4,4,2]{3,2,1,0} parameter(0)
+  %arg1 = f32[1,1,2,2]{3,2,1,0} parameter(1)
+  %convolution = f32[1,4,4,2]{3,2,1,0} convolution(f32[1,4,4,2]{3,2,1,0} %arg0, f32[1,1,2,2]{3,2,1,0} %arg1), window={size=1x1}, dim_labels=b01f_01io->b01f
+  %arg2 = f32[2]{0} parameter(2)
+  %arg3 = f32[2]{0} parameter(3)
+  %batch-norm-training = (f32[1,4,4,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}) batch-norm-training(f32[1,4,4,2]{3,2,1,0} %convolution, f32[2]{0} %arg2, f32[2]{0} %arg3), epsilon=0.001, feature_index=3
+  %get-tuple-element = f32[2]{0} get-tuple-element((f32[1,4,4,2]{3,2,1,0}, f32[2]{0}, f32[2]{0}) %batch-norm-training), index=2
+  %arg4 = f32[2]{0} parameter(4)
+  ROOT %subtract = f32[2]{0} subtract(%get-tuple-element, %arg4)
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(2);
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  const auto* root = module0->entry_computation()->root_instruction();
+  const auto* subtract = root;
+  const auto* ip4 = subtract->operand(1);
+  const auto* gte = subtract->operand(0);
+  const auto* bn = gte->operand(0);
+  const auto* conv = bn->operand(0);
+  const auto* ip3 = bn->operand(2);
+  const auto* ip2 = bn->operand(1);
+  const auto* ip1 = conv->operand(1);
+  const auto* ip0 = conv->operand(0);
+
+  CompilerAnnotations annotations(module0);
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(module0).ValueOrDie());
+
+  // Will have both of the convolution parameters
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip1, 0));
+  EXPECT_EQ(t.tgt, conv);
+  EXPECT_EQ(t.input_index, 1);
+
+  ForwardAllocation fwd_finder(annotations);
+  unsigned num_succesful_runs = 0;
+  while (fwd_finder.Run(module0).ValueOrDie()) {
+    num_succesful_runs++;
+  }
+
+  // Depending on the order we either expect this to be executed successfully 1
+  // or 2 times.
+  EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
+
+  // We have added one new entry for the bias add
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 5);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
+  EXPECT_EQ(t.tgt, bn);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip3, 0));
+  EXPECT_EQ(t.tgt, bn);
+  EXPECT_EQ(t.input_index, 2);
+  EXPECT_EQ(t.layout, conv);
+  EXPECT_EQ(t.layout_output_idx, 0);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 0);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(ip4, 0));
+  EXPECT_EQ(t.tgt, subtract);
+  EXPECT_EQ(t.input_index, 1);
+  EXPECT_EQ(t.layout, bn);
+  EXPECT_EQ(t.layout_output_idx, 2);
+  EXPECT_EQ(t.forward_path.size(), 1);
+  EXPECT_EQ(t.forward_path[0], gte);
+  EXPECT_EQ(t.backward_path.size(), 0);
 }
 
 // TODO:
