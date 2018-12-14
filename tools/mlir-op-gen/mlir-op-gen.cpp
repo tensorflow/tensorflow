@@ -247,7 +247,7 @@ void OpEmitter::emitBuilder() {
   // 1. Stand-alone parameters
 
   std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
-  std::vector<Record *> operandTypes = def.getValueAsListOfDefs("operandTypes");
+  DagInit *operands = def.getValueAsDag("operands");
 
   os << "  static void build(Builder* builder, OperationState* result";
 
@@ -256,7 +256,7 @@ void OpEmitter::emitBuilder() {
     os << ", Type returnType" << i;
 
   // Emit parameters for all operands
-  for (unsigned i = 0, e = operandTypes.size(); i != e; ++i)
+  for (unsigned i = 0, e = operands->getNumArgs(); i != e; ++i)
     os << ", SSAValue* arg" << i;
 
   // Emit parameters for all attributes
@@ -278,9 +278,9 @@ void OpEmitter::emitBuilder() {
   }
 
   // Push all operands to the result
-  if (!operandTypes.empty()) {
+  if (operands->getNumArgs() != 0) {
     os << "    result->addOperands({arg0";
-    for (unsigned i = 1, e = operandTypes.size(); i != e; ++i)
+    for (unsigned i = 1, e = operands->getNumArgs(); i != e; ++i)
       os << ", arg" << i;
     os << "});\n";
   }
@@ -306,7 +306,7 @@ void OpEmitter::emitBuilder() {
      << "    result->addTypes(resultTypes);\n";
 
   // Operands
-  os << "    assert(args.size() == " << operandTypes.size()
+  os << "    assert(args.size() == " << operands->getNumArgs()
      << "u && \"mismatched number of parameters\");\n"
      << "    result->addOperands(args);\n\n";
 
@@ -385,7 +385,7 @@ void OpEmitter::emitVerifier() {
 
 void OpEmitter::emitTraits() {
   std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
-  std::vector<Record *> operandTypes = def.getValueAsListOfDefs("operandTypes");
+  auto operands = def.getValueAsDag("operands");
 
   // Add return size trait.
   switch (returnTypes.size()) {
@@ -417,13 +417,14 @@ void OpEmitter::emitTraits() {
     }
   }
 
-  if ((hasVariadicOperands || hasAtLeastNOperands) && !operandTypes.empty()) {
+  if ((hasVariadicOperands || hasAtLeastNOperands) &&
+      operands->getNumArgs() != 0) {
     PrintFatalError(def.getLoc(),
                     "Operands number definition is not consistent.");
   }
 
   // Add operand size trait if defined explicitly.
-  switch (operandTypes.size()) {
+  switch (operands->getNumArgs()) {
   case 0:
     if (!hasVariadicOperands && !hasAtLeastNOperands)
       os << ", OpTrait::ZeroOperands";
@@ -432,7 +433,7 @@ void OpEmitter::emitTraits() {
     os << ", OpTrait::OneOperand";
     break;
   default:
-    os << ", OpTrait::NOperands<" << operandTypes.size() << ">::Impl";
+    os << ", OpTrait::NOperands<" << operands->getNumArgs() << ">::Impl";
     break;
   }
 

@@ -119,6 +119,9 @@ def NoSideEffect  : OpProperty;   // op has no side effect
 // Ops
 //===----------------------------------------------------------------------===//
 
+// Marker used to identify the operand list for an op.
+def ins;
+
 // Base class for all ops.
 class Op<string mnemonic, list<OpProperty> props = []> {
   // The mnemonic of the op.
@@ -130,8 +133,8 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // Additional, longer human-readable description of what the op does.
   string description = ?;
 
-  // The list of operands of the op. Default 0 operands.
-  list<Type> operandTypes = [];
+  // Dag containting the operands of the op. Default 0 operands.
+  dag operands = (ins);
 
   // The list of return types of the op. Default no return type set.
   list<Type> returnTypes = [];
@@ -181,7 +184,8 @@ class Op<string mnemonic, list<OpProperty> props = []> {
 
 // The operand types of an op.
 class Operands<list<Type> types> {
-  list<Type> operandTypes = types;
+  // TODO(jpienaar): Switch operands to use named operand instead of using list.
+  dag operands = !dag(ins, types, ?);
 }
 
 // The result types of an op.
