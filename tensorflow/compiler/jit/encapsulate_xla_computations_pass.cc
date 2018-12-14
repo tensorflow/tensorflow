@@ -297,6 +297,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
     NodeDef def;
     def.set_name(launch->name());
+    MergeDebugInfo(NodeDebugInfo(launch->def()), &def);
 
     // Target the XLA CPU/GPU backends.
     VLOG(2) << "Replacing with XlaLaunch";
