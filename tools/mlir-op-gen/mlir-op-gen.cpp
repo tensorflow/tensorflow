@@ -219,11 +219,11 @@ void OpEmitter::emitAttrGetters() {
        << val.getName() << "() const {\n";
 
     // Return the queried attribute with the correct return type.
-    const auto &attrVal = Twine("this->getAttrOfType<") +
-                          attr.getValueAsString("storageType").trim() + ">(\"" +
-                          val.getName() + "\").getValue()";
+    std::string attrVal =
+        formatv("this->getAttrOfType<{0}>(\"{1}\").getValue()",
+                attr.getValueAsString("storageType").trim(), val.getName());
     os << "    return "
-       << formatv(attr.getValueAsString("convertFromStorage"), attrVal.str())
+       << formatv(attr.getValueAsString("convertFromStorage"), attrVal)
        << ";\n  }\n";
   }
 }
@@ -410,10 +410,11 @@ void OpEmitter::emitTraits() {
   if (recordVal && recordVal->getValue()) {
     auto traitList = dyn_cast<ListInit>(recordVal->getValue())->getValues();
     for (Init *trait : traitList) {
-      auto traitStr = StringRef(trait->getAsUnquotedString()).trim();
-      hasVariadicOperands = traitStr.contains("VariadicOperands");
-      hasAtLeastNOperands = traitStr.contains("AtLeastNOperands");
-      os << ", OpTrait::" << traitStr.trim();
+      std::string traitStr = trait->getAsUnquotedString();
+      auto ref = StringRef(traitStr).trim();
+      hasVariadicOperands = ref == "VariadicOperands";
+      hasAtLeastNOperands = ref == "AtLeastNOperands";
+      os << ", OpTrait::" << ref;
     }
   }
 
