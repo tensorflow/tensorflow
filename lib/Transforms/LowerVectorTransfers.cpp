@@ -35,6 +35,7 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/Passes.h"

@@ -29,6 +29,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
 
@@ -229,7 +230,6 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
   return memRefType.getElementType().template isa<VectorType>();
 }
 
-// TODO(ntv): make the following into MLIR instructions, then use isa<>.
 static bool isVectorTransferReadOrWrite(const Statement &stmt) {
   const auto *opStmt = cast<OperationStmt>(&stmt);
   return opStmt->isa<VectorTransferReadOp>() ||

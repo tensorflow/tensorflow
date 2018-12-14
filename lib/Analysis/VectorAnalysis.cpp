@@ -21,6 +21,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
 
