@@ -30,6 +30,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -859,7 +860,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     x = np.ones((100, 2))
     y = np.ones((100, 2))
     model.compile(
-        optimizer='sgd',
+        optimizer=gradient_descent.SGD(),
         loss='mse',
         run_eagerly=testing_utils.should_run_eagerly())
     loss = model.train_on_batch(x, y)
@@ -908,7 +909,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     model.add(keras.layers.Dense(3))
     model.compile(
         loss='mse',
-        optimizer='sgd',
+        optimizer=gradient_descent.SGD(),
         metrics=['acc'],
         run_eagerly=testing_utils.should_run_eagerly())
 
