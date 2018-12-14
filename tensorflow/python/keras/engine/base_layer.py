@@ -347,13 +347,13 @@ class Layer(checkpointable.CheckpointableBase):
         overwrite=True,
         initializer=initializer,
         dtype=dtype,
-        constraint=constraint,
         trainable=trainable and self.trainable,
         partitioner=partitioner,
         use_resource=use_resource,
         collections=collections,
         synchronization=synchronization,
         aggregation=aggregation)
+    variable._constraint = constraint
     backend.track_variable(variable)
 
     if regularizer is not None:

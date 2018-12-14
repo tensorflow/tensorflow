@@ -446,16 +446,17 @@ class VariablesTestCase(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(np.negative(value), self.evaluate(v2))
 
+  @test_util.run_v1_only("`constraint` argument is removed in TF2.0")
   def testConstraintArg(self):
     constraint = lambda x: x
-    v = variables.Variable(
+    v = variables.VariableV1(
         lambda: constant_op.constant(1.),
         constraint=constraint)
     self.assertEqual(v.constraint, constraint)
 
     constraint = 0
     with self.assertRaises(ValueError):
-      v = variables.Variable(
+      v = variables.VariableV1(
           lambda: constant_op.constant(1.),
           constraint=constraint)
 

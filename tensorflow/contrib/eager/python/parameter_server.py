@@ -79,7 +79,6 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
                trainable=True,
                name=None,
                dtype=None,
-               constraint=None,
                initialize=True,
                **unused_kwargs):
     """Creates a variable.
@@ -99,13 +98,6 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
         If None, either the datatype will be kept (if initial_value is
         a Tensor) or float32 will be used (if it is a Python object convertible
         to a Tensor).
-      constraint: An optional projection function to be applied to the variable
-        after being updated by an `Optimizer` (e.g. used to implement norm
-        constraints or value constraints for layer weights). The function must
-        take as input the unprojected Tensor representing the value of the
-        variable and return the Tensor for the projected value
-        (which must have the same shape). Constraints are not safe to
-        use when doing asynchronous distributed training.
       initialize: if True, runs initialization in eager execution; leaves the
         variable uninitialized otherwise.
 
@@ -125,9 +117,6 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
                        "tf.truncated_normal([10, 40]))`) when building "
                        "functions. Please file a feature request if this "
                        "restriction inconveniences you.")
-
-    if constraint is not None and not callable(constraint):
-      raise ValueError("The `constraint` argument must be a callable.")
 
     if isinstance(initial_value, checkpointable.CheckpointInitialValue):
       self._maybe_initialize_checkpointable()
@@ -201,7 +190,6 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
         self._dtype = initial_value.dtype.base_dtype
-        self._constraint = constraint
 
         if self._in_graph_mode:
           with ops.name_scope("IsInitialized"):

@@ -344,17 +344,14 @@ class OptimizerV2(checkpointable.CheckpointableBase):
       if isinstance(var, ops.Tensor):
         raise NotImplementedError("Trying to update a Tensor ", var)
       if isinstance(grad, ops.IndexedSlices):
-        if var.constraint is not None:
+        if backend._has_constraint(var):  # pylint: disable=protected-access
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")
         return self._resource_apply_sparse_duplicate_indices(
             grad.values, var, grad.indices)
       update_op = self._resource_apply_dense(grad, var)
-      if var.constraint is not None:
-        with ops.control_dependencies([update_op]):
-          return var.assign(var.constraint(var))
-      else:
-        return update_op
+      with ops.control_dependencies([update_op]):
+        return backend._maybe_enforce_constraint(var)  # pylint: disable=protected-access
 
     with ops.name_scope(name, self._name) as name:
       for grad, var in grads_and_vars:
