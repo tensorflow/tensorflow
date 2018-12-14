@@ -91,16 +91,25 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
-    const char* filename, TfLiteVerifier* verifier,
+    const char* filename, TfLiteVerifier* extra_verifier,
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
   std::unique_ptr<FlatBufferModel> model;
   auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
                                           error_reporter, /*use_nnapi=*/true);
-  if (verifier &&
-      !verifier->Verify(static_cast<const char*>(allocation->base()),
-                        allocation->bytes(), error_reporter)) {
+
+  flatbuffers::Verifier base_verifier(
+      reinterpret_cast<const uint8_t*>(allocation->base()),
+      allocation->bytes());
+  if (!VerifyModelBuffer(base_verifier)) {
+    error_reporter->Report("The model is not a valid Flatbuffer file");
+    return nullptr;
+  }
+
+  if (extra_verifier &&
+      !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
+                              allocation->bytes(), error_reporter)) {
     return model;
   }
   model.reset(new FlatBufferModel(allocation.release(), error_reporter));
@@ -122,17 +131,19 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
-    const char* buffer, size_t buffer_size, TfLiteVerifier* verifier,
+    const char* buffer, size_t buffer_size, TfLiteVerifier* extra_verifier,
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
   flatbuffers::Verifier base_verifier(reinterpret_cast<const uint8_t*>(buffer),
                                       buffer_size);
   if (!VerifyModelBuffer(base_verifier)) {
+    error_reporter->Report("The model is not a valid Flatbuffer buffer");
     return nullptr;
   }
 
-  if (verifier && !verifier->Verify(buffer, buffer_size, error_reporter)) {
+  if (extra_verifier &&
+      !extra_verifier->Verify(buffer, buffer_size, error_reporter)) {
     return nullptr;
   }
 
