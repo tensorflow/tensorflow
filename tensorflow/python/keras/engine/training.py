@@ -554,16 +554,23 @@ class Model(Network):
     if self._run_eagerly is True and not context.executing_eagerly():
       raise ValueError('You can only set `run_eagerly=True` if eager execution '
                        'is enabled.')
-    if self._static_graph_friendly:
+    if not self.dynamic:
       if self._run_eagerly is None:
         return False
       else:
         return self._run_eagerly
     else:
+      if not context.executing_eagerly():
+        raise ValueError('Your model contains layers that can only be '
+                         'successfully run in eager execution (layers '
+                         'constructed with `dynamic=True`). '
+                         'You must enable eager execution with '
+                         '`tf.enable_eager_execution()`.')
       if self._run_eagerly is False:
         # TODO(fchollet): consider using py_func to enable this.
         raise ValueError('Your model contains layers that can only be '
-                         'successfully run in eager execution. '
+                         'successfully run in eager execution (layers '
+                         'constructed with `dynamic=True`). '
                          'You cannot set `run_eagerly=False`.')
       return context.executing_eagerly()
 
@@ -1637,10 +1644,12 @@ class Model(Network):
 
   def _cache_output_metric_attributes(self, metrics, weighted_metrics):
     """Caches metric name and function attributes for every model output."""
-    output_shapes = [
-        None if output is None else output.get_shape().as_list()
-        for output in self.outputs
-    ]
+    output_shapes = []
+    for output in self.outputs:
+      if output is None or output.shape.rank is None:
+        output_shapes.append(None)
+      else:
+        output_shapes.append(output.shape.as_list())
     self._per_output_metrics = training_utils.collect_per_output_metric_info(
         metrics, self.output_names, output_shapes, self.loss_functions)
     self._per_output_weighted_metrics = \
@@ -2523,12 +2532,23 @@ class Model(Network):
 
     # TODO(fchollet): consider calling `_maybe_build` before calling the model.
     if outputs is None:
-      # Obtain symbolic outputs by calling the model.
-      with K.get_graph().as_default():
-        if self._expects_training_arg:
-          outputs = self.call(inputs, training=training)
-        else:
-          outputs = self.call(inputs)
+      if not self._dynamic:
+        # The network may include dynamic layers but its `call`
+        # itself isn't dynamic.
+        # Obtain symbolic outputs by calling the model.
+        with K.get_graph().as_default():
+          if self._expects_training_arg:
+            outputs = self.call(inputs, training=training)
+          else:
+            outputs = self.call(inputs)
+      else:
+        # Case: network's `call` is dynamic.
+        try:
+          outputs = self._symbolic_call(inputs)
+        except NotImplementedError:
+          # Static shape inference was not implemented for this dynamic net.
+          # Do not specify symbolic outputs.
+          outputs = None
 
     outputs = nest.flatten(outputs)
     self.outputs = outputs
