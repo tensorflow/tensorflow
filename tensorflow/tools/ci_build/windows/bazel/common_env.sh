@@ -30,6 +30,9 @@ export TMPDIR=${TMPDIR:-"C:/tmp"}
 export TMPDIR=$(cygpath -m "$TMPDIR")
 mkdir -p "$TMPDIR"
 
+# Add timestamps before each command.
+export PS4='+ $(date) + '
+
 # Set bash path
 export BAZEL_SH=${BAZEL_SH:-"C:/tools/msys64/usr/bin/bash"}
 
