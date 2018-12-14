@@ -83,7 +83,7 @@ class ClientLibrary {
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
   //   device_set: Set of device IDs for which the stream executor will be
-  //   created for, for the given platform.
+  //   created, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       se::Platform* platform = nullptr,
       const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
