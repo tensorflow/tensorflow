@@ -97,22 +97,31 @@ namespace {
 // replaced by d0 - 4*q with q being introduced: the expression then simplifies
 // to: (d0 - (d0 - 4q) + 4) = 4q + 4, modulo of which w.r.t 4 simplifies to
 // zero. Note that an affine expression may not always be expressible in a sum
-// of products form due to the presence of modulo/floordiv/ceildiv expressions
+// of products form involving just the original dimensional and symbolic
+// identifiers, due to the presence of modulo/floordiv/ceildiv expressions
 // that may not be eliminated after simplification; in such cases, the final
-// expression can be reconstructed by replacing the local identifier with its
-// explicit form stored in localExprs (note that the explicit form itself would
-// have been simplified and not necessarily the original form).
+// expression can be reconstructed by replacing the local identifiers with their
+// corresponding explicit form stored in 'localExprs' (note that the explicit
+// form itself would have been simplified).
 //
 // This is a linear time post order walk for an affine expression that attempts
 // the above simplifications through visit methods, with partial results being
 // stored in 'operandExprStack'. When a parent expr is visited, the flattened
 // expressions corresponding to its two operands would already be on the stack -
-// the parent expr looks at the two flattened expressions and combines the two.
-// It pops off the operand expressions and pushes the combined result (although
-// this is done in-place on its LHS operand expr. When the walk is completed,
-// the flattened form of the top-level expression would be left on the stack.
+// the parent expression looks at the two flattened expressions and combines the
+// two. It pops off the operand expressions and pushes the combined result
+// (although this is done in-place on its LHS operand expr). When the walk is
+// completed, the flattened form of the top-level expression would be left on
+// the stack.
 //
-class AffineExprFlattener : public AffineExprVisitor<AffineExprFlattener> {
+// A flattener can be repeatedly used for multiple affine expressions that bind
+// to the same operands, for example, for all result expressions of an
+// AffineMap or AffineValueMap. In such cases, using it for multiple expressions
+// is more efficient than creating a new flattener for each expression since
+// common idenical div and mod expressions appearing across different
+// expressions are mapped to the local identifier (same column position in
+// 'cst').
+struct AffineExprFlattener : public AffineExprVisitor<AffineExprFlattener> {
 public:
   // Flattend expression layout: [dims, symbols, locals, constant]
   // Stack that holds the LHS and RHS operands while visiting a binary op expr.
@@ -123,10 +132,6 @@ public:
   // Constraints connecting newly introduced local variables to existing
   // (dimensional and symbolic) ones.
   FlatAffineConstraints cst;
-
-  inline unsigned getNumCols() const {
-    return numDims + numSymbols + numLocals + 1;
-  }
 
   unsigned numDims;
   unsigned numSymbols;
@@ -204,11 +209,18 @@ public:
     // q * c) where q is the existential quantifier introduced.
     auto a = toAffineExpr(lhs, numDims, numSymbols, localExprs, context);
     auto b = getAffineConstantExpr(rhsConst, context);
-    addLocalId(a.floorDiv(b));
-    lhs[getLocalVarStartIndex() + numLocals - 1] = -rhsConst;
-    // Update cst:  0 <= expr1 - c * expr2  <= c - 1.
-    cst.addConstantLowerBound(lhs, 0);
-    cst.addConstantUpperBound(lhs, rhsConst - 1);
+    int loc;
+    auto floorDiv = a.floorDiv(b);
+    if ((loc = findLocalId(floorDiv)) == -1) {
+      addLocalId(floorDiv);
+      lhs[getLocalVarStartIndex() + numLocals - 1] = -rhsConst;
+      // Update cst:  0 <= expr1 - c * expr2  <= c - 1.
+      cst.addConstantLowerBound(lhs, 0);
+      cst.addConstantUpperBound(lhs, rhsConst - 1);
+    } else {
+      // Reuse the existing local id.
+      lhs[getLocalVarStartIndex() + loc] = -rhsConst;
+    }
   }
   void visitCeilDivExpr(AffineBinaryOpExpr expr) {
     visitDivExpr(expr, /*isCeil=*/true);
@@ -232,6 +244,22 @@ public:
     operandExprStack.emplace_back(SmallVector<int64_t, 32>(getNumCols(), 0));
     auto &eq = operandExprStack.back();
     eq[getConstantIndex()] = expr.getValue();
+  }
+
+  // Simplify the affine expression by flattening it and reconstructing it.
+  AffineExpr simplifyAffineExpr(AffineExpr expr) {
+    // TODO(bondhugula): only pure affine for now. The simplification here can
+    // be extended to semi-affine maps in the future.
+    if (!expr.isPureAffine())
+      return expr;
+
+    walkPostOrder(expr);
+    ArrayRef<int64_t> flattenedExpr = operandExprStack.back();
+    auto simplifiedExpr = toAffineExpr(flattenedExpr, numDims, numSymbols,
+                                       localExprs, expr.getContext());
+    operandExprStack.pop_back();
+    assert(operandExprStack.empty());
+    return simplifiedExpr;
   }
 
 private:
@@ -268,30 +296,32 @@ private:
     // by a new identifier, q.
     auto a = toAffineExpr(lhs, numDims, numSymbols, localExprs, context);
     auto b = getAffineConstantExpr(denominator, context);
-    if (isCeil) {
-      addLocalId(a.ceilDiv(b));
-    } else {
-      addLocalId(a.floorDiv(b));
-    }
 
-    std::vector<int64_t> bound(lhs.size(), 0);
-    bound[getLocalVarStartIndex() + numLocals - 1] = rhsConst;
-
-    if (!isCeil) {
-      // q = lhs floordiv c  <=>  c*q <= lhs <= c*q + c - 1.
-      cst.addLowerBound(lhs, bound);
-      bound[bound.size() - 1] = rhsConst - 1;
-      cst.addUpperBound(lhs, bound);
-    } else {
-      // q = lhs ceildiv c  <=>  c*q - (c - 1) <= lhs <= c*q.
-      cst.addUpperBound(lhs, bound);
-      bound[bound.size() - 1] = -(rhsConst - 1);
-      cst.addLowerBound(lhs, bound);
+    int loc;
+    auto div = isCeil ? a.ceilDiv(b) : a.floorDiv(b);
+    if ((loc = findLocalId(div)) == -1) {
+      addLocalId(div);
+      std::vector<int64_t> bound(lhs.size(), 0);
+      bound[getLocalVarStartIndex() + numLocals - 1] = rhsConst;
+      if (!isCeil) {
+        // q = lhs floordiv c  <=>  c*q <= lhs <= c*q + c - 1.
+        cst.addLowerBound(lhs, bound);
+        bound[bound.size() - 1] = rhsConst - 1;
+        cst.addUpperBound(lhs, bound);
+      } else {
+        // q = lhs ceildiv c  <=>  c*q - (c - 1) <= lhs <= c*q.
+        cst.addUpperBound(lhs, bound);
+        bound[bound.size() - 1] = -(rhsConst - 1);
+        cst.addLowerBound(lhs, bound);
+      }
     }
     // Set the expression on stack to the local var introduced to capture the
     // result of the division (floor or ceil).
     std::fill(lhs.begin(), lhs.end(), 0);
-    lhs[getLocalVarStartIndex() + numLocals - 1] = 1;
+    if (loc == -1)
+      lhs[getLocalVarStartIndex() + numLocals - 1] = 1;
+    else
+      lhs[getLocalVarStartIndex() + loc] = 1;
   }
 
   // Add an existential quantifier (used to flatten a mod, floordiv, ceildiv
@@ -306,6 +336,17 @@ private:
     cst.addLocalId(cst.getNumLocalIds());
   }
 
+  int findLocalId(AffineExpr localExpr) {
+    SmallVectorImpl<AffineExpr>::iterator it;
+    if ((it = std::find(localExprs.begin(), localExprs.end(), localExpr)) ==
+        localExprs.end())
+      return -1;
+    return it - localExprs.begin();
+  }
+
+  inline unsigned getNumCols() const {
+    return numDims + numSymbols + numLocals + 1;
+  }
   inline unsigned getConstantIndex() const { return getNumCols() - 1; }
   inline unsigned getLocalVarStartIndex() const { return numDims + numSymbols; }
   inline unsigned getSymbolStartIndex() const { return numDims; }
@@ -316,19 +357,8 @@ private:
 
 AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
                                     unsigned numSymbols) {
-  // TODO(bondhugula): only pure affine for now. The simplification here can be
-  // extended to semi-affine maps in the future.
-  if (!expr.isPureAffine())
-    return expr;
-
   AffineExprFlattener flattener(numDims, numSymbols, expr.getContext());
-  flattener.walkPostOrder(expr);
-  ArrayRef<int64_t> flattenedExpr = flattener.operandExprStack.back();
-  auto simplifiedExpr = toAffineExpr(flattenedExpr, numDims, numSymbols,
-                                     flattener.localExprs, expr.getContext());
-  flattener.operandExprStack.pop_back();
-  assert(flattener.operandExprStack.empty());
-  return simplifiedExpr;
+  return flattener.simplifyAffineExpr(expr);
 }
 
 /// Returns the AffineExpr that results from substituting `exprs[i]` into `e`
@@ -373,27 +403,81 @@ AffineExpr mlir::composeWithUnboundedMap(AffineExpr e, AffineMap g) {
                             g.getNumSymbols());
 }
 
+// Flattens the expressions in map. Returns true on success or false
+// if 'expr' was unable to be flattened (i.e., semi-affine expressions not
+// handled yet).
+static bool getFlattenedAffineExprs(
+    ArrayRef<AffineExpr> exprs, unsigned numDims, unsigned numSymbols,
+    std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *cst) {
+  if (exprs.empty()) {
+    cst->reset(numDims, numSymbols);
+    return true;
+  }
+
+  flattenedExprs->reserve(exprs.size());
+
+  AffineExprFlattener flattener(numDims, numSymbols, exprs[0].getContext());
+  // Use the same flattener to simplify each expression successively. This way
+  // local identifiers / expressions are shared.
+  for (auto expr : exprs) {
+    if (!expr.isPureAffine())
+      return false;
+
+    flattener.walkPostOrder(expr);
+
+    SmallVector<int64_t, 8> flattenedExpr;
+    flattenedExpr.reserve(flattener.numDims + flattener.numSymbols +
+                          flattener.numLocals + 1);
+    for (auto v : flattener.operandExprStack.back()) {
+      flattenedExpr.push_back(v);
+    }
+    flattenedExprs->push_back(flattenedExpr);
+    flattener.operandExprStack.pop_back();
+  }
+  if (cst)
+    cst->clearAndCopyFrom(flattener.cst);
+
+  return true;
+}
+
 // Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
-// if 'expr' was unable to be flattened (i.e., semi-affine expression has not
-// been implemented yet).
+// if 'expr' was unable to be flattened (semi-affine expressions not handled
+// yet).
 bool mlir::getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                                   unsigned numSymbols,
                                   llvm::SmallVectorImpl<int64_t> *flattenedExpr,
                                   FlatAffineConstraints *cst) {
-  // TODO(bondhugula): only pure affine for now. The simplification here can be
-  // extended to semi-affine maps in the future.
-  if (!expr.isPureAffine())
-    return false;
+  std::vector<SmallVector<int64_t, 8>> flattenedExprs;
+  bool ret = ::getFlattenedAffineExprs({expr}, numDims, numSymbols,
+                                       &flattenedExprs, cst);
+  *flattenedExpr = flattenedExprs[0];
+  return ret;
+}
 
-  AffineExprFlattener flattener(numDims, numSymbols, expr.getContext());
-  flattener.walkPostOrder(expr);
-  if (cst)
-    cst->clearAndCopyFrom(flattener.cst);
-
-  for (auto v : flattener.operandExprStack.back()) {
-    flattenedExpr->push_back(v);
+/// Flattens the expressions in map. Returns true on success or false
+/// if 'expr' was unable to be flattened (i.e., semi-affine expressions not
+/// handled yet).
+bool mlir::getFlattenedAffineExprs(
+    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *cst) {
+  if (map.getNumResults() == 0) {
+    cst->reset(map.getNumDims(), map.getNumSymbols());
+    return true;
   }
-  return true;
+  return ::getFlattenedAffineExprs(map.getResults(), map.getNumDims(),
+                                   map.getNumSymbols(), flattenedExprs, cst);
+}
+
+bool mlir::getFlattenedAffineExprs(
+    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *cst) {
+  if (set.getNumConstraints() == 0) {
+    cst->reset(set.getNumDims(), set.getNumSymbols());
+    return true;
+  }
+  return ::getFlattenedAffineExprs(set.getConstraints(), set.getNumDims(),
+                                   set.getNumSymbols(), flattenedExprs, cst);
 }
 
 /// Returns the sequence of AffineApplyOp OperationStmts operation in

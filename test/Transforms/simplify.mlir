@@ -31,7 +31,7 @@
 // CHECK-DAG: #set2 = (d0, d1)[s0, s1] : (1 == 0)
 // CHECK-DAG: #set3 = (d0, d1)[s0, s1] : (d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0, d0 * 5 - d1 * 11 + s0 * 7 + s1 == 0, d0 * 11 + d1 * 7 - s0 * 5 + s1 == 0, d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0)
 // CHECK-DAG: [[SET_EMPTY_1D:#set[0-9]+]] = (d0) : (1 == 0)
-// CHECK-DAG: #set5 = (d0)[s0, s1] : (1 == 0)
+// CHECK-DAG: [[SET_EMPTY_1D_2S:#set[0-9]+]] = (d0)[s0, s1] : (1 == 0)
 // CHECK-DAG: [[SET_EMPTY_3D:#set[0-9]+]] = (d0, d1, d2) : (1 == 0)
 
 // Set for test case: test_gaussian_elimination_non_empty_set2
@@ -166,7 +166,7 @@ mlfunc @test_empty_set(%N : index) {
       if (d0) : (d0 >= 0, -d0 - 1 >= 0)(%i) {
         "foo"() : () -> ()
       }
-      // CHECK: if #set5(%i0)[%arg0, %arg0]
+      // CHECK: if [[SET_EMPTY_1D_2S]](%i0)[%arg0, %arg0]
       if (d0)[s0, s1] : (d0 >= 0, -d0 + s0 - 1 >= 0, -s0 >= 0)(%i)[%N, %N] {
         "bar"() : () -> ()
       }
@@ -212,6 +212,13 @@ mlfunc @test_empty_set(%N : index) {
       if (d0, d1, d2) : (d0 - 4*d2 == 0, d0 + 8*d1 - 9 >= 0, -d0 - 8*d1 + 11 >=  0)(%k, %k, %l) {
         "foo"() : () -> ()
       }
+    }
+  }
+
+  for %m = 0 to 10 {
+    // CHECK: if [[SET_EMPTY_1D]](%i{{[0-9]+}})
+    if (d0) : (d0 mod 2 - 3 == 0) (%m) {
+      "foo"() : () -> ()
     }
   }
 

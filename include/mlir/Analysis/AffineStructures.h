@@ -46,6 +46,7 @@ public:
   MutableAffineMap() {}
   MutableAffineMap(AffineMap map);
 
+  ArrayRef<AffineExpr> getResults() const { return results; }
   AffineExpr getResult(unsigned idx) const { return results[idx]; }
   void setResult(unsigned idx, AffineExpr result) { results[idx] = result; }
   unsigned getNumResults() const { return results.size(); }
@@ -394,7 +395,9 @@ public:
   /// right identifier is first looked up using forStmt's MLValue. Returns
   /// false for the yet unimplemented/unsupported cases, and true if the
   /// information is succesfully added. Asserts if the MLValue corresponding to
-  /// the 'for' statement isn't found in the system.
+  /// the 'for' statement isn't found in the system. Any new identifiers that
+  /// may need to be added due to the bound operands of the 'for' statement are
+  /// added as trailing dimensional identifiers (just before symbolic ones).
   bool addBoundsFromForStmt(const ForStmt &forStmt);
 
   /// Adds an upper bound expression for the specified expression.
@@ -426,10 +429,15 @@ public:
   void addId(IdKind kind, unsigned pos, MLValue *id = nullptr);
 
   /// Composes the affine value map with this FlatAffineConstrains, adding the
-  /// results of the map as dimensions at the specified position and with the
-  /// dimensions set to the equalities specified by the value map. Returns false
-  /// if the composition fails (when vMap is a semi-affine map).
-  bool composeMap(AffineValueMap *vMap, unsigned pos = 0);
+  /// results of the map as dimensions at the front [0, vMap->getNumResults())
+  /// and with the dimensions set to the equalities specified by the value map.
+  /// Returns false if the composition fails (when vMap is a semi-affine map).
+  /// The vMap's operand MLValue's are used to look up the right positions in
+  /// the FlatAffineConstraints with which to associate. The dimensional and
+  /// symbolic operands of vMap should match 1:1 (in the same order) with those
+  /// of this constraint system, but the latter could have additional trailing
+  /// operands.
+  bool composeMap(AffineValueMap *vMap);
 
   /// Projects out (aka eliminates) 'num' identifiers starting at position
   /// 'pos'. The resulting constraint system is the shadow along the dimensions

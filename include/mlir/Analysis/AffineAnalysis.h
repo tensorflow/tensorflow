@@ -36,6 +36,7 @@ class AffineValueMap;
 class ForStmt;
 class MLIRContext;
 class FlatAffineConstraints;
+class IntegerSet;
 class MLValue;
 class OperationStmt;
 class Statement;
@@ -85,7 +86,7 @@ void getReachableAffineApplyOps(
 void forwardSubstituteReachableOps(AffineValueMap *valueMap);
 
 /// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
-/// if 'expr' was unable to be flattened (i.e., semi-affine is not yet handled).
+/// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
 /// 'cst' contains constraints that connect newly introduced local identifiers
 /// to existing dimensional and / symbolic identifiers. See documentation for
 /// AffineExprFlattener on how mod's and div's are flattened.
@@ -93,6 +94,23 @@ bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                             unsigned numSymbols,
                             llvm::SmallVectorImpl<int64_t> *flattenedExpr,
                             FlatAffineConstraints *cst = nullptr);
+
+/// Flattens the result expressions of the map to their corresponding flattened
+/// forms and set in 'flattenedExprs'. Returns true on success or false
+/// if any expression in the map could not be flattened (i.e., semi-affine is
+/// not yet handled). 'cst' contains constraints that connect newly introduced
+/// local identifiers to existing dimensional and / symbolic identifiers. See
+/// documentation for AffineExprFlattener on how mod's and div's are flattened.
+/// For all affine expressions that share the same operands (like those of an
+/// affine map), this method should be used instead of repeatedly calling
+/// getFlattenedAffineExpr since local variables added to deal with div's and
+/// mod's will be reused across expressions.
+bool getFlattenedAffineExprs(
+    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *cst = nullptr);
+bool getFlattenedAffineExprs(
+    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *cst = nullptr);
 
 /// Adds constraints capturing the index set of the ML values in indices to
 /// 'domain'.

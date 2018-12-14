@@ -516,18 +516,29 @@ FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
   inequalities.reserve(set.getNumInequalities() * numReservedCols);
   ids.resize(numIds, None);
 
-  for (unsigned i = 0, e = set.getNumConstraints(); i < e; ++i) {
-    AffineExpr expr = set.getConstraint(i);
-    SmallVector<int64_t, 4> flattenedExpr;
-    getFlattenedAffineExpr(expr, set.getNumDims(), set.getNumSymbols(),
-                           &flattenedExpr);
-    assert(flattenedExpr.size() == getNumCols());
+  // Flatten expressions and add them to the constraint system.
+  std::vector<SmallVector<int64_t, 8>> flatExprs;
+  FlatAffineConstraints cst;
+  if (!getFlattenedAffineExprs(set, &flatExprs, &cst)) {
+    assert(false && "flattening unimplemented for semi-affine integer sets");
+    return;
+  }
+  assert(flatExprs.size() == set.getNumConstraints());
+  for (unsigned l = 0, e = cst.getNumLocalIds(); l < e; l++) {
+    addLocalId(getNumLocalIds());
+  }
+
+  for (unsigned i = 0, e = flatExprs.size(); i < e; ++i) {
+    const auto &flatExpr = flatExprs[i];
+    assert(flatExpr.size() == getNumCols());
     if (set.getEqFlags()[i]) {
-      addEquality(flattenedExpr);
+      addEquality(flatExpr);
     } else {
-      addInequality(flattenedExpr);
+      addInequality(flatExpr);
     }
   }
+  // Add the other constraints involving local id's from flattening.
+  append(cst);
 }
 
 void FlatAffineConstraints::reset(unsigned numReservedInequalities,
@@ -567,6 +578,7 @@ void FlatAffineConstraints::reset(unsigned newNumDims, unsigned newNumSymbols,
 void FlatAffineConstraints::append(const FlatAffineConstraints &other) {
   assert(other.getNumCols() == getNumCols());
   assert(other.getNumDimIds() == getNumDimIds());
+  assert(other.getNumSymbolIds() == getNumSymbolIds());
 
   inequalities.reserve(inequalities.size() +
                        other.getNumInequalities() * numReservedCols);
@@ -665,14 +677,65 @@ void FlatAffineConstraints::addId(IdKind kind, unsigned pos, MLValue *id) {
   assert(ids.size() == getNumIds());
 }
 
-// This routine may add additional local variables if the flattened
-// expression corresponding to the map has such variables due to the presence of
+// This routine may add additional local variables if the flattened expression
+// corresponding to the map has such variables due to the presence of
 // mod's, ceildiv's, and floordiv's.
-bool FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
-  assert(pos <= getNumIds() && "invalid position");
-  assert(vMap->getNumSymbols() == getNumSymbolIds());
+bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
+  // Assert if the map and this constraint set aren't associated with the same
+  // identifiers in the same order.
+  assert(vMap->getNumDims() <= getNumDimIds());
+  assert(vMap->getNumSymbols() <= getNumSymbolIds());
+  for (unsigned i = 0, e = vMap->getNumDims(); i < e; i++) {
+    assert(ids[i].hasValue());
+    assert(vMap->getOperand(i) == ids[i].getValue());
+  }
+  for (unsigned i = 0, e = vMap->getNumSymbols(); i < e; i++) {
+    assert(ids[numDims + i].hasValue());
+    assert(vMap->getOperand(vMap->getNumDims() + i) ==
+           ids[numDims + i].getValue());
+  }
 
-  AffineMap map = vMap->getAffineMap();
+  std::vector<SmallVector<int64_t, 8>> flatExprs;
+  FlatAffineConstraints cst;
+  if (!getFlattenedAffineExprs(vMap->getAffineMap(), &flatExprs, &cst)) {
+    LLVM_DEBUG(llvm::dbgs()
+               << "composition unimplemented for semi-affine maps");
+    return false;
+  }
+  assert(flatExprs.size() == vMap->getNumResults());
+
+  // Make the value map and the flat affine cst dimensions compatible.
+  // A lot of this code will be refactored/cleaned up.
+  // TODO(bondhugula): the next ~20 lines of code is pretty UGLY. This needs
+  // to be factored out into an FlatAffineConstraints::alignAndMerge().
+  for (unsigned l = 0, e = cst.getNumLocalIds(); l < e; l++) {
+    addLocalId(0);
+  }
+
+  for (unsigned t = 0, e = vMap->getNumResults(); t < e; t++) {
+    // TODO: Consider using a batched version to add a range of IDs.
+    addDimId(0);
+    cst.addDimId(0);
+  }
+
+  assert(cst.getNumDimIds() <= getNumDimIds());
+  for (unsigned t = 0, e = getNumDimIds() - cst.getNumDimIds(); t < e; t++) {
+    // Dimensions that are in 'this' but not in vMap/cst are added at the end.
+    cst.addDimId(cst.getNumDimIds());
+  }
+  assert(cst.getNumSymbolIds() <= getNumSymbolIds());
+  for (unsigned t = 0, e = getNumSymbolIds() - cst.getNumSymbolIds(); t < e;
+       t++) {
+    // Dimensions that are in 'this' but not in vMap/cst are added at the end.
+    cst.addSymbolId(cst.getNumSymbolIds());
+  }
+  assert(cst.getNumLocalIds() <= getNumLocalIds());
+  for (unsigned t = 0, e = getNumLocalIds() - cst.getNumLocalIds(); t < e;
+       t++) {
+    cst.addLocalId(cst.getNumLocalIds());
+  }
+  /// Finally, append cst to this constraint set.
+  append(cst);
 
   // We add one equality for each result connecting the result dim of the map to
   // the other identifiers.
@@ -680,72 +743,40 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
   // iteration/result of the value map, we are adding the equality:
   //  d_r - 16*i0 - i1 = 0. Hence, when flattening say (i0 + 1, i0 + 8*i2), we
   //  add two equalities overall: d_0 - i0 - 1 == 0, d1 - i0 - 8*i2 == 0.
-  for (unsigned r = 0, e = map.getNumResults(); r < e; r++) {
-    // Add dimension.
-    addDimId(pos + r);
-    SmallVector<int64_t, 4> eq;
-    eq.reserve(getNumCols());
-    FlatAffineConstraints cst;
-    bool ret = getFlattenedAffineExpr(map.getResult(r), map.getNumDims(),
-                                      map.getNumSymbols(), &eq, &cst);
-    if (!ret) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "composition unimplemented for semi-affine maps");
-      return false;
-    }
-    // Make the value map and the flat affine cst dimensions compatible.
-    // A lot of this code will be refactored/cleaned up.
-    for (unsigned l = 0, e = cst.getNumLocalIds(); l < e; l++) {
-      addLocalId(0);
-    }
-    // TODO(bondhugula): the next ~20 lines of code is pretty UGLY. This needs
-    // to be factored out into an FlatAffineConstraints::alignAndMerge().
-    for (unsigned t = 0, e = r + 1; t < e; t++) {
-      // TODO: Consider using a batched version to add a range of IDs.
-      cst.addDimId(0);
-    }
-
-    assert(cst.getNumDimIds() <= getNumDimIds());
-    for (unsigned t = 0, e = getNumDimIds() - cst.getNumDimIds(); t < e; t++) {
-      // Dimensions that are in 'this' but not in vMap/cst are added at the end.
-      cst.addDimId(cst.getNumDimIds());
-    }
-    assert(cst.getNumLocalIds() <= getNumLocalIds());
-    for (unsigned t = 0, e = getNumLocalIds() - cst.getNumLocalIds(); t < e;
-         t++) {
-      cst.addLocalId(cst.getNumLocalIds());
-    }
-    /// Finally, append cst to this constraint set.
-    append(cst);
+  for (unsigned r = 0, e = flatExprs.size(); r < e; r++) {
+    const auto &flatExpr = flatExprs[r];
 
     // eqToAdd is the equality corresponding to the flattened affine expression.
     SmallVector<int64_t, 8> eqToAdd(getNumCols(), 0);
     // Set the coefficient for this result to one.
     eqToAdd[r] = 1;
 
+    assert(flatExpr.size() >= vMap->getNumOperands() + 1);
+
     // Dims and symbols.
     for (unsigned i = 0, e = vMap->getNumOperands(); i < e; i++) {
       unsigned loc;
       bool ret = findId(*cast<MLValue>(vMap->getOperand(i)), &loc);
-      assert(ret && "id expected, but not found");
+      assert(ret && "value map's id can't be found");
       (void)ret;
-      // We need to negate 'eq' since the newly added dimension is going to be
-      // set to this one.
-      eqToAdd[loc] = -eq[i];
+      // We need to negate 'eq[r]' since the newly added dimension is going to
+      // be set to this one.
+      eqToAdd[loc] = -flatExpr[i];
     }
     // Local vars common to eq and cst are at the beginning.
     int j = getNumDimIds() + getNumSymbolIds();
-    int end = eq.size() - 1;
+    int end = flatExpr.size() - 1;
     for (int i = vMap->getNumOperands(); i < end; i++, j++) {
-      eqToAdd[j] = -eq[i];
+      eqToAdd[j] = -flatExpr[i];
     }
 
     // Constant term.
-    eqToAdd[getNumCols() - 1] = -eq[eq.size() - 1];
+    eqToAdd[getNumCols() - 1] = -flatExpr[flatExpr.size() - 1];
 
     // Add the equality connecting the result of the map to this constraint set.
     addEquality(eqToAdd);
   }
+
   return true;
 }
 
@@ -1186,13 +1217,15 @@ bool FlatAffineConstraints::addBoundsFromForStmt(const ForStmt &forStmt) {
   auto addLowerOrUpperBound = [&](bool lower) -> bool {
     auto operands = lower ? forStmt.getLowerBoundOperands()
                           : forStmt.getUpperBoundOperands();
-
     SmallVector<unsigned, 8> positions;
     for (const auto &operand : operands) {
       unsigned loc;
       // TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds
       // code in dependence analysis.
       if (!findId(*operand, &loc)) {
+        // Adding this as a dimensional identifier even if this operand was a
+        // symblic operand to the bound map. TODO(mlir-team): if needed, check
+        // which one it is and add as dimensional or a symbolic one.
         addDimId(getNumDimIds(), const_cast<MLValue *>(operand));
         loc = getNumDimIds() - 1;
       }
@@ -1202,35 +1235,29 @@ bool FlatAffineConstraints::addBoundsFromForStmt(const ForStmt &forStmt) {
     auto boundMap =
         lower ? forStmt.getLowerBoundMap() : forStmt.getUpperBoundMap();
 
-    for (auto result : boundMap.getResults()) {
-      SmallVector<int64_t, 4> flattenedExpr;
-      SmallVector<int64_t, 4> ineq(getNumCols(), 0);
-      // TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds in
-      // dependence analysis.
-      FlatAffineConstraints cst;
-      if (!getFlattenedAffineExpr(result, boundMap.getNumDims(),
-                                  boundMap.getNumSymbols(), &flattenedExpr,
-                                  &cst)) {
-        LLVM_DEBUG(llvm::dbgs()
-                   << "semi-affine expressions not yet supported\n");
-        return false;
-      }
-      if (cst.getNumLocalIds() > 0) {
-        LLVM_DEBUG(
-            llvm::dbgs()
-            << "loop bounds with mod/floordiv expr's not yet supported\n");
-        return false;
-      }
+    FlatAffineConstraints cst;
+    std::vector<SmallVector<int64_t, 8>> flatExprs;
+    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &cst)) {
+      LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
+      return false;
+    }
+    if (cst.getNumLocalIds() > 0) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "loop bounds with mod/floordiv expr's not yet supported\n");
+      return false;
+    }
 
+    for (const auto &flatExpr : flatExprs) {
+      SmallVector<int64_t, 4> ineq(getNumCols(), 0);
       ineq[pos] = lower ? 1 : -1;
       for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
-        ineq[positions[j]] = lower ? -flattenedExpr[j] : flattenedExpr[j];
+        ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
       }
       // Constant term.
       ineq[getNumCols() - 1] =
-          lower ? -flattenedExpr[flattenedExpr.size() - 1]
+          lower ? -flatExpr[flatExpr.size() - 1]
                 // Upper bound in flattenedExpr is an exclusive one.
-                : flattenedExpr[flattenedExpr.size() - 1] - 1;
+                : flatExpr[flatExpr.size() - 1] - 1;
       addInequality(ineq);
     }
     return true;

@@ -37,7 +37,7 @@ mlfunc @test() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_
+// CHECK-LABEL: mlfunc @test_mod_floordiv_ceildiv
 mlfunc @test_mod_floordiv_ceildiv() {
   %zero = constant 0 : index
   %A = alloc() : memref<128 x 64 x 64 x i32>
@@ -79,6 +79,38 @@ mlfunc @test_no_out_of_bounds() {
       %idy = affine_apply (d0, d1) -> (d0 floordiv 256)(%i, %i)
       %y  = load %B[%idy] : memref<1 x i32>
     } // CHECK-NEXT }
+  }
+  return
+}
+
+// CHECK-LABEL: mlfunc @mod_div
+mlfunc @mod_div() {
+  %zero = constant 0 : index
+  %A = alloc() : memref<128 x 64 x 64 x i32>
+
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
+      %idx = affine_apply (d0, d1, d2) -> (d0 mod 128 + 1, d1 floordiv 4 + 1, d2 ceildiv 4)(%i, %j, %j)
+      %x  = load %A[%idx#0, %idx#1, %idx#2] : memref<128 x 64 x 64 x i32>
+      // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
+      // expected-error@-2 {{'load' op memref out of upper bound access along dimension #2}}
+      // expected-error@-3 {{'load' op memref out of upper bound access along dimension #3}}
+      %idy = affine_apply (d0, d1, d2) -> (d0 mod 128, d1 floordiv 4, d2 ceildiv 4 - 1)(%i, %j, %j)
+      %y  = load %A[%idy#0, %idy#1, %idy#2] : memref<128 x 64 x 64 x i32> // expected-error {{'load' op memref out of lower bound access along dimension #3}}
+    }
+  }
+  return
+}
+
+// Tests with nested mod's and floordiv's.
+// CHECK-LABEL: mlfunc @mod_floordiv_nested() {
+mlfunc @mod_floordiv_nested() {
+  %A = alloc() : memref<256 x 256 x i32>
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
+      %idx = affine_apply (d0, d1) -> ((d0 mod 1024) floordiv 4, (((d1 mod 128) mod 32) ceildiv 4) * 32)(%i, %j)
+      load %A[%idx#0, %idx#1] : memref<256 x 256 x i32> // expected-error {{'load' op memref out of upper bound access along dimension #2}}
+    }
   }
   return
 }
