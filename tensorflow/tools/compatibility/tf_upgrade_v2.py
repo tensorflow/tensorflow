@@ -470,6 +470,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.rnn.RNNCell":
+            "tf.nn.rnn_cell.RNNCell",
+        "tf.contrib.rnn.LSTMStateTuple":
+            "tf.nn.rnn_cell.LSTMStateTuple",
         "tf.contrib.framework.sort":
             "tf.sort",
         "tf.contrib.framework.argsort":
