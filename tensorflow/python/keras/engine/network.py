@@ -142,7 +142,6 @@ class Network(base_layer.Layer):
     self._metrics_tensors = {}
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
-    self._call_is_graph_friendly = True
     if context.executing_eagerly():
       self._graph = None
     else:
@@ -185,6 +184,7 @@ class Network(base_layer.Layer):
     self.built = True
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
+    self._dynamic = False
 
     self._input_layers = []
     self._output_layers = []
@@ -251,9 +251,10 @@ class Network(base_layer.Layer):
       self.output_names.append(layer.name)
 
   @checkpointable.no_automatic_dependency_tracking
-  def _init_subclassed_network(self, name=None):
+  def _init_subclassed_network(self, name=None, dynamic=False):
     self._base_init(name=name)
     self._is_graph_network = False
+    self._dynamic = dynamic
     call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
@@ -265,10 +266,10 @@ class Network(base_layer.Layer):
     self.built = False
 
   @property
-  def _static_graph_friendly(self):
+  def dynamic(self):
     if self._is_graph_network:
-      return all(layer._static_graph_friendly for layer in self.layers)
-    return self._call_is_graph_friendly
+      return any(layer.dynamic for layer in self.layers)
+    return self._dynamic or any(layer.dynamic for layer in self.layers)
 
   def _determine_call_convention(self, call_argspec):
     """Decides how `self.call()` is invoked. See `CallConvention`."""
@@ -998,6 +999,8 @@ class Network(base_layer.Layer):
               else:
                 if context.executing_eagerly():
                   output_tensors = layer(computed_tensor, **kwargs)
+                elif layer.dynamic:
+                  output_tensors = layer._symbolic_call(computed_tensor)  # pylint: disable=protected-call
                 else:
                   output_tensors = layer.call(computed_tensor, **kwargs)
                 if hasattr(layer, 'compute_mask'):
@@ -1022,6 +1025,8 @@ class Network(base_layer.Layer):
               else:
                 if context.executing_eagerly():
                   output_tensors = layer(computed_tensors, **kwargs)
+                elif layer.dynamic:
+                  output_tensors = layer._symbolic_call(computed_tensors)  # pylint: disable=protected-call
                 else:
                   output_tensors = layer.call(computed_tensors, **kwargs)
                 if hasattr(layer, 'compute_mask'):

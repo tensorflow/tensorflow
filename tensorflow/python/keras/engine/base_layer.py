@@ -84,6 +84,12 @@ class Layer(checkpointable.CheckpointableBase):
     name: String name of the layer.
     dtype: Default dtype of the layer's weights (default of `None` means use the
       type of the first input).
+    dynamic: Set this to `True` if your layer should only be run eagerly, and
+      should not be used to generate a static computation graph.
+      This would be the case for a Tree-RNN or a recursive network,
+      for example, or generally for any layer that manipulates tensors
+      using Python control flow. If `False`, we assume that the layer can
+      safely be used to generate a static computation graph.
 
   Read-only properties:
     name: The name of the layer (string).
@@ -104,7 +110,8 @@ class Layer(checkpointable.CheckpointableBase):
   """
 
   @checkpointable.no_automatic_dependency_tracking
-  def __init__(self, trainable=True, name=None, dtype=None, **kwargs):
+  def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
+               **kwargs):
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -183,7 +190,7 @@ class Layer(checkpointable.CheckpointableBase):
       self._expects_training_arg = False
 
     # Whether the `call` method can be used to build a TF graph without issues.
-    self._call_is_graph_friendly = True
+    self._dynamic = dynamic
 
     # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
@@ -515,7 +522,6 @@ class Layer(checkpointable.CheckpointableBase):
     # mode when all inputs can be traced back to `keras.Input()` (when building
     # models using the functional API).
     build_graph = tf_utils.are_all_symbolic_tensors(input_list)
-    executing_eagerly = context.executing_eagerly()
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
@@ -529,8 +535,6 @@ class Layer(checkpointable.CheckpointableBase):
         # The previous layer generated a mask, and mask was not explicitly pass
         # to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
-
-    input_shapes = None
 
     with ops.name_scope(self._name_scope()):
       if not self.built:
@@ -548,30 +552,28 @@ class Layer(checkpointable.CheckpointableBase):
             self.input_spec, inputs, self.name)
         graph = backend.get_graph()
         with graph.as_default():
-          if not executing_eagerly:
-            # In graph mode, failure to build the layer's graph
-            # implies a user-side bug. We don't catch exceptions.
-            outputs = self.call(inputs, *args, **kwargs)
-          else:
+          if not self.dynamic:
             try:
               outputs = self.call(inputs, *args, **kwargs)
-            except Exception:  # pylint: disable=broad-except
-              # Any issue during graph-building means we will later run the
-              # model in eager mode, whether the issue was related to
-              # graph mode or not. This provides a nice debugging experience.
-              self._call_is_graph_friendly = False
-              # We will use static shape inference to return symbolic tensors
-              # matching the specifications of the layer outputs.
-              # Since we have set `self._call_is_graph_friendly = False`,
-              # we will never attempt to run the underlying TF graph (which is
-              # disconnected).
-              # TODO(fchollet): consider py_func as an alternative, which
-              # would enable us to run the underlying graph if needed.
-              input_shapes = nest.map_structure(lambda x: x.shape, inputs)
-              output_shapes = self.compute_output_shape(input_shapes)
-              outputs = nest.map_structure(
-                  lambda shape: backend.placeholder(shape, dtype=self.dtype),
-                  output_shapes)
+            except TypeError as e:
+              messages = ['`tf.Tensor` as a Python `bool` is not allowed',
+                          'Tensor objects are only iterable when eager']
+              for msg in messages:
+                if msg in str(e):
+                  raise TypeError('You are attempting to use Python control '
+                                  'flow in a layer that was not declared to be '
+                                  'dynamic. Pass `dynamic=True` to the class '
+                                  'constructor.\nEncountered error:\n"""\n' +
+                                  str(e) + '\n"""')
+              raise e
+          else:
+            # We will use static shape inference to return symbolic tensors
+            # matching the specifications of the layer outputs.
+            # Since `self.dynamic` is True, we will never attempt to
+            # run the underlying TF graph (which is disconnected).
+            # TODO(fchollet): consider py_func as an alternative, which
+            # would enable us to run the underlying graph if needed.
+            outputs = self._symbolic_call(inputs)
 
           if outputs is None:
             raise ValueError('A layer\'s `call` method should return a '
@@ -611,6 +613,10 @@ class Layer(checkpointable.CheckpointableBase):
   @property
   def name(self):
     return self._name
+
+  @property
+  def dynamic(self):
+    return self._dynamic
 
   @property
   def activity_regularizer(self):
@@ -1570,23 +1576,6 @@ class Layer(checkpointable.CheckpointableBase):
     else:
       return values
 
-  @property
-  def _static_graph_friendly(self):
-    """Whether the layer can be called to create a static graph.
-
-    Because of nesting, there are two components to being "graph-friendly":
-      1) all inner layers are graph-friendly
-      2) the way they are composed is graph-friendly.
-    We denote the latter as "_call_is_graph_friendly", and define
-    "_static_graph_friendly" as being the combination of
-    "_call_is_graph_friendly" and "all inner layers are _static_graph_friendly".
-    For atomic layers (no inner layers), this is just "_call_is_graph_friendly".
-
-    Returns:
-      Boolean.
-    """
-    return self._call_is_graph_friendly
-
   def _maybe_build(self, inputs):
     # Check input assumptions set before layer building, e.g. input rank.
     input_spec.assert_input_compatibility(
@@ -1603,6 +1592,13 @@ class Layer(checkpointable.CheckpointableBase):
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
       self.build(input_shapes)
+
+  def _symbolic_call(self, inputs):
+    input_shapes = nest.map_structure(lambda x: x.shape, inputs)
+    output_shapes = self.compute_output_shape(input_shapes)
+    return nest.map_structure(
+        lambda shape: backend.placeholder(shape, dtype=self.dtype),
+        output_shapes)
 
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or
