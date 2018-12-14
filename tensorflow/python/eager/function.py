@@ -1661,12 +1661,14 @@ def class_method_to_instance_method(original_function, instance):
   assert hasattr(original_function, "_input_signature")
   assert hasattr(original_function, "python_function")
 
+  weak_bound_method_wrapper = None
   def bound_method_wrapper(*args, **kwargs):
     """Wraps either a dummy MethodType or a converted AutoGraph function."""
     # __wrapped__ allows AutoGraph to swap in a converted function.
-    wrapped_fn = bound_method_wrapper.__wrapped__
+    strong_bound_method_wrapper = weak_bound_method_wrapper()
+    wrapped_fn = strong_bound_method_wrapper.__wrapped__
 
-    if wrapped_fn is bound_method_wrapper.__original_wrapped__:
+    if wrapped_fn is strong_bound_method_wrapper.__original_wrapped__:
       # If __wrapped__ was not replaced, then call original_function.
       wrapped_fn = original_function.python_function
       if tf_inspect.ismethod(wrapped_fn):
@@ -1676,6 +1678,7 @@ def class_method_to_instance_method(original_function, instance):
     # If __wrapped__ was replaced, then it is always an unbound function
     # that takes self as first argument.
     return wrapped_fn(weak_instance(), *args, **kwargs)
+  weak_bound_method_wrapper = weakref.ref(bound_method_wrapper)
 
   # pylint: disable=protected-access
   # We make a dummy MethodType object to generate the correct bound method
