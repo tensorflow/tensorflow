@@ -585,7 +585,9 @@ class Layer(checkpointable.CheckpointableBase):
           if hasattr(self, '_set_inputs') and not self.inputs:
             # Subclassed network: explicitly set metadata normally set by
             # a call to self._set_inputs().
-            # This is not relevant in eager execution.
+            # TODO(b/120997007): This should be done in Eager as well, but
+            # causes garbage collection issues because of the placeholders
+            # created on the default Keras graph.
             self._set_inputs(inputs, outputs)
       else:
         # Eager execution on data tensors.

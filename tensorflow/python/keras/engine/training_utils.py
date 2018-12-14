@@ -1109,6 +1109,9 @@ class ModelInputs(object):
 
   def get_symbolic_inputs(self, return_single_as_list=False):
     """Returns inputs to be set as self.inputs for a model."""
+    # TODO(karmel): There is a side-effect here where what you get
+    # with as_list and as_dict depends on whether you have called this
+    # method first, since it modifies in place.
     for i in range(len(self._flattened_inputs)):
       k = self._input_names[i]
       v = self._flattened_inputs[i]
@@ -1116,6 +1119,7 @@ class ModelInputs(object):
         v = np.asarray(v)
         if v.ndim == 1:
           v = np.expand_dims(v, 1)
+
       if isinstance(v, (np.ndarray, ops.EagerTensor)):
         # We fix the placeholder shape except the batch size.
         # This is suboptimal, but it is the best we can do with the info
@@ -1126,6 +1130,7 @@ class ModelInputs(object):
       elif isinstance(v, tensor_shape.TensorShape):
         shape = (None,) + tuple(v.as_list()[1:])
         v = K.placeholder(shape=shape, name=k)
+
       self._flattened_inputs[i] = v
 
     if self._is_dict:

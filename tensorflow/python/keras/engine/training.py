@@ -1292,6 +1292,11 @@ class Model(Network):
       elif isinstance(inputs, collections.Sequence):
         inputs = [
             ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
+
+        # Unwrap lists with only one input, as we do when training on batch
+        if len(inputs) == 1:
+          inputs = inputs[0]
+
       return self(inputs)  # pylint: disable=not-callable
 
     self._make_predict_function()
@@ -2220,12 +2225,9 @@ class Model(Network):
     # If input data is a dataset iterator in graph mode or if it is an eager
     # iterator and only one batch of samples is required, we fetch the data
     # tensors from the iterator and then standardize them.
-    if is_x_iterator or is_x_eager_iterator:
+    if is_x_iterator:
       try:
-        if is_x_iterator:
-          next_element = self._get_iterator_get_next_tensors(x)
-        else:
-          next_element = x.get_next()
+        next_element = self._get_iterator_get_next_tensors(x)
       except errors.OutOfRangeError:
         raise RuntimeError('Your dataset iterator ran out of data; '
                            'Make sure that your dataset can generate '
@@ -2278,15 +2280,14 @@ class Model(Network):
       # Build the model using the retrieved inputs (value or symbolic).
       # If values or generated from a dataset, then in symbolic-mode
       # placeholders will be created to match the value shapes.
-      if not self.inputs:
-        is_build_called = True
-        if is_x_iterator:
-          cast_inputs = nest.map_structure(lambda v: v.shape, x)
-        elif training_utils.has_tensors(x):
-          cast_inputs = training_utils.cast_if_floating_dtype(x)
-        else:
-          cast_inputs = x
-        self._set_inputs(cast_inputs)
+      is_build_called = True
+      if is_x_iterator:
+        cast_inputs = nest.map_structure(lambda v: v.shape, x)
+      elif training_utils.has_tensors(x):
+        cast_inputs = training_utils.cast_if_floating_dtype(x)
+      else:
+        cast_inputs = x
+      self._set_inputs(cast_inputs)
     else:
       dict_inputs = isinstance(self.inputs, dict)
     if dict_inputs and context.executing_eagerly():
@@ -2516,12 +2517,11 @@ class Model(Network):
 
     for k, v in model_inputs.as_dict():
       if K.is_placeholder(v):
-        self._feed_inputs.append(v)
         self._feed_input_names.append(k)
+        self._feed_inputs.append(v)
         self._feed_input_shapes.append(K.int_shape(v))
 
     # TODO(fchollet): consider calling `_maybe_build` before calling the model.
-
     if outputs is None:
       # Obtain symbolic outputs by calling the model.
       with K.get_graph().as_default():
