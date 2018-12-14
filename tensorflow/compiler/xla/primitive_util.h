@@ -20,6 +20,9 @@ limitations under the License.
 
 #include <type_traits>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -221,6 +224,17 @@ template <>
 struct PrimitiveTypeToNative<C64> {
   using type = complex64;
 };
+
+// Returns the lower-case name of the given primitive type.
+const string& LowercasePrimitiveTypeName(PrimitiveType s);
+
+// Returns the PrimitiveType matching the given name. The given name is expected
+// to be lower-case.
+StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name);
+
+// Returns true if the given name is a primitive type string (lower-case).
+bool IsPrimitiveTypeName(absl::string_view name);
+
 }  // namespace primitive_util
 }  // namespace xla
 

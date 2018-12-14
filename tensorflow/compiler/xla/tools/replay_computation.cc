@@ -145,8 +145,7 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
   bool provide_infeed = false;
   Shape infeed_shape;
   if (!opts.fake_infeed_shape.empty()) {
-    StatusOr<Shape> shape_status =
-        ShapeUtil::ParseShapeString(opts.fake_infeed_shape);
+    StatusOr<Shape> shape_status = ParseShape(opts.fake_infeed_shape);
     TF_CHECK_OK(shape_status.status());
     infeed_shape = std::move(shape_status).ValueOrDie();
     provide_infeed = true;

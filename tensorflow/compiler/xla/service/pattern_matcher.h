@@ -1737,7 +1737,8 @@ class HloConstantScalarImpl {
               literal_r0_as_val_ty_or.ValueOrDie() == val_literal &&
               literal_r0 == val_as_literal_ty;
     if (!rv) {
-      EXPLAIN << "HloInstruction's constant value " << literal_r0.ToString()
+      EXPLAIN << "HloInstruction's constant value "
+              << literal_r0.ToStringWithoutShape()
               << " did not match expected value " << *val_;
     }
     return rv;
