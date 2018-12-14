@@ -47,7 +47,7 @@ class OptimizationBenchmark(test.Benchmark):
         dataset = dataset.map(lambda x: x)
       if optimize_dataset:
         options = dataset_ops.Options()
-        options.experimental_map_fusion = True
+        options.experimental_optimization.map_fusion = True
         dataset = dataset.with_options(options)
 
       iterator = dataset_ops.make_one_shot_iterator(dataset)
@@ -90,7 +90,7 @@ class OptimizationBenchmark(test.Benchmark):
             lambda x: math_ops.greater_equal(x - 5, 0))
       if optimize_dataset:
         options = dataset_ops.Options()
-        options.experimental_map_and_filter_fusion = True
+        options.experimental_optimization.map_and_filter_fusion = True
         dataset = dataset.with_options(options)
       iterator = dataset_ops.make_one_shot_iterator(dataset)
       next_element = iterator.get_next()
@@ -131,7 +131,7 @@ class OptimizationBenchmark(test.Benchmark):
         dataset = dataset.filter(lambda x: math_ops.greater_equal(x - 5, 0))
       if optimize_dataset:
         options = dataset_ops.Options()
-        options.experimental_filter_fusion = True
+        options.experimental_optimization.filter_fusion = True
         dataset = dataset.with_options(options)
 
       iterator = dataset_ops.make_one_shot_iterator(dataset)
