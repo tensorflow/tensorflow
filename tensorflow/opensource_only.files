@@ -37,6 +37,8 @@ tensorflow/third_party/toolchains/clang6/README.md
 tensorflow/third_party/toolchains/clang6/repo.bzl
 tensorflow/third_party/toolchains/clang6/CROSSTOOL.tpl
 tensorflow/third_party/toolchains/clang6/clang.BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/py3/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc-cuda9.0/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc-nvcc/BUILD
@@ -185,6 +187,7 @@ tensorflow/third_party/tensorrt/BUILD
 tensorflow/third_party/tensorrt/build_defs.bzl.tpl
 tensorflow/third_party/tensorrt/BUILD.tpl
 tensorflow/third_party/tensorrt/tensorrt_configure.bzl
+tensorflow/third_party/tensorrt/remote.BUILD.tpl
 tensorflow/third_party/kafka/config.patch
 tensorflow/third_party/kafka/BUILD
 tensorflow/third_party/android/BUILD
