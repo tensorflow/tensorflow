@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 import inspect  # Necessary supplement to tf_inspect to deal with variadic args.
+import itertools
 
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
@@ -45,6 +46,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -135,8 +137,10 @@ class Layer(checkpointable.CheckpointableBase):
 
     self._init_set_name(name)
     self._activity_regularizer = kwargs.pop('activity_regularizer', None)
-    self._trainable_weights = []
-    self._non_trainable_weights = []
+    if not hasattr(self, '_trainable_weights'):
+      self._trainable_weights = []
+    if not hasattr(self, '_non_trainable_weights'):
+      self._non_trainable_weights = []
     self._updates = []
     # A list of zero-argument lambdas which return Tensors, used for variable
     # regularizers.
@@ -164,6 +168,8 @@ class Layer(checkpointable.CheckpointableBase):
                                    hasattr(self, 'compute_mask'))
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
+    if not hasattr(self, '_layers'):
+      self._layers = []  # Dependencies tracked via attribute assignment.
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
@@ -517,8 +523,7 @@ class Layer(checkpointable.CheckpointableBase):
                         self._compute_previous_mask):
       previous_mask = base_layer_utils.collect_previous_mask(inputs)
       if not hasattr(self, '_call_fn_args'):
-        self._call_fn_args = self._no_dependency(
-            function_utils.fn_args(self.call))
+        self._call_fn_args = function_utils.fn_args(self.call)
       if ('mask' in self._call_fn_args and 'mask' not in kwargs and
           not generic_utils.is_all_none(previous_mask)):
         # The previous layer generated a mask, and mask was not explicitly pass
@@ -613,18 +618,24 @@ class Layer(checkpointable.CheckpointableBase):
   @activity_regularizer.setter
   def activity_regularizer(self, regularizer):
     """Optional regularizer function for the output of this layer."""
-    self._activity_regularizer = self._no_dependency(regularizer)
+    self._activity_regularizer = regularizer
 
   @property
   def trainable_weights(self):
-    return self._trainable_weights if self.trainable else []
+    if self.trainable:
+      nested = self._gather_children_attribute('trainable_weights')
+      return self._trainable_weights + nested
+    else:
+      return []
 
   @property
   def non_trainable_weights(self):
     if self.trainable:
-      return self._non_trainable_weights
+      nested = self._gather_children_attribute('non_trainable_weights')
+      return self._non_trainable_weights + nested
     else:
-      return self._trainable_weights + self._non_trainable_weights
+      nested = self._gather_children_attribute('weights')
+      return self._trainable_weights + self._non_trainable_weights + nested
 
   @property
   def weights(self):
@@ -639,7 +650,7 @@ class Layer(checkpointable.CheckpointableBase):
   def updates(self):
     if not self.trainable and not self.stateful:
       return []
-    return self._updates
+    return self._updates + self._gather_children_attribute('updates')
 
   @property
   def losses(self):
@@ -661,7 +672,7 @@ class Layer(checkpointable.CheckpointableBase):
       loss_tensor = regularizer()
       if loss_tensor is not None:
         collected_losses.append(loss_tensor)
-    return collected_losses
+    return collected_losses + self._gather_children_attribute('losses')
 
   @doc_controls.for_subclass_implementers
   def add_loss(self, losses, inputs=None):
@@ -1590,6 +1601,50 @@ class Layer(checkpointable.CheckpointableBase):
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
       self.build(input_shapes)
+
+  def __setattr__(self, name, value):
+    if (not getattr(self, '_setattr_tracking', True) or
+        getattr(self, '_is_graph_network', False)):
+      super(Layer, self).__setattr__(name, value)
+      return
+
+    # Append value to self._layers if relevant
+    if (isinstance(value, Layer) or
+        checkpointable_layer_utils.has_weights(value)):
+      # Initialize `_layers` here in case `__init__` has not yet been called.
+      if not hasattr(self, '_layers'):
+        self._layers = []
+      # We need to check object identity to avoid de-duplicating empty
+      # container types which compare equal.
+      if not any((layer is value for layer in self._layers)):
+        self._layers.append(value)
+        if hasattr(value, '_use_resource_variables'):
+          # Legacy layers (V1 tf.layers) must always use
+          # resource variables.
+          value._use_resource_variables = True
+
+    # Append value to list of trainable / non-trainable weights if relevant
+    if isinstance(value, tf_variables.Variable):
+      # Users may add extra weights/variables
+      # simply by assigning them to attributes (invalid for graph networks)
+      if not hasattr(self, '_trainable_weights'):
+        self._trainable_weights = []
+      if not hasattr(self, '_non_trainable_weights'):
+        self._non_trainable_weights = []
+      if value not in self._trainable_weights + self._non_trainable_weights:
+        if value.trainable:
+          self._trainable_weights.append(value)
+        else:
+          self._non_trainable_weights.append(value)
+    super(Layer, self).__setattr__(name, value)
+
+  def _gather_children_attribute(self, attribute):
+    assert attribute in {'weights', 'trainable_weights',
+                         'non_trainable_weights', 'updates', 'losses'}
+    if hasattr(self, '_layers'):
+      return list(itertools.chain.from_iterable(
+          getattr(layer, attribute) for layer in self._layers))
+    return []
 
 
 class Node(object):

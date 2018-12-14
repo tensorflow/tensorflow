@@ -70,6 +70,7 @@ class StackedRNNCells(Layer):
   ```
   """
 
+  @checkpointable.no_automatic_dependency_tracking
   def __init__(self, cells, **kwargs):
     for cell in cells:
       if not hasattr(cell, 'call'):
@@ -434,6 +435,7 @@ class RNN(Layer):
   ```
   """
 
+  @checkpointable.no_automatic_dependency_tracking
   def __init__(self,
                cell,
                return_sequences=False,
