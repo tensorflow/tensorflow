@@ -58,7 +58,7 @@ class DatasetTestBase(test.TestCase):
       A callable that returns the next element of `dataset`.
     """
     if context.executing_eagerly():
-      iterator = dataset.__iter__()
+      iterator = iter(dataset)
       return iterator._next_internal  # pylint: disable=protected-access
     else:
       if requires_initialization:
