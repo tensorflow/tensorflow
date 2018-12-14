@@ -33,7 +33,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
@@ -334,6 +333,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
 class TestWholeModelSaving(test.TestCase):
 
+  @test_util.run_v1_only('b/120994067')
   def test_sequential_model_saving(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -345,7 +345,7 @@ class TestWholeModelSaving(test.TestCase):
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
       model.compile(
           loss=keras.losses.MSE,
-          optimizer=rmsprop.RMSprop(lr=0.0001),
+          optimizer=keras.optimizers.RMSprop(lr=0.0001),
           metrics=[
               keras.metrics.categorical_accuracy,
               keras.metrics.CategoricalAccuracy()

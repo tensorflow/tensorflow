@@ -27,7 +27,7 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('keras.optimizers.Adam')
+@tf_export('keras.optimizers.Adam', v1=[])
 class Adam(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adam algorithm.
 
