@@ -4104,6 +4104,57 @@ INSTANTIATE_TEST_CASE_P(
     PadReduceWindowEffectiveBroadcastTest,
     ::testing::ValuesIn(PadReduceWindowEffectiveBroadcastCases()));
 
+class BatchDotStrengthReductionTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<
+          ::testing::tuple<int, int, int, PrimitiveType>> {};
+TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
+  auto module = CreateNewVerifiedModule();
+  int m, k, n;
+  PrimitiveType element_type;
+  std::tie(m, k, n, element_type) = GetParam();
+
+  Shape dot_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, m, n});
+  Shape lhs_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, m, k});
+  Shape rhs_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, k, n});
+  HloComputation::Builder builder(TestName());
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, rhs_shape, "rhs"));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_lhs_batch_dimensions(1);
+  dot_dnums.add_lhs_batch_dimensions(2);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(1);
+  dot_dnums.add_rhs_batch_dimensions(2);
+  dot_dnums.add_lhs_contracting_dimensions(4);
+  dot_dnums.add_rhs_contracting_dimensions(3);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(default_options_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
+  const bool dot_should_be_transformed = m == 1 || k == 1 || n == 1;
+  const bool computation_should_be_modified = dot_should_be_transformed;
+  EXPECT_EQ(changed, computation_should_be_modified);
+  bool has_no_dot = true;
+  for (const auto& hlo : computation->instructions()) {
+    if (hlo->opcode() == HloOpcode::kDot) {
+      has_no_dot = false;
+      break;
+    }
+  }
+  EXPECT_EQ(has_no_dot, dot_should_be_transformed);
+}
+
+INSTANTIATE_TEST_CASE_P(
+    BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
+    ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
+                       ::testing::Values(1, 2), ::testing::Values(F32, BF16)));
+
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<
