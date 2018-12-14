@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.training.checkpointable import tracking
@@ -49,6 +50,19 @@ class LoadTest(test.TestCase):
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
     self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
+
+  def test_variables(self):
+    root = tracking.Checkpointable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.v1 = variables.Variable(1.)
+    root.v2 = variables.Variable(2.)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(root, save_dir)
+    imported = load.load(save_dir)
+    self.assertEquals(imported.v1.numpy(), 1.0)
+    self.assertEquals(imported.v2.numpy(), 2.0)
 
   def _make_asset(self, contents):
     filename = tempfile.mktemp(prefix=self.get_temp_dir())
