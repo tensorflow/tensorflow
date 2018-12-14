@@ -8,6 +8,10 @@ tf_class {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "constraint"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "device"
     mtype: "<type \'property\'>"
   }
@@ -45,7 +49,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'initial_value\', \'trainable\', \'validate_shape\', \'caching_device\', \'name\', \'variable_def\', \'dtype\', \'import_scope\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'True\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'initial_value\', \'trainable\', \'validate_shape\', \'caching_device\', \'name\', \'variable_def\', \'dtype\', \'import_scope\', \'constraint\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'True\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
   }
   member_method {
     name: "assign"
