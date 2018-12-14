@@ -1353,7 +1353,7 @@ class MklLeakyReluOp : public MklReluOpBase<Device, T, eltwise_relu> {
     AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
                               src_tensor.shape(), dnn_shape_dst);
     T* out_o = dst_tensor->flat<T>().data();
-    out_o[0] = user_i[0] >= 0 ? user_g[0] : user_g[0] * this->alpha_;
+    out_o[0] = user_i[0] >= 0 ? user_i[0] : user_i[0] * this->alpha_;
     return;
   }
 };
