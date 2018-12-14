@@ -61,11 +61,13 @@ class PlatformUtil {
   // Returns a vector of StreamExecutors for the given platform. The vector is
   // indexed by device ordinal (device numbering used by StreamExecutor). If an
   // element is nullptr, then the device is present by not supported by XLA.
+  // Optional parameter, allowed_devices controls which of the devices on the
+  // platform will have StreamExecutors constructed for. 
   //
   // If the platform has no visible devices, a not-found error is returned.
   static StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
       se::Platform* platform,
-      const absl::optional<std::set<int>>& allowed_devices = {});
+      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PlatformUtil);

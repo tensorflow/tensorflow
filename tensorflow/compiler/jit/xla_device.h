@@ -126,8 +126,8 @@ class XlaDevice : public LocalDevice {
     // the logical on-device shape without padding is used.
     PaddedShapeFn padded_shape_fn;
 
-    // Set of devices to use. This controls which of the devices given type in
-    // the system will have resources allocated for. For GPUs this will be
+    // Set of devices to use. This controls which of the devices on the given
+    // platform resources will have resources allocated. For GPUs this will be
     // filled from visible_gpu_devices list from session configuration.
     absl::optional<std::set<int>> allowed_devices;
   };
@@ -264,8 +264,8 @@ class XlaDevice : public LocalDevice {
   int64 outstanding_asynchronous_operations_ GUARDED_BY(mu_) = 0;
   condition_variable outstanding_asynchronous_operations_cv_;
 
-  // Set of devices to use. This controls which of the devices of current type
-  // in the system will have resources allocated for. For GPUs this will be
+  // Set of devices to use. This controls which of the devices on the given
+  // platform resources will have resources allocated. For GPUs this will be
   // filled from visible_gpu_devices list from session configuration.
   absl::optional<std::set<int>> allowed_devices_;
 };

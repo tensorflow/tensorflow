@@ -228,7 +228,13 @@ PlatformUtil::GetStreamExecutors(
     tensorflow::thread::ThreadPool thread_pool(
         tensorflow::Env::Default(), "device_initialization", device_count);
     for (int i = 0; i < device_count; ++i) {
-      if (allowed_devices && (*allowed_devices).count(i) == 0) {
+      // Once a stream executor is instantiated it will cause allocations on
+      // the device, for example for GPUs cuda context, cudnn handles etc. will
+      // be constructed. By constructing stream executors only on the
+      // allowed_devices, we don't make any allocations on other devices.
+      // This helps in multi-process executions on the same host like horovod or
+      // shared hosts.
+      if (allowed_devices && allowed_devices->count(i) == 0) {
         VLOG(1) << "Not initializing StreamExecutor for device " << i
                 << " since it is not in the visible device list";
         continue;
