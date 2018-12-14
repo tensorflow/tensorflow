@@ -28,6 +28,8 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+constexpr char kDevice[] = "/device:CPU:0";
+
 class FunctionsTest : public ::testing::Test {};
 
 TEST_F(FunctionsTest, IsParametrized) {
@@ -574,6 +576,32 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
   EXPECT_EQ("two", cast.input(0));
 }
 
+TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
+  const Tensor kOne = test::AsScalar<float>(1.0);
+  FunctionDef func = FunctionDefHelper::Define(
+      /* Name */ "SideEffects",
+      /* Args */ {"x: Ref(float)"},
+      /* Return values */ {},
+      /* Attr def */ {},
+      /* Nodes */
+      {{{"one"}, "Const", {}, {{"value", kOne}, {"dtype", DT_FLOAT}}},
+       {{"update"}, "AssignAdd", {"x", "one"}, {{"T", DT_FLOAT}}}});
+
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
+
+  GrapplerFunctionItem item;
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
+
+  EXPECT_EQ("SideEffects", item.id);
+  EXPECT_EQ(3, item.function_body().node_size());
+  EXPECT_EQ(1, item.input_size());
+  EXPECT_EQ(0, item.output_size());
+  EXPECT_EQ(false, item.allowed_optimizations().prune_ops_with_side_effects);
+}
+
 TEST_F(FunctionsTest, MakeFunctionDef) {
   const Tensor kTwo = test::AsScalar<int64>(2);
   FunctionDef func = FunctionDefHelper::Define(
@@ -703,7 +731,7 @@ TEST_F(FunctionsTest, ReplaceInputWithConst) {
 }
 
 TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
-  using test::function::NDef;
+  using ::tensorflow::test::function::NDef;
 
   FunctionDef mul_func = FunctionDefHelper::Create(
       "MyMul", {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},

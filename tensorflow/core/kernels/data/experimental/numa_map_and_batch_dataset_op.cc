@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -60,6 +59,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    // TODO(saeta): Implement support for preserve_cardinality logic.
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
   }
 
  protected:
@@ -74,9 +76,10 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     int64 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
 
     bool drop_remainder;
     OP_REQUIRES_OK(ctx,
@@ -132,6 +135,17 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override {
       return "NumaMapAndBatchDatasetOp::Dataset";
+    }
+
+    // TODO(b/120482302): Note that this is inaccurate until
+    // NumaMapAndBatchMapDataset modified to preserve cardinality.
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / batch_size_ +
+             (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
     }
 
    protected:
@@ -201,20 +215,13 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
-        if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = std::max(1, port::NUMANumNodes());
-          AddTunableParameter(ctx,
-                              /* name = */ "parallelism",
-                              /* state = */ num_parallel_calls_,
-                              /* min = */ num_parallel_calls_->value,
-                              /* max = */ port::NumSchedulableCPUs());
-        } else {
-          AddConstantParameter(ctx, "parallelism", num_parallel_calls_->value);
+        if (num_parallel_calls_->value == model::kAutoTune) {
+          num_parallel_calls_->value = ctx->runner_threadpool_size();
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(ctx));
+        TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_));
         return Status::OK();
       }
 
@@ -247,6 +254,14 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeAsyncKnownRatioNode(
+            std::move(args), dataset()->batch_size_,
+            {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                                  /*max=*/ctx->runner_threadpool_size())});
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(*mu_);
         for (size_t i = 0; i < workers_.size(); ++i) {
@@ -547,13 +562,12 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 component_shape.set_dim(0, batches_[next_output_].error_index);
                 AllocatorAttributes attr;
                 attr.set_gpu_compatible(true);
-                Tensor component(ctx->allocator(attr),
-                                 batches_[next_output_].outputs[i].dtype(),
-                                 component_shape);
+                true_outputs.emplace_back(
+                    ctx->allocator(attr),
+                    batches_[next_output_].outputs[i].dtype(), component_shape);
                 TF_RETURN_IF_ERROR(CopyPartialBatch(
-                    &component, batches_[next_output_].outputs[i],
+                    &true_outputs.back(), batches_[next_output_].outputs[i],
                     batches_[next_output_].error_index));
-                true_outputs.emplace_back(std::move(component));
               }
               out_tensor->swap(true_outputs);
             }
@@ -908,8 +922,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               new_ctx = std::make_shared<IteratorContext>(*ctx);
             }
             workers_[i]->threads.emplace_back(ctx->env()->StartThread(
-                {},
-                strings::StrCat("numa_map_and_batch_block_", i, "_thread_", j),
+                {}, strings::StrCat("tf_data_numa_map_and_batch_", i, "_", j),
                 [this, new_ctx, i, j]() { WorkerThread(new_ctx, i, j); }));
             VLOG(3) << "Worker " << i << ", " << j << " successfully started.";
           }
@@ -919,7 +932,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             new_ctx = std::make_shared<IteratorContext>(*ctx);
           }
           runner_thread_.reset(ctx->env()->StartThread(
-              {}, "numa_map_runner_thread",
+              {}, "tf_data_numa_map_and_batch",
               [this, new_ctx] { RunnerThread(new_ctx); }));
         }
         VLOG(3) << "All workers & runner thread started.";
@@ -937,9 +950,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           component_shape.AppendShape(map_fn_outputs.at(i).shape());
           AllocatorAttributes attr;
           attr.set_gpu_compatible(true);
-          Tensor component(ctx->allocator(attr), map_fn_outputs.at(i).dtype(),
-                           component_shape);
-          batch_outputs->emplace_back(std::move(component));
+          batch_outputs->emplace_back(ctx->allocator(attr),
+                                      map_fn_outputs.at(i).dtype(),
+                                      component_shape);
         }
       }
 
@@ -1054,8 +1067,8 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           {
             tracing::ScopedActivity trace(
                 "NumaMapAndBatch::Iterator::Worker::FunctionExecution");
-            s = dataset()->captured_func_->Run(ctx.get(), std::move(input),
-                                               &return_values);
+            s = instantiated_captured_func_->Run(ctx.get(), std::move(input),
+                                                 &return_values);
           }
           WORKER_VLOG(4) << "ran function for index: " << index
                          << ", sequence_number: " << sequence_number;
@@ -1101,6 +1114,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       const std::shared_ptr<condition_variable> autotune_cond_var_;
       // The maximum number of parallel calls (can be auto-tuned).
       const std::shared_ptr<model::SharedState> num_parallel_calls_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
 
       // Caches the last-seen value of num_parallel_calls_->value to
       // short-circuit starting workers.
@@ -1129,6 +1143,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
+  bool preserve_cardinality_;
 };
 
 REGISTER_KERNEL_BUILDER(

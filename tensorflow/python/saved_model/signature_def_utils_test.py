@@ -22,7 +22,9 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils_impl
@@ -58,6 +60,7 @@ def _make_signature(inputs, outputs, name=None):
 
 class SignatureDefUtilsTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBuildSignatureDef(self):
     x = array_ops.placeholder(dtypes.float32, 1, name="x")
     x_tensor_info = utils.build_tensor_info(x)
@@ -88,6 +91,7 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertEqual(types_pb2.DT_FLOAT, y_tensor_info_actual.dtype)
     self.assertEqual(0, len(y_tensor_info_actual.tensor_shape.dim))
 
+  @test_util.run_deprecated_v1
   def testRegressionSignatureDef(self):
     input1 = constant_op.constant("a", name="input-1")
     output1 = constant_op.constant(2.2, name="output-1")
@@ -113,6 +117,7 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertEqual(types_pb2.DT_FLOAT, y_tensor_info_actual.dtype)
     self.assertEqual(0, len(y_tensor_info_actual.tensor_shape.dim))
 
+  @test_util.run_deprecated_v1
   def testClassificationSignatureDef(self):
     input1 = constant_op.constant("a", name="input-1")
     output1 = constant_op.constant("b", name="output-1")
@@ -144,6 +149,7 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertEqual(types_pb2.DT_FLOAT, scores_tensor_info_actual.dtype)
     self.assertEqual(0, len(scores_tensor_info_actual.tensor_shape.dim))
 
+  @test_util.run_deprecated_v1
   def testPredictionSignatureDef(self):
     input1 = constant_op.constant("a", name="input-1")
     input2 = constant_op.constant("b", name="input-2")
@@ -180,11 +186,13 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertEqual(types_pb2.DT_STRING, output2_tensor_info_actual.dtype)
     self.assertEqual(0, len(output2_tensor_info_actual.tensor_shape.dim))
 
+  @test_util.run_deprecated_v1
   def testTrainSignatureDef(self):
     self._testSupervisedSignatureDef(
         signature_def_utils_impl.supervised_train_signature_def,
         signature_constants.SUPERVISED_TRAIN_METHOD_NAME)
 
+  @test_util.run_deprecated_v1
   def testEvalSignatureDef(self):
     self._testSupervisedSignatureDef(
         signature_def_utils_impl.supervised_eval_signature_def,
@@ -238,11 +246,13 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertEqual(
         types_pb2.DT_FLOAT, signature_def.outputs["metrics/value"].dtype)
 
+  @test_util.run_deprecated_v1
   def testTrainSignatureDefMissingInputs(self):
     self._testSupervisedSignatureDefMissingInputs(
         signature_def_utils_impl.supervised_train_signature_def,
         signature_constants.SUPERVISED_TRAIN_METHOD_NAME)
 
+  @test_util.run_deprecated_v1
   def testEvalSignatureDefMissingInputs(self):
     self._testSupervisedSignatureDefMissingInputs(
         signature_def_utils_impl.supervised_eval_signature_def,
@@ -412,6 +422,25 @@ class SignatureDefUtilsTest(test.TestCase):
         {"foo": _STRING, "bar": _FLOAT},
         {},
         signature_constants.PREDICT_METHOD_NAME)
+
+  @test_util.run_v1_only("b/120545219")
+  def testOpSignatureDef(self):
+    key = "adding_1_and_2_key"
+    add_op = math_ops.add(1, 2, name="adding_1_and_2")
+    signature_def = signature_def_utils_impl.op_signature_def(add_op, key)
+    self.assertIn(key, signature_def.outputs)
+    self.assertEqual(add_op.name, signature_def.outputs[key].name)
+
+  @test_util.run_v1_only("b/120545219")
+  def testLoadOpFromSignatureDef(self):
+    key = "adding_1_and_2_key"
+    add_op = math_ops.add(1, 2, name="adding_1_and_2")
+    signature_def = signature_def_utils_impl.op_signature_def(add_op, key)
+
+    self.assertEqual(
+        add_op,
+        signature_def_utils_impl.load_op_from_signature_def(signature_def, key))
+
 
 if __name__ == "__main__":
   test.main()

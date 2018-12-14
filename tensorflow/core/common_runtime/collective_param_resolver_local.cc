@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -170,8 +171,43 @@ GlobalDeviceMap BuildDevRecs(const CollInstanceParams& ip,
   return gdm;
 }
 
-void OrderTaskDeviceMap(TaskDeviceMap* tdm) {
+bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
+  std::vector<int32> gpu_ring_order_vec;
+  if (!str_util::SplitAndParseAsInts(gpu_ring_order_str, ',',
+                                     &gpu_ring_order_vec)) {
+    return false;
+  }
+  if (gpu_ring_order_vec.size() != tdm->size()) return false;
+  // gpu id -> local rank
+  gtl::FlatMap<int32, int32> gpu_ranks;
+  for (int32 rank = 0; rank < static_cast<int32>(gpu_ring_order_vec.size());
+       ++rank) {
+    gpu_ranks[gpu_ring_order_vec[rank]] = rank;
+  }
+
+  for (auto& tdm_it : *tdm) {
+    DeviceNameUtils::ParsedName parsed_name;
+    DevRec* dr = &tdm_it.second;
+    if (!DeviceNameUtils::ParseFullName(dr->device, &parsed_name)) {
+      return false;
+    }
+    auto rank_it = gpu_ranks.find(parsed_name.id);
+    if (rank_it == gpu_ranks.end()) return false;
+    dr->local_rank = rank_it->second;
+  }
+  VLOG(2) << "Assigned local ranks based on ring order " << gpu_ring_order_str;
+  return true;
+}
+
+void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
   CHECK_GT(tdm->size(), 0);  // Should never be called with 0 devices
+
+  // If a valid ring order has been passed in via ConfigProto, use that.
+  if (ParseRingOrder(gpu_ring_order, tdm)) return;
+
+  // Either no ring order was passed in, or the format was unexpected.
+  // We now assign a ring order based on link strengths.  Note that this
+  // algorithm is not optimal and may not always find the best ring order.
   int least_rank = -1;
   string next_device;
   std::set<string> selected;
@@ -256,7 +292,7 @@ GlobalDeviceMap EstablishGlobalRank(
   GlobalDeviceMap gdm = BuildDevRecs(cp->instance, localities);
   for (auto& iter : gdm) {
     TaskDeviceMap& tdm = iter.second;
-    OrderTaskDeviceMap(&tdm);
+    OrderTaskDeviceMap(cp->instance.gpu_ring_order, &tdm);
   }
   // Connect the global rank order by the order in which tasks first appear.
   std::set<string> ordered_tasks;
@@ -445,8 +481,7 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(
   ir->shared.instance.task_names = new_task_names;
   if (VLOG_IS_ON(2)) {
     string buf;
-    for (const auto& d : cp->instance.device_names)
-      strings::StrAppend(&buf, "\n", d);
+    for (const auto& d : new_device_names) strings::StrAppend(&buf, "\n", d);
     VLOG(2) << "Optimized device order for " << ir->shared.name << ": " << buf;
   }
 }
@@ -476,7 +511,7 @@ void CollectiveParamResolverLocal::FindInstanceRec(
         if (irec->is_init) {
           exit_outside_locks = true;
         } else {
-          irec->init_waiters.push_back([this, gr, cp, done](InstanceRec* irec) {
+          irec->init_waiters.push_back([this, done](InstanceRec* irec) {
             CallbackWithStatus(done, irec);
           });
           return;
@@ -661,7 +696,7 @@ void CollectiveParamResolverLocal::CompleteInstanceSource(InstanceRec* ir,
         if (ir->source_rank >= 0) {
           ir->status = errors::Internal("Instance ", cp->instance.instance_key,
                                         " already has source ", ir->source_rank,
-                                        ", recevied second claim from ",
+                                        ", received second claim from ",
                                         cp->default_rank);
         } else {
           ir->source_rank = cp->default_rank;
@@ -673,7 +708,16 @@ void CollectiveParamResolverLocal::CompleteInstanceSource(InstanceRec* ir,
       return;
     }
     CHECK_EQ(ir->known_count, ir->shared.group.group_size);
-    CHECK_GE(ir->source_rank, 0);
+    if (ir->source_rank < 0) {
+      // NOTE(ayushd): changing the error message below would also require
+      // updating CompleteParamsBroadcastForgotSend test in
+      // CollectiveParamResolverLocalTest.
+      ir->status =
+          errors::Internal("Instance ", cp->instance.instance_key,
+                           " found no source for broadcast.  This "
+                           "could mean that there were group_size=",
+                           ir->known_count, " BcastRecvs but no BcastSend.");
+    }
     if (!ir->known_waiters.empty()) {
       ready_waiters = std::move(ir->known_waiters);
     }

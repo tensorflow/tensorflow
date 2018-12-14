@@ -172,6 +172,65 @@ class ResourceApplyMomentum : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ResourceApplyMomentum").TypeConstraint("T", kFloatTypes),
                 ResourceApplyMomentum);
 
+class ResourceApplyKerasMomentum : public XlaOpKernel {
+ public:
+  explicit ResourceApplyKerasMomentum(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    DataType type = ctx->input_type(2);
+
+    TensorShape var_shape, accum_shape;
+    xla::XlaOp var, accum;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &var_shape, &var));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(1, type, &accum_shape, &accum));
+
+    OP_REQUIRES(ctx, var_shape.IsSameSize(accum_shape),
+                errors::InvalidArgument(
+                    "var and accum do not have the same shape",
+                    var_shape.DebugString(), " ", accum_shape.DebugString()));
+
+    TensorShape lr_shape = ctx->InputShape(2);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_shape),
+                errors::InvalidArgument("lr is not a scalar: ",
+                                        lr_shape.DebugString()));
+
+    TensorShape grad_shape = ctx->InputShape(3);
+    OP_REQUIRES(ctx, var_shape.IsSameSize(grad_shape),
+                errors::InvalidArgument(
+                    "var and grad do not have the same shape",
+                    var_shape.DebugString(), " ", grad_shape.DebugString()));
+
+    TensorShape momentum_shape = ctx->InputShape(4);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(momentum_shape),
+                errors::InvalidArgument("momentum is not a scalar: ",
+                                        momentum_shape.DebugString()));
+
+    xla::XlaOp lr = ctx->Input(2);
+    xla::XlaOp grad = ctx->Input(3);
+    xla::XlaOp momentum = ctx->Input(4);
+
+    accum = accum * momentum - grad * lr;
+    if (use_nesterov_) {
+      // See https://github.com/tensorflow/tensorflow/pull/2798 for an
+      // explanation of the reparameterization used here.
+      var = var + accum * momentum - grad * lr;
+    } else {
+      var = var + accum;
+    }
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, var));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
+  }
+
+ private:
+  bool use_nesterov_;
+};
+REGISTER_XLA_OP(
+    Name("ResourceApplyKerasMomentum").TypeConstraint("T", kFloatTypes),
+    ResourceApplyKerasMomentum);
+
 class ResourceApplyAdagrad : public XlaOpKernel {
  public:
   explicit ResourceApplyAdagrad(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
@@ -320,9 +379,8 @@ class ResourceApplyAdagradDA : public XlaOpKernel {
     xla::XlaOp lr = ctx->Input(4);
     xla::XlaOp l1 = ctx->Input(5);
     xla::XlaOp l2 = ctx->Input(6);
-    xla::XlaBuilder* const b = ctx->builder();
     xla::XlaOp global_step =
-        XlaHelpers::ConvertElementType(b, ctx->Input(7), dtype_);
+        XlaHelpers::ConvertElementType(ctx->Input(7), dtype_);
 
     accum = accum + grad;
     squared_accum = squared_accum + xla::Square(grad);

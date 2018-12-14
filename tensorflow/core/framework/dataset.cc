@@ -13,10 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/dataset.h"
+#include <unordered_map>
 
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 namespace data {
@@ -70,6 +75,113 @@ class DatasetVariantWrapper {
  private:
   DatasetBase* const dataset_;  // Owns one reference.
 };
+
+const char kWrappedDatasetVariantTypeName[] =
+    "tensorflow::data::WrappedDatasetVariant";
+
+class WrappedDatasetVariantWrapper {
+ public:
+  WrappedDatasetVariantWrapper() {}
+
+  explicit WrappedDatasetVariantWrapper(const Tensor& ds_tensor)
+      : ds_tensor_(ds_tensor) {}
+
+  Tensor get() const { return ds_tensor_; }
+
+  string TypeName() const { return "tensorflow::WrappedDatasetVariantWrapper"; }
+
+  string DebugString() const {
+    return "tensorflow::WrappedDatasetVariantWrapper::DebugString";
+  }
+
+  void Encode(VariantTensorData* data) const {
+    *(data->add_tensors()) = ds_tensor_;
+  }
+
+  bool Decode(const VariantTensorData& data) {
+    ds_tensor_ = data.tensors(0);
+    return true;
+  }
+
+ private:
+  Tensor ds_tensor_;
+};
+
+class WrapDatasetVariantOp : public OpKernel {
+ public:
+  explicit WrapDatasetVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& tensor = ctx->input(0);
+    OP_REQUIRES(ctx,
+                tensor.dtype() == DT_VARIANT &&
+                    TensorShapeUtils::IsScalar(tensor.shape()),
+                errors::InvalidArgument(
+                    "Dataset tensor must be a scalar of dtype DT_VARIANT."));
+    DatasetBase* unused;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(tensor, &unused));
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<Variant>()() = WrappedDatasetVariantWrapper(tensor);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant").Device(DEVICE_CPU),
+                        WrapDatasetVariantOp);
+REGISTER_KERNEL_BUILDER(Name("WrapDatasetVariant")
+                            .HostMemory("input_handle")
+                            .HostMemory("output_handle")
+                            .Device(DEVICE_GPU),
+                        WrapDatasetVariantOp);
+
+class UnwrapDatasetVariantOp : public OpKernel {
+ public:
+  explicit UnwrapDatasetVariantOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& tensor = ctx->input(0);
+    OP_REQUIRES(ctx,
+                tensor.dtype() == DT_VARIANT &&
+                    TensorShapeUtils::IsScalar(tensor.shape()),
+                errors::InvalidArgument(
+                    "Dataset tensor must be a scalar of dtype DT_VARIANT."));
+    Variant variant = tensor.scalar<Variant>()();
+    const WrappedDatasetVariantWrapper* wrapper =
+        variant.get<WrappedDatasetVariantWrapper>();
+    OP_REQUIRES(ctx, wrapper != nullptr,
+                errors::InvalidArgument(
+                    "Tensor must be a WrappedDataset variant object."));
+    Tensor ds_tensor = wrapper->get();
+    OP_REQUIRES_OK(ctx, ctx->set_output("output_handle", ds_tensor));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant").Device(DEVICE_CPU),
+                        UnwrapDatasetVariantOp);
+REGISTER_KERNEL_BUILDER(Name("UnwrapDatasetVariant")
+                            .HostMemory("input_handle")
+                            .HostMemory("output_handle")
+                            .Device(DEVICE_GPU),
+                        UnwrapDatasetVariantOp);
+
+static Status WrappedDatasetVariantDeviceCopy(
+    const WrappedDatasetVariantWrapper& from, WrappedDatasetVariantWrapper* to,
+    const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
+  *to = WrappedDatasetVariantWrapper(from);
+  return Status::OK();
+}
+
+#define REGISTER_OPTIONAL_COPY(DIRECTION)               \
+  INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION( \
+      WrappedDatasetVariantWrapper, DIRECTION,          \
+      WrappedDatasetVariantDeviceCopy)
+
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::HOST_TO_DEVICE);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_HOST);
+REGISTER_OPTIONAL_COPY(VariantDeviceCopyDirection::DEVICE_TO_DEVICE);
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(WrappedDatasetVariantWrapper,
+                                       kWrappedDatasetVariantTypeName);
 
 }  // namespace
 
@@ -140,7 +252,7 @@ Status GraphDefBuilderWrapper::AddFunction(SerializationContext* ctx,
             << " the graph. It will not be added again.";
     return Status::OK();
   }
-  if (!ctx->allow_stateful_functions()) {
+  if (!ctx->optimization_only()) {
     TF_RETURN_IF_ERROR(
         EnsureFunctionIsStateless(ctx->flib_def(), function_name));
   }
@@ -203,28 +315,23 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
-Status DatasetBase::Save(SerializationContext* ctx,
-                         IteratorStateWriter* writer) const {
-  string serialized_graph_def;
-  string output_node;
-  GraphDefBuilder b;
-  DatasetGraphDefBuilder db(&b);
-  Node* node = nullptr;
-  TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
-  output_node = node->name();
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
-  graph_def.SerializeToString(&serialized_graph_def);
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
-  return Status::OK();
+int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
+  int64 allocated_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      allocated_bytes += dataset->AllocatedBytes();
+    } else {
+      allocated_bytes += tensor.AllocatedBytes();
+    }
+  }
+  return allocated_bytes;
 }
 
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
-  if (!(tensor.dtype() == DT_VARIANT ||
+  if (!(tensor.dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor.shape()))) {
     return errors::InvalidArgument(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");
@@ -249,6 +356,47 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   }
   tensor->scalar<Variant>()() = DatasetVariantWrapper(dataset);
   return Status::OK();
+}
+
+Status DatasetBase::Save(SerializationContext* ctx,
+                         IteratorStateWriter* writer) const {
+  string serialized_graph_def;
+  string output_node;
+  GraphDefBuilder b;
+  DatasetGraphDefBuilder db(&b);
+  Node* node = nullptr;
+  TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
+  output_node = node->name();
+  GraphDef graph_def;
+  TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
+  graph_def.SerializeToString(&serialized_graph_def);
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
+  return Status::OK();
+}
+
+Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
+    SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
+  Status status = dataset->AsGraphDefInternal(ctx, this, output);
+  if (ctx->optimization_only() && errors::IsUnimplemented(status)) {
+    Tensor t(DT_VARIANT, TensorShape({}));
+    // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
+    // increment the refcount of `dataset` here to retain ownership.
+    dataset->Ref();
+    TF_RETURN_IF_ERROR(
+        StoreDatasetInVariantTensor(const_cast<DatasetBase*>(dataset), &t));
+    TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
+    DCHECK_NE(ctx->input_list(), nullptr);
+    ctx->input_list()->emplace_back((*output)->name(), std::move(t));
+    LOG(WARNING)
+        << "Input of " << dataset->DebugString()
+        << " will not be optimized because the dataset does not implement the "
+           "AsGraphDefInternal() method needed to apply optimizations.";
+    return Status::OK();
+  }
+  return status;
 }
 
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {

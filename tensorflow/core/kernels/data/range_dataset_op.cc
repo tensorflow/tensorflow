@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 namespace data {
@@ -73,6 +73,14 @@ class RangeDatasetOp : public DatasetOpKernel {
                              step_, ")::Dataset");
     }
 
+    int64 Cardinality() const override {
+      if (step_ > 0) {
+        return std::max(0LL, (stop_ - start_ - 1) / step_ + 1);
+      } else {
+        return std::max(0LL, (start_ - stop_ - 1) / -step_ + 1);
+      }
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -104,9 +112,8 @@ class RangeDatasetOp : public DatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
-        Tensor value_tensor(ctx->allocator({}), DT_INT64, {});
-        value_tensor.scalar<int64>()() = next_;
-        out_tensors->emplace_back(std::move(value_tensor));
+        out_tensors->reserve(1);
+        out_tensors->emplace_back(next_);
         *end_of_sequence = false;
         next_ += dataset()->step_;
 
@@ -114,6 +121,11 @@ class RangeDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("next"), next_));

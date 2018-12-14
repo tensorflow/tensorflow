@@ -29,6 +29,7 @@ limitations under the License.
 namespace tensorflow {
 
 class Node;
+class NodeDebugInfo;
 
 // We forward declare protos so that kernels don't need to depend on them
 class NodeDef;
@@ -48,12 +49,19 @@ extern const char* const kColocationGroupPrefix;
 // than a text-format proto.
 string SummarizeNode(const Node& node);
 string SummarizeNodeDef(const NodeDef& node_def);
+string SummarizeAttrs(const NodeDef& node_def);
 
 // Produces a formatted string pattern from the node which can uniquely identify
 // this node upstream to produce an informative error message. The pattern
 // followed is: {{node <node_name>}}
 string FormatNodeForError(const Node& node);
 string FormatNodeDefForError(const NodeDef& node_def);
+
+// Merges the original node names from the debug information of 'from' to the
+// debug information of 'to'.
+void MergeDebugInfo(const NodeDebugInfo& from, Node* to);
+void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to);
+void MergeDebugInfo(const NodeDef& from, NodeDef* to);
 
 typedef protobuf::Map<string, AttrValue> AttrValueMap;
 

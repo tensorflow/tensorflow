@@ -7,6 +7,8 @@
     Serving.
 *   Keras models now support evaluating with a `tf.data.Dataset`.
 *   TensorFlow binaries are built with XLA support linked in by default.
+*   Ignite Dataset added to contrib/ignite that allows to work with Apache
+    Ignite.
 
 ## Bug Fixes and Other Changes
 
@@ -258,8 +260,8 @@ Ag Ramesh, Alex Wiltschko, Alexander Pantyukhin, Amogh Mannekote, An Jiaoyang, A
 * Update `tf.keras` to the Keras 2.1.6 API.
 * Added [`tf.keras.layers.CuDNNGRU`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNGRU) and [`tf.keras.layers.CuDNNLSTM`](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/keras/layers/CuDNNLSTM) layers. [Try it](https://colab.sandbox.google.com/github/tensorflow/tensorflow/blob/master/tensorflow/contrib/eager/python/examples/nmt_with_attention/nmt_with_attention.ipynb?linkId=53292082).
 * Adding support of core [feature columns](https://www.tensorflow.org/get_started/feature_columns) and [losses](https://www.tensorflow.org/api_docs/python/tf/losses) to [gradient boosted trees estimators](https://github.com/tensorflow/models/tree/master/official/boosted_trees).
-* The [python interface](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/contrib/lite)
-  for the [TFLite Optimizing Converter](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/toco/README.md)
+* The [python interface](https://www.tensorflow.org/versions/r1.9/api_docs/python/tf/lite)
+  for the [TFLite Optimizing Converter](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/toco/README.md)
   has been expanded, and the command line interface (AKA: `toco`, `tflite_convert`) is once again
   included in the standard `pip` installation.
 * Improved data-loading and text processing with:
@@ -562,7 +564,7 @@ Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, ç”°ä¼
 ## Major Features And Improvements
 * [Eager execution](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/eager)
   preview version is now available.
-* [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
+* [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/lite)
   dev preview is now available.
 * CUDA 9.0 and cuDNN 7 support.
 * Accelerated Linear Algebra (XLA):
@@ -909,7 +911,7 @@ See also [TensorBoard 0.1.4](https://github.com/tensorflow/tensorboard/releases/
 * Adds tf.contrib.nn.rank_sampled_softmax_loss, a sampled-softmax variant that can improve rank loss.
 * `tf.contrib.metrics`.{streaming_covariance,streaming_pearson_correlation} modified to return nan when they have seen less or equal to 1 unit of weight.
 * Adds time series models to contrib. See contrib/timeseries/README.md for details.
-* Adds FULLY_CONNECTED Op to tensorflow/contrib/lite/schema.fbs
+* Adds FULLY_CONNECTED Op to tensorflow/lite/schema.fbs
 
 ## Known Issues
 * Tensorflow_gpu compilation fails with Bazel 0.5.3.

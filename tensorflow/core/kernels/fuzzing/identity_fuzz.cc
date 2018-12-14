@@ -30,7 +30,7 @@ class FuzzIdentity : public FuzzSession {
       flat_tensor(i) = data[i];
     }
 
-    Status s = RunOneInput(input_tensor);
+    Status s = RunInputs({{"input", input_tensor}});
     // Note:  For many ops, we don't care about this success -- but when
     // testing to make sure the harness actually works, it's useful.
     if (!s.ok()) {

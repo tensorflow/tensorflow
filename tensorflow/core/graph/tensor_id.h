@@ -41,6 +41,9 @@ struct TensorId : public std::pair<StringPiece, int> {
   TensorId() : Base() {}
   TensorId(const SafeTensorId& id);
 
+  const StringPiece node() const { return first; }
+  int index() const { return second; }
+
   string ToString() const {
     if (second == Graph::kControlSlot) return strings::StrCat("^", first);
     return strings::StrCat(first, ":", second);
@@ -67,6 +70,9 @@ struct SafeTensorId : public std::pair<string, int> {
   SafeTensorId() : Base() {}
   SafeTensorId(const string& str, int idx) : Base(str, idx) {}
   SafeTensorId(const TensorId& id);
+
+  const string& node() const { return first; }
+  int index() const { return second; }
 
   string ToString() const {
     if (second == Graph::kControlSlot) return strings::StrCat("^", first);

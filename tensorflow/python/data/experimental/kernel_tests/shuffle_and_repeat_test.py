@@ -23,10 +23,11 @@ from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class ShuffleAndRepeatTest(test_base.DatasetTestBase):
 
   def _build_ds(self, seed, count=5, num_elements=20):
@@ -34,14 +35,13 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase):
         shuffle_ops.shuffle_and_repeat(buffer_size=5, count=count, seed=seed))
 
   def _gen_outputs(self, ds_fn, num_outputs, verify_exhausted=True):
-    get_next = ds_fn().make_one_shot_iterator().get_next()
+    get_next = self.getNext(ds_fn())
     outputs = []
-    with self.cached_session() as sess:
-      for _ in range(num_outputs):
-        outputs.append(sess.run(get_next))
-      if verify_exhausted:
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(get_next)
+    for _ in range(num_outputs):
+      outputs.append(self.evaluate(get_next()))
+    if verify_exhausted:
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
     return outputs
 
   def testCorrectOutput(self):
@@ -103,12 +103,10 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase):
                         100)
 
   def testLargeBufferSize(self):
-    with ops.Graph().as_default() as g:
-      ds = dataset_ops.Dataset.range(20).apply(
-          shuffle_ops.shuffle_and_repeat(buffer_size=21))
-      get_next_op = ds.make_one_shot_iterator().get_next()
-      with self.session(graph=g) as sess:
-        sess.run(get_next_op)
+    ds = dataset_ops.Dataset.range(20).apply(
+        shuffle_ops.shuffle_and_repeat(buffer_size=21))
+    get_next = self.getNext(ds)
+    self.evaluate(get_next())
 
 
 if __name__ == "__main__":

@@ -33,28 +33,23 @@ struct type_casting_traits<float, QInt16> {
 };
 
 template <>
-EIGEN_STRONG_INLINE Packet32q16i
-pcast<Packet16f>(const Packet16f& a, const Packet16f& b) {
+EIGEN_STRONG_INLINE Packet32q16i pcast<Packet16f>(const Packet16f& a,
+                                                  const Packet16f& b) {
   Packet16i a_int = _mm512_cvtps_epi32(a);
   Packet16i b_int = _mm512_cvtps_epi32(b);
 #ifdef EIGEN_VECTORIZE_AVX512BW
   return _mm512_packs_epi32(a_int, b_int);
 #else
-  Packet8i ab_int16_low =
-      _mm256_permute4x64_epi64(
-        _mm256_packs_epi32(
-          _mm512_castsi512_si256(a_int),
-          _mm512_castsi512_si256(b_int)),
-        _MM_SHUFFLE(0, 2, 1, 3));
-  Packet8i ab_int16_high =
-      _mm256_permute4x64_epi64(
-        _mm256_packs_epi32(
-          _mm512_extracti32x8_epi32(a_int, 1),
-          _mm512_extracti32x8_epi32(b_int, 1)),
-        _MM_SHUFFLE(0, 2, 1, 3));
-  return _mm512_inserti32x8(
-           _mm512_castsi256_si512(ab_int16_low),
-           ab_int16_high, 1);
+  Packet8i ab_int16_low = _mm256_permute4x64_epi64(
+      _mm256_packs_epi32(_mm512_castsi512_si256(a_int),
+                         _mm512_castsi512_si256(b_int)),
+      _MM_SHUFFLE(0, 2, 1, 3));
+  Packet8i ab_int16_high = _mm256_permute4x64_epi64(
+      _mm256_packs_epi32(_mm512_extracti32x8_epi32(a_int, 1),
+                         _mm512_extracti32x8_epi32(b_int, 1)),
+      _MM_SHUFFLE(0, 2, 1, 3));
+  return _mm512_inserti32x8(_mm512_castsi256_si512(ab_int16_low), ab_int16_high,
+                            1);
 #endif
 }
 
@@ -64,55 +59,41 @@ struct type_casting_traits<float, QInt8> {
 };
 
 template <>
-EIGEN_STRONG_INLINE Packet64q8i
-pcast<Packet16f>(const Packet16f& a,
-                 const Packet16f& b,
-                 const Packet16f& c,
-                 const Packet16f& d) {
+EIGEN_STRONG_INLINE Packet64q8i pcast<Packet16f>(const Packet16f& a,
+                                                 const Packet16f& b,
+                                                 const Packet16f& c,
+                                                 const Packet16f& d) {
   Packet16i a_int = _mm512_cvtps_epi32(a);
   Packet16i b_int = _mm512_cvtps_epi32(b);
   Packet16i c_int = _mm512_cvtps_epi32(c);
   Packet16i d_int = _mm512_cvtps_epi32(d);
 #ifdef EIGEN_VECTORIZE_AVX512BW
-  return _mm512_packs_epi16(
-           _mm512_packs_epi32(a_int, b_int),
-           _mm512_packs_epi32(c_int, d_int));
+  return _mm512_packs_epi16(_mm512_packs_epi32(a_int, b_int),
+                            _mm512_packs_epi32(c_int, d_int));
 #else
-  Packet8i ab_int16_low =
-      _mm256_permute4x64_epi64(
-        _mm256_packs_epi32(
-          _mm512_castsi512_si256(a_int),
-          _mm512_castsi512_si256(b_int)),
-        _MM_SHUFFLE(0, 2, 1, 3));
-  Packet8i cd_int16_low =
-      _mm256_permute4x64_epi64(
-        _mm256_packs_epi32(
-          _mm512_castsi512_si256(c_int),
-          _mm512_castsi512_si256(d_int)),
-        _MM_SHUFFLE(0, 2, 1, 3));
-  Packet8i ab_int16_high =
-      _mm256_permute4x64_epi64(
-        _mm256_packs_epi32(
-          _mm512_extracti32x8_epi32(a_int, 1),
-          _mm512_extracti32x8_epi32(b_int, 1)),
-        _MM_SHUFFLE(0, 2, 1, 3));
-  Packet8i cd_int16_high =
-      _mm256_permute4x64_epi64(
-        _mm256_packs_epi32(
-          _mm512_extracti32x8_epi32(c_int, 1),
-          _mm512_extracti32x8_epi32(d_int, 1)),
-        _MM_SHUFFLE(0, 2, 1, 3));
-  Packet8i abcd_int8_low =
-      _mm256_permute4x64_epi64(
-        _mm256_packs_epi16(ab_int16_low, cd_int16_low),
-        _MM_SHUFFLE(0, 2, 1, 3));
+  Packet8i ab_int16_low = _mm256_permute4x64_epi64(
+      _mm256_packs_epi32(_mm512_castsi512_si256(a_int),
+                         _mm512_castsi512_si256(b_int)),
+      _MM_SHUFFLE(0, 2, 1, 3));
+  Packet8i cd_int16_low = _mm256_permute4x64_epi64(
+      _mm256_packs_epi32(_mm512_castsi512_si256(c_int),
+                         _mm512_castsi512_si256(d_int)),
+      _MM_SHUFFLE(0, 2, 1, 3));
+  Packet8i ab_int16_high = _mm256_permute4x64_epi64(
+      _mm256_packs_epi32(_mm512_extracti32x8_epi32(a_int, 1),
+                         _mm512_extracti32x8_epi32(b_int, 1)),
+      _MM_SHUFFLE(0, 2, 1, 3));
+  Packet8i cd_int16_high = _mm256_permute4x64_epi64(
+      _mm256_packs_epi32(_mm512_extracti32x8_epi32(c_int, 1),
+                         _mm512_extracti32x8_epi32(d_int, 1)),
+      _MM_SHUFFLE(0, 2, 1, 3));
+  Packet8i abcd_int8_low = _mm256_permute4x64_epi64(
+      _mm256_packs_epi16(ab_int16_low, cd_int16_low), _MM_SHUFFLE(0, 2, 1, 3));
   Packet8i abcd_int8_high =
-      _mm256_permute4x64_epi64(
-        _mm256_packs_epi16(ab_int16_high, cd_int16_high),
-        _MM_SHUFFLE(0, 2, 1, 3));
-  return _mm512_inserti32x8(
-           _mm512_castsi256_si512(abcd_int8_low),
-           abcd_int8_high, 1);
+      _mm256_permute4x64_epi64(_mm256_packs_epi16(ab_int16_high, cd_int16_high),
+                               _MM_SHUFFLE(0, 2, 1, 3));
+  return _mm512_inserti32x8(_mm512_castsi256_si512(abcd_int8_low),
+                            abcd_int8_high, 1);
 #endif
 }
 
@@ -128,10 +109,8 @@ struct type_casting_traits<QInt32, QInt16> {
 
 template <>
 EIGEN_STRONG_INLINE Packet64q8i
-pcast<Packet16q32i, Packet64q8i>(const Packet16q32i& a,
-                                 const Packet16q32i& b,
-                                 const Packet16q32i& c,
-                                 const Packet16q32i& d) {
+pcast<Packet16q32i, Packet64q8i>(const Packet16q32i& a, const Packet16q32i& b,
+                                 const Packet16q32i& c, const Packet16q32i& d) {
   __m128i a_part = _mm512_cvtsepi32_epi8(a);
   __m128i b_part = _mm512_cvtsepi32_epi8(b);
   __m128i c_part = _mm512_cvtsepi32_epi8(c);
@@ -145,9 +124,8 @@ pcast<Packet16q32i, Packet64q8i>(const Packet16q32i& a,
 }
 
 template <>
-EIGEN_STRONG_INLINE Packet32q16i
-pcast<Packet16q32i, Packet32q16i>(const Packet16q32i& a,
-                                  const Packet16q32i& b) {
+EIGEN_STRONG_INLINE Packet32q16i pcast<Packet16q32i, Packet32q16i>(
+    const Packet16q32i& a, const Packet16q32i& b) {
   __m256i a_part = _mm512_cvtsepi32_epi16(a);
   __m256i b_part = _mm512_cvtsepi32_epi16(b);
   __m512i converted =

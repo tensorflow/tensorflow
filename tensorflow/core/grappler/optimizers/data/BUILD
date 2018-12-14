@@ -591,6 +591,7 @@ cc_library(
     deps = [
         ":function_utils",
         ":graph_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/cc:ops",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
@@ -612,7 +613,9 @@ tf_cc_test(
         ":graph_utils",
         ":function_utils",
         ":vectorization_utils",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -622,7 +625,10 @@ tf_cc_test(
         # For ops we need registered
         "//tensorflow/core/kernels/data:dataset_ops",
         "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:logging_ops",
+        "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),

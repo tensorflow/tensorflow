@@ -16,7 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/types/span.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -33,6 +38,12 @@ namespace swig {
 // the handle to the local XLA service has been established, then an error is
 // returned.
 Status InitializeReplicaCount(int replica_count);
+
+// Initializes the platform name that XLA will be initialized with (when
+// first obtaining a handle to the local XLA service). If this is called after
+// the handle to the local XLA service has been established, then an error is
+// returned.
+Status InitializePlatformName(const string& platform_name);
 
 // Returns the replica count that is currently set, regardless of whether the
 // local XLA service has been instantiated yet or not.
@@ -54,18 +65,19 @@ Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
 StatusOr<Literal> TransferFromOutfeedLocalReplica(const Shape& shape,
                                                   int replica_number);
 
-// Wraps a ScopedShapedBuffer produced by copying a literal "to
-// device," i.e. copying a literal to a scoped buffer via the local
-// client.
+// Represents a reference to literals that live in a device-allocated buffer via
+// XLA. Specifically, wraps a ScopedShapedBuffer produced by transferring a
+// literal to device via the local client.
 class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer*> FromLiteral(
-      const Literal& argument, const absl::optional<Shape>& shape_with_layout);
+      const Literal& argument, const absl::optional<Shape>& shape_with_layout,
+      int replica_number);
 
   LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
-  const ScopedShapedBuffer* shaped_buffer() const;
-
   StatusOr<Literal> ToLiteral() const;
+  const Shape& shape() const;
+  const ScopedShapedBuffer* shaped_buffer() const;
 
   // Transfers ownership of the encapsulated ShapedBuffer to the caller,
   // analogous to std::unique_ptr::release().
@@ -92,7 +104,7 @@ class LocalShapedBufferTuple {
   StatusOr<LocalShapedBuffer*> Release(int i);
 
   // Returns the number of elements in the destructured tuple.
-  int size() const;
+  int64 size() const;
 
  private:
   std::vector<LocalShapedBuffer*> elements_;
@@ -103,29 +115,97 @@ class LocalShapedBufferTuple {
 StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
     LocalShapedBuffer* local_shaped_buffer);
 
-// Wraps a LocalExecutable produced by compiling a
-// LocalComputation. The Execute method forwards to that of the
-// underlying LocalExecutable, and additionally handles tranferring
-// arguments and return values in and back out of the client library's
-// local client. This class is intended to be made available to Python
-// via SWIG.
+// Represents a reference to literals that live in a device-allocated buffer via
+// XRT. Specifically, wraps an int64 handle produced by running the allocation
+// graph, and an XLA shape to track the referent's shape.
+class XrtAllocation {
+ public:
+  // Accepts a `session_target` argument, used in constructing the
+  // `tensorflow::ClientSession` instance in which allocation and deallocation
+  // graphs are run.
+  static StatusOr<XrtAllocation*> FromLiteral(const Literal& argument,
+                                              const string& session_target);
+
+  XrtAllocation(int64 handle, Shape shape, const string& session_target);
+  ~XrtAllocation();
+  StatusOr<Literal> ToLiteral() const;
+  const Shape& shape() const;
+  const int64 handle() const;
+
+ private:
+  const int64 handle_;
+  const Shape shape_;
+  const string session_target_;
+};
+
+// Result of a tuple destructuring operation on an XrtAllocation.
+class XrtAllocationTuple {
+ public:
+  // Note: any XrtAllocation elements that are not Release()'d will be
+  // deallocated in the destructor.
+  explicit XrtAllocationTuple(std::vector<XrtAllocation*> elements);
+
+  ~XrtAllocationTuple();
+
+  // Releases the ith element to the caller. Further attempts to release the ith
+  // element will return an invalid argument error.
+  StatusOr<XrtAllocation*> Release(int i);
+
+  // Returns the number of elements in the destructured tuple.
+  int64 size() const;
+
+ private:
+  std::vector<XrtAllocation*> elements_;
+};
+
+// Destructures a tuple-valued XrtAllocation into its constitutent elements
+// in XrtAllocationTuple form.
+//
+// Accepts a `session_target` argument, used in constructing the
+// `tensorflow::ClientSession` instance in which the sub-tupling graph is run,
+// and passed along in constructing each constituent XrtAllocation.
+StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
+    XrtAllocation* allocation, const string& session_target);
+
+// Represents a compiled computation that can be executed given handles to
+// device-allocated literals. Specifically, wraps an XLA LocalExecutable.
 class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
 
-  // Execute the computation with the given argument literals, and
-  // with optionally-specified argument layouts. The literals will be
-  // re-laid out according to the corresponding elements of
-  // shapes_with_layout.
-  StatusOr<Literal> Execute(
-      const std::vector<Literal>& arguments,
-      const std::vector<absl::optional<Shape> >& shapes_with_layout);
-
-  LocalShapedBuffer* ExecuteWithShapedBuffers(
+  StatusOr<LocalShapedBuffer*> Execute(
       absl::Span<LocalShapedBuffer* const> argument_handles);
+
+  // Execute on many replicas. Takes a sequence of argument lists (one argument
+  // list per replica) and returns a tuple of results (one result per replica).
+  // The number of argument lists must be equal to the replica count.
+  StatusOr<LocalShapedBufferTuple*> ExecutePerReplica(
+      absl::Span<const std::vector<LocalShapedBuffer*> > argument_handles);
 
  private:
   std::unique_ptr<LocalExecutable> executable_;
+};
+
+// Represents a compiled computation that can be executed given handles to
+// device-allocated literals. Specifically, wraps an XRT computation handle.
+class CompiledXrtComputation {
+ public:
+  // Accepts a `session_target` argument, used in constructing the
+  // `tensorflow::ClientSession` instance in which the execution graph is run.
+  CompiledXrtComputation(const ProgramShape& program_shape, int64 handle,
+                         const string& session_target);
+  ~CompiledXrtComputation();
+
+  StatusOr<XrtAllocation*> Execute(
+      absl::Span<XrtAllocation* const> argument_handles);
+
+  const ProgramShape& program_shape() const;
+  int64 handle() const;
+
+ private:
+  const ProgramShape program_shape_;
+  const int64 handle_;
+  const string session_target_;
 };
 
 // Wraps a XlaComputation produced by a LocalComputationBuilder. The
@@ -139,6 +219,11 @@ class LocalComputation {
   StatusOr<CompiledLocalComputation*> Compile(
       const std::vector<Shape>& argument_shapes,
       const ExecutableBuildOptions* build_options);
+
+  // Accepts a `session_target` argument, used in constructing the
+  // `tensorflow::ClientSession` instance in which the compilation graph is run.
+  StatusOr<CompiledXrtComputation*> CompileForXrt(
+      const std::vector<Shape>& argument_shapes, const string& session_target);
 
   const XlaComputation& computation() const;
 
@@ -183,6 +268,9 @@ class LocalComputationBuilder {
   // Returns an owned LocalComputation to the caller on success.
   StatusOr<LocalComputation*> Build();
 
+  // Returns an owned LocalComputation to the caller on success with given root.
+  StatusOr<LocalComputation*> BuildWithRoot(const LocalOp& root);
+
   LocalOp Parameter(int64 parameter_number, const Shape& shape,
                     const string& name);
 
@@ -198,8 +286,16 @@ class LocalComputationBuilder {
 
   LocalOp ConstantLiteral(const Literal& literal);
 
+  LocalOp Iota(PrimitiveType element_type, int64 size);
+
+  LocalOp BroadcastedIota(const Shape& shape, int64 dimension);
+
   LocalOp Broadcast(const LocalOp& operand,
                     absl::Span<const int64> broadcast_sizes);
+
+  LocalOp BroadcastInDim(const LocalOp& operand,
+                         absl::Span<const int64> out_dim_sizes,
+                         absl::Span<const int64> broadcast_dimensions);
 
   LocalOp Pad(const LocalOp& operand, const LocalOp& padding_value,
               const PaddingConfig& padding_config);
@@ -260,6 +356,12 @@ class LocalComputationBuilder {
   LocalOp Call(const LocalComputation& local_computation,
                absl::Span<const LocalOp> operands);
 
+  LocalOp CustomCall(const string& call_target_name,
+                     absl::Span<const LocalOp> operands,
+                     const Shape& shape_with_layout,
+                     const std::vector<Shape>& operand_shapes_with_layout,
+                     const string& opaque);
+
   LocalOp Transpose(const LocalOp& operand,
                     absl::Span<const int64> permutation);
 
@@ -301,6 +403,13 @@ class LocalComputationBuilder {
 
   LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
                      int64 dimension);
+
+  LocalOp QR(const LocalOp& a, bool full_matrices);
+
+  LocalOp Cholesky(const LocalOp& a);
+
+  LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
+                          bool lower, bool transpose_a, bool conjugate_a);
 
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 
@@ -391,7 +500,9 @@ class LocalComputationBuilder {
 
 // Functions for freeing resources from the Python side.
 void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer);
+void DeleteXrtAllocation(XrtAllocation* allocation);
 void DeleteCompiledLocalComputation(CompiledLocalComputation* computation);
+void DeleteCompiledXrtComputation(CompiledXrtComputation* computation);
 void DeleteLocalComputation(LocalComputation* computation);
 
 }  // namespace swig

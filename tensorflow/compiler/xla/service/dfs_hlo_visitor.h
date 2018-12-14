@@ -108,6 +108,7 @@ class DfsHloVisitorBase {
   virtual Status HandleCrossReplicaSum(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -250,6 +251,7 @@ class DfsHloVisitorBase {
 
   virtual Status HandleBatchNormGrad(HloInstructionPtr hlo) = 0;
 
+  virtual Status HandleAddDependency(HloInstructionPtr add_dependency) = 0;
   virtual Status HandleAfterAll(HloInstructionPtr token) = 0;
 
   // Invoked to inform the visitor that the traversal has completed, and that

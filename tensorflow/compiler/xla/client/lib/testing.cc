@@ -59,22 +59,25 @@ XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
   return Tuple(builder, parts);
 }
 
-std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
-                                                       Client* client) {
+std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(
+    const Shape& shape, Client* client, DebugOptions* debug_opts) {
   XlaBuilder b(absl::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
   BuildFakeDataOpOnDevice(shape, &b);
   XlaComputation computation = b.Build().ConsumeValueOrDie();
 
   auto execution_options = CreateDefaultExecutionOptions();
-  *execution_options.mutable_shape_with_output_layout() = shape;
+  *execution_options.mutable_shape_with_output_layout() = shape.ToProto();
+  if (debug_opts) {
+    *execution_options.mutable_debug_options() = *debug_opts;
+  }
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
       .ConsumeValueOrDie();
 }
 
 }  // namespace
 
-std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
-                                              Client* client) {
+std::unique_ptr<GlobalData> MakeFakeDataOrDie(
+    const Shape& shape, Client* client, DebugOptions* debug_opts /*=nullptr*/) {
   if (DataSizeOfShape(shape) < (1LL << 20)) {
     StatusOr<Literal> literal_status = MakeFakeLiteral(shape);
     if (!literal_status.ok()) {
@@ -82,24 +85,25 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
       // an on-device computation.
       CHECK_EQ(literal_status.status().code(),
                tensorflow::error::UNIMPLEMENTED);
-      return MakeFakeDataViaDeviceOrDie(shape, client);
+      return MakeFakeDataViaDeviceOrDie(shape, client, debug_opts);
     }
     return client->TransferToServer(literal_status.ValueOrDie()).ValueOrDie();
   }
 
   // If the data is large, generate it on-device.
-  return MakeFakeDataViaDeviceOrDie(shape, client);
+  return MakeFakeDataViaDeviceOrDie(shape, client, debug_opts);
 }
 
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const XlaComputation& computation, Client* client) {
+    const XlaComputation& computation, Client* client,
+    DebugOptions* debug_opts /*=nullptr*/) {
   CHECK(computation.proto().has_host_program_shape())
       << "Computation should have progran shape.";
   auto program_shape = computation.proto().host_program_shape();
 
   std::vector<std::unique_ptr<GlobalData>> results;
-  for (const Shape& shape : program_shape.parameters()) {
-    results.push_back(MakeFakeDataOrDie(shape, client));
+  for (const ShapeProto& shape : program_shape.parameters()) {
+    results.push_back(MakeFakeDataOrDie(Shape(shape), client, debug_opts));
   }
   return results;
 }

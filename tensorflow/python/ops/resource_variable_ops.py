@@ -26,6 +26,7 @@ from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -42,10 +43,10 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
 
 
 def get_resource_handle_data(graph_op):
-  assert ops._USE_C_SHAPES  # pylint: disable=protected-access
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
   handle_data = pywrap_tensorflow.GetHandleShapeAndType(
@@ -65,6 +66,7 @@ def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
                                                    name=name,
                                                    container=container)
   if graph_mode:
+    handle._handle_data = get_resource_handle_data(handle)  # pylint: disable=protected-access
     return handle
 
   # We do not want two distinct ResourceVariable objects for the same
@@ -87,12 +89,7 @@ def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     # shape inference doesn't run in eager mode we copy this data here for when
     # the handle is captured by an eager mode function.
     # pylint: disable=protected-access
-    if ops._USE_C_SHAPES:
-      handle._handle_data = get_resource_handle_data(h)
-    else:
-      if h._handle_data is None:
-        ops.set_shape_and_handle_data_for_outputs(h.op)
-      handle._handle_data = h._handle_data
+    handle._handle_data = get_resource_handle_data(h)
     # pylint: enable=protected-access
   # Clean up op->graph->op reference cycles.
   ops.dismantle_graph(graph)
@@ -525,7 +522,10 @@ class ResourceVariable(variables.RefVariable):
       snapshot = g.as_graph_element(
           ops.prepend_name_scope(
               variable_def.snapshot_name, import_scope=import_scope))
-      self._cached_value = snapshot
+      if snapshot.op.type != "ReadVariableOp":
+        self._cached_value = snapshot
+      else:
+        self._cached_value = None
       while snapshot.op.type != "ReadVariableOp":
         snapshot = snapshot.op.inputs[0]
       self._graph_element = snapshot
@@ -686,6 +686,7 @@ class ResourceVariable(variables.RefVariable):
     raise NotImplementedError(
         "numpy() is only available when eager execution is enabled.")
 
+  @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
 
@@ -808,19 +809,6 @@ class ResourceVariable(variables.RefVariable):
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
 
-  @staticmethod
-  def _OverloadAllOperators():  # pylint: disable=invalid-name
-    """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
-      ResourceVariable._OverloadOperator(operator)
-    # For slicing, bind getitem differently than a tensor (use SliceHelperVar
-    # instead)
-    # pylint: disable=protected-access
-    setattr(ResourceVariable, "__getitem__", array_ops._SliceHelperVar)
-
-  def _AsTensor(self):
-    return self.value()
-
   def _ref(self):
     """Unsupported."""
     raise NotImplementedError("ResourceVariable does not implement _ref()")
@@ -828,30 +816,6 @@ class ResourceVariable(variables.RefVariable):
   def set_shape(self, shape):
     """Unsupported."""
     raise NotImplementedError("ResourceVariable does not implement set_shape()")
-
-  @staticmethod
-  def _OverloadOperator(operator):  # pylint: disable=invalid-name
-    """Defer an operator overload to `ops.Tensor`.
-
-    We pull the operator out of ops.Tensor dynamically to avoid ordering issues.
-
-    Args:
-      operator: string. The operator name.
-    """
-
-    tensor_oper = getattr(ops.Tensor, operator)
-    def _run_op(a, *args):
-      # pylint: disable=protected-access
-      value = a._AsTensor()
-      return tensor_oper(value, *args)
-
-    # Propagate __doc__ to wrapper
-    try:
-      _run_op.__doc__ = tensor_oper.__doc__
-    except AttributeError:
-      pass
-
-    setattr(ResourceVariable, operator, _run_op)
 
   __array_priority__ = 100
 
@@ -1438,7 +1402,6 @@ ops.register_tensor_conversion_function(
     variables.Variable, variables.Variable._TensorConversionFunction)  # pylint: disable=protected-access
 
 # pylint: disable=protected-access
-ResourceVariable._OverloadAllOperators()
 ops.register_dense_tensor_like_type(ResourceVariable)
 
 
@@ -1448,13 +1411,23 @@ def _ReadGrad(_, grad):
   return grad
 
 
+def variable_shape(handle, out_type=dtypes.int32):
+  if getattr(
+      handle, "_handle_data", None) is None or not handle._handle_data.is_set:
+    return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
+  shape_proto = handle._handle_data.shape_and_type[0].shape
+  if shape_proto.unknown_rank or any(x.size == -1 for x in shape_proto.dim):
+    return gen_resource_variable_ops.variable_shape(handle, out_type=out_type)
+  return constant_op.constant([x.size for x in shape_proto.dim], dtype=out_type)
+
+
 @ops.RegisterGradient("ResourceGather")
 def _GatherGrad(op, grad):
   """Gradient for gather op."""
   # Build appropriately shaped IndexedSlices
   handle = op.inputs[0]
   indices = op.inputs[1]
-  params_shape = gen_resource_variable_ops.variable_shape(handle)
+  params_shape = variable_shape(handle)
   size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
@@ -1510,3 +1483,24 @@ def is_resource_variable(var):
   """"Returns True if `var` is to be considered a ResourceVariable."""
   return isinstance(var, ResourceVariable) or hasattr(
       var, "_should_act_as_resource_variable")
+
+
+def copy_to_graph_uninitialized(var):
+  """Copies an existing variable to a new graph, with no initializer."""
+  # Like ResourceVariable.__deepcopy__, but does not set an initializer on the
+  # new variable.
+  # pylint: disable=protected-access
+  new_variable = ResourceVariable(
+      initial_value=array_ops.placeholder(
+          shape=var.shape, dtype=var.dtype,
+          name="unused_initial_variable_value"),
+      trainable=var.trainable,
+      constraint=var._constraint,
+      dtype=var.dtype,
+      name=var._shared_name)
+  new_variable._maybe_initialize_checkpointable()
+  # pylint: enable=protected-access
+  return new_variable
+
+ops.NotDifferentiable("VarIsInitializedOp")
+ops.NotDifferentiable("VariableShape")

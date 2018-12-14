@@ -2,59 +2,59 @@ path: "tensorflow.linalg"
 tf_module {
   member {
     name: "LinearOperator"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorBlockDiag"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorCirculant"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorCirculant2D"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorCirculant3D"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorComposition"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorDiag"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorFullMatrix"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorIdentity"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorKronecker"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorLowRankUpdate"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorLowerTriangular"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorScaledIdentity"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "LinearOperatorZeros"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member_method {
     name: "adjoint"
@@ -118,7 +118,7 @@ tf_module {
   }
   member_method {
     name: "l2_normalize"
-    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\', \'None\'], "
+    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\'], "
   }
   member_method {
     name: "logdet"
@@ -133,12 +133,20 @@ tf_module {
     argspec: "args=[\'matrix\', \'rhs\', \'l2_regularizer\', \'fast\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'True\', \'None\'], "
   }
   member_method {
+    name: "lu"
+    argspec: "args=[\'input\', \'output_idx_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
     name: "matmul"
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "matvec"
+    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'adjoint_a\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "norm"
-    argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keepdims\', \'name\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "qr"
@@ -155,6 +163,10 @@ tf_module {
   member_method {
     name: "solve"
     argspec: "args=[\'matrix\', \'rhs\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "sqrtm"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "svd"

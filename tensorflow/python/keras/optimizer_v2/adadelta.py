@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,100 +18,123 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.optimizers.Adadelta', v1=[])
 class Adadelta(optimizer_v2.OptimizerV2):
-  """Adadelta optimizer.
+  r"""Optimizer that implements the Adadelta algorithm.
 
-  It is recommended to leave the parameters of this optimizer at their default
-  values.
+  Adadelta optimization is a stochastic gradient descent method that is based on
+  adaptive learning rate per dimension to address two drawbacks:
+    1) the continual decay of learning rates throughout training
+    2) the need for a manually selected global learning rate
 
-  See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
-  ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
+  Two accumulation steps are required:
+    1) the accumulation of gradients squared,
+    2) the accumulation of updates squared.
 
-  Some of the args below are hyperparameters, where a hyperparameter is
-  defined as a scalar Tensor, a regular Python value, or a callable (which
-  will be evaluated when `apply_gradients` is called) returning a scalar
-  Tensor or a Python value.
+  Initialization:
 
-  Arguments:
+  $$accum_g_0 := 0 \text{(Initialize gradient 2nd order moment vector)}$$
+  $$accum_x_0 := 0 \text{(Initialize variable update 2nd order moment vector)}$$
 
-      learning_rate: float hyperparameter >= 0. Learning rate. It is recommended
-        to leave it at the default value.
-      rho: float hyperparameter >= 0. The decay rate.
-      epsilon: float hyperparameter >= 0. Fuzz factor. A constant epsilon used
-        to better condition the grad update.
-      name: Optional name prefix for the operations created when applying
-        gradients.  Defaults to 'Adadelta'.
+  $$t := t + 1$$
+  $$accum_g_t := rho * accum_g_{t-1} + (1 - rho) * g * g$$
+  $$delta = -\sqrt{accum_x_{t-1}} / (\sqrt{accum_g_{t-1}} + \epsilon)$$
+  $$accum_x_t := rho * accum_x_{t-1} + (1 - rho) * delta * delta$$
+
+  References
+    See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
+      ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
+
   """
 
   def __init__(self,
                learning_rate=0.001,
                rho=0.95,
-               epsilon=1e-8,
-               name="Adadelta"):
-    super(Adadelta, self).__init__(name)
-    self._set_hyper("learning_rate", learning_rate)
-    self._set_hyper("rho", rho)
-    self._set_hyper("epsilon", epsilon)
+               epsilon=1e-7,
+               name='Adadelta',
+               **kwargs):
+    """Construct a new Adadelta optimizer.
 
-  def _create_vars(self, var_list, state):
+    Adadelta is a more robust extension of Adagrad that adapts learning rates
+    based on a moving window of gradient updates, instead of accumulating all
+    past gradients. This way, Adadelta continues learning even when many updates
+    have been done. Compared to Adagrad, in the original version of Adadelta you
+    don't have to set an initial learning rate. In this version, initial
+    learning rate can be set, as in most other Keras optimizers.
+
+    Args:
+      learning_rate: A `Tensor` or a floating point value. The learning rate.
+        To match the exact form in the original paper use 1.0.
+      rho: A `Tensor` or a floating point value. The decay rate.
+      epsilon: A `Tensor` or a floating point value.  A constant epsilon used
+               to better conditioning the grad update.
+      name: Optional name prefix for the operations created when applying
+        gradients.  Defaults to "Adadelta".
+      **kwargs: keyword arguments. Allowed to be {`decay`}
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
+    each be a callable that takes no arguments and returns the actual value to
+    use. This can be useful for changing these values across different
+    invocations of optimizer functions.
+    @end_compatibility
+    """
+    super(Adadelta, self).__init__(name, **kwargs)
+    self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
+    self._set_hyper('decay', self._initial_decay)
+    self._set_hyper('rho', rho)
+    self._set_hyper('epsilon', epsilon)
+
+  def _create_slots(self, var_list):
+    # Separate for-loops to respect the ordering of slot variables from v1.
     for v in var_list:
-      state.zeros_slot(v, "accum")
-      state.zeros_slot(v, "accum_update")
+      self.add_slot(v, 'accum_grad')
+    for v in var_list:
+      self.add_slot(v, 'accum_var')
 
-  def _apply_dense(self, grad, var, state):
-    accum = state.get_slot(var, "accum")
-    accum_update = state.get_slot(var, "accum_update")
-    return training_ops.apply_adadelta(
-        var,
-        accum,
-        accum_update,
-        state.get_hyper("learning_rate", var.dtype.base_dtype),
-        state.get_hyper("rho", var.dtype.base_dtype),
-        state.get_hyper("epsilon", var.dtype.base_dtype),
-        grad,
-        use_locking=self._use_locking)
+  def set_weights(self, weights):
+    params = self.weights
+    # Override set_weights for backward compatibility of Keras V1 optimizer
+    # since it does not include iteration at head of the weight list. Set
+    # iteration to 0.
+    if len(params) == len(weights) + 1:
+      weights = [np.array(0)] + weights
+    super(Adadelta, self).set_weights(weights)
 
-  def _resource_apply_dense(self, grad, var, state):
-    accum = state.get_slot(var, "accum")
-    accum_update = state.get_slot(var, "accum_update")
+  def _resource_apply_dense(self, grad, var):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    accum_grad = self.get_slot(var, 'accum_grad')
+    accum_var = self.get_slot(var, 'accum_var')
     return training_ops.resource_apply_adadelta(
         var.handle,
-        accum.handle,
-        accum_update.handle,
-        state.get_hyper("learning_rate", var.dtype.base_dtype),
-        state.get_hyper("rho", var.dtype.base_dtype),
-        state.get_hyper("epsilon", var.dtype.base_dtype),
+        accum_grad.handle,
+        accum_var.handle,
+        lr_t,
+        self._get_hyper('rho', var_dtype),
+        self._get_hyper('epsilon', var_dtype),
         grad,
         use_locking=self._use_locking)
 
-  def _apply_sparse(self, grad, var, state):
-    accum = state.get_slot(var, "accum")
-    accum_update = state.get_slot(var, "accum_update")
-    return training_ops.sparse_apply_adadelta(
-        var,
-        accum,
-        accum_update,
-        state.get_hyper("learning_rate", var.dtype.base_dtype),
-        state.get_hyper("rho", var.dtype.base_dtype),
-        state.get_hyper("epsilon", var.dtype.base_dtype),
-        grad.values,
-        grad.indices,
-        use_locking=self._use_locking)
-
-  def _resource_apply_sparse(self, grad, var, indices, state):
-    accum = state.get_slot(var, "accum")
-    accum_update = state.get_slot(var, "accum_update")
+  def _resource_apply_sparse(self, grad, var, indices):
+    var_dtype = var.dtype.base_dtype
+    lr_t = self._decayed_lr(var_dtype)
+    accum_grad = self.get_slot(var, 'accum_grad')
+    accum_var = self.get_slot(var, 'accum_var')
     return training_ops.resource_sparse_apply_adadelta(
         var.handle,
-        accum.handle,
-        accum_update.handle,
-        state.get_hyper("learning_rate", var.dtype.base_dtype),
-        state.get_hyper("rho", var.dtype.base_dtype),
-        state.get_hyper("epsilon", var.dtype.base_dtype),
+        accum_grad.handle,
+        accum_var.handle,
+        lr_t,
+        self._get_hyper('rho', var_dtype),
+        self._get_hyper('epsilon', var_dtype),
         grad,
         indices,
         use_locking=self._use_locking)
@@ -119,8 +142,9 @@ class Adadelta(optimizer_v2.OptimizerV2):
   def get_config(self):
     config = super(Adadelta, self).get_config()
     config.update({
-        "learning_rate": self._serialize_hyperparameter("learning_rate"),
-        "rho": self._serialize_hyperparameter("rho"),
-        "epsilon": self._serialize_hyperparameter("epsilon")
+        'learning_rate': self._serialize_hyperparameter('learning_rate'),
+        'decay': self._serialize_hyperparameter('decay'),
+        'rho': self._serialize_hyperparameter('rho'),
+        'epsilon': self._serialize_hyperparameter('epsilon'),
     })
     return config

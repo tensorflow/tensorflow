@@ -39,17 +39,15 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/stream_executor/lib/process_state.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/lib/error.h"
+#include "tensorflow/stream_executor/lib/numbers.h"
+#include "tensorflow/stream_executor/lib/process_state.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/lib/numbers.h"
-#include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -117,7 +115,7 @@ port::StatusOr<DriverVersion> StringToDriverVersion(const string &value) {
 // -- class Diagnostician
 
 string Diagnostician::GetDevNodePath(int dev_node_ordinal) {
-  return port::StrCat("/dev/nvidia", dev_node_ordinal);
+  return absl::StrCat("/dev/nvidia", dev_node_ordinal);
 }
 
 void Diagnostician::LogDiagnosticInformation() {
@@ -282,7 +280,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
   if (offset == string::npos) {
     return port::Status(
         port::error::NOT_FOUND,
-        port::StrCat("could not find kernel module information in "
+        absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
                      driver_version_file_contents, "\""));
   }
@@ -345,7 +343,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   CFRelease(kext_infos);
   auto status = port::Status(
       port::error::INTERNAL,
-      port::StrCat(
+      absl::StrCat(
           "failed to read driver bundle version: ",
           CFStringGetCStringPtr(kDriverKextIdentifier, kCFStringEncodingUTF8)));
   return status;
@@ -359,12 +357,12 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   if (driver_version_file == nullptr) {
     return port::Status(
         port::error::PERMISSION_DENIED,
-        port::StrCat("could not open driver version path for reading: ",
+        absl::StrCat("could not open driver version path for reading: ",
                      kDriverVersionPath));
   }
 
   static const int kContentsSize = 1024;
-  port::InlinedVector<char, 4> contents(kContentsSize);
+  absl::InlinedVector<char, 4> contents(kContentsSize);
   size_t retcode =
       fread(contents.begin(), 1, kContentsSize - 2, driver_version_file);
   if (retcode < kContentsSize - 1) {
@@ -381,7 +379,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
 
   auto status = port::Status(
       port::error::INTERNAL,
-      port::StrCat(
+      absl::StrCat(
           "failed to read driver version file contents: ", kDriverVersionPath,
           "; ferror: ", ferror(driver_version_file)));
   fclose(driver_version_file);

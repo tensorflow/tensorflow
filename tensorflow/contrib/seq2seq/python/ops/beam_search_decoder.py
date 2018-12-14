@@ -85,7 +85,8 @@ def _tile_batch(t, multiplier):
   tiling = [1] * (t.shape.ndims + 1)
   tiling[1] = multiplier
   tiled_static_batch_size = (
-      t.shape[0].value * multiplier if t.shape[0].value is not None else None)
+      t.shape.dims[0].value * multiplier
+      if t.shape.dims[0].value is not None else None)
   tiled = array_ops.tile(array_ops.expand_dims(t, 1), tiling)
   tiled = array_ops.reshape(tiled,
                             array_ops.concat(
@@ -138,9 +139,9 @@ def gather_tree_from_array(t, parent_ids, sequence_length):
     A `Tensor` which is a stacked `TensorArray` of the same size and type as
     `t` and where beams are sorted in each `Tensor` according to `parent_ids`.
   """
-  max_time = parent_ids.shape[0].value or array_ops.shape(parent_ids)[0]
-  batch_size = parent_ids.shape[1].value or array_ops.shape(parent_ids)[1]
-  beam_width = parent_ids.shape[2].value or array_ops.shape(parent_ids)[2]
+  max_time = parent_ids.shape.dims[0].value or array_ops.shape(parent_ids)[0]
+  batch_size = parent_ids.shape.dims[1].value or array_ops.shape(parent_ids)[1]
+  beam_width = parent_ids.shape.dims[2].value or array_ops.shape(parent_ids)[2]
 
   # Generate beam ids that will be reordered by gather_tree.
   beam_ids = array_ops.expand_dims(
@@ -191,9 +192,9 @@ def _check_static_batch_beam_maybe(shape, batch_size, beam_width):
   reshaped to [batch_size, beam_size, -1].
   """
   reshaped_shape = tensor_shape.TensorShape([batch_size, beam_width, None])
-  if (batch_size is not None and shape[0].value is not None
+  if (batch_size is not None and shape.dims[0].value is not None
       and (shape[0] != batch_size * beam_width
-           or (shape.ndims >= 2 and shape[1].value is not None
+           or (shape.ndims >= 2 and shape.dims[1].value is not None
                and (shape[0] != batch_size or shape[1] != beam_width)))):
     tf_logging.warn("TensorArray reordering expects elements to be "
                     "reshapable to %s which is incompatible with the "
@@ -722,7 +723,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   total_probs = array_ops.expand_dims(beam_state.log_probs, 2) + step_log_probs
 
   # Calculate the continuation lengths by adding to all continuing beams.
-  vocab_size = logits.shape[-1].value or array_ops.shape(logits)[-1]
+  vocab_size = logits.shape.dims[-1].value or array_ops.shape(logits)[-1]
   lengths_to_add = array_ops.one_hot(
       indices=array_ops.fill([batch_size, beam_width], end_token),
       depth=vocab_size,
@@ -920,6 +921,7 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight,
   """
   length_penalty_ = _length_penalty(
       sequence_lengths=sequence_lengths, penalty_factor=length_penalty_weight)
+  length_penalty_ = math_ops.cast(length_penalty_, dtype=log_probs.dtype)
   scores = log_probs / length_penalty_
 
   coverage_penalty_weight = ops.convert_to_tensor(

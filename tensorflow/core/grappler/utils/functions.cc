@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -75,6 +76,16 @@ Status ResolveFunctionBodyNodeAttrPlaceholders(
 
 }  // namespace
 
+FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
+    const FunctionLibraryDefinition& flib, const GraphDef& graph) {
+  return flib.ReachableDefinitions(graph);
+}
+
+FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
+    const FunctionLibraryDefinition& flib, const FunctionDef& func) {
+  return flib.ReachableDefinitions(func);
+}
+
 void GrapplerFunctionConnectivity::RegisterInputArgExpansion(
     InputArgExpansion input_arg_expansion) {
   string input_name = input_arg_expansion.input_name;
@@ -83,7 +94,7 @@ void GrapplerFunctionConnectivity::RegisterInputArgExpansion(
   for (int i = 0; i < placeholders.size(); ++i) {
     const string& placeholder = input_arg_expansion.placeholders[i];
     input_arg_placeholders_.insert(
-        {placeholder, InputArgPlaceholder{input_name, /*position=*/i}});
+        {placeholder, InputArgPlaceholder{input_name, /*input_position=*/i}});
   }
   input_arg_expansions_.insert(
       {std::move(input_name), std::move(input_arg_expansion)});
@@ -237,8 +248,8 @@ Status GrapplerFunctionConnectivity::AsFunctionDefInput(
     const InputArgPlaceholder* placeholder =
         FindOrNull(input_arg_placeholders_, node_name);
     if (placeholder != nullptr) {
-      *func_def_input =
-          strings::StrCat(placeholder->input_name, ":", placeholder->position);
+      *func_def_input = strings::StrCat(placeholder->input_name, ":",
+                                        placeholder->input_position);
       return Status::OK();
     }
   }
@@ -336,12 +347,10 @@ GrapplerFunctionItem::GrapplerFunctionItem(
       fetch.push_back(output_tensor);
     }
   }
-  // Stateful and Send (it's not stateful) nodes must be preserved in the graph.
-  for (const NodeDef& node : graph.node()) {
-    if (IsSend(node)) {
-      keep_ops.push_back(node.name());
-    }
-  }
+
+  // It's unsafe to prune side-effectful ops from the graph instantiated from a
+  // function definition (see inlining in function_optimizer.cc).
+  allowed_optimizations().prune_ops_with_side_effects = false;
 }
 
 const string& GrapplerFunctionItem::description() const { return description_; }
@@ -500,9 +509,19 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
   // GraphDef input format (name[:position])
   GrapplerFunctionConnectivity connectivity;
 
-  // Function body shares the library with the graph that instantiated it.
+  // Instantiate function body into a statically defined graph def.
   GraphDef function_body;
-  *function_body.mutable_library() = flib.ToProto();
+
+  // Function body shares the library with the graph that instantiated it. We do
+  // not need a full copy of the function library, just the reachable subset.
+  *function_body.mutable_library() =
+      ReachableFunctionLibraryDefinition(flib, func).ToProto();
+
+  VLOG(3) << absl::Substitute(
+      "Deleted $0 unreachable functions from the Grappler function item "
+      "instantiation of $1 (library size = $2)",
+      flib.num_functions() - function_body.library().function_size(),
+      signature.name(), function_body.library().function_size());
 
   // TODO(ezhulenev): support functions with tensor sequence inputs/outputs
 
@@ -540,13 +559,12 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
 
     InputArgExpansion input_expansion{/*input_name=*/input.name(),
                                       /*data_type=*/input_data_type,
-                                      /*is_ref*/ input.is_ref(),
+                                      /*is_ref=*/input.is_ref(),
                                       /*placeholders=*/{input.name()}};
     connectivity.RegisterInputArgExpansion(input_expansion);
     inputs.push_back(std::move(input_expansion));
   }
 
-  std::vector<string> keep_nodes;
   // Add all function nodes to the function body
   for (const NodeDef& func_def_node : func.node_def()) {
     NodeDef* new_node = function_body.add_node();
@@ -562,11 +580,6 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
     // Register node output range in a function connectivity.
     TF_RETURN_IF_ERROR(RegisterFunctionBodyOutputs(*registration, func_def_node,
                                                    &connectivity));
-
-    // Stateful and Send nodes must be preserved in a function body
-    if (registration->op_def.is_stateful() || IsSend(func_def_node)) {
-      keep_nodes.push_back(func_def_node.name());
-    }
   }
 
   // Rewrite inputs to use GraphDef format
@@ -597,12 +610,14 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
     outputs.push_back(std::move(output));
   }
 
+  std::vector<string> keep_ops;
   bool is_stateful = signature.is_stateful();
 
   *item = GrapplerFunctionItem(
-      /*func_name=*/signature.name(), /*description=*/signature.description(),
+      /*func_name=*/signature.name(),
+      /*description=*/signature.description(),
       /*func_attr=*/AttrSlice(&func.attr()), std::move(inputs),
-      std::move(outputs), std::move(keep_nodes), graph_def_version, is_stateful,
+      std::move(outputs), std::move(keep_ops), graph_def_version, is_stateful,
       std::move(function_body));
   return Status::OK();
 }

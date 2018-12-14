@@ -161,6 +161,16 @@ class Annotator(transformer.Base):
     self.cross_function_analyzer = cross_function_analyzer
     self.current_analyzer = None
 
+  def visit(self, node):
+    node = super(Annotator, self).visit(node)
+    if (self.current_analyzer is not None and
+        isinstance(node, gast.stmt) and
+        node in self.current_analyzer.graph.index):
+      cfg_node = self.current_analyzer.graph.index[node]
+      anno.setanno(node, anno.Static.LIVE_VARS_IN,
+                   frozenset(self.current_analyzer.in_[cfg_node]))
+    return node
+
   def visit_FunctionDef(self, node):
     parent_analyzer = self.current_analyzer
     self.current_analyzer = self.cross_function_analyzer.analyzers[node]
@@ -197,6 +207,17 @@ class Annotator(transformer.Base):
     node = self.generic_visit(node)
     node = self._block_statement_live_out(node)
     return self._block_statement_live_in(node, node.test)
+
+  def visit_With(self, node):
+    node = self.generic_visit(node)
+    return self._block_statement_live_in(node, node.items[0])
+
+  def visit_Expr(self, node):
+    node = self.generic_visit(node)
+    cfg_node = self.current_analyzer.graph.index[node]
+    anno.setanno(node, anno.Static.LIVE_VARS_OUT,
+                 frozenset(self.current_analyzer.out[cfg_node]))
+    return node
 
 
 def resolve(node, source_info, graphs):

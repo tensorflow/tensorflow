@@ -38,7 +38,7 @@ message RewriterConfig {
   }
 
   // Enum controlling the number of times to run optimizers. The default is to
-  // run them once.
+  // run them twice.
   enum NumIterationsType {
     DEFAULT_NUM_ITERS = 0;
     ONE = 1;
@@ -136,6 +136,11 @@ message RewriterConfig {
   // Configures AutoParallel optimization passes either through the
   // meta-optimizer or when manually specified through the optimizers field.
   AutoParallelOptions auto_parallel = 5;
+
+  // If true, any optimization pass failing will cause the MetaOptimizer to
+  // stop with an error. By default - or when set to false, failing passes are
+  // skipped silently.
+  bool fail_on_optimizer_errors = 21;
 
   ScopedAllocatorOptions scoped_allocator_opts = 16;
 

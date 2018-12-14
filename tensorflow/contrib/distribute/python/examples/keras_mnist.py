@@ -20,11 +20,18 @@ from __future__ import print_function
 import tensorflow as tf
 
 
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.keras.optimizer_v2 import rmsprop
+
+
 NUM_CLASSES = 10
 
 
-def get_input_datasets():
+def get_input_datasets(use_bfloat16=False):
   """Downloads the MNIST dataset and creates train and eval dataset objects.
+
+  Args:
+    use_bfloat16: Boolean to determine if input should be cast to bfloat16
 
   Returns:
     Train dataset, eval dataset and input shape.
@@ -32,6 +39,7 @@ def get_input_datasets():
   """
   # input image dimensions
   img_rows, img_cols = 28, 28
+  cast_dtype = tf.bfloat16 if use_bfloat16 else tf.float32
 
   # the data, split between train and test sets
   (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
@@ -57,12 +65,13 @@ def get_input_datasets():
   # train dataset
   train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
   train_ds = train_ds.repeat()
-  train_ds = train_ds.shuffle(100)
+  train_ds = train_ds.map(lambda x, y: (tf.cast(x, cast_dtype), y))
   train_ds = train_ds.batch(64, drop_remainder=True)
 
   # eval dataset
   eval_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test))
   eval_ds = eval_ds.repeat()
+  eval_ds = eval_ds.map(lambda x, y: (tf.cast(x, cast_dtype), y))
   eval_ds = eval_ds.batch(64, drop_remainder=True)
 
   return train_ds, eval_ds, input_shape
@@ -97,18 +106,23 @@ def main(_):
   # Build the train and eval datasets from the MNIST data. Also return the
   # input shape which is constructed based on the `image_data_format`
   # i.e channels_first or channels_last.
+  tf.enable_eager_execution()
+
   train_ds, eval_ds, input_shape = get_input_datasets()
   model = get_model(input_shape)
 
   # Instantiate the MirroredStrategy object. If we don't specify `num_gpus` or
   # the `devices` argument then all the GPUs available on the machine are used.
-  strategy = tf.contrib.distribute.MirroredStrategy()
+  # TODO(priyag): Use `tf.distribute.MirroredStrategy` once available.
+  strategy = mirrored_strategy.MirroredStrategy(['/gpu:0', '/cpu:0'])
+
+  optimizer = rmsprop.RMSProp(learning_rate=0.001)
 
   # Compile the model by passing the distribution strategy object to the
   # `distribute` argument. `fit`, `evaluate` and `predict` will be distributed
   # based on the strategy instantiated.
   model.compile(loss=tf.keras.losses.categorical_crossentropy,
-                optimizer=tf.train.RMSPropOptimizer(learning_rate=0.001),
+                optimizer=optimizer,
                 metrics=['accuracy'],
                 distribute=strategy)
 

@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -103,23 +105,6 @@ class LayoutUtil {
   // * R2+: equivalent to row-major. Dimension 0 is the major, dimension 1 is
   //        more minor, and so on until dimension N-1 which is the minor.
   static bool IsMonotonicWithDim0Major(const Layout& layout);
-
-  // Returns whether the layout of the given shape has padding (a
-  // padded_dimension value in Layout is greater than the corresponding
-  // dimension size).
-  static bool IsPadded(const Shape& shape);
-
-  // Returns the padded_dimensions array for the given Shape.  Requires that the
-  // shape is an array and has a dense layout.
-  static absl::Span<const int64> PaddedDimensions(const Shape& shape);
-
-  // Returns the given index of the padded_dimensions array for the given Shape.
-  // Requires that the shape is an array and has a dense layout.
-  static int64 PaddedDimension(const Shape& shape, int64 index);
-
-  // Returns the padding_value for the given Shape.  Requires that the shape is
-  // an array and has a dense layout.
-  static PaddingValue GetPaddingValue(const Shape& shape);
 
   // Returns whether the given Shape is an array (i.e. not a tuple) and has a
   // sparse format layout.
@@ -210,8 +195,6 @@ class LayoutUtil {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };
-
-std::ostream& operator<<(std::ostream& out, const Layout& layout);
 
 }  // namespace xla
 

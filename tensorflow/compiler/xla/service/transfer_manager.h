@@ -95,7 +95,13 @@ class TransferManager {
   // but need not have the same layout.
   //
   // This operation is performed asynchronously on the given stream. It returns
-  // once the transfer is enqueued.
+  // once the transfer is enqueued, and may return before the transfer has
+  // completed.
+  //
+  // The caller may free the data structures 'literal' and 'device_buffer'
+  // immediately after this function returns, however their constituent buffers
+  // on both host and device must remain valid until the enqueued transfer has
+  // completed on 'stream'.
   virtual Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer) = 0;

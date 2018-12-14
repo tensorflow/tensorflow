@@ -22,19 +22,21 @@ import socket
 import ssl
 import struct
 
+import six
+
 from tensorflow.contrib.ignite.python.ops import gen_dataset_ops
 from tensorflow.contrib.ignite.python.ops import ignite_op_loader  # pylint: disable=unused-import
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import deprecation
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Readable(object):
-  """Readable abstract class that exposes methods to do reading-related
-
-     operations.
-  """
+  """Abstract class that exposes methods to do reading-related operations."""
 
   @abc.abstractmethod
   def __init__(self):
@@ -224,10 +226,7 @@ types = {
 
 
 class TypeTreeNode(object):
-  """TypeTreeNode class exposes methods to format object tree structure
-
-     data.
-  """
+  """TypeTreeNode class exposes methods to format object tree structure data."""
 
   def __init__(self, name, type_id, fields=None, permutation=None):
     """Constructs a new instance of TypeTreeNode.
@@ -689,18 +688,22 @@ class IgniteClient(TcpClient):
 
 
 class IgniteDataset(dataset_ops.DatasetSource):
-  """Apache Ignite is a memory-centric distributed database, caching, and
+  """Apache Ignite is a memory-centric distributed database.
 
-     processing platform for transactional, analytical, and streaming workloads,
-     delivering in-memory speeds at petabyte scale. This contrib package
-     contains an integration between Apache Ignite and TensorFlow. The
-     integration is based on tf.data from TensorFlow side and Binary Client
-     Protocol from Apache Ignite side. It allows to use Apache Ignite as a
-     datasource for neural network training, inference and all other
+     It acts as a caching and processing platform for transactional, analytical,
+     and streaming workloads, delivering in-memory speeds at petabyte scale.
+     This contrib package contains an integration between Apache Ignite and
+     TensorFlow. The integration is based on tf.data from TensorFlow side and
+     Binary Client Protocol from Apache Ignite side. It allows to use Apache
+     Ignite as a datasource for neural network training, inference and all other
      computations supported by TensorFlow. Ignite Dataset is based on Apache
      Ignite Binary Client Protocol.
   """
 
+  @deprecation.deprecated(
+      None,
+      "tf.contrib.ignite will be removed in 2.0, the support for Apache Ignite "
+      "will continue to be provided through the tensorflow/io GitHub project.")
   def __init__(self,
                cache_name,
                host="localhost",
@@ -753,6 +756,9 @@ class IgniteDataset(dataset_ops.DatasetSource):
         self.cache_type.to_permutation(),
         dtype=dtypes.int32,
         name="permutation")
+    self._structure = structure.convert_legacy_structure(
+        self.cache_type.to_output_types(), self.cache_type.to_output_shapes(),
+        self.cache_type.to_output_classes())
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.ignite_dataset(self.cache_name, self.host, self.port,
@@ -760,13 +766,5 @@ class IgniteDataset(dataset_ops.DatasetSource):
                                           self.schema, self.permutation)
 
   @property
-  def output_classes(self):
-    return self.cache_type.to_output_classes()
-
-  @property
-  def output_shapes(self):
-    return self.cache_type.to_output_shapes()
-
-  @property
-  def output_types(self):
-    return self.cache_type.to_output_types()
+  def _element_structure(self):
+    return self._structure

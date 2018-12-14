@@ -828,7 +828,7 @@ class BaseSession(SessionInterface):
     nested list, tuple, namedtuple, dict, or OrderedDict containing graph
     elements at its leaves.  A graph element can be one of the following types:
 
-    * An `tf.Operation`.
+    * A `tf.Operation`.
       The corresponding fetched value will be `None`.
     * A `tf.Tensor`.
       The corresponding fetched value will be a numpy ndarray containing the
@@ -1097,7 +1097,7 @@ class BaseSession(SessionInterface):
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
-                            'strings, lists, numpy ndarrays, or TensorHandles.'
+                            'strings, lists, numpy ndarrays, or TensorHandles. '
                             'For reference, the tensor object was ' +
                             str(feed_val) + ' which was passed to the '
                             'feed with key ' + str(feed) + '.')

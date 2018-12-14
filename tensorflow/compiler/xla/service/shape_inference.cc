@@ -391,17 +391,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   return ShapeUtil::MakeShape(element_type, new_dimensions);
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferAfterAllShape(
-    absl::Span<const Shape* const> arg_shapes) {
-  for (const Shape* arg_shape : arg_shapes) {
-    if (arg_shape->element_type() != TOKEN) {
-      return InvalidArgument(
-          "Operands of token instructions must be TOKEN types.");
-    }
-  }
-  return ShapeUtil::MakeTokenShape();
-}
-
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
     const Shape& operand_shape, PrimitiveType new_element_type) {
   auto old_element_type = operand_shape.element_type();
@@ -1029,7 +1018,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   switch (opcode) {
     case HloOpcode::kTuple: {
       Shape result = ShapeUtil::MakeTupleShape({});
-      result.mutable_tuple_shapes()->Reserve(operand_shapes.size());
+      result.mutable_tuple_shapes()->reserve(operand_shapes.size());
       for (const Shape* shape : operand_shapes) {
         ShapeUtil::AppendShapeToTuple(*shape, &result);
       }
@@ -1571,6 +1560,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
+  if (feature_group_count <= 0) {
+    return InvalidArgument(
+        "feature_group_count must be a positive number, got %d",
+        feature_group_count);
+  }
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
         "Convolution with different element types: %s and %s.",
@@ -1684,14 +1678,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   const int64 kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
-  if (input_features != kernel_input_features * feature_group_count) {
+  if (input_features % feature_group_count != 0 ||
+      input_features / feature_group_count != kernel_input_features) {
     return InvalidArgument(
-        "Expected LHS feature dimension (value %d) to match RHS "
-        "input feature dimension * feature_group_count (value %d * %d = %d); "
+        "Expected LHS feature dimension (value %d) to be a multiple of "
+        "feature_group_count (value %d), and LHS feature dimension / "
+        "feature_group_count = RHS feature dimension (value %d); "
         "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        input_features, kernel_input_features, feature_group_count,
-        kernel_input_features * feature_group_count,
+        input_features, feature_group_count, kernel_input_features,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
@@ -2023,6 +2018,25 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(window_result_shape));
   }
   return operand_shape;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferGetDimensionSizeShape(
+    const Shape& shape, int64 dimension) {
+  if (dimension < 0 || dimension >= ShapeUtil::Rank(shape)) {
+    return InvalidArgument("GetDimensionSize dimension out of bounds: %d.",
+                           dimension);
+  }
+
+  // TODO(b/119580730): Remove this restriction when very large dimension size
+  // is needed.
+  if (shape.dimensions(dimension) > std::numeric_limits<uint32>::max()) {
+    return InvalidArgument(
+        "GetDimensionSize's input shape is %s, the %dth dimension exceeds the "
+        "UINT_MAX limit.",
+        ShapeUtil::HumanString(shape), dimension);
+  }
+
+  return ShapeUtil::MakeShape(U32, {});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferSliceShape(
@@ -2357,6 +2371,52 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   std::copy(operand.dimensions().begin(), operand.dimensions().end(),
             dimensions.begin() + broadcast_sizes.size());
   return ShapeUtil::MakeShape(operand.element_type(), dimensions);
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
+    const Shape& operand_shape, const Shape& output_shape,
+    absl::Span<const int64> broadcast_dimensions) {
+  TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of broadcast"));
+  TF_RETURN_IF_ERROR(ExpectArray(output_shape, "operand of broadcast"));
+  const int64 operand_rank = ShapeUtil::Rank(operand_shape);
+  const int64 output_rank = ShapeUtil::Rank(output_shape);
+  if (operand_rank > output_rank) {
+    return InvalidArgument(
+        "InDim style broadcast must be to an equal or higher ranked shape; "
+        "operand rank: %lld; output rank: %lld",
+        operand_rank, output_rank);
+  }
+  if (operand_rank != broadcast_dimensions.size()) {
+    return InvalidArgument(
+        "Size of broadcast_dimensions has to match operand's rank; operand "
+        "rank: %lld, size of broadcast_dimensions %u.",
+        operand_rank, broadcast_dimensions.size());
+  }
+  for (int64 i = 0; i < operand_rank; i++) {
+    if (broadcast_dimensions[i] < 0 || broadcast_dimensions[i] >= output_rank) {
+      return InvalidArgument("Broadcast dimension %lld is out of bound",
+                             broadcast_dimensions[i]);
+    }
+    if (operand_shape.dimensions(i) !=
+            output_shape.dimensions(broadcast_dimensions[i]) &&
+        operand_shape.dimensions(i) != 1) {
+      return InvalidArgument(
+          "Input dimension should be either 1 or equal to the output dimension "
+          "it's broadcasting into; the %lldth operand dimension is %lld, the "
+          "%lldth output dimension is %lld.",
+          i, operand_shape.dimensions(i), broadcast_dimensions[i],
+          output_shape.dimensions(broadcast_dimensions[i]));
+    }
+    // Make sure the broadcast dimensions are listed in a strictly increasing
+    // order.
+    if (i > 0 && broadcast_dimensions[i - 1] >= broadcast_dimensions[i]) {
+      return InvalidArgument(
+          "Broadcast dimensions order is wrong: %d comes after %d.",
+          broadcast_dimensions[i], broadcast_dimensions.at(i - 1));
+    }
+  }
+
+  return output_shape;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReshapeShape(
@@ -2779,6 +2839,15 @@ Status ValidateScatterDimensionNumbers(
           "%d), got: %d.",
           operand_shape.dimensions_size(), inserted_dim);
     }
+  }
+
+  // Validate window size.
+  auto window_size = dim_numbers.update_window_dims_size() +
+                     dim_numbers.inserted_window_dims_size();
+  if (window_size != ShapeUtil::Rank(operand_shape)) {
+    return InvalidArgument(
+        "Scatter op has window of size %d; doesn't match operand of rank %d.",
+        window_size, ShapeUtil::Rank(operand_shape));
   }
 
   // Validate scatter_dims_to_operand_dims in ScatterDimensionNumbers.

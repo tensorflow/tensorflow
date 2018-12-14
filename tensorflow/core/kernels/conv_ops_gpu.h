@@ -27,19 +27,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Get the Cudnn workspace limit from the environment variable, which is in MB.
+// Get the Dnn workspace limit from the environment variable, which is in MB.
 // Return the workspace memory limit in bytes. If no value is set, return the
 // default value.
-int64 GetCudnnWorkspaceLimit(const string& envvar_in_mb,
-                             int64 default_value_in_bytes);
+int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
+                           int64 default_value_in_bytes);
 
 // A class to provide scratch-space allocator for Stream-Executor Cudnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after
 // the kernel finishes.
-class CudnnScratchAllocator : public se::ScratchAllocator {
+class DnnScratchAllocator : public se::ScratchAllocator {
  public:
-  virtual ~CudnnScratchAllocator() {}
-  CudnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
+  virtual ~DnnScratchAllocator() {}
+  DnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
   int64 GetMemoryLimitInBytes(se::Stream* stream) override {
     return memory_limit_;

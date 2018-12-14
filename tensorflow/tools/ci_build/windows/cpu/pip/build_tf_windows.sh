@@ -58,6 +58,8 @@ PY_TEST_DIR="py_test_dir"
 SKIP_TEST=0
 RELEASE_BUILD=0
 TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..."
+PROJECT_NAME=""
+EXTRA_BUILD_FLAGS=""
 
 # --skip_test            Skip running tests
 # --enable_remote_cache  Add options to enable remote cache for build and test
@@ -65,16 +67,32 @@ TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..."
 #                        ensure performance
 # --test_core_only       Use tensorflow/python/... as test target
 # --test_contrib_only    Use tensorflow/contrib/... as test target
-for ARG in "$@"; do
-  case "$ARG" in
+#for ARG in "$@"; do
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --tf_nightly) TF_NIGHTLY=1 ;;
     --skip_test) SKIP_TEST=1 ;;
     --enable_remote_cache) set_remote_cache_options ;;
     --release_build) RELEASE_BUILD=1 ;;
     --test_core_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..." ;;
     --test_contrib_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/contrib/..." ;;
+    --extra_build_flags)
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      EXTRA_BUILD_FLAGS="$1"
+      ;;
+    --project_name)
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      PROJECT_NAME="$1"
+      ;;
     *)
   esac
+  shift
 done
 
 if [[ "$RELEASE_BUILD" == 1 ]]; then
@@ -88,7 +106,11 @@ fi
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   python tensorflow/tools/ci_build/update_version.py --nightly
-  EXTRA_PIP_FLAG="--nightly_flag"
+  if [ -z ${PROJECT_NAME} ]; then
+    EXTRA_PIP_FLAGS="--nightly_flag"
+  else
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
+  fi
 fi
 
 # Enable short object file path to avoid long path issue on Windows.
@@ -100,7 +122,9 @@ fi
 
 run_configure_for_cpu_build
 
-bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
+  tensorflow/tools/pip_package:build_pip_package \
+  --incompatible_remove_native_http_archive=false || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
@@ -109,7 +133,7 @@ fi
 # Create a python test directory to avoid package name conflict
 create_python_test_dir "${PY_TEST_DIR}"
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" "${EXTRA_PIP_FLAG}"
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" ${EXTRA_PIP_FLAGS}
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0
@@ -126,8 +150,8 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 # which will result testing system installed tensorflow
 bazel test --announce_rc --config=opt -k --test_output=errors \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_oss \
-  --build_tag_filters=-no_pip,-no_windows,-no_oss --build_tests_only \
+  --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu --build_tests_only \
   --test_size_filters=small,medium \
   --jobs="${N_JOBS}" --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \

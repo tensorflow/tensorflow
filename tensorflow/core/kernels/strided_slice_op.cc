@@ -307,9 +307,9 @@ class StridedSliceAssignOp : public OpKernel {
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
       core::ScopedUnref scoped_unref(v);
-      mutex_lock ml(*v->mu());
       OP_REQUIRES_OK(context,
-                     PrepareToUpdateVariable<Device, T>(context, v->tensor()));
+                     EnsureSparseVariableAccess<Device, T>(context, v));
+      mutex_lock ml(*v->mu());
       old_lhs = v->tensor();
       OP_REQUIRES(context, old_lhs->dtype() == DataTypeToEnum<T>::value,
                   errors::InvalidArgument(
@@ -447,6 +447,8 @@ TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
                           StridedSliceAssignOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bool(REGISTER_GPU);
+TF_CALL_int8(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);

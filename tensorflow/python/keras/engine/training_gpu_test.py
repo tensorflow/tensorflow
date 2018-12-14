@@ -69,7 +69,7 @@ class TrainingGPUTest(test.TestCase):
       return simple_model
 
     if test.is_gpu_available(cuda_only=True):
-      with self.session(use_gpu=True):
+      with test_util.use_gpu():
         losses_to_test = ['sparse_categorical_crossentropy',
                           'categorical_crossentropy', 'binary_crossentropy']
 

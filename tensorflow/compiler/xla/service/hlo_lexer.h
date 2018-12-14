@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_token.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
@@ -27,6 +27,57 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
+
+// Defines different kinds of tokens used by the HLO lexer.
+//
+// You shouldn't need to use this directly unless you're using HloLexer
+// directly, and you probably don't need to do that.  Use hlo_parser instead.
+enum class TokKind {
+  // Markers
+  kEof,
+  kError,
+
+  // Tokens with no info.
+  kEqual,  // =
+  kComma,  // ,
+  kColon,  // :
+  kLsquare,
+  kRsquare,  // [  ]
+  kLbrace,
+  kRbrace,  // {  }
+  kLparen,
+  kRparen,  // (  )
+
+  kArrow,  // ->
+
+  // Keywords
+  kw_HloModule,
+  kw_ENTRY,
+  kw_ROOT,
+  kw_true,
+  kw_false,
+  kw_maximal,
+  kw_replicated,
+  kw_nan,
+  kw_inf,
+  kw_sparse,
+
+  kNegInf,  // -inf
+
+  // Typed tokens.
+  kPrimitiveType,  // F32, PRED, etc.
+  kName,           // %foo
+  kAttributeName,  // dimensions=
+  kDimLabels,      // [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+  kDxD,            // [0-9]+(x[0-9]+)+
+  kPad,            // [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
+  kIdent,          // other identifiers
+  kString,         // "abcd\"\n"
+  kInt,            // 42
+  kDecimal,        // 4.2
+};
+
+string TokKindToString(TokKind kind);
 
 // Lexer for the HloModule::ToString() format text.
 //
@@ -38,9 +89,9 @@ class HloLexer {
     current_ptr_ = buf_.begin();
   }
 
-  TokKind Lex() { return current_kind_ = LexToken(); }
+  TokKind Lex() { return token_state_.current_kind = LexToken(); }
 
-  TokKind GetKind() const { return current_kind_; }
+  TokKind GetKind() const { return token_state_.current_kind; }
   string GetStrVal() const {
     switch (GetKind()) {
       case TokKind::kName:
@@ -50,34 +101,37 @@ class HloLexer {
       case TokKind::kPad:
       case TokKind::kString:
       case TokKind::kIdent:
-        return str_val_;
+        return token_state_.str_val;
       default:
         LOG(FATAL) << "This token does not have string value";
     }
   }
-  Shape GetShapeVal() const {
-    CHECK(GetKind() == TokKind::kShape);
-    return shape_val_;
-  }
   tensorflow::int64 GetInt64Val() const {
     CHECK(GetKind() == TokKind::kInt);
-    return int64_val_;
+    return token_state_.int64_val;
   }
   double GetDecimalVal() const {
     CHECK(GetKind() == TokKind::kDecimal);
-    return decimal_val_;
+    return token_state_.decimal_val;
+  }
+  PrimitiveType GetPrimitiveTypeVal() const {
+    CHECK(GetKind() == TokKind::kPrimitiveType);
+    return token_state_.primitive_type_val;
   }
 
   typedef const char* LocTy;
 
   // Returns the location of the current token.
-  LocTy GetLoc() const { return token_start_; }
+  LocTy GetLoc() const { return token_state_.token_start; }
 
   // Returns the line and column of a location in the buffer.
   std::pair<unsigned, unsigned> GetLineAndColumn(LocTy location) const;
 
   // Returns the whole line given the location.
   absl::string_view GetLine(LocTy loc) const;
+
+  // Looks ahead one token and returns it. Lexer state is unchanged.
+  TokKind LookAhead();
 
  private:
   // Returns the current character. If it's neither the end of input buffer nor
@@ -111,12 +165,15 @@ class HloLexer {
   const char* current_ptr_;
 
   // Information about the current token.
-  const char* token_start_ = nullptr;
-  TokKind current_kind_;
-  string str_val_;
-  Shape shape_val_;
-  tensorflow::int64 int64_val_;
-  double decimal_val_;
+  struct TokenState {
+    const char* token_start = nullptr;
+    TokKind current_kind;
+    string str_val;
+    tensorflow::int64 int64_val;
+    double decimal_val;
+    PrimitiveType primitive_type_val;
+  };
+  TokenState token_state_;
 
   struct LineNoCacheTy {
     const char* last_query;

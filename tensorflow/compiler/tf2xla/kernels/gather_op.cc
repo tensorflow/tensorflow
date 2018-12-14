@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -194,7 +193,7 @@ class GatherOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("Gather"), GatherOp);
-REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstInput("axis"), GatherOp);
+REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {
  public:

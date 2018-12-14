@@ -779,7 +779,8 @@ Status Encapsulator::Subgraph::RecordArg(
   if (inserted) {
     NodeDef arg_def;
     NodeDefBuilder builder(
-        absl::StrCat(src_node->name(), "_", src_slot, "_arg"), kArgOp);
+        absl::StrCat(src_node->name(), "_", src_slot, "_arg"), kArgOp,
+        NodeDebugInfo(src_node->def()));
     DataType dtype = edge->dst()->input_type(edge->dst_input());
     builder.Attr("T", dtype);
     builder.Attr("index", arg_index);
@@ -814,7 +815,8 @@ Status Encapsulator::Subgraph::RecordResult(
   if (inserted) {
     NodeDef ret_def;
     NodeDefBuilder builder(
-        absl::StrCat(src_node->name(), "_", src_slot, "_retval"), kRetValOp);
+        absl::StrCat(src_node->name(), "_", src_slot, "_retval"), kRetValOp,
+        NodeDebugInfo(src_node->def()));
     DataType dtype = src_node->output_type(src_slot);
     builder.Attr("T", dtype);
     builder.Attr("index", ret_index);
@@ -974,6 +976,7 @@ Status Encapsulator::Subgraph::AddHostComputes(
       }
 
       NodeDef host_compute_def;
+      // TODO(shikharagarwal): What source node should we use for errors?
       NodeDefBuilder builder(absl::StrCat("outside_compilation_",
                                           oc_subgraph_name, "_host_compute"),
                              kHostComputeOp);
@@ -1040,6 +1043,7 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
                                                   Graph* graph_out) {
   if (sequencer_ == nullptr) {
     NodeDef seq_def;
+    // TODO(shikharagarwal): What source node should we use for errors?
     NodeDefBuilder builder(absl::StrCat(subgraph_name, "_sequencer"), "NoOp");
     builder.Attr(kXlaHostTransferSequencerAttr, subgraph_name);
     builder.Device(device_);
@@ -1122,8 +1126,11 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
                                       fdef);
   }
 
-  if (!reuse_existing_functions || library->Find(name) == nullptr) {
+  const FunctionDef* original_fdef = library->Find(name);
+  if (!reuse_existing_functions || original_fdef == nullptr) {
     TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+  } else if (!FunctionDefsEqual(*original_fdef, fdef)) {
+    TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
   }
   return Status::OK();
 }
@@ -1211,7 +1218,8 @@ Status Encapsulator::Subgraph::AddHostComputeKeyPlaceholder(
   GraphDefBuilder::Options options(graph_out, /*status=*/nullptr);
   NodeDef key_def;
   NodeDefBuilder builder(
-      absl::StrCat(call_node_def_.name(), "_key_placeholder"), "Placeholder");
+      absl::StrCat(call_node_def_.name(), "_key_placeholder"), "Placeholder",
+      NodeDebugInfo(call_node_def_));
   builder.Attr("dtype", DT_STRING);
   builder.Attr("shape", shape_proto);
   builder.Attr("_host_compute_call_node", call_node_def_.name());
@@ -1245,6 +1253,7 @@ Status Encapsulator::Subgraph::AddRecvAtHostNode(
   }
 
   NodeDef recv_def;
+  // TODO(shikharagarwal): What source node should we use for errors?
   NodeDefBuilder builder(absl::StrCat("outside_compilation_", subgraph_name,
                                       "_", oc_subgraph_name, "_recv"),
                          kRecvAtHostOp);
@@ -1300,6 +1309,7 @@ Status Encapsulator::Subgraph::AddSendFromHostNode(
   }
 
   NodeDef send_def;
+  // TODO(shikharagarwal): What source node should we use for errors?
   NodeDefBuilder builder(absl::StrCat("outside_compilation_", subgraph_name,
                                       "_", oc_subgraph_name, "_send"),
                          kSendFromHostOp);
@@ -1830,8 +1840,9 @@ Node* AddDummyShapedNode(const Node* src_node, int src_port,
   // Add any Enter nodes required to bring the constant to the correct control
   // flow frame.
   while (!control_flow_info[src_node->id()].frame_name.empty()) {
+    NodeDebugInfo debug_info(*src_node);
     NodeBuilder enter_builder(options.GetNameForOp("Enter"), "Enter",
-                              options.op_registry());
+                              options.op_registry(), &debug_info);
     enter_builder.Attr("frame_name",
                        control_flow_info[src_node->id()].frame_name);
     enter_builder.Attr("is_constant", true);
@@ -2015,7 +2026,8 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
             return errors::InvalidArgument(
                 "Shape inference is not possible for outside_compilation "
                 "SendFromHost node ",
-                send_node->name(), " because shape of node ", n->name(),
+                send_node->name(), " because shape of node ",
+                FormatNodeForError(*n),
                 " will not be known at compilation time.");
           }
         }
@@ -2044,8 +2056,7 @@ Status Encapsulator::DoStaticShapeInferenceForOutsideCompilationSend(
         return errors::Internal(
             "Internal assumption failed while rewriting an outside_compilation "
             "cluster that contains a while loop. Logic assumes back-edge is to "
-            "port 1 of a 2-input "
-            "Merge node.");
+            "port 1 of a 2-input Merge node.");
       }
       // Connect the existing edge to both inputs of the Merge node so that the
       // graph will be well-formed.

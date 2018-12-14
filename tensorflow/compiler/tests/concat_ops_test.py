@@ -72,7 +72,7 @@ class ConcatTest(xla_test.XLATestCase):
       x2 = constant_op.constant(p2)
       with self.test_scope():
         c = array_ops.concat([x1, x2], 0)
-      result = c.eval()
+      result = self.evaluate(c)
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
 
@@ -150,7 +150,7 @@ class ConcatTest(xla_test.XLATestCase):
             [float(x) for x in grad_inp.flatten()], shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
         concated_grad = array_ops.concat(grad, 1)
-      result = concated_grad.eval()
+      result = self.evaluate(concated_grad)
     self.assertAllEqual(result, grad_inp)
 
   def testGradientsSimpleAll(self):
@@ -177,7 +177,7 @@ class ConcatTest(xla_test.XLATestCase):
             [float(x) for x in grad_inp.flatten()], shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
         concated_grad = array_ops.concat(grad, 0)
-        result = concated_grad.eval()
+        result = self.evaluate(concated_grad)
 
     self.assertAllEqual(result, grad_inp)
 
@@ -205,7 +205,7 @@ class ConcatTest(xla_test.XLATestCase):
             [float(x) for x in grad_inp.flatten()], shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
         concated_grad = array_ops.concat(grad, 2)
-        result = concated_grad.eval()
+        result = self.evaluate(concated_grad)
 
     self.assertAllEqual(result, grad_inp)
 
@@ -242,7 +242,7 @@ class ConcatTest(xla_test.XLATestCase):
             [float(x) for x in grad_inp.flatten()], shape=output_shape)
         grad = gradients_impl.gradients([c], inp_tensors, [grad_tensor])
         concated_grad = array_ops.concat(grad, concat_dim)
-        result = concated_grad.eval()
+        result = self.evaluate(concated_grad)
 
     self.assertAllEqual(result, grad_inp)
 
@@ -254,7 +254,7 @@ class ConcatTest(xla_test.XLATestCase):
   def DISABLED_testZeroSize(self):
     # Verify that concat doesn't crash and burn for zero size inputs
     np.random.seed(7)
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         for shape0 in (), (2,):
           axis = len(shape0)
@@ -270,7 +270,7 @@ class ConcatTest(xla_test.XLATestCase):
                 self.assertAllEqual(c.eval(), correct)
                 # Check gradients
                 dc = np.random.randn(*c.get_shape().as_list())
-                dxs = sess.run(gradients_impl.gradients(c, xs, dc))
+                dxs = self.evaluate(gradients_impl.gradients(c, xs, dc))
                 self.assertAllEqual(dc, np.concatenate(dxs, axis=axis))
 
   def testConcatTuple(self):
@@ -280,7 +280,7 @@ class ConcatTest(xla_test.XLATestCase):
       with self.test_scope():
         concat_list_t = array_ops.concat([c1, c2], 0)
         concat_tuple_t = array_ops.concat((c1, c2), 0)
-      self.assertAllEqual(concat_list_t.eval(), concat_tuple_t.eval())
+      self.assertAllEqual(concat_list_t.eval(), self.evaluate(concat_tuple_t))
 
   def testConcatNoScalars(self):
     with self.cached_session():
@@ -330,47 +330,47 @@ class ConcatTest(xla_test.XLATestCase):
 class ConcatOffsetTest(xla_test.XLATestCase):
 
   def testBasic(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         cdim = constant_op.constant(1, dtypes.int32)
         s0 = constant_op.constant([2, 3, 5], dtypes.int32)
         s1 = constant_op.constant([2, 7, 5], dtypes.int32)
         s2 = constant_op.constant([2, 20, 5], dtypes.int32)
         off = gen_array_ops.concat_offset(cdim, [s0, s1, s2])
-        ans = sess.run(off)
+        ans = self.evaluate(off)
         self.assertAllEqual(ans, [[0, 0, 0], [0, 3, 0], [0, 10, 0]])
 
 
 class PackTest(xla_test.XLATestCase):
 
   def testBasic(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         s0 = constant_op.constant([2, 3, 5], dtypes.int32)
         s1 = constant_op.constant([2, 7, 5], dtypes.int32)
         s2 = constant_op.constant([2, 20, 5], dtypes.int32)
         packed = array_ops.stack([s0, s1, s2])
-        ans = sess.run(packed)
+        ans = self.evaluate(packed)
         self.assertAllEqual(ans, [[2, 3, 5], [2, 7, 5], [2, 20, 5]])
 
   def testScalars(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         s0 = constant_op.constant(2, dtypes.int32)
         s1 = constant_op.constant(3, dtypes.int32)
         s2 = constant_op.constant(5, dtypes.int32)
         packed = array_ops.stack([s0, s1, s2])
-        ans = sess.run(packed)
+        ans = self.evaluate(packed)
         self.assertAllEqual(ans, [2, 3, 5])
 
   def testEmpty(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       with self.test_scope():
         s0 = constant_op.constant([[]], dtypes.int32)
         s1 = constant_op.constant([[]], dtypes.int32)
         s2 = constant_op.constant([[]], dtypes.int32)
         packed = array_ops.stack([s0, s1, s2])
-        ans = sess.run(packed)
+        ans = self.evaluate(packed)
         self.assertAllEqual(ans, [[[]], [[]], [[]]])
 
 

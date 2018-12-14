@@ -12,10 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -152,6 +152,15 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
                              ")::Dataset");
     }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / batch_size_ +
+             (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -207,7 +216,6 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        AddConstantParameter(ctx, "batch_size", dataset()->batch_size_);
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
@@ -309,9 +317,10 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
 
           // 2. Copy each batch element to the appropriate location in
           // the output component tensor.
-          Tensor batch_component(ctx->allocator({}),
-                                 output_dtypes()[component_index],
-                                 batch_component_shape);
+          out_tensors->emplace_back(ctx->allocator({}),
+                                    output_dtypes()[component_index],
+                                    batch_component_shape);
+          Tensor& batch_component = out_tensors->back();
           TF_RETURN_IF_ERROR(batch_util::SetElementZero(
               &batch_component, dataset()->padding_values_[component_index]));
 
@@ -331,13 +340,18 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
                   batch_elements[i][component_index], &batch_component, i));
             }
           }
-          out_tensors->push_back(std::move(batch_component));
         }
         *end_of_sequence = false;
         return Status::OK();
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         dataset()->batch_size_);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)

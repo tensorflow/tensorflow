@@ -28,30 +28,40 @@ namespace {
 
 class PinToHostOptimizerTest : public GrapplerTest {};
 
-TEST_F(PinToHostOptimizerTest, TryFindHostDevice) {
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceNoDevices) {
   gtl::FlatSet<string> devices = {};
-  EXPECT_EQ("ABC", internal::TryFindHostDevice(devices, false, "ABC"));
 
-  devices = {"/device:CPU:0", "/device:XLA_GPU:0"};
+  EXPECT_EQ(internal::TryFindHostDevice(devices, false, "ABC"), "");
+}
+
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceCpuXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:CPU:0", "/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, ""), "/device:CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, "/device:XLA_GPU:0"),
             "/device:CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, "/device:XLA_GPU:*"),
             "/device:CPU:0");
+}
 
-  devices = {"/device:XLA_CPU:0", "/device:XLA_GPU:0"};
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceXlaCpuXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:XLA_CPU:0", "/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, ""), "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:0"),
             "/device:XLA_CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:*"),
             "/device:XLA_CPU:0");
+}
 
-  devices = {"/device:XLA_GPU:0"};
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, ""), "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:0"),
-            "/device:XLA_GPU:0");
+            "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:*"),
-            "/device:XLA_GPU:*");
+            "");
 }
 
 TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {

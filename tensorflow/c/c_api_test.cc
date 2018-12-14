@@ -187,15 +187,26 @@ TEST(CAPI, LibraryLoadFunctions) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
-  // Load the library.
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  TF_Code code = TF_GetCode(status);
-  string status_msg(TF_Message(status));
-  TF_DeleteStatus(status);
-  ASSERT_EQ(TF_OK, code) << status_msg;
+#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  {
+    // Load the library.
+    TF_Status* status = TF_NewStatus();
+    TF_Library* lib =
+        TF_LoadLibrary("tensorflow/c/test_op1.so", status);
+    TF_Code code = TF_GetCode(status);
+    string status_msg(TF_Message(status));
+    TF_DeleteStatus(status);
+    ASSERT_EQ(TF_OK, code) << status_msg;
 
+    // Test op list.
+    TF_Buffer op_list_buf = TF_GetOpList(lib);
+    tensorflow::OpList op_list;
+    EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
+    ASSERT_EQ(op_list.op_size(), 1);
+    EXPECT_EQ("TestCApi1", op_list.op(0).name());
+    TF_DeleteLibraryHandle(lib);
+  }
+#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
   {
     TF_Buffer* op_list_buffer = TF_GetAllOpList();
     tensorflow::OpList op_list;
@@ -210,19 +221,6 @@ TEST(CAPI, LibraryLoadFunctions) {
     EXPECT_TRUE(found);
     TF_DeleteBuffer(op_list_buffer);
   }
-
-#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
-  {
-    // Test op list.
-    TF_Buffer op_list_buf = TF_GetOpList(lib);
-    tensorflow::OpList op_list;
-    EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
-    ASSERT_EQ(op_list.op_size(), 1);
-    EXPECT_EQ("TestCApi", op_list.op(0).name());
-  }
-#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
-
-  TF_DeleteLibraryHandle(lib);
 }
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
@@ -2349,14 +2347,8 @@ TEST(TestApiDef, TestCreateApiDef) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
   TF_Buffer* op_list_buf = TF_GetAllOpList();
-  status = TF_NewStatus();
+  TF_Status* status = TF_NewStatus();
   auto* api_def_map = TF_NewApiDefMap(op_list_buf, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
@@ -2376,7 +2368,6 @@ TEST(TestApiDef, TestCreateApiDef) {
   TF_DeleteBuffer(api_def_buf);
   TF_DeleteApiDefMap(api_def_map);
   TF_DeleteBuffer(op_list_buf);
-  TF_DeleteLibraryHandle(lib);
 }
 
 TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
@@ -2384,14 +2375,8 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
   TF_Buffer* op_list_buf = TF_GetAllOpList();
-  status = TF_NewStatus();
+  TF_Status* status = TF_NewStatus();
   auto* api_def_map = TF_NewApiDefMap(op_list_buf, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
@@ -2422,7 +2407,6 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
   TF_DeleteBuffer(api_def_buf);
   TF_DeleteApiDefMap(api_def_map);
   TF_DeleteBuffer(op_list_buf);
-  TF_DeleteLibraryHandle(lib);
 }
 
 class DummyKernel : public tensorflow::OpKernel {

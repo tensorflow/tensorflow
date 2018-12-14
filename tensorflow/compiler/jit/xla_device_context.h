@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -50,7 +51,8 @@ class XlaDeviceContext : public DeviceContext {
       std::shared_ptr<se::Stream> compute_stream,
       std::shared_ptr<se::Stream> host_to_device_stream,
       std::shared_ptr<se::Stream> device_to_host_stream,
-      xla::LocalClient* client, bool transfer_as_literal,
+      std::vector<std::shared_ptr<se::Stream>> device_to_device_streams,
+      xla::LocalClient* client,
       XlaCompiler::ShapeRepresentationFn shape_representation_fn,
       thread::ThreadPool* thread_pool);
 
@@ -60,18 +62,30 @@ class XlaDeviceContext : public DeviceContext {
   void CopyDeviceTensorToCPU(const Tensor* device_tensor,
                              absl::string_view tensor_name, Device* device,
                              Tensor* cpu_tensor, StatusCallback done) override;
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
+                              Tensor* output_tensor,
+                              StatusCallback done) const override;
 
-  void CopyDeviceTensorToDevice(const Tensor& src_tensor, Tensor* dst_tensor,
-                                const StatusCallback& done);
-
+  xla::LocalClient* client() const { return client_; }
   se::Stream* stream() const { return stream_.get(); }
+  se::Stream* host_to_device_stream() const {
+    return host_to_device_stream_.get();
+  }
+  se::Stream* device_to_host_stream() const {
+    return device_to_host_stream_.get();
+  }
+  se::Stream* device_to_device_stream(int index) const {
+    return device_to_device_streams_.at(index).get();
+  }
+  xla::TransferManager* transfer_manager() const { return transfer_manager_; }
+  const XlaCompiler::ShapeRepresentationFn& shape_representation_fn() const {
+    return shape_representation_fn_;
+  }
+
+  // Returns a device-to-device stream, in round-robin fashion.
+  se::Stream* GetDeviceToDeviceStream();
 
  private:
-  Status TransferLiteralToDevice(const Tensor& host_tensor,
-                                 Tensor* device_tensor) const;
-  void TransferLiteralFromDevice(Tensor* host_tensor,
-                                 const Tensor& device_tensor,
-                                 const StatusCallback& done) const;
   bool UseMultipleStreams() const { return stream_ != host_to_device_stream_; }
 
   // The main compute stream of the device, used to synchronize the transfer
@@ -83,16 +97,22 @@ class XlaDeviceContext : public DeviceContext {
   // The stream to use for transferring data from device to host. Can be
   // idential to stream_, but must not be nullptr.
   std::shared_ptr<se::Stream> device_to_host_stream_;
+  // Streams to use for transferring data directly between different devices,
+  // e.g., over NVLINK.
+  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_;
+
   // For the underlying memory allocator and XLA's TransferManager.
   xla::LocalClient* client_;
   // Transfer manager, for marshalling data to and from the device.
   xla::TransferManager* transfer_manager_;
-  // True if we must use XLA's TransferManager for correct device transfers.
-  const bool transfer_as_literal_;
+
   XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 
   // Thread pool used for running closures
   thread::ThreadPool* thread_pool_;
+
+  absl::Mutex mu_;
+  int next_stream_ GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

@@ -22,7 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
+import collections
 
 import gast
 
@@ -35,11 +35,11 @@ from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.util import tf_inspect
 
 
-class FunctionInfo(namedtuple('FunctionInfo', ('dtype',))):
+class FunctionInfo(collections.namedtuple('FunctionInfo', ('dtype',))):
   pass
 
 
-# TODO(mdan): Move this to config.py.
+# TODO(mdan): Move this to a separate transformer.
 KNOWN_NUMPY_FUNCTIONS = {
     ('numpy', 'random', 'binomial'): FunctionInfo(dtype='tf.int64'),
 }
@@ -108,14 +108,28 @@ class CallTreeTransformer(converter.Base):
       if hasattr(owner_type, node.attr):
         return getattr(owner_type, node.attr)
       else:
-        raise ValueError('Type "%s" has not attribute "%s". Is it dynamic?' %
+        # TODO(mdan): We should probably return None here rather than an error.
+        raise ValueError('Type "%s" has no attribute "%s". Is it dynamic?' %
                          (owner_type, node.attr))
     return None
 
   def _function_is_compilable(self, target_entity):
     """Determines whether an entity can be compiled at all."""
-    # TODO(mdan): This is just a placeholder. Implement.
-    return not inspect_utils.isbuiltin(target_entity)
+    # TODO(mdan): Expand.
+
+    if target_entity.__module__ is None:
+      # Functions like builtins and NumPy don't expose a module.
+      # Those in general should not be compiled.
+      return False
+
+    if inspect_utils.isbuiltin(target_entity):
+      return False
+
+    if inspect_utils.isnamedtuple(target_entity):
+      # namedtuple doesn't expose its source code, making it uncompilable.
+      return False
+
+    return True
 
   def _should_compile(self, node, fqn):
     """Determines whether an entity should be compiled in the context."""
@@ -129,15 +143,14 @@ class CallTreeTransformer(converter.Base):
       if fqn[:i] in self.ctx.program.uncompiled_modules:
         return False
 
-    # Check for local decorations
-    if anno.hasanno(node, 'graph_ready'):
-      return False
-
-    # The decorators themselves are not to be converted.
-    # If present, the decorators should appear as static functions.
     target_entity = self._try_resolve_target(node.func)
 
     if target_entity is not None:
+
+      # Currently, lambdas are always converted.
+      # TODO(mdan): Allow markers of the kind f = ag.do_not_convert(lambda: ...)
+      if inspect_utils.islambda(target_entity):
+        return True
 
       # This may be reached when "calling" a callable attribute of an object.
       # For example:
@@ -149,17 +162,9 @@ class CallTreeTransformer(converter.Base):
         if target_entity.__module__.startswith(mod[0] + '.'):
           return False
 
-      # This attribute is set by the decorator itself.
-      # TODO(mdan): This may not play nicely with other wrapping decorators.
-      if hasattr(target_entity, '__pyct_is_compile_decorator'):
-        return False
-
-      if target_entity in self.ctx.program.options.strip_decorators:
-        return False
-
       # Inspect the target function decorators. If any include a @convert
-      # or @graph_ready annotation, then they must be called as they are.
-      # TODO(mdan): This may be quite heavy.
+      # or @do_not_convert annotation, then they must be called as they are.
+      # TODO(mdan): This may be quite heavy. Perhaps always dynamically convert?
       # To parse and re-analyze each function for every call site could be quite
       # wasteful. Maybe we could cache the parsed AST?
       try:
@@ -170,10 +175,15 @@ class CallTreeTransformer(converter.Base):
         # to py_func).
         return True
 
+      # This attribute is set when the decorator was applied before the
+      # function was parsed. See api.py.
+      if hasattr(target_entity, '__ag_compiled'):
+        return False
+
       for dec in target_node.decorator_list:
         decorator_fn = self._resolve_decorator_name(dec)
         if (decorator_fn is not None and
-            decorator_fn in self.ctx.program.options.strip_decorators):
+            self.ctx.program.options.should_strip(decorator_fn)):
           return False
 
     return True
@@ -183,9 +193,6 @@ class CallTreeTransformer(converter.Base):
     assert anno.hasanno(node.func, 'fqn')
     target_entity = anno.getanno(node.func, 'live_val')
     target_fqn = anno.getanno(node.func, 'fqn')
-
-    if not self._should_compile(node, target_fqn):
-      return node
 
     if anno.hasanno(node, 'is_constructor'):
       new_name = self.ctx.namer.compiled_class_name(
@@ -206,19 +213,9 @@ class CallTreeTransformer(converter.Base):
           # The renaming process will transform it into a regular function.
           # TODO(mdan): Is this complete? How does it work with nested members?
           node.args = [node.func.value] + node.args
-      node.func = templates.replace('func_name', func_name=new_name)[0]
+      node.func = templates.replace_as_expression(
+          'func_name', func_name=new_name)
     return node
-
-  def _wrap_to_py_func_no_return(self, node):
-    # TODO(mdan): Properly handle varargs, etc.
-    template = """
-      ag__.utils.wrap_py_func(func, None, (args,), kwargs, True)
-    """
-    return templates.replace(
-        template,
-        func=node.func,
-        args=node.args,
-        kwargs=ast_util.keywords_to_dict(node.keywords))
 
   def _wrap_to_py_func_single_return(self, node, dtype):
     # TODO(mdan): Properly handle varargs, etc.
@@ -259,77 +256,83 @@ class CallTreeTransformer(converter.Base):
     else:
       func = node.func
       owner = parser.parse_expression('None')
-    call_expr = templates.replace(
+    new_call = templates.replace_as_expression(
         template,
         func=func,
         owner=owner,
-        options=self.ctx.program.options.to_ast(self.ctx.info.namespace),
+        options=self.ctx.program.options.to_ast(
+            self.ctx,
+            internal_convert_user_code=self.ctx.program.options.recursive),
         args=node.args)
-    new_call = call_expr[0].value
     # TODO(mdan): Improve the template mechanism to better support this.
     new_call.keywords = node.keywords
     return new_call
 
-  def visit_Expr(self, node):
-    if isinstance(node.value, gast.Call):
-      if anno.hasanno(node.value.func, 'live_val'):
-        target_entity = anno.getanno(node.value.func, 'live_val')
-        if not self._function_is_compilable(target_entity):
-          if anno.hasanno(node.value.func, 'fqn'):
-            target_fqn = anno.getanno(node.value.func, 'fqn')
-            if not self._should_compile(node.value, target_fqn):
-              return node
-            node = self._wrap_to_py_func_no_return(node.value)
-            return node
-      # Only the case of py_func with no return value is special.
-      # Everything else is processed by visit_Call.
-      self.visit(node.value)
-    else:
-      self.generic_visit(node)
+  def _visit_decorators(self, decorator_list):
+    if not self.ctx.program.options.uses(converter.Feature.DECORATORS):
+      # When not processing decorators, strip everything that is encountered.
+      return []
+
+    return self.visit_block(decorator_list)
+
+  def visit_FunctionDef(self, node):
+    node.args = self.visit(node.args)
+    node.body = self.visit_block(node.body)
+    node.decorator_list = self._visit_decorators(node.decorator_list)
+    node.returns = self.visit_block(node.returns)
     return node
 
   def visit_Call(self, node):
-    # If the function call is wrapped by one of the marker decorators,
-    # consider it graph ready.
     if anno.hasanno(node.func, 'live_val'):
       target_entity = anno.getanno(node.func, 'live_val')
-      if target_entity in self.ctx.program.options.strip_decorators:
-        if len(node.args) < 1:
-          raise ValueError(
-              'Found call to decorator function "%s", but it had no arguments. '
-              'A decorator needs at least one positional argument.' %
-              target_entity)
-        anno.setanno(node.args[0], 'graph_ready', True)
 
-    self.generic_visit(node)
-    if anno.hasanno(node.func, 'live_val'):
-      target_entity = anno.getanno(node.func, 'live_val')
       if anno.hasanno(node.func, 'fqn'):
         target_fqn = anno.getanno(node.func, 'fqn')
       else:
         target_fqn = None
 
       if self._function_is_compilable(target_entity):
-        node = self._rename_compilable_function(node)
+        if self._should_compile(node, target_fqn):
+          node = self._rename_compilable_function(node)
+        else:
+          node = self.generic_visit(node)
+          return node
+
       elif target_fqn and target_fqn in KNOWN_NUMPY_FUNCTIONS:
         # TODO(mdan): Should we replace these with equivalent TF ops instead?
         node = self._wrap_to_py_func_single_return(
             node, KNOWN_NUMPY_FUNCTIONS[target_fqn].dtype)
+
       elif inspect_utils.isbuiltin(target_entity):
         # Note: Any builtin that passed the builtins converter is assumed to be
         # safe for graph mode.
         return node
+
+      elif inspect_utils.isnamedtuple(target_entity):
+        # Although not compilable, we assume they are safe for graph mode.
+        node = self.generic_visit(node)
+        return node
+
       else:
+        # TODO(mdan): Instert dynamic conversion here instead.
         raise NotImplementedError(
             'py_func with return values (unknown function)')
     else:
-      if ast_util.matches(node, 'super(_)'):
-        # super() calls are preserved. The class conversion mechanism will
-        # ensure that they return the correct value.
+      # Special cases
+      # TODO(mdan): These need a systematic review - there may be more.
+
+      # 1. super() calls - these are preserved. The class conversion mechanism
+      # will ensure that they return the correct value.
+      if ast_util.matches(node, parser.parse_expression('super(_)')):
         return node
 
-      if self.ctx.program.options.recursive:
-        node = self._insert_dynamic_conversion(node)
+      # 2. super().method calls - these are preserved as well, when the
+      # conversion processes the entire class.
+      if (ast_util.matches(node, parser.parse_expression('super(_)._(_)')) and
+          self.ctx.info.owner_type is not None):
+        return node
+
+      node = self._insert_dynamic_conversion(node)
     return node
 
 

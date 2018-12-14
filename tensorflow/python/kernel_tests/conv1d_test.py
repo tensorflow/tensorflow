@@ -43,7 +43,7 @@ class Conv1DTest(test.TestCase):
         with self.cached_session(use_gpu=test.is_gpu_available()):
           c = nn_ops.conv1d(x, filters, stride, padding="VALID")
           reduced = array_ops.squeeze(c)
-          output = reduced.eval()
+          output = self.evaluate(reduced)
           if stride == 1:
             self.assertEqual(len(output), 3)
             self.assertAllClose(output,
@@ -69,7 +69,7 @@ class Conv1DTest(test.TestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv1d_transpose(
           x, f, y_shape, stride=stride, padding="VALID")
-      value = output.eval()
+      value = self.evaluate(output)
 
       cache_values = np.zeros(y_shape, dtype=np.float32)
 

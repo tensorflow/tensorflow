@@ -29,7 +29,7 @@ namespace {
 
 NodeDef MakeNumaAwareNode(const NodeDef& node, MutableGraphView* graph) {
   NodeDef numa_aware_node = node;
-  graph_utils::SetUniqueGraphNodeName("make_numa_aware", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("make_numa_aware", graph->graph(),
                                       &numa_aware_node);
   numa_aware_node.set_op("ExperimentalNumaMapAndBatchDataset");
   return numa_aware_node;
@@ -44,10 +44,10 @@ Status MakeNumaAware::Optimize(Cluster* cluster, const GrapplerItem& item,
   std::set<string> nodes_to_delete;
 
   for (const NodeDef& node : item.graph.node()) {
-    if (node.op() != "MapAndBatchDatasetV2") continue;
+    if (node.op() != "ExperimentalMapAndBatchDataset") continue;
 
     auto* numa_node = graph.AddNode(MakeNumaAwareNode(node, &graph));
-    graph.ReplaceInput(node, *numa_node);
+    graph.UpdateFanouts(node.name(), numa_node->name());
     nodes_to_delete.insert(node.name());
   }
   graph.DeleteNodes(nodes_to_delete);

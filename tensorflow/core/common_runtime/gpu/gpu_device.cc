@@ -84,13 +84,13 @@ namespace tensorflow {
 // corresponding stream have completed.  The following two classes
 // serve this purpose in two different compilation environments.
 
-class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
+class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenCudaStreamDevice()
+  EigenGpuStreamDevice()
       : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
     Eigen::initializeDeviceProp();
   }
-  ~EigenCudaStreamDevice() override {}
+  ~EigenGpuStreamDevice() override {}
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
                     TfGpuId tf_gpu_id, ::tensorflow::Allocator* alloc,
                     char* scratch) {
@@ -101,7 +101,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
     context_ = context;
     scratch_ = scratch;
     semaphore_ =
-        reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
+        reinterpret_cast<unsigned int*>(scratch + Eigen::kGpuScratchSize);
     stream_ = cuda_stream;
     allocator_ = alloc;
     PlatformGpuId platform_gpu_id;
@@ -185,7 +185,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   mutable unsigned int* semaphore_;
   OpKernelContext* context_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
+  TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
 };
 
 // This factory helps to ensure that different GPU device objects that refer to
@@ -292,7 +292,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
       DCHECK(streams_[i]);
       if (scratch_.size() > i && scratch_[i]) continue;
       size_t scratch_buffer_size =
-          Eigen::kCudaScratchSize + sizeof(unsigned int);
+          Eigen::kGpuScratchSize + sizeof(unsigned int);
       void* scratch_buffer = gpu_allocator_->AllocateRaw(
           Allocator::kAllocatorAlignment, scratch_buffer_size);
       if (scratch_buffer == nullptr) {
@@ -304,7 +304,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
           se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
 
       bool ok = executor_->SynchronousMemZero(
-          &mem, Eigen::kCudaScratchSize + sizeof(unsigned int));
+          &mem, Eigen::kGpuScratchSize + sizeof(unsigned int));
       if (!ok) {
         return errors::FailedPrecondition(
             "Failed to memcopy into scratch buffer for device ",
@@ -601,7 +601,9 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
         [to, copy](StatusCallback done_,
                    // Begin unbound arguments.
                    const Status& s) {
-          *to = std::move(*copy);
+          if (s.ok()) {
+            *to = std::move(*copy);
+          }
           delete copy;
           done_(s);
         },
@@ -692,7 +694,7 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   const Eigen::GpuDevice& device() const override { return device_; }
 
  private:
-  EigenCudaStreamDevice stream_device_;
+  EigenGpuStreamDevice stream_device_;
   Eigen::GpuDevice device_;
 };
 
@@ -907,9 +909,9 @@ Allocator* BaseGPUDevice::GetScopedAllocator(AllocatorAttributes attr,
 const int BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength = 1000;
 const int BaseGPUDeviceFactory::InterconnectMap::kStreamExecutorStrength = 1;
 
-Status BaseGPUDeviceFactory::CreateDevices(const SessionOptions& options,
-                                           const string& name_prefix,
-                                           std::vector<Device*>* devices) {
+Status BaseGPUDeviceFactory::CreateDevices(
+    const SessionOptions& options, const string& name_prefix,
+    std::vector<std::unique_ptr<Device>>* devices) {
   TF_RETURN_IF_ERROR(ValidateGPUMachineManager());
   se::Platform* gpu_manager = GPUMachineManager();
   if (gpu_manager == nullptr) {
@@ -1073,12 +1075,10 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
   // LINT.ThenChange(//tensorflow/python/platform/test.py)
 }
 
-Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
-                                             const string& name_prefix,
-                                             TfGpuId tf_gpu_id,
-                                             int64 memory_limit,
-                                             const DeviceLocality& dev_locality,
-                                             std::vector<Device*>* devices) {
+Status BaseGPUDeviceFactory::CreateGPUDevice(
+    const SessionOptions& options, const string& name_prefix, TfGpuId tf_gpu_id,
+    int64 memory_limit, const DeviceLocality& dev_locality,
+    std::vector<std::unique_ptr<Device>>* devices) {
   CHECK_GE(tf_gpu_id.value(), 0);
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_gpu_id.value());
@@ -1108,7 +1108,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
   // different (which should be an error).
   //
   // TODO(laigd): report error if memory_limit doesn't match stats.bytes_limit.
-  BaseGPUDevice* gpu_device = CreateGPUDevice(
+  std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
       options, device_name, static_cast<Bytes>(stats.bytes_limit), dev_locality,
       tf_gpu_id, GetShortDeviceDescription(platform_gpu_id, desc),
       gpu_allocator, ProcessState::singleton()->GetCPUAllocator(numa_node));
@@ -1116,7 +1116,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(const SessionOptions& options,
             << (stats.bytes_limit >> 20) << " MB memory) -> physical GPU ("
             << GetShortDeviceDescription(platform_gpu_id, desc) << ")";
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
-  devices->push_back(gpu_device);
+  devices->push_back(std::move(gpu_device));
 
   return Status::OK();
 }
@@ -1169,6 +1169,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     int num_tf_gpus, const std::vector<InterconnectMap>& interconnects,
     LocalityMap* localities) {
   std::vector<TfGpuId> all_tf_gpu_ids;
+  all_tf_gpu_ids.reserve(num_tf_gpus);
   for (int i = 0; i < num_tf_gpus; ++i) {
     all_tf_gpu_ids.push_back(TfGpuId(i));
   }

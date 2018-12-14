@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -60,39 +59,10 @@ def _scale_losses(losses, weights):
   """
   # First, compute the sum of the losses over all elements:
   start_index = max(0, weights.get_shape().ndims)
-  reduction_indices = list(range(start_index, losses.get_shape().ndims))
-  reduced_losses = math_ops.reduce_sum(
-      losses, reduction_indices=reduction_indices)
+  axis = list(range(start_index, losses.get_shape().ndims))
+  reduced_losses = math_ops.reduce_sum(losses, axis=axis)
   reduced_losses = math_ops.multiply(reduced_losses, weights)
   return math_ops.reduce_sum(reduced_losses)
-
-
-def _safe_div(numerator, denominator, name="value"):
-  """Computes a safe divide which returns 0 if the denominator is zero.
-
-  Note that the function contains an additional conditional check that is
-  necessary for avoiding situations where the loss is zero causing NaNs to
-  creep into the gradient computation.
-
-  Args:
-    numerator: An arbitrary `Tensor`.
-    denominator: A `Tensor` whose shape matches `numerator` and whose values are
-      assumed to be non-negative.
-    name: An optional name for the returned op.
-
-  Returns:
-    The element-wise value of the numerator divided by the denominator.
-  """
-  if compat.forward_compatible(2018, 11, 1):
-    return math_ops.div_no_nan(numerator, denominator, name=name)
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.div(numerator,
-                   array_ops.where(
-                       math_ops.equal(denominator, 0),
-                       array_ops.ones_like(denominator), denominator)),
-      array_ops.zeros_like(numerator),
-      name=name)
 
 
 def _safe_mean(losses, num_present):
@@ -107,7 +77,7 @@ def _safe_mean(losses, num_present):
       then zero is returned.
   """
   total_loss = math_ops.reduce_sum(losses)
-  return _safe_div(total_loss, num_present, name="value")
+  return math_ops.div_no_nan(total_loss, num_present, name="value")
 
 
 @deprecated("2016-12-30", "Use tf.losses.compute_weighted_loss instead.")
@@ -187,10 +157,9 @@ def _num_present(losses, weights, per_batch=False):
 
   # First, count the number of nonzero weights:
   if weights.get_shape().ndims >= 1:
-    reduction_indices = list(range(1, weights.get_shape().ndims))
+    axis = list(range(1, weights.get_shape().ndims))
     num_nonzero_per_batch = math_ops.reduce_sum(
-        math_ops.to_float(math_ops.not_equal(weights, 0)),
-        reduction_indices=reduction_indices)
+        math_ops.to_float(math_ops.not_equal(weights, 0)), axis=axis)
 
   # Next, determine the number of elements that weights would broadcast to:
   broadcast_dims = array_ops.slice(
@@ -606,20 +575,20 @@ def mean_pairwise_squared_error(predictions,
     if weights.get_shape().ndims is None:
       raise ValueError("weights.get_shape().ndims cannot be None")
 
-    reduction_indices = list(range(1, diffs.get_shape().ndims))
+    axis = list(range(1, diffs.get_shape().ndims))
 
     sum_squares_diff_per_batch = math_ops.reduce_sum(
-        math_ops.square(diffs), reduction_indices=reduction_indices)
+        math_ops.square(diffs), axis=axis)
     num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
-    term1 = 2.0 * _safe_div(sum_squares_diff_per_batch,
-                            num_present_per_batch,
-                            name="value")
+    term1 = 2.0 * math_ops.div_no_nan(
+        sum_squares_diff_per_batch, num_present_per_batch, name="value")
 
-    sum_diff = math_ops.reduce_sum(diffs, reduction_indices=reduction_indices)
-    term2 = 2.0 * _safe_div(math_ops.square(sum_diff),
-                            math_ops.square(num_present_per_batch),
-                            name="value")
+    sum_diff = math_ops.reduce_sum(diffs, axis=axis)
+    term2 = 2.0 * math_ops.div_no_nan(
+        math_ops.square(sum_diff),
+        math_ops.square(num_present_per_batch),
+        name="value")
 
     loss = _scale_losses(term1 - term2, weights)
 
@@ -674,7 +643,7 @@ def cosine_distance(predictions,
 
     radial_diffs = math_ops.multiply(predictions, labels)
     losses = 1 - math_ops.reduce_sum(
-        radial_diffs, reduction_indices=[
+        radial_diffs, axis=[
             axis,
         ])
     return compute_weighted_loss(losses, weights, scope=scope)

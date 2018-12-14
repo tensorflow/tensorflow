@@ -22,6 +22,7 @@ import glob
 import os.path
 import shutil
 import time
+import warnings
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
@@ -34,6 +35,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -99,6 +101,7 @@ class FileWriterTestCase(test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  @test_util.run_deprecated_v1
   def testAddingSummaryGraphAndRunMetadata(self):
     test_dir = self._CleanTestDir("basics")
     sw = self._FileWriter(test_dir)
@@ -172,6 +175,7 @@ class FileWriterTestCase(test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  @test_util.run_deprecated_v1
   def testGraphAsNamed(self):
     test_dir = self._CleanTestDir("basics_named_graph")
     with ops.Graph().as_default() as g:
@@ -180,6 +184,7 @@ class FileWriterTestCase(test.TestCase):
     sw.close()
     self._assertEventsWithGraph(test_dir, g, True)
 
+  @test_util.run_deprecated_v1
   def testGraphAsPositional(self):
     test_dir = self._CleanTestDir("basics_positional_graph")
     with ops.Graph().as_default() as g:
@@ -188,6 +193,7 @@ class FileWriterTestCase(test.TestCase):
     sw.close()
     self._assertEventsWithGraph(test_dir, g, True)
 
+  @test_util.run_deprecated_v1
   def testGraphDefAsNamed(self):
     test_dir = self._CleanTestDir("basics_named_graph_def")
     with ops.Graph().as_default() as g:
@@ -197,6 +203,7 @@ class FileWriterTestCase(test.TestCase):
     sw.close()
     self._assertEventsWithGraph(test_dir, g, False)
 
+  @test_util.run_deprecated_v1
   def testGraphDefAsPositional(self):
     test_dir = self._CleanTestDir("basics_positional_graph_def")
     with ops.Graph().as_default() as g:
@@ -206,6 +213,7 @@ class FileWriterTestCase(test.TestCase):
     sw.close()
     self._assertEventsWithGraph(test_dir, g, False)
 
+  @test_util.run_deprecated_v1
   def testGraphAndGraphDef(self):
     with self.assertRaises(ValueError):
       test_dir = self._CleanTestDir("basics_graph_and_graph_def")
@@ -215,12 +223,14 @@ class FileWriterTestCase(test.TestCase):
       sw = self._FileWriter(test_dir, graph=g, graph_def=gd)
       sw.close()
 
+  @test_util.run_deprecated_v1
   def testNeitherGraphNorGraphDef(self):
     with self.assertRaises(TypeError):
       test_dir = self._CleanTestDir("basics_string_instead_of_graph")
       sw = self._FileWriter(test_dir, "string instead of graph object")
       sw.close()
 
+  @test_util.run_deprecated_v1
   def testCloseAndReopen(self):
     test_dir = self._CleanTestDir("close_and_reopen")
     sw = self._FileWriter(test_dir)
@@ -264,6 +274,7 @@ class FileWriterTestCase(test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  @test_util.run_deprecated_v1
   def testNonBlockingClose(self):
     test_dir = self._CleanTestDir("non_blocking_close")
     sw = self._FileWriter(test_dir)
@@ -273,6 +284,23 @@ class FileWriterTestCase(test.TestCase):
     sw.close()
     self._assertRecent(time_before_close)
 
+  @test_util.run_deprecated_v1
+  def testUseAfterClose(self):
+    test_dir = self._CleanTestDir("use_after_close")
+    sw = self._FileWriter(test_dir)
+    sw.close()
+    with warnings.catch_warnings(record=True) as triggered:
+      warnings.simplefilter("always")
+      self.assertFalse(triggered)
+      sw.add_summary(summary_pb2.Summary())
+      sw.add_session_log(event_pb2.SessionLog())
+      sw.add_graph(ops.Graph())
+
+    self.assertEqual(len(triggered), 3)
+    for w in triggered:
+      self.assertEqual(w.category, UserWarning)
+
+  @test_util.run_deprecated_v1
   def testWithStatement(self):
     test_dir = self._CleanTestDir("with_statement")
     with self._FileWriter(test_dir) as sw:
@@ -283,6 +311,7 @@ class FileWriterTestCase(test.TestCase):
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the
   # protocol buffers correctly.
+  @test_util.run_deprecated_v1
   def testAddingSummariesFromSessionRunCalls(self):
     test_dir = self._CleanTestDir("global_step")
     sw = self._FileWriter(test_dir)
@@ -293,12 +322,11 @@ class FileWriterTestCase(test.TestCase):
       summ = summary_pb2.Summary(
           value=[summary_pb2.Summary.Value(
               tag="i", simple_value=1.0)])
-      sw.add_summary(summ.SerializeToString(), i.eval())
+      sw.add_summary(summ.SerializeToString(), self.evaluate(i))
       sw.add_summary(
           summary_pb2.Summary(
-              value=[summary_pb2.Summary.Value(
-                  tag="l", simple_value=2.0)]),
-          l.eval())
+              value=[summary_pb2.Summary.Value(tag="l", simple_value=2.0)]),
+          self.evaluate(l))
       sw.close()
 
     rr = self._EventsReader(test_dir)
@@ -330,6 +358,7 @@ class FileWriterTestCase(test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  @test_util.run_deprecated_v1
   def testPluginMetadataStrippedFromSubsequentEvents(self):
     test_dir = self._CleanTestDir("basics")
     sw = self._FileWriter(test_dir)
@@ -389,6 +418,7 @@ class FileWriterTestCase(test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  @test_util.run_deprecated_v1
   def testFileWriterWithSuffix(self):
     test_dir = self._CleanTestDir("test_suffix")
     sw = self._FileWriter(test_dir, filename_suffix="_test_suffix")

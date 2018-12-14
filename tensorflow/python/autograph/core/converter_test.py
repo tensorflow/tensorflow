@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import weakref
+
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.pyct import anno
@@ -27,6 +29,36 @@ from tensorflow.python.platform import test
 
 class TestConverter(converter.Base):
   pass
+
+
+class ConversionOptionsTest(test.TestCase):
+
+  def test_should_strip_weakrefs(self):
+    def test_fn():
+      pass
+
+    def weak_test_fn_a():
+      pass
+
+    def weak_test_fn_b():
+      pass
+
+    def weak_test_fn_c():
+      pass
+
+    wr_a = weakref.ref(weak_test_fn_a)
+    # Create an extra weakref to check whether the existence of multiple weak
+    # references influences the process.
+    _ = weakref.ref(weak_test_fn_b)
+    wr_b = weakref.ref(weak_test_fn_b)
+    _ = weakref.ref(weak_test_fn_c)
+
+    opts = converter.ConversionOptions(strip_decorators=(test_fn, wr_a, wr_b))
+
+    self.assertTrue(opts.should_strip(test_fn))
+    self.assertTrue(opts.should_strip(weak_test_fn_a))
+    self.assertTrue(opts.should_strip(weak_test_fn_b))
+    self.assertFalse(opts.should_strip(weak_test_fn_c))
 
 
 class ConverterBaseTest(converter_testing.TestCase):

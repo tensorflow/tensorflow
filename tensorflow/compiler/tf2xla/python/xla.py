@@ -250,7 +250,7 @@ def conv(lhs,
     rhs_dilation: dilation to apply between kernel elements
     dimension_numbers: a `ConvolutionDimensionNumbers` proto.
     feature_group_count: number of feature groups for grouped convolution.
-    precision_config: a `PrecisionConfigProto` proto.
+    precision_config: a `xla.PrecisionConfig` proto.
     name: an optional name for the operator
 
   Returns:

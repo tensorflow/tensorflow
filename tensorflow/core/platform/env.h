@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -166,11 +167,24 @@ class Env {
   Status DeleteFile(const string& fname);
 
   /// \brief Deletes the specified directory and all subdirectories and files
-  /// underneath it. undeleted_files and undeleted_dirs stores the number of
-  /// files and directories that weren't deleted (unspecified if the return
-  /// status is not OK).
+  /// underneath it. This is accomplished by traversing the directory tree
+  /// rooted at dirname and deleting entries as they are encountered.
+  ///
+  /// If dirname itself is not readable or does not exist, *undeleted_dir_count
+  /// is set to 1, *undeleted_file_count is set to 0 and an appropriate status
+  /// (e.g. NOT_FOUND) is returned.
+  ///
+  /// If dirname and all its descendants were successfully deleted, TF_OK is
+  /// returned and both error counters are set to zero.
+  ///
+  /// Otherwise, while traversing the tree, undeleted_file_count and
+  /// undeleted_dir_count are updated if an entry of the corresponding type
+  /// could not be deleted. The returned error status represents the reason that
+  /// any one of these entries could not be deleted.
+  ///
   /// REQUIRES: undeleted_files, undeleted_dirs to be not null.
-  /// Typical return codes
+  ///
+  /// Typical return codes:
   ///  * OK - dirname exists and we were able to delete everything underneath.
   ///  * NOT_FOUND - dirname doesn't exist
   ///  * PERMISSION_DENIED - dirname or some descendant is not writable
@@ -395,6 +409,7 @@ struct ThreadOptions {
   size_t stack_size = 0;  // 0: use system default value
   /// Guard area size to use near thread stacks to use (in bytes)
   size_t guard_size = 0;  // 0: use system default value
+  int numa_node = port::kNUMANoAffinity;
 };
 
 /// A utility routine: copy contents of `src` in file system `src_fs`

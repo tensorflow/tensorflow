@@ -35,11 +35,11 @@ limitations under the License.
 #endif
 
 // Standard builder for hooking one placeholder to one op.
-#define SINGLE_INPUT_OP_BUILDER(dtype, opName)                           \
-  void BuildGraph(const Scope& scope) override {                         \
-    auto op_node =                                                       \
-        tensorflow::ops::Placeholder(scope.WithOpName("input1"), dtype); \
-    (void)tensorflow::ops::opName(scope.WithOpName("output"), op_node);  \
+#define SINGLE_INPUT_OP_BUILDER(dtype, opName)                          \
+  void BuildGraph(const Scope& scope) override {                        \
+    auto op_node =                                                      \
+        tensorflow::ops::Placeholder(scope.WithOpName("input"), dtype); \
+    (void)tensorflow::ops::opName(scope.WithOpName("output"), op_node); \
   }
 
 namespace tensorflow {
@@ -61,7 +61,7 @@ namespace fuzzing {
 //   SINGLE_INPUT_OP_BUILDER(DT_INT8, Identity);
 //   void FuzzImpl(const uint8_t* data, size_t size) {
 //      ... convert data and size to a Tensor, pass it to:
-//      RunOneInput(input_tensor);
+//      RunInputs({{"input", input_tensor}}).IgnoreError();
 //
 class FuzzSession {
  public:
@@ -72,11 +72,11 @@ class FuzzSession {
   // By convention, the graph should have inputs named "input1", ...
   // "inputN", and one output node, named "output".
   // Users of FuzzSession should override this method to create their graph.
-  virtual void BuildGraph(const Scope& scope) {}
+  virtual void BuildGraph(const Scope& scope) = 0;
 
   // Implements the logic that converts an opaque byte buffer
   // from the fuzzer to Tensor inputs to the graph.  Users must override.
-  virtual void FuzzImpl(const uint8_t* data, size_t size) {}
+  virtual void FuzzImpl(const uint8_t* data, size_t size) = 0;
 
   // Initializes the FuzzSession.  Not safe for multithreading.
   // Separate init function because the call to virtual BuildGraphDef
@@ -107,15 +107,15 @@ class FuzzSession {
   }
 
   // Runs the TF session by pulling on the "output" node, attaching
-  // the supplied input_tensor to the "input1" node, and discarding
+  // the supplied input_tensor to the input node(s), and discarding
   // any returned output.
-  Status RunOneInput(const Tensor& input_tensor) {
-    return session_->Run({{"input1", input_tensor}}, {}, {"output"}, nullptr);
+  Status RunInputs(const std::vector<std::pair<string, Tensor> >& inputs) {
+    return session_->Run(inputs, {}, {"output"}, nullptr);
   }
 
-  Status RunTwoInputs(const Tensor& input1, const Tensor& input2) {
-    return session_->Run({{"input1", input1}, {"input2", input2}}, {},
-                         {"output"}, nullptr);
+  Status RunMultipleInputs(
+      const std::vector<std::pair<string, Tensor> >& inputs) {
+    return session_->Run(inputs, {}, {"output"}, nullptr);
   }
 
   // Dispatches to FuzzImpl;  small amount of sugar to keep the code
@@ -144,8 +144,7 @@ class FuzzStringInputOp : public FuzzSession {
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<string>()() =
         string(reinterpret_cast<const char*>(data), size);
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    RunOneInput(input_tensor).IgnoreError();
+    RunInputs({{"input", input_tensor}}).IgnoreError();
   }
 };
 

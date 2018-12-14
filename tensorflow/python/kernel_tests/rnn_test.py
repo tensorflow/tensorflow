@@ -54,6 +54,7 @@ import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
+from tensorflow.python.util import nest
 
 
 class Plus1RNNCell(rnn_cell_impl.RNNCell):
@@ -201,15 +202,15 @@ class RNNTest(test.TestCase):
       inputs = array_ops.placeholder(dtypes.float32, shape=(None, 4, 5))
       # - Without initial_state
       outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
-      self.assertEqual(None, outputs.shape[0].value)
-      self.assertEqual(None, state.shape[0].value)
+      self.assertEqual(None, outputs.shape.dims[0].value)
+      self.assertEqual(None, state.shape.dims[0].value)
       # - With initial_state
       outputs, state = rnn.dynamic_rnn(
           cell,
           inputs,
           initial_state=array_ops.placeholder(dtypes.float32, shape=(None, 5)))
-      self.assertEqual(None, outputs.shape[0].value)
-      self.assertEqual(None, state.shape[0].value)
+      self.assertEqual(None, outputs.shape.dims[0].value)
+      self.assertEqual(None, state.shape.dims[0].value)
 
   @test_util.run_in_graph_and_eager_modes
   def testScalarStateIsAccepted(self):
@@ -261,6 +262,7 @@ class RNNTest(test.TestCase):
       rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=[4])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()
     in_eager_mode = context.executing_eagerly()
@@ -284,6 +286,7 @@ class RNNTest(test.TestCase):
     self.assertAllEqual(4, state[0])
     self.assertAllEqual([[[1]], [[2]], [[3]], [[4]]], state[1])
 
+  @test_util.run_deprecated_v1
   def testCellGetInitialState(self):
     cell = rnn_cell_impl.BasicRNNCell(5)
     with self.assertRaisesRegexp(
@@ -344,6 +347,7 @@ class RNNTest(test.TestCase):
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f32, 5, 7, 3)
     self._assert_cell_builds(contrib_rnn.IndyLSTMCell, f64, 5, 7, 3)
 
+  @test_util.run_deprecated_v1
   def testRNNWithKerasSimpleRNNCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -377,6 +381,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(outputs), batch)
       self.assertEqual(len(state), batch)
 
+  @test_util.run_deprecated_v1
   def testRNNWithKerasGRUCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -410,6 +415,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(outputs), batch)
       self.assertEqual(len(state), batch)
 
+  @test_util.run_deprecated_v1
   def testRNNWithKerasLSTMCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -447,6 +453,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(state[0]), batch)
       self.assertEqual(len(state[1]), batch)
 
+  @test_util.run_deprecated_v1
   def testRNNWithStackKerasCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -471,6 +478,8 @@ class RNNTest(test.TestCase):
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32)
       self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(len(state), 2)
+      state = nest.flatten(state)
       self.assertEqual(len(state), 4)
       self.assertEqual(state[0].shape.as_list(), [None, 2 * output_shape])
       self.assertEqual(state[1].shape.as_list(), [None, 2 * output_shape])
@@ -488,6 +497,7 @@ class RNNTest(test.TestCase):
       for s in state:
         self.assertEqual(len(s), batch)
 
+  @test_util.run_deprecated_v1
   def testStaticRNNWithKerasSimpleRNNCell(self):
     with self.cached_session() as sess:
       input_shape = 10
@@ -526,6 +536,7 @@ class RNNTest(test.TestCase):
       self.assertEqual(len(outputs[0]), batch)
       self.assertEqual(len(state), batch)
 
+  @test_util.run_deprecated_v1
   def testKerasAndTFRNNLayerOutputComparison(self):
     input_shape = 10
     output_shape = 5
@@ -559,6 +570,7 @@ class RNNTest(test.TestCase):
     self.assertAllClose(tf_out, k_out)
     self.assertAllClose(tf_state, k_state)
 
+  @test_util.run_deprecated_v1
   def testSimpleRNNCellAndBasicRNNCellComparison(self):
     input_shape = 10
     output_shape = 5
@@ -598,6 +610,7 @@ class RNNTest(test.TestCase):
     self.assertAllClose(tf_out, k_out, atol=1e-5)
     self.assertAllClose(tf_state, k_state, atol=1e-5)
 
+  @test_util.run_deprecated_v1
   def testBasicLSTMCellInterchangeWithLSTMCell(self):
     with self.session(graph=ops_lib.Graph()) as sess:
       basic_cell = rnn_cell_impl.BasicLSTMCell(1)
@@ -664,24 +677,25 @@ class RNNTest(test.TestCase):
       kn1 = KerasNetworkTFRNNs(name="kn1")
       kn2 = KerasNetworkKerasRNNs(name="kn2")
 
-      z = array_ops.zeros((2, 3))
+    z = array_ops.zeros((2, 3))
 
-      kn1(z)
-      kn2(z)
+    kn1(z)
+    kn2(z)
 
-      # pylint: disable=protected-access
-      self.assertTrue(all("kn1" in v.name for v in kn1._cell.variables))
-      self.assertTrue(all("kn2" in v.name for v in kn2._cell.variables))
+    # pylint: disable=protected-access
+    self.assertTrue(all("kn1" in v.name for v in kn1._cell.variables))
+    self.assertTrue(all("kn2" in v.name for v in kn2._cell.variables))
 
+    with base_layers.keras_style_scope():
       kn1_new = KerasNetworkTFRNNs(name="kn1_new")
       kn2_new = KerasNetworkKerasRNNs(name="kn2_new")
 
-      kn2_new(z)
-      # Most importantly, this doesn't fail due to variable scope reuse issues.
-      kn1_new(z)
+    kn2_new(z)
+    # Most importantly, this doesn't fail due to variable scope reuse issues.
+    kn1_new(z)
 
-      self.assertTrue(all("kn1_new" in v.name for v in kn1_new._cell.variables))
-      self.assertTrue(all("kn2_new" in v.name for v in kn2_new._cell.variables))
+    self.assertTrue(all("kn1_new" in v.name for v in kn1_new._cell.variables))
+    self.assertTrue(all("kn2_new" in v.name for v in kn2_new._cell.variables))
 
 
 ######### Benchmarking RNN code

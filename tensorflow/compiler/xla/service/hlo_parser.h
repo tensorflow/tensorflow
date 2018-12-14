@@ -44,7 +44,9 @@ Status ParseHloString(absl::string_view str, HloModule* module);
 // creates a HloModule with default config.
 StatusOr<std::unique_ptr<HloModule>> ParseHloString(absl::string_view str);
 
-// Parses the result of HloSharding::ToString(), e.g. "{replicated}".
+// ParseHloString sharding from str. str is supposed to contain the body of the
+// sharding, i.e. just the rhs of the "sharding={...}" attribute string,
+// e.g., "{replicated}".
 StatusOr<HloSharding> ParseSharding(absl::string_view str);
 
 // Parses the result of window_util::ToString(const Window&).
@@ -55,12 +57,11 @@ StatusOr<Window> ParseWindow(absl::string_view str);
 StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
     absl::string_view str);
 
-// ParseHloString sharding from str. str is supposed to contain the body of the
-// sharding, i.e. just the rhs of the "sharding={...}" attribute string.
-StatusOr<HloSharding> ParseSharding(absl::string_view str);
-
 // Parses the result of PaddingConfigToString(), e.g. "0_0x1_1".
 StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str);
+
+// Parses and returns a Shape::ToString-format string.
+StatusOr<Shape> ParseShape(absl::string_view str);
 
 }  // namespace xla
 

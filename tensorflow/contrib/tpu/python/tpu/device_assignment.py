@@ -25,20 +25,29 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib.tpu.python.tpu.topology import Topology
 
 
-def _tpu_device_name(job, task, device):
-  """Returns the device name for the TPU `device` on `task` of `job`."""
-  if job is None:
-    return "/task:%d/device:TPU:%d" % (task, device)
-  else:
-    return "/job:%s/task:%d/device:TPU:%d" % (job, task, device)
+def _compute_task_and_cores_to_replicas(core_assignment, topology):
+  """Computes a nested dict which maps task and logical core to replicas."""
+  task_and_cores_to_replicas = {}
+  for replica in xrange(core_assignment.shape[0]):
+    for logical_core in xrange(core_assignment.shape[1]):
+      coordinates = core_assignment[replica, logical_core, :]
+      task_id = topology.task_ordinal_at_coordinates(coordinates)
+      if task_id not in task_and_cores_to_replicas:
+        task_and_cores_to_replicas[task_id] = {}
+      if logical_core not in task_and_cores_to_replicas[task_id]:
+        task_and_cores_to_replicas[task_id][logical_core] = set()
 
+      task_and_cores_to_replicas[task_id][logical_core].add(replica)
 
-def _tpu_host_device_name(job, task):
-  """Returns the device name for the CPU device on `task` of `job`."""
-  if job is None:
-    return "/task:%d/device:CPU:0" % task
-  else:
-    return "/job:%s/task:%d/device:CPU:0" % (job, task)
+  task_to_sorted_replica_id = {}
+
+  for task, core_to_replicas in task_and_cores_to_replicas.items():
+    core_to_sorted_replicas = {}
+    for core, replicas in core_to_replicas.items():
+      core_to_sorted_replicas[core] = sorted(replicas)
+
+    task_to_sorted_replica_id[task] = core_to_sorted_replicas
+  return task_to_sorted_replica_id
 
 
 class DeviceAssignment(object):
@@ -68,10 +77,7 @@ class DeviceAssignment(object):
     core_assignment = np.asarray(core_assignment, dtype=np.int32)
 
     self._topology = topology
-    self._topology_tasks, self._topology_devices = (
-        self._invert_topology(topology))
 
-    topology_rank = self._topology_tasks.ndim
     if core_assignment.ndim != 3:
       raise ValueError("core_assignment must be a rank 3 numpy array, "
                        "got shape {}".format(core_assignment.shape))
@@ -79,52 +85,15 @@ class DeviceAssignment(object):
     self._num_replicas = core_assignment.shape[0]
     self._num_cores_per_replica = core_assignment.shape[1]
 
-    if core_assignment.shape[-1] != topology_rank:
+    if core_assignment.shape[-1] != topology.mesh_rank:
       raise ValueError(
           "minor dimension of core_assignment must have size equal to topology "
-          "rank ({}), got shape {}".format(topology_rank,
+          "rank ({}), got shape {}".format(topology.mesh_rank,
                                            core_assignment.shape))
 
     self._core_assignment = core_assignment
-    self._task_and_cores_to_replicas = self._compute_task_and_cores_to_replicas(
-        self._core_assignment, self._topology_tasks)
-
-  def _invert_topology(self, topology):
-    """Inverts a [task,device,axis] topology to [x,y,z] -> task/device maps."""
-    mesh_shape = topology.mesh_shape
-    tasks = np.full(list(mesh_shape), -1, dtype=np.int32)
-    devices = np.full(list(mesh_shape), -1, dtype=np.int32)
-    for task in xrange(topology.device_coordinates.shape[0]):
-      for device in xrange(topology.device_coordinates.shape[1]):
-        x, y, z = topology.device_coordinates[task, device, :]
-        tasks[x, y, z] = task
-        devices[x, y, z] = device
-    return tasks, devices
-
-  def _compute_task_and_cores_to_replicas(self, core_assignment,
-                                          topology_tasks):
-    """Computes a nested dict which maps task and logical core to replicas."""
-    task_and_cores_to_replicas = {}
-    for replica in xrange(core_assignment.shape[0]):
-      for logical_core in xrange(core_assignment.shape[1]):
-        x, y, z = core_assignment[replica, logical_core, :]
-        task_id = topology_tasks[x, y, z]
-        if task_id not in task_and_cores_to_replicas:
-          task_and_cores_to_replicas[task_id] = {}
-        if logical_core not in task_and_cores_to_replicas[task_id]:
-          task_and_cores_to_replicas[task_id][logical_core] = set()
-
-        task_and_cores_to_replicas[task_id][logical_core].add(replica)
-
-    task_to_sorted_replica_id = {}
-
-    for task, core_to_replicas in task_and_cores_to_replicas.items():
-      core_to_sorted_replicas = {}
-      for core, replicas in core_to_replicas.items():
-        core_to_sorted_replicas[core] = sorted(replicas)
-
-      task_to_sorted_replica_id[task] = core_to_sorted_replicas
-    return task_to_sorted_replica_id
+    self._task_and_cores_to_replicas = _compute_task_and_cores_to_replicas(
+        self._core_assignment, topology)
 
   @property
   def topology(self):
@@ -179,18 +148,17 @@ class DeviceAssignment(object):
   def tpu_ordinal(self, replica=0, logical_core=0):
     """Returns the ordinal of the TPU device assigned to a logical core."""
     coordinates = self._coordinates(replica, logical_core)
-    return self._topology_devices[coordinates]
+    return self._topology.tpu_device_ordinal_at_coordinates(coordinates)
 
   def host_device(self, replica=0, logical_core=0, job=None):
     """Returns the CPU device attached to a logical core."""
     coordinates = self._coordinates(replica, logical_core)
-    return _tpu_host_device_name(job, self._topology_tasks[coordinates])
+    return self._topology.cpu_device_name_at_coordinates(coordinates, job=job)
 
   def tpu_device(self, replica=0, logical_core=0, job=None):
     """Returns the name of the TPU device assigned to a logical core."""
     coordinates = self._coordinates(replica, logical_core)
-    return _tpu_device_name(job, self._topology_tasks[coordinates],
-                            self._topology_devices[coordinates])
+    return self._topology.tpu_device_name_at_coordinates(coordinates, job=job)
 
 
 def device_assignment(topology,

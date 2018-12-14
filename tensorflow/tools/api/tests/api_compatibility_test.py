@@ -31,15 +31,15 @@ import argparse
 import os
 import re
 import sys
-import unittest
 
 import tensorflow as tf
-from tensorflow._api import v2 as tf_v2
+from tensorflow._api.v2 import v2 as tf_v2
 
 from google.protobuf import message
 from google.protobuf import text_format
 
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -83,6 +83,7 @@ def _KeyToFilePath(key, api_version):
 
   Filepath will be inside golden folder for api_version.
   """
+
   def _ReplaceCapsWithDash(matchobj):
     match = matchobj.group(0)
     return '-%s' % (match.lower())
@@ -95,22 +96,22 @@ def _KeyToFilePath(key, api_version):
 
 def _FileNameToKey(filename):
   """From a given filename, construct a key we use for api objects."""
+
   def _ReplaceDashWithCaps(matchobj):
     match = matchobj.group(0)
     return match[1].upper()
 
   base_filename = os.path.basename(filename)
   base_filename_without_ext = os.path.splitext(base_filename)[0]
-  api_object_key = re.sub(
-      '((-[a-z]){1})', _ReplaceDashWithCaps, base_filename_without_ext)
+  api_object_key = re.sub('((-[a-z]){1})', _ReplaceDashWithCaps,
+                          base_filename_without_ext)
   return api_object_key
 
 
 def _VerifyNoSubclassOfMessageVisitor(path, parent, unused_children):
   """A Visitor that crashes on subclasses of generated proto classes."""
   # If the traversed object is a proto Message class
-  if not (isinstance(parent, type) and
-          issubclass(parent, message.Message)):
+  if not (isinstance(parent, type) and issubclass(parent, message.Message)):
     return
   if parent is message.Message:
     return
@@ -124,11 +125,11 @@ def _VerifyNoSubclassOfMessageVisitor(path, parent, unused_children):
 def _FilterNonCoreGoldenFiles(golden_file_list):
   """Filter out non-core API pbtxt files."""
   filtered_file_list = []
-  filtered_package_prefixes = [
-      'tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
+  filtered_package_prefixes = ['tensorflow.%s.' % p for p in _NON_CORE_PACKAGES]
   for f in golden_file_list:
-    if any([f.rsplit('/')[-1].startswith(pre)
-            for pre in filtered_package_prefixes]):
+    if any(
+        f.rsplit('/')[-1].startswith(pre) for pre in filtered_package_prefixes
+    ):
       continue
     filtered_file_list.append(f)
   return filtered_file_list
@@ -140,14 +141,12 @@ class ApiCompatibilityTest(test.TestCase):
     super(ApiCompatibilityTest, self).__init__(*args, **kwargs)
 
     golden_update_warning_filename = os.path.join(
-        resource_loader.get_root_dir_with_all_resources(),
-        _UPDATE_WARNING_FILE)
+        resource_loader.get_root_dir_with_all_resources(), _UPDATE_WARNING_FILE)
     self._update_golden_warning = file_io.read_file_to_string(
         golden_update_warning_filename)
 
     test_readme_filename = os.path.join(
-        resource_loader.get_root_dir_with_all_resources(),
-        _TEST_README_FILE)
+        resource_loader.get_root_dir_with_all_resources(), _TEST_README_FILE)
     self._test_readme_message = file_io.read_file_to_string(
         test_readme_filename)
 
@@ -161,15 +160,14 @@ class ApiCompatibilityTest(test.TestCase):
     """Diff given dicts of protobufs and report differences a readable way.
 
     Args:
-      expected_dict: a dict of TFAPIObject protos constructed from golden
-          files.
+      expected_dict: a dict of TFAPIObject protos constructed from golden files.
       actual_dict: a ict of TFAPIObject protos constructed by reading from the
-          TF package linked to the test.
+        TF package linked to the test.
       verbose: Whether to log the full diffs, or simply report which files were
-          different.
+        different.
       update_goldens: Whether to update goldens when there are diffs found.
       additional_missing_object_message: Message to print when a symbol is
-          missing.
+        missing.
       api_version: TensorFlow API version to test.
     """
     diffs = []
@@ -257,8 +255,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
-      visitor.do_not_descend_map['tf'].extend(
-          _NON_CORE_PACKAGES)
+      visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
     traverse.traverse(tf_v2.compat.v1, visitor)
 
   def testNoSubclassOfMessageV2(self):
@@ -267,23 +264,25 @@ class ApiCompatibilityTest(test.TestCase):
     visitor = public_api.PublicAPIVisitor(_VerifyNoSubclassOfMessageVisitor)
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
-      visitor.do_not_descend_map['tf'].extend(
-          _NON_CORE_PACKAGES)
+      visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
     traverse.traverse(tf_v2, visitor)
 
-  def _checkBackwardsCompatibility(
-      self, root, golden_file_pattern, api_version,
-      additional_private_map=None):
+  def _checkBackwardsCompatibility(self,
+                                   root,
+                                   golden_file_pattern,
+                                   api_version,
+                                   additional_private_map=None):
     # Extract all API stuff.
     visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
 
     public_api_visitor = public_api.PublicAPIVisitor(visitor)
-    public_api_visitor.do_not_descend_map['tf'].append('contrib')
-    public_api_visitor.do_not_descend_map['tf.GPUOptions'] = [
-        'Experimental']
+    public_api_visitor.private_map['tf'] = ['contrib']
+    if api_version == 2:
+      public_api_visitor.private_map['tf'].append('enable_v2_behavior')
+
+    public_api_visitor.do_not_descend_map['tf.GPUOptions'] = ['Experimental']
     if FLAGS.only_test_core_api:
-      public_api_visitor.do_not_descend_map['tf'].extend(
-          _NON_CORE_PACKAGES)
+      public_api_visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
     if additional_private_map:
       public_api_visitor.private_map.update(additional_private_map)
 
@@ -315,9 +314,7 @@ class ApiCompatibilityTest(test.TestCase):
         update_goldens=FLAGS.update_goldens,
         api_version=api_version)
 
-  @unittest.skipUnless(
-      sys.version_info.major == 2,
-      'API compabitility test goldens are generated using python2.')
+  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibility(self):
     api_version = 1
     golden_file_pattern = os.path.join(
@@ -331,27 +328,29 @@ class ApiCompatibilityTest(test.TestCase):
         # in separate tests.
         additional_private_map={'tf.compat': ['v1', 'v2']})
 
-  @unittest.skipUnless(
-      sys.version_info.major == 2,
-      'API compabitility test goldens are generated using python2.')
+    # Also check that V1 API has contrib
+    self.assertTrue(
+        'tensorflow.python.util.lazy_loader.LazyLoader'
+        in str(type(tf.contrib)))
+
+  @test_util.run_v1_only('b/120545219')
   def testAPIBackwardsCompatibilityV1(self):
     api_version = 1
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
-    self._checkBackwardsCompatibility(
-        tf_v2.compat.v1, golden_file_pattern, api_version)
+    self._checkBackwardsCompatibility(tf_v2.compat.v1, golden_file_pattern,
+                                      api_version)
 
-  @unittest.skipUnless(
-      sys.version_info.major == 2,
-      'API compabitility test goldens are generated using python2.')
   def testAPIBackwardsCompatibilityV2(self):
     api_version = 2
     golden_file_pattern = os.path.join(
         resource_loader.get_root_dir_with_all_resources(),
         _KeyToFilePath('*', api_version))
     self._checkBackwardsCompatibility(
-        tf_v2, golden_file_pattern, api_version,
+        tf_v2,
+        golden_file_pattern,
+        api_version,
         additional_private_map={'tf.compat': ['v1']})
 
 
@@ -362,7 +361,9 @@ if __name__ == '__main__':
   # TODO(mikecase): Create Estimator's own API compatibility test or
   # a more general API compatibility test for use for TF components.
   parser.add_argument(
-      '--only_test_core_api', type=bool, default=False,
+      '--only_test_core_api',
+      type=bool,
+      default=False,
       help=_ONLY_TEST_CORE_API_HELP)
   parser.add_argument(
       '--verbose_diffs', type=bool, default=True, help=_VERBOSE_DIFFS_HELP)

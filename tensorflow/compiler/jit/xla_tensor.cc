@@ -43,11 +43,10 @@ namespace tensorflow {
   }
 }
 
-Status XlaTensor::AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
+Status XlaTensor::AllocateShapedBuffer(DataType dtype,
+                                       const xla::Shape& on_host_shape,
                                        xla::LocalClient* client,
                                        int device_ordinal) {
-  xla::Shape on_host_shape;
-  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &on_host_shape));
   xla::Shape on_device_shape =
       client->backend().transfer_manager()->HostShapeToDeviceShape(
           on_host_shape);
@@ -91,12 +90,11 @@ void XlaTensor::WaitForDefinitionEventOnStream(se::Stream* stream) {
   streams_defined_on_.push_back(stream);
 }
 
-void XlaTensor::SetDefinitionEvent(std::shared_ptr<se::Event> event,
-                                   se::Stream* stream) {
-  DCHECK(!definition_event_);
+void XlaTensor::ResetDefinitionEvent(std::shared_ptr<se::Event> event,
+                                     se::Stream* stream) {
   mutex_lock lock(mu_);
-  streams_defined_on_.push_back(stream);
   definition_event_ = std::move(event);
+  streams_defined_on_ = {stream};
 }
 
 // The pointer tag, OR-ed into the XlaTensor's address to distinguish it from

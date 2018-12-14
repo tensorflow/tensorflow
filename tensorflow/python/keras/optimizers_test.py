@@ -19,11 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import gc
+import os
 import weakref
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -62,6 +65,15 @@ def _test_optimizer(optimizer, target=0.75):
   optim = keras.optimizers.deserialize(config)
   new_config = keras.optimizers.serialize(optim)
   new_config['class_name'] = new_config['class_name'].lower()
+  new_config['config'].pop('name', None)
+  if 'amsgrad' not in config['config']:
+    new_config['config'].pop('amsgrad', None)
+  if 'decay' in new_config['config'] and 'schedule_decay' in config['config']:
+    new_config['config']['schedule_decay'] = new_config['config'].pop('decay')
+  if 'momentum' not in config['config']:
+    new_config['config'].pop('momentum', None)
+  if 'centered' not in config['config']:
+    new_config['config'].pop('centered', None)
   assert config == new_config
 
   # Test constraints.
@@ -206,6 +218,41 @@ class KerasOptimizersTest(test.TestCase):
       _ = keras.optimizers.SGD(lr=0.01, clipvalue=-0.5)
     with self.assertRaises(ValueError):
       _ = keras.optimizers.Adam(clipnorm=-2.0)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class KerasV2OptimizersTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ('adadelta_tf2', 'adadelta', True), ('adadelta_tf1', 'adadelta', False),
+      ('adagrad_tf2', 'adagrad', True), ('adagrad_tf1', 'adagrad', False),
+      ('adam_tf2', 'adam', True), ('adam_tf1', 'adam', False),
+      ('adamax_tf2', 'adamax', True), ('adamax_tf1', 'adamax', False),
+      ('sgd_tf2', 'sgd', True), ('sgd_tf1', 'sgd', False),
+      ('nadam_tf2', 'nadam', True), ('nadam_tf1', 'nadam', False),
+      ('rmsprop_tf2', 'rmsprop', True), ('rmsprop_tf1', 'rmsprop', False))
+  def test_load_from_string(self, optimizer_string, tf2mode):
+    old_mode = os.environ.get('TF2_BEHAVIOR', None)
+    if tf2mode:
+      os.environ['TF2_BEHAVIOR'] = 'enabled'
+    else:
+      if 'TF2_BEHAVIOR' in os.environ:
+        del os.environ['TF2_BEHAVIOR']
+
+    # Sanity check.
+    self.assertEqual(tf2.enabled(), tf2mode)
+
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1, input_shape=(10,)))
+    model.compile(optimizer_string, 'binary_crossentropy')
+
+    self.assertEqual(optimizer_string,
+                     model.optimizer.__class__.__name__.lower())
+
+    model.fit(np.ones((10, 10), 'float32'), np.ones((10, 1), 'float32'))
+
+    if old_mode is not None:
+      os.environ['TF2_BEHAVIOR'] = old_mode
 
 
 if __name__ == '__main__':
