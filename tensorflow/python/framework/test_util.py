@@ -75,7 +75,6 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -2590,42 +2589,3 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
-
-
-def dismantle_func_graph(func_graph):
-  """Removes reference cycles in `func_graph` FuncGraph.
-
-  Helpful for making sure the garbage collector doesn't need to run when
-  the FuncGraph goes out of scope, e.g. in tests using defun with
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
-
-  Args:
-    func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable
-      after this function.
-  """
-  # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
-  # Clearing captures using clear() leaves some cycles around.
-  while func_graph.captures:
-    func_graph.captures.popitem()
-  memory.dismantle_ordered_dict(func_graph.captures)
-  ops.dismantle_graph(func_graph)
-
-
-def dismantle_polymorphic_function(func):
-  """Removes reference cycles in PolymorphicFunction `func`.
-
-  Helpful for making sure the garbage collector doesn't need to run when
-  PolymorphicFunction goes out of scope, e.g. in tests using defun with
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
-
-  Args:
-    func: A `PolymorphicFunction` object to destroy. `func` is unusable
-      after this function.
-  """
-  # TODO(b/115366440): Delete this method when a custom OrderedDict is added
-  cache = func._function_cache  # pylint: disable=protected-access
-  for concrete_func in cache.values():
-    dismantle_func_graph(concrete_func.graph)
-  while cache:
-    cache.popitem()
-  memory.dismantle_ordered_dict(cache)
