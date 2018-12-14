@@ -66,12 +66,11 @@ class ReplicatedVariable(object):
   * colocation.
   """
 
-  def __init__(self, name, variables, constraint=None):
+  def __init__(self, name, variables):
     self._name = name
     self._primary_var = variables[0]
     self._common_name = self._primary_var.name.split(":")[0]
     self._vars = variables
-    self._constraint = constraint
     self._cached_value = None
     self._dtype = variables[0].dtype
 
@@ -134,7 +133,7 @@ class ReplicatedVariable(object):
 
   @property
   def constraint(self):
-    return self._constraint
+    return None
 
   @property
   def op(self):
@@ -306,37 +305,42 @@ def replicated_variable_for_optimizer(num_replicas):
     yield
     return
 
-  def opt_variable(value, dtype=None, name=None, constraint=None):
-    """Instantiates a variable and returns it."""
-    if dtype is None:
-      dtype = backend.floatx()
-
-    variables = []
-    for i in range(num_replicas):
-      # Keras holds the variables in optimizer class instance , so the name
-      # does not matter here. ResourceVariable constructor will find a unique
-      # name (including name=None) for each replica.
-      with ops.device("device:TPU:{}".format(i)):
-        v = resource_variable_ops.ResourceVariable(
-            value,
-            dtype=dtypes_module.as_dtype(dtype),
-            name=name)
-        variables.append(v)
-    name = "replicate_{}_{}".format("variable" if name is None else name,
-                                    ops.uid())
-    v = ReplicatedVariable(name, variables, constraint)
-    # pylint: disable=protected-access
-    if isinstance(value, np.ndarray):
-      v._keras_shape = value.shape
-    elif hasattr(value, "shape"):
-      v._keras_shape = backend.int_shape(value)
-    v._uses_learning_phase = False
-    backend.track_variable(v)
-    return v
-
-  old_variable = backend.variable
   try:
+    old_v = backend.variable
+
+    def opt_variable(value, dtype=None, name=None, constraint=None):
+      """Instantiates a variable and returns it."""
+      if dtype is None:
+        dtype = backend.floatx()
+
+      variables = []
+      for i in range(num_replicas):
+        # Keras holds the variables in optimizer class instance , so the name
+        # does not matter here. ResourceVariable constructor will find a unique
+        # name (including name=None) for each replica.
+        with ops.device("device:TPU:{}".format(i)):
+          v = resource_variable_ops.ResourceVariable(
+              value,
+              dtype=dtypes_module.as_dtype(dtype),
+              name=name,
+              constraint=constraint)
+          variables.append(v)
+      name = "replicate_{}_{}".format("variable" if name is None else name,
+                                      ops.uid())
+      v = ReplicatedVariable(name, variables)
+
+      # pylint: disable=protected-access
+
+      if isinstance(value, np.ndarray):
+        v._keras_shape = value.shape
+      elif hasattr(value, "shape"):
+        v._keras_shape = backend.int_shape(value)
+      v._uses_learning_phase = False
+      backend.track_variable(v)
+      return v
+
     backend.variable = opt_variable
     yield
+
   finally:
-    backend.variable = old_variable
+    backend.variable = old_v

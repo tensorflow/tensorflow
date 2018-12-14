@@ -2506,6 +2506,7 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
   variable_def = kwargs.get("variable_def", None)
   dtype = kwargs.get("dtype", None)
   import_scope = kwargs.get("import_scope", None)
+  constraint = kwargs.get("constraint", None)
 
   # Set trainable value based on synchronization value.
   synchronization = kwargs.get("synchronization", VariableSynchronization.AUTO)
@@ -2515,7 +2516,7 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
   return resource_variable_ops.ResourceVariable(
       initial_value=initial_value, trainable=trainable,
       validate_shape=validate_shape, caching_device=caching_device,
-      name=name, dtype=dtype, variable_def=variable_def,
+      name=name, dtype=dtype, constraint=constraint, variable_def=variable_def,
       import_scope=import_scope)
 
 

@@ -343,6 +343,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
                variable_def=None,
                dtype=None,
                import_scope=None,
+               constraint=None,
                synchronization=VariableSynchronization.AUTO,
                aggregation=VariableAggregation.NONE):
     """Creates a new variable with value `initial_value`.
@@ -384,6 +385,13 @@ class Variable(six.with_metaclass(VariableMetaclass,
         a Tensor), or `convert_to_tensor` will decide.
       import_scope: Optional `string`. Name scope to add to the
         `Variable.` Only used when initializing from protocol buffer.
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
         `tf.VariableSynchronization`. By default the synchronization is set to
@@ -518,6 +526,16 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     Returns:
       A `Tensor`.
+    """
+    raise NotImplementedError
+
+  @property
+  def constraint(self):
+    """Returns the constraint function associated with this variable.
+
+    Returns:
+      The constraint function that was passed to the variable constructor.
+      Can be `None` if no constraint was passed.
     """
     raise NotImplementedError
 
@@ -1308,16 +1326,6 @@ class VariableV1(Variable):
         shape and `validate_shape` is `True`.
       RuntimeError: If eager execution is enabled.
     """
-
-  @property
-  def constraint(self):
-    """Returns the constraint function associated with this variable.
-
-    Returns:
-      The constraint function that was passed to the variable constructor.
-      Can be `None` if no constraint was passed.
-    """
-    raise NotImplementedError
 
   SaveSliceInfo = Variable.SaveSliceInfo
 

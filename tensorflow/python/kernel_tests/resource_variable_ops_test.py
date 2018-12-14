@@ -497,6 +497,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       state_ops.scatter_update(ref, indices, updates)
       self.assertAllEqual(ref.read_value(), [True, True, True])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConstraintArg(self):
+    constraint = lambda x: x
+    v = resource_variable_ops.ResourceVariable(
+        initial_value=lambda: 1, constraint=constraint, name="var0")
+    self.assertEqual(v.constraint, constraint)
+
+    constraint = 0
+    with self.assertRaises(ValueError):
+      v = resource_variable_ops.ResourceVariable(
+          initial_value=lambda: 1, constraint=constraint, name="var1")
+
   # TODO(alive): how should this work in Eager mode?
   @test_util.run_deprecated_v1
   def testInitFn(self):
@@ -856,16 +868,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testVariableEager(self):
     with context.eager_mode():
       init = array_ops.ones(shape=[10, 20, 35], dtype=dtypes.int32)
+      constraint = lambda x: x
       with ops.name_scope("foo"):
         v = resource_variable_ops.ResourceVariable(
             name="var7",
             initial_value=init,
-            caching_device="cpu:0")
+            caching_device="cpu:0",
+            constraint=constraint)
       # Test properties
       self.assertEqual(dtypes.int32, v.dtype)
       self.assertEqual("foo/var7:0", v.name)
       self.assertAllEqual([10, 20, 35], v.shape.as_list())
       self.assertTrue(isinstance(v.handle, ops.EagerTensor))
+      self.assertEqual(constraint, v.constraint)
       self.assertAllEqual(init.numpy(), v.read_value().numpy())
       self.assertAllEqual(init.numpy(), v.value().numpy())
 

@@ -51,6 +51,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                caching_device=None,
                name=None,
                dtype=None,
+               constraint=None,
                add_initializers_to=None,
                **unused_kwargs):
     """Creates a variable.
@@ -75,6 +76,13 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         If None, either the datatype will be kept (if initial_value is
        a Tensor) or float32 will be used (if it is a Python object convertible
        to a Tensor).
+      constraint: An optional projection function to be applied to the variable
+        after being updated by an `Optimizer` (e.g. used to implement norm
+        constraints or value constraints for layer weights). The function must
+        take as input the unprojected Tensor representing the value of the
+        variable and return the Tensor for the projected value
+        (which must have the same shape). Constraints are not safe to
+        use when doing asynchronous distributed training.
       add_initializers_to: if not None and not in legacy graph mode, the
         initializer tensor will be added to this map instead of adding the
         assignment to the function.
@@ -89,13 +97,17 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       # here; we can't really do the capturing or conditional logic.
       resource_variable_ops.ResourceVariable.__init__(
           self, initial_value=initial_value, trainable=trainable,
-          caching_device=caching_device, name=name, dtype=dtype)
+          caching_device=caching_device, name=name, dtype=dtype,
+          constraint=constraint)
       return
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
     if initial_value is None:
       raise ValueError("initial_value must be specified.")
     init_from_fn = callable(initial_value)
+
+    if constraint is not None and not callable(constraint):
+      raise ValueError("The `constraint` argument must be a callable.")
 
     if isinstance(initial_value, checkpointable.CheckpointInitialValue):
       self._maybe_initialize_checkpointable()
@@ -135,6 +147,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       self._unique_id = shared_name
       self._handle_name = shared_name + ":0"
       self._dtype = initial_value.dtype.base_dtype
+      self._constraint = constraint
       assert initial_value is not None
       if self._in_graph_mode:
         with ops.init_scope():

@@ -59,6 +59,7 @@ def make_variable(name,
                   trainable=None,
                   caching_device=None,
                   validate_shape=True,
+                  constraint=None,
                   use_resource=None,
                   collections=None,
                   synchronization=tf_variables.VariableSynchronization.AUTO,
@@ -92,6 +93,7 @@ def make_variable(name,
       `synchronization` is set to `ON_READ`.
     caching_device: Passed to `tf.Variable`.
     validate_shape: Passed to `tf.Variable`.
+    constraint: Constraint instance (callable).
     use_resource: Whether to use a `ResourceVariable`.
     collections: List of graph collections keys. The new variable is added to
       these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
@@ -129,17 +131,19 @@ def make_variable(name,
 
   # TODO(apassos,rohanj) figure out how to remove collections from here so we
   # can remove the V1.
-  return tf_variables.VariableV1(
+  v = tf_variables.VariableV1(
       initial_value=init_val,
       name=name,
       trainable=trainable,
       caching_device=caching_device,
       dtype=variable_dtype,
       validate_shape=validate_shape,
+      constraint=constraint,
       use_resource=use_resource,
       collections=collections,
       synchronization=synchronization,
       aggregation=aggregation)
+  return v
 
 
 def get_default_graph_uid_map():
