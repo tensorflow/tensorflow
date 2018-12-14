@@ -262,8 +262,7 @@ class DefFunctionTest(test.TestCase):
 
   @test_util.assert_no_garbage_created
   def testReferenceCycles(self):
-    # TODO(b/120990892): Enable autograph in this test
-    fn = def_function.function(lambda x: 2. * x, autograph=False)
+    fn = def_function.function(lambda x: 2. * x)
     fn(constant_op.constant(4.0))
     weak_fn = weakref.ref(fn)
     del fn
