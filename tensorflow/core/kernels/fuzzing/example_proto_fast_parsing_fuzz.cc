@@ -53,7 +53,7 @@ class FuzzExampleProtoFastParsing : public FuzzSession {
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
     input_tensor.scalar<string>()() =
         string(reinterpret_cast<const char*>(data), size);
-    RunInputs({{"input", input_tensor}}).IgnoreError();
+    RunInputs({{"input", input_tensor}});
   }
 };
 

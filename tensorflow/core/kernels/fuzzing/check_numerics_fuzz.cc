@@ -40,7 +40,7 @@ class FuzzCheckNumerics : public FuzzSession {
     for (size_t i = 0; i < num_floats; i++) {
       flat_tensor(i) = float_data[i];
     }
-    RunInputs({{"input", input_tensor}}).IgnoreError();
+    RunInputs({{"input", input_tensor}});
   }
 };
 

@@ -52,7 +52,7 @@ class FuzzEncodeJpeg : public FuzzSession {
     for (size_t i = 0; i < actual_pixels; i++) {
       flat_tensor(i) = data[i];
     }
-    RunInputs({{"input", input_tensor}}).IgnoreError();
+    RunInputs({{"input", input_tensor}});
   }
 };
 
