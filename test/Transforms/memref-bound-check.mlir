@@ -32,7 +32,7 @@ mlfunc @test() {
       // Out of bounds.
       %v = load %B[%sym] : memref<111 x i32> // expected-error {{'load' op memref out of upper bound access along dimension #1}}
       // Out of bounds.
-      %w = load %B[%minusone] : memref<111 x i32>  // expected-error {{'load' op memref out of lower bound access along dimension #1}}
+      store %v, %B[%minusone] : memref<111 x i32>  // expected-error {{'store' op memref out of lower bound access along dimension #1}}
   }
   return
 }
@@ -50,7 +50,7 @@ mlfunc @test_mod_floordiv_ceildiv() {
       // expected-error@-2 {{'load' op memref out of upper bound access along dimension #2}}
       // expected-error@-3 {{'load' op memref out of upper bound access along dimension #3}}
       %idy = affine_apply (d0, d1, d2) -> (d0 mod 128, d1 floordiv 4, d2 ceildiv 4 - 1)(%i, %j, %j)
-      %y  = load %A[%idy#0, %idy#1, %idy#2] : memref<128 x 64 x 64 x i32> // expected-error {{'load' op memref out of lower bound access along dimension #3}}
+      store %x, %A[%idy#0, %idy#1, %idy#2] : memref<128 x 64 x 64 x i32> // expected-error {{'store' op memref out of lower bound access along dimension #3}}
       // CHECK-EMPTY
     } // CHECK }
   } // CHECK }
@@ -96,7 +96,7 @@ mlfunc @mod_div() {
       // expected-error@-2 {{'load' op memref out of upper bound access along dimension #2}}
       // expected-error@-3 {{'load' op memref out of upper bound access along dimension #3}}
       %idy = affine_apply (d0, d1, d2) -> (d0 mod 128, d1 floordiv 4, d2 ceildiv 4 - 1)(%i, %j, %j)
-      %y  = load %A[%idy#0, %idy#1, %idy#2] : memref<128 x 64 x 64 x i32> // expected-error {{'load' op memref out of lower bound access along dimension #3}}
+      store %x, %A[%idy#0, %idy#1, %idy#2] : memref<128 x 64 x 64 x i32> // expected-error {{'store' op memref out of lower bound access along dimension #3}}
     }
   }
   return

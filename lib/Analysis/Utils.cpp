@@ -250,3 +250,62 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
   }
   return llvm::divideCeil(sizeInBits, 8);
 }
+
+template <typename LoadOrStoreOpPointer>
+bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
+                                   bool emitError) {
+  static_assert(
+      std::is_same<LoadOrStoreOpPointer, OpPointer<LoadOp>>::value ||
+          std::is_same<LoadOrStoreOpPointer, OpPointer<StoreOp>>::value,
+      "function argument should be either a LoadOp or a StoreOp");
+
+  OperationStmt *opStmt = cast<OperationStmt>(loadOrStoreOp->getOperation());
+  MemRefRegion region;
+  if (!getMemRefRegion(opStmt, /*loopDepth=*/0, &region))
+    return false;
+  LLVM_DEBUG(llvm::dbgs() << "Memory region");
+  LLVM_DEBUG(region.getConstraints()->dump());
+
+  bool outOfBounds = false;
+  unsigned rank = loadOrStoreOp->getMemRefType().getRank();
+
+  // For each dimension, check for out of bounds.
+  for (unsigned r = 0; r < rank; r++) {
+    FlatAffineConstraints ucst(*region.getConstraints());
+
+    // Intersect memory region with constraint capturing out of bounds (both out
+    // of upper and out of lower), and check if the constraint system is
+    // feasible. If it is, there is at least one point out of bounds.
+    SmallVector<int64_t, 4> ineq(rank + 1, 0);
+    int dimSize = loadOrStoreOp->getMemRefType().getDimSize(r);
+    // TODO(bondhugula): handle dynamic dim sizes.
+    if (dimSize == -1)
+      continue;
+
+    // Check for overflow: d_i >= memref dim size.
+    ucst.addConstantLowerBound(r, dimSize);
+    outOfBounds = !ucst.isEmpty();
+    if (outOfBounds && emitError) {
+      loadOrStoreOp->emitOpError(
+          "memref out of upper bound access along dimension #" + Twine(r + 1));
+    }
+
+    // Check for a negative index.
+    FlatAffineConstraints lcst(*region.getConstraints());
+    std::fill(ineq.begin(), ineq.end(), 0);
+    // d_i <= -1;
+    lcst.addConstantUpperBound(r, -1);
+    outOfBounds = !lcst.isEmpty();
+    if (outOfBounds && emitError) {
+      loadOrStoreOp->emitOpError(
+          "memref out of lower bound access along dimension #" + Twine(r + 1));
+    }
+  }
+  return outOfBounds;
+}
+
+// Explicitly instantiate the template so that the compiler knows we need them!
+template bool mlir::boundCheckLoadOrStoreOp(OpPointer<LoadOp> loadOp,
+                                            bool emitError);
+template bool mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
+                                            bool emitError);

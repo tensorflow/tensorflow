@@ -132,6 +132,13 @@ bool getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
 /// otherwise.
 Optional<uint64_t> getMemRefSizeInBytes(MemRefType memRefType);
 
+/// Checks a load or store op for an out of bound access; returns true if the
+/// access is out of bounds along any of the dimensions, false otherwise. Emits
+/// a diagnostic error (with location information) if emitError is true.
+template <typename LoadOrStoreOpPointer>
+bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
+                             bool emitError = true);
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_UTILS_H
