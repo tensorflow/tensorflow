@@ -73,11 +73,14 @@ poplar::Tensor convertVarianceToInvStdDev(poplar::Graph& graph,
                                           const float epsilon,
                                           poplar::program::Sequence& seq,
                                           const std::string& debug_name) {
-  auto expression =
-      pe::Divide(pe::Const(1), pe::Sqrt(pe::Add(pe::_1, pe::Const(epsilon))));
+  auto expression = pe::VarianceToInvStdDev(pe::_1, pe::Const(epsilon));
 
-  return popops::map(graph, expression, {variance}, seq,
+  poplar::Tensor inv_sd = graph.clone(variance);
+  seq.add(poplar::program::Copy(variance, inv_sd));
+
+  popops::mapInPlace(graph, expression, {inv_sd}, seq,
                      debug_name + "/VarToInvStdDev");
+  return inv_sd;
 }
 
 poplar::Tensor convertInvStdDevToVariance(poplar::Graph& graph,
@@ -85,11 +88,14 @@ poplar::Tensor convertInvStdDevToVariance(poplar::Graph& graph,
                                           const float epsilon,
                                           poplar::program::Sequence& seq,
                                           const std::string& debug_name) {
-  auto expression =
-      pe::Sub(pe::Divide(pe::Const(1), pe::Square(pe::_1)), pe::Const(epsilon));
+  auto expression = pe::InvStdDevToVariance(pe::_1, pe::Const(epsilon));
 
-  return popops::map(graph, expression, {inv_sd}, seq,
+  poplar::Tensor variance = graph.clone(inv_sd);
+  seq.add(poplar::program::Copy(inv_sd, variance));
+
+  popops::mapInPlace(graph, expression, {variance}, seq,
                      debug_name + "/InvStdDevToVar");
+  return variance;
 }
 
 poplar::Tensor batchNormalise(
