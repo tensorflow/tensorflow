@@ -39,7 +39,7 @@ NodeDef MakeStatelessMap(const NodeDef& map_node, const NodeDef& zip_node,
                          const FunctionDef& stateless_function,
                          MutableGraphView* graph) {
   NodeDef stateless_map;
-  graph_utils::SetUniqueGraphNodeName("stateless_map", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("stateless_map", graph->graph(),
                                       &stateless_map);
 
   stateless_map.set_op("MapDataset");
@@ -67,8 +67,8 @@ NodeDef MakeStatelessMap(const NodeDef& map_node, const NodeDef& zip_node,
 NodeDef MakeRandomDataset(const NodeDef& random_uniform_node,
                           MutableGraphView* graph) {
   NodeDef random_dataset;
-  random_dataset.set_op("RandomDataset");
-  graph_utils::SetUniqueGraphNodeName("RandomDataset", graph->GetGraph(),
+  random_dataset.set_op("ExperimentalRandomDataset");
+  graph_utils::SetUniqueGraphNodeName("RandomDataset", graph->graph(),
                                       &random_dataset);
 
   const auto* seed = graph_utils::AddScalarConstNode<int64>(
@@ -89,7 +89,7 @@ NodeDef MakeRandomDataset(const NodeDef& random_uniform_node,
 NodeDef MakeBatchTwo(const NodeDef& random_dataset, MutableGraphView* graph) {
   NodeDef batch_dataset;
   batch_dataset.set_op("BatchDatasetV2");
-  graph_utils::SetUniqueGraphNodeName("pair_of_random", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("pair_of_random", graph->graph(),
                                       &batch_dataset);
   const auto* batch_size = graph_utils::AddScalarConstNode<int64>(2, graph);
   const auto* drop_reminder = graph_utils::AddScalarConstNode(false, graph);
@@ -112,7 +112,7 @@ NodeDef MakeBatchTwo(const NodeDef& random_dataset, MutableGraphView* graph) {
 NodeDef MakeZipNode(const NodeDef& first_node, const NodeDef& second_node,
                     MutableGraphView* graph) {
   NodeDef zip_node;
-  graph_utils::SetUniqueGraphNodeName("zip_with_random", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("zip_with_random", graph->graph(),
                                       &zip_node);
 
   zip_node.set_op("ZipDataset");
@@ -266,7 +266,7 @@ Status HoistRandomUniform::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* stateless_map = graph.AddNode(
         MakeStatelessMap(*map_node, *zip_node, *stateless_func, &graph));
 
-    graph.ReplaceInput(*map_node, *stateless_map);
+    graph.UpdateFanouts(map_node->name(), stateless_map->name());
 
     // TODO(b/116285210): we could also remove map functions from library if
     // they are not used anymore.

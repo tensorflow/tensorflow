@@ -17,9 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.framework import errors
 
 
 class StatsDatasetTestBase(test_base.DatasetTestBase):
@@ -39,6 +42,16 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
     for value in summary_proto.value:
       if tag == value.tag:
         self.assertEqual(expected_value, value.histo.num)
+        return
+    self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
+
+  def _assertSummaryHasCountMoreOrEqualGeneralisedTag(self, summary_str, tag,
+                                                      expected_value):
+    summary_proto = summary_pb2.Summary()
+    summary_proto.ParseFromString(summary_str)
+    for value in summary_proto.value:
+      if tag in value.tag:
+        self.assertGreaterEqual(value.histo.num, expected_value)
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
 
@@ -69,3 +82,34 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
         self.assertEqual(expected_value, value.simple_value)
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
+
+  def _testParallelCallsStats(self,
+                              dataset_fn,
+                              dataset_name,
+                              num_output,
+                              dataset_transformation,
+                              function_processing_time=False,
+                              check_elements=True):
+    aggregator = stats_aggregator.StatsAggregator()
+    dataset = dataset_fn()
+    dataset = dataset_transformation(dataset, aggregator)
+    next_element = self.getNext(dataset, requires_initialization=True)
+
+    for i in range(num_output):
+      next_ = self.evaluate(next_element())
+      if check_elements:
+        self.assertAllEqual(np.array([i] * i, dtype=np.int64), next_)
+      summary_str = self.evaluate(aggregator.get_summary())
+      if function_processing_time:
+        self._assertSummaryHasCountMoreOrEqualGeneralisedTag(
+            summary_str, "::execution_time", float(i + 1))
+      self._assertSummaryContains(summary_str,
+                                  dataset_name + "::num_parallel_calls")
+      self._assertSummaryContains(summary_str,
+                                  dataset_name + "::active_parallel_calls")
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(next_element())
+    if function_processing_time:
+      summary_str = self.evaluate(aggregator.get_summary())
+      self._assertSummaryHasCountMoreOrEqualGeneralisedTag(
+          summary_str, "::execution_time", float(num_output))

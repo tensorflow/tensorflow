@@ -24,12 +24,13 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
-class Convolution1DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class Convolution1DTest(keras_parameterized.TestCase):
 
   def _run_test(self, kwargs, arg, values):
     num_samples = 2
@@ -45,7 +46,6 @@ class Convolution1DTest(test.TestCase):
             kwargs=test_kwargs,
             input_shape=(num_samples, length, stack_size))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_conv1d(self):
     kwargs = {
         'filters': 2,
@@ -100,7 +100,8 @@ class Convolution1DTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-class Conv2DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class Conv2DTest(keras_parameterized.TestCase):
 
   def _run_test(self, kwargs, arg, values):
     num_samples = 2
@@ -117,7 +118,6 @@ class Conv2DTest(test.TestCase):
             kwargs=test_kwargs,
             input_shape=(num_samples, num_row, num_col, stack_size))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_conv2d(self):
     kwargs = {
         'filters': 2,
@@ -175,7 +175,8 @@ class Conv2DTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-class Conv2DTransposeTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class Conv2DTransposeTest(keras_parameterized.TestCase):
 
   def _run_test(self, kwargs, arg, values):
     num_samples = 2
@@ -192,7 +193,6 @@ class Conv2DTransposeTest(test.TestCase):
             kwargs=test_kwargs,
             input_shape=(num_samples, num_row, num_col, stack_size))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_conv2dtranspose(self):
     kwargs = {
         'filters': 2,
@@ -242,7 +242,6 @@ class Conv2DTransposeTest(test.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_conv2d_transpose_dilation(self):
     testing_utils.layer_test(keras.layers.Conv2DTranspose,
                              kwargs={'filters': 2,
@@ -268,7 +267,8 @@ class Conv2DTransposeTest(test.TestCase):
                              expected_output=expected_output)
 
 
-class Conv3DTransposeTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class Conv3DTransposeTest(keras_parameterized.TestCase):
 
   def _run_test(self, kwargs, arg, values):
     num_samples = 2
@@ -286,7 +286,6 @@ class Conv3DTransposeTest(test.TestCase):
             kwargs=test_kwargs,
             input_shape=(num_samples, depth, num_row, num_col, stack_size))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_conv3dtranspose(self):
     kwargs = {
         'filters': 2,
@@ -337,7 +336,8 @@ class Conv3DTransposeTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-class SeparableConv1DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class SeparableConv1DTest(keras_parameterized.TestCase):
 
   def _run_test(self, kwargs, arg, values):
     num_samples = 2
@@ -353,7 +353,6 @@ class SeparableConv1DTest(test.TestCase):
             kwargs=test_kwargs,
             input_shape=(num_samples, length, stack_size))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_separable_conv1d(self):
     kwargs = {
         'filters': 2,
@@ -412,7 +411,8 @@ class SeparableConv1DTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-class SeparableConv2DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class SeparableConv2DTest(keras_parameterized.TestCase):
 
   def _run_test(self, kwargs, arg, values):
     num_samples = 2
@@ -429,7 +429,6 @@ class SeparableConv2DTest(test.TestCase):
             kwargs=test_kwargs,
             input_shape=(num_samples, num_row, num_col, stack_size))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_separable_conv2d(self):
     kwargs = {
         'filters': 2,
@@ -490,7 +489,8 @@ class SeparableConv2DTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-class Conv3DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class Conv3DTest(keras_parameterized.TestCase):
 
   def _run_test(self, kwargs, arg, values):
     num_samples = 2
@@ -508,7 +508,6 @@ class Conv3DTest(test.TestCase):
             kwargs=test_kwargs,
             input_shape=(num_samples, depth, num_row, num_col, stack_size))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_conv3d(self):
     kwargs = {
         'filters': 2,
@@ -558,9 +557,9 @@ class Conv3DTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-class ZeroPaddingTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class ZeroPaddingTest(keras_parameterized.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_zero_padding_1d(self):
     num_samples = 2
     input_dim = 2
@@ -611,7 +610,6 @@ class ZeroPaddingTest(test.TestCase):
     with self.assertRaises(ValueError):
       keras.layers.ZeroPadding1D(padding=None)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_zero_padding_2d(self):
     num_samples = 2
     stack_size = 2
@@ -690,7 +688,6 @@ class ZeroPaddingTest(test.TestCase):
       with self.assertRaises(ValueError):
         keras.layers.ZeroPadding2D(padding=None)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_zero_padding_3d(self):
     num_samples = 2
     stack_size = 2
@@ -729,15 +726,14 @@ class ZeroPaddingTest(test.TestCase):
       keras.layers.ZeroPadding3D(padding=None)
 
 
-class UpSamplingTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class UpSamplingTest(keras_parameterized.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_upsampling_1d(self):
     with self.session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.UpSampling1D, kwargs={'size': 2}, input_shape=(3, 5, 4))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_upsampling_2d(self):
     num_samples = 2
     stack_size = 2
@@ -787,7 +783,6 @@ class UpSamplingTest(test.TestCase):
 
             np.testing.assert_allclose(np_output, expected_out)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_upsampling_2d_bilinear(self):
     num_samples = 2
     stack_size = 2
@@ -823,7 +818,6 @@ class UpSamplingTest(test.TestCase):
               self.assertEqual(np_output.shape[1], length_row * input_num_row)
               self.assertEqual(np_output.shape[2], length_col * input_num_col)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_upsampling_3d(self):
     num_samples = 2
     stack_size = 2
@@ -881,9 +875,9 @@ class UpSamplingTest(test.TestCase):
               np.testing.assert_allclose(np_output, expected_out)
 
 
-class CroppingTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class CroppingTest(keras_parameterized.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_cropping_1d(self):
     num_samples = 2
     time_length = 4
@@ -902,7 +896,6 @@ class CroppingTest(test.TestCase):
     with self.assertRaises(ValueError):
       keras.layers.Cropping1D(cropping=None)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_cropping_2d(self):
     num_samples = 2
     stack_size = 2
@@ -969,7 +962,6 @@ class CroppingTest(test.TestCase):
     with self.assertRaises(ValueError):
       keras.layers.Cropping2D(cropping=None)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_cropping_3d(self):
     num_samples = 2
     stack_size = 2
@@ -1025,7 +1017,8 @@ class CroppingTest(test.TestCase):
       keras.layers.Cropping3D(cropping=None)
 
 
-class DepthwiseConv2DTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class DepthwiseConv2DTest(keras_parameterized.TestCase):
 
   def _run_test(self, kwargs, arg, values):
     num_samples = 2
@@ -1051,17 +1044,18 @@ class DepthwiseConv2DTest(test.TestCase):
       self._run_test(kwargs, 'data_format', ['channels_first'])
     self._run_test(kwargs, 'depth_multiplier', [1, 2])
 
-    kwargs = {'kernel_size': 3,
-              'padding': 'valid',
-              'data_format': 'channels_first',
-              'activation': None,
-              'depthwise_regularizer': 'l2',
-              'bias_regularizer': 'l2',
-              'activity_regularizer': 'l2',
-              'depthwise_constraint': 'unit_norm',
-              'use_bias': True,
-              'strides': (2, 2),
-             }
+    kwargs = {
+        'kernel_size': 3,
+        'padding': 'valid',
+        'data_format': 'channels_last',
+        'activation': None,
+        'depthwise_regularizer': 'l2',
+        'bias_regularizer': 'l2',
+        'activity_regularizer': 'l2',
+        'depthwise_constraint': 'unit_norm',
+        'use_bias': True,
+        'strides': (2, 2),
+    }
     self._run_test(kwargs, 'depth_multiplier', [1])
 
 if __name__ == '__main__':

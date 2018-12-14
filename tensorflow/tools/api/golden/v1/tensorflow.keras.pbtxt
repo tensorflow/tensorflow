@@ -37,6 +37,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "initializers"
     mtype: "<type \'module\'>"
   }

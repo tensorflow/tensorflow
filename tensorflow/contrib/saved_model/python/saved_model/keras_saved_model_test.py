@@ -29,14 +29,14 @@ from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import training as training_module
@@ -150,8 +150,6 @@ class TestModelSavingandLoading(test.TestCase):
       x = np.random.random((1, 3))
       y = np.random.random((1, 3))
       model.train_on_batch(x, y)
-      model.train_on_batch(x, y)
-
       ref_y = model.predict(x)
 
       temp_saved_model = self._save_model_dir()
@@ -219,7 +217,7 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
     return input_shape
 
 
-def functional_model(uses_learning_phase):
+def functional_model(uses_learning_phase=True):
   inputs = keras.layers.Input(shape=(3,))
   x = keras.layers.Dense(2)(inputs)
   x = keras.layers.Dense(3)(x)
@@ -228,7 +226,7 @@ def functional_model(uses_learning_phase):
   return keras.models.Model(inputs, x)
 
 
-def sequential_model(uses_learning_phase):
+def sequential_model(uses_learning_phase=True):
   model = keras.models.Sequential()
   model.add(keras.layers.Dense(2, input_shape=(3,)))
   model.add(keras.layers.Dense(3))
@@ -237,10 +235,39 @@ def sequential_model(uses_learning_phase):
   return model
 
 
+def sequential_model_without_input_shape(uses_learning_phase=True):
+  model = keras.models.Sequential()
+  model.add(keras.layers.Dense(2))
+  model.add(keras.layers.Dense(3))
+  if uses_learning_phase:
+    model.add(LayerWithLearningPhase())
+  return model
+
+
+class Subclassed(keras.models.Model):
+
+  def __init__(self):
+    super(Subclassed, self).__init__()
+    self.dense1 = keras.layers.Dense(2)
+    self.dense2 = keras.layers.Dense(3)
+
+  def call(self, inputs):
+    x = self.dense1(inputs)
+    x = self.dense2(x)
+    return x
+
+
+def subclassed_model():
+  return Subclassed()
+
+
 def load_model(sess, path, mode):
   tags = model_fn_lib.EXPORT_TAG_MAP[mode]
-  sig_def_key = (signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-                 if mode == model_fn_lib.ModeKeys.PREDICT else mode)
+  if mode == model_fn_lib.ModeKeys.PREDICT:
+    sig_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+  else:
+    sig_def_key = mode
+
   meta_graph_def = loader_impl.load(sess, tags, path)
   inputs = {
       k: sess.graph.get_tensor_by_name(v.name)
@@ -248,7 +275,7 @@ def load_model(sess, path, mode):
   outputs = {
       k: sess.graph.get_tensor_by_name(v.name)
       for k, v in meta_graph_def.signature_def[sig_def_key].outputs.items()}
-  return inputs, outputs
+  return inputs, outputs, meta_graph_def
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -260,16 +287,46 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
     return os.path.join(temp_dir, dirname)
 
   @parameterized.parameters(
-      (functional_model, True, training_module.AdadeltaOptimizer(), True),
-      (functional_model, True, training_module.AdadeltaOptimizer(), False),
-      (functional_model, False, None, False),
-      (sequential_model, True, training_module.AdadeltaOptimizer(), True),
-      (sequential_model, True, training_module.AdadeltaOptimizer(), False),
-      (sequential_model, False, None, False))
+      {
+          'model_builder': functional_model,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': True},
+      {
+          'model_builder': functional_model,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': False},
+      {
+          'model_builder': functional_model,
+          'uses_learning_phase': False,
+          'optimizer': None,
+          'train_before_export': False},
+      {
+          'model_builder': sequential_model,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': True},
+      {
+          'model_builder': sequential_model,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': False},
+      {
+          'model_builder': sequential_model,
+          'uses_learning_phase': False,
+          'optimizer': None,
+          'train_before_export': False},
+      {
+          'model_builder': sequential_model_without_input_shape,
+          'uses_learning_phase': True,
+          'optimizer': training_module.AdadeltaOptimizer(),
+          'train_before_export': False})
   def testSaveAndLoadSavedModelExport(
       self, model_builder, uses_learning_phase, optimizer, train_before_export):
     saved_model_path = self._save_model_dir()
     with self.session(graph=ops.Graph()):
+      np.random.seed(130)
       input_arr = np.random.random((1, 3))
       target_arr = np.random.random((1, 3))
 
@@ -295,8 +352,8 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
 
     # Load predict graph, and test predictions
     with session.Session(graph=ops.Graph()) as sess:
-      inputs, outputs = load_model(sess, output_path,
-                                   model_fn_lib.ModeKeys.PREDICT)
+      inputs, outputs, _ = load_model(sess, output_path,
+                                      model_fn_lib.ModeKeys.PREDICT)
 
       predictions = sess.run(outputs[output_name],
                              {inputs[input_name]: input_arr})
@@ -305,33 +362,41 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
     if optimizer:
       # Load eval graph, and test predictions, loss and metric values
       with session.Session(graph=ops.Graph()) as sess:
-        inputs, outputs = load_model(sess, output_path,
-                                     model_fn_lib.ModeKeys.EVAL)
+        inputs, outputs, _ = load_model(sess, output_path,
+                                        model_fn_lib.ModeKeys.EVAL)
 
-        eval_results = sess.run(outputs, {inputs[input_name]: input_arr,
-                                          inputs[target_name]: target_arr})
+        # First obtain the loss and predictions, and run the metric update op by
+        # feeding in the inputs and targets.
+        loss, predictions, _ = sess.run(
+            (outputs['loss'], outputs['predictions/' + output_name],
+             outputs['metrics/mean_absolute_error/update_op']), {
+                 inputs[input_name]: input_arr,
+                 inputs[target_name]: target_arr
+             })
+
+        # The metric value should be run after the update op, to ensure that it
+        # reflects the correct value.
+        metric_value = sess.run(outputs['metrics/mean_absolute_error/value'])
 
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
-        self.assertAllClose(ref_loss, eval_results['loss'], atol=1e-05)
-        self.assertAllClose(
-            ref_mae, eval_results['metrics/mae/update_op'], atol=1e-05)
-        self.assertAllClose(
-            ref_predict, eval_results['predictions/' + output_name], atol=1e-05)
+        self.assertAllClose(ref_loss, loss, atol=1e-05)
+        self.assertAllClose(ref_mae, metric_value, atol=1e-05)
+        self.assertAllClose(ref_predict, predictions, atol=1e-05)
 
       # Load train graph, and check for the train op, and prediction values
       with session.Session(graph=ops.Graph()) as sess:
-        inputs, outputs = load_model(sess, output_path,
-                                     model_fn_lib.ModeKeys.TRAIN)
+        inputs, outputs, meta_graph_def = load_model(
+            sess, output_path, model_fn_lib.ModeKeys.TRAIN)
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
         self.assertIn('loss', outputs)
-        self.assertIn('metrics/mae/update_op', outputs)
-        self.assertIn('metrics/mae/value', outputs)
+        self.assertIn('metrics/mean_absolute_error/update_op', outputs)
+        self.assertIn('metrics/mean_absolute_error/value', outputs)
         self.assertIn('predictions/' + output_name, outputs)
 
         # Train for a step
-        train_op = ops.get_collection(constants.TRAIN_OP_KEY)
+        train_op = loader_impl.get_train_op(meta_graph_def)
         train_outputs, _ = sess.run(
             [outputs, train_op], {inputs[input_name]: input_arr,
                                   inputs[target_name]: target_arr})
@@ -358,8 +423,8 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       output_path = keras_saved_model.save_keras_model(
           model, saved_model_path, custom_objects={'relu6': relu6})
     with session.Session(graph=ops.Graph()) as sess:
-      inputs, outputs = load_model(sess, output_path,
-                                   model_fn_lib.ModeKeys.PREDICT)
+      inputs, outputs, _ = load_model(sess, output_path,
+                                      model_fn_lib.ModeKeys.PREDICT)
       input_name = model.input_names[0]
       output_name = model.output_names[0]
       predictions = sess.run(
@@ -420,10 +485,53 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
       clone.train_on_batch(input_arr, target_arr)
 
-    with self.assertRaisesRegexp(
-        errors.InternalError, 'Model and clone must use the same variables.'):
-      keras_saved_model._assert_same_non_optimizer_objects(
-          model, model_graph, clone, clone_graph)
+  def testSaveSequentialModelWithoutInputShapes(self):
+    model = sequential_model_without_input_shape(True)
+    # A Sequential model that hasn't been built should raise an error.
+    with self.assertRaisesRegexp(ValueError, 'Please build the model'):
+      keras_saved_model.save_keras_model(model, '')
+
+    saved_model_path = self._save_model_dir()
+    output_path = keras_saved_model.save_keras_model(
+        model, saved_model_path,
+        input_signature=tensor_spec.TensorSpec(shape=(10, 11, 12, 13, 14),
+                                               dtype=dtypes.float32,
+                                               name='spec_input'))
+
+    with session.Session(graph=ops.Graph()) as sess:
+      inputs, outputs, _ = load_model(sess, output_path,
+                                      model_fn_lib.ModeKeys.PREDICT)
+      self.assertEqual(5, inputs[next(iter(inputs.keys()))].shape.ndims)
+      self.assertEqual(5, outputs[next(iter(outputs.keys()))].shape.ndims)
+      self.assertEqual(3, outputs[next(iter(outputs.keys()))].shape[-1])
+
+  @test_util.run_v2_only
+  @parameterized.parameters(
+      {
+          'model_builder': sequential_model_without_input_shape,
+          'input_signature': [tensor_spec.TensorSpec(shape=[None, 3],
+                                                     dtype=dtypes.float32)]},
+      {
+          'model_builder': subclassed_model,
+          'input_signature': [tensor_spec.TensorSpec(shape=[None, 3],
+                                                     dtype=dtypes.float32)]})
+  def testServingOnly(self, model_builder, input_signature):
+    saved_model_path = self._save_model_dir()
+    input_arr = np.random.random((5, 3)).astype(np.float32)
+    model = model_builder()
+    ref_predict = model.predict(input_arr)
+
+    output_path = keras_saved_model.save_keras_model(
+        model, saved_model_path, serving_only=True,
+        input_signature=input_signature)
+
+    # Load predict graph, and test predictions
+    with session.Session(graph=ops.Graph()) as sess:
+      inputs, outputs, _ = load_model(sess, output_path,
+                                      model_fn_lib.ModeKeys.PREDICT)
+      predictions = sess.run(outputs[next(iter(outputs.keys()))],
+                             {inputs[next(iter(inputs.keys()))]: input_arr})
+      self.assertAllClose(ref_predict, predictions, atol=1e-05)
 
 
 if __name__ == '__main__':

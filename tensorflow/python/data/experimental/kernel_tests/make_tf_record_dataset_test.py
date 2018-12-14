@@ -21,11 +21,12 @@ from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class MakeTFRecordDatasetTest(
     reader_dataset_ops_test_base.TFRecordDatasetTestBase):
 
@@ -89,7 +90,6 @@ class MakeTFRecordDatasetTest(
       yield record_batch
 
   def _verify_records(self,
-                      sess,
                       outputs,
                       batch_size,
                       file_index,
@@ -105,7 +105,7 @@ class MakeTFRecordDatasetTest(
     for expected_batch in self._next_expected_batch(
         file_indices, batch_size, num_epochs, interleave_cycle_length,
         drop_final_batch, use_parser_fn):
-      actual_batch = sess.run(outputs)
+      actual_batch = self.evaluate(outputs())
       self.assertAllEqual(expected_batch, actual_batch)
 
   def _read_test(self, batch_size, num_epochs, file_index=None,
@@ -120,22 +120,25 @@ class MakeTFRecordDatasetTest(
     else:
       fn = None
 
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g) as sess:
-        outputs = readers.make_tf_record_dataset(
+    outputs = self.getNext(
+        readers.make_tf_record_dataset(
             file_pattern=file_pattern,
             num_epochs=num_epochs,
             batch_size=batch_size,
             parser_fn=fn,
             num_parallel_reads=num_parallel_reads,
             drop_final_batch=drop_final_batch,
-            shuffle=False).make_one_shot_iterator().get_next()
-        self._verify_records(
-            sess, outputs, batch_size, file_index, num_epochs=num_epochs,
-            interleave_cycle_length=num_parallel_reads,
-            drop_final_batch=drop_final_batch, use_parser_fn=parser_fn)
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(outputs)
+            shuffle=False))
+    self._verify_records(
+        outputs,
+        batch_size,
+        file_index,
+        num_epochs=num_epochs,
+        interleave_cycle_length=num_parallel_reads,
+        drop_final_batch=drop_final_batch,
+        use_parser_fn=parser_fn)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(outputs())
 
   def testRead(self):
     for batch_size in [1, 2]:
@@ -176,50 +179,46 @@ class MakeTFRecordDatasetTest(
 
   def _shuffle_test(self, batch_size, num_epochs, num_parallel_reads=1,
                     seed=None):
-    with ops.Graph().as_default() as g:
-      with self.session(graph=g) as sess:
-        dataset = readers.make_tf_record_dataset(
-            file_pattern=self.test_filenames,
-            num_epochs=num_epochs,
-            batch_size=batch_size,
-            num_parallel_reads=num_parallel_reads,
-            shuffle=True,
-            shuffle_seed=seed)
-        iterator = dataset.make_initializable_iterator()
-        next_element = iterator.get_next()
+    dataset = readers.make_tf_record_dataset(
+        file_pattern=self.test_filenames,
+        num_epochs=num_epochs,
+        batch_size=batch_size,
+        num_parallel_reads=num_parallel_reads,
+        shuffle=True,
+        shuffle_seed=seed)
 
-        sess.run(iterator.initializer)
-        first_batches = []
-        try:
-          while True:
-            first_batches.append(sess.run(next_element))
-        except errors.OutOfRangeError:
-          pass
+    next_element = self.getNext(dataset)
+    first_batches = []
+    try:
+      while True:
+        first_batches.append(self.evaluate(next_element()))
+    except errors.OutOfRangeError:
+      pass
 
-        sess.run(iterator.initializer)
-        second_batches = []
-        try:
-          while True:
-            second_batches.append(sess.run(next_element))
-        except errors.OutOfRangeError:
-          pass
+    next_element = self.getNext(dataset)
+    second_batches = []
+    try:
+      while True:
+        second_batches.append(self.evaluate(next_element()))
+    except errors.OutOfRangeError:
+      pass
 
-        self.assertEqual(len(first_batches), len(second_batches))
-        if seed is not None:
-          # if you set a seed, should get the same results
-          for i in range(len(first_batches)):
-            self.assertAllEqual(first_batches[i], second_batches[i])
+    self.assertEqual(len(first_batches), len(second_batches))
+    if seed is not None:
+      # if you set a seed, should get the same results
+      for i in range(len(first_batches)):
+        self.assertAllEqual(first_batches[i], second_batches[i])
 
-        expected = []
-        for f in range(self._num_files):
-          for r in range(self._num_records):
-            expected.extend([self._record(f, r)] * num_epochs)
+    expected = []
+    for f in range(self._num_files):
+      for r in range(self._num_records):
+        expected.extend([self._record(f, r)] * num_epochs)
 
-        for batches in (first_batches, second_batches):
-          actual = []
-          for b in batches:
-            actual.extend(b)
-          self.assertAllEqual(sorted(expected), sorted(actual))
+    for batches in (first_batches, second_batches):
+      actual = []
+      for b in batches:
+        actual.extend(b)
+      self.assertAllEqual(sorted(expected), sorted(actual))
 
   def testShuffle(self):
     for batch_size in [1, 2]:

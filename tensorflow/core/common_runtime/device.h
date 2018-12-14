@@ -55,6 +55,9 @@ class DeviceMgr;
 
 class Device : public DeviceBase {
  public:
+  // Callback type that takes a Status and returns void.
+  typedef std::function<void(const Status&)> DoneCallback;
+
   Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
@@ -111,6 +114,13 @@ class Device : public DeviceBase {
   // the call have completed.  Returns any error pending on the device
   // at completion.
   virtual Status Sync() = 0;
+
+  // Calls the given callback when all operations queued on the device at the
+  // time of the call have completed. The callback is passed any error pending
+  // on the device at completion.
+  // TODO(b/112409994): Consolidate these two APIs, removing the synchronous
+  // version.
+  virtual void Sync(const DoneCallback& done);
 
   // Override this to return true for devices that require a Sync() call before
   // session completion.

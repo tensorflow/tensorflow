@@ -20,31 +20,30 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class CounterTest(test_base.DatasetTestBase):
 
   def testCounter(self):
     """Test dataset construction using `count`."""
-    iterator = (counter.Counter(start=3, step=4)
-                .make_one_shot_iterator())
-    get_next = iterator.get_next()
-    self.assertEqual([], get_next.shape.as_list())
-    self.assertEqual(dtypes.int64, get_next.dtype)
+    dataset = counter.Counter(start=3, step=4)
+    self.assertEqual([], dataset.output_shapes.as_list())
+    self.assertEqual(dtypes.int64, dataset.output_types)
+    get_next = self.getNext(dataset)
 
-    negative_iterator = (counter.Counter(start=0, step=-1)
-                         .make_one_shot_iterator())
-    negative_get_next = negative_iterator.get_next()
+    negative_dataset = counter.Counter(start=0, step=-1)
+    negative_get_next = self.getNext(negative_dataset)
 
-    with self.cached_session() as sess:
-      self.assertEqual(3, sess.run(get_next))
-      self.assertEqual(3 + 4, sess.run(get_next))
-      self.assertEqual(3 + 2 * 4, sess.run(get_next))
+    self.assertEqual(3, self.evaluate(get_next()))
+    self.assertEqual(3 + 4, self.evaluate(get_next()))
+    self.assertEqual(3 + 2 * 4, self.evaluate(get_next()))
 
-      self.assertEqual(0, sess.run(negative_get_next))
-      self.assertEqual(-1, sess.run(negative_get_next))
-      self.assertEqual(-2, sess.run(negative_get_next))
+    self.assertEqual(0, self.evaluate(negative_get_next()))
+    self.assertEqual(-1, self.evaluate(negative_get_next()))
+    self.assertEqual(-2, self.evaluate(negative_get_next()))
 
 
 if __name__ == "__main__":

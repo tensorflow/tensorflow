@@ -183,7 +183,7 @@ class Samples {
   // This method adds the statistics of graph nodes created by the python
   // call.
   void Add(const CodeNode* node, const std::vector<uint64>& location_ids) {
-    // displayed leaf might not be true leaf. Retrive the true leaves for
+    // displayed leaf might not be true leaf. Retrieve the true leaves for
     // stats.
     std::vector<const CodeNode*> all_leaf = FetchAllLeaf(node);
     CHECK(!all_leaf.empty()) << node->name();

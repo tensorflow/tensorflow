@@ -22,7 +22,7 @@ extern "C" void entry_point(
     void* result, const xla::ExecutableRunOptions* run_options,
     const void** args, void** temps, tensorflow::int64* profile_counters);
 
-extern "C" char __tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[];
+extern "C" char __tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[];
 
 
 namespace foo {
@@ -114,7 +114,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   //   with dim indices specifying which value. No bounds checking is performed
   //   on dim indices.
 
-  void set_arg0_data(void* data) {
+  void set_arg0_data(const void* data) {
     set_arg_data(0, data);
   }
   float* arg0_data() {
@@ -132,7 +132,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         arg_data(0)))[dim0][dim1];
   }
 
-  void set_arg_myfeed_data(void* data) {
+  void set_arg_myfeed_data(const void* data) {
     set_arg_data(0, data);
   }
   float* arg_myfeed_data() {
@@ -150,7 +150,7 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
         arg_data(0)))[dim0][dim1];
   }
 
-  void set_arg1_data(void* data) {
+  void set_arg1_data(const void* data) {
     set_arg_data(1, data);
   }
   tensorflow::int64* arg1_data() {
@@ -253,10 +253,10 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   }
 
   // Shape of the args and results.
-  static const xla::ProgramShape* StaticProgramShape() {
-    static const xla::ProgramShape* kShape = []() {
-    xla::ProgramShape* proto = new xla::ProgramShape;
-    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShape_protobuf_array_contents[0], 52);
+  static const xla::ProgramShapeProto* StaticProgramShape() {
+    static const xla::ProgramShapeProto* kShape = []() {
+    xla::ProgramShapeProto* proto = new xla::ProgramShapeProto;
+    proto->ParseFromArray(&__tfcompile_foo_bar_MyClass_ProgramShapeProto_protobuf_array_contents[0], 52);
     return proto;
   }();
     return kShape;

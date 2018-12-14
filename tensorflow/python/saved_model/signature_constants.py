@@ -135,7 +135,7 @@ tf_export(
 
 ################################################################################
 # Train/Eval API constants.
-# Not exported while export_all_saved_models is in contrib.
+# Not exported while export_all_saved_models is experimental.
 
 SUPERVISED_TRAIN_METHOD_NAME = "tensorflow/supervised/training"
 

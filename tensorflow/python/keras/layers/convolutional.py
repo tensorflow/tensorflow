@@ -26,8 +26,8 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 # imports for backwards namespace compatibility
 # pylint: disable=unused-import
 from tensorflow.python.keras.layers.pooling import AveragePooling1D
@@ -149,7 +149,7 @@ class Conv(Layer):
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis].value is None:
+    if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
     input_dim = int(input_shape[channel_axis])
@@ -758,7 +758,7 @@ class Conv2DTranspose(Conv2D):
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis].value is None:
+    if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
     input_dim = int(input_shape[channel_axis])
@@ -1039,7 +1039,7 @@ class Conv3DTranspose(Conv3D):
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis].value is None:
+    if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined, found None: ' + str(input_shape))
     input_dim = int(input_shape[channel_axis])
@@ -1313,7 +1313,7 @@ class SeparableConv(Conv):
       channel_axis = 1
     else:
       channel_axis = -1
-    if input_shape[channel_axis].value is None:
+    if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
     input_dim = int(input_shape[channel_axis])
@@ -1808,7 +1808,7 @@ class DepthwiseConv2D(Conv2D):
       channel_axis = 1
     else:
       channel_axis = 3
-    if input_shape[channel_axis] is None:
+    if input_shape.dims[channel_axis].value is None:
       raise ValueError('The channel dimension of the inputs to '
                        '`DepthwiseConv2D` '
                        'should be defined. Found `None`.')

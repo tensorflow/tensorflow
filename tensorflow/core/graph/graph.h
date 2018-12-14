@@ -59,12 +59,13 @@ class EdgeSetTest;
 class Graph;
 class GraphDef;
 class Node;
+struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
 class NeighborIter;    // Declared below
 class NodeIter;        // Declared below
-class NodeProperties;  // Defined in .cc
+struct NodeProperties;  // Defined in .cc
 
 class Node {
  public:
@@ -118,6 +119,10 @@ class Node {
   }
   int assigned_device_name_index() const { return assigned_device_name_index_; }
   void set_assigned_device_name_index(int index);
+
+  // Sets 'original_node_names' field of this node's DebugInfo proto to
+  // 'names'.
+  void set_original_node_names(const std::vector<string>& names);
 
   // Read only access to attributes
   AttrSlice attrs() const;
@@ -188,6 +193,10 @@ class Node {
   // 'idx' input of this Node.
   Status input_node(int idx, const Node** n) const;
   Status input_node(int idx, Node** n) const;
+
+  // Returns into '*t' the idx-th input tensor of this node, represented as the
+  // output tensor of input_node(idx).
+  Status input_tensor(int idx, OutputTensor* t) const;
 
   WhileContext* while_ctx() const { return while_ctx_; }
   void set_while_ctx(WhileContext* while_ctx) {
@@ -285,12 +294,21 @@ class Node {
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
 };
 
+// Stores debug information associated with the Node.
+struct NodeDebugInfo {
+  const string name;
+  const std::vector<string> original_node_names;
+
+  NodeDebugInfo(const Node& n);
+  NodeDebugInfo(const NodeDef& ndef);
+};
+
 // Represents an input of a node, i.e., the `index`-th input to `node`.
 struct InputTensor {
-  const Node* node;
+  Node* node;
   int index;
 
-  InputTensor(const Node* n, int i) : node(n), index(i) {}
+  InputTensor(Node* n, int i) : node(n), index(i) {}
   InputTensor() : node(nullptr), index(0) {}
 
   // Returns true if this InputTensor is identical to 'other'. Nodes are
@@ -308,10 +326,10 @@ struct InputTensor {
 // that a single `OutputTensor` can correspond to multiple `Edge`s if the output
 // is consumed by multiple destination nodes.
 struct OutputTensor {
-  const Node* node;
+  Node* node;
   int index;
 
-  OutputTensor(const Node* n, int i) : node(n), index(i) {}
+  OutputTensor(Node* n, int i) : node(n), index(i) {}
   OutputTensor() : node(nullptr), index(0) {}
 
   // Returns true if this OutputTensor is identical to 'other'. Nodes are
@@ -425,9 +443,9 @@ class Graph {
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
   //
-  // The graph can hold ops found in registry. `registry`s lifetime must be at
+  // The graph can hold ops found in the registry. `ops`s lifetime must be at
   // least that of the constructed graph's.
-  explicit Graph(const OpRegistryInterface* registry);
+  explicit Graph(const OpRegistryInterface* ops);
 
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
@@ -488,10 +506,16 @@ class Graph {
   // the corresponding NodeDef to reflect the change.
   // REQUIRES: The control edge must exist.
   void RemoveControlEdge(const Edge* e);
+
   // Updates the input to a node.  The existing edge to `dst` is removed and an
   // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`
   // is also updated.
   Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
+
+  // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
+  // "While" op during gradient construction, see AddInputWhileHack in
+  // python_api.h for more details.
+  Status AddWhileInputHack(Node* new_src, int new_src_index, Node* dst);
 
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an

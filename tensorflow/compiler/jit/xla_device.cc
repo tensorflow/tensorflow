@@ -201,17 +201,26 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
       jit_device_name_(options.compilation_device_name),
       platform_(options.platform),
       use_multiple_streams_(options.use_multiple_streams),
-      transfer_as_literal_(options.transfer_as_literal),
       shape_representation_fn_(options.shape_representation_fn) {
   VLOG(1) << "Created XLA device " << options.compilation_device_name << " "
           << this;
   thread_pool_.reset(new thread::ThreadPool(session_options.env, "xla_device",
                                             /*num_threads=*/1));
+
+  // We have multiple device to device streams to allow for some concurrency
+  // between transfers. The particular value of '4' is chosen fairly
+  // arbitrarily. It may be necessary to make this tunable via
+  // XlaDevice::Options.
+  static constexpr int kNumDeviceToDeviceStreams = 4;
+  device_to_device_streams_.resize(kNumDeviceToDeviceStreams);
 }
 
 XlaDevice::~XlaDevice() {
   VLOG(1) << "Destroying XLA device " << jit_device_name_ << " " << this;
   mutex_lock lock(mu_);
+  while (outstanding_asynchronous_operations_ > 0) {
+    outstanding_asynchronous_operations_cv_.wait(lock);
+  }
   if (device_context_) {
     device_context_->Unref();
   }
@@ -274,8 +283,9 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
                                           &need_new_device_context));
 
-  std::shared_ptr<se::Stream> host_to_device_stream = stream_;
-  std::shared_ptr<se::Stream> device_to_host_stream = stream_;
+  std::shared_ptr<se::Stream> host_to_device_stream;
+  std::shared_ptr<se::Stream> device_to_host_stream;
+  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams;
   if (use_multiple_streams_) {
     TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "host_to_device_stream",
                                             &host_to_device_stream_,
@@ -283,8 +293,18 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
     TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "device_to_host_stream",
                                             &device_to_host_stream_,
                                             &need_new_device_context));
+    for (std::shared_ptr<se::Stream>& stream : device_to_device_streams_) {
+      TF_RETURN_IF_ERROR(
+          EnsureStreamOkLocked(backend, "device_to_device_stream", &stream,
+                               &need_new_device_context));
+    }
     host_to_device_stream = host_to_device_stream_;
     device_to_host_stream = device_to_host_stream_;
+    device_to_device_streams = device_to_device_streams_;
+  } else {
+    host_to_device_stream = stream_;
+    device_to_host_stream = stream_;
+    device_to_device_streams = {stream_};
   }
 
   if (!need_new_device_context) {
@@ -302,8 +322,9 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   // ensures that the streams remain live for the duration of a run, even if
   // an error is encountered and the streams are replaced with new ones.
   device_context_ = new XlaDeviceContext(
-      stream_, host_to_device_stream, device_to_host_stream, client(),
-      transfer_as_literal_, shape_representation_fn_, thread_pool_.get());
+      stream_, std::move(host_to_device_stream),
+      std::move(device_to_host_stream), std::move(device_to_device_streams),
+      client(), shape_representation_fn_, thread_pool_.get());
   VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext "
           << device_context_;
 
@@ -366,6 +387,7 @@ void XlaDevice::ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
 
 Status XlaDevice::Sync() {
   VLOG(1) << "XlaDevice::Sync";
+  tracing::ScopedActivity activity("XlaDevice::Sync", /*is_expensive=*/true);
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
@@ -373,11 +395,44 @@ Status XlaDevice::Sync() {
   }
   if (!stream) return Status::OK();
 
-  if (!stream->parent()->SynchronizeAllActivity() || !stream->ok()) {
+  Status status = stream->BlockHostUntilDone();
+  {
+    mutex_lock lock(mu_);
+    while (outstanding_asynchronous_operations_ > 0) {
+      outstanding_asynchronous_operations_cv_.wait(lock);
+    }
+  }
+  TF_RETURN_IF_ERROR(status);
+  if (!stream->ok()) {
     return errors::Internal("XlaDevice::Sync() failed.");
   }
   VLOG(1) << "XlaDevice::Sync completed";
   return Status::OK();
+}
+
+void XlaDevice::Sync(const DoneCallback& done) {
+  VLOG(1) << "XlaDevice::Sync (asynchronous)";
+  std::shared_ptr<se::Stream> stream;
+  {
+    mutex_lock lock(mu_);
+    stream = stream_;
+  }
+  if (!stream) {
+    done(Status::OK());
+    return;
+  }
+
+  stream->ThenEnqueueOnBackgroundThread(
+      [this, stream, done](se::StreamExecutor*) {
+        tracing::ScopedActivity activity("XlaDevice::Sync::Callback",
+                                         /*is_expensive=*/true);
+        mutex_lock lock(mu_);
+        while (outstanding_asynchronous_operations_ > 0) {
+          outstanding_asynchronous_operations_cv_.wait(lock);
+        }
+        done(stream->ok() ? Status::OK()
+                          : errors::Internal("XlaDevice::Sync() failed."));
+      });
 }
 
 Status XlaDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
@@ -423,12 +478,55 @@ bool XlaDevice::RequiresSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
+XlaDevice::AsynchronousOperationHandle::AsynchronousOperationHandle(
+    XlaDevice* device)
+    : device_(device) {
+  mutex_lock lock(device_->mu_);
+  ++device_->outstanding_asynchronous_operations_;
+}
+
+XlaDevice::AsynchronousOperationHandle::~AsynchronousOperationHandle() {
+  if (device_) {
+    mutex_lock lock(device_->mu_);
+    --device_->outstanding_asynchronous_operations_;
+    device_->outstanding_asynchronous_operations_cv_.notify_all();
+  }
+}
+
+XlaDevice::AsynchronousOperationHandle::AsynchronousOperationHandle(
+    const XlaDevice::AsynchronousOperationHandle& other)
+    : device_(other.device_) {
+  mutex_lock lock(device_->mu_);
+  ++device_->outstanding_asynchronous_operations_;
+}
+
+XlaDevice::AsynchronousOperationHandle::AsynchronousOperationHandle(
+    XlaDevice::AsynchronousOperationHandle&& other)
+    : device_(other.device_) {
+  other.device_ = nullptr;
+}
+
+XlaDevice::AsynchronousOperationHandle& XlaDevice::AsynchronousOperationHandle::
+operator=(const XlaDevice::AsynchronousOperationHandle& other) {
+  device_ = other.device_;
+  mutex_lock lock(device_->mu_);
+  ++device_->outstanding_asynchronous_operations_;
+  return *this;
+}
+
+XlaDevice::AsynchronousOperationHandle& XlaDevice::AsynchronousOperationHandle::
+operator=(XlaDevice::AsynchronousOperationHandle&& other) {
+  device_ = other.device_;
+  other.device_ = nullptr;
+  return *this;
+}
+
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device) {
   // Any op assigned to the device that isn't rewritten by the graph rewriter
   // gets executed by a n XlaCompileOnDemandOp, which compiles it and executes
   // it just-in-time.
-  kernel_factory::OpKernelRegistrar::Factory factory =
+  OpKernel* (*factory)(OpKernelConstruction*) =
       [](OpKernelConstruction* context) -> OpKernel* {
     return new XlaCompileOnDemandOp(context);
   };

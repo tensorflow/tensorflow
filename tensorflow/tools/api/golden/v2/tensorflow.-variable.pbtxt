@@ -8,10 +8,6 @@ tf_class {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "constraint"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "device"
     mtype: "<type \'property\'>"
   }
@@ -49,7 +45,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'initial_value\', \'trainable\', \'validate_shape\', \'caching_device\', \'name\', \'variable_def\', \'dtype\', \'import_scope\', \'constraint\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'True\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'initial_value\', \'trainable\', \'validate_shape\', \'caching_device\', \'name\', \'variable_def\', \'dtype\', \'import_scope\', \'synchronization\', \'aggregation\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'True\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
   }
   member_method {
     name: "assign"
@@ -62,6 +58,10 @@ tf_class {
   member_method {
     name: "assign_sub"
     argspec: "args=[\'self\', \'delta\', \'use_locking\', \'name\', \'read_value\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "batch_scatter_update"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "count_up_to"

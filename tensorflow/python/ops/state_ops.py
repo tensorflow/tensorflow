@@ -15,7 +15,7 @@
 
 """Variables.
 
-See the [Variables](https://tensorflow.org/api_guides/python/state_ops) guide.
+See the [Variables](https://www.tensorflow.org/guide/variables) guide.
 """
 
 from __future__ import absolute_import
@@ -32,6 +32,8 @@ from tensorflow.python.ops import gen_state_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_state_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -227,6 +229,7 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
 
 
 @tf_export(v1=["count_up_to"])
+@deprecated(None, "Prefer Dataset.range instead.")
 def count_up_to(ref, limit, name=None):
   r"""Increments 'ref' until it reaches 'limit'.
 
@@ -599,7 +602,9 @@ def scatter_nd_sub(ref, indices, updates, use_locking=False, name=None):
       name=name))
 
 
-@tf_export("batch_scatter_update")
+@tf_export(v1=["batch_scatter_update"])
+@deprecation.deprecated(
+    "2018-11-29", "Use the batch_scatter_update method of Variable instead.")
 def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
   """Generalization of `tf.scatter_update` to axis different than 0.
 

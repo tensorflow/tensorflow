@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
@@ -276,11 +277,11 @@ class RNNCell(base_layer.Layer):
               batch_size, partial=True)
         else:
           static_batch_size = batch_size
-        if inputs.shape[0].value != static_batch_size:
+        if inputs.shape.dims[0].value != static_batch_size:
           raise ValueError(
               "batch size from input tensor is different from the "
               "input param. Input tensor batch: {}, batch_size: {}".format(
-                  inputs.shape[0].value, batch_size))
+                  inputs.shape.dims[0].value, batch_size))
 
       if dtype is not None and inputs.dtype != dtype:
         raise ValueError(
@@ -288,7 +289,7 @@ class RNNCell(base_layer.Layer):
             "input param. Input tensor dtype: {}, dtype: {}".format(
                 inputs.dtype, dtype))
 
-      batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+      batch_size = inputs.shape.dims[0].value or array_ops.shape(inputs)[0]
       dtype = inputs.dtype
     if None in [batch_size, dtype]:
       raise ValueError(
@@ -410,7 +411,7 @@ class BasicRNNCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     if activation:
@@ -462,7 +463,7 @@ class BasicRNNCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export("nn.rnn_cell.GRUCell")
+@tf_export(v1=["nn.rnn_cell.GRUCell"])
 class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
@@ -488,6 +489,8 @@ class GRUCell(LayerRNNCell):
       `trainable` etc when constructing the cell from configs of get_config().
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.GRUCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                activation=None,
@@ -505,7 +508,7 @@ class GRUCell(LayerRNNCell):
                    "Please use tf.contrib.cudnn_rnn.CudnnGRU for better "
                    "performance on GPU.", self)
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     if activation:
@@ -610,8 +613,7 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
-# TODO(scottzhu): Stop exporting this class in TF 2.0.
-@tf_export("nn.rnn_cell.BasicLSTMCell")
+@tf_export(v1=["nn.rnn_cell.BasicLSTMCell"])
 class BasicLSTMCell(LayerRNNCell):
   """DEPRECATED: Please use `tf.nn.rnn_cell.LSTMCell` instead.
 
@@ -634,10 +636,8 @@ class BasicLSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
-  @deprecated(None, "This class is deprecated, please use "
-                    "tf.nn.rnn_cell.LSTMCell, which supports all the feature "
-                    "this cell currently has. Please replace the existing code "
-                    "with tf.nn.rnn_cell.LSTMCell(name='basic_lstm_cell').")
+  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                forget_bias=1.0,
@@ -684,7 +684,7 @@ class BasicLSTMCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._forget_bias = forget_bias
@@ -779,7 +779,7 @@ class BasicLSTMCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export("nn.rnn_cell.LSTMCell")
+@tf_export(v1=["nn.rnn_cell.LSTMCell"])
 class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -807,6 +807,8 @@ class LSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self, num_units,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None, proj_clip=None,
@@ -870,7 +872,7 @@ class LSTMCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes
@@ -986,8 +988,8 @@ class LSTMCell(LayerRNNCell):
       c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
       m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
-    input_size = inputs.get_shape().with_rank(2)[1]
-    if input_size.value is None:
+    input_size = inputs.get_shape().with_rank(2).dims[1].value
+    if input_size is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
@@ -1393,7 +1395,7 @@ class DeviceWrapper(RNNCell):
       return self._cell(inputs, state, scope=scope)
 
 
-@tf_export("nn.rnn_cell.MultiRNNCell")
+@tf_export(v1=["nn.rnn_cell.MultiRNNCell"])
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells.
 
@@ -1406,6 +1408,9 @@ class MultiRNNCell(RNNCell):
   ```
   """
 
+  @deprecated(None, "This class is equivalent as "
+                    "tf.keras.layers.StackedRNNCells, and will be replaced by "
+                    "that in Tensorflow 2.0.")
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.
 
@@ -1451,7 +1456,7 @@ class MultiRNNCell(RNNCell):
     if self._state_is_tuple:
       return tuple(cell.state_size for cell in self._cells)
     else:
-      return sum([cell.state_size for cell in self._cells])
+      return sum(cell.state_size for cell in self._cells)
 
   @property
   def output_size(self):

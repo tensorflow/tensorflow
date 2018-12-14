@@ -88,29 +88,26 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   return Status::OK();
 }
 
-bool XlaCompileOnDemandOp::MustArgumentBeConstant(const OpKernel* op_kernel,
-                                                  int64 argument_idx) {
+Status XlaCompileOnDemandOp::MustArgumentBeConstant(const OpKernel* op_kernel,
+                                                    int64 argument_idx,
+                                                    bool* result) {
+  *result = false;
+
   // TODO(jmolloy): This could be expensive, so memoize.
-  auto* constant_inputs = tensorflow::XlaOpRegistry::CompileTimeConstantInputs(
-      op_kernel->def().op());
-  CHECK(constant_inputs);
-  std::set<int64> constant_input_indices;
-  for (const auto& name : *constant_inputs) {
-    int start, stop;
-    TF_CHECK_OK(op_kernel->InputRange(name, &start, &stop));
-    for (int i = start; i < stop; ++i) {
-      constant_input_indices.insert(i);
-    }
-  }
-  return constant_input_indices.count(argument_idx) > 0;
+  std::vector<int> constant_input_indices;
+  TF_RETURN_IF_ERROR(XlaOpRegistry::CompileTimeConstantInputs(
+      *op_kernel, &constant_input_indices));
+  *result = absl::c_binary_search(constant_input_indices, argument_idx);
+  return Status::OK();
 }
 
-bool XlaCompileOnDemandOp::ShouldArgumentBeConstant(const OpKernel* op_kernel,
-                                                    int64 argument_idx) {
+Status XlaCompileOnDemandOp::ShouldArgumentBeConstant(const OpKernel* op_kernel,
+                                                      int64 argument_idx,
+                                                      bool* result) {
   // Right now we only create kConstant arguments when absolutely required, but
   // there may be benefit in eagerly constant-folding a larger subset of
   // arguments in the future.
-  return MustArgumentBeConstant(op_kernel, argument_idx);
+  return MustArgumentBeConstant(op_kernel, argument_idx, result);
 }
 
 Status XlaCompileOnDemandOp::Compile(
@@ -121,27 +118,48 @@ Status XlaCompileOnDemandOp::Compile(
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& device_tensor = ctx->input(i);
     if (const XlaTensor* xla_tensor = XlaTensor::FromTensor(&device_tensor)) {
-      if (xla_tensor->has_host_tensor() &&
-          ShouldArgumentBeConstant(&ctx->op_kernel(), i)) {
-        constant_arguments[i] = xla_tensor->host_tensor();
+      if (xla_tensor->has_host_tensor()) {
+        bool should_arg_be_const;
+        TF_RETURN_IF_ERROR(ShouldArgumentBeConstant(&ctx->op_kernel(), i,
+                                                    &should_arg_be_const));
+        if (should_arg_be_const) {
+          constant_arguments[i] = xla_tensor->host_tensor();
+        }
       }
     }
-    if (constant_arguments.count(i) == 0 &&
-        MustArgumentBeConstant(&ctx->op_kernel(), i)) {
-      // Slow path; the argument is not available as a host constant so we must
-      // fetch it synchronously.
-      Tensor host_tensor;
-      AllocatorAttributes attrs;
-      attrs.set_on_host(true);
-      TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          device_tensor.dtype(), device_tensor.shape(), &host_tensor, attrs));
-      Notification n;
-      ctx->op_device_context()->CopyDeviceTensorToCPU(
-          &device_tensor, "ConstantArgument",
-          reinterpret_cast<Device*>(ctx->device()), &host_tensor,
-          [&](Status status) { n.Notify(); });
-      n.WaitForNotification();
-      constant_arguments[i] = host_tensor;
+
+    if (constant_arguments.count(i) == 0) {
+      bool must_argument_be_const;
+      TF_RETURN_IF_ERROR(MustArgumentBeConstant(&ctx->op_kernel(), i,
+                                                &must_argument_be_const));
+
+      if (must_argument_be_const) {
+        // Slow path; the argument is not available as a host constant so we
+        // must fetch it synchronously.
+        Tensor host_tensor;
+        AllocatorAttributes attrs;
+        attrs.set_on_host(true);
+        TF_RETURN_IF_ERROR(ctx->allocate_temp(
+            device_tensor.dtype(), device_tensor.shape(), &host_tensor, attrs));
+        Notification n;
+        Status status;
+        ctx->op_device_context()->CopyDeviceTensorToCPU(
+            &device_tensor, "ConstantArgument",
+            reinterpret_cast<Device*>(ctx->device()), &host_tensor,
+            [&](Status s) {
+              status = s;
+              n.Notify();
+            });
+        n.WaitForNotification();
+        if (!status.ok()) {
+          LOG(ERROR) << "Copying tensor of shape "
+                     << device_tensor.shape().DebugString() << " from "
+                     << ctx->device()->name() << "to CPU failed with "
+                     << status.ToString();
+          return status;
+        }
+        constant_arguments[i] = host_tensor;
+      }
     }
   }
 
@@ -166,9 +184,7 @@ Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::Options options;
   options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
-      OpRegistry::Global(), FunctionDefLibrary{});
-  options.flib_def = flib_def.get();
+  options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.shape_representation_fn = metadata.shape_representation_fn();
 
   XlaCompiler::CompileOptions compile_options;
@@ -182,8 +198,14 @@ Status XlaCompileOnDemandOp::Compile(
   compile_options.always_return_tuple = false;
 
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
-  return cache->CompileSingleOp(options, constant_arguments, variable_args, ctx,
-                                compile_options, result, executable);
+
+  std::vector<XlaCompiler::Argument> args;
+
+  TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
+      constant_arguments, variable_args, ctx, &args));
+
+  return cache->CompileSingleOp(options, args, ctx, compile_options, result,
+                                executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {

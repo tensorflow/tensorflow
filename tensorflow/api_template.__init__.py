@@ -32,34 +32,24 @@ from __future__ import print_function as _print_function
 
 import os as _os
 
-# pylint: disable=g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-
-from tensorflow.python.tools import component_api_helper
-component_api_helper.package_hook(
-    parent_package_str=__name__,
-    child_package_str=('tensorflow_estimator.python.estimator.api.estimator'))
-del component_api_helper
-
 # API IMPORTS PLACEHOLDER
 
-from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
-contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
-del LazyLoader
-# The templated code that replaces the placeholder above sometimes
-# sets the __all__ variable. If it does, we have to be sure to add
-# "contrib".
-if '__all__' in vars():
-  vars()['__all__'].append('contrib')
-
-from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
-app.flags = flags  # pylint: disable=undefined-variable
+# pylint: disable=g-bad-import-order
+from tensorflow.python.tools import component_api_helper as _component_api_helper
+_component_api_helper.package_hook(
+    parent_package_str=__name__,
+    child_package_str=('tensorflow_estimator.python.estimator.api.estimator'))
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
-_tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disable=undefined-variable
+# We're using bitwise, but there's nothing special about that.
+_tf_api_dir = _os.path.dirname(_os.path.dirname(bitwise.__file__))  # pylint: disable=undefined-variable
 if _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
+
+# Enable TF2 behaviors
+from tensorflow.python.compat import compat as _compat  # pylint: disable=g-import-not-at-top
+_compat.enable_v2_behavior()
 
 # These symbols appear because we import the python package which
 # in turn imports from tensorflow.core and tensorflow.python. They
@@ -71,7 +61,14 @@ try:
   del core
 except NameError:
   # Don't fail if these modules are not available.
-  # For e.g. we are using this file for compat.v1 module as well and
-  # 'python', 'core' directories are not under compat/v1.
+  # For e.g. this file will be originally placed under tensorflow/_api/v1 which
+  # does not have 'python', 'core' directories. Then, it will be copied
+  # to tensorflow/ which does have these two directories.
+  pass
+# Similarly for compiler. Do it separately to make sure we do this even if the
+# others don't exist.
+try:
+  del compiler
+except NameError:
   pass
 # pylint: enable=undefined-variable

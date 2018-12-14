@@ -23,12 +23,13 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -45,6 +46,7 @@ class Wrapper(Layer):
       layer: The layer to be wrapped.
   """
 
+  @checkpointable.no_automatic_dependency_tracking
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
@@ -230,17 +232,12 @@ class TimeDistributed(Wrapper):
     kwargs = {}
     if generic_utils.has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
-    uses_learning_phase = False  # pylint: disable=redefined-outer-name
 
     input_shape = K.int_shape(inputs)
     if input_shape[0]:
       # batch size matters, use rnn-based implementation
       def step(x, _):
-        global uses_learning_phase  # pylint: disable=global-variable-undefined
         output = self.layer.call(x, **kwargs)
-        if hasattr(output, '_uses_learning_phase'):
-          uses_learning_phase = (output._uses_learning_phase or
-                                 uses_learning_phase)
         return output, []
 
       _, outputs, _ = K.rnn(
@@ -268,8 +265,6 @@ class TimeDistributed(Wrapper):
         inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
         kwargs['mask'] = K.reshape(mask, inner_mask_shape)
       y = self.layer.call(inputs, **kwargs)
-      if hasattr(y, '_uses_learning_phase'):
-        uses_learning_phase = y._uses_learning_phase
       # Shape: (num_samples, timesteps, ...)
       output_shape = self.compute_output_shape(input_shape).as_list()
       output_shape = self._get_shape_tuple(
@@ -281,9 +276,6 @@ class TimeDistributed(Wrapper):
         self.layer.activity_regularizer is not None):
       regularization_loss = self.layer.activity_regularizer(y)
       self.add_loss(regularization_loss, inputs)
-
-    if uses_learning_phase:
-      y._uses_learning_phase = True
     return y
 
   def compute_mask(self, inputs, mask=None):
@@ -390,6 +382,7 @@ class Bidirectional(Wrapper):
   ```
   """
 
+  @checkpointable.no_automatic_dependency_tracking
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
@@ -399,6 +392,10 @@ class Bidirectional(Wrapper):
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
+    if getattr(layer, 'zero_output_for_mask', None) is not None:
+      # Force the zero_output_for_mask to be True if it presents.
+      layer.zero_output_for_mask = True
+
     self.forward_layer = copy.copy(layer)
     config = layer.get_config()
     config['go_backwards'] = not config['go_backwards']
@@ -594,15 +591,6 @@ class Bidirectional(Wrapper):
     else:
       raise ValueError(
           'Unrecognized value for `merge_mode`: %s' % (self.merge_mode))
-
-    # Properly set learning phase
-    if (getattr(y, '_uses_learning_phase', False) or
-        getattr(y_rev, '_uses_learning_phase', False)):
-      if self.merge_mode is None:
-        for out in output:
-          out._uses_learning_phase = True
-      else:
-        output._uses_learning_phase = True
 
     if self.return_state:
       if self.merge_mode is None:

@@ -39,8 +39,7 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_map", graph->GetGraph(),
-                                      &fused_node);
+  graph_utils::SetUniqueGraphNodeName("fused_map", graph->graph(), &fused_node);
   fused_node.set_op("MapDataset");
   fused_node.add_input(parent_map_node.input(0));
 
@@ -63,9 +62,16 @@ NodeDef MakeFusedNode(const NodeDef& parent_map_node, const NodeDef& map_node,
       gtl::FindOrNull(map_node.attr(), "use_inter_op_parallelism");
   // Some graphs cannot execute with use_inter_op_parallelism=False, so we need
   // to set it to true if one of the ops have it set to true.
-  if (value_or_false(first_parallelism) || value_or_false(second_parallelism)) {
-    (*fused_node.mutable_attr())["use_inter_op_parallelism"].set_b(true);
-  }
+  (*fused_node.mutable_attr())["use_inter_op_parallelism"].set_b(
+      value_or_false(first_parallelism) || value_or_false(second_parallelism));
+
+  const auto* first_cardinality =
+      gtl::FindOrNull(parent_map_node.attr(), "preserve_cardinality");
+  const auto* second_cardinality =
+      gtl::FindOrNull(map_node.attr(), "preserve_cardinality");
+  (*fused_node.mutable_attr())["preserve_cardinality"].set_b(
+      value_or_false(first_cardinality) && value_or_false(second_cardinality));
+
   return fused_node;
 }
 
@@ -124,7 +130,7 @@ Status MapFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* fused_maps_node = graph.AddNode(
         MakeFusedNode(*parent_map_node, *map_node, *fused_function, &graph));
 
-    graph.ReplaceInput(*map_node, *fused_maps_node);
+    graph.UpdateFanouts(map_node->name(), fused_maps_node->name());
 
     // TODO(prazek): we should run some optimizations on the fused map
     // functions, or make sure that optimization passes run after map

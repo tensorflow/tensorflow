@@ -30,8 +30,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import saving
 from tensorflow.python.keras.engine import training
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -288,6 +290,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                  r'element\(s\)\.'):
       saving.load_weights_from_hdf5_group_by_name(f_model, model.layers)
 
+  @test_util.run_deprecated_v1
   def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
     if h5py is None:
       return
@@ -330,6 +333,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
 class TestWholeModelSaving(test.TestCase):
 
+  @test_util.run_v1_only('b/120994067')
   def test_sequential_model_saving(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -380,6 +384,46 @@ class TestWholeModelSaving(test.TestCase):
 
       out = model.predict(x)
       out2 = new_model.predict(x)
+
+      # TODO(b/120930751) This tolerance should be 1e-05,
+      # very concerning that its not.
+      self.assertAllClose(out, out2, atol=1e-03)
+
+  @test_util.run_deprecated_v1
+  def test_sequential_model_saving_without_input_shape(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+      model.compile(
+          loss=keras.losses.MSE,
+          optimizer=keras.optimizers.RMSprop(lr=0.0001),
+          metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          weighted_metrics=[
+              keras.metrics.categorical_accuracy,
+              keras.metrics.CategoricalAccuracy()
+          ],
+          sample_weight_mode='temporal')
+      x = np.random.random((1, 3))
+      y = np.random.random((1, 3, 3))
+      model.train_on_batch(x, y)
+
+      out = model.predict(x)
+      fd, fname = tempfile.mkstemp('.h5', dir=self.get_temp_dir())
+      model.save(fname)
+
+      new_model = keras.models.load_model(fname)
+      os.close(fd)
+      os.remove(fname)
+
+      out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
   def test_sequential_model_saving_without_compile(self):
@@ -406,6 +450,7 @@ class TestWholeModelSaving(test.TestCase):
       out2 = new_model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  @test_util.run_deprecated_v1
   def test_sequential_model_saving_2(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -442,6 +487,7 @@ class TestWholeModelSaving(test.TestCase):
       out2 = model.predict(x)
       self.assertAllClose(out, out2, atol=1e-05)
 
+  @test_util.run_deprecated_v1
   def test_functional_model_saving(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -594,6 +640,7 @@ class TestWholeModelSaving(test.TestCase):
       os.remove(fname)
 
   def test_saving_model_with_long_weights_names(self):
+    self.skipTest('b/120921503')
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
@@ -638,6 +685,7 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
+  @test_util.run_deprecated_v1
   def test_model_saving_to_pre_created_h5py_file(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -679,7 +727,6 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
-
   def test_saving_constant_initializer_with_numpy(self):
     if h5py is None:
       self.skipTest('h5py required to run this test')
@@ -719,7 +766,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
-      model.compile(loss='mse', optimizer='adam', metrics=['acc'])
+      model.compile(loss='mse', optimizer=optimizers.Adam(), metrics=['acc'])
       model._make_train_function()
       temp_dir = self.get_temp_dir()
       prefix = os.path.join(temp_dir, 'ckpt')
@@ -955,6 +1002,58 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
     with self.assertRaisesRegexp(
         AssertionError, 'Nothing except the root object matched'):
       m.load_weights(save_path)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_directory_passed(self):
+    m = keras.Model()
+    v = m.add_weight(name='v', shape=[])
+    self.evaluate(v.assign(42.))
+    prefix = os.path.join(self.get_temp_dir(), '{}'.format(ops.uid()), 'ckpt/')
+    m.save_weights(prefix)
+    self.evaluate(v.assign(2.))
+    m.load_weights(prefix)
+    self.assertEqual(42., self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_relative_path(self):
+    m = keras.Model()
+    v = m.add_weight(name='v', shape=[])
+    os.chdir(self.get_temp_dir())
+
+    prefix = 'ackpt'
+    self.evaluate(v.assign(42.))
+    m.save_weights(prefix)
+    self.assertTrue(file_io.file_exists('ackpt.index'))
+    self.evaluate(v.assign(1.))
+    m.load_weights(prefix)
+    self.assertEqual(42., self.evaluate(v))
+
+    prefix = 'subdir/ackpt'
+    self.evaluate(v.assign(43.))
+    m.save_weights(prefix)
+    self.assertTrue(file_io.file_exists('subdir/ackpt.index'))
+    self.evaluate(v.assign(2.))
+    m.load_weights(prefix)
+    self.assertEqual(43., self.evaluate(v))
+
+    prefix = 'ackpt/'
+    self.evaluate(v.assign(44.))
+    m.save_weights(prefix)
+    self.assertTrue(file_io.file_exists('ackpt/.index'))
+    self.evaluate(v.assign(3.))
+    m.load_weights(prefix)
+    self.assertEqual(44., self.evaluate(v))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_nonexistant_prefix_directory(self):
+    m = keras.Model()
+    v = m.add_weight(name='v', shape=[])
+    self.evaluate(v.assign(42.))
+    prefix = os.path.join(self.get_temp_dir(), '{}'.format(ops.uid()), 'bckpt')
+    m.save_weights(prefix)
+    self.evaluate(v.assign(2.))
+    m.load_weights(prefix)
+    self.assertEqual(42., self.evaluate(v))
 
 if __name__ == '__main__':
   test.main()

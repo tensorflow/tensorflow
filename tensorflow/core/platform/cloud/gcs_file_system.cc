@@ -1433,9 +1433,16 @@ Status GcsFileSystem::CreateDir(const string& dirname) {
                      : errors::NotFound("The specified bucket ", dirname,
                                         " was not found.");
   }
+
+  const string dirname_with_slash = MaybeAppendSlash(dirname);
+
+  if (FileExists(dirname_with_slash).ok()) {
+    return errors::AlreadyExists(dirname);
+  }
+
   // Create a zero-length directory marker object.
   std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(NewWritableFile(MaybeAppendSlash(dirname), &file));
+  TF_RETURN_IF_ERROR(NewWritableFile(dirname_with_slash, &file));
   TF_RETURN_IF_ERROR(file->Close());
   return Status::OK();
 }

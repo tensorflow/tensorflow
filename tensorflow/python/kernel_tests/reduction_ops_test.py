@@ -27,6 +27,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
@@ -60,6 +61,7 @@ class ReducedShapeTest(test.TestCase):
     output = math_ops.reduced_shape(shape, axes=axes)
     self.assertAllEqual(output.eval(), result)
 
+  @test_util.run_deprecated_v1
   def testSimple(self):
     with self.cached_session():
       self._check([3], [], [3])
@@ -69,6 +71,7 @@ class ReducedShapeTest(test.TestCase):
       self._check([5, 3], [1], [5, 1])
       self._check([5, 3], [0, 1], [1, 1])
 
+  @test_util.run_deprecated_v1
   def testZeros(self):
     """Check that reduced_shape does the right thing with zero dimensions."""
     with self.cached_session():
@@ -83,6 +86,7 @@ class ReducedShapeTest(test.TestCase):
       self._check([3, 0], [1], [3, 1])
       self._check([3, 0], [0, 1], [1, 1])
 
+  @test_util.run_deprecated_v1
   def testNegAxes(self):
     with self.cached_session():
       self._check([10, 10, 10], [-1], [10, 10, 1])
@@ -94,6 +98,7 @@ class ReducedShapeTest(test.TestCase):
 
 class ReductionUnknownShape(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     with self.cached_session():
       for dtype, reductions in [(dtypes.float32,
@@ -185,9 +190,10 @@ class SumReductionTest(BaseReductionTest):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_sum([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.run_deprecated_v1
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
       for special_value_x in [-np.inf, np.inf]:
@@ -195,11 +201,13 @@ class SumReductionTest(BaseReductionTest):
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
 
+  @test_util.run_deprecated_v1
   def testInt32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.int32)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testFloat16(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float16)
@@ -216,9 +224,10 @@ class SumReductionTest(BaseReductionTest):
       tf_arr = variables.Variable(arr)
       variables.global_variables_initializer().run()
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
-      tf_out_mean = sess.run(tf_mean)
+      tf_out_mean = self.evaluate(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
 
+  @test_util.run_deprecated_v1
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
@@ -238,7 +247,7 @@ class SumReductionTest(BaseReductionTest):
       with self.session(graph=ops.Graph(), use_gpu=True) as sess:
         tf_row_sum = self._tf_reduce(arr, 1, False)
         tf_col_sum = self._tf_reduce(arr, 0, False)
-        tf_out_row, tf_out_col = sess.run([tf_row_sum, tf_col_sum])
+        tf_out_row, tf_out_col = self.evaluate([tf_row_sum, tf_col_sum])
       self.assertAllClose(col_sum, tf_out_col)
       self.assertAllClose(row_sum, tf_out_row)
 
@@ -252,25 +261,29 @@ class SumReductionTest(BaseReductionTest):
           with self.session(graph=ops.Graph(), use_gpu=True) as sess:
             tf_sum_xz = self._tf_reduce(arr, [0, 2], False)
             tf_sum_y = self._tf_reduce(arr, 1, False)
-            tf_out_sum_xz, tf_out_sum_y = sess.run([tf_sum_xz, tf_sum_y])
+            tf_out_sum_xz, tf_out_sum_y = self.evaluate([tf_sum_xz, tf_sum_y])
           self.assertAllClose(sum_y, tf_out_sum_y)
           self.assertAllClose(sum_xz, tf_out_sum_xz)
 
+  @test_util.run_deprecated_v1
   def testFloat64(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float64)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testComplex64(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.complex64)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testComplex128(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.complex128)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testInvalidIndex(self):
     np_arr = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = ops.convert_to_tensor(np_arr)
@@ -284,6 +297,7 @@ class SumReductionTest(BaseReductionTest):
         ValueError, lambda e: "Invalid reduction dimension" in str(e)):
       math_ops.reduce_sum(input_tensor, [0, 2])
 
+  @test_util.run_deprecated_v1
   def testPartialShapes(self):
     np.random.seed(1618)
 
@@ -298,10 +312,10 @@ class SumReductionTest(BaseReductionTest):
 
     # Input shape only has known rank.
     c_known_rank = array_ops.placeholder(dtypes.float32)
-    c_known_rank.set_shape(tensor_shape.unknown_shape(ndims=3))
+    c_known_rank.set_shape(tensor_shape.unknown_shape(rank=3))
     s_known_rank = math_ops.reduce_sum(
         c_known_rank, reduction_axes, keepdims=True)
-    self.assertEqual(3, s_known_rank.get_shape().ndims)
+    self.assertEqual(3, s_known_rank.get_shape().rank)
 
     np_input = np.random.randn(3, 3, 3)
     self._compareAll(np_input, reduction_axes, {c_known_rank: np_input})
@@ -315,8 +329,9 @@ class SumReductionTest(BaseReductionTest):
                      s_unknown_indices.get_shape())
     s_unknown_indices_keep = math_ops.reduce_sum(
         c_unknown_indices, unknown_indices, keepdims=True)
-    self.assertEqual(2, s_unknown_indices_keep.get_shape().ndims)
+    self.assertEqual(2, s_unknown_indices_keep.get_shape().rank)
 
+  @test_util.run_deprecated_v1
   def testWrongShapeForReductionIndices(self):
     reduction_axes = [[1], [2]]
     c_unknown = array_ops.placeholder(dtypes.float32)
@@ -326,6 +341,7 @@ class SumReductionTest(BaseReductionTest):
 
   # Int64??
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     for dtype in [
         dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
@@ -333,6 +349,7 @@ class SumReductionTest(BaseReductionTest):
       x = self._makeIncremental([2, 3, 4, 2], dtype)
       self._compareGradientAxes(x)
 
+  @test_util.run_deprecated_v1
   def testHighRank(self):
     # Do a bunch of random high dimensional reductions
     np.random.seed(42)
@@ -350,11 +367,13 @@ class SumReductionTest(BaseReductionTest):
                    np.arange(1, rank, 2)):
         self._compareAll(data, axes)
 
+  @test_util.run_deprecated_v1
   def testExpand(self):
     # Reduce an empty tensor to a nonempty tensor
     x = np.zeros((5, 0))
     self._compareAll(x, [1])
 
+  @test_util.run_deprecated_v1
   def testEmptyGradients(self):
     with self.session(use_gpu=True):
       x = array_ops.zeros([0, 3])
@@ -362,6 +381,7 @@ class SumReductionTest(BaseReductionTest):
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
+  @test_util.run_deprecated_v1
   def testDegenerate(self):
     with self.session(use_gpu=True):
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
@@ -400,9 +420,10 @@ class MeanReductionTest(BaseReductionTest):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_mean([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.run_deprecated_v1
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
       for special_value_x in [-np.inf, np.inf]:
@@ -410,37 +431,44 @@ class MeanReductionTest(BaseReductionTest):
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
 
+  @test_util.run_deprecated_v1
   def testInt32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.int32)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testFloat64(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float64)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testComplex64(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.complex64)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testComplex128(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.complex128)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     s = [2, 3, 4, 2]
     for dtype in [dtypes.float32, dtypes.float64]:
       x = self._makeIncremental(s, dtype)
       self._compareGradientAxes(x, rtol=1e-3, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testEmptyGradients(self):
     with self.session(use_gpu=True):
       x = array_ops.zeros([0, 3])
@@ -448,6 +476,7 @@ class MeanReductionTest(BaseReductionTest):
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
+  @test_util.run_deprecated_v1
   def testDegenerate(self):
     with self.session(use_gpu=True):
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
@@ -473,9 +502,10 @@ class ProdReductionTest(BaseReductionTest):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_prod([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.run_deprecated_v1
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
       for special_value_x in [-np.inf, np.inf]:
@@ -483,6 +513,7 @@ class ProdReductionTest(BaseReductionTest):
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
 
+  @test_util.run_deprecated_v1
   def testInt32(self):
     # Numpy automatically upgrades the type of np.prod from int32 to int64, so
     # Numpy does not overflow an int32 np.prod while TensorFlow does. To avoid
@@ -491,26 +522,31 @@ class ProdReductionTest(BaseReductionTest):
       np_arr = self._makeIncremental((2,) * rank, dtypes.int32) / 2
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testFloat64(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float64)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testComplex64(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.complex64)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testComplex128(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.complex128)
       self._compareAllAxes(np_arr)
 
+  @test_util.run_deprecated_v1
   def testGradientWithZeros(self):
     s = [2, 3, 4, 2]
     x = self._makeIncremental(s, dtypes.float32) / 20.
@@ -533,6 +569,7 @@ class ProdReductionTest(BaseReductionTest):
     x4[:, :, :, :] = 0
     self._compareGradientAxes(x4, rtol=1e-3, atol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testEmptyGradients(self):
     with self.session(use_gpu=True):
       x = array_ops.zeros([0, 3])
@@ -540,6 +577,7 @@ class ProdReductionTest(BaseReductionTest):
       error = gradient_checker.compute_gradient_error(x, [0, 3], y, [0])
       self.assertEqual(error, 0)
 
+  @test_util.run_deprecated_v1
   def testDegenerate(self):
     with self.session(use_gpu=True):
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
@@ -562,7 +600,7 @@ class MinReductionTest(test.TestCase):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = math_ops.reduce_min(x, reduction_axes, keepdims)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -576,9 +614,10 @@ class MinReductionTest(test.TestCase):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_min([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.run_deprecated_v1
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
       for special_value_x in [-np.inf, np.inf]:
@@ -614,6 +653,7 @@ class MinReductionTest(test.TestCase):
     self._compareAll(np_arr, [0, 2])
     self._compareAll(np_arr, [0, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
@@ -624,6 +664,7 @@ class MinReductionTest(test.TestCase):
           t, s, su, [2, 2], x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testGradient2(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
@@ -634,6 +675,7 @@ class MinReductionTest(test.TestCase):
           t, s, su, [2, 4, 2], x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testGradient3(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
@@ -644,6 +686,7 @@ class MinReductionTest(test.TestCase):
           t, s, su, [2, 3, 2], x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testGradient4(self):
     s = [2, 3, 4, 2]
     x = np.arange(1.0, 49.0).reshape(s).astype(np.float64)
@@ -654,6 +697,7 @@ class MinReductionTest(test.TestCase):
           t, s, su, [1], x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testEmptyGradients(self):
     with self.cached_session():
       x = array_ops.zeros([0, 3])
@@ -675,7 +719,7 @@ class MaxReductionTest(test.TestCase):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = math_ops.reduce_max(x, reduction_axes, keepdims)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -689,9 +733,10 @@ class MaxReductionTest(test.TestCase):
     for dtype in [dtypes.int64, dtypes.int32]:
       with self.cached_session(use_gpu=True) as sess:
         v = math_ops.reduce_max([0, 0], constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, 0)
 
+  @test_util.run_deprecated_v1
   def testInfinity(self):
     for dtype in [np.float32, np.float64]:
       for special_value_x in [-np.inf, np.inf]:
@@ -741,6 +786,7 @@ class MaxReductionTest(test.TestCase):
     self._compareAll(np_arr, [0, 2])
     self._compareAll(np_arr, [0, 1, 2])
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     s = [2, 3, 4, 2]
     x = np.arange(-49.0, -1.0).reshape(s).astype(np.float64)
@@ -751,6 +797,7 @@ class MaxReductionTest(test.TestCase):
           t, s, su, [2, 2], x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testGradient2(self):
     s = [2, 3, 4, 2]
     x = np.arange(-49.0, -1.0).reshape(s).astype(np.float64)
@@ -761,6 +808,7 @@ class MaxReductionTest(test.TestCase):
           t, s, su, [2, 4, 2], x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testGradient3(self):
     s = [2, 3, 4, 2]
     x = np.arange(-49.0, -1.0).reshape(s).astype(np.float64)
@@ -771,6 +819,7 @@ class MaxReductionTest(test.TestCase):
           t, s, su, [2, 3, 2], x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testGradient4(self):
     s = [2, 3, 4, 2]
     x = np.arange(-49.0, -1.0).reshape(s).astype(np.float64)
@@ -781,6 +830,7 @@ class MaxReductionTest(test.TestCase):
           t, s, su, [1], x_init_value=x, delta=1)
     self.assertAllClose(jacob_t, jacob_n, rtol=1e-8, atol=1e-8)
 
+  @test_util.run_deprecated_v1
   def testEmptyGradients(self):
     with self.cached_session():
       x = array_ops.zeros([0, 3])
@@ -802,7 +852,7 @@ class AllReductionTest(test.TestCase):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = math_ops.reduce_all(x, reduction_axes, keepdims)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -817,7 +867,7 @@ class AllReductionTest(test.TestCase):
       with self.session(use_gpu=True) as sess:
         v = math_ops.reduce_all([True, True],
                                 constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, True)
 
   def testAll3D(self):
@@ -851,7 +901,7 @@ class AnyReductionTest(test.TestCase):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
       tf_ans = math_ops.reduce_any(x, reduction_axes, keepdims)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -866,7 +916,7 @@ class AnyReductionTest(test.TestCase):
       with self.session(use_gpu=True) as sess:
         v = math_ops.reduce_any([True, True],
                                 constant_op.constant(0, dtype=dtype))
-        tf_v = sess.run(v)
+        tf_v = self.evaluate(v)
       self.assertAllEqual(tf_v, True)
 
   def testAll3D(self):
@@ -913,6 +963,7 @@ class CountNonzeroReductionTest(test.TestCase):
     self._compare(x, reduction_axes, True, use_gpu=True, feed_dict=feed_dict)
     self._compare(x, reduction_axes, True, use_gpu=False, feed_dict=feed_dict)
 
+  @test_util.run_deprecated_v1
   def testBoolReduce1D(self):
     # Create a 1D array of floats
     np_arr = np.asarray([False, False, True, False, False, True])
@@ -920,11 +971,13 @@ class CountNonzeroReductionTest(test.TestCase):
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
 
+  @test_util.run_deprecated_v1
   def testFloatReduce1D(self):
     # Create a 1D array of floats
     np_arr = np.asarray([0.0, 1.0, -1.0, 0.0, 0.0, 3.0]).astype(np.float32)
     self._compareAll(np_arr, [0])
 
+  @test_util.run_deprecated_v1
   def testFloatReduce4D(self):
     # Create a 4D array of floats and reduce across some
     # dimensions
@@ -944,11 +997,13 @@ class CountNonzeroReductionTest(test.TestCase):
     self._compareAll(np_arr, [1, 2, 3])
     self._compareAll(np_arr, [0, 1, 2, 3])
 
+  @test_util.run_deprecated_v1
   def testExpand(self):
     # Reduce an empty tensor to a nonempty tensor
     x = np.zeros((5, 0))
     self._compareAll(x, [1])
 
+  @test_util.run_deprecated_v1
   def testDegenerate(self):
     for use_gpu in False, True:
       with self.cached_session(use_gpu=use_gpu):
@@ -962,8 +1017,9 @@ class CountNonzeroReductionTest(test.TestCase):
     # Test case for GitHub issue 18712
     with self.cached_session() as sess:
       v = math_ops.count_nonzero(constant_op.constant(["test"]))
-      self.assertAllClose(sess.run(v), 1)
+      self.assertAllClose(self.evaluate(v), 1)
 
+  @test_util.run_deprecated_v1
   def testStringReduce1D(self):
     # Create a 1D array of strings
     x = np.asarray(["", "", "a", "", "", "b"])
@@ -974,6 +1030,7 @@ class CountNonzeroReductionTest(test.TestCase):
     self._compare(x, [], keepdims=True, zero=np.str(""))
     self._compare(x, [0], keepdims=True, zero=np.str(""))
 
+  @test_util.run_deprecated_v1
   def testStringReduce2D(self):
     # Create a 2D array of strings
     x = np.asarray([["", "", "a", "", "", "b"],

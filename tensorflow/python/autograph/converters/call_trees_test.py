@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 
 from tensorflow.python.autograph.converters import call_trees
@@ -85,23 +87,33 @@ class CallTreesTest(converter_testing.TestCase):
       tc = TestClass()
       self.assertEquals(3, result.test_fn_2(tc, 1))
 
-  def test_py_func_no_retval(self):
+  def test_known_called_lambda(self):
+
+    l = lambda x: x
 
     def test_fn(a):
-      setattr(a, 'foo', 'bar')
+      return l(a)
 
-    with self.converted(test_fn, call_trees, {'setattr': setattr}) as result:
-      with self.cached_session() as sess:
+    ns = {'l': l}
+    node, ctx = self.prepare(test_fn, ns)
+    node = call_trees.transform(node, ctx)
 
-        class Dummy(object):
-          pass
+    with self.compiled(node, ns) as result:
+      self.assertEquals(1, result.test_fn(1))
 
-        a = Dummy()
-        result.test_fn(a)
-        py_func_op, = sess.graph.get_operations()
-        self.assertFalse(hasattr(a, 'foo'))
-        sess.run(py_func_op)
-        self.assertEquals('bar', a.foo)
+  def test_known_called_namedtuple(self):
+
+    nt = collections.namedtuple('TestNamedTuple', ['a'])
+
+    def test_fn(a):
+      return nt(a)
+
+    ns = {'nt': nt}
+    node, ctx = self.prepare(test_fn, ns)
+    node = call_trees.transform(node, ctx)
+
+    with self.compiled(node, ns) as result:
+      self.assertEquals(nt(1), result.test_fn(1))
 
   def test_py_func_known_function(self):
 
@@ -112,7 +124,7 @@ class CallTreesTest(converter_testing.TestCase):
                         dtypes.int64) as result:
       with self.cached_session() as sess:
         self.assertTrue(isinstance(result.test_fn(), ops.Tensor))
-        self.assertIn(sess.run(result.test_fn()), (0, 1, 2))
+        self.assertIn(self.evaluate(result.test_fn()), (0, 1, 2))
 
   def test_uncompiled_modules(self):
 
@@ -131,7 +143,7 @@ class CallTreesTest(converter_testing.TestCase):
     with self.compiled(node, ns) as result:
       with self.cached_session() as sess:
         result_tensor = result.test_fn(constant_op.constant(1))
-        self.assertEquals(sess.run(result_tensor), 3)
+        self.assertEquals(self.evaluate(result_tensor), 3)
 
   def test_call_to_decorated_function(self):
 

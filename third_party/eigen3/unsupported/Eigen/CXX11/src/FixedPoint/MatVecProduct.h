@@ -15,25 +15,23 @@ namespace internal {
 
 // Mat-Vec product
 // Both lhs and rhs are encoded as 8bit signed integers
-template<typename Index, typename LhsMapper, bool ConjugateLhs, typename RhsMapper, bool ConjugateRhs, int Version>
-struct general_matrix_vector_product<Index,QInt8,LhsMapper,ColMajor,ConjugateLhs,QInt8,RhsMapper,ConjugateRhs,Version>
-{
-EIGEN_DONT_INLINE static void run(
-  Index rows, Index cols,
-  const LhsMapper& lhs,
-  const RhsMapper& rhs,
-  QInt32* res, Index resIncr,
-  QInt8 alpha);
+template <typename Index, typename LhsMapper, bool ConjugateLhs,
+          typename RhsMapper, bool ConjugateRhs, int Version>
+struct general_matrix_vector_product<Index, QInt8, LhsMapper, ColMajor,
+                                     ConjugateLhs, QInt8, RhsMapper,
+                                     ConjugateRhs, Version> {
+  EIGEN_DONT_INLINE static void run(Index rows, Index cols,
+                                    const LhsMapper& lhs, const RhsMapper& rhs,
+                                    QInt32* res, Index resIncr, QInt8 alpha);
 };
 
-template<typename Index, typename LhsMapper, bool ConjugateLhs, typename RhsMapper, bool ConjugateRhs, int Version>
-EIGEN_DONT_INLINE void general_matrix_vector_product<Index,QInt8,LhsMapper,ColMajor,ConjugateLhs,QInt8,RhsMapper,ConjugateRhs,Version>::run(
-    Index rows, Index cols,
-    const LhsMapper& lhs,
-    const RhsMapper& rhs,
-    QInt32* res, Index resIncr,
-    QInt8 alpha)
-{
+template <typename Index, typename LhsMapper, bool ConjugateLhs,
+          typename RhsMapper, bool ConjugateRhs, int Version>
+EIGEN_DONT_INLINE void general_matrix_vector_product<
+    Index, QInt8, LhsMapper, ColMajor, ConjugateLhs, QInt8, RhsMapper,
+    ConjugateRhs, Version>::run(Index rows, Index cols, const LhsMapper& lhs,
+                                const RhsMapper& rhs, QInt32* res,
+                                Index resIncr, QInt8 alpha) {
   eigen_assert(alpha.value == 1);
   eigen_assert(resIncr == 1);
   eigen_assert(rows > 0);
@@ -78,26 +76,25 @@ EIGEN_DONT_INLINE void general_matrix_vector_product<
 }
 
 // Mat-Vec product
-// The lhs is encoded using 8bit signed integers, the rhs using 8bit unsigned integers
-template<typename Index, typename LhsMapper, bool ConjugateLhs, typename RhsMapper, bool ConjugateRhs, int Version>
-struct general_matrix_vector_product<Index,QInt8,LhsMapper,ColMajor,ConjugateLhs,QUInt8,RhsMapper,ConjugateRhs,Version>
-{
-EIGEN_DONT_INLINE static void run(
-  Index rows, Index cols,
-  const LhsMapper& lhs,
-  const RhsMapper& rhs,
-  QInt32* res, Index resIncr,
-  QUInt8 alpha);
+// The lhs is encoded using 8bit signed integers, the rhs using 8bit unsigned
+// integers
+template <typename Index, typename LhsMapper, bool ConjugateLhs,
+          typename RhsMapper, bool ConjugateRhs, int Version>
+struct general_matrix_vector_product<Index, QInt8, LhsMapper, ColMajor,
+                                     ConjugateLhs, QUInt8, RhsMapper,
+                                     ConjugateRhs, Version> {
+  EIGEN_DONT_INLINE static void run(Index rows, Index cols,
+                                    const LhsMapper& lhs, const RhsMapper& rhs,
+                                    QInt32* res, Index resIncr, QUInt8 alpha);
 };
 
-template<typename Index, typename LhsMapper, bool ConjugateLhs, typename RhsMapper, bool ConjugateRhs, int Version>
-EIGEN_DONT_INLINE void general_matrix_vector_product<Index,QInt8,LhsMapper,ColMajor,ConjugateLhs,QUInt8,RhsMapper,ConjugateRhs,Version>::run(
-    Index rows, Index cols,
-    const LhsMapper& lhs,
-    const RhsMapper& rhs,
-    QInt32* res, Index resIncr,
-    QUInt8 alpha)
-{
+template <typename Index, typename LhsMapper, bool ConjugateLhs,
+          typename RhsMapper, bool ConjugateRhs, int Version>
+EIGEN_DONT_INLINE void general_matrix_vector_product<
+    Index, QInt8, LhsMapper, ColMajor, ConjugateLhs, QUInt8, RhsMapper,
+    ConjugateRhs, Version>::run(Index rows, Index cols, const LhsMapper& lhs,
+                                const RhsMapper& rhs, QInt32* res,
+                                Index resIncr, QUInt8 alpha) {
   eigen_assert(alpha.value == 1);
   eigen_assert(resIncr == 1);
   eigen_assert(rows > 0);
@@ -110,28 +107,26 @@ EIGEN_DONT_INLINE void general_matrix_vector_product<Index,QInt8,LhsMapper,ColMa
   }
 }
 
-
 // Mat-Vec product
-// The lhs is encoded using bit unsigned integers, the rhs using 8bit signed integers
-template<typename Index, typename LhsMapper, bool ConjugateLhs, typename RhsMapper, bool ConjugateRhs, int Version>
-struct general_matrix_vector_product<Index,QUInt8,LhsMapper,ColMajor,ConjugateLhs,QInt8,RhsMapper,ConjugateRhs,Version>
-{
-EIGEN_DONT_INLINE static void run(
-  Index rows, Index cols,
-  const LhsMapper& lhs,
-  const RhsMapper& rhs,
-  QInt32* res, Index resIncr,
-  QInt8 alpha);
+// The lhs is encoded using bit unsigned integers, the rhs using 8bit signed
+// integers
+template <typename Index, typename LhsMapper, bool ConjugateLhs,
+          typename RhsMapper, bool ConjugateRhs, int Version>
+struct general_matrix_vector_product<Index, QUInt8, LhsMapper, ColMajor,
+                                     ConjugateLhs, QInt8, RhsMapper,
+                                     ConjugateRhs, Version> {
+  EIGEN_DONT_INLINE static void run(Index rows, Index cols,
+                                    const LhsMapper& lhs, const RhsMapper& rhs,
+                                    QInt32* res, Index resIncr, QInt8 alpha);
 };
 
-template<typename Index, typename LhsMapper, bool ConjugateLhs, typename RhsMapper, bool ConjugateRhs, int Version>
-EIGEN_DONT_INLINE void general_matrix_vector_product<Index,QUInt8,LhsMapper,ColMajor,ConjugateLhs,QInt8,RhsMapper,ConjugateRhs,Version>::run(
-    Index rows, Index cols,
-    const LhsMapper& lhs,
-    const RhsMapper& rhs,
-    QInt32* res, Index resIncr,
-    QInt8 alpha)
-{
+template <typename Index, typename LhsMapper, bool ConjugateLhs,
+          typename RhsMapper, bool ConjugateRhs, int Version>
+EIGEN_DONT_INLINE void general_matrix_vector_product<
+    Index, QUInt8, LhsMapper, ColMajor, ConjugateLhs, QInt8, RhsMapper,
+    ConjugateRhs, Version>::run(Index rows, Index cols, const LhsMapper& lhs,
+                                const RhsMapper& rhs, QInt32* res,
+                                Index resIncr, QInt8 alpha) {
   eigen_assert(alpha.value == 1);
   eigen_assert(resIncr == 1);
   eigen_assert(rows > 0);

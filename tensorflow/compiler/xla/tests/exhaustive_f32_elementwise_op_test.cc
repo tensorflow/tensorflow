@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/core/casts.h"
 
 namespace xla {
 namespace {
@@ -47,7 +47,7 @@ class ExhaustiveF32ElementwiseOpTest
         // input to 0 under the assumption that the op is at least correct on 0.
         input_literal.Set({i - begin}, 0.0f);
       } else {
-        input_literal.Set({i - begin}, tensorflow::bit_cast<float, int>(i));
+        input_literal.Set({i - begin}, absl::bit_cast<float, int>(i));
       }
     }
 

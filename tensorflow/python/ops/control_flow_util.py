@@ -23,9 +23,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import traceback
 
+from tensorflow.python import tf2
 from tensorflow.python.platform import tf_logging as logging
+
+ENABLE_CONTROL_FLOW_V2 = (tf2.enabled() or
+                          os.getenv("TF_ENABLE_CONTROL_FLOW_V2", "0") != "0" or
+                          os.getenv("TF_ENABLE_COND_V2", "0") != "0" or
+                          os.getenv("TF_ENABLE_WHILE_V2", "0") != "0" or
+                          os.getenv("TF_ENABLE_TENSOR_ARRAY_V2", "0") != "0")
 
 
 def IsInXLAContext(op):
@@ -35,6 +43,11 @@ def IsInXLAContext(op):
   except ValueError:
     pass
   ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
+  return GetContainingXLAContext(ctxt) is not None
+
+
+def InXlaContext(graph):
+  ctxt = graph._get_control_flow_context()  # pylint: disable=protected-access
   return GetContainingXLAContext(ctxt) is not None
 
 

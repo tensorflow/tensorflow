@@ -95,13 +95,6 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "tf_op_stats_proto",
-    srcs = ["tf_op_stats.proto"],
-    cc_api_version = 2,
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library(
     name = "tpu_profiler_analysis_proto",
     srcs = ["tpu_profiler_analysis.proto"],
     has_services = 1,

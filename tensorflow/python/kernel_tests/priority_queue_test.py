@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -35,6 +36,7 @@ from tensorflow.python.platform import test
 
 class PriorityQueueTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testRoundTripInsertReadOnceSorts(self):
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (dtypes.string, dtypes.string), (
@@ -50,7 +52,7 @@ class PriorityQueueTest(test.TestCase):
         enq.run()
 
       deq = q.dequeue_many(100)
-      deq_elem, deq_value_0, deq_value_1 = sess.run(deq)
+      deq_elem, deq_value_0, deq_value_1 = self.evaluate(deq)
 
       allowed = {}
       missed = set()
@@ -81,7 +83,7 @@ class PriorityQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       dequeue_op = q.dequeue_many(100)
 
@@ -93,7 +95,7 @@ class PriorityQueueTest(test.TestCase):
       for t in enqueue_threads:
         t.start()
 
-      deq_elem, deq_value_0, deq_value_1 = sess.run(dequeue_op)
+      deq_elem, deq_value_0, deq_value_1 = self.evaluate(dequeue_op)
 
       for t in enqueue_threads:
         t.join()
@@ -112,6 +114,7 @@ class PriorityQueueTest(test.TestCase):
         missed.remove((dv0, dv1))
       self.assertEqual(missed, set())
 
+  @test_util.run_v1_only("b/120545219")
   def testRoundTripFillsCapacityMultiThreadedEnqueueAndDequeue(self):
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(10, (dtypes.int64), (()))
@@ -132,12 +135,12 @@ class PriorityQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       dequeued = []
 
       def dequeue(dequeue_op):
-        (dequeue_indices, dequeue_values) = sess.run(dequeue_op)
+        (dequeue_indices, dequeue_values) = self.evaluate(dequeue_op)
         self.assertAllEqual(dequeue_indices, dequeue_values)
         dequeued.extend(dequeue_indices)
 
@@ -184,10 +187,10 @@ class PriorityQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       def dequeue(dequeue_op, dequeued):
-        (dequeue_indices, dequeue_values) = sess.run(dequeue_op)
+        (dequeue_indices, dequeue_values) = self.evaluate(dequeue_op)
         self.assertAllEqual(dequeue_indices, dequeue_values)
         dequeue_wait.acquire()
         dequeued.extend(dequeue_indices)
@@ -215,7 +218,7 @@ class PriorityQueueTest(test.TestCase):
 
       # We can't guarantee full sorting because we can't guarantee
       # that the dequeued.extend() call runs immediately after the
-      # sess.run() call.  Here we're just happy everything came out.
+      # self.evaluate() call.  Here we're just happy everything came out.
       self.assertAllEqual(set(dequeued), set(all_enqueued_values))
 
   def testRoundTripInsertManyMultiThreadedReadOnceSorts(self):
@@ -236,7 +239,7 @@ class PriorityQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       dequeue_op = q.dequeue_many(100)
 
@@ -248,7 +251,7 @@ class PriorityQueueTest(test.TestCase):
       for t in enqueue_threads:
         t.start()
 
-      deq_elem, deq_value_0, deq_value_1 = sess.run(dequeue_op)
+      deq_elem, deq_value_0, deq_value_1 = self.evaluate(dequeue_op)
 
       for t in enqueue_threads:
         t.join()
@@ -267,6 +270,7 @@ class PriorityQueueTest(test.TestCase):
         missed.remove((dv0, dv1))
       self.assertEqual(missed, set())
 
+  @test_util.run_v1_only("b/120545219")
   def testRoundTripInsertOnceReadOnceSorts(self):
     with self.cached_session() as sess:
       q = data_flow_ops.PriorityQueue(2000, (dtypes.string, dtypes.string), (
@@ -276,7 +280,7 @@ class PriorityQueueTest(test.TestCase):
       side_value_1 = np.random.rand(1000).astype(bytes)
       q.enqueue_many((elem, side_value_0, side_value_1)).run()
       deq = q.dequeue_many(1000)
-      deq_elem, deq_value_0, deq_value_1 = sess.run(deq)
+      deq_elem, deq_value_0, deq_value_1 = self.evaluate(deq)
 
       allowed = {}
       for e, v0, v1 in zip(elem, side_value_0, side_value_1):
@@ -288,6 +292,7 @@ class PriorityQueueTest(test.TestCase):
       for e, dv0, dv1 in zip(deq_elem, deq_value_0, deq_value_1):
         self.assertTrue((dv0, dv1) in allowed[e])
 
+  @test_util.run_v1_only("b/120545219")
   def testRoundTripInsertOnceReadManySorts(self):
     with self.cached_session():
       q = data_flow_ops.PriorityQueue(2000, (dtypes.int64), (()))
@@ -296,6 +301,7 @@ class PriorityQueueTest(test.TestCase):
       deq_values = np.hstack((q.dequeue_many(100)[0].eval() for _ in range(10)))
       self.assertAllEqual(deq_values, sorted(elem))
 
+  @test_util.run_v1_only("b/120545219")
   def testRoundTripInsertOnceReadOnceLotsSorts(self):
     with self.cached_session():
       q = data_flow_ops.PriorityQueue(2000, (dtypes.int64), (()))
@@ -311,6 +317,7 @@ class PriorityQueueTest(test.TestCase):
       with self.assertRaises(TypeError):
         q.enqueue_many((["a", "b", "c"], ["a", "b", "c"])).run()
 
+  @test_util.run_v1_only("b/120545219")
   def testInsertingNonScalarFails(self):
     with self.cached_session() as sess:
       input_priority = array_ops.placeholder(dtypes.int64)

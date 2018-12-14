@@ -9,6 +9,7 @@ package_group(
         "//tensorflow/compiler/jit/...",
         "//tensorflow/compiler/tests/...",
         "//tensorflow/compiler/tf2xla/...",
+        "//tensorflow/contrib/compiler/...",
     ],
 )
 
@@ -166,6 +167,7 @@ cc_library(
         "xla_compilation_device.cc",
         "xla_compiler.cc",
         "xla_context.cc",
+        "xla_expression.cc",
         "xla_helpers.cc",
         "xla_op_kernel.cc",
         "xla_op_registry.cc",
@@ -180,6 +182,7 @@ cc_library(
         "xla_compilation_device.h",
         "xla_compiler.h",
         "xla_context.h",
+        "xla_expression.h",
         "xla_helpers.h",
         "xla_op_kernel.h",
         "xla_op_registry.h",
@@ -193,6 +196,8 @@ cc_library(
         ":sharding_util",
         ":side_effect_util",
         ":tf2xla_util",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -200,13 +205,13 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/client/lib:numeric",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -214,7 +219,10 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -360,8 +368,12 @@ tf_cc_test(
 
 tf_cc_test(
     name = "xla_compiler_test",
-    srcs = ["xla_compiler_test.cc"],
+    srcs = [
+        "xla_compiler_test.cc",
+        "xla_expression_test.cc",
+    ],
     deps = [
+        ":common",
         ":side_effect_util",
         ":xla_compiler",
         "//tensorflow/cc:cc_ops",
@@ -384,6 +396,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -413,6 +426,7 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:ops",
@@ -425,21 +439,15 @@ cc_library(
     name = "dump_graph",
     srcs = [
         "dump_graph.cc",
-        "dump_graph_flags.cc",
-        "dump_graph_flags.h",
     ],
     hdrs = [
         "dump_graph.h",
     ],
     deps = [
-        "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 

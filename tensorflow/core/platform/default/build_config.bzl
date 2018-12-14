@@ -319,9 +319,6 @@ def tf_proto_library_cc(
         cc_grpc_version = None,
         j2objc_api_version = 1,
         cc_api_version = 2,
-        dart_api_version = 2,
-        java_api_version = 2,
-        py_api_version = 2,
         js_codegen = "jspb",
         default_header = False):
     js_codegen = js_codegen  # unused argument
@@ -436,10 +433,7 @@ def tf_proto_library(
         cc_libs = [],
         cc_api_version = 2,
         cc_grpc_version = None,
-        dart_api_version = 2,
         j2objc_api_version = 1,
-        java_api_version = 2,
-        py_api_version = 2,
         js_codegen = "jspb",
         provide_cc_alias = False,
         default_header = False):

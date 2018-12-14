@@ -139,9 +139,9 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
 HloModule FoldDotTransposeConstant
 
 ENTRY entry_computation {
-  constant = f32[2,1]{1,0} constant(f32[2,1] { { 1 }, { 2 } })
+  constant = f32[2,1]{1,0} constant({ { 1 }, { 2 } })
   transpose = f32[1,2]{1,0} transpose(constant), dimensions={1,0}
-  constant.1 = f32[3,2]{1,0} constant(f32[3,2] { { 1, 2 }, { 3, 4 }, { 5, 6 } })
+  constant.1 = f32[3,2]{1,0} constant({ { 1, 2 }, { 3, 4 }, { 5, 6 } })
   transpose.1 = f32[2,3]{1,0} transpose(constant.1), dimensions={1,0}
   ROOT dot = f32[1,3]{1,0} dot(transpose, transpose.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
@@ -172,7 +172,7 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
   HloInstruction* mul = builder.AddInstruction(HloInstruction::CreateBinary(
       add->shape(), HloOpcode::kMultiply, add, sub));
 
-  auto module = CreateNewModule("fuse_with_constant_operands");
+  auto module = CreateNewVerifiedModule("fuse_with_constant_operands");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(mul));
   HloInstruction* call = module->OutlineExpressionFromComputation(
@@ -247,7 +247,7 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
       conv_shape.ValueOrDie(), x, transpose_y,
       /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule("test_module");
+  auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
   FoldTranspose(module.get());
@@ -302,7 +302,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
       conv_shape.ValueOrDie(), x, transpose_y,
       /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule("test_module");
+  auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
   FoldTranspose(module.get());
@@ -362,7 +362,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
       conv_shape.ValueOrDie(), transpose_x, y,
       /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule("test_module");
+  auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
   FoldTranspose(module.get());
@@ -428,7 +428,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
       conv_shape.ValueOrDie(), transpose_x, y,
       /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule("test_module");
+  auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
   FoldTranspose(module.get());

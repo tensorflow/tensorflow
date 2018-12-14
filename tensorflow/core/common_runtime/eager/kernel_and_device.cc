@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -33,17 +34,27 @@ limitations under the License.
 namespace tensorflow {
 
 // static
-Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+Status KernelAndDevice::Init(const NodeDef& ndef, FunctionLibraryRuntime* flr,
                              std::function<void(std::function<void()>)>* runner,
                              KernelAndDevice* out) {
   OpKernel* k = nullptr;
-  Status s = flib->CreateKernel(ndef, &k);
-  out->device_ = flib->device();
+  TF_RETURN_IF_ERROR(flr->CreateKernel(ndef, &k));
+  out->device_ = flr->device();
   out->kernel_.reset(k);
-  out->flib_ = flib;
+  out->flr_ = flr;
   out->runner_ = runner;
   out->default_runner_ = [](std::function<void()> f) { f(); };
-  return s;
+
+  // Update output_dtypes_.
+  const OpDef* op_def = nullptr;
+  const FunctionDef* function_def =
+      flr->GetFunctionLibraryDefinition()->Find(ndef.op());
+  if (function_def != nullptr) {
+    op_def = &(function_def->signature());
+  } else {
+    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op().c_str(), &op_def));
+  }
+  return OutputTypesForNode(ndef, *op_def, &out->output_dtypes_);
 }
 
 Status KernelAndDevice::Run(std::vector<Tensor>* inputs,
@@ -73,6 +84,15 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
                              tensorflow::HOST_MEMORY);
   }
 
+  gtl::InlinedVector<DeviceContext*, 4> input_device_contexts;
+  for (int i = 0; i < inputs->size(); i++) {
+    DeviceContext* device_context = nullptr;
+    if (device_->tensorflow_gpu_device_info() != nullptr) {
+      device_context = device_->tensorflow_gpu_device_info()->default_context;
+    }
+    input_device_contexts.push_back(device_context);
+  }
+
   OpKernelContext::Params params;
   params.device = device_;
   params.frame_iter = FrameAndIter(0, 0);
@@ -80,7 +100,7 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
   params.output_attr_array = gtl::vector_as_array(&out_attrs);
-  params.function_library = flib_;
+  params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
   params.cancellation_manager = &cm_;
@@ -99,6 +119,9 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
   }
 
   params.step_container = step_container;
+  params.collective_executor =
+      collective_executor_ ? collective_executor_->get() : nullptr;
+  params.input_device_contexts = &input_device_contexts;
 
   OpKernelContext context(&params);
 
@@ -120,7 +143,7 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
     outputs->push_back(Tensor(*context.mutable_output(i)));
   }
   if (stats != nullptr) {
-    for (const auto& allocator_pair : context.wrapped_allocators()) {
+    for (const auto& allocator_pair : context.ConsumeWrappedAllocators()) {
       AllocatorMemoryUsed* memory = stats->add_memory();
       memory->set_allocator_name(allocator_pair.first->Name());
       auto sizes = allocator_pair.second->GetSizes();
@@ -143,6 +166,14 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
     step_stats_collector->Finalize();
   }
   return Status::OK();
+}
+
+tensorflow::Device* KernelAndDevice::OutputDevice(int idx) const {
+  if (device_ != nullptr &&
+      kernel_->output_memory_types()[idx] == HOST_MEMORY) {
+    return nullptr;
+  }
+  return device_;
 }
 
 }  // namespace tensorflow

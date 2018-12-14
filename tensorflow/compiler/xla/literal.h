@@ -92,9 +92,20 @@ class LiteralBase {
   // array.
   string GetR1U8AsString() const;
 
-  // Returns a string representation of the literal value.
-  // Warning: this function can take minutes for multi-million element Literals.
-  string ToString(bool print_layout = false) const;
+  // Returns a string representation of the literal value. The Shape of the
+  // literal is a prefix of the literal value in the string.
+
+  // Warning: this function can take minutes for multi-million
+  // element Literals.
+  string ToString() const;
+
+  // Returns a string representation of the literal value which does *not*
+  // include the shape string.
+  string ToStringWithoutShape() const;
+
+  // Returns a string representation of the literal value which includes the
+  // shape string with its layout.does *not* include the shape string.
+  string ToStringWithLayout() const;
 
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
@@ -301,7 +312,7 @@ class LiteralBase {
   //
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
-  // initialization, then reinitialization. Conside if a call to
+  // initialization, then reinitialization. Consider if a call to
   // absl::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);

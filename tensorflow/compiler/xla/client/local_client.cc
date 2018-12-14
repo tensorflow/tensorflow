@@ -71,9 +71,9 @@ Status LocalExecutable::ValidateExecutionOptions(
           "parameter "
           "%d: want %s, got %s",
           i,
-          ShapeUtil::HumanString(
+          ShapeUtil::HumanStringWithLayout(
               computation_layout.parameter_layout(i).shape()),
-          ShapeUtil::HumanString(arguments[i]->on_host_shape()));
+          ShapeUtil::HumanStringWithLayout(arguments[i]->on_host_shape()));
     }
   }
 
@@ -308,6 +308,30 @@ StatusOr<Literal> LocalClient::TransferFromOutfeedLocal(const Shape& shape,
 
 StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {
   return local_service_->ReplicaNumberToDeviceOrdinal(replica_number);
+}
+
+StatusOr<TransferToServerResponse> LocalClient::TransferToLocalServer(
+    const ::xla::BorrowingLiteral& literal, int device_oridinal) {
+  const ::xla::Shape& shape = literal.shape();
+
+  TF_ASSIGN_OR_RETURN(
+      ::xla::ScopedShapedBuffer shaped_buffer,
+      backend().transfer_manager()->AllocateScopedShapedBuffer(
+          shape, backend().memory_allocator(), device_oridinal));
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      mutable_backend()->BorrowStream(device_oridinal));
+  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+      stream.get(), literal, shaped_buffer));
+  std::vector<::xla::ScopedShapedBuffer> replicated_buffer;
+  replicated_buffer.emplace_back(std::move(shaped_buffer));
+  ::xla::TransferToServerResponse result;
+  TF_ASSIGN_OR_RETURN(*result.mutable_data(),
+                      local_service_->RegisterReplicatedBuffers(
+                          std::move(replicated_buffer),
+                          absl::StrCat("TransferToServer literal of shape ",
+                                       ::xla::ShapeUtil::HumanString(shape))));
+
+  return result;
 }
 
 }  // namespace xla

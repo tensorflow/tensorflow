@@ -19,11 +19,11 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/env.h"
 
 using absl::StrAppend;
@@ -34,72 +34,114 @@ namespace xla {
 namespace literal_comparison {
 namespace {
 
+// Since Eigen::half doesn't satisfy the absl::bit_cast contract, we need to be
+// able to transparently access the raw 16-bit value contained within.
+template <typename T>
+T GetRawValue(T val) {
+  return val;
+}
+uint16 GetRawValue(Eigen::half val) { return val.x; }
+
 // Helper function for comparing a floating point type, FloatT, bitwise equal
 // between the left-hand-side and right-hand-side, by bit-casting to UnsignedT
 // -- on miscompare, a nice error message is given in the AssertionFailure.
 template <typename FloatT, typename UnsignedT>
-Status CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs,
-                                 absl::Span<const int64> multi_index) {
-  auto ulhs = tensorflow::bit_cast<UnsignedT>(lhs);
-  auto urhs = tensorflow::bit_cast<UnsignedT>(rhs);
-  auto lhs_double = static_cast<double>(lhs);
-  auto rhs_double = static_cast<double>(rhs);
-  if (ulhs != urhs) {
-    return InvalidArgument(
-        "floating values are not bitwise-equal; and equality testing "
-        "was requested: %s=%g=%a vs %s=%g=%a at array index %s",
-        StrCat(absl::Hex(ulhs)), lhs_double, lhs_double,
-        StrCat(absl::Hex(urhs)), rhs_double, rhs_double,
-        LiteralUtil::MultiIndexAsString(multi_index));
-  }
-  return Status::OK();
+bool CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs,
+                               absl::Span<const int64> multi_index) {
+  auto ulhs = absl::bit_cast<UnsignedT>(GetRawValue(lhs));
+  auto urhs = absl::bit_cast<UnsignedT>(GetRawValue(rhs));
+  return ulhs == urhs;
 }
 
 // Templated comparator that specializes for float equality comparison with the
 // bitwise helper above (this is the un-specialized fallback, to just use the
 // default gunit implementation).
 template <typename NativeT>
-Status CompareEqual(NativeT lhs, NativeT rhs,
-                    absl::Span<const int64> multi_index) {
-  if (lhs == rhs) {
-    return Status::OK();
-  }
+bool CompareEqual(NativeT lhs, NativeT rhs,
+                  absl::Span<const int64> multi_index) {
+  return lhs == rhs;
+}
+
+// Specializations for floating types that do bitwise comparisons when equality
+// comparison is requested.
+template <>
+bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
+                            absl::Span<const int64> multi_index) {
+  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs, multi_index);
+}
+template <>
+bool CompareEqual<Eigen::half>(Eigen::half lhs, Eigen::half rhs,
+                               absl::Span<const int64> multi_index) {
+  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs, multi_index);
+}
+template <>
+bool CompareEqual<float>(float lhs, float rhs,
+                         absl::Span<const int64> multi_index) {
+  return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs, multi_index);
+}
+template <>
+bool CompareEqual<double>(double lhs, double rhs,
+                          absl::Span<const int64> multi_index) {
+  return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs, multi_index);
+}
+template <>
+bool CompareEqual<complex64>(complex64 lhs, complex64 rhs,
+                             absl::Span<const int64> multi_index) {
+  return CompareEqual<float>(lhs.real(), rhs.real(), multi_index) &&
+         CompareEqual<float>(lhs.imag(), rhs.imag(), multi_index);
+}
+
+template <typename NativeT, typename UnsignedT>
+Status MakeBitwiseErrorStatus(NativeT lhs, NativeT rhs,
+                              absl::Span<const int64> multi_index) {
+  auto ulhs = absl::bit_cast<UnsignedT>(GetRawValue(lhs));
+  auto urhs = absl::bit_cast<UnsignedT>(GetRawValue(rhs));
+  auto lhs_double = static_cast<double>(lhs);
+  auto rhs_double = static_cast<double>(rhs);
+    return InvalidArgument(
+        "floating values are not bitwise-equal; and equality testing "
+        "was requested: %s=%g=%a vs %s=%g=%a at array index %s",
+        StrCat(absl::Hex(ulhs)), lhs_double, lhs_double,
+        StrCat(absl::Hex(urhs)), rhs_double, rhs_double,
+        LiteralUtil::MultiIndexAsString(multi_index));
+}
+
+template <typename NativeT>
+Status MakeErrorStatus(NativeT lhs, NativeT rhs,
+                       absl::Span<const int64> multi_index) {
   return InvalidArgument(
       "first mismatch at array index %s:\n  expected value: %s\n  actual "
       "value:   %s",
       LiteralUtil::MultiIndexAsString(multi_index), StrCat(lhs), StrCat(rhs));
 }
 
-// Specializations for floating types that do bitwise comparisons when equality
-// comparison is requested.
 template <>
-Status CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
-                              absl::Span<const int64> multi_index) {
-  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs, multi_index);
+Status MakeErrorStatus(bfloat16 lhs, bfloat16 rhs,
+                       absl::Span<const int64> multi_index) {
+  return MakeBitwiseErrorStatus<bfloat16, uint16>(lhs, rhs, multi_index);
 }
 template <>
-Status CompareEqual<Eigen::half>(Eigen::half lhs, Eigen::half rhs,
-                                 absl::Span<const int64> multi_index) {
-  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs, multi_index);
+Status MakeErrorStatus(Eigen::half lhs, Eigen::half rhs,
+                       absl::Span<const int64> multi_index) {
+  return MakeBitwiseErrorStatus<Eigen::half, uint16>(lhs, rhs, multi_index);
 }
 template <>
-Status CompareEqual<float>(float lhs, float rhs,
-                           absl::Span<const int64> multi_index) {
-  return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs, multi_index);
+Status MakeErrorStatus(float lhs, float rhs,
+                       absl::Span<const int64> multi_index) {
+  return MakeBitwiseErrorStatus<float, uint32>(lhs, rhs, multi_index);
 }
 template <>
-Status CompareEqual<double>(double lhs, double rhs,
-                            absl::Span<const int64> multi_index) {
-  return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs, multi_index);
+Status MakeErrorStatus(double lhs, double rhs,
+                       absl::Span<const int64> multi_index) {
+  return MakeBitwiseErrorStatus<double, uint64>(lhs, rhs, multi_index);
 }
 template <>
-Status CompareEqual<complex64>(complex64 lhs, complex64 rhs,
-                               absl::Span<const int64> multi_index) {
-  auto res = CompareEqual<float>(lhs.real(), rhs.real(), multi_index);
-  if (!res.ok()) {
-    return res;
+Status MakeErrorStatus(complex64 lhs, complex64 rhs,
+                       absl::Span<const int64> multi_index) {
+  if (!CompareEqual<float>(lhs.real(), rhs.real(), multi_index)) {
+    return MakeErrorStatus(lhs.real(), rhs.real(), multi_index);
   }
-  return CompareEqual<float>(lhs.imag(), rhs.imag(), multi_index);
+  return MakeErrorStatus(lhs.imag(), rhs.imag(), multi_index);
 }
 
 // A recursive function which iterates through every index of expected and
@@ -111,7 +153,11 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
   if (dimension == expected.shape().dimensions_size()) {
     NativeT expected_value = expected.Get<NativeT>(multi_index);
     NativeT actual_value = actual.Get<NativeT>(multi_index);
-    return CompareEqual<NativeT>(expected_value, actual_value, multi_index);
+    bool result =
+        CompareEqual<NativeT>(expected_value, actual_value, multi_index);
+    return result ? Status::OK()
+                  : MakeErrorStatus<NativeT>(expected_value, actual_value,
+                                             multi_index);
   }
 
   Status result;
@@ -133,8 +179,10 @@ int64 RecursiveElementCount(const Shape& shape) {
       total += RecursiveElementCount(ShapeUtil::GetTupleElementShape(shape, i));
     }
     return total;
-  } else {
+  } else if (ShapeUtil::IsArray(shape)) {
     return ShapeUtil::ElementsIn(shape);
+  } else {
+    return 0;
   }
 }
 
@@ -320,7 +368,7 @@ class NearComparator {
         NanMismatch(expected, actual, error_.relaxed_nans);
     float abs_error;
     float rel_error;
-    if (CompareEqual<T>(expected, actual, {linear_index}).ok()) {
+    if (CompareEqual<T>(expected, actual, {linear_index})) {
       abs_error = 0;
       rel_error = 0;
     } else if (is_nan_mismatch) {
@@ -334,7 +382,7 @@ class NearComparator {
     } else if (IsInf(expected) || IsInf(actual)) {
       // If either the expected or actual value is infinity but not both,
       // then both absolute and relative error are regarded as inifity.
-      CHECK(!CompareEqual(expected, actual, {linear_index}).ok());
+      CHECK(!CompareEqual(expected, actual, {linear_index}));
       abs_error = std::numeric_limits<float>::infinity();
       rel_error = std::numeric_limits<float>::infinity();
     } else {
