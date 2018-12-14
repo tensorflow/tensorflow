@@ -116,6 +116,7 @@ py_library(
         ":manip_ops",
         ":math_ops",
         ":metrics",
+        ":mode_keys",
         ":nccl_ops",
         ":nn",
         ":ops",
@@ -5913,6 +5914,30 @@ py_binary(
     deps = [
         ":framework_for_generated_wrappers",
         ":pywrap_tensorflow_internal",
+    ],
+)
+
+py_library(
+    name = "mode_keys",
+    srcs = [
+        "training/mode_keys.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+    ],
+)
+
+py_test(
+    name = "mode_keys_test",
+    size = "small",
+    srcs = [
+        "training/mode_keys_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":mode_keys",
     ],
 )
 
