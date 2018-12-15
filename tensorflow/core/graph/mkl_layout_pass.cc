@@ -288,6 +288,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.quantized_avg_pool = "QuantizedAvgPool";
     csinfo_.quantized_concatv2 = "QuantizedConcatV2";
     csinfo_.quantized_conv2d = "QuantizedConv2D";
+    csinfo_.quantized_conv2d = "QuantizedConv2DPerChannel";
     csinfo_.quantized_conv2d_with_requantize = "QuantizedConv2DAndRequantize";
     csinfo_.quantized_conv2d_with_bias = "QuantizedConv2DWithBias";
     csinfo_.quantized_conv2d_with_bias_and_requantize =
@@ -428,6 +429,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsConcatV2, AlwaysRewrite});
     rinfo_.push_back({csinfo_.quantized_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d),
+                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_conv2d_per_channel,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_conv2d_per_channel),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.quantized_conv2d_with_requantize,
                       mkl_op_registry::GetMklOpName(
@@ -701,6 +706,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string pad_with_conv2d;
     string quantized_avg_pool;
     string quantized_conv2d;
+    string quantized_conv2d_per_channel;
     string quantized_conv2d_with_requantize;
     string quantized_conv2d_with_bias;
     string quantized_conv2d_with_bias_and_requantize;
@@ -1752,6 +1758,7 @@ Status MklLayoutRewritePass::SetUpInputs(
       "QuantizedConv2DAndRelu",
       "QuantizedConv2DWithBiasAndRelu",
       "QuantizedConv2DWithBiasSumAndRelu",
+      "QuantizedConv2DPerChannel",
       "QuantizedConv2DAndRequantize",
       "QuantizedConv2DWithBiasAndRequantize",
       "QuantizedConv2DAndReluAndRequantize",
