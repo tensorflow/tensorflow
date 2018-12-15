@@ -1247,12 +1247,12 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   T limit = limit_t->scalar<T>()();
   T delta = delta_t->scalar<T>()();
   if (start > limit && delta > 0) {
-    return errors::InvalidArgument(
-        "Requires start <= limit when delta > 0: ", start, "/", limit);
+    return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
+                                   start, "/", limit);
   }
   if (start < limit && delta < 0) {
-    return errors::InvalidArgument(
-        "Requires start >= limit when delta < 0: ", start, "/", limit);
+    return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
+                                   start, "/", limit);
   }
   if (delta == 0) {
     return errors::InvalidArgument("Requires delta != 0");
@@ -1708,23 +1708,23 @@ REGISTER_OP("RequantizePerChannel")
       c->set_output(2, c->Scalar());
       return Status::OK();
     });
- REGISTER_OP("RequantizationRangePerChannel")
-.Input("input: T")
-.Input("input_min: float")
-.Input("input_max: float")
-.Output("output_min: float")
-.Output("output_max: float")
-.Attr("T: quantizedtype = DT_QINT32")
-.Attr("is_relu6: bool = false")
-.SetShapeFn([](InferenceContext* c) {
-  ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-  c->set_output(0, c->Scalar());
-  c->set_output(1, c->Scalar());
-  return Status::OK();
-});
- REGISTER_OP("_MklRequantizePerChannel")
+REGISTER_OP("RequantizationRangePerChannel")
+    .Input("input: T")
+    .Input("input_min: float")
+    .Input("input_max: float")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Attr("T: quantizedtype = DT_QINT32")
+    .Attr("is_relu6: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    });
+REGISTER_OP("_MklRequantizePerChannel")
     .Input("input: T")
     .Input("input_min: float")
     .Input("input_max: float")
@@ -1754,26 +1754,26 @@ REGISTER_OP("RequantizePerChannel")
       c->set_output(2, c->Scalar());
       return Status::OK();
     });
- REGISTER_OP("_MklRequantizationRangePerChannel")
-.Input("input: T")
-.Input("input_min: float")
-.Input("input_max: float")
-.Input("mkl_input: uint8")
-.Input("mkl_input_min: uint8")
-.Input("mkl_input_max: uint8")
-.Output("output_min: float")
-.Output("output_max: float")
-.Output("mkl_output_min: uint8")
-.Output("mkl_output_max: uint8")
-.Attr("T: quantizedtype = DT_QINT32")
-.SetShapeFn([](InferenceContext* c) {
-  ShapeHandle unused;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
-  c->set_output(0, c->Scalar());
-  c->set_output(1, c->Scalar());
-  return Status::OK();
-});
+REGISTER_OP("_MklRequantizationRangePerChannel")
+    .Input("input: T")
+    .Input("input_min: float")
+    .Input("input_max: float")
+    .Input("mkl_input: uint8")
+    .Input("mkl_input_min: uint8")
+    .Input("mkl_input_max: uint8")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Output("mkl_output_min: uint8")
+    .Output("mkl_output_max: uint8")
+    .Attr("T: quantizedtype = DT_QINT32")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    });
 #endif  // INTEL_MKL
 
 }  // namespace tensorflow

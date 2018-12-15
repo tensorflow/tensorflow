@@ -19,15 +19,15 @@ limitations under the License.
 
 #include <math.h>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/meta_support.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/kernels/no_op.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #ifdef INTEL_MKL
 namespace tensorflow {
@@ -36,7 +36,8 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 class MklRequantizationRangePerChannelOp : public OpKernel {
  public:
-  explicit MklRequantizationRangePerChannelOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit MklRequantizationRangePerChannelOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("is_relu6", &is_relu6_));
   }
 
@@ -47,11 +48,11 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
 
     size_t depth = input_max.NumElements();
     OP_REQUIRES(ctx, input_min.dim_size(0) == depth,
-                errors::InvalidArgument("min has incorrect size, expected ", depth,
-                                " was ", input_min.dim_size(0)));
+                errors::InvalidArgument("min has incorrect size, expected ",
+                                        depth, " was ", input_min.dim_size(0)));
     OP_REQUIRES(ctx, input_max.dim_size(0) == depth,
-                errors::InvalidArgument("max has incorrect size, expected ", depth,
-                                " was ", input_max.dim_size(0)));
+                errors::InvalidArgument("max has incorrect size, expected ",
+                                        depth, " was ", input_max.dim_size(0)));
 
     const float* input_min_data = input_min.flat<float>().data();
     const float* input_max_data = input_max.flat<float>().data();
@@ -62,29 +63,27 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     auto transposed_input = input_matrix.shuffle(shuffling);
 
 #pragma omp parallel for
-    for (size_t i = 0; i < depth; i++)
-    {
+    for (size_t i = 0; i < depth; i++) {
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> min =
           transposed_input.chip<0>(i).minimum();
       Eigen::Tensor<qint32, 0, Eigen::RowMajor> max =
           transposed_input.chip<0>(i).maximum();
       int32_t min_per_channel = min();
       int32_t max_per_channel = max();
-      int32_t abs_max = std::max(std::abs(min_per_channel), std::abs(max_per_channel));
-      float scale = std::max(std::abs(input_min_data[i]), std::abs(input_max_data[i]));
-      ranges[i] = (scale * (float)abs_max / (float)(1L<<31));
-      if (min_per_channel < 0)
-        is_non_negative = false;
+      int32_t abs_max =
+          std::max(std::abs(min_per_channel), std::abs(max_per_channel));
+      float scale =
+          std::max(std::abs(input_min_data[i]), std::abs(input_max_data[i]));
+      ranges[i] = (scale * (float)abs_max / (float)(1L << 31));
+      if (min_per_channel < 0) is_non_negative = false;
     }
 
     float out_min_max = std::numeric_limits<float>::min();
     for (size_t i = 0; i < depth; i++) {
-      if (out_min_max < ranges[i])
-        out_min_max = ranges[i];
-    } 
+      if (out_min_max < ranges[i]) out_min_max = ranges[i];
+    }
     // Fixing max to 6.0 for relu6
-    if (is_relu6_ && out_min_max > 6.0f)
-      out_min_max = 6.0f;
+    if (is_relu6_ && out_min_max > 6.0f) out_min_max = 6.0f;
 
     Tensor* output_min = nullptr;
     Tensor* output_max = nullptr;
@@ -92,27 +91,20 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMax, {}, &output_max));
     output_min->flat<float>()(0) = is_non_negative ? 0.0f : out_min_max * -1.0f;
     output_max->flat<float>()(0) = out_min_max;
-
   }
 
-  private:
+ private:
   bool is_relu6_ = false;
-  const int kInputTensorIndex  = 0;
-  const int kInputMin          = 1;
-  const int kInputMax          = 2;
-  const int kOutputMin         = 0;
-  const int kOutputMax         = 1;
+  const int kInputTensorIndex = 0;
+  const int kInputMin = 1;
+  const int kInputMax = 2;
+  const int kOutputMin = 0;
+  const int kOutputMax = 1;
 };
 
 REGISTER_KERNEL_BUILDER(Name("RequantizationRangePerChannel")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint32>("T"),
                         MklRequantizationRangePerChannelOp);
-
-// REGISTER_KERNEL_BUILDER(Name("RequantizationRangePerChannel")
-//                             .Device(DEVICE_CPU)
-//                             .TypeConstraint<qint32>("T"),
-//                         NoOp);
-
 }  // namespace tensorflow
-#endif // INTEL_MKL
+#endif  // INTEL_MKL
