@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
@@ -35,6 +34,7 @@ from tensorflow.python.platform import test
 # TODO(b/117581999): Add eager coverage.
 class MultiDeviceIteratorTest(test_base.DatasetTestBase):
 
+  @test_util.run_v1_only("b/120545219")
   def testNoGetNext(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -44,6 +44,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
     with self.test_session(config=config) as sess:
       self.evaluate(multi_device_iterator.initializer)
 
+  @test_util.run_v1_only("b/120545219")
   def testBasic(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -60,6 +61,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
+  @test_util.run_v1_only("b/120545219")
   def testOneOnSameDevice(self):
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(10)
@@ -77,6 +79,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
+  @test_util.run_v1_only("b/120545219")
   def testRepeatDevices(self):
     with ops.device("/cpu:0"):
       dataset = dataset_ops.Dataset.range(20)
@@ -99,6 +102,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
         self.evaluate(elem_on_3)
         self.evaluate(elem_on_4)
 
+  @test_util.run_v1_only("b/120545219")
   def testNotFullyDivisible(self):
     dataset = dataset_ops.Dataset.range(9)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -116,6 +120,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
+  @test_util.run_v1_only("b/120545219")
   def testGetNextAsOptional(self):
     dataset = dataset_ops.Dataset.range(9)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -149,6 +154,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(elem_on_2_t)
 
+  @test_util.run_v1_only("b/120545219")
   def testUneven(self):
     dataset = dataset_ops.Dataset.range(10)
     multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
@@ -166,6 +172,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
+  @test_util.run_v1_only("b/120545219")
   def testMultipleInitializations(self):
     with ops.device("/cpu:0"):
       epoch = array_ops.placeholder(dtypes.int64, shape=[])
@@ -259,6 +266,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.InvalidArgumentError):
         self.evaluate(elem_on_2_t)
 
+  @test_util.run_v1_only("b/120545219")
   def testOptimization(self):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
@@ -266,7 +274,6 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
     dataset = dataset.cache()
 
     options = dataset_ops.Options()
-    options.experimental_optimization = OptimizationOptions()
     options.experimental_optimization.noop_elimination = True
     dataset = dataset.with_options(options)
 

@@ -79,6 +79,7 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:summary_ops_v2",
@@ -101,6 +102,7 @@ tf_gen_op_libs(
         "replication_ops",
         "tpu_configuration_ops",
         "tpu_embedding_ops",
+        "tpu_ordinal_selector_op",
     ],
     deps = [
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
@@ -149,6 +151,13 @@ tf_gen_op_wrapper_py(
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
         ":tpu_embedding_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "tpu_ordinal_selector_op",
+    deps = [
+        ":tpu_ordinal_selector_op_op_lib",
     ],
 )
 

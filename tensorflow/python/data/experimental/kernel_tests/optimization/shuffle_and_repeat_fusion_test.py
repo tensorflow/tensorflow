@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
@@ -32,10 +31,6 @@ class ShuffleAndRepeatFusionTest(test_base.DatasetTestBase):
   def testShuffleAndRepeatFusion(self):
     dataset = dataset_ops.Dataset.range(10).apply(
         optimization.assert_next(["ShuffleAndRepeat"])).shuffle(10).repeat(2)
-    options = dataset_ops.Options()
-    options.experimental_optimization = OptimizationOptions()
-    options.experimental_optimization.shuffle_and_repeat_fusion = True
-    dataset = dataset.with_options(options)
     get_next = self.getNext(dataset)
 
     for _ in range(2):

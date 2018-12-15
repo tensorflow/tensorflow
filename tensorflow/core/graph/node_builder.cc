@@ -38,8 +38,9 @@ NodeBuilder::NodeOut::NodeOut()
     : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}
 
 NodeBuilder::NodeBuilder(StringPiece name, StringPiece op_name,
-                         const OpRegistryInterface* op_registry)
-    : def_builder_(name, op_name, op_registry) {}
+                         const OpRegistryInterface* op_registry,
+                         const NodeDebugInfo* debug)
+    : def_builder_(name, op_name, op_registry, debug) {}
 
 NodeBuilder::NodeBuilder(StringPiece name, const OpDef* op_def)
     : def_builder_(name, op_def) {}

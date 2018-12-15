@@ -31,7 +31,6 @@ from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import constant_op
@@ -50,6 +49,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import rmsprop
+from tensorflow_estimator.python.estimator.inputs import numpy_io
 
 
 def _initialized_session(config=None):
@@ -485,7 +485,7 @@ class BucketizedColumnTest(test.TestCase):
   def test_invalid_boundaries(self):
     a = fc.numeric_column('aaa')
     with self.assertRaisesRegexp(ValueError,
-                                 'boundaries must be a sorted list'):
+                                 'boundaries must not be empty'):
       fc.bucketized_column(a, boundaries=None)
     with self.assertRaisesRegexp(ValueError,
                                  'boundaries must be a sorted list'):

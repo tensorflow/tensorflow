@@ -927,7 +927,10 @@ class NNTest(PForTest):
               outputs[1] = constant_op.constant(0.)
               outputs[2] = constant_op.constant(0.)
             loss = nn.l2_loss(outputs[0])
-          gradients = g.gradient(loss, [x1, scale, offset])
+          if is_training:
+            gradients = g.gradient(loss, [x1, scale, offset])
+          else:
+            gradients = [constant_op.constant(0.)] * 3
           return outputs + gradients
 
         # pylint: enable=cell-var-from-loop
@@ -1133,7 +1136,7 @@ class TensorArrayTest(PForTest):
     # y = x * x. Hence dy/dx = 2 * x.
     actual_grad = 2.0 * x
     with session.Session() as sess:
-      actual_grad, computed_grad = self.evaluate([t1, actual_grad])
+      actual_grad, computed_grad = sess.run([t1, actual_grad])
       self.assertAllClose(actual_grad, computed_grad)
 
 
@@ -1287,7 +1290,7 @@ class ControlFlowTest(PForTest):
     expected_output = array_ops.transpose(expected_output, [1, 0])
 
     with session.Session() as sess:
-      out, expected = self.evaluate([out, expected_output])
+      out, expected = sess.run([out, expected_output])
       self.assertAllClose(expected, out)
 
   def test_tensor_array_as_loop_variable(self):
@@ -1475,7 +1478,7 @@ class Benchmarks(test.Benchmark):
     sess = session.Session()
     with sess:
       init = variables.global_variables_initializer()
-      self.evaluate(init)
+      sess.run(init)
       run_fn = sess.make_callable(targets)
       run_fn()  # Warm up
       begin = time.time()

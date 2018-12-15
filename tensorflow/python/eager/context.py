@@ -478,10 +478,6 @@ class Context(object):
     Raises:
       ValueError: If name is not a string or is an invalid device name.
     """
-    devices = self._context_devices
-    if devices is None:
-      self._initialize_handle_and_devices()
-      devices = self._context_devices
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
@@ -502,7 +498,9 @@ class Context(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          new_device_spec = pydev.DeviceSpec.from_string(devices[0])
+          self._initialize_handle_and_devices()
+          new_device_spec = pydev.DeviceSpec.from_string(
+              self._context_devices[0])
         new_device_spec.merge_from(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
@@ -925,6 +923,10 @@ def add_function(fdef):
 # but they do all import this file.  Note that IS_IN_GRAPH_MODE and
 # in_graph_mode are both parameterless functions.
 def _tmp_in_graph_mode():
+  if context_safe() is None:
+    # Context not yet initialized. Assume graph mode following the
+    # default implementation in `is_in_graph_mode`.
+    return True
   return not executing_eagerly()
 
 

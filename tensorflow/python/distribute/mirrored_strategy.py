@@ -43,18 +43,24 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import coordinator
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
 
 
 @contextlib.contextmanager
-def _enter_graph(g):
-  if context.executing_eagerly():
+def _enter_graph(g, eager, creator_stack=None):
+  """Context manager for selecting a graph and maybe eager mode."""
+  if eager:
     with g.as_default(), context.eager_mode():
+      if creator_stack is not None:
+        g._variable_creator_stack = creator_stack  # pylint: disable=protected-access
       yield
   else:
     with g.as_default():
+      if creator_stack is not None:
+        g._variable_creator_stack = creator_stack  # pylint: disable=protected-access
       yield
 
 
@@ -68,10 +74,9 @@ class _RequestedStop(Exception):  # pylint: disable=g-bad-exception-name
   pass
 
 
-# _call_for_each_replica and _reduce_non_distributed_value are not members of
-# MirroredStrategy so that they are generally not allowed to use anything
-# specific to MirroredStrategy and thus can be shared with other distribution
-# strategies.
+# _call_for_each_replica is not a member of MirroredStrategy so that it is
+# not allowed to use anything specific to MirroredStrategy and thus
+# can be shared with other distribution strategies.
 
 
 # TODO(yuefengz): maybe create a common class for those who need to call this
@@ -168,7 +173,12 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
           # capture the name_scope from the first MRT and assume it is
           # the same for all other MRTs.
           mtt_captured_name_scope = threads[0].captured_name_scope
-          with ops.name_scope(mtt_captured_name_scope):
+          # Capture and merge the control dependencies from all the threads.
+          mtt_captured_control_deps = set()
+          for t in threads:
+            mtt_captured_control_deps.update(t.captured_control_deps)
+          with ops.name_scope(mtt_captured_name_scope),\
+              ops.control_dependencies(mtt_captured_control_deps):
             merge_result = threads[0].merge_fn(distribution, *merge_args,
                                                **merge_kwargs)
           for t in threads:
@@ -179,43 +189,6 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
     coord.join(threads)
 
   return values.regroup({t.device: t.main_result for t in threads})
-
-
-def _reduce_non_distributed_value(extended, reduce_op, value, destinations):
-  """Reduce a non-DistributedValue `value` to `destinations`."""
-  if isinstance(value, values.DistributedValues):
-    raise ValueError("You are passing a `DistributedValue` to "
-                     "`_reduce_non_distributed_value`, which is not allowed.")
-
-  # If the same value is present on all replicas then the PerReplica value will
-  # be a single value. We also handle the case when `value` is a single value
-  # and equal to 0.
-  if value == 0:
-    return 0
-  # If there is only a single value and the reduce op is MEAN,
-  # that value should be on all destinations.
-  if reduce_op == reduce_util.ReduceOp.MEAN:
-    return value
-
-  cross_device_ops_lib.validate_destinations(destinations)
-  # We do not support a reduce op of SUM if the value is the same across
-  # all replicas. We call this as part of assign functions for MirroredVariables
-  # and summing up identical values across replicas is not clearly defined.
-  if (len(extended.worker_devices) != 1 or
-      not cross_device_ops_lib.check_destinations(destinations)):
-    raise ValueError("A non-DistributedValues value %s cannot be reduced with "
-                     "the given reduce op %s." % (value, reduce_op))
-  # TODO(anjalisridhar): Moves these methods to a device utility file?
-  devices = cross_device_ops_lib.get_devices_from(destinations)
-  if len(devices) == 1:
-    with ops.device(devices[0]):
-      return array_ops.identity(value)
-  else:
-    value_updates = {}
-    for d in devices:
-      with ops.device(d):
-        value_updates[d] = array_ops.identity(value)
-    return values.Mirrored(value_updates)
 
 
 def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs):  # pylint: disable=g-missing-docstring
@@ -296,6 +269,133 @@ def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs): 
   return result
 
 
+def _is_device_list_local(devices):
+  """Checks whether the devices list is for local or multi-worker.
+
+  Args:
+    devices: a list of device strings, either local for remote devices.
+
+  Returns:
+    a boolean indicating whether these device strings are for local or for
+    remote.
+
+  Raises:
+    ValueError: if device strings are not consistent.
+  """
+  all_local = None
+  for d in devices:
+    d_spec = tf_device.DeviceSpec().parse_from_string(d)
+    is_local = d_spec.job in (None, "localhost")
+
+    if all_local is None:  # Determine all_local from first device.
+      all_local = is_local
+
+    if all_local:
+      if not is_local:
+        raise ValueError("Local device string cannot have job specified other "
+                         "than 'localhost'")
+    else:
+      if is_local:
+        raise ValueError("Remote device string must have job specified.")
+      if d_spec.task is None:
+        raise ValueError("Remote device string must have task specified.")
+  return all_local
+
+
+def _cluster_spec_to_device_list(cluster_spec, num_gpus_per_worker):
+  """Returns a device list given a cluster spec."""
+  cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
+  devices = []
+  for task_type in ("chief", "worker"):
+    for task_id in range(len(cluster_spec.as_dict().get(task_type, []))):
+      if num_gpus_per_worker is 0:
+        devices.append("/job:%s/task:%d" % (task_type, task_id))
+      else:
+        devices.extend([
+            "/job:%s/task:%d/device:GPU:%i" % (task_type, task_id, gpu_id)
+            for gpu_id in range(num_gpus_per_worker)
+        ])
+  return devices
+
+
+def _group_device_list(devices):
+  """Groups the devices list by task_type and task_id.
+
+  Args:
+    devices: a list of device strings for remote devices.
+
+  Returns:
+    a dict of list of device strings mapping from task_type to a list of devices
+    for the task_type in the asceding order of task_id.
+  """
+  assert not _is_device_list_local(devices)
+  device_dict = {}
+
+  for d in devices:
+    d_spec = tf_device.DeviceSpec().parse_from_string(d)
+
+    # Create an entry for the task_type.
+    if d_spec.job not in device_dict:
+      device_dict[d_spec.job] = []
+
+    # Fill the device list for task_type until it covers the task_id.
+    while len(device_dict[d_spec.job]) <= d_spec.task:
+      device_dict[d_spec.job].append([])
+
+    device_dict[d_spec.job][d_spec.task].append(d)
+
+  return device_dict
+
+
+def _infer_num_gpus_per_worker(devices):
+  """Infers the number of GPUs on each worker.
+
+  Currently to make multi-worker cross device ops work, we need all workers to
+  have the same number of GPUs.
+
+  Args:
+    devices: a list of device strings, can be either local devices or remote
+      devices.
+
+  Returns:
+    number of GPUs per worker.
+
+  Raises:
+    ValueError if workers have different number of GPUs or GPU indices are not
+    consecutive and starting from 0.
+  """
+  if _is_device_list_local(devices):
+    return len([d for d in devices if "GPU" in d.upper()])
+  else:
+    device_dict = _group_device_list(devices)
+    num_gpus = None
+    for _, devices_in_task in device_dict.items():
+      for device_in_task in devices_in_task:
+        if num_gpus is None:
+          num_gpus = len([d for d in device_in_task if "GPU" in d.upper()])
+
+        # Verify other workers have the same number of GPUs.
+        elif (
+            num_gpus != len([d for d in device_in_task if "GPU" in d.upper()])):
+          raise ValueError("All workers should have the same number of GPUs.")
+
+        for d in device_in_task:
+          d_spec = tf_device.DeviceSpec().parse_from_string(d)
+          if (d_spec.device_type.upper() == "GPU" and
+              d_spec.device_index >= num_gpus):
+            raise ValueError("Device_index on a worker should be consecutive "
+                             "and start from 0.")
+    return num_gpus
+
+
+def all_local_devices(num_gpus=None):
+  if num_gpus is None:
+    num_gpus = context.num_gpus()
+  return (tuple("/device:GPU:%d" % i for i in range(num_gpus)) or
+          ("/device:CPU:0",))
+
+
+@tf_export("distribute.MirroredStrategy")
 class MirroredStrategy(distribute_lib.DistributionStrategy):
   """Mirrors vars to distribute across multiple devices and machines.
 
@@ -306,86 +406,73 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   Args:
     devices: a list of device strings.
-    num_gpus_per_worker: number of GPUs per worker.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
       set, nccl will be use by default.
   """
 
-  def __init__(self,
-               devices=None,
-               num_gpus_per_worker=None,
-               cross_device_ops=None):
-    extended = MirroredExtended(self, devices, num_gpus_per_worker,
-                                cross_device_ops)
+  def __init__(self, devices=None, cross_device_ops=None):
+    extended = MirroredExtended(
+        self, devices=devices, cross_device_ops=cross_device_ops)
     super(MirroredStrategy, self).__init__(extended)
 
 
 class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   """Implementation of MirroredStrategy."""
 
-  def __init__(self,
-               container_strategy,
-               devices=None,
-               num_gpus_per_worker=None,
-               cross_device_ops=None):
+  def __init__(self, container_strategy, devices=None, cross_device_ops=None):
     super(MirroredExtended, self).__init__(container_strategy)
-    self._cross_device_ops = cross_device_ops
-    # Remember num GPUs which might be needed by `configure` method.
-    self._num_gpus = num_gpus_per_worker
-
-    self._initialize_local(self._num_gpus, devices)
-
-  def _initialize_local(self, num_gpus, devices):
-    """Initializes the object for local training."""
-    self._cluster_spec = None
-    # Convert `num_gpus` into `devices`, shouldn't specify both.
     if devices is None:
-      if num_gpus is None:
-        num_gpus = context.num_gpus()
-      if num_gpus == 0:
-        devices = ["/device:CPU:0"]
-      else:
-        devices = ["/device:GPU:%d" % d for d in range(num_gpus)]
-    elif num_gpus is not None:
-      raise ValueError("Must only specify one of `devices` and `num_gpus`.")
-    self._num_gpus = num_gpus
-    # TODO(yuefengz): consider setting the default device.
+      devices = all_local_devices()
+    if not devices:
+      raise ValueError("Got an empty `devices` list. Please make sure the "
+                       "`devices` you pass in is not empty.")
+    self._cross_device_ops = cross_device_ops
+    self._initialize_strategy(devices)
+
+  def _initialize_strategy(self, devices):
+    # The _initialize_strategy method is intended to be used by distribute
+    # coordinator as well.
+    if _is_device_list_local(devices):
+      self._initialize_local(devices)
+    else:
+      self._initialize_multi_worker(devices)
+
+  def _initialize_local(self, devices):
+    """Initializes the object for local training."""
+    self._local_mode = True
+    assert devices, "Must specify at least one device."
+    assert len(set(devices)) == len(devices), (
+        "No duplicates allowed in `devices` argument.")
+    # TODO(josh11b): Require at least 2 devices?
+    self._devices = tuple(device_util.resolve(d) for d in devices)
+    self._canonical_device_set = set(self._devices)
+    self._device_index = values.PerReplica(
+        {d: i for i, d in enumerate(devices)})
+
+    self._inferred_cross_device_ops = cross_device_ops_lib.choose_the_best(
+        devices)
+
+  def _initialize_multi_worker(self, devices):
+    """Initializes the object for multi-worker training."""
+    self._local_mode = False
 
     assert devices, "Must specify at least one device."
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument.")
     # TODO(josh11b): Require at least 2 devices?
-    self._devices = [device_util.resolve(d) for d in devices]
+    self._devices = tuple(device_util.resolve(d) for d in devices)
     self._canonical_device_set = set(self._devices)
     self._device_index = values.PerReplica(
         {d: i for i, d in enumerate(devices)})
 
-  def _initialize_multi_worker(self, num_gpus, cluster_spec):
-    """Initializes the object for multi-worker training."""
-    cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
-    self._cluster_spec = cluster_spec
-
+    device_dict = _group_device_list(devices)
     self._workers = []
+    self._worker_devices = []
     for job in ["chief", "worker"]:
-      for task in range(len(cluster_spec.as_dict().get(job, []))):
-        self._workers.append("/job:%s/task:%d" % (job, task))
-
-    if num_gpus is None:
-      raise ValueError("`num_gpus` is required if `cluster_spec` is given.")
-    if num_gpus > 0:
-      self._worker_devices = [
-          (worker, [
-              device_util.canonicalize(worker + "/device:GPU:%d" % gpu)
-              for gpu in range(num_gpus)
-          ]) for worker in self._workers
-      ]
-    else:
-      self._worker_devices = [
-          (worker, [device_util.canonicalize(worker, "/device:CPU:0")])
-          for worker in self._workers
-      ]
-
-    devices = nest.flatten([l for _, l in self._worker_devices])
+      for task in range(len(device_dict.get(job, []))):
+        worker = "/job:%s/task:%d" % (job, task)
+        self._workers.append(worker)
+        self._worker_devices.append((worker, device_dict[job][task]))
 
     # Setting `_default_device` will add a device scope in the
     # distribution.scope. We set the default device to the first worker. When
@@ -396,14 +483,8 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     # "/job:worker/task:0/device:CPU:0". Note this is not used in replica mode.
     self._default_device = self._workers[0]
 
-    assert devices, "Must specify at least one device."
-    assert len(set(devices)) == len(devices), (
-        "No duplicates allowed in `devices` argument.")
-    # TODO(josh11b): Require at least 2 devices?
-    self._devices = [device_util.resolve(d) for d in devices]
-    self._canonical_device_set = set(self._devices)
-    self._device_index = values.PerReplica(
-        {d: i for i, d in enumerate(devices)})
+    self._inferred_cross_device_ops = cross_device_ops_lib.MultiWorkerAllReduce(
+        self._workers, _infer_num_gpus_per_worker(self._devices))
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
@@ -413,7 +494,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       index = {}
       for i, d in enumerate(devices):
-        with ops.device(d):
+        with ops.init_scope(), ops.device(d):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = index[devices[0]].name.split(":")[0]
@@ -444,21 +525,22 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
                                      **kwargs)
 
   def _distribute_dataset(self, dataset_fn):
-    if self._cluster_spec:
+    if self._local_mode:
+      return values.PerReplicaDataset(
+          self._call_dataset_fn(dataset_fn), self._devices)
+    else:
       return values.MultiWorkerDataset(
           functools.partial(self._call_dataset_fn, dataset_fn),
           self._worker_devices,
           auto_shard=False)
-    else:
-      return values.PerReplicaDataset(
-          self._call_dataset_fn(dataset_fn), self._devices)
 
   def _make_dataset_iterator(self, dataset):
-    if self._cluster_spec:
-      worker_device_pairs = self._worker_devices
-    else:
+    if self._local_mode:
       worker = device_util.canonicalize("/device:CPU:0")
       worker_device_pairs = [(worker, self._devices)]
+    else:
+      worker_device_pairs = self._worker_devices
+
     return values.DatasetIterator(dataset, worker_device_pairs,
                                   self._num_replicas_in_sync)
 
@@ -467,13 +549,14 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
     input_contexts = []
-    if self._cluster_spec:
-      num_workers = len(self._worker_devices)
-      worker_device_pairs = self._worker_devices
-    else:
+    if self._local_mode:
       num_workers = 1
       worker = device_util.canonicalize("/device:CPU:0")
       worker_device_pairs = [(worker, self._devices)]
+    else:
+      num_workers = len(self._worker_devices)
+      worker_device_pairs = self._worker_devices
+
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(
           num_input_pipelines=num_workers,
@@ -568,23 +651,12 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       session_config.CopyFrom(self._update_config_proto(session_config))
 
     if cluster_spec:
-      self._initialize_multi_worker(self._num_gpus, cluster_spec)
-
-    if self._cross_device_ops is None:
-      if self._cluster_spec:
-        # It currently cannot detect the toplogy of remote workers. So we
-        # hard-code the multi-worker all-reduce algorithm for now.
-        if len(self._workers) == 1:
-          # The default is "nccl".
-          self._cross_device_ops = (
-              cross_device_ops_lib.AllReduceCrossDeviceOps())
-        else:
-          # The default is hierarchical reduce and broadcast.
-          self._cross_device_ops = cross_device_ops_lib.MultiWorkerAllReduce(
-              self._workers, self._num_gpus)
-      else:
-        self._cross_device_ops = cross_device_ops_lib.choose_the_best(
-            self._devices, session_config=session_config)
+      # TODO(yuefengz): remove the following code once cluster_resolver is
+      # added.
+      num_gpus_per_worker = _infer_num_gpus_per_worker(self._devices)
+      multi_worker_devices = _cluster_spec_to_device_list(
+          cluster_spec, num_gpus_per_worker)
+      self._initialize_multi_worker(multi_worker_devices)
 
   def _update_config_proto(self, config_proto):
     updated_config = copy.deepcopy(config_proto)
@@ -592,20 +664,20 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return updated_config
 
   def _get_cross_device_ops(self):
-    if self._cross_device_ops is None:
-      self._cross_device_ops = (
-          cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps())
-    return self._cross_device_ops
+    return self._cross_device_ops or self._inferred_cross_device_ops
 
   def _reduce_to(self, reduce_op, value, destinations):
+    if (isinstance(value, values.Mirrored) and
+        reduce_op == reduce_util.ReduceOp.MEAN):
+      return value
     assert not isinstance(value, values.Mirrored)
     if not isinstance(value, values.DistributedValues):
       # This function handles reducing values that are not PerReplica or
       # Mirrored values. For example, the same value could be present on all
       # replicas in which case `value` would be a single value or value could
       # be 0.
-      return _reduce_non_distributed_value(self, reduce_op, value,
-                                           destinations)
+      return cross_device_ops_lib.reduce_non_distributed_value(
+          self, reduce_op, value, destinations)
     return self._get_cross_device_ops().reduce(
         reduce_op, value, destinations=destinations)
 
@@ -627,7 +699,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return values.update_regroup(self, updates, group)
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
-    assert isinstance(colocate_with, list)
+    assert isinstance(colocate_with, tuple)
     # TODO(josh11b): In eager mode, use one thread per device.
     updates = {}
     for d in colocate_with:
@@ -648,9 +720,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     if isinstance(val, values.DistributedValues):
       # Return in a deterministic order.
       if set(val.devices) == self._canonical_device_set:
-        return [val.get(device=d) for d in self._devices]
-      return [val.get(device=d) for d in sorted(val.devices)]
-    return [val]
+        return tuple(val.get(device=d) for d in self._devices)
+      return tuple(val.get(device=d) for d in sorted(val.devices))
+    return (val,)
 
   def value_container(self, val):
     return values.value_container(val)
@@ -661,12 +733,11 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   @property
   def worker_devices(self):
-    # Make a copy to prevent users from accidentally mutating our copy.
-    return list(self._devices)
+    return self._devices
 
   @property
   def parameter_devices(self):
-    return list(self._devices)
+    return self._devices
 
   @property
   def experimental_between_graph(self):
@@ -686,7 +757,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   def non_slot_devices(self, var_list):
     del var_list
-    return list(self._devices)
+    return tuple(self._devices)
 
   def _get_devices_from(self, colocate_with=None):
     if colocate_with is None:
@@ -735,14 +806,19 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       self.has_paused = threading.Event()
       # These fields have to do with inheriting various contexts from the
       # parent thread:
+      ctx = context.context()
+      self.in_eager = ctx.executing_eagerly()
       # pylint: disable=protected-access
-      self.context_mode = context.context()._eager_context.mode
-      if not context.context()._context_handle:
-        context.context()._initialize_handle_and_devices()
+      if not ctx._context_handle:
+        ctx._initialize_handle_and_devices()
       self.context_device_policy = (
           pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
-              context.context()._context_handle))
+              ctx._context_handle))
       self.graph = ops.get_default_graph()
+      with ops.init_scope():
+        self._init_in_eager = context.executing_eagerly()
+        self._init_graph = ops.get_default_graph()
+
       self._variable_creator_stack = self.graph._variable_creator_stack[:]
       self._captured_var_scope = variable_scope.get_variable_scope()
       # Adding a "/" at end lets us re-enter this scope later.
@@ -756,16 +832,16 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
     def run(self):
       # pylint: disable=protected-access
-      self.graph._variable_creator_stack = self._variable_creator_stack
       self.should_run.wait()
       self.should_run.clear()
       try:
         if self.coord.should_stop():
           return
         with self.coord.stop_on_exception(), \
-            context.context()._mode(self.context_mode), \
+            _enter_graph(self._init_graph, self._init_in_eager), \
+            _enter_graph(self.graph, self.in_eager,
+                         self._variable_creator_stack), \
             context.context().device_policy(self.context_device_policy), \
-            _enter_graph(self.graph), \
             MirroredReplicaContext(self.distribution, constant_op.constant(
                 self.replica_id, dtypes.int32)), \
             ops.device(self.device), \
@@ -799,6 +875,8 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     # Adding a "/" at end lets us re-enter this scope later.
     if t.captured_name_scope:
       t.captured_name_scope += "/"
+
+    t.captured_control_deps = t.graph._current_control_dependencies()  # pylint: disable=protected-access
     t.has_paused.set()
     t.should_run.wait()
     t.should_run.clear()

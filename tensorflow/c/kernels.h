@@ -85,6 +85,32 @@ TF_CAPI_EXPORT extern void TF_RegisterKernelBuilder(const char* kernel_name,
 // builder is not registered with TensorFlow via TF_RegisterKernelBuilder.
 TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
 
+// --------------------------------------------------------------------------
+// OpKernelContext routines
+
+// TF_NumInputs returns the number of inputs available in ctx.
+TF_CAPI_EXPORT extern int TF_NumInputs(TF_OpKernelContext* ctx);
+
+// TF_NumOutputs returns the number of outputs to be placed in *ctx by the
+// kernel.
+TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
+
+// Retrieves the ith input from ctx. If TF_GetCode(status) is TF_OK, *tensor is
+// populated and its ownership is passed to the caller. In any other case,
+// *tensor is not modified.
+//
+// If i < 0 or i >= TF_NumInputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
+                                       TF_Tensor** tensor, TF_Status* status);
+
+// Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
+// TF_OK, ctx is left unmodified.
+//
+// If i < 0 or i >= TF_NumOutputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
+                                        const TF_Tensor* tensor,
+                                        TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -23,6 +23,14 @@ tf_proto_library(
     protodeps = tf_additional_all_protos(),
 )
 
+tf_proto_library(
+    name = "logging_proto",
+    srcs = ["logging.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    protodeps = tf_additional_all_protos(),
+)
+
 cc_library(
     name = "stream_executor_impl",
     srcs = glob(
@@ -108,11 +116,8 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
     ] + if_cuda_is_configured([
         "//tensorflow/core:cuda",
-        "@local_config_cuda//cuda:cublas",
         "@local_config_cuda//cuda:cuda_driver",
         "@local_config_cuda//cuda:cudnn",
-        "@local_config_cuda//cuda:cufft",
-        "@local_config_cuda//cuda:curand",
     ]),
     alwayslink = 1,
 )

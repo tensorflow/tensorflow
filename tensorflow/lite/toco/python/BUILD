@@ -1,4 +1,8 @@
-package(default_visibility = ["//visibility:public"])
+package(default_visibility = [
+    "//tensorflow/contrib/lite:__subpackages__",
+    "//tensorflow/lite:__subpackages__",
+    "//tensorflow/tools/pip_package:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -9,7 +13,10 @@ load("//tensorflow:tensorflow.bzl", "py_binary")
 config_setting(
     name = "tflite_convert_with_select_tf_ops",
     define_values = {"tflite_convert_with_select_tf_ops": "true"},
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/contrib/lite:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
+    ],
 )
 
 cc_library(
@@ -37,6 +44,12 @@ cc_library(
 tf_py_wrap_cc(
     name = "tensorflow_wrap_toco",
     srcs = ["toco.i"],
+    visibility = [
+        "//learning/expander/pod/deep_pod/utils:__subpackages__",
+        "//research/handwriting/converters/tflite:__subpackages__",
+        "//tensorflow/contrib/lite:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
+    ],
     deps = [
         ":toco_python_api",
         "//tensorflow/lite/toco:model_flags_proto_cc",

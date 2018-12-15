@@ -100,6 +100,8 @@ message PaddingConfig {
 
 // A format specifies the method used by a layout to store an array in memory.
 enum Format {
+  // TODO(b/120869032): Rename this to FORMAT_NONE or something else which
+  // better corresponds to its meaning.
   INVALID_FORMAT = 0;
   // The default layout, with exactly one storage location per element.
   DENSE = 1;
@@ -109,8 +111,9 @@ enum Format {
 }
 
 // Describes a tile used in tiling-based layout. Refer to
-// g3doc/layout_with_tiling.md for details about tiling-based layout.
-message Tile {
+// g3doc/third_party/tensorflow/compiler/xla/g3doc/layout_with_tiling.md for
+// details about tiling-based layout.
+message TileProto {
   // Number of elements in each dimension of the tile. It's ordered from the
   // most major dimension of the tile to the most minor dimension of the tile.
   // The dimensions correspond to a suffix of the dimensions of the shape being
@@ -128,7 +131,7 @@ message Tile {
 // See the XLA documentation for more information on shapes and layouts.
 //
 // LINT.IfChange
-message Layout {
+message LayoutProto {
   // The method used to store the data in memory. The format determines which of
   // the other fields are used by the layout.
   Format format = 4;
@@ -153,7 +156,7 @@ message Layout {
   //
   // TODO(b/119839262): implement tiling in each backend or add Unimplemented
   // error.
-  repeated Tile tiles = 6;
+  repeated TileProto tiles = 6;
 
   // Bit size of each element. If the size is bigger than what the element
   // type requires, the value is stored in the least significant
@@ -196,7 +199,7 @@ message ShapeProto {
   repeated ShapeProto tuple_shapes = 4;
 
   // The layout used to back this shape.
-  Layout layout = 5;
+  LayoutProto layout = 5;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
   // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for

@@ -100,6 +100,14 @@ message DebugOptions {
   // names as specified by the HloPassInterface::name() method.
   repeated string xla_disable_hlo_passes = 30;
 
+  // Disables all HLO passes.  Notes that some passes are necessary for
+  // correctness and the invariants that must be satisfied by "fully optimized"
+  // HLO are different for different devices and may change over time.  The only
+  // "guarantee", such as it is, is that if you compile XLA and dump the
+  // optimized HLO for some graph, you should be able to run it again on the
+  // same device with the same build of XLA.
+  bool xla_disable_all_hlo_passes = 104;
+
   // Numerical optimization level for the XLA compiler backend; the specific
   // interpretation of this value is left to the backends.
   int32 xla_backend_optimization_level = 31;
@@ -193,7 +201,11 @@ message DebugOptions {
   //  - Assuming that operations never produce or consume NaN or +/- Inf.
   //  - Assuming that +0 and -0 are indistinguishable.
   bool xla_cpu_enable_fast_math = 99;
-  bool xla_gpu_enable_fast_math = 100;
+
+  // When true we lower the Minimum and Maximum hlos in the GPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
+  // this is true we don't propagate NaNs through Min and Max.
+  bool xla_gpu_enable_fast_min_max = 100;
 
   // Crashes the program when any kind of verification fails, instead of just
   // logging the failures. One example is cross checking of convolution results
@@ -208,6 +220,17 @@ message DebugOptions {
   // switching but we let the user override this behavior to help run tests on
   // the host that run models in parallel across multiple devices.
   int32 xla_force_host_platform_device_count = 102;
+
+  // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
+  bool xla_gpu_disable_ptxas_optimizations = 103;
+
+  // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
+  bool xla_hlo_dump_as_html = 105;
+
+  // Enable fast math with eigen in the HLO evaluator.
+  bool xla_hlo_evaluator_use_fast_path = 106;
+
+  // Next id: 107
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -382,7 +405,7 @@ message WaitForExecutionResponse {
 
 message ComputeConstantGraphRequest {
   HloModuleProto computation = 1;
-  Layout output_layout = 2;
+  LayoutProto output_layout = 2;
 }
 
 message ComputeConstantResponse {

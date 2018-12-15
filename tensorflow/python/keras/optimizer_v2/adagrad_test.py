@@ -167,8 +167,11 @@ class AdagradOptimizerTest(test.TestCase):
         var0 = resource_variable_ops.ResourceVariable(
             [[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-        loss = pred * pred
+
+        def loss():
+          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+          return pred * pred
+
         sgd_op = adagrad.Adagrad(1.0).minimize(loss, var_list=[var0])
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
@@ -297,12 +300,12 @@ class AdagradOptimizerTest(test.TestCase):
       with self.cached_session():
         var_repeated = resource_variable_ops.ResourceVariable(
             [1.0, 2.0], dtype=dtype)
-        loss_repeated = math_ops.reduce_sum(
-            embedding_ops.embedding_lookup(var_repeated, [0, 0]))
+        loss_repeated = lambda: math_ops.reduce_sum(  # pylint: disable=g-long-lambda
+            embedding_ops.embedding_lookup(var_repeated, [0, 0]))  # pylint: disable=cell-var-from-loop
         var_aggregated = resource_variable_ops.ResourceVariable(
             [1.0, 2.0], dtype=dtype)
-        loss_aggregated = 2 * math_ops.reduce_sum(
-            embedding_ops.embedding_lookup(var_aggregated, [0]))
+        loss_aggregated = lambda: 2 * math_ops.reduce_sum(  # pylint: disable=g-long-lambda
+            embedding_ops.embedding_lookup(var_aggregated, [0]))  # pylint: disable=cell-var-from-loop
         update_op_repeated = adagrad.Adagrad(2.0).minimize(
             loss_repeated, var_list=[var_repeated])
         update_op_aggregated = adagrad.Adagrad(2.0).minimize(
@@ -372,9 +375,9 @@ class AdagradOptimizerTest(test.TestCase):
         ada_update2 = ada_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         slot0 = ada_opt.get_slot(var0, "accumulator")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         slot1 = ada_opt.get_slot(var1, "accumulator")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values.
@@ -394,6 +397,14 @@ class AdagradOptimizerTest(test.TestCase):
                                                     grads1_np, learning_rate)
         self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
         self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
+  def testConstructAdagradWithLR(self):
+    opt = adagrad.Adagrad(lr=1.0)
+    self.assertEqual(opt.lr, 1.0)
+    opt_2 = adagrad.Adagrad(learning_rate=0.1, lr=1.0)
+    self.assertEqual(opt_2.lr, 1.0)
+    opt_3 = adagrad.Adagrad(learning_rate=0.1)
+    self.assertEqual(opt_3.lr, 0.1)
 
 
 if __name__ == "__main__":

@@ -60,7 +60,7 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     if isinstance(colocate_with, six.string_types):
       with ops.device(colocate_with):
         return next_creator(*args, **kwargs)
-    if (isinstance(colocate_with, list) and len(colocate_with) == 1 and
+    if (isinstance(colocate_with, (list, tuple)) and len(colocate_with) == 1 and
         isinstance(colocate_with[0], six.string_types)):
       with ops.device(colocate_with[0]):
         return next_creator(*args, **kwargs)
@@ -166,7 +166,7 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     return array_ops.identity(replica_local_var)
 
   def _unwrap(self, value):
-    return [value]
+    return (value,)
 
   def value_container(self, value):
     return value
@@ -177,15 +177,15 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 
   @property
   def worker_devices(self):
-    return [self._device]
+    return (self._device,)
 
   @property
   def parameter_devices(self):
-    return [self._device]
+    return (self._device,)
 
   def non_slot_devices(self, var_list):
     del var_list
-    return [self._device]
+    return (self._device,)
 
   @property
   def experimental_should_init(self):
@@ -216,4 +216,4 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
 
   @property
   def devices(self):
-    return [self._distribution_strategy.extended.worker_devices[0]]
+    return self._distribution_strategy.extended.worker_devices

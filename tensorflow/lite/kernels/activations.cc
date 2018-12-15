@@ -345,9 +345,24 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       for (; in < in_end; in++, out++) *out = std::min(std::max(0.f, *in), 6.f);
       return kTfLiteOk;
     } break;
+    case kTfLiteUInt8: {
+      ActivationParams params;
+      params.activation_type = FusedActivationFunctionType::kRelu6;
+      params.quantized_activation_min = std::max(
+          0, output->params.zero_point +
+                 static_cast<int32>(roundf(0.f / output->params.scale)));
+      params.quantized_activation_max = std::min(
+          255, output->params.zero_point +
+                   static_cast<int32>(roundf(6.f / output->params.scale)));
+      optimized_ops::ReluX(params, GetTensorShape(input),
+                           GetTensorData<uint8>(input), GetTensorShape(output),
+                           GetTensorData<uint8>(output));
+      return kTfLiteOk;
+    } break;
     default:
-      context->ReportError(context, "Only float32 supported currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      context->ReportError(
+          context, "Only float32 and uint8 supported currently, got %s.",
+          TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -358,11 +373,8 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
     case kTfLiteFloat32: {
-      size_t elements = input->bytes / sizeof(float);
-      float* in = input->data.f;
-      float* in_end = in + elements;
-      float* out = output->data.f;
-      for (; in < in_end; in++, out++) *out = std::tanh(*in);
+      optimized_ops::Tanh(GetTensorShape(input), GetTensorData<float>(input),
+                          GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteInt16: {

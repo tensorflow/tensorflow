@@ -207,53 +207,6 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(2, inputs.count(ds2))
     self.assertEqual(1, inputs.count(ds3))
 
-  def testOptionsDefault(self):
-    ds = dataset_ops.Dataset.range(0)
-    self.assertEqual(dataset_ops.Options(), ds.options())
-
-  def testOptionsOnce(self):
-    options = dataset_ops.Options()
-    ds = dataset_ops.Dataset.range(0).with_options(options).cache()
-    self.assertEqual(options, ds.options())
-
-  def testOptionsTwiceSame(self):
-    options = dataset_ops.Options()
-    options.experimental_autotune = True
-    ds = dataset_ops.Dataset.range(0).with_options(options).with_options(
-        options)
-    self.assertEqual(options, ds.options())
-
-  def testOptionsTwiceDifferent(self):
-    options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
-    options2 = dataset_ops.Options()
-    options2.experimental_deterministic = False
-    ds = dataset_ops.Dataset.range(0).with_options(options1).with_options(
-        options2)
-    self.assertTrue(ds.options().experimental_autotune)
-    # Explicitly check that flag is False since assertFalse allows None
-    self.assertIs(ds.options().experimental_deterministic, False)
-
-  def testOptionsTwiceDifferentError(self):
-    options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
-    options2 = dataset_ops.Options()
-    options2.experimental_autotune = False
-    with self.assertRaisesRegexp(ValueError,
-                                 "Cannot merge incompatible values"):
-      dataset_ops.Dataset.range(0).with_options(options1).with_options(options2)
-
-  def testOptionsMergeOptionsFromMultipleInputs(self):
-    options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
-    options2 = dataset_ops.Options()
-    options2.experimental_deterministic = True
-    ds = dataset_ops.Dataset.zip(
-        (dataset_ops.Dataset.range(0).with_options(options1),
-         dataset_ops.Dataset.range(0).with_options(options2)))
-    self.assertTrue(ds.options().experimental_autotune)
-    self.assertTrue(ds.options().experimental_deterministic)
-
   # TODO(b/119882922): use-after-free bug in eager mode.
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
@@ -312,6 +265,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(
           round_trip_dataset, [self.evaluate(tf_value_fn())],
           requires_initialization=True)
+
 
 if __name__ == "__main__":
   test.main()

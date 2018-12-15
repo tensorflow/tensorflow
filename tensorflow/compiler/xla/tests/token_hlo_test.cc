@@ -214,8 +214,8 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
 
   %forty_two = f32[] constant(42.0)
   %add = f32[] add(f32[] %p0, f32[] %forty_two)
-  %token = token[] after-all(f32[] %add)
-  %p1_after_token = f32[] add-dependency(f32[] %p1, token[] %token)
+  %token0 = token[] after-all(f32[] %add)
+  %p1_after_token = f32[] add-dependency(f32[] %p1, token[] %token0)
   %neg = f32[] negate(f32[] %p1_after_token)
   ROOT %product = f32[] multiply(f32[] %add, f32[] %neg)
 }
@@ -236,8 +236,8 @@ HloModule AddDependencyOfConstant, is_scheduled=true
 ENTRY %AddDependency (p0: f32[]) -> f32[] {
   %p0 = f32[] parameter(0)
   %forty_two = f32[] constant(42.0)
-  %token = token[] after-all(f32[] %p0)
-  %forty_two_after_token = f32[] add-dependency(f32[] %forty_two, token[] %token)
+  %token0 = token[] after-all(f32[] %p0)
+  %forty_two_after_token = f32[] add-dependency(f32[] %forty_two, token[] %token0)
   ROOT %product = f32[] multiply(f32[] %p0, f32[] %forty_two_after_token)
 }
 )";
@@ -255,8 +255,8 @@ HloModule AddDependencyAsRoot, is_scheduled=true
 ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   %p = f32[3] parameter(0)
   %neg = f32[3] negate(f32[3] %p)
-  %token = token[] after-all()
-  ROOT %add_dep = f32[3] add-dependency(f32[3] %neg, token[] %token)
+  %token0 = token[] after-all()
+  ROOT %add_dep = f32[3] add-dependency(f32[3] %neg, token[] %token0)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
@@ -274,9 +274,9 @@ ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {
   %p0 = f32[3] parameter(0)
   %p1 = f32[3] parameter(1)
   %forty_two = f32[] constant(42.0)
-  %token = token[] after-all()
-  %tuple = (f32[3], token[], f32[3], f32[]) tuple(f32[3] %p0, token[] %token, f32[3] %p1, f32[] %forty_two)
-  %add_dep = (f32[3], token[], f32[3], f32[]) add-dependency((f32[3], token[], f32[3], f32[]) %tuple, token[] %token)
+  %token0 = token[] after-all()
+  %tuple = (f32[3], token[], f32[3], f32[]) tuple(f32[3] %p0, token[] %token0, f32[3] %p1, f32[] %forty_two)
+  %add_dep = (f32[3], token[], f32[3], f32[]) add-dependency((f32[3], token[], f32[3], f32[]) %tuple, token[] %token0)
   %elem0 = f32[3] get-tuple-element((f32[3], token[], f32[3], f32[]) %add_dep), index=0
   %elem2 = f32[3] get-tuple-element((f32[3], token[], f32[3], f32[]) %add_dep), index=2
   ROOT %diff = f32[3] subtract(f32[3] %elem0, f32[3] %elem2)

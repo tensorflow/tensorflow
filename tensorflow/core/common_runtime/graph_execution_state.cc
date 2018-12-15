@@ -546,10 +546,6 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
-  for (const Node* n : new_graph->nodes()) {
-    VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
-    node_name_to_cost_id_map_[n->name()] = n->cost_id();
-  }
   if (session_options_ &&
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
@@ -578,6 +574,11 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
 
+  for (const Node* n : new_graph->nodes()) {
+    VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
+    node_name_to_cost_id_map_[n->name()] = n->cost_id();
+  }
+
   SaveStatefulNodes(new_graph.get());
   graph_ = new_graph.release();
   return Status::OK();
@@ -595,6 +596,13 @@ Status GraphExecutionState::OptimizeGraph(
     grappler::GrapplerItem item;
     item.id = "tf_graph";
     graph_->ToGraphDef(&item.graph);
+
+    // It's ok to skip invalid device annotations in Grappler.
+    Status inferred_devices = item.InferDevicesFromGraph();
+    if (!inferred_devices.ok()) {
+      VLOG(3) << inferred_devices.error_message();
+    }
+
     // TODO(b/114748242): Add a unit test to test this bug fix.
     if (flib_def_) {
       *item.graph.mutable_library() = flib_def_->ToProto();

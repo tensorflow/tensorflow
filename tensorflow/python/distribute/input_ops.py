@@ -84,7 +84,7 @@ def auto_shard_dataset(dataset, num_shards, index):
       elif hasattr(dataset, "_map_func"):
         # TODO(priyag): Make this check more robust by enforcing some common
         # property on all map/flatmap/interleave datasets.
-        map_func_def = dataset._map_func.definition
+        map_func_def = dataset._map_func.function.definition
         for node in map_func_def.node_def:
           if node.op in _READER_DATASET_OPS:
             found_reader_op = True

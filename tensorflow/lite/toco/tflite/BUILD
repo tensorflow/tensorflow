@@ -41,7 +41,6 @@ tf_cc_test(
     srcs = [
         "operator_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":operator",
         "//tensorflow/core:ops",
@@ -72,7 +71,6 @@ tf_cc_test(
     srcs = [
         "types_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":types",
         "//tensorflow/core:ops",
@@ -107,7 +105,6 @@ tf_cc_test(
     srcs = [
         "export_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":export",
         "//tensorflow/core:ops",
@@ -142,7 +139,6 @@ tf_cc_test(
     srcs = [
         "import_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":import",
         "//tensorflow/core:ops",

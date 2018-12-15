@@ -19,6 +19,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dynamic"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "inbound_nodes"
     mtype: "<type \'property\'>"
   }
@@ -168,11 +172,11 @@ tf_class {
   }
   member_method {
     name: "evaluate"
-    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'1\', \'None\', \'None\', \'10\', \'1\', \'False\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\', \'callbacks\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'1\', \'None\', \'None\', \'None\', \'10\', \'1\', \'False\'], "
   }
   member_method {
     name: "evaluate_generator"
-    argspec: "args=[\'self\', \'generator\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'verbose\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'1\', \'False\', \'0\'], "
+    argspec: "args=[\'self\', \'generator\', \'steps\', \'callbacks\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'verbose\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'10\', \'1\', \'False\', \'0\'], "
   }
   member_method {
     name: "fit"
@@ -236,15 +240,19 @@ tf_class {
   }
   member_method {
     name: "predict"
-    argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'10\', \'1\', \'False\'], "
+    argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\', \'steps\', \'callbacks\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \'10\', \'1\', \'False\'], "
   }
   member_method {
     name: "predict_generator"
-    argspec: "args=[\'self\', \'generator\', \'steps\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'verbose\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'1\', \'False\', \'0\'], "
+    argspec: "args=[\'self\', \'generator\', \'steps\', \'callbacks\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'verbose\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'10\', \'1\', \'False\', \'0\'], "
   }
   member_method {
     name: "predict_on_batch"
     argspec: "args=[\'self\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_metrics"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "reset_states"
@@ -268,7 +276,7 @@ tf_class {
   }
   member_method {
     name: "test_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
     name: "to_json"
@@ -280,6 +288,6 @@ tf_class {
   }
   member_method {
     name: "train_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
   }
 }

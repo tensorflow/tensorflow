@@ -218,6 +218,7 @@ class ApiTest(test.TestCase):
                              constant_op.constant(-1))
       self.assertEqual(1, self.evaluate(x))
 
+  @test_util.run_v1_only('b/120545219')
   def test_converted_call_functools_partial(self):
 
     def test_fn(x, y, z):

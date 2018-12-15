@@ -83,8 +83,10 @@ cc_library(
         ":delegate_data",
         ":kernel",
         ":util",
+        "@com_google_absl//absl/strings:strings",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
     ] + select({
         "//tensorflow:android": [

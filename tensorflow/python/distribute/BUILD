@@ -104,6 +104,18 @@ cuda_py_test(
 )
 
 py_library(
+    name = "distribute",
+    srcs = [
+        "__init__.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":distribute_lib",
+        ":mirrored_strategy",
+    ],
+)
+
+py_library(
     name = "distribute_lib",
     srcs = [
         "distribute_lib.py",

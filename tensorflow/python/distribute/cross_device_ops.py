@@ -53,13 +53,51 @@ def validate_destinations(destinations):
   if not isinstance(
       destinations,
       (value_lib.DistributedValues, resource_variable_ops.ResourceVariable,
-       value_lib.AggregatingVariable, six.string_types, list)):
+       value_lib.AggregatingVariable, six.string_types, list, tuple,
+       value_lib.TPUMirroredVariable)):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
-                     " a tf.Variable object, a device string, a list of device "
-                     "strings")
+                     " a tf.Variable object, a device string, a list or tuple "
+                     "of device strings")
 
   if not check_destinations(destinations):
     raise ValueError("destinations can not be empty")
+
+
+def reduce_non_distributed_value(extended, reduce_op, value, destinations):
+  """Reduce a non-DistributedValue `value` to `destinations`."""
+  if isinstance(value, value_lib.DistributedValues):
+    raise ValueError("You are passing a `DistributedValue` to "
+                     "`reduce_non_distributed_value`, which is not allowed.")
+
+  # If the same value is present on all replicas then the PerReplica value will
+  # be a single value. We also handle the case when `value` is a single value
+  # and equal to 0.
+  if value == 0:
+    return 0
+  # If there is only a single value and the reduce op is MEAN,
+  # that value should be on all destinations.
+  if reduce_op == reduce_util.ReduceOp.MEAN:
+    return value
+
+  validate_destinations(destinations)
+  # We do not support a reduce op of SUM if the value is the same across
+  # all replicas. We call this as part of assign functions for MirroredVariables
+  # and summing up identical values across replicas is not clearly defined.
+  if (len(extended.worker_devices) != 1 or
+      not check_destinations(destinations)):
+    raise ValueError("A non-DistributedValues value %s cannot be reduced with "
+                     "the given reduce op %s." % (value, reduce_op))
+  # TODO(anjalisridhar): Moves these methods to a device utility file?
+  devices = get_devices_from(destinations)
+  if len(devices) == 1:
+    with ops.device(devices[0]):
+      return array_ops.identity(value)
+  else:
+    value_updates = {}
+    for d in devices:
+      with ops.device(d):
+        value_updates[d] = array_ops.identity(value)
+    return value_lib.Mirrored(value_updates)
 
 
 def _make_tensor_into_per_replica(input_tensor):

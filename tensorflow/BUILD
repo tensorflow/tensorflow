@@ -267,6 +267,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# By default, XLA GPU is compiled into tensorflow when building with
+# --config=cuda even when `with_xla_support` is false. The config setting
+# here allows us to override the behavior if needed.
+config_setting(
+    name = "no_xla_deps_in_cuda",
+    define_values = {"no_xla_deps_in_cuda": "true"},
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "with_gdr_support",
     define_values = {"with_gdr_support": "true"},
@@ -606,9 +615,11 @@ py_library(
     name = "tensorflow_py",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = select({
+        "api_version_2": [],
+        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+    }) + [
         ":tensorflow_py_no_contrib",
-        "//tensorflow/contrib:contrib_py",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )

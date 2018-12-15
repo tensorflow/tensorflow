@@ -43,7 +43,7 @@ class MovingAveragesTest(test.TestCase):
       decay = 0.25
       assign = moving_averages.assign_moving_average(
           var, val, decay, zero_debias=False)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose([10.0, 11.0], self.evaluate(var))
       assign.op.run()
       self.assertAllClose(
@@ -57,7 +57,7 @@ class MovingAveragesTest(test.TestCase):
       val = constant_op.constant([1.0, 2.0], dtypes.float32)
       decay = 0.25
       assign = moving_averages.assign_moving_average(var, val, decay)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose([0.0, 0.0], self.evaluate(var))
       assign.op.run()
       self.assertAllClose(
@@ -98,7 +98,7 @@ class MovingAveragesTest(test.TestCase):
       val = array_ops.placeholder(dtypes.float32, [])
 
       wma = moving_averages.weighted_moving_average(val, decay, weight)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Get the first weighted moving average.
       val_1 = 3.0
@@ -125,7 +125,7 @@ class MovingAveragesTest(test.TestCase):
       val = array_ops.placeholder(dtypes.bfloat16, [])
 
       wma = moving_averages.weighted_moving_average(val, decay, weight)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Get the first weighted moving average.
       val_1 = 3.0
@@ -164,7 +164,7 @@ class ExponentialMovingAverageTest(test.TestCase):
     thirties = _Repeat(30.0, dim)
     var0 = variables.Variable(tens, name="v0")
     var1 = variables.Variable(thirties, name="v1")
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
     # Note that tensor2 is not a Variable but just a plain Tensor resulting
     # from the sum operation.
     tensor2 = var0 + var1
@@ -178,7 +178,7 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertFalse(avg0 in variables.trainable_variables())
     self.assertFalse(avg1 in variables.trainable_variables())
     self.assertFalse(avg2 in variables.trainable_variables())
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
 
     self.assertEqual("v0/ExponentialMovingAverage:0", avg0.name)
     self.assertEqual("v1/ExponentialMovingAverage:0", avg1.name)
@@ -219,38 +219,38 @@ class ExponentialMovingAverageTest(test.TestCase):
                         (10.0 + 30.0) * (1 - dk)) / _Scale(dk, 2), dim)
     self.assertAllClose(expected, self.evaluate(avg2))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNoNumUpdates_Scalar(self):
     with self.cached_session():
       ema = moving_averages.ExponentialMovingAverage(0.25)
       self._CheckDecay(ema, actual_decay=0.25, dim=1)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNoNumUpdates_Scalar_Debias(self):
     with self.cached_session():
       ema = moving_averages.ExponentialMovingAverage(0.25, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.25, dim=1)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNoNumUpdates_Vector(self):
     with self.cached_session():
       ema = moving_averages.ExponentialMovingAverage(0.25)
       self._CheckDecay(ema, actual_decay=0.25, dim=5)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNoNumUpdates_Vector_Debias(self):
     with self.cached_session():
       ema = moving_averages.ExponentialMovingAverage(0.25, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.25, dim=5)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNumUpdates_Scalar(self):
     with self.cached_session():
       # With num_updates 1, the decay applied is 0.1818
       ema = moving_averages.ExponentialMovingAverage(0.25, num_updates=1)
       self._CheckDecay(ema, actual_decay=0.181818, dim=1)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNumUpdates_Scalar_Debias(self):
     with self.cached_session():
       # With num_updates 1, the decay applied is 0.1818
@@ -258,14 +258,14 @@ class ExponentialMovingAverageTest(test.TestCase):
           0.25, num_updates=1, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.181818, dim=1)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNumUpdates_Vector(self):
     with self.cached_session():
       # With num_updates 1, the decay applied is 0.1818
       ema = moving_averages.ExponentialMovingAverage(0.25, num_updates=1)
       self._CheckDecay(ema, actual_decay=0.181818, dim=5)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNumUpdates_Vector_Debias(self):
     with self.cached_session():
       # With num_updates 1, the decay applied is 0.1818
@@ -273,7 +273,7 @@ class ExponentialMovingAverageTest(test.TestCase):
           0.25, num_updates=1, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.181818, dim=5)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesWithControlDeps(self):
     with self.cached_session() as sess:
       v0 = variables.Variable(0, name="v0")
@@ -299,7 +299,7 @@ class ExponentialMovingAverageTest(test.TestCase):
       self.assertEqual([17.5], self.evaluate(v1_avg))
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testBasicEager(self):
     v0 = variables.Variable(1.0)
     v1 = variables.Variable(2.0)
@@ -355,11 +355,11 @@ class ExponentialMovingAverageTest(test.TestCase):
       self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
       self.assertEqual(ema.average(tensor2).op.name, ema.average_name(tensor2))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNames(self):
     self.averageVariablesNamesHelper(zero_debias=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNamesNoDebias(self):
     self.averageVariablesNamesHelper(zero_debias=False)
 
@@ -405,15 +405,15 @@ class ExponentialMovingAverageTest(test.TestCase):
         self.assertEqual(
             ema.average(tensor2).op.name, ema.average_name(tensor2))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNamesRespectScope(self):
     self.averageVariablesNamesRespectScopeHelper(zero_debias=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesNamesRespectScopeNoDebias(self):
     self.averageVariablesNamesRespectScopeHelper(zero_debias=False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSubsetAverageVariablesNames(self):
     with self.cached_session():
       v0 = variables.Variable(10.0, name="v0")
@@ -442,7 +442,7 @@ class ExponentialMovingAverageTest(test.TestCase):
       self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
       self.assertEqual(ema.average(tensor2).op.name, ema.average_name(tensor2))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAverageVariablesDeviceAssignment(self):
     with ops.device("/job:dev_v0"):
       v0 = variables.Variable(10.0, name="v0")

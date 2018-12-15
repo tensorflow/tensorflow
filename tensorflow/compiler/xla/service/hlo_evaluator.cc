@@ -33,12 +33,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -396,6 +398,16 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
+  const Literal& operand_literal = GetEvaluatedLiteralFor(bitcast->operand(0));
+  Literal result(bitcast->shape());
+  TF_RET_CHECK(operand_literal.size_bytes() == result.size_bytes());
+  memcpy(result.untyped_data(), operand_literal.untyped_data(),
+         operand_literal.size_bytes());
+  evaluated_[bitcast] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
@@ -618,8 +630,11 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
           evaluated_[compare],
           Compare<int64>(compare->shape(), opcode, lhs_literal, rhs_literal));
     } break;
-    case F16:
-      return Unimplemented("unhandled primitive type: F16.");
+    case F16: {
+      TF_ASSIGN_OR_RETURN(
+          evaluated_[compare],
+          Compare<half>(compare->shape(), opcode, lhs_literal, rhs_literal));
+    } break;
     case BF16: {
       TF_ASSIGN_OR_RETURN(evaluated_[compare],
                           Compare<bfloat16>(compare->shape(), opcode,
@@ -1437,5 +1452,47 @@ template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
 
 template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
     HloInstruction* instruction, absl::Span<const Literal* const> arg_literals);
+
+namespace {
+template <typename T>
+std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
+    const Array2D<T>& lhs, const Array2D<T>& rhs,
+    const std::function<void(
+        const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m, int64 n,
+        int64 k, int32 transpose_lhs, int32 transpose_rhs)>& impl_fn) {
+  CHECK_EQ(lhs.width(), rhs.height());
+  int m = lhs.height();
+  int n = rhs.width();
+  int k = lhs.width();
+  auto result = absl::make_unique<Array2D<T>>(m, n);
+  // Because Eigen is a header-oriented library, make sure that the Eigen code
+  // is the same as the code used by the CPU backend (otherwise the linker will
+  // randomly pick *some* definition).
+  impl_fn(
+      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
+      k,
+      /*transpose_lhs=*/0,
+      /*transpose_rhs=*/0);
+  return result;
+}
+}  // namespace
+
+std::unique_ptr<Array2D<Eigen::half>> HloEvaluator::MatmulArray2D(
+    const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
+  return MatmulArray2DImpl<Eigen::half>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
+}
+
+std::unique_ptr<Array2D<float>> HloEvaluator::MatmulArray2D(
+    const Array2D<float>& lhs, const Array2D<float>& rhs) {
+  return MatmulArray2DImpl<float>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
+}
+
+std::unique_ptr<Array2D<double>> HloEvaluator::MatmulArray2D(
+    const Array2D<double>& lhs, const Array2D<double>& rhs) {
+  return MatmulArray2DImpl<double>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
+}
 
 }  // namespace xla

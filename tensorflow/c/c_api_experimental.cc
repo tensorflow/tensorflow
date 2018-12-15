@@ -66,7 +66,8 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
 }
 
 TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
-                           unsigned char gpu_memory_allow_growth) {
+                           unsigned char gpu_memory_allow_growth,
+                           unsigned int num_cpu_devices) {
   tensorflow::ConfigProto config;
   auto* optimizer_options =
       config.mutable_graph_options()->mutable_optimizer_options();
@@ -86,6 +87,8 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
 
   auto* gpu_options = config.mutable_gpu_options();
   gpu_options->set_allow_growth(gpu_memory_allow_growth);
+
+  (*config.mutable_device_count())["CPU"] = num_cpu_devices;
 
   // TODO(b/113217601): This is needed for EagerContext::runner_ to use a
   // threadpool, so that we avoid the possibility of running the runner_ in the
@@ -6530,7 +6533,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/cycle_length"
+      name: "ExperimentalParallelInterleaveDataset/cycle_length"
       op: "Const"
       attr {
         key: "dtype"
@@ -6551,7 +6554,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/block_length"
+      name: "ExperimentalParallelInterleaveDataset/block_length"
       op: "Const"
       attr {
         key: "dtype"
@@ -6572,7 +6575,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/sloppy"
+      name: "ExperimentalParallelInterleaveDataset/sloppy"
       op: "Const"
       attr {
         key: "dtype"
@@ -6593,7 +6596,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/buffer_output_elements"
+      name: "ExperimentalParallelInterleaveDataset/buffer_output_elements"
       op: "Const"
       attr {
         key: "dtype"
@@ -6614,7 +6617,7 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset/prefetch_input_elements"
+      name: "ExperimentalParallelInterleaveDataset/prefetch_input_elements"
       op: "Const"
       attr {
         key: "dtype"
@@ -6635,14 +6638,14 @@ library {
       }
     }
     node_def {
-      name: "ParallelInterleaveDataset"
-      op: "ParallelInterleaveDataset"
+      name: "ExperimentalParallelInterleaveDataset"
+      op: "ExperimentalParallelInterleaveDataset"
       input: "RepeatDataset:handle:0"
-      input: "ParallelInterleaveDataset/cycle_length:output:0"
-      input: "ParallelInterleaveDataset/block_length:output:0"
-      input: "ParallelInterleaveDataset/sloppy:output:0"
-      input: "ParallelInterleaveDataset/buffer_output_elements:output:0"
-      input: "ParallelInterleaveDataset/prefetch_input_elements:output:0"
+      input: "ExperimentalParallelInterleaveDataset/cycle_length:output:0"
+      input: "ExperimentalParallelInterleaveDataset/block_length:output:0"
+      input: "ExperimentalParallelInterleaveDataset/sloppy:output:0"
+      input: "ExperimentalParallelInterleaveDataset/buffer_output_elements:output:0"
+      input: "ExperimentalParallelInterleaveDataset/prefetch_input_elements:output:0"
       attr {
         key: "Targuments"
         value {
@@ -6742,7 +6745,7 @@ library {
     node_def {
       name: "ShuffleDataset_2"
       op: "ShuffleDataset"
-      input: "ParallelInterleaveDataset:handle:0"
+      input: "ExperimentalParallelInterleaveDataset:handle:0"
       input: "ShuffleDataset_2/buffer_size_1:output:0"
       input: "ShuffleDataset_2/seed_2:output:0"
       input: "ShuffleDataset_2/seed2_2:output:0"
@@ -8535,8 +8538,9 @@ TFE_Context* TFE_CreateContextFromSession(TF_Session* session,
 
   // Reduce GPU memory allocation, and set appropriate config options for TFE
   // context.
-  auto* config =
-      TF_CreateConfig(/*xla*/ false, /* gpu_memory_allow_growth */ true);
+  auto* config = TF_CreateConfig(
+      /*xla*/ false, /* gpu_memory_allow_growth */ true, /* num_cpu_devices */
+      10);
   TFE_ContextOptionsSetConfig(opts, config->data, config->length, status);
   if (!status->status.ok()) {
     CHECK(!config);

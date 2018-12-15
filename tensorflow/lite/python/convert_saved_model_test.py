@@ -39,6 +39,7 @@ from tensorflow.python.saved_model import tag_constants
 
 class TensorFunctionsTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testGetTensorsValid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32)
@@ -49,6 +50,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
         sess.graph, ["Placeholder"])
     self.assertEqual("Placeholder:0", tensors[0].name)
 
+  @test_util.run_v1_only("b/120545219")
   def testGetTensorsInvalid(self):
     in_tensor = array_ops.placeholder(
         shape=[1, 16, 16, 3], dtype=dtypes.float32)
@@ -61,6 +63,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     self.assertEqual("Invalid tensors 'invalid-input' were found.",
                      str(error.exception))
 
+  @test_util.run_v1_only("b/120545219")
   def testSetTensorShapeValid(self):
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
@@ -68,6 +71,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     convert_saved_model.set_tensor_shapes([tensor], {"Placeholder": [5, 3, 5]})
     self.assertEqual([5, 3, 5], tensor.shape.as_list())
 
+  @test_util.run_v1_only("b/120545219")
   def testSetTensorShapeNoneValid(self):
     tensor = array_ops.placeholder(dtype=dtypes.float32)
     self.assertEqual(None, tensor.shape)
@@ -75,6 +79,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     convert_saved_model.set_tensor_shapes([tensor], {"Placeholder": [1, 3, 5]})
     self.assertEqual([1, 3, 5], tensor.shape.as_list())
 
+  @test_util.run_v1_only("b/120545219")
   def testSetTensorShapeArrayInvalid(self):
     # Tests set_tensor_shape where the tensor name passed in doesn't exist.
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
@@ -88,6 +93,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
         str(error.exception))
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
+  @test_util.run_deprecated_v1
   def testSetTensorShapeDimensionInvalid(self):
     # Tests set_tensor_shape where the shape passed in is incompatiable.
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
@@ -96,11 +102,11 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as error:
       convert_saved_model.set_tensor_shapes([tensor],
                                             {"Placeholder": [1, 5, 5]})
-    self.assertIn(
-        "The shape of tensor 'Placeholder' cannot be changed from "
-        "(?, 3, 5) to [1, 5, 5].", str(error.exception))
+    self.assertIn("The shape of tensor 'Placeholder' cannot be changed",
+                  str(error.exception))
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
+  @test_util.run_v1_only("b/120545219")
   def testSetTensorShapeEmpty(self):
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
     self.assertEqual([None, 3, 5], tensor.shape.as_list())

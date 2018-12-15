@@ -100,10 +100,21 @@ class DistributedValues(object):
   # DistributionStrategy implementations.
 
 
+# NOTE(josh11b,apassos): It would be great if we could inspect the values this was
+# initialized with and use that to generate the overloaded operators here.
+# Unfortunately, Python's rules for special methods don't allow this, see
+# https://docs.python.org/3/reference/datamodel.html#special-method-names
+# "if a class defines a method named __getitem__(), and x is an instance of
+# this class, then x[i] is roughly equivalent to type(x).__getitem__(x, i)."
+# In particular, these special methods don't go through __getattr__, and
+# it will only use those methods if they are defined in the class, not the
+# object.
 class DistributedDelegate(DistributedValues):
   """A map from device to values; acts as the same type as the values."""
 
   def __getattr__(self, name):
+    # TODO(priyag): This needs to be made robust against pitfalls from mix use
+    # __getattr__ and @property. See b/120402273.
     return getattr(self.get(), name)
 
   # pylint: disable=multiple-statements
@@ -558,6 +569,12 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     except AttributeError:
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
+
+  def __str__(self):
+    return "%s:%s" % (self.__class__.__name__, self._index)
+
+  def __repr__(self):
+    return "%s(%r)" % (self.__class__.__name__, self._index)
 
   @property
   def handle(self):
@@ -1160,7 +1177,7 @@ class PerReplicaDataset(object):
     # Eager mode prefetching would error out in constructor. Only remaining
     # case is non-prefetching in eager mode. We delegate to
     # PerReplicaDataIterator to handle that case.
-    dataset_iterator = self._dataset.make_one_shot_iterator()
+    dataset_iterator = dataset_ops.make_one_shot_iterator(self._dataset)
     return PerReplicaDataIterator(
         dataset_iterator, self._devices, prefetch_on_device=False)
 
@@ -1175,7 +1192,7 @@ class PerReplicaDataset(object):
       dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
           self._dataset, self._devices)
     else:
-      dataset_iterator = self._dataset.make_initializable_iterator()
+      dataset_iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return PerReplicaDataIterator(
         dataset_iterator,
         self._devices,
@@ -1293,14 +1310,15 @@ class MultiWorkerDataset(object):
     iterators = []
     for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators.append((worker, dataset.make_one_shot_iterator()))
+        iterators.append((worker, dataset_ops.make_one_shot_iterator(dataset)))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
   def make_initializable_iterator(self):
     iterators = []
     for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators.append((worker, dataset.make_initializable_iterator()))
+        iterators.append(
+            (worker, dataset_ops.make_initializable_iterator(dataset)))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
 
@@ -1512,7 +1530,7 @@ class _SingleWorkerDatasetIterator(object):
         # TODO(priyag): Measure the performance of this approach vs calling
         # get_next on the original dataset N times.
         dataset = self._dataset.batch(len(self._devices), drop_remainder=True)
-        iterator = dataset.make_one_shot_iterator()
+        iterator = dataset_ops.make_one_shot_iterator(dataset)
       else:
         iterator = multi_device_iterator_ops.MultiDeviceIterator(
             self._dataset, self._devices)

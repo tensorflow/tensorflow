@@ -93,27 +93,23 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_fn()
     dataset = dataset_transformation(dataset, aggregator)
-    iterator = dataset.make_initializable_iterator()
-    next_element = iterator.get_next()
-    summary_t = aggregator.get_summary()
+    next_element = self.getNext(dataset, requires_initialization=True)
 
-    with self.cached_session() as sess:
-      sess.run(iterator.initializer)
-      for i in range(num_output):
-        next_ = sess.run(next_element)
-        if check_elements:
-          self.assertAllEqual(np.array([i] * i, dtype=np.int64), next_)
-        summary_str = sess.run(summary_t)
-        if function_processing_time:
-          self._assertSummaryHasCountMoreOrEqualGeneralisedTag(
-              summary_str, "::execution_time", float(i + 1))
-        self._assertSummaryContains(summary_str,
-                                    dataset_name + "::num_parallel_calls")
-        self._assertSummaryContains(summary_str,
-                                    dataset_name + "::active_parallel_calls")
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(next_element)
+    for i in range(num_output):
+      next_ = self.evaluate(next_element())
+      if check_elements:
+        self.assertAllEqual(np.array([i] * i, dtype=np.int64), next_)
+      summary_str = self.evaluate(aggregator.get_summary())
       if function_processing_time:
-        summary_str = sess.run(summary_t)
         self._assertSummaryHasCountMoreOrEqualGeneralisedTag(
-            summary_str, "::execution_time", float(num_output))
+            summary_str, "::execution_time", float(i + 1))
+      self._assertSummaryContains(summary_str,
+                                  dataset_name + "::num_parallel_calls")
+      self._assertSummaryContains(summary_str,
+                                  dataset_name + "::active_parallel_calls")
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(next_element())
+    if function_processing_time:
+      summary_str = self.evaluate(aggregator.get_summary())
+      self._assertSummaryHasCountMoreOrEqualGeneralisedTag(
+          summary_str, "::execution_time", float(num_output))

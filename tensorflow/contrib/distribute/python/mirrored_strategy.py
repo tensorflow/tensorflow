@@ -28,8 +28,8 @@ from tensorflow.python.distribute import values
 
 # pylint: disable=protected-access,invalid-name
 _call_for_each_replica = mirrored_strategy._call_for_each_replica
-_reduce_non_distributed_value = mirrored_strategy._reduce_non_distributed_value
 _create_mirrored_variable = mirrored_strategy._create_mirrored_variable
+all_local_devices = mirrored_strategy.all_local_devices
 CoreMirroredStrategy = mirrored_strategy.MirroredStrategy
 CoreMirroredExtended = mirrored_strategy.MirroredExtended
 # pylint: enable=protected-access,invalid-name
@@ -115,8 +115,13 @@ class MirroredExtended(CoreMirroredExtended):
                num_gpus_per_worker=None,
                cross_device_ops=None,
                auto_shard_dataset=False):
-    super(MirroredExtended, self).__init__(
-        container_strategy, devices, num_gpus_per_worker, cross_device_ops)
+    if devices is None:
+      devices = mirrored_strategy.all_local_devices(num_gpus_per_worker)
+    elif num_gpus_per_worker is not None:
+      raise ValueError(
+          "Must only specify one of `devices` and `num_gpus_per_worker`.")
+    super(MirroredExtended, self).__init__(container_strategy, devices,
+                                           cross_device_ops)
     self._auto_shard_dataset = auto_shard_dataset
 
   def _make_dataset_iterator(self, dataset):
@@ -131,22 +136,22 @@ class MirroredExtended(CoreMirroredExtended):
     Returns:
       An `InputIterator` which returns inputs for each step of the computation.
     """
-    if self._cluster_spec:
-      worker_device_pairs = self._worker_devices
-    else:
+    if self._local_mode:
       worker = device_util.canonicalize("/device:CPU:0")
       worker_device_pairs = [(worker, self._devices)]
+    else:
+      worker_device_pairs = self._worker_devices
     return values.DatasetIterator(dataset, worker_device_pairs)
 
   def _distribute_dataset(self, dataset_fn):
-    if self._cluster_spec:
+    if self._local_mode:
+      return values.PerReplicaDataset(
+          self._call_dataset_fn(dataset_fn), self._devices)
+    else:
       return values.MultiWorkerDataset(
           functools.partial(self._call_dataset_fn, dataset_fn),
           self._worker_devices,
           auto_shard=self._auto_shard_dataset)
-    else:
-      return values.PerReplicaDataset(
-          self._call_dataset_fn(dataset_fn), self._devices)
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property

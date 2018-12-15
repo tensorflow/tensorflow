@@ -568,6 +568,10 @@ def _get_available_gpus():
   Returns:
       A list of available GPU devices.
   """
+  if ops.executing_eagerly_outside_functions():
+    # Returns names of devices directly.
+    return [name for name in context.list_devices() if 'GPU' in name]
+
   global _LOCAL_DEVICES
   if _LOCAL_DEVICES is None:
     _LOCAL_DEVICES = get_session().list_devices()
@@ -2555,6 +2559,7 @@ def arange(start, stop=None, step=1, dtype='int32'):
     result = cast(result, dtype)
   return result
 
+
 @tf_export('keras.backend.tile')
 def tile(x, n):
   """Creates a tensor by tiling `x` by `n`.
@@ -2926,17 +2931,12 @@ class GraphExecutionFunction(object):
   def __init__(self, inputs, outputs, updates=None, name=None,
                **session_kwargs):
     updates = updates or []
-    if not isinstance(inputs, (list, tuple)):
-      raise TypeError('`inputs` to a Keras backend function '
-                      'should be a list or tuple.')
-    if not isinstance(outputs, (list, tuple)):
-      raise TypeError('`outputs` of a Keras backend function '
-                      'should be a list or tuple.')
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
-    self.inputs = list(inputs)
-    self.outputs = list(outputs)
+    self.inputs = nest.flatten(inputs)
+    self._outputs_structure = outputs
+    self.outputs = nest.flatten(outputs)
     with ops.control_dependencies(self.outputs):
       updates_ops = []
       for update in updates:
@@ -3033,8 +3033,7 @@ class GraphExecutionFunction(object):
         self.fetch_callbacks[fetch](output)
 
   def __call__(self, inputs):
-    if not isinstance(inputs, (list, tuple)):
-      raise TypeError('`inputs` should be a list or tuple.')
+    inputs = nest.flatten(inputs)
 
     session = get_session()
     feed_arrays = []
@@ -3077,7 +3076,8 @@ class GraphExecutionFunction(object):
     fetched = self._callable_fn(*array_vals,
                                 run_metadata=self.run_metadata)
     self._call_fetch_callbacks(fetched[-len(self._fetches):])
-    return fetched[:len(self.outputs)]
+    return nest.pack_sequence_as(self._outputs_structure,
+                                 fetched[:len(self.outputs)])
 
 
 class EagerExecutionFunction(object):
@@ -3093,17 +3093,12 @@ class EagerExecutionFunction(object):
 
   def __init__(self, inputs, outputs, updates=None, name=None):
     updates = updates or []
-    if not isinstance(inputs, (list, tuple)):
-      raise TypeError('`inputs` to a Keras backend function '
-                      'should be a list or tuple.')
-    if not isinstance(outputs, (list, tuple)):
-      raise TypeError('`outputs` of a Keras backend function '
-                      'should be a list or tuple.')
     if not isinstance(updates, (list, tuple)):
       raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
-    self.inputs = list(inputs)
-    self.outputs = list(outputs)
+    self.inputs = nest.flatten(inputs)
+    self._outputs_structure = outputs
+    self.outputs = nest.flatten(outputs)
     self.name = name
 
     graph = get_graph()
@@ -3153,6 +3148,7 @@ class EagerExecutionFunction(object):
               x.op.inputs[0])
 
   def __call__(self, inputs):
+    inputs = nest.flatten(inputs)
     converted_inputs = []
     for tensor, value in zip(self.inputs, inputs):
       if value is None:
@@ -3161,14 +3157,16 @@ class EagerExecutionFunction(object):
         if value is None:
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
-      value = ops.convert_to_tensor(value, dtype=tensor.dtype)
+      if not isinstance(value, ops.Tensor):
+        value = ops.convert_to_tensor(value, dtype=tensor.dtype)
       if value.dtype != tensor.dtype:
         # Temporary workaround due to `convert_to_tensor` not casting floats.
         # See b/119637405
         value = math_ops.cast(value, tensor.dtype)
       converted_inputs.append(value)
     outputs = self._graph_fn(*converted_inputs)
-    return [x.numpy() for x in outputs]
+    return nest.pack_sequence_as(self._outputs_structure,
+                                 [x.numpy() for x in outputs])
 
 
 @tf_export('keras.backend.function')
@@ -3858,19 +3856,23 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  rank = len(output.shape)
-  axis = axis % rank
-  # Note: nn.softmax_cross_entropy_with_logits_v2
-  # expects logits, Keras expects probabilities.
   if not from_logits:
-    # scale preds so that the class probas of each sample sum to 1
-    output = output / math_ops.reduce_sum(output, axis, True)
-    # manual computation of crossentropy
-    epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
-    output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
-    return -math_ops.reduce_sum(target * math_ops.log(output), axis)
-  else:
-    return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
+    if context.executing_eagerly() or output.op.type != 'Softmax':
+      axis = axis % len(output.shape)
+      # scale preds so that the class probas of each sample sum to 1
+      output = output / math_ops.reduce_sum(output, axis, True)
+      # manual computation of crossentropy
+      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+      output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
+      return -math_ops.reduce_sum(target * math_ops.log(output), axis)
+    else:
+      # When softmax activation function is used for output operation, we
+      # use logits from the softmax function directly to compute loss in order
+      # to prevent collapsing zero when training.
+      # See b/117284466
+      assert len(output.op.inputs) == 1
+      output = output.op.inputs[0]
+  return nn.softmax_cross_entropy_with_logits_v2(labels=target, logits=output)
 
 
 @tf_export('keras.backend.sparse_categorical_crossentropy')
@@ -3894,18 +3896,24 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
+  if not from_logits:
+    if context.executing_eagerly() or output.op.type != 'Softmax':
+      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+      output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
+      output = math_ops.log(output)
+    else:
+      # When softmax activation function is used for output operation, we
+      # use logits from the softmax function directly to compute loss in order
+      # to prevent collapsing zero when training.
+      # See b/117284466
+      assert len(output.op.inputs) == 1
+      output = output.op.inputs[0]
+
   rank = len(output.shape)
   axis = axis % rank
   if axis != rank - 1:
     permutation = list(range(axis)) + list(range(axis + 1, rank)) + [axis]
     output = array_ops.transpose(output, perm=permutation)
-
-  # Note: nn.sparse_softmax_cross_entropy_with_logits
-  # expects logits, Keras expects probabilities.
-  if not from_logits:
-    epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
-    output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
-    output = math_ops.log(output)
 
   output_shape = output.shape
   targets = cast(flatten(target), 'int64')
@@ -3933,13 +3941,18 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
-  # Note: nn.sigmoid_cross_entropy_with_logits
-  # expects logits, Keras expects probabilities.
   if not from_logits:
-    # transform back to logits
-    epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
-    output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
-    output = math_ops.log(output / (1 - output))
+    if context.executing_eagerly() or output.op.type != 'Sigmoid':
+      # transform back to logits
+      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+      output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
+      output = math_ops.log(output / (1 - output))
+    else:
+      # When sigmoid activation function is used for output operation, we
+      # use logits from the sigmoid function directly to compute loss in order
+      # to prevent collapsing zero when training.
+      assert len(output.op.inputs) == 1
+      output = output.op.inputs[0]
   return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
 

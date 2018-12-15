@@ -599,7 +599,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveConstantFilter) {
   Array4D<float> constant_arr(4, 4, 2, 2);
   constant_arr.FillIota(0);
   string constant_str =
-      LiteralUtil::CreateR4FromArray4D(constant_arr).ToString();
+      LiteralUtil::CreateR4FromArray4D(constant_arr).ToStringWithoutShape();
 
   const string module_str = absl::StrFormat(R"(
     HloModule test

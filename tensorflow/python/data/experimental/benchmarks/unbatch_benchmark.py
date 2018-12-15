@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.unbatch()`."""
+"""Benchmarks for `tf.data.experimental.unbatch()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -42,7 +42,7 @@ class UnbatchBenchmark(test.Benchmark):
       dataset = dataset.batch(batch_size_placeholder)
       dataset = dataset.apply(batching.unbatch())
       dataset = dataset.skip(elems_per_trial)
-      iterator = dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(dataset)
       next_element = iterator.get_next()
 
       with session.Session() as sess:
@@ -78,7 +78,7 @@ class UnbatchBenchmark(test.Benchmark):
       dataset = dataset.batch(batch_size_placeholder)
       dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
       dataset = dataset.skip(elems_per_trial)
-      iterator = dataset.make_initializable_iterator()
+      iterator = dataset_ops.make_initializable_iterator(dataset)
       next_element = iterator.get_next()
 
       with session.Session() as sess:
