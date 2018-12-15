@@ -2566,8 +2566,8 @@ REGISTER_OP("QuantizedConv2DWithBias")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
-      ShapeHandle unused,
-          channel TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      ShapeHandle unused, channel;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
