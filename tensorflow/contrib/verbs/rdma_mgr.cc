@@ -270,7 +270,11 @@ class BFCRdmaAllocatorFactory : public AllocatorFactory {
     return new BasicCPUAllocator(numa_node, ProcessState::singleton()->GetCPUAllocatorVisitor(), ProcessState::singleton()->GetCPUFreeVisitor());
   }
 };
-REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocatorFactory);
+
+/*static*/ void RdmaMgr::RegMemAllocator() {
+    VLOG(1) << "Register Rdma capable Allocator when using grpc+verbs";
+    REGISTER_MEM_ALLOCATOR("BFCRdmaAllocator", 101, BFCRdmaAllocatorFactory);
+}
 
 void RdmaMgr::InitAllocators() {
   static std::once_flag flag;
