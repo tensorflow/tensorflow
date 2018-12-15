@@ -18,7 +18,7 @@ py_library(
         "python/training/adamax.py",
         "python/training/addsign.py",
         "python/training/agn_optimizer.py",
-		    "python/training/delay_compensated_gradient_descent.py",
+		"python/training/delay_compensated_gradient_descent.py",
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/elastic_average_optimizer.py",
         "python/training/external_optimizer.py",

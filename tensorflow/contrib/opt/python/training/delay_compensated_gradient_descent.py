@@ -43,11 +43,11 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
 
   def __init__(self, learning_rate, variance_parameter=2.0, num_workers=1,
                use_locking=False, name="DelayCompensatedGradientDescentOptimizer"):
-   
+
     """Construct a gradient descent optimizer with delay compensation.
-    
-    It is cricial to note the `num_workers` in constructor and `worker_index` in 
-    `minimize()` and `apply_gradients()`. 
+
+    It is cricial to note the `num_workers` in constructor and `worker_index` in
+    `minimize()` and `apply_gradients()`.
 
     Contrast to AdaMaxamOptimizer, the sparse implementation of this algorithm
     (used when the gradient is an IndexedSlices object, typically because of
@@ -71,7 +71,7 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
     if num_workers <= 0:
       raise ValueError("num_workers must be positive: %s" % num_workers)
     super(DelayCompensatedGradientDescentOptimizer, self).__init__(use_locking, name)
-    self._lr = learning_rate	
+    self._lr = learning_rate
     self._lambda = variance_parameter
     self._num_workers = num_workers
     self._learning_rate_tensor = None
@@ -82,8 +82,8 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
     for index in range(self._num_workers):
       for v in var_list:
         self._zeros_slot(v, "shadow_{0}".format(index), self._name)
-       
-       
+
+
   def _prepare(self):
     lr = self._call_if_callable(self._lr)
     lambda_ = self._call_if_callable(self._lambda)
@@ -92,7 +92,7 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
     self._lambda_tensor = ops.convert_to_tensor(lambda_, name="lambda")
 
   def _apply_dense(self, grad, var):
-  
+
     shadow = self.get_slot(var, "shadow_{0}".format(self.worker_index))
     return training_ops.apply_delay_compensated_gradient_descent(
         var,
@@ -103,7 +103,7 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
         use_locking=self._use_locking).op
 
   def _resource_apply_dense(self, grad, var):
-   
+
     shadow = self.get_slot(var, "shadow_{0}".format(self.worker_index))
     return training_ops.resource_apply_delay_compensated_gradient_descent(
         var.handle,
@@ -113,8 +113,8 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
         shadow.handle,
         use_locking=self._use_locking)
 
-  def _apply_sparse_shared(self, grad, var, indices, scatter_add):
-   
+  def _apply_sparse_shared(self, grad, var, indices):
+
     shadow = self.get_slot(var, "shadow_{0}".format(self.worker_index))
     # if shadow is None:
     #   raise ValueError("None shadow with index = " + str(self.worker_index) + " and var = " + str(var))
@@ -126,31 +126,23 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
 
     var_scaled_g_values = lr * (grad + lambda_ * grad * grad * (var_slice - shadow_slice))
 
-    var_t = scatter_add(var, indices, -var_scaled_g_values)
-	
+    var_t = state_ops.scatter_add(var, indices, -var_scaled_g_values, use_locking=self._use_locking)
+
     with ops.control_dependencies([var_t]):
       shadow_t = state_ops.assign(shadow, var_t)
-   
+
     return control_flow_ops.group(*[var_t, shadow_t])
 
   def _apply_sparse(self, grad, var):
     return self._apply_sparse_shared(
-        grad.values, var, grad.indices,
-        lambda x, i, v: state_ops.scatter_add(  # pylint: disable=g-long-lambda
-            x, i, v, use_locking=self._use_locking))
-
-  def _resource_scatter_add(self, x, i, v):
-    with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(
-            x.handle, i, v)]):
-      return x.value()
+        grad.values, var, grad.indices)
 
   def _resource_apply_sparse(self, grad, var, indices):
     return self._apply_sparse_shared(
-        grad, var, indices, self._resource_scatter_add)
+        grad, var, indices)
 
 
-    
+
   def minimize(self, loss, global_step=None, var_list=None,
                gate_gradients=GATE_OP, aggregation_method=None,
                colocate_gradients_with_ops=False, name=None,
