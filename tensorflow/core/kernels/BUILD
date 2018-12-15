@@ -6766,6 +6766,7 @@ tf_mkl_kernel_library(
     hdrs = [
         "meta_support.h",
         "reference_gemm.h",
+        "no_op.h",
     ],
     deps = if_mkl(
       [
