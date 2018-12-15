@@ -47,6 +47,14 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
+# The following string constants are used by Defun approach for unified backend
+# of LSTM and GRU.
+_DEFUN_API_NAME_ATTRIBUTE = 'experimental_api_implements'
+_DEFUN_DEVICE_ATTRIBUTE = 'experimental_api_preferred_device'
+_CPU_DEVICE_NAME = 'CPU'
+_GPU_DEVICE_NAME = 'GPU'
+
+
 @tf_export('keras.layers.StackedRNNCells')
 class StackedRNNCells(Layer):
   """Wrapper allowing a stack of RNN cells to behave as a single cell.
@@ -1655,7 +1663,7 @@ class GRUCell(Layer):
     return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
 
 
-@tf_export('keras.layers.GRU')
+@tf_export(v1=['keras.layers.GRU'])
 class GRU(RNN):
   """Gated Recurrent Unit - Cho et al. 2014.
 
@@ -1912,6 +1920,391 @@ class GRU(RNN):
     if 'implementation' in config and config['implementation'] == 0:
       config['implementation'] = 1
     return cls(**config)
+
+
+@tf_export('keras.layers.GRU', v1=[])
+class UnifiedGRU(GRU):
+  """Gated Recurrent Unit - Cho et al. 2014.
+
+  `UnifiedGRU` unifies the implementations between standard `GRU` layer and
+  `CuDNNGRU` layer. Based on available runtime hardware and constraints,
+  `UnifiedGRU` will choose different implementations to maximize the
+  performance. For instance, if GPU is available and all the parameters meet the
+  requirement of CuDNN kernel, `UnifiedGRU` will use CuDNN kernel for the
+  calculation. The requirements to use CuDNN kernel are:
+
+    1. `activation` == 'tanh'
+    2. `recurrent_activation` == 'sigmoid'
+    3. `recurrent_dropout` == 0
+    4. `unroll` is False
+    5. `use_bias` is True
+    6. `reset_after` is True
+    7. Use masking in previous layers.
+
+  There are two variants. The default one is based on
+  [v3](https://arxiv.org/abs/1406.1078v3) and has reset gate applied to hidden
+  state before matrix multiplication. The other one is based on
+  [original](https://arxiv.org/abs/1406.1078v1) and has the order reversed.
+
+  The second variant is compatible with CuDNNGRU (GPU-only) and allows
+  inference on CPU. Thus it has separate biases for `kernel` and
+  `recurrent_kernel`. Use `'reset_after'=True` and
+  `recurrent_activation='sigmoid'`.
+
+  Arguments:
+      units: Positive integer, dimensionality of the output space.
+      activation: Activation function to use.
+          Default: hyperbolic tangent (`tanh`).
+          If you pass `None`, no activation is applied
+          (ie. "linear" activation: `a(x) = x`).
+      recurrent_activation: Activation function to use
+          for the recurrent step.
+          Default: sigmoid (`sigmoid`).
+          If you pass `None`, no activation is applied
+          (ie. "linear" activation: `a(x) = x`).
+      use_bias: Boolean, whether the layer uses a bias vector.
+      kernel_initializer: Initializer for the `kernel` weights matrix,
+          used for the linear transformation of the inputs.
+      recurrent_initializer: Initializer for the `recurrent_kernel`
+          weights matrix,
+          used for the linear transformation of the recurrent state.
+      bias_initializer: Initializer for the bias vector.
+      kernel_regularizer: Regularizer function applied to
+          the `kernel` weights matrix.
+      recurrent_regularizer: Regularizer function applied to
+          the `recurrent_kernel` weights matrix.
+      bias_regularizer: Regularizer function applied to the bias vector.
+      activity_regularizer: Regularizer function applied to
+          the output of the layer (its "activation")..
+      kernel_constraint: Constraint function applied to
+          the `kernel` weights matrix.
+      recurrent_constraint: Constraint function applied to
+          the `recurrent_kernel` weights matrix.
+      bias_constraint: Constraint function applied to the bias vector.
+      dropout: Float between 0 and 1.
+          Fraction of the units to drop for
+          the linear transformation of the inputs.
+      recurrent_dropout: Float between 0 and 1.
+          Fraction of the units to drop for
+          the linear transformation of the recurrent state.
+      implementation: Implementation mode, either 1 or 2.
+          Mode 1 will structure its operations as a larger number of
+          smaller dot products and additions, whereas mode 2 will
+          batch them into fewer, larger operations. These modes will
+          have different performance profiles on different hardware and
+          for different applications.
+      return_sequences: Boolean. Whether to return the last output
+          in the output sequence, or the full sequence.
+      return_state: Boolean. Whether to return the last state
+          in addition to the output.
+      go_backwards: Boolean (default False).
+          If True, process the input sequence backwards and return the
+          reversed sequence.
+      stateful: Boolean (default False). If True, the last state
+          for each sample at index i in a batch will be used as initial
+          state for the sample of index i in the following batch.
+      unroll: Boolean (default False).
+          If True, the network will be unrolled,
+          else a symbolic loop will be used.
+          Unrolling can speed-up a RNN,
+          although it tends to be more memory-intensive.
+          Unrolling is only suitable for short sequences.
+      reset_after: GRU convention (whether to apply reset gate after or
+          before matrix multiplication). False = "before",
+          True = "after" (default and CuDNN compatible).
+  """
+
+  def __init__(self,
+               units,
+               activation='tanh',
+               recurrent_activation='sigmoid',
+               use_bias=True,
+               kernel_initializer='glorot_uniform',
+               recurrent_initializer='orthogonal',
+               bias_initializer='zeros',
+               kernel_regularizer=None,
+               recurrent_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               kernel_constraint=None,
+               recurrent_constraint=None,
+               bias_constraint=None,
+               dropout=0.,
+               recurrent_dropout=0.,
+               implementation=1,
+               return_sequences=False,
+               return_state=False,
+               go_backwards=False,
+               stateful=False,
+               unroll=False,
+               time_major=False,
+               reset_after=True,
+               **kwargs):
+    # return_runtime is a flag for testing, which shows the real backend
+    # implementation chosen by grappler in graph mode.
+    self._return_runtime = kwargs.pop('return_runtime', False)
+
+    super(UnifiedGRU, self).__init__(
+        units,
+        activation=activation,
+        recurrent_activation=recurrent_activation,
+        use_bias=use_bias,
+        kernel_initializer=kernel_initializer,
+        recurrent_initializer=recurrent_initializer,
+        bias_initializer=bias_initializer,
+        kernel_regularizer=kernel_regularizer,
+        recurrent_regularizer=recurrent_regularizer,
+        bias_regularizer=bias_regularizer,
+        activity_regularizer=activity_regularizer,
+        kernel_constraint=kernel_constraint,
+        recurrent_constraint=recurrent_constraint,
+        bias_constraint=bias_constraint,
+        dropout=dropout,
+        recurrent_dropout=recurrent_dropout,
+        implementation=implementation,
+        return_sequences=return_sequences,
+        return_state=return_state,
+        go_backwards=go_backwards,
+        stateful=stateful,
+        unroll=unroll,
+        time_major=time_major,
+        reset_after=reset_after,
+        **kwargs)
+    self._dropout_mask = None
+    # CuDNN uses following setting by default and not configurable.
+    self.could_use_cudnn = (
+        activation == 'tanh' and recurrent_activation == 'sigmoid' and
+        recurrent_dropout == 0 and not unroll and use_bias and
+        reset_after is True)
+
+  def call(self, inputs, mask=None, training=None, initial_state=None):
+    # GRU does not support constants. Ignore it during process.
+    inputs, initial_state, _ = self._process_inputs(inputs, initial_state, None)
+
+    if isinstance(mask, list):
+      mask = mask[0]
+
+    input_shape = K.int_shape(inputs)
+    timesteps = input_shape[0] if self.time_major else input_shape[1]
+
+    if mask is not None or not self.could_use_cudnn:
+      # CuDNN does not support masking, fall back to use the normal GRU.
+      kwargs = {'training': training}
+      self.cell._dropout_mask = None
+      self.cell._recurrent_dropout_mask = None
+
+      def step(cell_inputs, cell_states):
+        return self.cell.call(cell_inputs, cell_states, **kwargs)
+
+      last_output, outputs, states = K.rnn(
+          step,
+          inputs,
+          initial_state,
+          constants=None,
+          go_backwards=self.go_backwards,
+          mask=mask,
+          unroll=self.unroll,
+          input_length=timesteps,
+          time_major=self.time_major,
+          zero_output_for_mask=self.zero_output_for_mask)
+      # This is a dummy tensor for testing purpose.
+      runtime = constant_op.constant(
+          'unknown', dtype=dtypes.string, name='runtime')
+    else:
+      last_output, outputs, runtime, states = self._defun_gru_call(
+          inputs, initial_state, training)
+
+    if self.stateful:
+      updates = [state_ops.assign(self.states[0], states[0])]
+      self.add_update(updates, inputs)
+
+    if self.return_sequences:
+      output = outputs
+    else:
+      output = last_output
+
+    if self.return_state:
+      return [output] + states
+    elif self._return_runtime:
+      return output, runtime
+    else:
+      return output
+
+  def _defun_gru_call(self, inputs, initial_state, training):
+    # Use the new defun approach for backend implementation swap.
+    # Note that different implementations need to have same function
+    # signature, eg, the tensor parameters need to have same shape and dtypes.
+    if self.go_backwards:
+      # Reverse time axis.
+      inputs = K.reverse(inputs, 0 if self.time_major else 1)
+    if 0 < self.dropout < 1:
+      if self._dropout_mask is None:
+        self._dropout_mask = _generate_dropout_mask(
+            array_ops.ones_like(inputs),
+            self.dropout,
+            training=training,
+            count=3)
+
+      inputs *= self._dropout_mask[0]
+    experimental_api_name = 'gru_' + str(uuid.uuid4())
+    defun_standard_gru = _generate_defun_backend(
+        experimental_api_name, _CPU_DEVICE_NAME, standard_gru)
+    defun_cudnn_gru = _generate_defun_backend(
+        experimental_api_name, _GPU_DEVICE_NAME, cudnn_gru)
+    if ops.executing_eagerly_outside_functions():
+      # Under eager context, the device placement is already known. Prefer the
+      # GPU implementation when GPU is available.
+      if context.num_gpus() > 0:
+        last_output, outputs, new_h, runtime = defun_cudnn_gru(
+            inputs=inputs,
+            init_h=initial_state[0],
+            kernel=self.cell.kernel,
+            recurrent_kernel=self.cell.recurrent_kernel,
+            bias=self.cell.bias,
+            time_major=self.time_major)
+      else:
+        last_output, outputs, new_h, runtime = defun_standard_gru(
+            inputs=inputs,
+            init_h=initial_state[0],
+            kernel=self.cell.kernel,
+            recurrent_kernel=self.cell.recurrent_kernel,
+            bias=self.cell.bias,
+            activation=self.activation,
+            recurrent_activation=self.recurrent_activation,
+            time_major=self.time_major)
+    else:
+      # Call the normal GRU impl and register the CuDNN impl function. The
+      # grappler will kick in during session execution to optimize the graph.
+      last_output, outputs, new_h, runtime = defun_standard_gru(
+          inputs=inputs,
+          init_h=initial_state[0],
+          kernel=self.cell.kernel,
+          recurrent_kernel=self.cell.recurrent_kernel,
+          bias=self.cell.bias,
+          activation=self.activation,
+          recurrent_activation=self.recurrent_activation,
+          time_major=self.time_major)
+
+      function.register(defun_cudnn_gru, inputs, initial_state[0],
+                        self.cell.kernel, self.cell.recurrent_kernel,
+                        self.cell.bias, self.time_major)
+    states = [new_h]
+    return last_output, outputs, runtime, states
+
+
+def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
+                 recurrent_activation, time_major):
+  """GRU with standard kernel implementation.
+
+  This implementation can be run on all types of hardware.
+
+  This implementation lifts out all the layer weights and make them function
+  parameters. It has same number of tensor input params as the CuDNN
+  counterpart. The RNN step logic has been simplified, eg dropout and mask is
+  removed since CuDNN implementation does not support that.
+
+  Args:
+    inputs: input tensor of GRU layer.
+    init_h: initial state tensor for the cell output.
+    kernel: weights for cell kernel.
+    recurrent_kernel: weights for cell recurrent kernel.
+    bias: weights for cell kernel bias and recurrent bias. The bias contains the
+      combined input_bias and recurrent_bias.
+    activation: Activation function to use for output.
+    recurrent_activation: Activation function to use for hidden recurrent state.
+    time_major: boolean, whether the inputs are in the format of
+      [time, batch, feature] or [batch, time, feature].
+
+  Returns:
+    last_output: output tensor for the last timestep, which has shape
+      [batch, units].
+    outputs: output tensor for all timesteps, which has shape
+      [batch, time, units].
+    state_0: the cell output, which has same shape as init_h.
+    runtime: constant string tensor which indicate real runtime hardware. This
+      value is for testing purpose and should be used by user.
+  """
+  input_shape = K.int_shape(inputs)
+  timesteps = input_shape[0] if time_major else input_shape[1]
+
+  input_bias, recurrent_bias = array_ops.unstack(bias)
+
+  def step(cell_inputs, cell_states):
+    """Step function that will be used by Keras RNN backend."""
+    h_tm1 = cell_states[0]
+
+    # inputs projected by all gate matrices at once
+    matrix_x = K.dot(cell_inputs, kernel)
+    matrix_x = K.bias_add(matrix_x, input_bias)
+
+    x_z, x_r, x_h = array_ops.split(matrix_x, 3, axis=1)
+
+    # hidden state projected by all gate matrices at once
+    matrix_inner = K.dot(h_tm1, recurrent_kernel)
+    matrix_inner = K.bias_add(matrix_inner, recurrent_bias)
+
+    recurrent_z, recurrent_r, recurrent_h = array_ops.split(matrix_inner, 3,
+                                                            axis=1)
+    z = recurrent_activation(x_z + recurrent_z)
+    r = recurrent_activation(x_r + recurrent_r)
+    hh = activation(x_h + r * recurrent_h)
+
+    # previous and candidate state mixed by update gate
+    h = z * h_tm1 + (1 - z) * hh
+    return h, [h]
+
+  last_output, outputs, new_states = K.rnn(
+      step,
+      inputs, [init_h],
+      constants=None,
+      unroll=False,
+      time_major=time_major,
+      input_length=timesteps)
+  return last_output, outputs, new_states[0], constant_op.constant(
+      'cpu', dtype=dtypes.string, name='runtime')
+
+
+def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, time_major):
+  """GRU with CuDNN implementation which is only available for GPU."""
+  if not time_major:
+    inputs = array_ops.transpose(inputs, perm=(1, 0, 2))
+  init_h = array_ops.expand_dims(init_h, axis=0)
+
+  weights = array_ops.split(kernel, 3, axis=1)
+  weights += array_ops.split(recurrent_kernel, 3, axis=1)
+  # Note that the bias was initialized as shape (2, 3 * units), flat it into
+  # (6 * units)
+  bias = array_ops.split(K.flatten(bias), 6)
+  # Note that the gate order for CuDNN is different from the canonical format.
+  # canonical format is [z, r, h], whereas CuDNN is [r, z, h]. The swap need to
+  # be done for kernel, recurrent_kernel, input_bias, recurrent_bias.
+  # z is update gate weights.
+  # r is reset gate weights.
+  # h is output gate weights.
+  weights[0], weights[1] = weights[1], weights[0]
+  weights[3], weights[4] = weights[4], weights[3]
+  bias[0], bias[1] = bias[1], bias[0]
+  bias[3], bias[4] = bias[4], bias[3]
+
+  params = _canonical_to_params(
+      weights=weights,
+      biases=bias,
+      shape=constant_op.constant([-1]),
+      transpose_weights=True)
+
+  outputs, h, _, _ = gen_cudnn_rnn_ops.cudnn_rnn(
+      inputs,
+      input_h=init_h,
+      input_c=0,
+      params=params,
+      is_training=True,
+      rnn_mode='gru')
+  last_output = outputs[-1]
+  if not time_major:
+    outputs = array_ops.transpose(outputs, perm=[1, 0, 2])
+  h = h[0]
+  return last_output, outputs, h, constant_op.constant(
+      'cudnn', dtype=dtypes.string, name='runtime')
 
 
 @tf_export('keras.layers.LSTMCell')
@@ -2718,18 +3111,10 @@ class UnifiedLSTM(LSTM):
       # LSTM layer added into same graph, and it will be able to pair up the
       # different implementations across them.
       experimental_api_name = 'lstm_' + str(uuid.uuid4())
-      standard_lstm_attributes = {
-          'experimental_api_implements': experimental_api_name,
-          'experimental_api_preferred_device': 'CPU',
-      }
-      cudnn_lstm_attributes = {
-          'experimental_api_implements': experimental_api_name,
-          'experimental_api_preferred_device': 'GPU',
-      }
-      defun_standard_lstm = function.defun_with_attributes(
-          standard_lstm, attributes=standard_lstm_attributes)
-      defun_cudnn_lstm = function.defun_with_attributes(
-          cudnn_lstm, attributes=cudnn_lstm_attributes)
+      defun_standard_lstm = _generate_defun_backend(
+          experimental_api_name, _CPU_DEVICE_NAME, standard_lstm)
+      defun_cudnn_lstm = _generate_defun_backend(
+          experimental_api_name, _GPU_DEVICE_NAME, cudnn_lstm)
 
       if ops.executing_eagerly_outside_functions():
         # Under eager context, the device placement is already known. Prefer the
@@ -3017,3 +3402,12 @@ def _generate_zero_filled_state(batch_size_tensor, state_size, dtype):
     return nest.map_structure(create_zeros, state_size)
   else:
     return create_zeros(state_size)
+
+
+def _generate_defun_backend(unique_api_name, preferred_device, func):
+  function_attributes = {
+      _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
+      _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
+  }
+  return function.defun_with_attributes(func=func,
+                                        attributes=function_attributes)
