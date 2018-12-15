@@ -53,8 +53,8 @@ XlaGpuDeviceFactory::ParseVisibleDeviceList(const string& visible_device_list) {
     if (!absl::SimpleAtoi(platform_gpu_id_str, &platform_gpu_id)) {
       return errors::InvalidArgument(
           "Could not parse entry in 'visible_device_list': '",
-          platform_gpu_id_str,
-          "'. visible_device_list = ", visible_device_list);
+          platform_gpu_id_str, "'. visible_device_list = ",
+          visible_device_list);
     }
     gpu_ids.insert(platform_gpu_id);
   }
@@ -83,7 +83,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
   }
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
-  auto parsed_gpus=ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
+  auto parsed_gpus = ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
   // We want to fill the gpu_ids set with all devices if config string is empty.
   std::set<int> gpu_ids;
   int num_visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
