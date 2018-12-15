@@ -37,6 +37,7 @@ from tensorflow.python.platform import test
 # NOTE(mrry): These tests are based on the tests in bucket_ops_test.py.
 # Currently, they use a constant batch size, though should be made to use a
 # different batch size per key.
+@test_util.run_all_in_graph_and_eager_modes
 class GroupByWindowTest(test_base.DatasetTestBase):
 
   def _dynamicPad(self, bucket, window, window_size):
@@ -50,101 +51,87 @@ class GroupByWindowTest(test_base.DatasetTestBase):
              32, (tensor_shape.TensorShape([]), tensor_shape.TensorShape(
                  [None]), tensor_shape.TensorShape([3])))))
 
-  @test_util.run_deprecated_v1
   def testSingleBucket(self):
 
     def _map_fn(v):
       return (v, array_ops.fill([v], v),
               array_ops.fill([3], string_ops.as_string(v)))
 
-    input_dataset = (
-        dataset_ops.Dataset.from_tensor_slices(math_ops.range(32)).map(_map_fn))
+    input_dataset = dataset_ops.Dataset.from_tensor_slices(
+        math_ops.range(32)).map(_map_fn)
 
     bucketed_dataset = input_dataset.apply(
         grouping.group_by_window(
             lambda x, y, z: 0,
             lambda k, bucket: self._dynamicPad(k, bucket, 32), 32))
+    get_next = self.getNext(bucketed_dataset)
 
-    iterator = bucketed_dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    which_bucket, bucketed_values = self.evaluate(get_next())
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
+    self.assertEqual(0, which_bucket)
 
-      which_bucket, bucketed_values = self.evaluate(get_next)
+    expected_scalar_int = np.arange(32, dtype=np.int64)
+    expected_unk_int64 = np.zeros((32, 31)).astype(np.int64)
+    for i in range(32):
+      expected_unk_int64[i, :i] = i
+    expected_vec3_str = np.vstack(3 * [np.arange(32).astype(bytes)]).T
 
-      self.assertEqual(0, which_bucket)
+    self.assertAllEqual(expected_scalar_int, bucketed_values[0])
+    self.assertAllEqual(expected_unk_int64, bucketed_values[1])
+    self.assertAllEqual(expected_vec3_str, bucketed_values[2])
 
-      expected_scalar_int = np.arange(32, dtype=np.int64)
-      expected_unk_int64 = np.zeros((32, 31)).astype(np.int64)
-      for i in range(32):
-        expected_unk_int64[i, :i] = i
-      expected_vec3_str = np.vstack(3 * [np.arange(32).astype(bytes)]).T
-
-      self.assertAllEqual(expected_scalar_int, bucketed_values[0])
-      self.assertAllEqual(expected_unk_int64, bucketed_values[1])
-      self.assertAllEqual(expected_vec3_str, bucketed_values[2])
-
-  @test_util.run_deprecated_v1
   def testEvenOddBuckets(self):
 
     def _map_fn(v):
       return (v, array_ops.fill([v], v),
               array_ops.fill([3], string_ops.as_string(v)))
 
-    input_dataset = (
-        dataset_ops.Dataset.from_tensor_slices(math_ops.range(64)).map(_map_fn))
+    input_dataset = dataset_ops.Dataset.from_tensor_slices(
+        math_ops.range(64)).map(_map_fn)
 
     bucketed_dataset = input_dataset.apply(
         grouping.group_by_window(
             lambda x, y, z: math_ops.cast(x % 2, dtypes.int64),
             lambda k, bucket: self._dynamicPad(k, bucket, 32), 32))
 
-    iterator = bucketed_dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(bucketed_dataset)
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
+    # Get two minibatches (one containing even values, one containing odds)
+    which_bucket_even, bucketed_values_even = self.evaluate(get_next())
+    which_bucket_odd, bucketed_values_odd = self.evaluate(get_next())
 
-      # Get two minibatches (one containing even values, one containing odds)
-      which_bucket_even, bucketed_values_even = self.evaluate(get_next)
-      which_bucket_odd, bucketed_values_odd = self.evaluate(get_next)
+    # Count number of bucket_tensors.
+    self.assertEqual(3, len(bucketed_values_even))
+    self.assertEqual(3, len(bucketed_values_odd))
 
-      # Count number of bucket_tensors.
-      self.assertEqual(3, len(bucketed_values_even))
-      self.assertEqual(3, len(bucketed_values_odd))
+    # Ensure bucket 0 was used for all minibatch entries.
+    self.assertAllEqual(0, which_bucket_even)
+    self.assertAllEqual(1, which_bucket_odd)
 
-      # Ensure bucket 0 was used for all minibatch entries.
-      self.assertAllEqual(0, which_bucket_even)
-      self.assertAllEqual(1, which_bucket_odd)
+    # Test the first bucket outputted, the events starting at 0
+    expected_scalar_int = np.arange(0, 32 * 2, 2, dtype=np.int64)
+    expected_unk_int64 = np.zeros((32, 31 * 2)).astype(np.int64)
+    for i in range(0, 32):
+      expected_unk_int64[i, :2 * i] = 2 * i
+      expected_vec3_str = np.vstack(
+          3 * [np.arange(0, 32 * 2, 2).astype(bytes)]).T
 
-      # Test the first bucket outputted, the events starting at 0
-      expected_scalar_int = np.arange(0, 32 * 2, 2, dtype=np.int64)
-      expected_unk_int64 = np.zeros((32, 31 * 2)).astype(np.int64)
-      for i in range(0, 32):
-        expected_unk_int64[i, :2 * i] = 2 * i
-        expected_vec3_str = np.vstack(
-            3 * [np.arange(0, 32 * 2, 2).astype(bytes)]).T
+    self.assertAllEqual(expected_scalar_int, bucketed_values_even[0])
+    self.assertAllEqual(expected_unk_int64, bucketed_values_even[1])
+    self.assertAllEqual(expected_vec3_str, bucketed_values_even[2])
 
-      self.assertAllEqual(expected_scalar_int, bucketed_values_even[0])
-      self.assertAllEqual(expected_unk_int64, bucketed_values_even[1])
-      self.assertAllEqual(expected_vec3_str, bucketed_values_even[2])
+    # Test the second bucket outputted, the odds starting at 1
+    expected_scalar_int = np.arange(1, 32 * 2 + 1, 2, dtype=np.int64)
+    expected_unk_int64 = np.zeros((32, 31 * 2 + 1)).astype(np.int64)
+    for i in range(0, 32):
+      expected_unk_int64[i, :2 * i + 1] = 2 * i + 1
+      expected_vec3_str = np.vstack(
+          3 * [np.arange(1, 32 * 2 + 1, 2).astype(bytes)]).T
 
-      # Test the second bucket outputted, the odds starting at 1
-      expected_scalar_int = np.arange(1, 32 * 2 + 1, 2, dtype=np.int64)
-      expected_unk_int64 = np.zeros((32, 31 * 2 + 1)).astype(np.int64)
-      for i in range(0, 32):
-        expected_unk_int64[i, :2 * i + 1] = 2 * i + 1
-        expected_vec3_str = np.vstack(
-            3 * [np.arange(1, 32 * 2 + 1, 2).astype(bytes)]).T
+    self.assertAllEqual(expected_scalar_int, bucketed_values_odd[0])
+    self.assertAllEqual(expected_unk_int64, bucketed_values_odd[1])
+    self.assertAllEqual(expected_vec3_str, bucketed_values_odd[2])
 
-      self.assertAllEqual(expected_scalar_int, bucketed_values_odd[0])
-      self.assertAllEqual(expected_unk_int64, bucketed_values_odd[1])
-      self.assertAllEqual(expected_vec3_str, bucketed_values_odd[2])
-
-  @test_util.run_deprecated_v1
   def testEvenOddBucketsFilterOutAllOdd(self):
 
     def _map_fn(v):
@@ -164,35 +151,28 @@ class GroupByWindowTest(test_base.DatasetTestBase):
                    "z": tensor_shape.TensorShape([3])
                })))
 
-    input_dataset = (
-        dataset_ops.Dataset.from_tensor_slices(math_ops.range(128)).map(_map_fn)
-        .filter(lambda d: math_ops.equal(d["x"] % 2, 0)))
+    input_dataset = dataset_ops.Dataset.from_tensor_slices(math_ops.range(
+        128)).map(_map_fn).filter(lambda d: math_ops.equal(d["x"] % 2, 0))
 
     bucketed_dataset = input_dataset.apply(
         grouping.group_by_window(
             lambda d: math_ops.cast(d["x"] % 2, dtypes.int64),
             lambda k, bucket: _dynamic_pad_fn(k, bucket, 32), 32))
 
-    iterator = bucketed_dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    get_next = self.getNext(bucketed_dataset)
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
+    # Get two minibatches ([0, 2, ...] and [64, 66, ...])
+    which_bucket0, bucketed_values_even0 = self.evaluate(get_next())
+    which_bucket1, bucketed_values_even1 = self.evaluate(get_next())
 
-      # Get two minibatches ([0, 2, ...] and [64, 66, ...])
-      which_bucket0, bucketed_values_even0 = self.evaluate(get_next)
-      which_bucket1, bucketed_values_even1 = self.evaluate(get_next)
+    # Ensure that bucket 1 was completely filtered out
+    self.assertAllEqual(0, which_bucket0)
+    self.assertAllEqual(0, which_bucket1)
+    self.assertAllEqual(
+        np.arange(0, 64, 2, dtype=np.int64), bucketed_values_even0["x"])
+    self.assertAllEqual(
+        np.arange(64, 128, 2, dtype=np.int64), bucketed_values_even1["x"])
 
-      # Ensure that bucket 1 was completely filtered out
-      self.assertAllEqual(0, which_bucket0)
-      self.assertAllEqual(0, which_bucket1)
-      self.assertAllEqual(
-          np.arange(0, 64, 2, dtype=np.int64), bucketed_values_even0["x"])
-      self.assertAllEqual(
-          np.arange(64, 128, 2, dtype=np.int64), bucketed_values_even1["x"])
-
-  @test_util.run_deprecated_v1
   def testDynamicWindowSize(self):
     components = np.arange(100).astype(np.int64)
 
@@ -207,112 +187,81 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
         grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(20),
                                  None, window_size_func))
-    iterator = dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      with self.assertRaises(errors.OutOfRangeError):
-        batches = 0
-        while True:
-          result = self.evaluate(get_next)
-          is_even = all(x % 2 == 0 for x in result)
-          is_odd = all(x % 2 == 1 for x in result)
-          self.assertTrue(is_even or is_odd)
-          expected_batch_size = 5 if is_even else 10
-          self.assertEqual(expected_batch_size, result.shape[0])
-          batches += 1
+    get_next = self.getNext(dataset)
+    with self.assertRaises(errors.OutOfRangeError):
+      batches = 0
+      while True:
+        result = self.evaluate(get_next())
+        is_even = all(x % 2 == 0 for x in result)
+        is_odd = all(x % 2 == 1 for x in result)
+        self.assertTrue(is_even or is_odd)
+        expected_batch_size = 5 if is_even else 10
+        self.assertEqual(expected_batch_size, result.shape[0])
+        batches += 1
 
-      self.assertEqual(batches, 15)
+    self.assertEqual(batches, 15)
 
-  @test_util.run_deprecated_v1
   def testSimple(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components).map(lambda x: x * x)
-        .apply(
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        components).map(lambda x: x * x).apply(
             grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
-                                     4)).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+                                     4))
+    get_next = self.getNext(dataset)
+    counts = []
+    with self.assertRaises(errors.OutOfRangeError):
+      while True:
+        result = self.evaluate(get_next())
+        self.assertTrue(
+            all(x % 2 == 0 for x in result) or all(x % 2 == 1) for x in result)
+        counts.append(result.shape[0])
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      counts = []
-      with self.assertRaises(errors.OutOfRangeError):
-        while True:
-          result = self.evaluate(get_next)
-          self.assertTrue(
-              all(x % 2 == 0
-                  for x in result) or all(x % 2 == 1)
-              for x in result)
-          counts.append(result.shape[0])
+    self.assertEqual(len(components), sum(counts))
+    num_full_batches = len([c for c in counts if c == 4])
+    self.assertGreaterEqual(num_full_batches, 24)
+    self.assertTrue(all(c == 4 for c in counts[:num_full_batches]))
 
-      self.assertEqual(len(components), sum(counts))
-      num_full_batches = len([c for c in counts if c == 4])
-      self.assertGreaterEqual(num_full_batches, 24)
-      self.assertTrue(all(c == 4 for c in counts[:num_full_batches]))
-
-  @test_util.run_deprecated_v1
   def testImmediateOutput(self):
     components = np.array(
         [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0], dtype=np.int64)
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components).repeat(-1).apply(
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).repeat(
+        -1).apply(
             grouping.group_by_window(lambda x: x % 3, lambda _, xs: xs.batch(4),
-                                     4)).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+                                     4))
+    get_next = self.getNext(dataset)
+    # The input is infinite, so this test demonstrates that:
+    # 1. We produce output without having to consume the entire input,
+    # 2. Different buckets can produce output at different rates, and
+    # 3. For deterministic input, the output is deterministic.
+    for _ in range(3):
+      self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next()))
+      self.assertAllEqual([1, 1, 1, 1], self.evaluate(get_next()))
+      self.assertAllEqual([2, 2, 2, 2], self.evaluate(get_next()))
+      self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next()))
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      # The input is infinite, so this test demonstrates that:
-      # 1. We produce output without having to consume the entire input,
-      # 2. Different buckets can produce output at different rates, and
-      # 3. For deterministic input, the output is deterministic.
-      for _ in range(3):
-        self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next))
-        self.assertAllEqual([1, 1, 1, 1], self.evaluate(get_next))
-        self.assertAllEqual([2, 2, 2, 2], self.evaluate(get_next))
-        self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next))
-
-  @test_util.run_deprecated_v1
   def testSmallGroups(self):
     components = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], dtype=np.int64)
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components).apply(
-            grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
-                                     4)).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).apply(
+        grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4), 4))
+    get_next = self.getNext(dataset)
+    self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next()))
+    self.assertAllEqual([1, 1, 1, 1], self.evaluate(get_next()))
+    # The small outputs at the end are deterministically produced in key
+    # order.
+    self.assertAllEqual([0, 0, 0], self.evaluate(get_next()))
+    self.assertAllEqual([1], self.evaluate(get_next()))
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next))
-      self.assertAllEqual([1, 1, 1, 1], self.evaluate(get_next))
-      # The small outputs at the end are deterministically produced in key
-      # order.
-      self.assertAllEqual([0, 0, 0], self.evaluate(get_next))
-      self.assertAllEqual([1], self.evaluate(get_next))
-
-  @test_util.run_deprecated_v1
   def testEmpty(self):
-    iterator = (
-        dataset_ops.Dataset.range(4).apply(
-            grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.range(4).apply(
+        grouping.group_by_window(lambda _: 0, lambda _, xs: xs, 0))
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Window size must be greater than zero, but got 0."):
-        print(self.evaluate(get_next))
+    get_next = self.getNext(dataset)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Window size must be greater than zero, but got 0."):
+      print(self.evaluate(get_next()))
 
-  @test_util.run_deprecated_v1
   def testReduceFuncError(self):
     components = np.random.randint(100, size=(200,)).astype(np.int64)
 
@@ -324,20 +273,13 @@ class GroupByWindowTest(test_base.DatasetTestBase):
           padded_shapes=(tensor_shape.TensorShape([]),
                          constant_op.constant([5], dtype=dtypes.int64) * -1))
 
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .map(lambda x: (x, ops.convert_to_tensor([x * x]))).apply(
-            grouping.group_by_window(lambda x, _: x % 2, reduce_func,
-                                     32)).make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        components).map(lambda x: (x, ops.convert_to_tensor([x * x]))).apply(
+            grouping.group_by_window(lambda x, _: x % 2, reduce_func, 32))
+    get_next = self.getNext(dataset)
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(get_next())
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(get_next)
-
-  @test_util.run_deprecated_v1
   def testConsumeWindowDatasetMoreThanOnce(self):
     components = np.random.randint(50, size=(200,)).astype(np.int64)
 
@@ -351,27 +293,23 @@ class GroupByWindowTest(test_base.DatasetTestBase):
               4, padded_shapes=ops.convert_to_tensor([(key + 1) * 10])),
       ))
 
-    iterator = (
-        dataset_ops.Dataset.from_tensor_slices(components)
-        .map(lambda x: array_ops.fill([math_ops.cast(x, dtypes.int32)], x))
-        .apply(grouping.group_by_window(
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        components
+    ).map(lambda x: array_ops.fill([math_ops.cast(x, dtypes.int32)], x)).apply(
+        grouping.group_by_window(
             lambda x: math_ops.cast(array_ops.shape(x)[0] // 10, dtypes.int64),
             reduce_func, 4))
-        .make_initializable_iterator())
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
 
-    with self.cached_session() as sess:
-      self.evaluate(init_op)
-      counts = []
-      with self.assertRaises(errors.OutOfRangeError):
-        while True:
-          tight_result, multiple_of_10_result = self.evaluate(get_next)
-          self.assertEqual(0, multiple_of_10_result.shape[1] % 10)
-          self.assertAllEqual(tight_result,
-                              multiple_of_10_result[:, :tight_result.shape[1]])
-          counts.append(tight_result.shape[0])
-      self.assertEqual(len(components), sum(counts))
+    get_next = self.getNext(dataset)
+    counts = []
+    with self.assertRaises(errors.OutOfRangeError):
+      while True:
+        tight_result, multiple_of_10_result = self.evaluate(get_next())
+        self.assertEqual(0, multiple_of_10_result.shape[1] % 10)
+        self.assertAllEqual(tight_result,
+                            multiple_of_10_result[:, :tight_result.shape[1]])
+        counts.append(tight_result.shape[0])
+    self.assertEqual(len(components), sum(counts))
 
 
 if __name__ == "__main__":

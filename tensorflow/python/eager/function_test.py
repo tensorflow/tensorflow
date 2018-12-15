@@ -152,8 +152,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
-    # TODO(b/120222989) remove autograph=False.
-    @def_function.function(autograph=False)
+    @def_function.function()
     def pairs_mul(pair_a, pair_b):
       return pair(matmul(pair_a.a, pair_b.a), matmul(pair_a.b, pair_b.b))
 
@@ -429,20 +428,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(value), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.also_run_as_tf_function
   def testInitScopeTensorInitializationInFunction(self):
 
     @def_function.function
     def tensor_init():
       with ops.init_scope():
         const = constant_op.constant(2.0)
+      # Note: this variable bypasses tf.function's variable creation
+      # requirements by bypassing variable_creator_scope by using
+      # ResourceVariable instead of Variable.
       self.v = resource_variable_ops.ResourceVariable(const)
       return self.v.read_value()
 
     value = tensor_init()
-    if not context.executing_eagerly():
-      self.evaluate(variables.global_variables_initializer())
-    self.assertEqual(self.evaluate(value), 2.0)
+    self.assertAllEqual(value, 2.0)
 
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
@@ -462,6 +462,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
+  @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
 
     @function.defun
@@ -544,7 +545,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  def disabled_testRunMetadata(self):
+  def testRunMetadata(self):
 
     @def_function.function
     def f(x):
@@ -579,7 +580,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return self.v * 2
 
       o = HasAVar()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       call = def_function.function(o.call)
       op = call()
       self.assertAllEqual(self.evaluate(op), 2.0)
@@ -936,9 +937,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
-    # Remove reference cycles in model
-    test_util.dismantle_polymorphic_function(model)
-
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDefunKerasModelCall(self):
     model = MiniModel()
@@ -952,8 +950,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([[3.0]], self.evaluate(y))
 
-    # Remove reference cycles in defun.
-    test_util.dismantle_polymorphic_function(model.call)
     # Break the reference cycle between the MiniModel and the defun:
     # MiniModel --(through its `call` method)--> PolymorphicFunction
     # PolymorphicFunction --(instancemethod on MiniModel)--> MiniModel
@@ -963,6 +959,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   # construction. Eager's configuration is controlled in `__main__`.
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 4}))
+  @test_util.run_v1_only('b/120545219')
   def testDeviceAnnotationsRespected(self):
 
     def multi_device_fn():
@@ -1001,6 +998,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(
       config=config_pb2.ConfigProto(device_count={'CPU': 2}))
+  @test_util.run_v1_only('b/120545219')
   def testCallingGraphFunctionOnDifferentDevice(self):
 
     def func():
@@ -1302,7 +1300,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
 
-  @test_util.run_deprecated_v1
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
     def foo(a, training=True):
@@ -1311,10 +1308,16 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       else:
         return -1.0 * a
 
-    signature = [tensor_spec.TensorSpec([], dtypes.float32)] * 2
+    signature = [
+        tensor_spec.TensorSpec([], dtypes.float32),
+        tensor_spec.TensorSpec([], dtypes.bool),
+    ]
     defined = def_function.function(foo, input_signature=signature)
     a = constant_op.constant(1.0)
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'When input_signature is provided, all inputs to '
+        'the Python function must be Tensors.'):
       defined(a, training=True)
 
   def testInputSignatureWithKeywordPositionalArgs(self):
@@ -2032,6 +2035,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(
             5,
             add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
+
+  @test_util.assert_no_garbage_created
+  def testReferenceCycles(self):
+
+    fn = function.defun(lambda x: 2. * x)
+
+    fn(constant_op.constant(4.0))
+    weak_fn = weakref.ref(fn)
+    del fn
+    # Tests that the weak reference we made to the function is now dead, which
+    # means the object has been deleted. This should be true as long as the
+    # function itself is not involved in a reference cycle.
+    self.assertIs(None, weak_fn())
 
 
 if __name__ == '__main__':

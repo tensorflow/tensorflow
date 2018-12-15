@@ -159,9 +159,13 @@ static Status OptionalDeviceCopy(
     to_values.reserve(from_values.size());
     for (const Tensor& t : from_values) {
       if (DMAHelper::CanUseDMA(&t) || t.dtype() == DT_VARIANT) {
-        Tensor tmp(t.dtype());
-        TF_RETURN_IF_ERROR(copy(t, &tmp));
-        to_values.push_back(std::move(tmp));
+        // NOTE(skyewm): we're careful to make sure the lifetime of the 'to'
+        // Tensor passed to `copy` (i.e. to_values.back()) is the same as the
+        // returned 'to' OptionalVariant. This is because `copy` may spawn async
+        // callbacks that don't run until after this function returns and access
+        // the 'to' Tensor (e.g. BaseGPUDevice::MaybeCopyTensorToGPU).
+        to_values.emplace_back(t.dtype());
+        TF_RETURN_IF_ERROR(copy(t, &to_values.back()));
       } else {
         to_values.push_back(t);
       }

@@ -1,5 +1,7 @@
 workspace(name = "org_tensorflow")
 
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
 http_archive(
     name = "io_bazel_rules_closure",
     sha256 = "a38539c5b5c358548e75b44141b4ab637bba7c4dc02b46b1f62a96d6433f56ae",
@@ -14,30 +16,27 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
 
-http_archive(
-    name = "base_images_docker",
-    sha256 = "e2b1b7254270bb7605e814a9dbf6d1e4ae04a11136ff1714fbfdabe3f87f7cf9",
-    strip_prefix = "base-images-docker-12801524f867e657fbb5d1a74f31618aff181ac6",
-    urls = ["https://github.com/GoogleCloudPlatform/base-images-docker/archive/12801524f867e657fbb5d1a74f31618aff181ac6.tar.gz"],
+load("//third_party/toolchains/preconfig/generate:archives.bzl",
+     "bazel_toolchains_archive")
+
+bazel_toolchains_archive()
+
+load(
+    "@bazel_toolchains//repositories:repositories.bzl",
+    bazel_toolchains_repositories = "repositories",
 )
 
-http_archive(
-    name = "bazel_toolchains",
-    sha256 = "15b5858b1b5541ec44df31b94c3b8672815b31d71215a98398761ea9f4c4eedb",
-    strip_prefix = "bazel-toolchains-6200b238c9c2d137c0d9a7262c80cc71d98e692b",
-    urls = [
-        "https://github.com/bazelbuild/bazel-toolchains/archive/6200b238c9c2d137c0d9a7262c80cc71d98e692b.tar.gz",
-    ],
+bazel_toolchains_repositories()
+
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    container_repositories = "repositories",
 )
 
-http_archive(
-    name = "io_bazel_rules_docker",
-    sha256 = "29d109605e0d6f9c892584f07275b8c9260803bf0c6fcb7de2623b2bedc910bd",
-    strip_prefix = "rules_docker-0.5.1",
-    urls = ["https://github.com/bazelbuild/rules_docker/archive/v0.5.1.tar.gz"],
-)
+container_repositories()
 
-load("//third_party/toolchains/preconfig/generate:workspace.bzl", "remote_config_workspace")
+load("//third_party/toolchains/preconfig/generate:workspace.bzl",
+     "remote_config_workspace")
 
 remote_config_workspace()
 
@@ -45,7 +44,7 @@ remote_config_workspace()
 # files, in case the parsing of those build files depends on the bazel
 # version we require here.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
-check_bazel_version_at_least("0.15.0")
+check_bazel_version_at_least("0.18.0")
 
 load("//tensorflow:workspace.bzl", "tf_workspace")
 
@@ -57,9 +56,9 @@ android_workspace()
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
 
-new_http_archive(
+http_archive(
     name = "inception_v1",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "7efe12a8363f09bc24d7b7a450304a15655a57a7751929b2c1593a71183bb105",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/inception_v1.zip",
@@ -67,9 +66,9 @@ new_http_archive(
     ],
 )
 
-new_http_archive(
+http_archive(
     name = "mobile_ssd",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "bddd81ea5c80a97adfac1c9f770e6f55cbafd7cce4d3bbe15fbeb041e6b8f3e8",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_android_export.zip",
@@ -77,9 +76,9 @@ new_http_archive(
     ],
 )
 
-new_http_archive(
+http_archive(
     name = "mobile_multibox",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "859edcddf84dddb974c36c36cfc1f74555148e9c9213dedacf1d6b613ad52b96",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/mobile_multibox_v1a.zip",
@@ -87,9 +86,9 @@ new_http_archive(
     ],
 )
 
-new_http_archive(
+http_archive(
     name = "stylize",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "3d374a730aef330424a356a8d4f04d8a54277c425e274ecb7d9c83aa912c6bfa",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/stylize_v1.zip",
@@ -97,9 +96,9 @@ new_http_archive(
     ],
 )
 
-new_http_archive(
+http_archive(
     name = "speech_commands",
-    build_file = "models.BUILD",
+    build_file = "//:models.BUILD",
     sha256 = "c3ec4fea3158eb111f1d932336351edfe8bd515bb6e87aad4f25dbad0a600d0c",
     urls = [
         "http://storage.googleapis.com/download.tensorflow.org/models/speech_commands_v0.01.zip",

@@ -199,7 +199,7 @@ class SingleOpModel {
     for (const string& s : content) {
       buf.AddString(s.data(), s.length());
     }
-    buf.WriteToTensor(tensor);
+    buf.WriteToTensor(tensor, /*new_shape=*/nullptr);
   }
 
   // Populate the tensor given its index.
@@ -307,10 +307,12 @@ class SingleOpModel {
 
     if (is_quantized) {
       if (t.min != 0 || t.max != 0) {
-        // TODO(b/119422369): Handle signed int8 here.
         if (t.type == TensorType_UINT8) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<uint8_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT8) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int8_t>(t.min, t.max);
         } else if (t.type == TensorType_INT32) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<int32_t>(t.min, t.max);

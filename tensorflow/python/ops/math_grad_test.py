@@ -20,6 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import execution_callbacks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -29,6 +32,8 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+
+RAISE = execution_callbacks.ExecutionCallback.RAISE
 
 
 class SquaredDifferenceOpTest(test.TestCase):
@@ -369,6 +374,26 @@ class XdivyTest(test.TestCase):
       self.assertAllClose(zero, xdivy_xgrad)
       self.assertAllClose(zero, xdivy_ygrad)
 
+
+@test_util.run_all_in_graph_and_eager_modes
+class PowGradTest(test.TestCase):
+
+  def test_zero_grad_tf_gradients(self):
+    if context.executing_eagerly():
+      self.skipTest("tf.gradients not supported in eager.")
+
+    x = constant_op.constant([-1., 0., 1.])
+    g = self.evaluate(gradients.gradients(math_ops.pow(x, 2), x)[0])
+    self.assertAllClose([-2., 0., 2.], g)
+
+  def test_zero_grad_tape(self):
+    with execution_callbacks.errstate(inf_or_nan=RAISE):
+      x = constant_op.constant([-1, 0., 1.])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        g = tape.gradient(math_ops.pow(x, 2), x)
+      g = self.evaluate(g)
+      self.assertAllClose([-2., 0., 2.], g)
 
 if __name__ == "__main__":
   test.main()

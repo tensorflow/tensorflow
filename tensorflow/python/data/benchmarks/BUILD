@@ -49,6 +49,20 @@ py_test(
 )
 
 py_test(
+    name = "list_files_benchmark",
+    srcs = ["list_files_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "map_benchmark",
     srcs = ["map_benchmark.py"],
     srcs_version = "PY2AND3",

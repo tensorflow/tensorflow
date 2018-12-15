@@ -21,6 +21,7 @@ from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -101,6 +102,18 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
           data_input.output_classes != data_inputs[0].output_classes):
         raise TypeError("All datasets must have the same type and class.")
 
+    output_shapes = self._data_inputs[0].output_shapes
+    for data_input in self._data_inputs[1:]:
+      output_shapes = nest.pack_sequence_as(output_shapes, [
+          ts1.most_specific_compatible_shape(ts2) for (ts1, ts2) in zip(
+              nest.flatten(output_shapes),
+              nest.flatten(data_input.output_shapes))
+      ])
+
+    self._structure = structure.convert_legacy_structure(
+        data_inputs[0].output_types, output_shapes,
+        data_inputs[0].output_classes)
+
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
     return (
@@ -115,22 +128,8 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
     return [self._selector_input] + self._data_inputs
 
   @property
-  def output_classes(self):
-    return self._data_inputs[0].output_classes
-
-  @property
-  def output_shapes(self):
-    ret = self._data_inputs[0].output_shapes
-    for data_input in self._data_inputs[1:]:
-      ret = nest.pack_sequence_as(ret, [
-          ts1.most_specific_compatible_shape(ts2) for (ts1, ts2) in zip(
-              nest.flatten(ret), nest.flatten(data_input.output_shapes))
-      ])
-    return ret
-
-  @property
-  def output_types(self):
-    return self._data_inputs[0].output_types
+  def _element_structure(self):
+    return self._structure
 
 
 @tf_export("data.experimental.sample_from_datasets", v1=[])

@@ -543,9 +543,6 @@ def tf_additional_proto_srcs():
 def tf_additional_human_readable_json_deps():
     return []
 
-def tf_additional_logger_deps():
-    return []
-
 def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
 

@@ -25,6 +25,7 @@ import tempfile
 import time
 
 from tensorflow.core.util import event_pb2
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary_iterator
@@ -32,6 +33,7 @@ from tensorflow.python.summary.writer import writer
 from tensorflow.python.training import tensorboard_logging
 
 
+@test_util.run_v1_only("b/120545219")
 class EventLoggingTest(test.TestCase):
 
   def setUp(self):
@@ -85,6 +87,7 @@ class EventLoggingTest(test.TestCase):
                                   (event_pb2.LogMessage.ERROR, "format")])
     self.assertEqual(2, self.logged_message_count)
 
+  @test_util.run_v1_only("b/120545219")
   def testVerbosity(self):
     tensorboard_logging.set_summary_writer(self._sw)
     tensorboard_logging.set_verbosity(tensorboard_logging.ERROR)
@@ -112,6 +115,7 @@ class EventLoggingTest(test.TestCase):
     tensorboard_logging.warn("this should work")
     self.assertEqual(1, self.logged_message_count)
 
+  @test_util.run_v1_only("b/120545219")
   def testSummaryWriterFailsAfterClear(self):
     tensorboard_logging._clear_summary_writer()
     with self.assertRaises(RuntimeError):

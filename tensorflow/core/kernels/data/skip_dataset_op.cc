@@ -67,6 +67,14 @@ class SkipDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "SkipDatasetOp::Dataset"; }
 
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return std::max(0LL, n - count_);
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,

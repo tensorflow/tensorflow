@@ -47,7 +47,8 @@ uint32_t PcanShrink(const uint32_t x) {
 
 void PcanGainControlApply(struct PcanGainControlState* state,
                           uint32_t* signal) {
-  for (int i = 0; i < state->num_channels; ++i) {
+  int i;
+  for (i = 0; i < state->num_channels; ++i) {
     const uint32_t gain = WideDynamicFunction(state->noise_estimate[i],
                                               state->gain_lut);
     const uint32_t snr = ((uint64_t) signal[i] * gain) >> state->snr_shift;

@@ -100,6 +100,7 @@ class AutomaticControlDependencies(object):
     # graph (but that would mess up devices and collections at least,
     # probably other things as well).
     self._graph = ops.get_default_graph()
+    self._graph._add_control_dependencies = True  # pylint: disable=protected-access
     self._n_operations = len(self._graph.get_operations())
     return self
 
@@ -169,6 +170,14 @@ class AutomaticControlDependencies(object):
     if self._graph is not ops.get_default_graph():
       raise RuntimeError(
           "Graph changed while trying to add control dependencies.")
+
+    # pylint: disable=protected-access
+    if hasattr(self._graph, "outer_graph"):
+      outer_val = self._graph.outer_graph._add_control_dependencies
+      self._graph._add_control_dependencies = outer_val
+    else:
+      self._graph._add_control_dependencies = False
+    # pylint: enable=protected-access
 
     # map from resource tensor to the last op which used it
     last_op_using_resource_tensor = {}

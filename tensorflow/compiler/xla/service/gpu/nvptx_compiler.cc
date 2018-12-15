@@ -108,27 +108,33 @@ namespace {
 
 namespace tracing = tensorflow::tracing;
 
-// Returns the directory containing nvvm libdevice files.  config_cuda_data_dir
-// should be equal to config().debug_options().xla_gpu_cuda_data_dir() of the
-// HloModule being compiled.
-string GetLibdeviceDir(const string& config_cuda_data_dir) {
-  std::vector<string> potential_libdevice_dirs;
-  if (!config_cuda_data_dir.empty()) {
-    potential_libdevice_dirs.push_back(config_cuda_data_dir);
-  }
-  potential_libdevice_dirs.push_back(tensorflow::LibdeviceRoot());
+// Returns a vector of potential locations of the CUDA root directory.
+std::vector<string> GetCudaRootCandidates(
+    const HloModuleConfig& hlo_module_config) {
+  std::vector<string> potential_cuda_roots = tensorflow::CandidateCudaRoots();
 
-  // Tries all potential libdevice directories in the order they are inserted.
-  // Returns the first directory that exists in the file system.
-  for (const string& potential_libdevice_dir : potential_libdevice_dirs) {
-    if (tensorflow::Env::Default()->IsDirectory(potential_libdevice_dir).ok()) {
-      VLOG(2) << "Found libdevice dir " << potential_libdevice_dir;
-      return potential_libdevice_dir;
+  // CUDA location explicitly specified by user via --xla_gpu_cuda_data_dir has
+  // highest priority.
+  string xla_gpu_cuda_data_dir =
+      hlo_module_config.debug_options().xla_gpu_cuda_data_dir();
+  if (!xla_gpu_cuda_data_dir.empty()) {
+    potential_cuda_roots.insert(potential_cuda_roots.begin(),
+                                xla_gpu_cuda_data_dir);
+  }
+  return potential_cuda_roots;
+}
+
+// Returns the directory containing nvvm libdevice files.
+string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
+  for (const string& cuda_root : GetCudaRootCandidates(hlo_module_config)) {
+    string libdevice_dir =
+        tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
+    VLOG(2) << "Looking for libdevice at " << libdevice_dir;
+    if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
+      VLOG(2) << "Found libdevice dir " << libdevice_dir;
+      return libdevice_dir;
     }
-    VLOG(2) << "Unable to find potential libdevice dir "
-            << potential_libdevice_dir;
   }
-
   LOG(WARNING) << "Unable to find libdevice dir. Using '.'";
   // Last resort: maybe in the current folder.
   return ".";
@@ -143,7 +149,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
                          Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
-    pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<GpuHloSupportChecker>();
@@ -174,6 +179,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
           /*rewrite_grad_op=*/true);
+
+      pipeline.AddPass<HloGetDimensionSizeRewriter>();
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
@@ -477,13 +484,19 @@ void WarnIfBadDriverJITVersion() {
 
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array.
-StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
-                                        int cc_minor) {
+StatusOr<std::vector<uint8>> CompilePtx(
+    const string& ptx, int cc_major, int cc_minor,
+    const HloModuleConfig& hlo_module_config) {
   tracing::ScopedActivity activity("Compile PTX", /*is_expensive=*/true);
-  const string ptxas_path =
-      tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin", "ptxas");
-  VLOG(2) << "Checking ptxas at " << ptxas_path;
   auto env = tensorflow::Env::Default();
+  string ptxas_path;
+  for (const string& cuda_root : GetCudaRootCandidates(hlo_module_config)) {
+    ptxas_path = tensorflow::io::JoinPath(cuda_root, "bin", "ptxas");
+    VLOG(2) << "Looking for ptxas at " << ptxas_path;
+    if (env->FileExists(ptxas_path).ok()) {
+      break;
+    }
+  }
   TF_RETURN_IF_ERROR(env->FileExists(ptxas_path));
   VLOG(2) << "Using ptxas at " << ptxas_path;
 
@@ -517,6 +530,9 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
       absl::StrCat("-arch=sm_", cc_major, cc_minor)};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
+  }
+  if (hlo_module_config.debug_options().xla_gpu_disable_ptxas_optimizations()) {
+    ptxas_args.push_back("-O0");
   }
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
@@ -680,12 +696,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     // Find the directory containing libdevice.  To avoid searching for it every
     // time, we have a one-element cache, keyed on the module's config's
     // cuda_data_dir.
-    const auto& config_cuda_data_dir =
-        module->config().debug_options().xla_gpu_cuda_data_dir();
-    if (cached_libdevice_dir_.empty() ||
-        cached_cuda_data_dir_ != config_cuda_data_dir) {
-      cached_cuda_data_dir_ = config_cuda_data_dir;
-      cached_libdevice_dir_ = GetLibdeviceDir(config_cuda_data_dir);
+    if (cached_libdevice_dir_.empty()) {
+      cached_libdevice_dir_ = GetLibdeviceDir(module->config());
     }
     libdevice_dir = cached_libdevice_dir_;
   }
@@ -739,7 +751,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   }
 
   const std::vector<uint8> cubin =
-      CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor);
+      CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor, module->config());
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
@@ -771,9 +783,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   return std::unique_ptr<Executable>(gpu_executable);
 }
 
-std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
-                                                              int cc_major,
-                                                              int cc_minor) {
+std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
+    const string& ptx, int cc_major, int cc_minor,
+    const HloModuleConfig& hlo_module_config) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompilePtxOrGetCachedResult");
   tracing::ScopedActivity activity("PTX->CUBIN", /*is_expensive=*/true);
   bool inserted;
@@ -802,7 +814,7 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
         StatusOr<std::vector<uint8>> maybe_cubin =
-            CompilePtx(*cache_ptx, cc_major, cc_minor);
+            CompilePtx(*cache_ptx, cc_major, cc_minor, hlo_module_config);
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()

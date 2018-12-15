@@ -209,7 +209,8 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
   // NOTE(yuanbyu): Only cast for cross-device send/recv.
   if (dtype != cast_dtype && !NeedSameDeviceSendRecv(edge, g_info)) {
     const string cast_op = (host_memory) ? "_HostCast" : "Cast";
-    NodeDefBuilder cast_builder(opts.new_name(src->name()), cast_op);
+    NodeDefBuilder cast_builder(opts.new_name(src->name()), cast_op,
+                                NodeDebugInfo(*src));
     cast_builder.Device(src->assigned_device_name()).Input(send_from);
     if (opts.scheduling_for_recvs) {
       cast_builder.Attr("_start_time", start_time);
@@ -233,7 +234,8 @@ NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
 
   // Add the send node.
   const string send_op = (host_memory) ? "_HostSend" : "_Send";
-  NodeDefBuilder send_builder(opts.new_name(src->name()), send_op);
+  NodeDefBuilder send_builder(opts.new_name(src->name()), send_op,
+                              NodeDebugInfo(*src));
   SetSendRecvAttrs(opts, edge, &send_builder);
   send_builder.Device(src->assigned_device_name()).Input(send_from);
   if (opts.scheduling_for_recvs) {
@@ -268,7 +270,8 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
 
   // Add the recv node.
   const string recv_op = (host_memory) ? "_HostRecv" : "_Recv";
-  NodeDefBuilder recv_builder(opts.new_name(src->name()), recv_op);
+  NodeDefBuilder recv_builder(opts.new_name(src->name()), recv_op,
+                              NodeDebugInfo(*src));
   SetSendRecvAttrs(opts, edge, &recv_builder);
   recv_builder.Device(dst->assigned_device_name())
       .Attr("tensor_type", cast_dtype);
@@ -280,7 +283,8 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
   // Add the cast node (from cast_dtype to dtype) or an Identity node.
   if (dtype != cast_dtype) {
     const string cast_op = (host_memory) ? "_HostCast" : "Cast";
-    NodeDefBuilder cast_builder(opts.new_name(src->name()), cast_op);
+    NodeDefBuilder cast_builder(opts.new_name(src->name()), cast_op,
+                                NodeDebugInfo(*src));
     cast_builder.Attr("DstT", dtype);
     cast_builder.Device(dst->assigned_device_name())
         .Input(recv->name(), 0, cast_dtype);
@@ -290,7 +294,8 @@ NodeDef* AddRecv(const PartitionOptions& opts, const GraphInfo& g_info,
     return cast;
   } else if (edge->IsControlEdge()) {
     // An Identity is only needed for control edges.
-    NodeDefBuilder id_builder(opts.new_name(src->name()), "Identity");
+    NodeDefBuilder id_builder(opts.new_name(src->name()), "Identity",
+                              NodeDebugInfo(*src));
     id_builder.Device(dst->assigned_device_name())
         .Input(recv->name(), 0, cast_dtype);
     NodeDef* id = gdef->add_node();
@@ -982,6 +987,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     GraphDef* dst_graph = &(*partitions)[dstp];
     NodeDef* dst_def = dst_graph->add_node();
     *dst_def = dst->def();
+    MergeDebugInfo(NodeDebugInfo(dst->def()), dst_def);
     dst_def->set_device(dst->assigned_device_name());
     dst_def->clear_input();  // Inputs are filled below
     if (opts.need_to_record_start_times) {

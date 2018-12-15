@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -60,8 +61,8 @@ class IteratorResource : public ResourceBase {
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                    FunctionLibraryRuntime* lib)
       : device_mgr_(std::move(device_mgr)),
-        iterator_state_(
-            new State(std::move(flib_def), std::move(pflr), lib, nullptr)),
+        iterator_state_(std::make_shared<State>(
+            std::move(flib_def), std::move(pflr), lib, nullptr /* iterator */)),
         output_dtypes_(output_dtypes),
         output_shapes_(output_shapes) {}
 
@@ -77,6 +78,7 @@ class IteratorResource : public ResourceBase {
       params.lib = captured_state->lib;
       params.function_handle_cache =
           captured_state->function_handle_cache.get();
+      params.resource_mgr = &captured_state->resource_mgr;
       return captured_state->iterator->GetNext(
           IteratorContext(std::move(params)), out_tensors, end_of_sequence);
     } else {
@@ -135,8 +137,8 @@ class IteratorResource : public ResourceBase {
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
     TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&flib_def, &pflr, &lib));
     TF_RETURN_IF_ERROR(flib_def->AddLibrary(graph_def.library()));
-    std::unique_ptr<State> new_state(
-        new State(std::move(flib_def), std::move(pflr), lib, nullptr));
+    std::unique_ptr<State> new_state = MakeUnique<State>(
+        std::move(flib_def), std::move(pflr), lib, nullptr /* iterator */);
 
     TF_RETURN_IF_ERROR(
         graph_runner.Run(&graph, new_state->lib, {}, {output_node}, &outputs));
@@ -145,6 +147,7 @@ class IteratorResource : public ResourceBase {
     IteratorContext::Params params(ctx);
     params.lib = new_state->lib;
     params.function_handle_cache = new_state->function_handle_cache.get();
+    params.resource_mgr = &new_state->resource_mgr;
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
                                              "Iterator", &new_state->iterator));
     TF_RETURN_IF_ERROR(
@@ -156,6 +159,7 @@ class IteratorResource : public ResourceBase {
       IteratorContext::Params params(ctx);
       params.lib = new_state->lib;
       params.function_handle_cache = new_state->function_handle_cache.get();
+      params.resource_mgr = &new_state->resource_mgr;
       DeviceBase* device = new_state->lib->device();
       params.allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
@@ -178,9 +182,10 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<State> new_state;
     {
       tf_shared_lock l(mu_);
-      new_state.reset(new State(iterator_state_->flib_def,
-                                iterator_state_->pflr, iterator_state_->lib,
-                                nullptr, nullptr));
+      new_state = std::make_shared<State>(
+          iterator_state_->flib_def, iterator_state_->pflr,
+          iterator_state_->lib, nullptr /* function_handle_cache */,
+          nullptr /* iterator */);
     }
 
     // Ensure that the iterator has access to all functions in the current
@@ -205,13 +210,14 @@ class IteratorResource : public ResourceBase {
       new_state->lib = lib;
     }
 
-    new_state->function_handle_cache.reset(
-        new FunctionHandleCache(new_state->lib));
+    new_state->function_handle_cache =
+        MakeUnique<FunctionHandleCache>(new_state->lib);
     // Create new iterator.
     std::unique_ptr<IteratorBase> iterator;
     IteratorContext::Params params(ctx);
     params.lib = new_state->lib;
     params.function_handle_cache = new_state->function_handle_cache.get();
+    params.resource_mgr = &new_state->resource_mgr;
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
                                              "Iterator", &iterator));
     TF_RETURN_IF_ERROR(
@@ -241,7 +247,7 @@ class IteratorResource : public ResourceBase {
         : flib_def(flib_def),
           pflr(pflr),
           lib(lib),
-          function_handle_cache(absl::make_unique<FunctionHandleCache>(lib)),
+          function_handle_cache(MakeUnique<FunctionHandleCache>(lib)),
           iterator(std::move(iterator)) {}
 
     State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
@@ -259,6 +265,7 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
     FunctionLibraryRuntime* lib = nullptr;  // not owned.
     std::unique_ptr<FunctionHandleCache> function_handle_cache;
+    ResourceMgr resource_mgr;
     std::unique_ptr<IteratorBase> iterator;
   };
 
@@ -427,7 +434,7 @@ class IteratorStateVariant {
     SerializationContext::Params params;
     params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
     SerializationContext serialization_ctx(params);
-    data_.reset(new VariantTensorData());
+    data_ = MakeUnique<VariantTensorData>();
     data_->set_type_name(TypeName());
     VariantTensorDataWriter writer(data_.get());
     TF_RETURN_IF_ERROR(iterator_resource->Save(&serialization_ctx, &writer));
@@ -440,10 +447,11 @@ class IteratorStateVariant {
     if (data.type_name() != TypeName()) {
       return false;
     }
-    std::unique_ptr<VariantTensorData> tensor_data(new VariantTensorData);
+    std::unique_ptr<VariantTensorData> tensor_data =
+        MakeUnique<VariantTensorData>();
     std::swap(*tensor_data, data);
-    std::unique_ptr<VariantTensorDataReader> reader(
-        new VariantTensorDataReader(tensor_data.get()));
+    std::unique_ptr<VariantTensorDataReader> reader =
+        MakeUnique<VariantTensorDataReader>(tensor_data.get());
     status_ = reader->status();
     if (!status_.ok()) {
       return false;
@@ -577,12 +585,12 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
   *device_mgr = absl::make_unique<DeviceMgr>(RenamedDevice::NewRenamedDevice(
       ctx->device()->name(), down_cast<Device*>(ctx->device()),
       false /* owns_underlying */, false /* isolate_session_state */));
-  flib_def->reset(new FunctionLibraryDefinition(
-      *ctx->function_library()->GetFunctionLibraryDefinition()));
-  pflr->reset(new ProcessFunctionLibraryRuntime(
+  *flib_def = MakeUnique<FunctionLibraryDefinition>(
+      *ctx->function_library()->GetFunctionLibraryDefinition());
+  *pflr = MakeUnique<ProcessFunctionLibraryRuntime>(
       device_mgr->get(), ctx->env(), graph_def_version_, flib_def->get(),
-      {} /* TODO(mrry): OptimizerOptions? */,
-      nullptr /* TODO(mrry): ClusterFLR */));
+      OptimizerOptions{} /* TODO(mrry): OptimizerOptions? */,
+      nullptr /* TODO(mrry): ClusterFLR */);
 
   return (*pflr)->GetFLR(ctx->device()->name());
 }
@@ -670,9 +678,11 @@ class ToSingleElementOp : public AsyncOpKernel {
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
       std::unique_ptr<IteratorBase> iterator;
       IteratorContext::Params params(ctx);
-      std::unique_ptr<FunctionHandleCache> function_handle_cache(
-          new FunctionHandleCache(params.lib));
+      std::unique_ptr<FunctionHandleCache> function_handle_cache =
+          MakeUnique<FunctionHandleCache>(params.lib);
       params.function_handle_cache = function_handle_cache.get();
+      std::unique_ptr<ResourceMgr> resource_mgr = MakeUnique<ResourceMgr>();
+      params.resource_mgr = resource_mgr.get();
       IteratorContext iter_ctx(std::move(params));
 
       OP_REQUIRES_OK_ASYNC(
@@ -758,9 +768,11 @@ class ReduceDatasetOp : public AsyncOpKernel {
           done);
 
       IteratorContext::Params params(ctx);
-      std::unique_ptr<FunctionHandleCache> function_handle_cache(
-          new FunctionHandleCache(params.lib));
+      std::unique_ptr<FunctionHandleCache> function_handle_cache =
+          MakeUnique<FunctionHandleCache>(params.lib);
       params.function_handle_cache = function_handle_cache.get();
+      std::unique_ptr<ResourceMgr> resource_mgr = MakeUnique<ResourceMgr>();
+      params.resource_mgr = resource_mgr.get();
       IteratorContext iter_ctx(std::move(params));
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func;
       OP_REQUIRES_OK_ASYNC(

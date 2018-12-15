@@ -47,20 +47,24 @@ flags.DEFINE_string(
     "output_dir", "/tmp/out",
     "A directory, where the docs will be output to.")
 
+flags.DEFINE_bool("search_hints", True,
+                  "Include meta-data search hints at the top of each file.")
 
-def build_docs(output_dir, code_url_prefix):
+
+def build_docs(output_dir, code_url_prefix, search_hints=True):
   """Build api docs for tensorflow v2.
 
   Args:
     output_dir: A string path, where to put the files.
     code_url_prefix: prefix for "Defined in" links.
+    search_hints: Bool. Include meta-data search hints at the top of each file.
   """
   base_dir = path.dirname(tf.__file__)
   doc_generator = generate_lib.DocGenerator(
       root_title="TensorFlow 2.0 Preview",
       py_modules=[("tf", tf)],
       base_dir=base_dir,
-      search_hints=True,
+      search_hints=search_hints,
       code_url_prefix=code_url_prefix,
       site_path="api_docs/")
 
@@ -70,7 +74,8 @@ def build_docs(output_dir, code_url_prefix):
 def main(argv):
   del argv
   build_docs(output_dir=FLAGS.output_dir,
-             code_url_prefix=FLAGS.code_url_prefix)
+             code_url_prefix=FLAGS.code_url_prefix,
+             search_hints=FLAGS.search_hints)
 
 
 if __name__ == "__main__":

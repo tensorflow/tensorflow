@@ -487,6 +487,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  @deprecated(
+      None,
+      "Use Variable.read_value. Variables in 2.X are initialized "
+      "automatically both in eager and graph (inside tf.defun) contexts.")
   def initialized_value(self):
     """Returns the value of the initialized variable.
 
@@ -506,7 +510,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
       A `Tensor` holding the value of this variable after its initializer
       has run.
     """
-    raise NotImplementedError
+    with ops.init_scope():
+      return control_flow_ops.cond(is_variable_initialized(self),
+                                   self.read_value,
+                                   lambda: self.initial_value)
 
   @property
   def initial_value(self):
@@ -637,37 +644,84 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable batch-wise.
+
+    Analogous to `batch_gather`. This assumes that this variable and the
+    sparse_delta IndexedSlices have a series of leading dimensions that are the
+    same for all of them, and the updates are performed on the last dimension of
+    indices. In other words, the dimensions should be the following:
+
+    `num_prefix_dims = sparse_delta.indices.ndims - 1`
+    `batch_dim = num_prefix_dims + 1`
+    `sparse_delta.updates.shape = sparse_delta.indices.shape + var.shape[
+         batch_dim:]`
+
+    where
+
+    `sparse_delta.updates.shape[:num_prefix_dims]`
+    `== sparse_delta.indices.shape[:num_prefix_dims]`
+    `== var.shape[:num_prefix_dims]`
+
+    And the operation performed can be expressed as:
+
+    `var[i_1, ..., i_n,
+         sparse_delta.indices[i_1, ..., i_n, j]] = sparse_delta.updates[
+            i_1, ..., i_n, j]`
+
+    When sparse_delta.indices is a 1D tensor, this operation is equivalent to
+    `scatter_update`.
+
+    To avoid this operation one can looping over the first `ndims` of the
+    variable and using `scatter_update` on the subtensors that result of slicing
+    the first dimension. This is a valid option for `ndims = 1`, but less
+    efficient than this implementation.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    raise NotImplementedError
+
   def scatter_nd_sub(self, indices, updates, name=None):
     """Applies sparse subtraction to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    Assuming the variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = ref.scatter_nd_sub(indices, updates)
+        op = v.scatter_nd_sub(indices, updates)
         with tf.Session() as sess:
           print sess.run(op)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, -9, 3, -6, -6, 6, 7, -4]
 
@@ -691,34 +745,34 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def scatter_nd_add(self, indices, updates, name=None):
     """Applies sparse addition to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    The Variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        add = ref.scatter_nd_add(indices, updates)
+        add = v.scatter_nd_add(indices, updates)
         with tf.Session() as sess:
           print sess.run(add)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, 13, 3, 14, 14, 6, 7, 20]
 
@@ -742,34 +796,34 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def scatter_nd_update(self, indices, updates, name=None):
     """Applies sparse assignment to individual values or slices in a Variable.
 
-    `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+    The Variable has rank `P` and `indices` is a `Tensor` of rank `Q`.
 
-    `indices` must be integer tensor, containing indices into `ref`.
+    `indices` must be integer tensor, containing indices into self.
     It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
 
     The innermost dimension of `indices` (with length `K`) corresponds to
     indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
-    dimension of `ref`.
+    dimension of self.
 
     `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
     ```
-    [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+    [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
     For example, say we want to add 4 scattered elements to a rank-1 tensor to
     8 elements. In Python, that update would look like this:
 
     ```python
-        ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
         indices = tf.constant([[4], [3], [1] ,[7]])
         updates = tf.constant([9, 10, 11, 12])
-        op = ref.scatter_nd_assign(indices, updates)
+        op = v.scatter_nd_assign(indices, updates)
         with tf.Session() as sess:
           print sess.run(op)
     ```
 
-    The resulting update to ref would look like this:
+    The resulting update to v would look like this:
 
         [1, 11, 3, 10, 9, 6, 7, 12]
 
@@ -790,6 +844,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
 
@@ -812,6 +867,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  @deprecated(
+      None,
+      "Prefer Variable.assign which has equivalent behavior in 2.X.")
   def load(self, value, session=None):
     """Load new value into this variable.
 
@@ -845,7 +903,15 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Raises:
         ValueError: Session is not passed and no default session
     """
-    raise NotImplementedError
+    if context.executing_eagerly():
+      self.assign(value)
+    else:
+      session = session or ops.get_default_session()
+      if session is None:
+        raise ValueError(
+            "Either session argument should be provided or default session "
+            "should be established")
+      session.run(self.initializer, {self.initializer.inputs[1]: value})
 
   # Conversion to tensor.
   @staticmethod
@@ -884,7 +950,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     def _run_op(a, *args, **kwargs):
       # pylint: disable=protected-access
-      return tensor_oper(a._AsTensor(), *args, **kwargs)
+      return tensor_oper(a.value(), *args, **kwargs)
 
     functools.update_wrapper(_run_op, tensor_oper)
     setattr(cls, operator, _run_op)
@@ -914,6 +980,18 @@ class Variable(six.with_metaclass(VariableMetaclass,
   def name(self):
     """The name of this variable."""
     raise NotImplementedError
+
+  @property
+  def _shared_name(self):
+    """The shared name of the variable.
+
+      Unlike name(), shared_name doesn't have ":0" suffix. It is user-specified
+      name with name scope prefix.
+
+    Returns:
+      variable name.
+    """
+    return self.name[:self.name.index(":")]
 
   @property
   def initializer(self):
@@ -950,8 +1028,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
     raise NotImplementedError
 
   def get_shape(self):
-    """Alias of Variable.shape."""
-    raise NotImplementedError
+    """Alias of `Variable.shape`."""
+    return self.shape
 
   def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.
@@ -1555,16 +1633,6 @@ class RefVariable(VariableV1):
     """Conversion function for Graph.as_graph_element()."""
     return self._variable
 
-  def _AsTensor(self):  # pylint: disable=invalid-name
-    """Converts this variable to a Tensor.
-
-    See `tf.Variable.value`.
-
-    Returns:
-      A `Tensor` containing the value of the variable.
-    """
-    return self._snapshot
-
   def value(self):
     """Returns the last snapshot of this variable.
 
@@ -1655,30 +1723,6 @@ class RefVariable(VariableV1):
       A numpy `ndarray` with a copy of the value of this variable.
     """
     return self._variable.eval(session=session)
-
-  def initialized_value(self):
-    """Returns the value of the initialized variable.
-
-    You should use this instead of the variable itself to initialize another
-    variable with a value that depends on the value of this variable.
-
-    ```python
-    # Initialize 'v' with a random tensor.
-    v = tf.Variable(tf.truncated_normal([10, 40]))
-    # Use `initialized_value` to guarantee that `v` has been
-    # initialized before its value is used to initialize `w`.
-    # The random values are picked only once.
-    w = tf.Variable(v.initialized_value() * 2.0)
-    ```
-
-    Returns:
-      A `Tensor` holding the value of this variable after its initializer
-      has run.
-    """
-    with ops.init_scope():
-      return control_flow_ops.cond(is_variable_initialized(self),
-                                   self.read_value,
-                                   lambda: self.initial_value)
 
   @property
   def initial_value(self):
@@ -1841,6 +1885,55 @@ class RefVariable(VariableV1):
         sparse_delta.values,
         use_locking=use_locking,
         name=name)
+
+  def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
+    """Assigns `IndexedSlices` to this variable batch-wise.
+
+    Analogous to `batch_gather`. This assumes that this variable and the
+    sparse_delta IndexedSlices have a series of leading dimensions that are the
+    same for all of them, and the updates are performed on the last dimension of
+    indices. In other words, the dimensions should be the following:
+
+    `num_prefix_dims = sparse_delta.indices.ndims - 1`
+    `batch_dim = num_prefix_dims + 1`
+    `sparse_delta.updates.shape = sparse_delta.indices.shape + var.shape[
+         batch_dim:]`
+
+    where
+
+    `sparse_delta.updates.shape[:num_prefix_dims]`
+    `== sparse_delta.indices.shape[:num_prefix_dims]`
+    `== var.shape[:num_prefix_dims]`
+
+    And the operation performed can be expressed as:
+
+    `var[i_1, ..., i_n,
+         sparse_delta.indices[i_1, ..., i_n, j]] = sparse_delta.updates[
+            i_1, ..., i_n, j]`
+
+    When sparse_delta.indices is a 1D tensor, this operation is equivalent to
+    `scatter_update`.
+
+    To avoid this operation one can looping over the first `ndims` of the
+    variable and using `scatter_update` on the subtensors that result of slicing
+    the first dimension. This is a valid option for `ndims = 1`, but less
+    efficient than this implementation.
+
+    Args:
+      sparse_delta: `IndexedSlices` to be assigned to this variable.
+      use_locking: If `True`, use locking during the operation.
+      name: the name of the operation.
+
+    Returns:
+      A `Tensor` that will hold the new value of this variable after
+      the scattered subtraction has completed.
+
+    Raises:
+      ValueError: if `sparse_delta` is not an `IndexedSlices`.
+    """
+    return state_ops.batch_scatter_update(
+        self, sparse_delta.indices, sparse_delta.values,
+        use_locking=use_locking, name=name)
 
   def scatter_nd_sub(self, indices, updates, name=None):
     """Applies sparse subtraction to individual values or slices in a Variable.
@@ -2021,6 +2114,7 @@ class RefVariable(VariableV1):
                                               new_axis_mask=new_axis_mask,
                                               shrink_axis_mask=shrink_axis_mask)
 
+  @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
 
@@ -2042,49 +2136,6 @@ class RefVariable(VariableV1):
       distinct.
     """
     return state_ops.count_up_to(self._variable, limit=limit)
-
-  def load(self, value, session=None):
-    """Load new value into this variable.
-
-    Writes new value to variable's memory. Doesn't add ops to the graph.
-
-    This convenience method requires a session where the graph
-    containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
-    information on launching a graph and on sessions.
-
-    ```python
-    v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
-
-    with tf.Session() as sess:
-        sess.run(init)
-        # Usage passing the session explicitly.
-        v.load([2, 3], sess)
-        print(v.eval(sess)) # prints [2 3]
-        # Usage with the default session.  The 'with' block
-        # above makes 'sess' the default session.
-        v.load([3, 4], sess)
-        print(v.eval()) # prints [3 4]
-    ```
-
-    Args:
-        value: New variable value
-        session: The session to use to evaluate this variable. If
-          none, the default session is used.
-
-    Raises:
-        ValueError: Session is not passed and no default session
-    """
-    if context.executing_eagerly():
-      self.assign(value)
-    else:
-      session = session or ops.get_default_session()
-      if session is None:
-        raise ValueError(
-            "Either session argument should be provided or default session "
-            "should be established")
-      session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
 
   # Conversion to tensor.
   @staticmethod
@@ -2243,18 +2294,6 @@ class RefVariable(VariableV1):
     return self._variable.name
 
   @property
-  def _shared_name(self):
-    """The shared name of the variable.
-
-      Unlike name(), shared_name doesn't have ":0" suffix. It is user-specified
-      name with name scope prefix.
-
-    Returns:
-      variable name.
-    """
-    return self.name[:-2]
-
-  @property
   def initializer(self):
     """The initializer operation for this variable."""
     return self._initializer_op
@@ -2287,10 +2326,6 @@ class RefVariable(VariableV1):
       A `TensorShape`.
     """
     return self._variable.get_shape()
-
-  def get_shape(self):
-    """Alias of Variable.shape."""
-    return self.shape
 
   def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.

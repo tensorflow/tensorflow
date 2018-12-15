@@ -178,7 +178,7 @@ Status GenArgMethods(const tf2xla::Config& config,
     TF_RETURN_IF_ERROR(
         AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
     const string code = R"(
-  void set_arg{{NAME}}_data(void* data) {
+  void set_arg{{NAME}}_data(const void* data) {
     set_arg_data({{I}}, data);
   }
   {{TYPE}}* arg{{NAME}}_data() {

@@ -50,8 +50,9 @@ class GraphDefBuilder;
 class Node;
 
 namespace data {
-// A constant that can be used to enable auto-tuning.
-constexpr int kAutoTune = -1;
+
+constexpr int kInfiniteCardinality = -1;
+constexpr int kUnknownCardinality = -2;
 
 class DatasetBase;
 class SerializationContext;
@@ -163,7 +164,7 @@ class GraphDefBuilderWrapper {
                     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
                     Node** output) {
     std::vector<std::pair<size_t, Node*>> enumerated_inputs(inputs.size());
-    for (int i = 0; i < inputs.size(); i++) {
+    for (size_t i = 0; i < inputs.size(); i++) {
       enumerated_inputs[i] = std::make_pair(i, inputs[i]);
     }
     return AddDataset(dataset, enumerated_inputs, {}, attrs, output);
@@ -282,6 +283,7 @@ class IteratorContext {
           function_library(ctx->function_library()),
           lib(ctx->lib()),
           function_handle_cache(ctx->function_handle_cache()),
+          resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
@@ -321,6 +323,10 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
+    // A resource manager for storing dataset-related state, e.g. random
+    // seeds or cached tensors. Not owned.
+    ResourceMgr* resource_mgr = nullptr;
+
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
 
@@ -359,6 +365,8 @@ class IteratorContext {
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
   }
+
+  ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
   const std::shared_ptr<model::Model>& model() { return params_.model; }
 
@@ -531,6 +539,25 @@ class DatasetContext {
   Params params_;
 };
 
+// Returns the number of bytes allocated for the given tensor.
+int64 GetAllocatedBytes(const std::vector<Tensor>& element);
+
+// Validates and extracts a `DatasetBase` object from `tensor`.
+//
+// `tensor` must have been written by a call to SetVariantTensorToDataset().
+//
+// The retrieved pointer is a borrowed reference to the dataset, which is owned
+// by the tensor. The consumer must either acquire its own reference to the
+// dataset by calling `(*out_dataset)->Ref()`, or ensure that `tensor` is not
+// destroyed or mutated while the retrieved pointer is in use.
+Status GetDatasetFromVariantTensor(const Tensor& tensor,
+                                   DatasetBase** out_dataset);
+
+// Stores a `DatasetBase` object in `tensor`.
+//
+// The ownership of `dataset` is transferred to `tensor`.
+Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
+
 // Represents a (potentially infinite) range of outputs, where each
 // output is a tuple of tensors.
 class DatasetBase : public core::RefCounted {
@@ -584,6 +611,12 @@ class DatasetBase : public core::RefCounted {
   // in the outputs of this dataset.
   virtual const std::vector<PartialTensorShape>& output_shapes() const = 0;
 
+  // Returns the number of bytes allocated for tensors of this dataset.
+  virtual int64 AllocatedBytes() const { return 0; }
+
+  // Returns the cardinality of this dataset.
+  virtual int64 Cardinality() const { return kUnknownCardinality; }
+
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
 
@@ -601,7 +634,6 @@ class DatasetBase : public core::RefCounted {
                            const DatasetBase* dataset, Node** output);
   };
 
-  // TODO(jsimsa): Consolidate overloading into a single method.
   virtual Status AsGraphDefInternal(SerializationContext* ctx,
                                     DatasetGraphDefBuilder* b,
                                     Node** node) const = 0;
@@ -689,18 +721,36 @@ class DatasetBaseIterator : public IteratorBase {
     return model::MakeUnknownNode(std::move(args));
   }
 
-  // When performance modeling is enabled, this method records the fact that
-  // this iterator has produced an element.
+  // When modeling is enabled, this method records the fact that this iterator
+  // has dequeued an element from an internal buffer.
+  void RecordBufferDequeue(IteratorContext* ctx,
+                           const std::vector<Tensor>& element) {
+    if (collect_resource_usage(ctx)) {
+      node_->add_buffered_bytes(-GetAllocatedBytes(element));
+    }
+  }
+
+  // When modeling is enabled, this method records the fact that this iterator
+  // has enqueued an element in an internal buffer.
+  void RecordBufferEnqueue(IteratorContext* ctx,
+                           const std::vector<Tensor>& element) {
+    if (collect_resource_usage(ctx)) {
+      node_->add_buffered_bytes(GetAllocatedBytes(element));
+    }
+  }
+
+  // When modeling is enabled, this method records the fact that this iterator
+  // has produced an element.
   void RecordElement(IteratorContext* ctx) {
     if (node_) {
       node_->record_element();
     }
   }
 
-  // When performance modeling is enabled, this method records the fact that
-  // a thread of this iterator has started work.
+  // When modeling is enabled, this method records the fact that a thread of
+  // this iterator has started work.
   void RecordStart(IteratorContext* ctx, bool stop_output = false) {
-    if (node_) {
+    if (collect_resource_usage(ctx)) {
       int64 now_nanos = Env::Default()->NowNanos();
       if (stop_output && node_->output()) {
         node_->output()->record_stop(now_nanos);
@@ -709,10 +759,10 @@ class DatasetBaseIterator : public IteratorBase {
     }
   }
 
-  // When performance modeling is enabled, this method records the fact that
-  // a thread of this iterator has stopped work.
+  // When modeling is enabled, this method records the fact that a thread of
+  // this iterator has stopped work.
   void RecordStop(IteratorContext* ctx, bool start_output = false) {
-    if (node_) {
+    if (collect_resource_usage(ctx)) {
       int64 now_nanos = Env::Default()->NowNanos();
       node_->record_stop(now_nanos);
       if (start_output && node_->output()) {
@@ -722,6 +772,11 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
  private:
+  inline bool collect_resource_usage(IteratorContext* ctx) {
+    auto model = ctx->model();
+    return model && model->collect_resource_usage() && node_;
+  }
+
   BaseParams params_;
 };
 
@@ -820,22 +875,6 @@ class BinaryDatasetOpKernel : public DatasetOpKernel {
                            DatasetBase* another_input,
                            DatasetBase** output) = 0;
 };
-
-// Validates and extracts a `DatasetBase` object from `tensor`.
-//
-// `tensor` must have been written by a call to SetVariantTensorToDataset().
-//
-// The retrieved pointer is a borrowed reference to the dataset, which is owned
-// by the tensor. The consumer must either acquire its own reference to the
-// dataset by calling `(*out_dataset)->Ref()`, or ensure that `tensor` is not
-// destroyed or mutated while the retrieved pointer is in use.
-Status GetDatasetFromVariantTensor(const Tensor& tensor,
-                                   DatasetBase** out_dataset);
-
-// Stores a `DatasetBase` object in `tensor`.
-//
-// The ownership of `dataset` is transferred to `tensor`.
-Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
 
 // A simple background worker that executes closures asynchronously and without
 // blocking.

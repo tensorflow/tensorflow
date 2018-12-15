@@ -483,9 +483,19 @@ REGISTER_KERNEL_BUILDER(Name("TensorListGetItem").Device(DEVICE_CPU),
 
 #if GOOGLE_CUDA
 
-REGISTER_KERNEL_BUILDER(
-    Name("TensorListGetItem").Device(DEVICE_GPU).HostMemory("index"),
-    TensorListGetItem);
+#define REGISTER_TENSOR_LIST_GET_ITEM_GPU(T)                      \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGetItem")               \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("index"),               \
+                          TensorListGetItem);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_GET_ITEM_GPU);
+TF_CALL_complex64(REGISTER_TENSOR_LIST_GET_ITEM_GPU);
+TF_CALL_complex128(REGISTER_TENSOR_LIST_GET_ITEM_GPU);
+TF_CALL_int64(REGISTER_TENSOR_LIST_GET_ITEM_GPU);
+REGISTER_TENSOR_LIST_GET_ITEM_GPU(bfloat16)
+#undef REGISTER_TENSOR_LIST_GET_ITEM_GPU
 
 #endif  // GOOGLE_CUDA
 
@@ -537,9 +547,19 @@ REGISTER_KERNEL_BUILDER(Name("TensorListSetItem").Device(DEVICE_CPU),
 
 #if GOOGLE_CUDA
 
-REGISTER_KERNEL_BUILDER(
-    Name("TensorListSetItem").Device(DEVICE_GPU).HostMemory("index"),
-    TensorListSetItem);
+#define REGISTER_TENSOR_LIST_SET_ITEM_GPU(T)                      \
+  REGISTER_KERNEL_BUILDER(Name("TensorListSetItem")               \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_GPU)                 \
+                              .HostMemory("index"),               \
+                          TensorListSetItem);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
+TF_CALL_complex64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
+TF_CALL_complex128(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
+TF_CALL_int64(REGISTER_TENSOR_LIST_SET_ITEM_GPU);
+REGISTER_TENSOR_LIST_SET_ITEM_GPU(bfloat16)
+#undef REGISTER_TENSOR_LIST_SET_ITEM_GPU
 
 #endif  // GOOGLE_CUDA
 
@@ -660,7 +680,11 @@ REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_CPU(bfloat16);
   REGISTER_KERNEL_BUILDER(Name("TensorListGather")                \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
-                          TensorListGather<CPUDevice, T>)
+                          TensorListGather<CPUDevice, T>)         \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcat")                \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListConcat<CPUDevice, T>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_TENSOR_LIST_STACK_CPU);
 REGISTER_TENSOR_LIST_STACK_CPU(quint8);
@@ -680,7 +704,11 @@ REGISTER_TENSOR_LIST_STACK_CPU(bfloat16);
   REGISTER_KERNEL_BUILDER(Name("TensorListScatter")               \
                               .TypeConstraint<T>("element_dtype") \
                               .Device(DEVICE_CPU),                \
-                          TensorListScatter<CPUDevice, T>)
+                          TensorListScatter<CPUDevice, T>)        \
+  REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                 \
+                              .TypeConstraint<T>("element_dtype") \
+                              .Device(DEVICE_CPU),                \
+                          TensorListSplit<CPUDevice, T>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_TENSOR_LIST_FROM_TENSOR_CPU);
 REGISTER_TENSOR_LIST_FROM_TENSOR_CPU(quint8);

@@ -142,7 +142,7 @@ class KernelMappingScheme {
   int64 GetNumberOfThreadsForDimensionX() const { return num_threads_x_; }
   int64 GetNumberOfThreadsForDimensionY() const { return num_threads_y_; }
 
-  int64 GetThreadsPerTile() const {
+  int64 GetThreadsPerBlock() const {
     return GetNumberOfThreadsForDimensionX() *
            GetNumberOfThreadsForDimensionY();
   }

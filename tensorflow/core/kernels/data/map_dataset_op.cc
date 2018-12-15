@@ -40,6 +40,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
                                      &use_inter_op_parallelism_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -86,9 +88,10 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       };
     }
 
-    *output = new Dataset(ctx, input, func_, std::move(captured_func),
-                          output_types_, output_shapes_,
-                          use_inter_op_parallelism_, std::move(map_func));
+    *output =
+        new Dataset(ctx, input, func_, std::move(captured_func), output_types_,
+                    output_shapes_, use_inter_op_parallelism_,
+                    std::move(map_func), preserve_cardinality_);
   }
 
  private:
@@ -99,11 +102,13 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
             std::unique_ptr<CapturedFunction> captured_func,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            bool use_inter_op_parallelism, MapIteratorFunction map_func)
+            bool use_inter_op_parallelism, MapIteratorFunction map_func,
+            bool preserve_cardinality)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
           use_inter_op_parallelism_(use_inter_op_parallelism),
+          preserve_cardinality_(preserve_cardinality),
           captured_func_(std::move(captured_func)),
           output_types_(output_types),
           output_shapes_(output_shapes),
@@ -127,6 +132,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override { return "MapDatasetOp::Dataset"; }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -161,13 +168,19 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       b->BuildAttrValue(use_inter_op_parallelism_,
                         &use_inter_op_parallelism_attr);
 
+      // Attr: preserve_cardinality
+      AttrValue preserve_cardinality_attr;
+      b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {std::make_pair(0, input_graph_node)},  // Single tensor inputs.
           {std::make_pair(1, other_arguments)},         // Tensor list inputs.
           {std::make_pair("f", f_attr),
            std::make_pair("Targuments", other_arguments_types_attr),
            std::make_pair("use_inter_op_parallelism",
-                          use_inter_op_parallelism_attr)},  // Attrs
+                          use_inter_op_parallelism_attr),
+           std::make_pair("preserve_cardinality",
+                          preserve_cardinality_attr)},  // Attrs
           output));
       return Status::OK();
     }
@@ -202,10 +215,19 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         Status s = map_func_(ctx, instantiated_captured_func_.get(), args,
                              out_tensors);
         if (errors::IsOutOfRange(s)) {
-          // `f` may deliberately raise `errors::OutOfRange` to indicate
-          // that we should terminate the iteration early.
-          *end_of_sequence = true;
-          return Status::OK();
+          if (dataset()->preserve_cardinality_) {
+            // To guarantee that the transformation preserves the cardinality of
+            // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
+            // former may be interpreted by a caller as the end of sequence.
+            return errors::InvalidArgument(
+                "Function invocation produced OutOfRangeError: ",
+                s.error_message());
+          } else {
+            // `f` may deliberately raise `errors::OutOfRange` to indicate
+            // that we should terminate the iteration early.
+            *end_of_sequence = true;
+            return Status::OK();
+          }
         } else {
           return s;
         }
@@ -238,6 +260,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     const DatasetBase* const input_;
     const NameAttrList func_;
     const bool use_inter_op_parallelism_;
+    const bool preserve_cardinality_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
@@ -248,6 +271,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
   bool use_inter_op_parallelism_;
+  bool preserve_cardinality_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);

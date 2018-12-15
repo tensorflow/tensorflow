@@ -648,6 +648,7 @@ class BackpropTest(test.TestCase):
       g.gradient(x, y)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only('b/120545219')
   def testGradientTapeWithCond(self):
     x = constant_op.constant(3.0)
 
@@ -669,6 +670,7 @@ class BackpropTest(test.TestCase):
       self.assertEqual(self.evaluate(dy), 6.0)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only('b/120545219')
   def testGradientTapeWithWhileLoop(self):
     i = constant_op.constant(1)
     x = constant_op.constant(2.)
@@ -704,6 +706,7 @@ class BackpropTest(test.TestCase):
 
   @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only('b/120545219')
   def testPersistentTape(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant(3.0)
@@ -1243,16 +1246,19 @@ class JacobianTest(test.TestCase):
     answer = [array_ops.diag(2 * x * y), array_ops.diag(x * x)]
     return jacobian, answer
 
+  @test_util.run_v1_only('b/120545219')
   def testPfor(self):
     jacobian, answer = self._jacobian(experimental_use_pfor=True)
     for j, a in zip(jacobian, answer):
       self.assertAllEqual(a, j)
 
+  @test_util.run_v1_only('b/120545219')
   def testWhileLoop(self):
     jacobian, answer = self._jacobian(experimental_use_pfor=False)
     for j, a in zip(jacobian, answer):
       self.assertAllEqual(a, j)
 
+  @test_util.run_v1_only('b/120545219')
   def testPforDefun(self):
 
     @function.defun
@@ -1263,6 +1269,7 @@ class JacobianTest(test.TestCase):
     for j, a in zip(jacobian, answer):
       self.assertAllEqual(a, j)
 
+  @test_util.run_v1_only('b/120545219')
   def testWhileLoopDefun(self):
 
     @function.defun
@@ -1273,6 +1280,7 @@ class JacobianTest(test.TestCase):
     for j, a in zip(jacobian, answer):
       self.assertAllEqual(a, j)
 
+  @test_util.run_v1_only('b/120545219')
   def testPersistentTape(self):
     if not context.executing_eagerly():
       return
@@ -1283,6 +1291,7 @@ class JacobianTest(test.TestCase):
     with self.assertRaisesRegexp(RuntimeError, 'persistent'):
       g.jacobian(y, x, experimental_use_pfor=False)
 
+  @test_util.run_v1_only('b/120545219')
   def testPforException(self):
     var = variables.Variable([1.])
 
@@ -1303,6 +1312,7 @@ class JacobianTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'No converter'):
       g.jacobian(y, x, experimental_use_pfor=True)
 
+  @test_util.run_v1_only('b/120545219')
   def test_parallel_iterations(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant([[1., 2], [3, 4]])

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include <fstream>
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
@@ -2789,6 +2790,12 @@ TEST(GcsFileSystemTest, IsDirectory_BucketNotFound) {
 TEST(GcsFileSystemTest, CreateDir_Folder) {
   std::vector<HttpRequest*> requests(
       {new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "subpath%2F?fields=size%2Cgeneration%2Cupdated\n"
+           "Auth Token: fake_token\n"
+           "Timeouts: 5 1 10\n",
+           "{}"),
+       new FakeHttpRequest(
            "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
            "uploadType=resumable&name=subpath%2F\n"
            "Auth Token: fake_token\n"
@@ -2802,18 +2809,12 @@ TEST(GcsFileSystemTest, CreateDir_Folder) {
                            "Put body: \n",
                            ""),
        new FakeHttpRequest(
-           "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o?"
-           "uploadType=resumable&name=subpath%2F\n"
+           "Uri: https://www.googleapis.com/storage/v1/b/bucket/o/"
+           "subpath%2F?fields=size%2Cgeneration%2Cupdated\n"
            "Auth Token: fake_token\n"
-           "Header X-Upload-Content-Length: 0\n"
-           "Post: yes\n"
            "Timeouts: 5 1 10\n",
-           "", {{"Location", "https://custom/upload/location"}}),
-       new FakeHttpRequest("Uri: https://custom/upload/location\n"
-                           "Auth Token: fake_token\n"
-                           "Timeouts: 5 1 30\n"
-                           "Put body: \n",
-                           "")});
+           strings::StrCat("{\"size\": \"1010\",\"generation\": \"1\","
+                           "\"updated\": \"2016-04-29T23:15:24.896Z\"}"))});
   GcsFileSystem fs(std::unique_ptr<AuthProvider>(new FakeAuthProvider),
                    std::unique_ptr<HttpRequest::Factory>(
                        new FakeHttpRequestFactory(&requests)),
@@ -2826,7 +2827,8 @@ TEST(GcsFileSystemTest, CreateDir_Folder) {
                    nullptr /* gcs additional header */);
 
   TF_EXPECT_OK(fs.CreateDir("gs://bucket/subpath"));
-  TF_EXPECT_OK(fs.CreateDir("gs://bucket/subpath/"));
+  EXPECT_EQ(errors::AlreadyExists("gs://bucket/subpath/"),
+            fs.CreateDir("gs://bucket/subpath/"));
 }
 
 TEST(GcsFileSystemTest, CreateDir_Bucket) {

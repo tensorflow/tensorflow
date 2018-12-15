@@ -43,12 +43,19 @@ class CoordinatorShutdownException(Exception):
   pass
 
 
+def _clone_session(session, graph=None):
+  return session_lib.Session(
+      target=session.sess_str,
+      config=session._config,  # pylint: disable=protected-access
+      graph=graph if graph else session.graph)
+
+
 def _make_heartbeat_op(session, device, request_ph):
   """Return a heartbeat op or None if heartbeats are not supported by device."""
   try:
     # Test if we can connect in a isolated graph + session
     with ops.Graph().as_default():
-      with session_lib.Session(target=session.sess_str) as temp_session:
+      with _clone_session(session) as temp_session:
         with ops.device(device):
           heartbeat_op = tpu_ops.worker_heartbeat('')
           options = config_pb2.RunOptions(timeout_in_ms=5000)
@@ -220,6 +227,7 @@ class WatchdogManager(threading.Thread):
     self.ping_interval = ping_interval
     self.shutdown_timeout = shutdown_timeout
     self.daemon = True
+    self._config = session._config  # pylint: disable=protected-access
     self._target = session.sess_str
     self._running = False
     self._devices = devices
@@ -234,6 +242,7 @@ class WatchdogManager(threading.Thread):
     self._session = session_lib.Session(
         target=self._target,
         graph=self._graph,
+        config=self._config,
     )
 
     if self._devices is None:
@@ -334,8 +343,7 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
 
     with self._graph.as_default():
       logging.info('Installing graceful shutdown hook.')
-      self._session = session_lib.Session(
-          target=training_session.sess_str, graph=self._graph)
+      self._session = _clone_session(training_session, self._graph)
       self._workers = WorkerHeartbeatManager.from_devices(
           self._session, all_worker_devices(self._session))
       self._heartbeat_supported = self._workers.num_workers() > 0

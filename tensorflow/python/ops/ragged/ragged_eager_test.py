@@ -17,17 +17,17 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import sys
 
 from absl.testing import parameterized
 
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
+                       parameterized.TestCase):
 
   @parameterized.parameters([
       dict(pylist=[[b'a', b'b'], [b'c']]),
@@ -35,22 +35,16 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       dict(pylist=[[[1, 2], [3, 4]], [[5, 6], [], [7, 8]]], ragged_rank=1),
   ])
   def testRaggedTensorToList(self, pylist, ragged_rank=None):
-    rt = ragged.constant(pylist, ragged_rank)
-    self.assertEqual(rt.tolist(), pylist)
-
-  expected = "RaggedTensor([['a', 'b'], ['c']])"
-  if sys.version_info[0] == 3:
-    expected = "RaggedTensor([[b'a', b'b'], [b'c']])"
+    rt = ragged_factory_ops.constant(pylist, ragged_rank)
+    self.assertRaggedEqual(rt, pylist)
 
   @parameterized.parameters([
-      dict(pylist=[['a', 'b'], ['c']],
-           expected=expected),
-      dict(pylist=[[[1, 2], [3]], [[4, 5, 6], [], [7]]],
-           expected='RaggedTensor([[[1, 2], [3]], [[4, 5, 6], [], [7]]])'),
+      dict(pylist=[[b'a', b'b'], [b'c']]),
+      dict(pylist=[[[1, 2], [3]], [[4, 5, 6], [], [7]]]),
   ])
-  def testRaggedTensorStr(self, pylist, expected):
-    rt = ragged.constant(pylist)
-    self.assertEqual(str(rt), expected)
+  def testRaggedTensorStr(self, pylist):
+    rt = ragged_factory_ops.constant(pylist)
+    self.assertEqual(str(rt), '<tf.RaggedTensor %s>' % pylist)
 
 
 if __name__ == '__main__':

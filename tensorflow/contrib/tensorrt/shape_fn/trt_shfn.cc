@@ -23,7 +23,7 @@ limitations under the License.
 #if GOOGLE_TENSORRT
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorrt/NvInfer.h"
+#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace shape_inference {

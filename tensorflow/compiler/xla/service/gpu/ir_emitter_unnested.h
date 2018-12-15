@@ -215,6 +215,11 @@ class IrEmitterUnnested : public IrEmitter {
   // Prerequisite: `IsReductionToVector(*unnested_hlo)`
   Status EmitReductionToVector(HloInstruction* unnested_hlo);
 
+  // Computes the KernelMappingScheme for the reduce HLO and indicates whether
+  // the reduction is a row reduction.
+  std::tuple<llvm_ir::KernelMappingScheme, bool>
+  ComputeMappingSchemeAndReductionKind(const HloInstruction* first_reduce);
+
   // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
   // the process. `scatter` may be fused, scatter indices are taken from
   // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
@@ -272,9 +277,8 @@ class IrEmitterUnnested : public IrEmitter {
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
   void EmitFullWarpShuffleDownLoopForAllReduces(
-      const absl::InlinedVector<HloComputation*, 1>& reducers,
-      const absl::InlinedVector<llvm::AllocaInst*, 1>&
-          partial_result_addresses);
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<llvm::AllocaInst* const> partial_result_addresses);
 
   // Generates the IrArray for each input of an hlo and returns a vector that
   // constains such IrArrays.

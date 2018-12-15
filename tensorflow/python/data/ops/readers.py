@@ -20,11 +20,13 @@ from __future__ import print_function
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -63,16 +65,8 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
         self._filenames, self._compression_type, self._buffer_size)
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])
 
 
 @tf_export(v1=["data.TextLineDataset"])
@@ -125,16 +119,8 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
         self._filenames, self._compression_type, self._buffer_size)
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.TensorShape([])
-
-  @property
-  def output_types(self):
-    return dtypes.string
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])
 
 
 class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
@@ -158,15 +144,15 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return gen_dataset_ops.parallel_interleave_dataset(
+    return ged_ops.experimental_parallel_interleave_dataset(
         self._input_dataset._as_variant_tensor(),
-        self._map_func.captured_inputs,
+        self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
         self._sloppy,
         self._buffer_output_elements,
         self._prefetch_input_elements,
-        f=self._map_func,
+        f=self._map_func.function,
         **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
 
@@ -247,16 +233,8 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
     return self._impl._inputs()  # pylint: disable=protected-access
 
   @property
-  def output_classes(self):
-    return self._impl.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._impl.output_shapes
-
-  @property
-  def output_types(self):
-    return self._impl.output_types
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])
 
 
 @tf_export(v1=["data.TFRecordDataset"])
@@ -347,16 +325,8 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
           self._footer_bytes, self._buffer_size)
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])
 
 
 @tf_export(v1=["data.FixedLengthRecordDataset"])

@@ -96,7 +96,7 @@ int TfLiteIntArrayEqualsArray(TfLiteIntArray* a, int b_size, int b_data[]);
 
 // Create a copy of an array passed as `src`.
 // You are expected to free memory with TfLiteIntArrayFree
-TfLiteIntArray* TfLiteIntArrayCopy(TfLiteIntArray* src);
+TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src);
 
 // Free memory of array `v`.
 void TfLiteIntArrayFree(TfLiteIntArray* v);
@@ -496,12 +496,12 @@ typedef struct _TfLiteDelegate {
                                        TfLiteBufferHandle buffer_handle,
                                        TfLiteTensor* tensor);
 
-  // Copy the data from raw memory to delegate buffer handle.
-  // This can be null if the delegate doesn't use its own buffer.
+  // Copy the data from raw memory of the given 'tensor' to delegate buffer
+  // handle. This can be null if the delegate doesn't use its own buffer.
   TfLiteStatus (*CopyToBufferHandle)(TfLiteContext* context,
                                      TfLiteDelegate* delegate,
                                      TfLiteBufferHandle buffer_handle,
-                                     void* data, size_t size);
+                                     TfLiteTensor* tensor);
 
   // Free the Delegate Buffer Handle. Note: This only frees the handle, but
   // this doesn't release the underlying resource (e.g. textures). The

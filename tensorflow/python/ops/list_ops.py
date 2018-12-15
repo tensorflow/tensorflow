@@ -30,7 +30,7 @@ from tensorflow.python.ops.gen_list_ops import *
 # pylint: enable=wildcard-import
 
 
-ops.NotDifferentiable("TensorListConcat")
+ops.NotDifferentiable("TensorListConcatLists")
 ops.NotDifferentiable("TensorListElementShape")
 ops.NotDifferentiable("TensorListLength")
 ops.NotDifferentiable("TensorListPushBackBatch")
@@ -65,6 +65,21 @@ def tensor_list_from_tensor(tensor, element_shape, name=None):
       name=name)
 
 
+def tensor_list_concat(input_handle, element_dtype, name=None):
+  # Ignore the lengths output of TensorListConcat. It is only used during
+  # gradient computation.
+  return gen_list_ops.tensor_list_concat(
+      input_handle=input_handle, element_dtype=element_dtype, name=name)[0]
+
+
+def tensor_list_split(tensor, element_shape, lengths, name=None):
+  return gen_list_ops.tensor_list_split(
+      tensor=tensor,
+      element_shape=_build_element_shape(element_shape),
+      lengths=lengths,
+      name=name)
+
+
 @ops.RegisterGradient("TensorListPushBack")
 def _PushBackGrad(op, dresult):
   return gen_list_ops.tensor_list_pop_back(
@@ -84,6 +99,25 @@ def _PopBackGrad(op, dlist, delement):
 @ops.RegisterGradient("TensorListStack")
 def _TensorListStackGrad(unused_op, dtensor):
   return tensor_list_from_tensor(dtensor, element_shape=dtensor.shape[1:])
+
+
+@ops.RegisterGradient("TensorListConcat")
+def _TensorListConcatGrad(op, dtensor, unused_dlengths):
+  # TODO(srbs): We lose the element_shape information in tensor_list_concat.
+  # Consider providing that as an output of TensorListConcat?
+  if dtensor.shape.rank is None:
+    element_shape = None
+  else:
+    element_shape = [None] + dtensor.shape.as_list()[1:]
+  return tensor_list_split(
+      dtensor,
+      element_shape=_build_element_shape(element_shape),
+      lengths=op.outputs[1])
+
+
+@ops.RegisterGradient("TensorListSplit")
+def _TensorListSplitGrad(op, dlist):
+  return tensor_list_concat(dlist, element_dtype=op.inputs[0].dtype), None, None
 
 
 @ops.RegisterGradient("TensorListFromTensor")

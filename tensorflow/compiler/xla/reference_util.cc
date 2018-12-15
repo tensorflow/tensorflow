@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -32,48 +31,19 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
-template <typename T>
-std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
-    const Array2D<T>& lhs, const Array2D<T>& rhs,
-    const std::function<void(
-        const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m, int64 n,
-        int64 k, int32 transpose_lhs, int32 transpose_rhs)>& impl_fn) {
-  CHECK_EQ(lhs.width(), rhs.height());
-  int m = lhs.height();
-  int n = rhs.width();
-  int k = lhs.width();
-  auto result = absl::make_unique<Array2D<T>>(m, n);
-  // Because Eigen is a header-oriented library, make sure that the Eigen code
-  // is the same as the code used by the CPU backend (otherwise the linker will
-  // randomly pick *some* definition).
-  impl_fn(
-      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
-      k,
-      /*transpose_lhs=*/0,
-      /*transpose_rhs=*/0);
-  return result;
-}
-
-}  // namespace
-
 /* static */ std::unique_ptr<Array2D<Eigen::half>> ReferenceUtil::MatmulArray2D(
     const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
-  return MatmulArray2DImpl<Eigen::half>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
+  return HloEvaluator::MatmulArray2D(lhs, rhs);
 }
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MatmulArray2D(
     const Array2D<float>& lhs, const Array2D<float>& rhs) {
-  return MatmulArray2DImpl<float>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
+  return HloEvaluator::MatmulArray2D(lhs, rhs);
 }
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::MatmulArray2D(
     const Array2D<double>& lhs, const Array2D<double>& rhs) {
-  return MatmulArray2DImpl<double>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
+  return HloEvaluator::MatmulArray2D(lhs, rhs);
 }
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::Array2DF32ToF64(

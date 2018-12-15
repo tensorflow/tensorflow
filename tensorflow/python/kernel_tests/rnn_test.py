@@ -262,7 +262,7 @@ class RNNTest(test.TestCase):
       rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32, sequence_length=[4])
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testTensorArrayStateIsAccepted(self):
     cell = TensorArrayStateRNNCell()
     in_eager_mode = context.executing_eagerly()

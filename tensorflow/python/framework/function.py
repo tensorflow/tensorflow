@@ -209,6 +209,7 @@ class _DefinedFunction(object):
                out_names=None,
                shape_func=None,
                capture_by_value=False,
+               whitelisted_stateful_ops=None,
                **kwargs):
     """Creates _DefinedFunction.
 
@@ -229,6 +230,8 @@ class _DefinedFunction(object):
         output shapes.
       capture_by_value: Boolean (defaults to False). If True, captured values
         will be copied into the function body.
+      whitelisted_stateful_ops: A set of ops that if stateful we ignore and
+        copy into the function body, when `capture_by_value` is True.
       **kwargs: The keyword arguments. **kwargs is passed to every call
         site of this function.
 
@@ -244,6 +247,9 @@ class _DefinedFunction(object):
     self._out_names = out_names
     self._shape_func = shape_func
     self._capture_by_value = capture_by_value
+    self._whitelisted_stateful_ops = whitelisted_stateful_ops
+    if self._whitelisted_stateful_ops is None:
+      self._whitelisted_stateful_ops = set()
     self._extra_kwargs = kwargs
     # Constructed only when C API is disabled, lazily
     self._definition = None
@@ -340,8 +346,13 @@ class _DefinedFunction(object):
       return
 
     temp_graph = func_graph_from_py_func(
-        self._func, self._arg_names, self._arg_types, self._func_name,
-        self._capture_by_value, self._caller_device)
+        self._func,
+        self._arg_names,
+        self._arg_types,
+        self._func_name,
+        self._capture_by_value,
+        self._caller_device,
+        whitelisted_stateful_ops=self._whitelisted_stateful_ops)
 
     self._extra_inputs = temp_graph.extra_inputs
     # pylint: disable=protected-access
@@ -625,9 +636,11 @@ class _FuncGraph(ops.Graph):
   function argument and the caller passes in the captured tensor.
   """
 
-  def __init__(self, name, capture_by_value, *args, **kwargs):
+  def __init__(self, name, capture_by_value, whitelisted_stateful_ops, *args,
+               **kwargs):
     super(_FuncGraph, self).__init__(*args, **kwargs)
     self._capture_by_value = capture_by_value
+    self._whitelisted_stateful_ops = whitelisted_stateful_ops
     self._building_function = True
     self._outer_graph = ops.get_default_graph()
     self._vscope = vs.get_variable_scope()
@@ -785,7 +798,7 @@ class _FuncGraph(ops.Graph):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
     # pylint: enable=protected-access
-    if op_def.is_stateful:
+    if op_def.is_stateful and op not in self._whitelisted_stateful_ops:
       raise ValueError("Cannot capture a stateful node (name:%s, type:%s) "
                        "by value." % (op.name, op.type))
     elif op.type in ("Placeholder", "PlaceholderV2"):
@@ -807,10 +820,17 @@ class _FuncGraph(ops.Graph):
     return captured_op
 
 
-def func_graph_from_py_func(func, arg_names, arg_types, name=None,
-                            capture_by_value=False, device=None,
-                            colocation_stack=None, container=None,
-                            collections_ref=None, arg_shapes=None):
+def func_graph_from_py_func(func,
+                            arg_names,
+                            arg_types,
+                            name=None,
+                            capture_by_value=False,
+                            device=None,
+                            colocation_stack=None,
+                            container=None,
+                            collections_ref=None,
+                            arg_shapes=None,
+                            whitelisted_stateful_ops=None):
   """Returns a _FuncGraph generated from `func`.
 
   Args:
@@ -828,6 +848,8 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
     collections_ref: A reference to a collections dict the _FuncGraph should
       use internally.
     arg_shapes: A sequence of the function's argument shapes.
+    whitelisted_stateful_ops: A set of ops that if stateful we ignore and
+      re-create.
 
   Returns:
     A _FuncGraph.
@@ -837,7 +859,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
   """
   if not name:
     name = function_utils.get_func_name(func)
-  func_graph = _FuncGraph(name, capture_by_value)
+  func_graph = _FuncGraph(name, capture_by_value, whitelisted_stateful_ops)
 
   with func_graph.as_default(), ops.device(device):
     # pylint: disable=protected-access
@@ -971,17 +993,18 @@ def _call(sig, *inputs, **kwargs):
   name = kwargs.pop("name", None)
   g = ops.get_default_graph()
   func_name = sig.name
+  if name is None:
+    name = func_name
   attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
-  with ops.name_scope(name, func_name, inputs) as name:
-    op = g.create_op(
-        func_name,
-        list(inputs),
-        output_types,
-        name=name,
-        attrs=attrs,
-        op_def=sig,
-        compute_shapes=False)
+  op = g.create_op(
+      func_name,
+      list(inputs),
+      output_types,
+      name=name,
+      attrs=attrs,
+      op_def=sig,
+      compute_shapes=False)
   if op.outputs:
     if len(op.outputs) == 1:
       ret = op.outputs[0]
@@ -1024,12 +1047,13 @@ def _from_definition(fdef, grad_func=None):
   c_func = c_api.TF_FunctionImportFunctionDef(serialized)
   result._c_func = c_api_util.ScopedTFFunction(c_func)
   result._extra_inputs = []
+  result._op_def = fdef.signature
   # pylint: enable=protected-access
 
   return result
 
 
-def _from_library(lib):
+def from_library(lib):
   """Creates _DefinedFunctions initialized from a FunctionDefLibrary proto.
 
   This method handles assigning the correct gradient functions to each

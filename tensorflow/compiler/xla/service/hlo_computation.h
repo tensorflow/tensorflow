@@ -264,12 +264,6 @@ class HloComputation {
   // Return whether `*this` and `other` are functionally equivalent.
   bool operator==(const HloComputation& other) const;
 
-  // Generates a hash value of an HLO computation. Hash considers
-  // information on opcode, shape, operands, and typically a root instruction.
-  // This function returns the same hash value for equivalent HLO computations,
-  // with respect to HloInstruction::Identical() method.
-  uint64 Hash() const;
-
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.
   Status ReplaceWithNewInstruction(
@@ -307,7 +301,7 @@ class HloComputation {
   // be a topological sort of all instructions in the computation.
   template <typename HloInstructionPtr>
   Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
-                       const std::vector<HloInstruction*>& order) const;
+                       absl::Span<HloInstruction* const> order) const;
 
   // Same as Accept() above, but the visitor is given as a function.
   Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);

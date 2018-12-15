@@ -1,4 +1,4 @@
 container_digests = {
-    "cuda9.0-cudnn7-ubuntu14.04": "sha256:c26138f4c38c754da2bad44a8a068523abf7fbd71d58a57ce92e5342c5431bf5",
-    "cuda10.0-cudnn7-ubuntu14.04": "sha256:7737d770599de8435115bfdf56977002319316a6735ab081f82506cb51443f9d",
+    "cuda9.0-cudnn7-ubuntu14.04": "sha256:c43ed5341dd765042e0bbd1bf50fadeedd649d1e0c34d81999cb6ce30916cb95",
+    "cuda10.0-cudnn7-ubuntu14.04": "sha256:919e75247743ae1244d5d72ee9f18090379d4a9035e5853010f6d59d87cd2e8b",
 }

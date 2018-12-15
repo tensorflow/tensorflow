@@ -422,6 +422,42 @@ class DistributionStrategy(object):
     return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
         input_fn, replication_mode=replication_mode)
 
+  def experimental_run(self, fn, input_iterator=None):
+    """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
+
+    When eager execution is enabled, executes ops specified by `fn` on each
+    replica.  Otherwise, builds a graph to execute the ops on each replica.
+
+    Each replica will take a single, different input from the inputs provided by
+    one `get_next` call on the input iterator.
+
+    `fn` may call `tf.distribute.get_replica_context()` to access members such
+    as `replica_id_in_sync_group`.
+
+    IMPORTANT: Depending on the `DistributionStrategy` being used, and whether
+    eager execution is enabled, `fn` may be called one or more times (once for
+    each replica).
+
+    Args:
+      fn: function to run. The inputs to the function must match the outputs of
+        `input_iterator.get_next()`. The output must be a `tf.nest` of
+        `Tensor`s.
+      input_iterator: (Optional) input iterator from which the inputs are taken.
+
+    Returns:
+      Merged return value of `fn` across replicas. The structure of the return
+      value is the same as the return value from `fn`. Each element in the
+      structure can either be `PerReplica` (if the values are unsynchronized),
+      `Mirrored` (if the values are kept in sync), or `Tensor` (if running on a
+      single replica).
+    """
+    with self.scope():
+      if input_iterator is None:
+        return self._extended.call_for_each_replica(fn)
+      else:
+        inputs = input_iterator.get_next()
+        return self._extended.call_for_each_replica(fn, args=(inputs,))
+
   @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
   def broadcast(self, tensor, destinations=None):
     """DEPRECATED: use extended.broadcast_to() instead."""
@@ -565,8 +601,8 @@ class DistributionStrategy(object):
         variable created in `scope`.
 
     Returns:
-      A list of values contained in `value`. If `value` represents a single
-      value, this returns `[value].`
+      A tuple of values contained in `value`. If `value` represents a single
+      value, this returns `(value,).`
     """
     return self._extended._unwrap(value)  # pylint: disable=protected-access
 
@@ -1346,14 +1382,14 @@ class DistributionStrategyExtended(object):
 
   @property
   def worker_devices(self):
-    """Returns the list of devices used to run `call_for_each_replica()` calls.
+    """Returns the tuple of all devices used to for compute replica execution.
     """
     # TODO(josh11b): More docstring
     raise NotImplementedError("must be implemented in descendants")
 
   @property
   def parameter_devices(self):
-    """Returns the list of devices used for variable and `update` placement."""
+    """Returns the tuple of all devices used to place variables."""
     # TODO(josh11b): More docstring
     raise NotImplementedError("must be implemented in descendants")
 
@@ -1513,9 +1549,9 @@ class ReplicaContext(object):
 
   @property
   def devices(self):
-    """The devices this replica is to be executed on, as a list of strings."""
+    """The devices this replica is to be executed on, as a tuple of strings."""
     require_replica_context(self)
-    return [device_util.current()]
+    return (device_util.current(),)
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
@@ -1605,7 +1641,7 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
     return array_ops.identity(replica_local_var)
 
   def _unwrap(self, distributed_value):
-    return [distributed_value]
+    return (distributed_value,)
 
   def value_container(self, value):
     return value

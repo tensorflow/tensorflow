@@ -52,6 +52,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -86,6 +87,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/util:structure",
     ],
 )

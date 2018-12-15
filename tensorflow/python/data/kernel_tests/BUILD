@@ -97,6 +97,8 @@ tf_py_test(
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:script_ops",
         "//tensorflow/python:sparse_tensor",
     ],
 )
@@ -439,6 +441,19 @@ cuda_py_test(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
+    ],
+)
+
+tf_py_test(
+    name = "options_test",
+    size = "small",
+    srcs = ["options_test.py"],
+    additional_deps = [
+        ":test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/experimental/ops:optimization_options",
+        "//tensorflow/python/data/experimental/ops:threading_options",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

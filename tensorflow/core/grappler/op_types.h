@@ -75,6 +75,7 @@ bool IsHistogramSummary(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsIdentityN(const NodeDef& node);
 bool IsIdentityNSingleInput(const NodeDef& node);
+bool IsIf(const NodeDef& node);
 bool IsIgamma(const NodeDef& node);
 bool IsIgammac(const NodeDef& node);
 bool IsImag(const NodeDef& node);
@@ -167,6 +168,7 @@ bool IsTruncateDiv(const NodeDef& node);
 bool IsTruncateMod(const NodeDef& node);
 bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
+bool IsWhile(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
 // Return true if the op is an aggregation (e.g. Add, AddN).

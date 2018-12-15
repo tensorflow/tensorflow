@@ -283,7 +283,7 @@ def tf_library(
     )
 
     # Variables used for gen_test and gen_benchmark.
-    cpp_class_split = cpp_class.rsplit("::", maxsplit = 2)
+    cpp_class_split = cpp_class.rsplit("::", 2)
     if len(cpp_class_split) == 1:
         no_ns_name = cpp_class_split[0]
     else:

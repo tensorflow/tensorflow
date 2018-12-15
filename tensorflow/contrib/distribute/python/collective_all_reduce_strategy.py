@@ -67,30 +67,31 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   def __init__(self, container_strategy, num_gpus_per_worker):
     distribute_lib.DistributionStrategyExtended.__init__(
         self, container_strategy)
+    self._cross_device_ops = None
     self._num_gpus_per_worker = num_gpus_per_worker
-    self._initialize_local_worker(container_strategy, num_gpus_per_worker)
+    self._initialize_local_worker(num_gpus_per_worker)
+    assert isinstance(self._get_cross_device_ops(),
+                      cross_device_ops_lib.CollectiveAllReduce)
 
-  def _initialize_local_worker(self, container_strategy, num_gpus_per_worker):
+  def _initialize_local_worker(self, num_gpus_per_worker):
     """Initializes the object for local training."""
     self._is_chief = True
     self._num_workers = 1
 
     if num_gpus_per_worker:
-      local_devices = [
+      local_devices = tuple(
           "/device:GPU:%d" % i for i in range(num_gpus_per_worker)
-      ]
+      )
     else:
-      local_devices = ["/device:CPU:0"]
+      local_devices = ("/device:CPU:0",)
     self._worker_device = device_util.canonicalize("/device:CPU:0")
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
-    super(CollectiveAllReduceExtended, self).__init__(
-        container_strategy,
-        devices=local_devices,
-        cross_device_ops=cross_device_ops_lib.CollectiveAllReduce(
-            num_workers=1,
-            num_gpus_per_worker=num_gpus_per_worker,
-            collective_keys=self._collective_keys))
+    self._initialize_local(local_devices)
+    self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
+        num_workers=self._num_workers,
+        num_gpus_per_worker=num_gpus_per_worker,
+        collective_keys=self._collective_keys)
 
     self._cluster_spec = None
     self._task_type = None
@@ -99,13 +100,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     logging.info("CollectiveAllReduceStrategy with local_devices = %r",
                  local_devices)
 
-  def _initialize_multi_worker(self, container_strategy, num_gpus_per_worker,
-                               cluster_spec, task_type, task_id):
+  def _initialize_multi_worker(self, num_gpus_per_worker, cluster_spec,
+                               task_type, task_id):
     """Initializes the object for multi-worker training."""
     if task_type is None or task_id is None:
       raise ValueError("When `cluster_spec` is given, you must also specify "
                        "`task_type` and `task_id`")
-    if task_type not in ["chief", "worker"]:
+    if task_type not in ("chief", "worker"):
       raise ValueError(
           "Unrecognized task_type: %r, valid task types are: \"chief\", "
           "\"worker\"." % task_type)
@@ -120,21 +121,19 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     self._worker_device = "/job:%s/task:%d" % (task_type, task_id)
     if num_gpus_per_worker:
-      local_devices = [
+      local_devices = tuple(
           "%s/device:GPU:%d" % (self._worker_device, i)
           for i in range(num_gpus_per_worker)
-      ]
+      )
     else:
-      local_devices = [self._worker_device]
+      local_devices = (self._worker_device,)
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
-    super(CollectiveAllReduceExtended, self).__init__(
-        container_strategy,
-        devices=local_devices,
-        cross_device_ops=cross_device_ops_lib.CollectiveAllReduce(
-            num_workers=self._num_workers,
-            num_gpus_per_worker=num_gpus_per_worker,
-            collective_keys=self._collective_keys))
+    self._initialize_local(local_devices)
+    self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
+        num_workers=self._num_workers,
+        num_gpus_per_worker=num_gpus_per_worker,
+        collective_keys=self._collective_keys)
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
@@ -268,9 +267,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       # If a `cluster_spec` is already passed in, do nothing here.
       # TODO(yuefengz): check `cluster_spec` is the same if this object has
       # already been initialized with a `cluster_spec`.
-      self._initialize_multi_worker(
-          self._container_strategy(), self._num_gpus_per_worker, cluster_spec,
-          task_type, task_id)
+      self._initialize_multi_worker(self._num_gpus_per_worker, cluster_spec,
+                                    task_type, task_id)
+      assert isinstance(self._get_cross_device_ops(),
+                        cross_device_ops_lib.CollectiveAllReduce)
 
     if session_config:
       session_config.CopyFrom(self._update_config_proto(session_config))
