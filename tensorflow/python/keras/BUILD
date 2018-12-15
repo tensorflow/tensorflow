@@ -559,6 +559,19 @@ cuda_py_test(
     shard_count = 4,
 )
 
+cuda_py_test(
+    name = "unified_gru_test",
+    size = "medium",
+    srcs = ["layers/unified_gru_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 4,
+)
+
 py_test(
     name = "serialization_test",
     size = "small",

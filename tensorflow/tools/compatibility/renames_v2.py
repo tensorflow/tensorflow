@@ -243,6 +243,7 @@ renames = {
     'tf.is_strictly_increasing': 'tf.math.is_strictly_increasing',
     'tf.is_variable_initialized': 'tf.compat.v1.is_variable_initialized',
     'tf.keras.backend.get_session': 'tf.compat.v1.keras.backend.get_session',
+    'tf.keras.layers.CuDNNGRU': 'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM': 'tf.compat.v1.keras.layers.CuDNNLSTM',
     'tf.layers.AveragePooling1D': 'tf.compat.v1.layers.AveragePooling1D',
     'tf.layers.AveragePooling2D': 'tf.compat.v1.layers.AveragePooling2D',
