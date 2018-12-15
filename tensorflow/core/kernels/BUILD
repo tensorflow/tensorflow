@@ -6756,6 +6756,41 @@ tf_mkl_kernel_library(
     deps = NN_DEPS + mkl_deps() + [":cwise_op"],
 )
 
+tf_mkl_kernel_library(
+    name = "mkl_quantized_ops",
+    srcs = [
+        "mkl_requantize_per_channel_op.cc",
+        "mkl_requantization_range_per_channel_op.cc",
+      ],
+    hdrs = [
+        "meta_support.h",
+        "reference_gemm.h",
+    ],
+    deps = if_mkl(
+      [
+        ":concat_lib_hdrs",
+        ":conv_ops",
+        ":cwise_op",
+        ":eigen_helpers",
+        ":image_resizer_state",
+        ":ops_util",
+        ":pooling_ops",
+        ":quantization_utils",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//third_party/eigen3",
+        "@gemmlowp",
+        ":transpose_functor",
+        "@mkl_dnn",
+        "//third_party/mkl:intel_binary_blob",
+      ]
+  )
+)
+
 tf_cc_test_mkl(
     name = "mkl_fused_ops_test",
     size = "small",
