@@ -29,19 +29,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-class XlaGpuDeviceFactory : public DeviceFactory {
- public:
-  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<std::unique_ptr<Device>>* devices) override;
-  // Returns a set containing the device ids contained in visible_device_list or
-  // nullopt if it is empty. It returns error in case of malformed configuration
-  // string.
-  static xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
-      const string& visible_device_list);
-};
-
-xla::StatusOr<absl::optional<std::set<int>>>
-XlaGpuDeviceFactory::ParseVisibleDeviceList(const string& visible_device_list) {
+// Returns a set containing the device ids contained in visible_device_list or
+// nullopt if it is empty. It returns error in case of malformed configuration
+// string.
+static xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
+    const string& visible_device_list) {
   std::set<int> gpu_ids;
   if (visible_device_list.empty()) {
     return {{absl::nullopt}};
@@ -60,6 +52,12 @@ XlaGpuDeviceFactory::ParseVisibleDeviceList(const string& visible_device_list) {
   }
   return {{gpu_ids}};
 }
+
+class XlaGpuDeviceFactory : public DeviceFactory {
+ public:
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<std::unique_ptr<Device>>* devices) override;
+};
 
 Status XlaGpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
@@ -84,11 +82,10 @@ Status XlaGpuDeviceFactory::CreateDevices(
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
   absl::optional<std::set<int>> gpu_ids = ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
-  // We want to fill the gpu_ids set with all devices if config string is empty.
-  int num_visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
   if (!gpu_ids) {
     gpu_ids.emplace();
-    for (int i = 0; i < num_visible_devices; ++i) {
+    // Fill the gpu_ids set with all devices if config string is empty.
+    for (int i = 0; i < platform.ValueOrDie()->VisibleDeviceCount(); ++i) {
       gpu_ids->insert(i);
     }
   }
