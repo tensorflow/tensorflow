@@ -95,6 +95,45 @@ class KerasLossesTest(test.TestCase):
       objective_output = keras.losses.sparse_categorical_crossentropy(y_a, y_b)
       assert keras.backend.eval(objective_output).shape == (6,)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_categorical_crossentropy_loss(self):
+    target = keras.backend.variable(np.random.randint(0, 1, (5, 1)))
+    logits = keras.backend.variable(np.random.random((5, 1)))
+    softmax_output = keras.backend.softmax(logits)
+    output_from_logit = keras.losses.categorical_crossentropy(
+        target, logits, from_logits=True)
+    output_from_softmax = keras.losses.categorical_crossentropy(
+        target, softmax_output)
+    np.testing.assert_allclose(
+        keras.backend.eval(output_from_logit),
+        keras.backend.eval(output_from_softmax), atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_categorical_crossentropy_loss(self):
+    target = keras.backend.variable(np.random.randint(0, 1, (5, 1)))
+    logits = keras.backend.variable(np.random.random((5, 1)))
+    softmax_output = keras.backend.softmax(logits)
+    output_from_logit = keras.losses.sparse_categorical_crossentropy(
+        target, logits, from_logits=True)
+    output_from_softmax = keras.losses.sparse_categorical_crossentropy(
+        target, softmax_output)
+    np.testing.assert_allclose(
+        keras.backend.eval(output_from_logit),
+        keras.backend.eval(output_from_softmax), atol=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_binary_crossentropy_loss(self):
+    target = keras.backend.variable(np.random.randint(0, 1, (5, 1)))
+    logits = keras.backend.variable(np.random.random((5, 1)))
+    sigmoid_output = keras.backend.sigmoid(logits)
+    output_from_logit = keras.losses.binary_crossentropy(
+        target, logits, from_logits=True)
+    output_from_sigmoid = keras.losses.binary_crossentropy(
+        target, sigmoid_output)
+    np.testing.assert_allclose(
+        keras.backend.eval(output_from_logit),
+        keras.backend.eval(output_from_sigmoid), atol=1e-5)
+
   def test_serialization(self):
     fn = keras.losses.get('mse')
     config = keras.losses.serialize(fn)

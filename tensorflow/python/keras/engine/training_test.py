@@ -732,6 +732,71 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllEqual([[6], [8], [10], [12]],
                         model.predict(dataset_two, steps=2))
 
+  def test_training_on_sparse_categorical_crossentropy_loss_with_softmax(self):
+    with context.eager_mode():
+      np.random.seed(1337)
+      train_x = np.ones((100, 4))
+      train_y = np.random.randint(0, 1, size=(100, 1))
+
+      reference_model = testing_utils.get_small_sequential_mlp(16, 2,
+                                                               input_dim=4)
+      reference_model.compile(loss='sparse_categorical_crossentropy',
+                              optimizer=RMSPropOptimizer(learning_rate=0.001),
+                              run_eagerly=True)
+      fixed_weights = reference_model.get_weights()
+      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+
+      test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
+      test_model.compile(loss='sparse_categorical_crossentropy',
+                         optimizer=RMSPropOptimizer(learning_rate=0.001),
+                         run_eagerly=False)
+      test_model.set_weights(fixed_weights)
+      test_model_loss = test_model.train_on_batch(train_x, train_y)
+      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+
+  def test_training_on_categorical_crossentropy_loss_with_softmax(self):
+    with context.eager_mode():
+      np.random.seed(1337)
+      train_x = np.ones((100, 4))
+      train_y = keras.utils.to_categorical(np.random.randint(0, 1,
+                                                             size=(100, 1)), 2)
+
+      reference_model = testing_utils.get_small_sequential_mlp(16, 2,
+                                                               input_dim=4)
+      reference_model.compile(loss='categorical_crossentropy',
+                              optimizer=RMSPropOptimizer(learning_rate=0.001),
+                              run_eagerly=True)
+      fixed_weights = reference_model.get_weights()
+      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+
+      test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
+      test_model.compile(loss='categorical_crossentropy',
+                         optimizer=RMSPropOptimizer(learning_rate=0.001),
+                         run_eagerly=False)
+      test_model.set_weights(fixed_weights)
+      test_model_loss = test_model.train_on_batch(train_x, train_y)
+      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+
+  def test_training_on_binary_crossentropy_loss(self):
+    with context.eager_mode():
+      train_x = np.ones((100, 4), dtype=np.float32)
+      train_y = np.ones((100, 1), dtype=np.float32)
+      reference_model = testing_utils.get_small_sequential_mlp(16, 1,
+                                                               input_dim=4)
+      reference_model.compile(loss='binary_crossentropy',
+                              optimizer=RMSPropOptimizer(learning_rate=0.001),
+                              run_eagerly=True)
+      fixed_weights = reference_model.get_weights()
+      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+
+      test_model = testing_utils.get_small_sequential_mlp(16, 1, input_dim=4)
+      test_model.compile(loss='binary_crossentropy',
+                         optimizer=RMSPropOptimizer(learning_rate=0.001),
+                         run_eagerly=False)
+      test_model.set_weights(fixed_weights)
+      test_model_loss = test_model.train_on_batch(train_x, train_y)
+      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
