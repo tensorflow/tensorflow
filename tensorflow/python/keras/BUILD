@@ -61,10 +61,13 @@ py_library(
         ":engine",
         ":layers",
         ":pil_for_keras",
+        "@keras_applications_archive//:keras_applications",
         "//tensorflow/python:training",
         "//tensorflow/python/keras/optimizer_v2",
+        # TODO(kathywu): move saving into engine after resolving circular
+        # dependencies between Keras and SavedModel
+        "//tensorflow/python/keras/saving",
         "//tensorflow/python/saved_model",
-        "@keras_applications_archive//:keras_applications",
     ],
 )
 
@@ -145,6 +148,7 @@ py_library(
         "utils/data_utils.py",
         "utils/io_utils.py",
         "utils/losses_utils.py",
+        "utils/metrics_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
