@@ -87,7 +87,7 @@ $ alias asm_dockerfiles="docker run --rm -u $(id -u):$(id -g) -v $(pwd):/tf tf-t
 $ asm_dockerfiles --help
 
 # Assemble all of the Dockerfiles
-$ asm_dockerfiles --release ubuntu-dockerfiles --construct_dockerfiles
+$ asm_dockerfiles --release dockerfiles --construct_dockerfiles
 
 # Build all of the "nightly" images on your local machine:
 $ asm_images --release nightly --build_images
