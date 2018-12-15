@@ -84,6 +84,28 @@ REGISTER_OP("ResourceApplyGradientDescent")
     .Attr("use_locking: bool = false")
     .SetShapeFn(ApplyGradientDescentShapeFn);
 
+
+REGISTER_OP("ApplyDelayCompensatedGradientDescent")
+    .Input("var: Ref(T)")
+    .Input("alpha: T")
+    .Input("delta: T")
+    .Input("lambda:T")
+    .Input("shadow: Ref(T)")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyGradientDescentShapeFn);
+
+REGISTER_OP("ResourceApplyDelayCompensatedGradientDescent")
+    .Input("var: resource")
+    .Input("alpha: T")
+    .Input("delta: T")
+    .Input("lambda:T")
+    .Input("shadow: resource")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyGradientDescentShapeFn);
+
 static Status ApplyProximalGradientDescentShapeFn(InferenceContext* c,
                                                   bool sparse) {
   ShapeHandle unused;
