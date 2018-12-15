@@ -25,11 +25,10 @@ import re
 from six.moves.urllib.request import Request
 from six.moves.urllib.request import urlopen
 
-from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import get_accelerator_devices
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
@@ -451,17 +450,16 @@ class TPUClusterResolver(ClusterResolver):
         retrieve the system metadata.
 
     Raises:
-      RuntimeError: If this is used with a non-TPU accelerator_type.
+      RuntimeError: If we cannot talk to a TPU worker after retrying or if the
+        number of TPU devices per host is different.
     """
     retry_count = 1
     # TODO(b/120564445): Replace with standard library for retries.
     while True:
       try:
-        with ops.Graph().as_default():
-          with session.Session(self.master(), config=config_proto) as s:
-            devices = s.list_devices()
-            device_details = _get_device_dict_and_cores(devices)
-            break
+        device_details = _get_device_dict_and_cores(
+            get_accelerator_devices(self.master(), config_proto=config_proto))
+        break
       except errors.DeadlineExceededError:
         error_message = ('Failed to connect to master. The TPU might not be '
                          'ready (e.g. still scheduling) or the master '
@@ -483,7 +481,8 @@ class TPUClusterResolver(ClusterResolver):
     return self._environment
 
   def _start_local_server(self):
-    address = self._requestComputeMetadata('instance/network-interfaces/0/ip')
+    address = compat.as_text(self._requestComputeMetadata(
+        'instance/network-interfaces/0/ip'))
     self._server = server_lib.Server(
         {
             'local': ['0.0.0.0:0']

@@ -512,18 +512,18 @@ class RunManyGraphs {
     if (resp->status_code() != error::Code::OK) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
-      UpdateStatusLocked(
+      ReportBadStatus(
           Status(resp->status_code(), resp->status_error_message()));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
-      UpdateStatusLocked(s);
+      ReportBadStatus(s);
     }
     pending_.DecrementCount();
   }
 
   void StartCancel() {
     mutex_lock l(mu_);
-    UpdateStatusLocked(errors::Cancelled("RunManyGraphs"));
+    ReportBadStatus(errors::Cancelled("RunManyGraphs"));
   }
 
   void Wait() { pending_.Wait(); }
@@ -540,12 +540,19 @@ class RunManyGraphs {
   mutable mutex mu_;
   Status status_ GUARDED_BY(mu_);
 
-  void UpdateStatusLocked(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    // Start cancellation if we aren't already in an error state.
     if (status_.ok()) {
-      status_ = s;
       for (Call& call : calls_) {
         call.opts.StartCancel();
       }
+    }
+
+    // Prefer primary failures over cancellations.  A cancellation may finish
+    // _before_ the original status is propagated; we override it in this case.
+    if (status_.ok() ||
+        str_util::StrContains(status_.error_message(), "[CHILD]")) {
+      status_ = s;
     }
   }
 
@@ -1352,7 +1359,9 @@ Status MasterSession::DeleteWorkerSessions() {
         &workers[i].call_opts, &workers[i].request, &workers[i].response, cb);
   }
 
-  done.Wait();
+  if (!done.WaitFor(std::chrono::milliseconds(10000))) {
+    LOG(WARNING) << "Timeout for closing worker session";
+  }
   for (size_t i = 0; i < workers.size(); ++i) {
     status.Update(workers[i].status);
   }

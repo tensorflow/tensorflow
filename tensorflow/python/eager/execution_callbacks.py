@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import contextlib
 import functools
+import enum  # pylint: disable=g-bad-import-order
 
 import numpy as np
 
@@ -29,13 +30,25 @@ from tensorflow.python.eager import core
 from tensorflow.python.eager import execute
 from tensorflow.python.platform import tf_logging as logging
 
-IGNORE = "ignore"
-PRINT = "print"
-RAISE = "raise"
-WARN = "warn"
 
-_DEFAULT_CALLBACK_ACTION = RAISE
-_VALID_CALLBACK_ACTIONS = (None, IGNORE, PRINT, RAISE, WARN)
+class ExecutionCallback(enum.Enum):
+  """Valid callback actions.
+
+  These can be passed to `seterr` or `errstate` to create callbacks when
+  specific events occur (e.g. an operation produces `NaN`s).
+
+  IGNORE: take no action.
+  PRINT:  print a warning to `stdout`.
+  RAISE:  raise an error (e.g. `InfOrNanError`).
+  WARN:   print a warning using `tf.logging.warn`.
+  """
+
+  IGNORE = "ignore"
+  PRINT = "print"
+  RAISE = "raise"
+  WARN = "warn"
+
+_DEFAULT_CALLBACK_ACTION = ExecutionCallback.RAISE
 
 
 # TODO(cais): Consider moving this exception class to errors_impl.py.
@@ -139,11 +152,8 @@ def inf_nan_callback(op_type,
       the output tensor values.
     check_nan: (`bool`) Whether this callback should check for `nan` values in
       the output tensor values.
-    action: (`str`) Action to be taken by the callback when `inf` or `nan`
-      values are detected. Possible values {"raise", "warn", "print"}
-      `"raise"`: Raise a `InfOrNanError`.
-      `"warn"`: Log a warning using `tf.logging.warn`.
-      `"print"`: Print a message to `sys.stdout`.
+    action: (`ExecutionCallback`) Action to be taken by the callback when
+      `inf` or `nan` values are detected.
 
   Raises:
     InfOrNanError: iff `inf` or `nan` values are seen in any of `outputs` and
@@ -152,6 +162,7 @@ def inf_nan_callback(op_type,
   """
   del attrs, inputs  # Not used.
 
+  action = ExecutionCallback(action)
   ctx = context.context()
 
   for index, output in enumerate(outputs):
@@ -180,16 +191,16 @@ def inf_nan_callback(op_type,
           continue
 
         error = InfOrNanError(op_type, op_name, index, len(outputs), value)
-        if action == "print":
+        if action == ExecutionCallback.PRINT:
           print("Warning: %s" % str(error))
-        elif action == "warn":
+        elif action == ExecutionCallback.WARN:
           logging.warn(str(error))
-        elif action == "raise":
+        elif action == ExecutionCallback.RAISE:
           raise error
         else:
           raise ValueError(
               "Invalid action for inf_nan_callback: %s. Valid actions are: "
-              "{print | warn | raise}" % action)
+              "{PRINT | WARN | RAISE}" % action)
 
 
 def inf_callback(op_type,
@@ -282,7 +293,7 @@ def seterr(inf_or_nan=None):
 
   Example:
   ```python
-  tfe.seterr(inf_or_nan="raise")
+  tfe.seterr(inf_or_nan=ExecutionCallback.RAISE)
   a = tf.constant(10.0)
   b = tf.constant(0.0)
   try:
@@ -290,18 +301,14 @@ def seterr(inf_or_nan=None):
   except Exception as e:
     print("Caught Exception: %s" % e)
 
-  tfe.seterr(inf_or_nan="ignore")
+  tfe.seterr(inf_or_nan=ExecutionCallback.IGNORE)
   c = a / b  # <-- Does NOT raise exception anymore.
   ```
 
   Args:
-    inf_or_nan: Set action for infinity (`inf`) and NaN (`nan`) values.
-      Possible values: `{"ignore", "print", "raise", "warn"}`.
-      `"ignore"`: take no action when `inf` values appear.
-      `"print"`: print a warning to `stdout`.
-      `"raise"`: raise an `InfOrNanError`.
-      `"warn"`: print a warning using `tf.logging.warn`.
-      A value of `None` leads to no change in the action of the condition.
+    inf_or_nan: An `ExecutionCallback` determining the action for infinity
+      (`inf`) and NaN (`nan`) values. A value of `None` leads to no change in
+      the action of the condition.
 
   Returns:
     A dictionary of old actions.
@@ -309,12 +316,8 @@ def seterr(inf_or_nan=None):
   Raises:
     ValueError: If the value of any keyword arguments is invalid.
   """
-  if inf_or_nan not in _VALID_CALLBACK_ACTIONS:
-    raise ValueError(
-        "Invalid action value for inf_or_nan: %s. "
-        "Valid actions are %s." % (inf_or_nan, _VALID_CALLBACK_ACTIONS))
-
-  old_settings = {"inf_or_nan": "ignore"}
+  inf_or_nan = ExecutionCallback(inf_or_nan) if inf_or_nan is not None else None
+  old_settings = {"inf_or_nan": ExecutionCallback.IGNORE}
   default_context = context.context()
 
   carryover_callbacks = []
@@ -336,7 +339,7 @@ def seterr(inf_or_nan=None):
     default_context.clear_post_execution_callbacks()
     for callback in carryover_callbacks:
       default_context.add_post_execution_callback(callback)
-    if inf_or_nan != "ignore":
+    if inf_or_nan != ExecutionCallback.IGNORE:
       default_context.add_post_execution_callback(
           functools.partial(inf_nan_callback, action=inf_or_nan))
 
@@ -351,18 +354,14 @@ def errstate(inf_or_nan=None):
   ```
   c = tf.log(0.)  # -inf
 
-  with errstate(inf_or_nan="raise"):
+  with errstate(inf_or_nan=ExecutionCallback.RAISE):
     tf.log(0.)  # <-- Raises InfOrNanError.
   ```
 
   Args:
-    inf_or_nan: Set action for infinity (`inf`) and NaN (`nan`) values.
-      Possible values: `{IGNORE, PRINT, RAISE, WARN}`.
-      `IGNORE`: take no action when `inf` values appear.
-      `PRINT`: print a warning to `stdout`.
-      `RAISE`: raise an `InfOrNanError`.
-      `WARN`: print a warning using `tf.logging.warn`.
-      A value of `None` leads to no change in the action of the condition.
+    inf_or_nan: An `ExecutionCallback` determining the action for infinity
+      (`inf`) and NaN (`nan`) values. A value of `None` leads to no change in
+      the action of the condition.
 
   Yields:
     None.

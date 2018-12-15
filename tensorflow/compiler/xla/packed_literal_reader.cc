@@ -42,8 +42,7 @@ PackedLiteralReader::~PackedLiteralReader() { delete file_; }
 StatusOr<Literal> PackedLiteralReader::Read(const Shape& shape,
                                             const Layout* layout) {
   VLOG(3) << "reading shape from file: " << ShapeUtil::HumanString(shape)
-          << " layout: "
-          << (layout == nullptr ? "<none>" : layout->ShortDebugString());
+          << " layout: " << (layout == nullptr ? "<none>" : layout->ToString());
   Shape literal_shape = shape;
   if (layout != nullptr) {
     TF_RETURN_IF_ERROR(

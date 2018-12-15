@@ -1882,8 +1882,8 @@ TEST_P(HloDataflowAnalysisTest, AddDependency) {
 HloModule AddDependency
 ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   %p = f32[3] parameter(0)
-  %token = token[] after-all()
-  ROOT %add_dep = f32[3] add-dependency(f32[3] %p, token[] %token)
+  %token0 = token[] after-all()
+  ROOT %add_dep = f32[3] add-dependency(f32[3] %p, token[] %token0)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(

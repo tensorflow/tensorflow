@@ -74,6 +74,9 @@ class Nadam(adam.Adam):
       **kwargs: keyword arguments. Allowed to be {`decay`}
     """
 
+    # Backwards compatiblity with keras NAdam optimizer.
+    if 'schedule_decay' in kwargs:
+      kwargs['decay'] = kwargs.pop('schedule_decay')
     # pylint: disable=useless-super-delegation
     super(Nadam, self).__init__(
         learning_rate=learning_rate,

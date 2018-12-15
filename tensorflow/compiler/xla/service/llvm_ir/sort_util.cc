@@ -108,7 +108,7 @@ void EmitCompareLoopBody(
 
   // if (is_smaller_index && index_is_inbounds)
   KernelSupportLibrary ksl(b);
-  ksl.IfReturnVoid("smaller_comparison_index", do_comparison, [&]() {
+  ksl.If("smaller_comparison_index", do_comparison, [&]() {
     auto key1 = read_element(0, current_keys_index);
     auto key2 = read_element(0, compare_keys_index);
     auto compare_key1 = key1;
@@ -155,7 +155,7 @@ void EmitCompareLoopBody(
       is_smaller_than = b->CreateOr(
           is_smaller_than, b->CreateAnd(keys_equal, index_is_smaller_than));
     }
-    ksl.IfReturnVoid("is_smaller_than", is_smaller_than, [&]() {
+    ksl.If("is_smaller_than", is_smaller_than, [&]() {
       // Swap key1 with key2.
       write_element(0, current_keys_index, key2);
       write_element(0, compare_keys_index, key1);
@@ -192,7 +192,7 @@ void EmitTiledCompareLoop(
             b->CreateShl(tiled_keys_index[dimension_to_sort], value_one);
         // We want to copy two adjacent elements. We first check whether the
         // first index position is within bounds.
-        ksl.IfReturnVoid(
+        ksl.If(
             "smaller_keys_index",
             b->CreateICmpSLT(current_keys_index,
                              tiled_keys_index.GetConstantWithIndexType(
@@ -203,15 +203,14 @@ void EmitTiledCompareLoop(
               // Increment to go the next index position.
               current_keys_index = b->CreateAdd(current_keys_index, value_one);
               // Here we check whether the next index position is within bounds.
-              ksl.IfReturnVoid(
-                  "inner_smaller_keys_index",
-                  b->CreateICmpSLT(current_keys_index,
-                                   tiled_keys_index.GetConstantWithIndexType(
-                                       dimension_to_sort_bound)),
-                  [&]() {
-                    cache_index = b->CreateAdd(cache_index, value_one);
-                    read_or_write(cache_index, current_keys_index);
-                  });
+              ksl.If("inner_smaller_keys_index",
+                     b->CreateICmpSLT(current_keys_index,
+                                      tiled_keys_index.GetConstantWithIndexType(
+                                          dimension_to_sort_bound)),
+                     [&]() {
+                       cache_index = b->CreateAdd(cache_index, value_one);
+                       read_or_write(cache_index, current_keys_index);
+                     });
             });
       };
 
@@ -253,7 +252,7 @@ void EmitTiledCompareLoop(
     if (dimension_to_sort_bound % tile_size) {
       // Otherwise we need a bounds check for the last tile. The last tile has
       // size 'dimension_to_sort_bound' % 'tile_size'.
-      ksl.IfReturnVoid(
+      ksl.If(
           "is_last_tile",
           b->CreateICmpUGE(
               b->CreateMul(tiled_keys_index[dimension_to_sort],

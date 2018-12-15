@@ -36,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -688,7 +689,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testToFromProto(self):
     with self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
       self.assertEquals(2, math_ops.add(w, 1).eval())
@@ -792,11 +793,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         _ = w.value().op.get_attr("_class")
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_deprecated_v1
   def testSharedName(self):
     with self.cached_session():
       v = resource_variable_ops.ResourceVariable(300.0, name="var4")
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       w = resource_variable_ops.var_handle_op(
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var4",
@@ -952,6 +953,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable([1.0, 2.0], name="sub")
       state_ops.scatter_sub(v, [1], [3])
       self.assertAllEqual([1.0, -1.0], v.numpy())
+
+  def testScatterUpdateVariant(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable([
+          list_ops.empty_tensor_list(
+              element_dtype=dtypes.float32, element_shape=[])
+      ])
+      v.scatter_update(
+          ops.IndexedSlices(
+              list_ops.tensor_list_from_tensor([1., 2.], element_shape=[]), 0))
+      self.assertAllEqual(
+          list_ops.tensor_list_get_item(v[0], 0, element_dtype=dtypes.float32),
+          1.)
 
   def testScatterNdAddStateOps(self):
     with context.eager_mode():

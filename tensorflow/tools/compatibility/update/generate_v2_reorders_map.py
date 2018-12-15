@@ -64,40 +64,6 @@ from __future__ import print_function
 
 """
 
-_TENSORFLOW_API_ATTR_V1 = (
-    tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].names)
-_TENSORFLOW_API_ATTR = tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names
-_TENSORFLOW_CONSTANTS_ATTR_V1 = (
-    tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].constants)
-_TENSORFLOW_CONSTANTS_ATTR = (
-    tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].constants)
-
-_ESTIMATOR_API_ATTR_V1 = (
-    tf_export.API_ATTRS_V1[tf_export.ESTIMATOR_API_NAME].names)
-_ESTIMATOR_API_ATTR = tf_export.API_ATTRS[tf_export.ESTIMATOR_API_NAME].names
-_ESTIMATOR_CONSTANTS_ATTR_V1 = (
-    tf_export.API_ATTRS_V1[tf_export.ESTIMATOR_API_NAME].constants)
-_ESTIMATOR_CONSTANTS_ATTR = (
-    tf_export.API_ATTRS[tf_export.ESTIMATOR_API_NAME].constants)
-
-
-def get_v1_names(symbol):
-  names_v1 = []
-  if hasattr(symbol, _TENSORFLOW_API_ATTR_V1):
-    names_v1.extend(getattr(symbol, _TENSORFLOW_API_ATTR_V1))
-  if hasattr(symbol, _ESTIMATOR_API_ATTR_V1):
-    names_v1.extend(getattr(symbol, _ESTIMATOR_API_ATTR_V1))
-  return names_v1
-
-
-def get_v2_names(symbol):
-  names_v2 = []
-  if hasattr(symbol, _TENSORFLOW_API_ATTR):
-    names_v2.extend(getattr(symbol, _TENSORFLOW_API_ATTR))
-  if hasattr(symbol, _ESTIMATOR_API_ATTR):
-    names_v2.extend(getattr(symbol, _ESTIMATOR_API_ATTR))
-  return list(names_v2)
-
 
 def collect_function_arg_names(function_names):
   """Determines argument names for reordered function signatures.
@@ -115,7 +81,7 @@ def collect_function_arg_names(function_names):
     """Visitor that collects arguments for reordered functions."""
     for child in children:
       _, attr = tf_decorator.unwrap(child[1])
-      api_names_v1 = get_v1_names(attr)
+      api_names_v1 = tf_export.get_v1_names(attr)
       api_names_v1 = ['tf.%s' % name for name in api_names_v1]
       matches_function_names = any(
           name in function_names for name in api_names_v1)

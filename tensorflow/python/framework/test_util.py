@@ -67,16 +67,14 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import script_ops
-from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -409,42 +407,12 @@ def enable_control_flow_v2(fn):
   """
 
   def wrapper(*args, **kwargs):
-    enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
-    enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
-    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-    control_flow_ops.ENABLE_COND_V2 = True
-    control_flow_ops.ENABLE_WHILE_V2 = True
-    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
+    enable_control_flow_v2_old = control_flow_util.ENABLE_CONTROL_FLOW_V2
+    control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
-      control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
-
-  return wrapper
-
-
-def enable_tensor_array_v2(fn):
-  """Decorator for enabling _GraphTensorArrayV2 on a test.
-
-  Note this enables _GraphTensorArrayV2 after running the test class's
-  setup/teardown methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  def wrapper(*args, **kwargs):
-    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
-    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
-    try:
-      fn(*args, **kwargs)
-    finally:
-      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
+      control_flow_util.ENABLE_CONTROL_FLOW_V2 = enable_control_flow_v2_old
 
   return wrapper
 
@@ -493,7 +461,7 @@ def with_control_flow_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
+  if control_flow_util.ENABLE_CONTROL_FLOW_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
@@ -1054,12 +1022,13 @@ def also_run_as_tf_function(f):
   """
 
   def decorated(*args, **kwds):
+    def bound_f():
+      f(*args, **kwds)
     with context.eager_mode():
       # Running in eager mode
-      f(*args, **kwds)
-
-      defun_f = def_function.function(f)
-      defun_f(*args, **kwds)
+      bound_f()
+      # Running as TF function
+      def_function.function(bound_f)()
 
   return decorated
 
@@ -1897,7 +1866,7 @@ class TensorFlowTestCase(googletest.TestCase):
     # If a is a tensor then convert it to ndarray
     if isinstance(a, ops.Tensor):
       if isinstance(a, ops._EagerTensorBase):
-        return a.numpy()
+        a = a.numpy()
       else:
         a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
@@ -2620,42 +2589,3 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
-
-
-def dismantle_func_graph(func_graph):
-  """Removes reference cycles in `func_graph` FuncGraph.
-
-  Helpful for making sure the garbage collector doesn't need to run when
-  the FuncGraph goes out of scope, e.g. in tests using defun with
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
-
-  Args:
-    func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable
-      after this function.
-  """
-  # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
-  # Clearing captures using clear() leaves some cycles around.
-  while func_graph.captures:
-    func_graph.captures.popitem()
-  memory.dismantle_ordered_dict(func_graph.captures)
-  ops.dismantle_graph(func_graph)
-
-
-def dismantle_polymorphic_function(func):
-  """Removes reference cycles in PolymorphicFunction `func`.
-
-  Helpful for making sure the garbage collector doesn't need to run when
-  PolymorphicFunction goes out of scope, e.g. in tests using defun with
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
-
-  Args:
-    func: A `PolymorphicFunction` object to destroy. `func` is unusable
-      after this function.
-  """
-  # TODO(b/115366440): Delete this method when a custom OrderedDict is added
-  cache = func._function_cache  # pylint: disable=protected-access
-  for concrete_func in cache.values():
-    dismantle_func_graph(concrete_func.graph)
-  while cache:
-    cache.popitem()
-  memory.dismantle_ordered_dict(cache)

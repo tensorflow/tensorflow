@@ -356,6 +356,8 @@ std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
   if (output) {
     output->add_input(node);
   }
+  collect_resource_usage_ =
+      collect_resource_usage_ || node->has_tunable_parameters();
   lookup_table_.insert(std::make_pair(name, node));
   return node;
 }
@@ -441,7 +443,7 @@ void Model::RecordElement(const string& name) {
 void Model::RecordStart(const string& name, bool stop_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node) {
+  if (collect_resource_usage_ && node) {
     int64 now_nanos = Env::Default()->NowNanos();
     if (stop_output && (*node)->output()) {
       (*node)->output()->record_stop(now_nanos);
@@ -453,7 +455,7 @@ void Model::RecordStart(const string& name, bool stop_output) {
 void Model::RecordStop(const string& name, bool start_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node) {
+  if (collect_resource_usage_ && node) {
     int64 now_nanos = Env::Default()->NowNanos();
     (*node)->record_stop(now_nanos);
     if (start_output && (*node)->output()) {

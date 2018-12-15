@@ -570,11 +570,8 @@ def _get_input_from_iterator(iterator, model):
   # Validate that all the elements in x and y are of the same type and shape.
   # We can then pass the first element of x and y to `_standardize_weights`
   # below and be confident of the output.
-  x_values, y_values, sample_weights_values = distributed_training_utils.\
-    validate_distributed_dataset_inputs(model._distribution_strategy, x, y,
-                                        sample_weights)
-  model._standardize_weights(x_values, y_values,
-                             sample_weight=sample_weights_values)
+  distributed_training_utils.validate_distributed_dataset_inputs(
+      model._distribution_strategy, x, y, sample_weights)
   return x, y, sample_weights
 
 

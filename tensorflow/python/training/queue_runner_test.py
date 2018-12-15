@@ -49,7 +49,7 @@ class QueueRunnerTest(test.TestCase):
       var = variables.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       threads = qr.create_threads(sess)
       self.assertEqual(sorted(t.name for t in threads),
@@ -77,7 +77,7 @@ class QueueRunnerTest(test.TestCase):
       self.assertEqual(sorted(t.name for t in threads),
                        ["QueueRunnerThread-fifo_queue-CountUpTo:0",
                         "QueueRunnerThread-fifo_queue-CountUpTo_1:0"])
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for t in threads:
         t.start()
       for t in threads:
@@ -93,7 +93,7 @@ class QueueRunnerTest(test.TestCase):
       qr = queue_runner_impl.QueueRunner(queue, [_MockOp("i fail"),
                                                  _MockOp("so fail")])
       threads = qr.create_threads(sess)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for t in threads:
         t.start()
       for t in threads:
@@ -140,7 +140,7 @@ class QueueRunnerTest(test.TestCase):
       var = variables.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       # As the coordinator to stop.  The queue runner should
       # finish immediately.
@@ -196,7 +196,7 @@ class QueueRunnerTest(test.TestCase):
         var = variables.VariableV1(zero64)
         count_up_to = var.count_up_to(3)
         queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         coord = coordinator.Coordinator()
         qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
         # NOTE that this test does not actually start the threads.
@@ -212,7 +212,7 @@ class QueueRunnerTest(test.TestCase):
       var = variables.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       coord = coordinator.Coordinator()
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       threads = []
@@ -229,7 +229,7 @@ class QueueRunnerTest(test.TestCase):
       var = variables.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to,
                                                  _MockOp("bad_op")])
       threads = qr.create_threads(sess, start=True)

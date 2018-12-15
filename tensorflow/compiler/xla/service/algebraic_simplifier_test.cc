@@ -2047,6 +2047,27 @@ TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
             computation->root_instruction()->dimensions());
 }
 
+TEST_F(AlgebraicSimplifierTest, TransposeIsReshape) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[10] parameter(0)
+      reshaped = f32[1,1,10] reshape(f32[10] param)
+      transposed = f32[10,1,1] transpose(f32[1,1,10] reshaped), dimensions={2,1,0}
+      ROOT reshaped_again = f32[10] reshape(f32[10,1,1] transposed)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Parameter()));
+}
+
 // Test merging reshape and broadcast.
 TEST_F(AlgebraicSimplifierTest, ReshapeAndBroadcastMerged) {
   auto m = CreateNewVerifiedModule();
@@ -4082,6 +4103,57 @@ INSTANTIATE_TEST_CASE_P(
     PadReduceWindowEffectiveBroadcastInstantiation,
     PadReduceWindowEffectiveBroadcastTest,
     ::testing::ValuesIn(PadReduceWindowEffectiveBroadcastCases()));
+
+class BatchDotStrengthReductionTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<
+          ::testing::tuple<int, int, int, PrimitiveType>> {};
+TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
+  auto module = CreateNewVerifiedModule();
+  int m, k, n;
+  PrimitiveType element_type;
+  std::tie(m, k, n, element_type) = GetParam();
+
+  Shape dot_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, m, n});
+  Shape lhs_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, m, k});
+  Shape rhs_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, k, n});
+  HloComputation::Builder builder(TestName());
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, rhs_shape, "rhs"));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_lhs_batch_dimensions(1);
+  dot_dnums.add_lhs_batch_dimensions(2);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(1);
+  dot_dnums.add_rhs_batch_dimensions(2);
+  dot_dnums.add_lhs_contracting_dimensions(4);
+  dot_dnums.add_rhs_contracting_dimensions(3);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(default_options_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
+  const bool dot_should_be_transformed = m == 1 || k == 1 || n == 1;
+  const bool computation_should_be_modified = dot_should_be_transformed;
+  EXPECT_EQ(changed, computation_should_be_modified);
+  bool has_no_dot = true;
+  for (const auto& hlo : computation->instructions()) {
+    if (hlo->opcode() == HloOpcode::kDot) {
+      has_no_dot = false;
+      break;
+    }
+  }
+  EXPECT_EQ(has_no_dot, dot_should_be_transformed);
+}
+
+INSTANTIATE_TEST_CASE_P(
+    BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
+    ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
+                       ::testing::Values(1, 2), ::testing::Values(F32, BF16)));
 
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,

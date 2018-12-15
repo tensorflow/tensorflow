@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import structure
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -360,6 +361,25 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertFalse(sess.run(elem_has_value_t))
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(elem_value_t)
+
+  def testFunctionBoundaries(self):
+    @def_function.function
+    def get_optional():
+      x = constant_op.constant(1.0)
+      opt = optional_ops.Optional.from_value(x)
+      # TODO(skyewm): support returning Optionals from functions?
+      return opt._variant_tensor
+
+    # TODO(skyewm): support Optional arguments?
+    @def_function.function
+    def consume_optional(opt_tensor):
+      value_structure = structure.TensorStructure(dtypes.float32, [])
+      opt = optional_ops._OptionalImpl(opt_tensor, value_structure)
+      return opt.get_value()
+
+    opt_tensor = get_optional()
+    val = consume_optional(opt_tensor)
+    self.assertEqual(self.evaluate(val), 1.0)
 
 
 if __name__ == "__main__":

@@ -905,7 +905,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.
-    string tmp = literal().ToString();
+    string tmp = literal().ToStringWithoutShape();
     std::replace(tmp.begin(), tmp.end(), '\n', ' ');
     std::vector<string> v = absl::StrSplit(tmp, ' ');
     bool first = true;
@@ -1372,8 +1372,14 @@ bool HloFusionInstruction::IdenticalSlowPath(
                          other.fused_instructions_computation());
 }
 
+static uint64 HashOperandRecursive(const HloInstruction* hlo) {
+  return hlo->Hash(HashOperandRecursive);
+}
+
 uint64 HloFusionInstruction::InnerHash() const {
-  return fused_instructions_computation()->Hash();
+  // Use HashOperandRecursive to recursively compute hash on inner operands.
+  return fused_instructions_computation()->root_instruction()->Hash(
+      HashOperandRecursive);
 }
 
 std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
@@ -1994,9 +2000,18 @@ std::unique_ptr<HloInstruction> HloPadInstruction::CloneWithNewOperandsImpl(
 HloDynamicSliceInstruction::HloDynamicSliceInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* start_indices,
     absl::Span<const int64> slice_sizes)
-    : HloInstruction(HloOpcode::kDynamicSlice, shape),
+    : HloDynamicIndexInstruction(HloOpcode::kDynamicSlice, shape),
       dynamic_slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
   AppendOperand(operand);
+  AppendOperand(start_indices);
+}
+
+HloDynamicUpdateSliceInstruction::HloDynamicUpdateSliceInstruction(
+    const Shape& shape, HloInstruction* operand, HloInstruction* update,
+    HloInstruction* start_indices)
+    : HloDynamicIndexInstruction(HloOpcode::kDynamicUpdateSlice, shape) {
+  AppendOperand(operand);
+  AppendOperand(update);
   AppendOperand(start_indices);
 }
 

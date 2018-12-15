@@ -77,6 +77,11 @@ std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
   auto repeated_field = debug_options.xla_disable_hlo_passes();
   absl::flat_hash_set<string> disabled_pass_names(repeated_field.begin(),
                                                   repeated_field.end());
+  if (debug_options.xla_disable_all_hlo_passes()) {
+    VLOG(1) << "*All* passes disabled by --xla_disable_all_hlo_passes.";
+    return {};
+  }
+
   if (!disabled_pass_names.empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
             << absl::StrJoin(disabled_pass_names, ", ");

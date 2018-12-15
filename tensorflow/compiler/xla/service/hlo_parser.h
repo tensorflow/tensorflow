@@ -60,6 +60,9 @@ StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
 // Parses the result of PaddingConfigToString(), e.g. "0_0x1_1".
 StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str);
 
+// Parses and returns a Shape::ToString-format string.
+StatusOr<Shape> ParseShape(absl::string_view str);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_

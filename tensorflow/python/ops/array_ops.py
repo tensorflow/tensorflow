@@ -87,6 +87,7 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 
 # pylint: disable=redefined-builtin,protected-access
 @tf_export(v1=["expand_dims"])
+@dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "Use the `axis` argument instead", "dim")
 def expand_dims(input, axis=None, name=None, dim=None):
   """Inserts a dimension of 1 into a tensor's shape.
@@ -889,7 +890,7 @@ def _SliceHelperVar(var, slice_spec):
 
   """
 
-  return _slice_helper(var._AsTensor(), slice_spec, var)
+  return _slice_helper(var.value(), slice_spec, var)
 
 
 ops.Tensor._override_operator("__getitem__", _slice_helper)
@@ -3256,6 +3257,7 @@ reverse_sequence_v2.__doc__ = deprecation.rewrite_argument_docstring(
 
 
 @tf_export(v1=["gather"])
+@dispatch.add_dispatch_support
 def gather(params, indices, validate_indices=None, name=None, axis=0):
   del validate_indices
   if axis != 0:

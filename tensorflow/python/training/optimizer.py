@@ -822,7 +822,10 @@ class Optimizer(
               name=name, shape=None)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
-        v = variable_scope.variable(initial_value, name=name, trainable=False)
+        v = variable_scope.variable(
+            initial_value, name=name, trainable=False,
+            use_resource=resource_variable_ops.is_resource_variable(
+                colocate_with))
       # Restore this variable by name if necessary, but don't add a
       # Checkpointable dependency. Optimizers return the current graph's
       # non-slot variables from _checkpoint_dependencies explicitly rather
