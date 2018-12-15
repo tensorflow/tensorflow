@@ -44,7 +44,7 @@ xla::StatusOr<absl::optional<std::set<int>>>
 XlaGpuDeviceFactory::ParseVisibleDeviceList(const string& visible_device_list) {
   std::set<int> gpu_ids;
   if (visible_device_list.empty()) {
-    return absl::optional<std::set<int>>(absl::nullopt);
+    return {{absl::nullopt}};
   }
   const std::vector<string> visible_devices =
       absl::StrSplit(visible_device_list, ',');
@@ -58,7 +58,7 @@ XlaGpuDeviceFactory::ParseVisibleDeviceList(const string& visible_device_list) {
     }
     gpu_ids.insert(platform_gpu_id);
   }
-  return absl::optional<std::set<int>>(gpu_ids);
+  return {{gpu_ids}};
 }
 
 Status XlaGpuDeviceFactory::CreateDevices(
@@ -83,18 +83,16 @@ Status XlaGpuDeviceFactory::CreateDevices(
   }
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
-  auto parsed_gpus = ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
+  absl::optional<std::set<int>> gpu_ids = ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
   // We want to fill the gpu_ids set with all devices if config string is empty.
-  std::set<int> gpu_ids;
   int num_visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
-  if (!parsed_gpus) {
+  if (!gpu_ids) {
+    gpu_ids.emplace();
     for (int i = 0; i < num_visible_devices; ++i) {
-      gpu_ids.insert(i);
+      gpu_ids->insert(i);
     }
-  } else {
-    gpu_ids = *parsed_gpus;
   }
-  for (int i : gpu_ids) {
+  for (int i : *gpu_ids) {
     XlaDevice::Options options;
     options.platform = platform.ValueOrDie();
     options.device_name_prefix = name_prefix;

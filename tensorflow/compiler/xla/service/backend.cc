@@ -183,7 +183,7 @@ StatusOr<se::StreamExecutor*> Backend::stream_executor(
         device_ordinal, stream_executors_.back()->device_ordinal());
   }
   for (auto* executor : stream_executors_) {
-    if (executor && executor->device_ordinal() == device_ordinal) {
+    if (executor->device_ordinal() == device_ordinal) {
       return executor;
     }
   }
