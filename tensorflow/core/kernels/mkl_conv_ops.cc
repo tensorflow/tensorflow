@@ -467,19 +467,18 @@ class MklConvOp : public OpKernel {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(
-          context,
-          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
-          errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
+                                           std::numeric_limits<int>::max()),
+                  errors::InvalidArgument("filter too large"));
     }
 
     const int64 input_depth =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'C')
                             : GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(context, input_depth == filter.dim_size(2),
-                errors::InvalidArgument(
-                    "input and filter must have the same depth: ", input_depth,
-                    " vs ", filter.dim_size(2)));
+    OP_REQUIRES(
+        context, input_depth == filter.dim_size(2),
+        errors::InvalidArgument("input and filter must have the same depth: ",
+                                input_depth, " vs ", filter.dim_size(2)));
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
 
@@ -488,10 +487,9 @@ class MklConvOp : public OpKernel {
     const int64 input_rows_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'H')
                             : GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
@@ -500,10 +498,9 @@ class MklConvOp : public OpKernel {
     const int64 input_cols_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'W')
                             : GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -511,10 +508,9 @@ class MklConvOp : public OpKernel {
     const int64 input_batch_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'N')
                             : GetTensorDim(input, data_format_, 'N');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_batch_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("batch is too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_batch_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("batch is too large"));
     const int batch = static_cast<int>(input_batch_raw);
 
     // For now we take the stride from the second and third dimensions only (we
@@ -896,17 +892,15 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -1380,7 +1374,7 @@ class MklQuantizedConv2DOp
         context->input(2 + bias_index_offset).flat<float>()(0);
     const float max_input =
         context->input(3 + bias_index_offset).flat<float>()(0);
-    
+
     Tensor* output_min = nullptr;
     Tensor* output_max = nullptr;
     MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
@@ -1396,8 +1390,10 @@ class MklQuantizedConv2DOp
       // This is the case the convolution and requantization are fused.
       // min_freezed_output and max_freezed_output are the actual range
       // for the output
-      output_min->flat<float>()(0) = context->input(6 + bias_index_offset).flat<float>()(0);
-      output_max->flat<float>()(0) = context->input(7 + bias_index_offset).flat<float>()(0);
+      output_min->flat<float>()(0) =
+          context->input(6 + bias_index_offset).flat<float>()(0);
+      output_max->flat<float>()(0) =
+          context->input(7 + bias_index_offset).flat<float>()(0);
     } else {
       const Tensor& min_filter = context->input(4 + bias_index_offset);
       const Tensor& max_filter = context->input(5 + bias_index_offset);
@@ -1405,9 +1401,8 @@ class MklQuantizedConv2DOp
         float min_output_value;
         float max_output_value;
         MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
-                  min_input, max_input,
-                  min_filter.flat<float>()(0), max_filter.flat<float>()(0),
-                  &min_output_value, &max_output_value);
+            min_input, max_input, min_filter.flat<float>()(0),
+            max_filter.flat<float>()(0), &min_output_value, &max_output_value);
         AllocateOutputSetMklShape(context, 1, &output_min, {},
                                   output_min_mkl_shape);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
@@ -1415,14 +1410,14 @@ class MklQuantizedConv2DOp
         output_min->flat<float>()(0) = min_output_value;
         output_max->flat<float>()(0) = max_output_value;
       } else {
-        size_t depth = min_filter.NumElements();   
+        size_t depth = min_filter.NumElements();
         AllocateOutputSetMklShape(context, 1, &output_min, {depth},
                                   output_min_mkl_shape);
         AllocateOutputSetMklShape(context, 2, &output_max, {depth},
                                   output_max_mkl_shape);
         MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
-            min_input, max_input, min_filter, max_filter,
-            &output_min, &output_max);
+            min_input, max_input, min_filter, max_filter, &output_min,
+            &output_max);
       }
     }
   }
@@ -1444,28 +1439,27 @@ class MklQuantizedConv2DOp
           context->input(2 + bias_index_offset).flat<float>()(0);
       const float max_input =
           context->input(3 + bias_index_offset).flat<float>()(0);
-      const Tensor& min_filter_vector =
-        context->input(4 + bias_index_offset);
-      const Tensor& max_filter_vector =
-        context->input(5 + bias_index_offset);
+      const Tensor& min_filter_vector = context->input(4 + bias_index_offset);
+      const Tensor& max_filter_vector = context->input(5 + bias_index_offset);
       const float min_freezed_output =
           context->input(6 + bias_index_offset).flat<float>()(0);
       const float max_freezed_output =
           context->input(7 + bias_index_offset).flat<float>()(0);
 
       float factor = std::is_same<Toutput, quint8>::value ? 255.0f : 127.0f;
-      size_t depth = min_filter_vector.NumElements();  
+      size_t depth = min_filter_vector.NumElements();
       const float* min_filter = min_filter_vector.flat<float>().data();
       const float* max_filter = max_filter_vector.flat<float>().data();
       std::vector<float> scales(depth);
       float input_range = std::max(std::abs(min_input), std::abs(max_input));
-      float output_range = std::max(std::abs(min_freezed_output),
-                                    std::abs(max_freezed_output));
-      for (size_t i = 0; i < depth; i++)
-      {
-        float filter_range = std::max(std::abs(min_filter[i]), std::abs(max_filter[i]));
-        scales[i] = factor * input_range * filter_range/(255.0f * 127.0f * output_range);
-      } 
+      float output_range =
+          std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
+      for (size_t i = 0; i < depth; i++) {
+        float filter_range =
+            std::max(std::abs(min_filter[i]), std::abs(max_filter[i]));
+        scales[i] = factor * input_range * filter_range /
+                    (255.0f * 127.0f * output_range);
+      }
       params.post_op_params.push_back({"output_scale", scales});
     }
   }
@@ -1497,9 +1491,10 @@ class MklQuantizedConv2DOp
       size_t depth = min_filter_vector.NumElements();
       std::vector<float> scales(depth);
       for (size_t i = 0; i < depth; i++) {
-        scales[i] = 255.0 * 127.0 /
-                      (std::max(std::abs(max_input), std::abs(min_input)) *
-                      std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+        scales[i] =
+            255.0 * 127.0 /
+            (std::max(std::abs(max_input), std::abs(min_input)) *
+             std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
       }
       mkldnn::primitive_attr bias_attr;
       if (depth == 1) {
@@ -1508,7 +1503,8 @@ class MklQuantizedConv2DOp
         bias_attr.set_output_scales(1, scales);
       }
       auto bias_pd = memory::primitive_desc(
-          {{bias_tensor.NumElements()}, MklDnnType<Tbias>(), memory::format::x}, this->cpu_engine_);
+          {{bias_tensor.NumElements()}, MklDnnType<Tbias>(), memory::format::x},
+          this->cpu_engine_);
 
       void* bias_buf = static_cast<void*>(
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
@@ -1602,7 +1598,8 @@ class MklQuantizedConv2DSumReluOp
         params.post_op_params.push_back(
             {"sum", {scale_summand / scale_output}});
       else
-        params.post_op_params.push_back({"sum", {255.0f * scale_summand/(scale_output * 127.0f)}});
+        params.post_op_params.push_back(
+            {"sum", {255.0f * scale_summand / (scale_output * 127.0f)}});
     } else {
       params.post_op_params.push_back({"sum", {1.0}});
     }
@@ -1665,14 +1662,14 @@ class MklQuantizedConv2DSumReluOp
     const Tensor& min_filter_vector = context->input(4 + bias_index_offset);
     const Tensor& max_filter_vector = context->input(5 + bias_index_offset);
     const float* min_filter = min_filter_vector.flat<float>().data();
-    const float* max_filter = max_filter_vector.flat<float>().data();  
-    
+    const float* max_filter = max_filter_vector.flat<float>().data();
+
     size_t depth = min_filter_vector.NumElements();
     std::vector<float> scales(depth);
     for (size_t i = 0; i < depth; i++) {
       scales[i] = 255.0 * 127.0 /
-                      (std::max(std::abs(max_input), std::abs(min_input)) *
-                      std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
+                  (std::max(std::abs(max_input), std::abs(min_input)) *
+                   std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
     }
     mkldnn::primitive_attr reorder_attr;
     if (depth == 1) {
@@ -1727,15 +1724,15 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DPerChannel")
                             .TypeConstraint<qint8>("Tfilter")
                             .TypeConstraint<qint32>("out_type"),
                         NoOp);
- // Register a templatized implementation of MklQuntizedConv2D.
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DPerChannel")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("Tinput")
-                            .TypeConstraint<qint8>("Tfilter")
-                            .TypeConstraint<qint32>("out_type")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false>);
-
+// Register a templatized implementation of MklQuntizedConv2D.
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DPerChannel")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DOp<CPUDevice, float, qint32, qint32, false>);
 
 // Register a templatized implementation of MklQuntizedConv2D.
 REGISTER_KERNEL_BUILDER(
@@ -1940,23 +1937,24 @@ REGISTER_KERNEL_BUILDER(
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, qint8, true>);
 
-
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("Tinput")
-                            .TypeConstraint<qint8>("Tfilter")
-                            .TypeConstraint<float>("Tbias")
-                            .TypeConstraint<quint8>("out_type")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, quint8, true>);
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("Tinput")
-                            .TypeConstraint<qint8>("Tfilter")
-                            .TypeConstraint<float>("Tbias")
-                            .TypeConstraint<quint8>("out_type")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, qint8, true>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, quint8, true>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, qint8, true>);
 #endif  // INTEL_MKL_ML
 
 // Register 2D operations

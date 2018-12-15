@@ -1209,9 +1209,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -1265,9 +1265,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument(
-            "Input must have last dimension > n = ", c->Value(n_dim),
-            " but is ", c->Value(last_dim));
+        return errors::InvalidArgument("Input must have last dimension > n = ",
+                                       c->Value(n_dim), " but is ",
+                                       c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor
@@ -2604,7 +2604,7 @@ REGISTER_OP("QuantizedConv2DWithBiasAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel)); 
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());

@@ -634,7 +634,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       return Status::OK();
     });
 
-    REGISTER_OP("_MklQuantizedConv2DPerChannel")
+REGISTER_OP("_MklQuantizedConv2DPerChannel")
     .Input("input: Tinput")
     .Input("filter: Tfilter")
     .Input("min_input: float")
