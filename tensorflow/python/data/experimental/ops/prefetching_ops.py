@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import function
@@ -72,9 +71,7 @@ def copy_to_device(target_device, source_device="/cpu:0"):
   def _apply_fn(dataset):
     options = dataset_ops.Options()
     options.experimental_autotune = False
-    opt_options = optimization_options.OptimizationOptions()
-    opt_options.apply_default_optimizations = False
-    options.experimental_optimization = opt_options
+    options.experimental_optimization.apply_default_optimizations = False
     return _CopyToDeviceDataset(
         dataset, target_device=target_device,
         source_device=source_device).with_options(options)

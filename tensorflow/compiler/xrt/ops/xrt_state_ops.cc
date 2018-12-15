@@ -133,4 +133,11 @@ used.
 'handle' is the id returned from the Op that produced the on-device allocation.
 )");
 
+REGISTER_OP("XRTReleaseAllAllocations")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .Doc(
+        R"(
+Discards all the XRT allocations. All the client held handles will be invalid.
+)");
+
 }  // namespace tensorflow

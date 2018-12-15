@@ -26,6 +26,7 @@ ENV NVIDIA_VISIBLE_DEVICES all
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 ENV NVIDIA_REQUIRE_CUDA "cuda>=9.0"
 ENV NCCL_VERSION 2.2.13
+ENV TENSORRT_VERSION 5.0.2
 ENV CUDNN_VERSION 7.1.4.18
 
 # TODO(b/110903506): /usr/loca/cuda/lib64/stubs should not be needed in
@@ -53,7 +54,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-cublas-dev-9-0=9.0.176.4-1 \
         libnccl-dev=$NCCL_VERSION-1+cuda9.0 \
         libcudnn7-dev=$CUDNN_VERSION-1+cuda9.0 \
-        libcudnn7=$CUDNN_VERSION-1+cuda9.0 && \
+        libcudnn7=$CUDNN_VERSION-1+cuda9.0 \
+        nvinfer-runtime-trt-repo-ubuntu1604-$TENSORRT_VERSION-ga-cuda9.0 && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        libnvinfer5=$TENSORRT_VERSION-1+cuda9.0 \
+        libnvinfer-dev=$TENSORRT_VERSION-1+cuda9.0 && \
     ln -s cuda-9.0 /usr/local/cuda && \
     apt-mark hold libnccl2 && \
     apt-mark hold libcudnn7 libcudnn7-dev && \

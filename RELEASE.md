@@ -7,6 +7,8 @@
     Serving.
 *   Keras models now support evaluating with a `tf.data.Dataset`.
 *   TensorFlow binaries are built with XLA support linked in by default.
+*   Ignite Dataset added to contrib/ignite that allows to work with Apache
+    Ignite.
 
 ## Bug Fixes and Other Changes
 

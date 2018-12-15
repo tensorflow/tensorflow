@@ -147,6 +147,94 @@ def get_canonical_name(api_names, deprecated_api_names):
   return None
 
 
+def get_v1_names(symbol):
+  """Get a list of TF 1.* names for this symbol.
+
+  Args:
+    symbol: symbol to get API names for.
+
+  Returns:
+    List of all API names for this symbol including TensorFlow and
+    Estimator names.
+  """
+  names_v1 = []
+  tensorflow_api_attr_v1 = API_ATTRS_V1[TENSORFLOW_API_NAME].names
+  estimator_api_attr_v1 = API_ATTRS_V1[ESTIMATOR_API_NAME].names
+
+  if not hasattr(symbol, tensorflow_api_attr_v1):
+    return names_v1
+  if tensorflow_api_attr_v1 in symbol.__dict__:
+    names_v1.extend(getattr(symbol, tensorflow_api_attr_v1))
+  if estimator_api_attr_v1 in symbol.__dict__:
+    names_v1.extend(getattr(symbol, estimator_api_attr_v1))
+  return names_v1
+
+
+def get_v2_names(symbol):
+  """Get a list of TF 2.0 names for this symbol.
+
+  Args:
+    symbol: symbol to get API names for.
+
+  Returns:
+    List of all API names for this symbol including TensorFlow and
+    Estimator names.
+  """
+  names_v2 = []
+  tensorflow_api_attr = API_ATTRS[TENSORFLOW_API_NAME].names
+  estimator_api_attr = API_ATTRS[ESTIMATOR_API_NAME].names
+
+  if not hasattr(symbol, tensorflow_api_attr):
+    return names_v2
+  if tensorflow_api_attr in symbol.__dict__:
+    names_v2.extend(getattr(symbol, tensorflow_api_attr))
+  if estimator_api_attr in symbol.__dict__:
+    names_v2.extend(getattr(symbol, estimator_api_attr))
+  return names_v2
+
+
+def get_v1_constants(module):
+  """Get a list of TF 1.* constants in this module.
+
+  Args:
+    module: TensorFlow module.
+
+  Returns:
+    List of all API constants under the given module including TensorFlow and
+    Estimator constants.
+  """
+  constants_v1 = []
+  tensorflow_constants_attr_v1 = API_ATTRS_V1[TENSORFLOW_API_NAME].constants
+  estimator_constants_attr_v1 = API_ATTRS_V1[ESTIMATOR_API_NAME].constants
+
+  if hasattr(module, tensorflow_constants_attr_v1):
+    constants_v1.extend(getattr(module, tensorflow_constants_attr_v1))
+  if hasattr(module, estimator_constants_attr_v1):
+    constants_v1.extend(getattr(module, estimator_constants_attr_v1))
+  return constants_v1
+
+
+def get_v2_constants(module):
+  """Get a list of TF 2.0 constants in this module.
+
+  Args:
+    module: TensorFlow module.
+
+  Returns:
+    List of all API constants under the given module including TensorFlow and
+    Estimator constants.
+  """
+  constants_v2 = []
+  tensorflow_constants_attr = API_ATTRS[TENSORFLOW_API_NAME].constants
+  estimator_constants_attr = API_ATTRS[ESTIMATOR_API_NAME].constants
+
+  if hasattr(module, tensorflow_constants_attr):
+    constants_v2.extend(getattr(module, tensorflow_constants_attr))
+  if hasattr(module, estimator_constants_attr):
+    constants_v2.extend(getattr(module, estimator_constants_attr))
+  return constants_v2
+
+
 class api_export(object):  # pylint: disable=invalid-name
   """Provides ways to export symbols to the TensorFlow API."""
 

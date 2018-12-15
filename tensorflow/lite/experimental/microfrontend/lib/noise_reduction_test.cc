@@ -44,7 +44,8 @@ TEST_F(NoiseReductionTest, TestNoiseReductionEstimate) {
 
   const uint32_t expected[] = {6321887, 31248341};
   ASSERT_EQ(state.num_channels, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < state.num_channels; ++i) {
+  int i;
+  for (i = 0; i < state.num_channels; ++i) {
     EXPECT_EQ(state.estimate[i], expected[i]);
   }
 
@@ -60,7 +61,8 @@ TEST_F(NoiseReductionTest, TestNoiseReduction) {
 
   const uint32_t expected[] = {241137, 478104};
   ASSERT_EQ(state.num_channels, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < state.num_channels; ++i) {
+  int i;
+  for (i = 0; i < state.num_channels; ++i) {
     EXPECT_EQ(signal[i], expected[i]);
   }
 

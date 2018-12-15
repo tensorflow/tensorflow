@@ -418,7 +418,7 @@ class BatchNormalizationV2(Layer):
       # because of a bug which leads cond_v2 to skip rewriting them creating
       # conflicts.
       if tf2.enabled():
-        cm = contextlib.contextmanager(lambda: (yield))
+        cm = contextlib.contextmanager(lambda: (yield))()
       else:
         cm = ops.colocate_with(variable)
       with cm:

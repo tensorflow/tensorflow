@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -345,7 +346,7 @@ class TensorArrayTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSkipEagerTensorArrayGradGrad(self):
-    if not tensor_array_ops.ENABLE_TENSOR_ARRAY_V2:
+    if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
       self.skipTest("Legacy TensorArray does not support double derivatives.")
     with self.test_session(use_gpu=True) as session:
       x = constant_op.constant(4.0)
@@ -424,12 +425,11 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(t_g_ta_0, t_g_ta_1)
       self.assertAllEqual([[4.0, 5.0]], d_r1_0)
 
-  @test_util.run_v1_only("b/120545219")
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
       # Test writing the wrong datatype
-      if (tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and
+      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
           not context.executing_eagerly()):
         error_msg = ("Invalid data types; op elements string but list elements "
                      "float")
@@ -440,7 +440,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.write(0, "wrong_type_scalar").flow)
 
-      if (tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and
+      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
           not context.executing_eagerly()):
         error_msg = "Trying to modify element -1 in a list with 3 elements."
       else:
@@ -448,7 +448,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.write(-1, 3.0).flow)
 
-      if (tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and
+      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
           not context.executing_eagerly()):
         error_msg = "Trying to modify element 3 in a list with 3 elements"
       else:
@@ -458,7 +458,6 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.write(3, 3.0).flow)
 
-  @test_util.run_v1_only("b/120545219")
   def testTensorArrayReadWrongIndexOrDataTypeFails(self):
     with self.session(use_gpu=True):
       ta = _make_ta(3, "foo", dtype=dtypes.float32)
@@ -467,14 +466,14 @@ class TensorArrayTest(test.TestCase):
 
       # Test reading wrong datatype (only possible when constructing graphs).
       if (not context.executing_eagerly() and
-          not tensor_array_ops.ENABLE_TENSOR_ARRAY_V2):
+          not control_flow_util.ENABLE_CONTROL_FLOW_V2):
         r0_bad = gen_data_flow_ops.tensor_array_read_v3(
             handle=w0.handle, index=0, dtype=dtypes.float64, flow_in=w0.flow)
         with self.assertRaisesOpError(
             "TensorArray dtype is float but Op requested dtype double."):
           self.evaluate(r0_bad)
 
-      if (tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and
+      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
           not context.executing_eagerly()):
         error_msg = "Trying to access element -1 in a list with 3 elements."
       else:
@@ -483,7 +482,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.read(-1))
 
-      if (tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and
+      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
           not context.executing_eagerly()):
         error_msg = "Trying to access element 3 in a list with 3 elements."
       else:
@@ -504,7 +503,6 @@ class TensorArrayTest(test.TestCase):
           "it has already been written to."):
         self.evaluate(ta.write(2, 3.0).write(2, 3.0).flow)
 
-  @test_util.run_v1_only("b/120545219")
   def testTensorArrayConcatIncompatibleShapesFails(self):
     with self.session(use_gpu=True):
       ta = tensor_array_ops.TensorArray(
@@ -536,7 +534,6 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError("shape"):
         self.evaluate(w3.concat())
 
-  @test_util.run_v1_only("b/120545219")
   def testTensorArraySplitIncompatibleShapesFails(self):
     with self.session(use_gpu=True):
       in_eager_mode = context.executing_eagerly()
@@ -550,7 +547,7 @@ class TensorArrayTest(test.TestCase):
           ta.split([1.0, 2.0, 3.0], lengths).flow.eval(feed_dict={lengths: 1})
 
       error_msg = ("Unused values in tensor. Length of tensor: 3 Values used: 1"
-                   if tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and
+                   if control_flow_util.ENABLE_CONTROL_FLOW_V2 and
                    not in_eager_mode else
                    r"Expected sum of lengths to be equal to values.shape\[0\], "
                    r"but sum of lengths is 1 and value's shape is: \[3\]")
@@ -558,7 +555,7 @@ class TensorArrayTest(test.TestCase):
         self.evaluate(ta.split([1.0, 2.0, 3.0], [1]).flow)
 
       ta = _make_ta(1, "baz")
-      if tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 and not in_eager_mode:
+      if control_flow_util.ENABLE_CONTROL_FLOW_V2 and not in_eager_mode:
         with self.assertRaisesRegexp(
             ValueError, "Shape must be at least rank 1 but is rank 0"):
           self.evaluate(ta.split(1.0, [1]).flow)
@@ -568,7 +565,7 @@ class TensorArrayTest(test.TestCase):
         ):
           self.evaluate(ta.split(1.0, [1]).flow)
 
-      if not tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 or in_eager_mode:
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2 or in_eager_mode:
         ta = _make_ta(2, "buz")
         with self.assertRaisesOpError(
             r"TensorArray's size is not equal to the size of lengths "
@@ -958,7 +955,7 @@ class TensorArrayTest(test.TestCase):
         v0_grad = gradients_impl.gradients([vout], [v0], [grad_val])[0]
         state0_grad = gradients_impl.gradients([vout], [state0], [grad_val])[0]
         var_grad = gradients_impl.gradients([vout], [var], [grad_val])[0]
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       state0_t, var_t, v0_t, vout_t, v0_grad_t, var_grad_t, state0_grad_t = (
           self.evaluate(
@@ -1002,21 +999,6 @@ class TensorArrayTest(test.TestCase):
     # TODO(ebrevdo): re-enable when While supports non-float32 gradients.
     # self._testWhileLoopWritePackGradients(
     #     dynamic_size=False, dtype=tf.int64)
-
-  @test_util.disable_control_flow_v2("Testing v1 while_loop with v2 TA")
-  @test_util.enable_tensor_array_v2
-  def testWhileLoopV1WithTensorArrayV2(self):
-    size = 3
-    ta = tensor_array_ops.TensorArray(
-        dtype=dtypes.int32, size=size, element_shape=tensor_shape.scalar())
-
-    def Body(counter, ta):
-      return counter + 1, ta.write(counter, counter)
-
-    _, ta = control_flow_ops.while_loop(lambda i, _: i < size, Body, [0, ta])
-
-    for i in range(size):
-      self.assertEqual(self.evaluate(ta.read(i)), i)
 
   @test_util.disable_control_flow_v2("b/117943489 (dynamic_size)")
   @test_util.run_v1_only("b/117943489")
@@ -1270,7 +1252,7 @@ class TensorArrayTest(test.TestCase):
         self.assertEqual((2, 2), w0.read(1).get_shape())
       else:
         self.assertEqual(r0.get_shape().ndims, None)
-        if not tensor_array_ops.ENABLE_TENSOR_ARRAY_V2:
+        if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
           self.assertEqual(
               tensor_shape.TensorShape(
                   ta1.handle.op.get_attr("element_shape")).ndims, None)
@@ -1347,8 +1329,8 @@ class TensorArrayTest(test.TestCase):
           "TensorArray has size zero, but element shape <unknown> is not "
           "fully defined. Currently only static shapes are supported when "
           "packing zero-size TensorArrays.")
-      with self.assertRaisesOpError(v2_msg if tensor_array_ops
-                                    .ENABLE_TENSOR_ARRAY_V2 else v1_msg):
+      with self.assertRaisesOpError(
+          v2_msg if control_flow_util.ENABLE_CONTROL_FLOW_V2 else v1_msg):
         ta.stack().eval()
 
   @test_util.run_v1_only("b/120545219")
@@ -1592,7 +1574,7 @@ class TensorArrayTest(test.TestCase):
       self.assertEqual(tensor_shape.scalar(), read1.get_shape())
 
       if not context.executing_eagerly():
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       read0_v, read1_v, size0_v, size1_v = self.evaluate((read0, read1, size0,
                                                           size1))

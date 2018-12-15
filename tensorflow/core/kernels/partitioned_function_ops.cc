@@ -191,10 +191,12 @@ class PartitionedCallOp : public AsyncOpKernel {
 
         // Run grappler passes on the graph. It is possible that these are
         // optimized by the graph executor already.
-        OP_REQUIRES_OK_ASYNC(ctx,
-                             OptimizeGraph(ctx, fbody->ret_nodes, overlay_lib,
-                                           device_set, cpu_device, &graph),
-                             done);
+        Status optimized = OptimizeGraph(ctx, fbody->ret_nodes, overlay_lib,
+                                         device_set, cpu_device, &graph);
+        if (!optimized.ok()) {
+          LOG(WARNING) << "Grappler optimization failed. Error: "
+                       << optimized.error_message();
+        }
 
         OP_REQUIRES_OK_ASYNC(
             ctx,

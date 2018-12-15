@@ -104,7 +104,8 @@ void Worker::AbortStep(int64 step_id) {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
     // cancellation generated abort error.
-    rendez->StartAbort(errors::Aborted("Step ", step_id));
+    rendez->StartAbort(errors::Aborted("[CHILD] Step ", step_id,
+                                       " cancelled.  Cancelling rendezvous."));
     rendez->Unref();
   });
 }

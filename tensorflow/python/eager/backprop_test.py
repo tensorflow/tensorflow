@@ -1338,17 +1338,14 @@ class BatchJacobianTest(test.TestCase):
                               array_ops.diag(2 * x[1] * y[1])])
     return batch_jacobian, answer
 
-  @test_util.run_v1_only('b/120545219')
   def testPfor(self):
     batch_jacobian, answer = self._batch_jacobian(experimental_use_pfor=True)
     self.assertAllEqual(answer, batch_jacobian)
 
-  @test_util.run_v1_only('b/120545219')
   def testWhileLoop(self):
     batch_jacobian, answer = self._batch_jacobian(experimental_use_pfor=False)
     self.assertAllEqual(answer, batch_jacobian)
 
-  @test_util.run_v1_only('b/120545219')
   def testPforDefun(self):
 
     @function.defun
@@ -1358,7 +1355,6 @@ class BatchJacobianTest(test.TestCase):
     batch_jacobian, answer = _f()
     self.assertAllEqual(answer, batch_jacobian)
 
-  @test_util.run_v1_only('b/120545219')
   def testWhileLoopDefun(self):
 
     @function.defun
@@ -1368,7 +1364,6 @@ class BatchJacobianTest(test.TestCase):
     batch_jacobian, answer = _f()
     self.assertAllEqual(answer, batch_jacobian)
 
-  @test_util.run_v1_only('b/120545219')
   def testPersistentTape(self):
     if not context.executing_eagerly():
       return
@@ -1379,7 +1374,6 @@ class BatchJacobianTest(test.TestCase):
     with self.assertRaisesRegexp(RuntimeError, 'persistent'):
       g.batch_jacobian(y, x, experimental_use_pfor=False)
 
-  @test_util.run_v1_only('b/120545219')
   def testBadShape(self):
     x = random_ops.random_uniform([2, 3])
     with backprop.GradientTape() as g:
@@ -1387,7 +1381,6 @@ class BatchJacobianTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Need first dimension'):
       g.batch_jacobian(y, x)
 
-  @test_util.run_v1_only('b/120545219')
   def testBadInputRank(self):
     x = random_ops.random_uniform([2])
     with backprop.GradientTape() as g:
@@ -1402,7 +1395,6 @@ class BatchJacobianTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
       g.batch_jacobian(y, x)
 
-  @test_util.run_v1_only('b/120545219')
   def testPforException(self):
     var = variables.Variable([1.])
 
@@ -1423,7 +1415,6 @@ class BatchJacobianTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'No converter'):
       g.batch_jacobian(y, x, experimental_use_pfor=True)
 
-  @test_util.run_v1_only('b/120545219')
   def test_parallel_iterations(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant([[1., 2], [3, 4]])

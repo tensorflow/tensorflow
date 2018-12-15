@@ -98,6 +98,9 @@ def make_decorator(target,
   if hasattr(target, '__doc__'):
     decorator_func.__doc__ = decorator.__doc__
   decorator_func.__wrapped__ = target
+  # Keeping a second handle to `target` allows callers to detect whether the
+  # decorator was modified using `rewrap`.
+  decorator_func.__original_wrapped__ = target
   return decorator_func
 
 
@@ -172,6 +175,8 @@ def unwrap(maybe_tf_decorator):
     elif hasattr(cur, '_tf_decorator'):
       decorators.append(getattr(cur, '_tf_decorator'))
     else:
+      break
+    if not hasattr(decorators[-1], 'decorated_target'):
       break
     cur = decorators[-1].decorated_target
   return decorators, cur

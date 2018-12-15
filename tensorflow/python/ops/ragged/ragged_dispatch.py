@@ -76,6 +76,8 @@ def _get_arg_infos(func, arg_names):
 
 def _is_convertible_to_tensor(value):
   """Returns true if `value` is convertible to a `Tensor`."""
+  if value is None:
+    return True
   if isinstance(value,
                 (ops.Tensor, variables.Variable, np.ndarray, int, float, str)):
     return True
@@ -374,15 +376,48 @@ _BINARY_ELEMENTWISE_OPS = [
     math_ops.truncatemod,
 ]
 
+
+# We don't need to register a separate delegation handler for these v1 ops,
+# since they delegate to the v2 ops (which already have a handler).  But we
+# still want to include them in the ragged_op_list() output.
+_V1_OPS_THAT_DELEGATE_TO_V2_OPS = [
+    math_ops.reduce_sum,
+    math_ops.reduce_prod,
+    math_ops.reduce_min,
+    math_ops.reduce_max,
+    math_ops.reduce_mean,
+    math_ops.reduce_any,
+    math_ops.reduce_all,
+]
+
+
+def _ragged_gather_v1(params, indices, validate_indices=None, name=None,
+                      axis=0):
+  return ragged_array_ops.gather(
+      params=params,
+      indices=indices,
+      validate_indices=validate_indices,
+      axis=axis,
+      name=name)
+
+
+def _ragged_expand_dims_v1(input, axis=None, name=None, dim=None):  # pylint: disable=redefined-builtin
+  if dim is not None:
+    axis = dim
+  return ragged_array_ops.expand_dims(input=input, axis=axis, name=name)
+
+
 # (original_op, ragged_op, ragged_args)
 _RAGGED_DISPATCH_OPS = [
     (array_ops.batch_gather, ragged_array_ops.batch_gather,
      ['params', 'indices']),
-    (array_ops.concat, ragged_array_ops.concat, ['values']),
+    (array_ops.concat, ragged_array_ops.concat, ['[values]']),
+    (array_ops.expand_dims, _ragged_expand_dims_v1, ['input']),
     (array_ops.expand_dims_v2, ragged_array_ops.expand_dims, ['input']),
+    (array_ops.gather, _ragged_gather_v1, ['params', 'indices']),
     (array_ops.gather_v2, ragged_array_ops.gather, ['params', 'indices']),
     (array_ops.gather_nd, ragged_array_ops.gather_nd, ['params', 'indices']),
-    (array_ops.stack, ragged_array_ops.stack, ['values']),
+    (array_ops.stack, ragged_array_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_array_ops.where, ['condition', 'x', 'y']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,
@@ -431,10 +466,57 @@ def register_dispatchers():
   for (original_op, ragged_op, args) in _RAGGED_DISPATCH_OPS:
     RaggedDispatcher(original_op, ragged_op, args).register(original_op)
 
-  docstring = (
-      '\n\n### Additional ops that support `RaggedTensor`\n\n' + '\n'.join([
-          '* `tf.%s`' % tf_export.get_canonical_name_for_symbol(op)
-          for op in op_list
-      ]))
 
-  return docstring
+def _ragged_op_signature(op, ragged_args):
+  """Returns a signature for the given op, marking ragged args in bold."""
+  op_name = tf_export.get_canonical_name_for_symbol(op)
+  argspec = tf_inspect.getfullargspec(op)
+  arg_names = argspec.args
+
+  # Mark ragged arguments in bold.
+  for pos in ragged_args:
+    arg_names[pos] = '**' + arg_names[pos] + '**'
+
+  # Add argument defaults.
+  for pos in range(-1, -len(argspec.defaults) - 1, -1):
+    arg_names[pos] += '=`{!r}`'.format(argspec.defaults[pos])
+
+  # Add varargs and keyword args
+  if argspec.varargs:
+    arg_names.append('*' + argspec.varargs)
+  if argspec.varkw:
+    arg_names.append('**' + argspec.varkw)
+
+  return '* `tf.{}`({})'.format(op_name, ', '.join(arg_names))
+
+
+def _op_is_in_tf_version(op, version):
+  if version == 1:
+    return (tf_export.get_v1_names(tf_decorator.unwrap(op)[1]) or
+            op in _V1_OPS_THAT_DELEGATE_TO_V2_OPS)
+  elif version == 2:
+    return tf_export.get_v2_names(tf_decorator.unwrap(op)[1])
+  else:
+    raise ValueError('Expected version 1 or 2.')
+
+
+def ragged_op_list(tf_version=1):
+  """Returns a string listing operators that have dispathers registered."""
+  lines = []
+  for op in _UNARY_ELEMENTWISE_OPS + _UNARY_LIST_ELEMENTWISE_OPS:
+    if _op_is_in_tf_version(op, tf_version):
+      lines.append(_ragged_op_signature(op, [0]))
+  for op in _BINARY_ELEMENTWISE_OPS:
+    if _op_is_in_tf_version(op, tf_version):
+      lines.append(_ragged_op_signature(op, [0, 1]))
+  for op, _, ragged_args in _RAGGED_DISPATCH_OPS:
+    if _op_is_in_tf_version(op, tf_version):
+      arginfos = _get_arg_infos(op, ragged_args)
+      ragged_args = [arginfo.position for arginfo in arginfos]
+      lines.append(_ragged_op_signature(op, ragged_args))
+  return ('\n\n### Additional ops that support `RaggedTensor`\n\n'
+          'Arguments that accept `RaggedTensor`s are marked in **bold**.\n\n' +
+          '\n'.join(sorted(lines)) + 'n')
+
+
+register_dispatchers()

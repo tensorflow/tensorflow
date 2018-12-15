@@ -923,6 +923,10 @@ def add_function(fdef):
 # but they do all import this file.  Note that IS_IN_GRAPH_MODE and
 # in_graph_mode are both parameterless functions.
 def _tmp_in_graph_mode():
+  if context_safe() is None:
+    # Context not yet initialized. Assume graph mode following the
+    # default implementation in `is_in_graph_mode`.
+    return True
   return not executing_eagerly()
 
 

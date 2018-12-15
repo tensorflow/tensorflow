@@ -106,13 +106,50 @@ string SummarizeAttrs(const NodeDef& node_def) {
   return SummarizeAttrsHelper(node_def, node_def.device());
 }
 
+string FormatNodeForError(const NodeDebugInfo& debug_info) {
+  return debug_info.original_node_names.empty()
+             ? errors::FormatNodeNameForError(debug_info.name)
+             : errors::FormatNodeNamesForError(debug_info.original_node_names);
+}
+
 string FormatNodeForError(const Node& node) {
-  return FormatNodeDefForError(node.def());
+  return FormatNodeForError(NodeDebugInfo(node));
 }
 
 string FormatNodeDefForError(const NodeDef& node_def) {
-  VLOG(1) << "Error in the node: " << SummarizeNodeDef(node_def);
-  return errors::FormatNodeNameForError(node_def.name());
+  return FormatNodeForError(NodeDebugInfo(node_def));
+}
+
+void GetMergedOriginalNodeNames(const NodeDebugInfo& from,
+                                const NodeDebugInfo& to,
+                                std::set<string>* names) {
+  if (!from.original_node_names.empty()) {
+    names->insert(from.original_node_names.begin(),
+                  from.original_node_names.end());
+  } else {
+    names->insert(from.name);
+  }
+  names->insert(to.original_node_names.begin(), to.original_node_names.end());
+}
+
+void MergeDebugInfo(const NodeDebugInfo& from, Node* to) {
+  std::set<string> names;
+  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
+  to->set_original_node_names({names.begin(), names.end()});
+}
+
+void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to) {
+  std::set<string> names;
+  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
+  to->mutable_experimental_debug_info()->clear_original_node_names();
+  if (!names.empty()) {
+    *to->mutable_experimental_debug_info()->mutable_original_node_names() = {
+        names.begin(), names.end()};
+  }
+}
+
+void MergeDebugInfo(const NodeDef& from, NodeDef* to) {
+  MergeDebugInfo(NodeDebugInfo(from), to);
 }
 
 const AttrValue* AttrSlice::Find(StringPiece attr_name) const {

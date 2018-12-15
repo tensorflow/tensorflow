@@ -241,6 +241,7 @@ cc_library(
         ":hlo_casting_utils",
         ":hlo_query",
         ":shape_inference",
+        "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -249,6 +250,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -1012,6 +1014,7 @@ cc_library(
     srcs = ["name_uniquer.cc"],
     hdrs = ["name_uniquer.h"],
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1576,6 +1579,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -1782,6 +1786,7 @@ tf_cc_test(
         ":hlo_cse",
         ":hlo_dce",
         ":hlo_matchers",
+        ":hlo_parser",
         ":hlo_pass",
         ":hlo_pass_pipeline",
         ":tuple_simplifier",
@@ -3163,6 +3168,7 @@ cc_library(
     name = "hlo_graph_dumper",
     srcs = [
         "hlo_graph_dumper.cc",
+        "hlo_graph_html_renderer.cc",
     ],
     hdrs = ["hlo_graph_dumper.h"],
     deps = [
@@ -3624,7 +3630,6 @@ cc_library(
     srcs = ["hlo_lexer.cc"],
     hdrs = [
         "hlo_lexer.h",
-        "hlo_token.h",
     ],
     deps = [
         "//tensorflow/compiler/xla:shape_util",

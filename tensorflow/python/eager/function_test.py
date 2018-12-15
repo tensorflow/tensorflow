@@ -462,6 +462,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
+  @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
 
     @function.defun
@@ -544,7 +545,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  def disabled_testRunMetadata(self):
+  def testRunMetadata(self):
 
     @def_function.function
     def f(x):
@@ -579,7 +580,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return self.v * 2
 
       o = HasAVar()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       call = def_function.function(o.call)
       op = call()
       self.assertAllEqual(self.evaluate(op), 2.0)
@@ -936,9 +937,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
-    # Remove reference cycles in model
-    test_util.dismantle_polymorphic_function(model)
-
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDefunKerasModelCall(self):
     model = MiniModel()
@@ -952,8 +950,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([[3.0]], self.evaluate(y))
 
-    # Remove reference cycles in defun.
-    test_util.dismantle_polymorphic_function(model.call)
     # Break the reference cycle between the MiniModel and the defun:
     # MiniModel --(through its `call` method)--> PolymorphicFunction
     # PolymorphicFunction --(instancemethod on MiniModel)--> MiniModel
@@ -2039,6 +2035,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(
             5,
             add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
+
+  @test_util.assert_no_garbage_created
+  def testReferenceCycles(self):
+
+    fn = function.defun(lambda x: 2. * x)
+
+    fn(constant_op.constant(4.0))
+    weak_fn = weakref.ref(fn)
+    del fn
+    # Tests that the weak reference we made to the function is now dead, which
+    # means the object has been deleted. This should be true as long as the
+    # function itself is not involved in a reference cycle.
+    self.assertIs(None, weak_fn())
 
 
 if __name__ == '__main__':

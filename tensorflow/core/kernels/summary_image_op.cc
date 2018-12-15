@@ -78,6 +78,11 @@ class SummaryImageOp : public OpKernel {
     const int hw = h * w;  // Compact these two dims for simplicity
     const int depth = static_cast<int>(tensor.dim_size(3));
 
+    OP_REQUIRES(c, hw > 0 && depth > 0,
+                errors::InvalidArgument(
+                    "input tensor must have non-zero dims. Found: [",
+                    batch_size, ", ", h, ", ", w, ", ", depth, "]."));
+
     Summary s;
     if (tensor.dtype() == DT_UINT8) {
       // For uint8 input, no normalization is necessary

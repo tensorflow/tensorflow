@@ -101,7 +101,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const string& function_name_prefix,
       bool is_top_level_computation,
-      const std::vector<HloInstruction*>* instruction_order);
+      absl::Span<HloInstruction* const> instruction_order);
 
   llvm::IRBuilder<>* b() { return &b_; }
 

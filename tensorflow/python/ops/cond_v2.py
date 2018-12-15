@@ -61,7 +61,7 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
-    add_control_dependencies = util.in_defun()
+    add_control_dependencies = ops.get_default_graph()._add_control_dependencies
     pred = ops.convert_to_tensor(pred)
 
     true_graph = func_graph_module.func_graph_from_py_func(
