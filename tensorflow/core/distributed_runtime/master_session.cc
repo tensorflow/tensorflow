@@ -530,7 +530,7 @@ class RunManyGraphs {
 
   Status status() const {
     mutex_lock l(mu_);
-    return status_;
+    return status_group_.as_status();
   }
 
  private:
@@ -538,22 +538,17 @@ class RunManyGraphs {
 
   BlockingCounter pending_;
   mutable mutex mu_;
-  Status status_ GUARDED_BY(mu_);
+  StatusGroup status_group_ GUARDED_BY(mu_);
 
   void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // Start cancellation if we aren't already in an error state.
-    if (status_.ok()) {
+    if (status_group_.ok()) {
       for (Call& call : calls_) {
         call.opts.StartCancel();
       }
     }
 
-    // Prefer primary failures over cancellations.  A cancellation may finish
-    // _before_ the original status is propagated; we override it in this case.
-    if (status_.ok() ||
-        str_util::StrContains(status_.error_message(), "[CHILD]")) {
-      status_ = s;
-    }
+    status_group_.Update(s);
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
