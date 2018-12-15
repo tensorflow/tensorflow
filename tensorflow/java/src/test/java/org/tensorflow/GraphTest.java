@@ -254,6 +254,36 @@ public class GraphTest {
       }
     }
   }
+
+  @Test
+  public void updateEdgeInGraph() {
+    try (Graph g = new Graph();
+         Session s1 = new Session(g);
+         Session s2 = new Session(g)) {
+
+      Output<?> a = TestUtil.constant(g, "a", 2);
+      Output<?> b = TestUtil.constant(g, "b", 3);
+      Output<?> x = TestUtil.square(g, "example_op", a);
+
+      try(Tensor<?> output1 = s1.runner()
+              .fetch("example_op")
+              .run()
+              .get(0)) {
+
+        assertEquals(4, output1.intValue());
+      }
+
+      g.updateEdge(b,x);
+
+      try(Tensor<?> output2 = s2.runner()
+              .fetch("example_op")
+              .run()
+              .get(0)) {
+
+        assertEquals(9, output2.intValue());
+      }
+    }
+  }
   
   private static Output<?>[] toArray(Output<?>... outputs) {
     return outputs;

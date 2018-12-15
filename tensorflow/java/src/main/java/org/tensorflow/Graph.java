@@ -235,6 +235,23 @@ public final class Graph implements AutoCloseable {
   public Output<?>[] addGradients(Output<?> y, Output<?>[] x) {
     return addGradients(null, new Output<?>[] {y}, x, null);
   }
+
+  /**
+   * Updates the input to a node. Replaces the existing edge to `dst` with a new edge from  `newSrc` to `dst`.
+   *
+   * @param newSrc new source of input
+   * @param dst destination of input
+   */
+  public void updateEdge(Output<?> newSrc, Output<?> dst) {
+    synchronized (nativeHandleLock) {
+      long newSrcHandle = newSrc.op().getUnsafeNativeHandle();
+      int newSrcIndex = newSrc.index();
+      long dstHandle = dst.op().getUnsafeNativeHandle();
+      int dstIndex = dst.index();
+
+      updateEdge(nativeHandle, newSrcHandle, newSrcIndex, dstHandle, dstIndex);
+    }
+  }
   
   private final Object nativeHandleLock = new Object();
   private long nativeHandle;
@@ -356,6 +373,13 @@ public final class Graph implements AutoCloseable {
       int[] outputIndices,
       long[] gradInputHandles,
       int[] gradInputIndices);
+
+  private static native int updateEdge(
+          long handle,
+          long newSrcHandle,
+          int newSrcIndex,
+          long dstHandle,
+          int dstIndex);
 
   static {
     TensorFlow.init();

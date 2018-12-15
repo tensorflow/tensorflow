@@ -22,15 +22,25 @@ limitations under the License.
 #include "tensorflow/java/src/main/native/exception_jni.h"
 
 namespace {
-TF_Graph* requireHandle(JNIEnv* env, jlong handle) {
-  static_assert(sizeof(jlong) >= sizeof(TF_Graph*),
+template <class T>
+T* requireHandleImpl(JNIEnv* env, jlong handle) {
+  static_assert(sizeof(jlong) >= sizeof(T*),
                 "Cannot package C object pointers as a Java long");
   if (handle == 0) {
-    throwException(env, kIllegalStateException,
-                   "close() has been called on the Graph");
+    throwException(
+        env, kNullPointerException,
+        "close() has been called on the Graph");
     return nullptr;
   }
-  return reinterpret_cast<TF_Graph*>(handle);
+  return reinterpret_cast<T*>(handle);
+}
+
+TF_Graph* requireHandle(JNIEnv* env, jlong handle) {
+  return requireHandleImpl<TF_Graph>(env, handle);
+}
+
+TF_Operation* requireOperationHandle(JNIEnv* env, jlong handle) {
+  return requireHandleImpl<TF_Operation>(env, handle);
 }
 }  // namespace
 
@@ -188,4 +198,21 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_addGradients(
   env->ReleaseLongArrayElements(dy_handles_and_indices, dy_elems, 0);
 
   return dy_handles_and_indices;
+}
+
+JNIEXPORT void JNICALL Java_org_tensorflow_Graph_updateEdge(
+  JNIEnv* env, jclass clazz, jlong handle, jlong new_src_handle,
+  jint new_src_index, jlong dst_handle, jint dst_index) {
+  TF_Graph* g = requireHandle(env, handle);
+  TF_Operation* new_src_op = requireOperationHandle(env, new_src_handle);
+  TF_Operation* dst_op = requireOperationHandle(env, dst_handle);
+  if (g == nullptr || new_src_op == nullptr || dst_op == nullptr ) return;
+
+  TF_Output new_src{new_src_op, new_src_index};
+  TF_Input dst{dst_op, dst_index};
+
+  TF_Status* status = TF_NewStatus();
+  TF_UpdateEdge(g, new_src, dst, status);
+  throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
 }

@@ -1026,6 +1026,11 @@ TF_CAPI_EXPORT extern void TF_GraphImportGraphDef(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status);
 
+// Update the input to a `dst`.
+// Replaces the existing edge to `dst` with a new edge from  `newSrc` to `dst`.
+TF_CAPI_EXPORT extern void TF_UpdateEdge(TF_Graph* graph, TF_Output new_src,
+                                         TF_Input dst, TF_Status* status);
+
 // Adds a copy of function `func` and optionally its gradient function `grad`
 // to `g`. Once `func`/`grad` is added to `g`, it can be called by creating
 // an operation using the function's name.

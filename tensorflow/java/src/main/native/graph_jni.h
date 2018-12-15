@@ -82,6 +82,14 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_addGradients(
     JNIEnv *, jclass, jlong, jstring, jlongArray, jintArray, jlongArray,
     jintArray, jlongArray, jintArray);
 
+/*
+ * Class:     org_tensorflow_Graph
+ * Method:    updateInput
+ * Signature: (JJIJ)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_Graph_updateEdge(
+    JNIEnv *, jclass, jlong, jlong, jint, jlong, jint);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
