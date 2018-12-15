@@ -430,10 +430,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.quantized_conv2d,
                       mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d),
                       CopyAttrsQuantizedConv2D, AlwaysRewrite});
-    rinfo_.push_back({csinfo_.quantized_conv2d_per_channel,
-                      mkl_op_registry::GetMklOpName(
-                          csinfo_.quantized_conv2d_per_channel),
-                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quantized_conv2d_per_channel,
+         mkl_op_registry::GetMklOpName(csinfo_.quantized_conv2d_per_channel),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.quantized_conv2d_with_requantize,
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_conv2d_with_requantize),
