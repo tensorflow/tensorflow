@@ -2665,7 +2665,7 @@ REGISTER_OP("QuantizedConv2DAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(4), 1, &channel));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel))
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       c->set_output(1, c->Scalar());
