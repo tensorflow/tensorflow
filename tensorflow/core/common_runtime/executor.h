@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
@@ -171,20 +172,7 @@ class ExecutorBarrier {
 
   mutable mutex mu_;
   int pending_ GUARDED_BY(mu_) = 0;
-  Status status_ GUARDED_BY(mu_);
-
-  void MergeStatusLocked(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (s.ok()) {
-      return;
-    }
-
-    // Prefer primary failures over cancellations.  A cancellation may finish
-    // _before_ the original status is propagated; we override it in this case.
-    if (status_.ok() ||
-        str_util::StrContains(status_.error_message(), "[CHILD]")) {
-      status_ = s;
-    }
-  }
+  StatusGroup status_group_ GUARDED_BY(mu_);
 
   void WhenDone(const Status& s) {
     Rendezvous* error_rendez = nullptr;
@@ -196,27 +184,25 @@ class ExecutorBarrier {
 
       // If we are the first error encountered, trigger an abort of the
       // Rendezvous object by this thread only.
-      if (status_.ok() && !s.ok()) {
+      if (status_group_.ok() && !s.ok()) {
         error_rendez = rendez_;
         error_rendez->Ref();
       }
 
-      MergeStatusLocked(s);
-
-      if (!status_.ok()) {
-        status = status_;
-      }
+      status_group_.Update(s);
 
       // If this is the last call to WhenDone, call the final callback
       // below.
       if (--pending_ == 0) {
         CHECK(done_cb_ != nullptr);
         std::swap(done, done_cb_);
+        status = status_group_.as_status();
       }
     }
 
     if (error_rendez != nullptr) {
-      error_rendez->StartAbort(status);
+      error_rendez->StartAbort(
+          errors::Aborted("Stopping remaining executors."));
       error_rendez->Unref();
     }
 

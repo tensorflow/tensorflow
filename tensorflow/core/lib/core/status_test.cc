@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -95,6 +96,49 @@ TEST(Status, EqualsDifferentMessage) {
   const Status a(errors::InvalidArgument("message"));
   const Status b(errors::InvalidArgument("another"));
   ASSERT_NE(a, b);
+}
+
+TEST(StatusGroup, AcceptsFirstCode) {
+  StatusGroup c;
+  const Status internal(errors::Internal("Original error."));
+  c.Update(internal);
+  c.Update(Status::OK());
+  c.Update(Status::OK());
+  c.Update(Status::OK());
+  ASSERT_EQ(c.as_status().code(), internal.code());
+  ASSERT_EQ(c.ok(), false);
+}
+
+TEST(StatusGroup, ContainsChildMessages) {
+  StatusGroup c;
+  const Status internal(errors::Internal("Original error."));
+  const Status cancelled(errors::Cancelled("Cancelled after 10 steps."));
+  const Status aborted(errors::Aborted("Aborted after 10 steps."));
+  c.Update(internal);
+  for (size_t i = 0; i < 5; ++i) {
+    c.Update(cancelled);
+  }
+  for (size_t i = 0; i < 10; ++i) {
+    c.Update(aborted);
+  }
+  for (size_t i = 0; i < 100; ++i) {
+    c.Update(Status::OK());
+  }
+
+  ASSERT_EQ(c.as_status().code(), internal.code());
+  EXPECT_TRUE(str_util::StrContains(c.as_status().error_message(),
+                                    internal.error_message()));
+  EXPECT_TRUE(str_util::StrContains(c.as_status().error_message(),
+                                    cancelled.error_message()));
+  EXPECT_TRUE(str_util::StrContains(c.as_status().error_message(),
+                                    aborted.error_message()));
+  StatusGroup d;
+  d.Update(c.as_status());
+  c.Update(errors::FailedPrecondition("Failed!"));
+  d.Update(c.as_status());
+  c.Update(errors::DataLoss("Data loss!"));
+  d.Update(c.as_status());
+  LOG(INFO) << d.as_status();
 }
 
 static void BM_TF_CHECK_OK(int iters) {
