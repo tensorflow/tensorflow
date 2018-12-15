@@ -66,7 +66,8 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
 }
 
 TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
-                           unsigned char gpu_memory_allow_growth) {
+                           unsigned char gpu_memory_allow_growth,
+                           unsigned int num_cpu_devices) {
   tensorflow::ConfigProto config;
   auto* optimizer_options =
       config.mutable_graph_options()->mutable_optimizer_options();
@@ -86,6 +87,8 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
 
   auto* gpu_options = config.mutable_gpu_options();
   gpu_options->set_allow_growth(gpu_memory_allow_growth);
+
+  (*config.mutable_device_count())["CPU"] = num_cpu_devices;
 
   // TODO(b/113217601): This is needed for EagerContext::runner_ to use a
   // threadpool, so that we avoid the possibility of running the runner_ in the
@@ -8535,8 +8538,9 @@ TFE_Context* TFE_CreateContextFromSession(TF_Session* session,
 
   // Reduce GPU memory allocation, and set appropriate config options for TFE
   // context.
-  auto* config =
-      TF_CreateConfig(/*xla*/ false, /* gpu_memory_allow_growth */ true);
+  auto* config = TF_CreateConfig(
+      /*xla*/ false, /* gpu_memory_allow_growth */ true, /* num_cpu_devices */
+      10);
   TFE_ContextOptionsSetConfig(opts, config->data, config->length, status);
   if (!status->status.ok()) {
     CHECK(!config);
