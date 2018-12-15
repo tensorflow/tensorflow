@@ -81,7 +81,8 @@ Status XlaGpuDeviceFactory::CreateDevices(
   }
   string allowed_gpus =
       session_options.config.gpu_options().visible_device_list();
-  absl::optional<std::set<int>> gpu_ids = ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
+  absl::optional<std::set<int>> gpu_ids =
+      ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
   if (!gpu_ids) {
     gpu_ids.emplace();
     // Fill the gpu_ids set with all devices if config string is empty.
