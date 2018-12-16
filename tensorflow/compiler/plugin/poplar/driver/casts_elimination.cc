@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/casts_elimination.h"
+#include "tensorflow/compiler/plugin/poplar/driver/hlo_matcher.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
+
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -27,12 +29,6 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-static const std::vector<FusedGraphInfo> fuse_info = {
-    {"reduction_no_convert", 1},    {"reduction_no_convert", 1},
-    {"reducewindow_no_convert", 1}, {"convert_no_use", 0},
-    {"convert_no_use", 0},
-};
-
 /*
  * Note about constructing these patterns.  Due to the behaviour of the fuser
  * there must be no backward references.  All nodes should appear after any
@@ -40,42 +36,84 @@ static const std::vector<FusedGraphInfo> fuse_info = {
  *
  */
 
+// clang-format off
 static const std::vector<HloMatcherPattern> patterns = {
-    // Remove convert to/from F32 before/after reduction, where initial value is
-    // a constant
-    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
-     {HloOpcode::kReduce, true, 0, IsF32, {2, 3}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {4}},
-     {HloOpcode::kConstant, true, 0, IsF32, {}},
-     {HloOpcode::kParameter, false, 0, IsF16, {}}},
+  // Remove convert to/from F32 before/after reduction, where initial value is
+  // a constant
+  HloMatcherPattern(
+    PatternType("reduction_no_convert"),
+    PatternMetaTarget(1),
+    PatternInputs({4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kConvert, NodeOperands({1}), IsF32ToF16Convert},
+      {HloOpcode::kReduce, NodeOperands({2, 3}), IsF32},
+      {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
+      {HloOpcode::kConstant, NodeOperands({}), IsF32},
+      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+    })
+  ),
 
-    // Remove convert to/from F32 before/after reduction, where initial value is
-    // a convert from F16
-    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
-     {HloOpcode::kReduce, true, 0, IsF32, {2, 3}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {4}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {5}},
-     {HloOpcode::kParameter, false, 0, IsF16, {}},
-     {HloOpcode::kParameter, false, 1, IsF16, {}}},
+  // Remove convert to/from F32 before/after reduction, where initial value is
+  // a convert from F16
+  HloMatcherPattern(
+    PatternType("reduction_no_convert"),
+    PatternMetaTarget(1),
+    PatternInputs({4, 5}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kConvert, NodeOperands({1}), IsF32ToF16Convert},
+      {HloOpcode::kReduce, NodeOperands({2, 3}), IsF32},
+      {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
+      {HloOpcode::kConvert, NodeOperands({5}), IsF16ToF32Convert},
+      {HloOpcode::kParameter, NodeOperands({}), IsF16},
+      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+    })
+  ),
 
-    // Remove convert to/from F32 before/after reduction window, where initial
-    // value is a constant
-    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
-     {HloOpcode::kReduceWindow, true, 0, IsF32, {2, 3}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {4}},
-     {HloOpcode::kConstant, true, 0, IsF32, {}},
-     {HloOpcode::kParameter, false, 0, IsF16, {}}},
+  // Remove convert to/from F32 before/after reduction window, where initial
+  // value is a constant
+  HloMatcherPattern(
+    PatternType("reducewindow_no_convert"),
+    PatternMetaTarget(1),
+    PatternInputs({4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kConvert, NodeOperands({1}), IsF32ToF16Convert},
+      {HloOpcode::kReduceWindow, NodeOperands({2, 3}), IsF32},
+      {HloOpcode::kConvert, NodeOperands({4}), IsF16ToF32Convert},
+      {HloOpcode::kConstant, NodeOperands({}), IsF32},
+      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+    })
+  ),
 
-    // Convert and then convert back F16 -> F32 -> F16
-    {{HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {1}},
-     {HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {2}},
-     {HloOpcode::kParameter, false, 0, IsF16, {}}},
+  // Convert and then convert back F16 -> F32 -> F16
+  HloMatcherPattern(
+    PatternType("convert_no_use"),
+    PatternMetaTarget(0),
+    PatternInputs({2}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kConvert, NodeOperands({1}), IsF32ToF16Convert},
+      {HloOpcode::kConvert, NodeOperands({2}), IsF16ToF32Convert},
+      {HloOpcode::kParameter, NodeOperands({}), IsF16}
+    })
+  ),
 
-    // Convert and then convert back F32 -> F16 -> F32
-    {{HloOpcode::kConvert, true, 0, IsF16ToF32Convert, {1}},
-     {HloOpcode::kConvert, true, 0, IsF32ToF16Convert, {2}},
-     {HloOpcode::kParameter, false, 0, IsF32, {}}},
+  // Convert and then convert back F32 -> F16 -> F32
+  HloMatcherPattern(
+    PatternType("convert_no_use"),
+    PatternMetaTarget(0),
+    PatternInputs({2}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kConvert, NodeOperands({1}), IsF16ToF32Convert},
+      {HloOpcode::kConvert, NodeOperands({2}), IsF32ToF16Convert},
+      {HloOpcode::kParameter, NodeOperands({}), IsF32}
+    })
+  ),
 };
+// clang-format on
 
 CastsElimination::CastsElimination(struct CompilerAnnotations& annotations)
     : HloMatcher(patterns, annotations, false) {}

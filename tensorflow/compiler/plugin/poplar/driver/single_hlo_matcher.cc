@@ -22,13 +22,13 @@ namespace poplarplugin {
 
 unsigned SingleHloMatcher::ReplaceNodes() {
   unsigned int replacement_count = 0;
-  for (int pattern = 0; pattern < matches_.size(); pattern++) {
-    for (HloMatcherMatched& match : matches_[pattern]) {
+  for (int pattern_idx = 0; pattern_idx < matches_.size(); pattern_idx++) {
+    const auto& pattern = patterns_[pattern_idx];
+    for (HloMatcherMatched& match : matches_[pattern_idx]) {
       if (match.ok) {
-        auto& fuse = fuse_info_[pattern];
-        std::string name = op_prefix_ + fuse.name;
+        std::string name = op_prefix_ + pattern.type;
         const OutlinedInfo outlined_info =
-            OutlineExpressionFromComputation(match, name, fuse.op_index);
+            OutlineExpressionFromComputation(match, name, pattern.meta_target);
         replacement_count += MarkReplacedInstructions(outlined_info);
       }
     }

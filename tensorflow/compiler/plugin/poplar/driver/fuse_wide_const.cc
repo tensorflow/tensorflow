@@ -22,10 +22,6 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-static const std::vector<FusedGraphInfo> fuse_info = {
-    {"wide_const", 1},
-};
-
 /*
  * Note about constructing these patterns.  Due to the behaviour of the fuser
  * there must be no backward references.  All nodes should appear after any
@@ -34,14 +30,24 @@ static const std::vector<FusedGraphInfo> fuse_info = {
  * NOTE: Highest match priority is nearer the top of the list
  */
 
+// clang-format off
 static const std::vector<HloMatcherPattern> patterns = {
-    // Broadcast scalar constant (must be low priority)
-    {{HloOpcode::kBroadcast, true, 0, nullptr, {1}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}}},
+  // Broadcast scalar constant (must be low priority)
+  HloMatcherPattern(
+    PatternType("wide_const"),
+    PatternMetaTarget(1),
+    PatternInputs({}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kBroadcast, NodeOperands({1})},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant}
+    })
+  ),
 };
+// clang-format on
 
 FuseWideConst::FuseWideConst(struct CompilerAnnotations& annotations)
-    : SingleHloMatcher(annotations, patterns, fuse_info, "_pop_op_") {}
+    : SingleHloMatcher(annotations, patterns, "_pop_op_") {}
 
 }  // namespace poplarplugin
 }  // namespace xla

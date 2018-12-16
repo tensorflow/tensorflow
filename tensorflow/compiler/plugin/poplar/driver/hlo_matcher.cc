@@ -31,6 +31,17 @@ using ::absl::StrCat;
 namespace xla {
 namespace poplarplugin {
 
+void HloMatcherPattern::Verify() {
+  if (outputs.size() == 0) {
+    LOG(FATAL) << "Pattern " << type
+               << " has no outputs, at least one required.";
+  }
+  if (outputs.size() > 1) {
+    LOG(FATAL) << "Pattern " << type
+               << " has multiple outputs, currently not supported.";
+  }
+}
+
 HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
                        struct CompilerAnnotations& annotations,
                        bool root_computation_only,
@@ -117,12 +128,22 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
   // Construct a mapping from a pattern node to all other pattern nodes which
   // use it
   std::vector<std::set<std::pair<unsigned int, unsigned int>>> node_mapping(
-      pattern.size());
+      pattern.pattern.size());
 
-  for (unsigned int node_num = 0; node_num < pattern.size(); node_num++) {
-    for (unsigned int op_idx = 0; op_idx < pattern[node_num].operands.size();
-         op_idx++) {
-      node_mapping[pattern[node_num].operands[op_idx]].insert(
+  // Create lookup for input indexes to parameter number
+  std::map<NodeId, int64> input_id_to_param_num;
+  for (int64 i = 0; i < pattern.inputs.size(); i++) {
+    input_id_to_param_num[pattern.inputs[i]] = i;
+  }
+  const auto is_input = [&input_id_to_param_num](const NodeId pid) {
+    return input_id_to_param_num.count(pid);
+  };
+
+  for (unsigned int node_num = 0; node_num < pattern.pattern.size();
+       node_num++) {
+    for (unsigned int op_idx = 0;
+         op_idx < pattern.pattern[node_num].operands.size(); op_idx++) {
+      node_mapping[pattern.pattern[node_num].operands[op_idx]].insert(
           {node_num, op_idx});
     }
 
@@ -131,13 +152,14 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
     }
   }
 
-  for (unsigned int node_num = 0; node_num < pattern.size(); node_num++) {
+  for (unsigned int node_num = 0; node_num < pattern.pattern.size();
+       node_num++) {
     HloInstruction* inst = match.instructions[node_num];
     if (inst == nullptr) {
       return false;
     }
 
-    const HloMatcherNode& node(pattern[node_num]);
+    const HloMatcherNode& node(pattern.pattern[node_num]);
 
     if (node.opcode != HloOpcode::kParameter) {
       if (node.opcode != inst->opcode()) {
@@ -161,11 +183,11 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
       }
     }
 
-    if (node.verification_fn && !node.verification_fn(inst)) {
+    if (node.node_condition && !(*node.node_condition)(inst)) {
       return false;
     }
 
-    if (node.include_in_replacement) {
+    if (!is_input(node_num)) {
       if ((node.operands.size() > 0) &&
           (inst->operand_count() != node.operands.size())) {
         return false;
@@ -199,24 +221,21 @@ bool HloMatcher::MatchPattern(HloInstruction* root,
   }
 
   ReplacedInstructions replaced;
-  for (unsigned int node_num = 0; node_num < pattern.size(); node_num++) {
-    const HloMatcherNode& node(pattern[node_num]);
+  for (unsigned int node_num = 0; node_num < pattern.pattern.size();
+       node_num++) {
+    const HloMatcherNode& node(pattern.pattern[node_num]);
 
-    if (node.include_in_replacement) {
+    if (!is_input(node_num)) {
       // If we are including the instruction, then for each operand:
       // * if it's a parameter, insert the index
       // * else insert -1
       auto* inst = match.instructions[node_num];
-      std::transform(node.operands.begin(), node.operands.end(),
-                     std::back_inserter(match.inst_parameters[inst]),
-                     [pattern](const unsigned int& op_idx) {
-                       const auto& op_node = pattern[op_idx];
-                       if (!op_node.include_in_replacement) {
-                         return op_node.parameter_index;
-                       } else {
-                         return -1;
-                       }
-                     });
+      std::transform(
+          node.operands.begin(), node.operands.end(),
+          std::back_inserter(match.inst_parameters[inst]),
+          [&](const unsigned int& op_idx) {
+            return is_input(op_idx) ? input_id_to_param_num.at(op_idx) : -1;
+          });
       replaced.push_back(inst);
     }
   }
@@ -255,13 +274,12 @@ void HloMatcher::MatchPatternStart(HloComputation* computation,
     visited.insert(instruction);
 
     for (unsigned i = 0; i < patterns_.size(); i++) {
-      if (instruction->opcode() == patterns_[i][0].opcode) {
+      if (instruction->opcode() == patterns_[i].pattern[0].opcode) {
         // Try matching the whole pattern
         HloMatcherMatched match;
         match.ok = true;
         match.computation = computation;
-        match.instructions.resize(patterns_[i].size());
-
+        match.instructions.resize(patterns_[i].pattern.size());
         if (MatchPattern(instruction, patterns_[i], match)) {
           AddMatch(i, match);
         }

@@ -27,16 +27,11 @@ class SingleHloMatcher : public HloMatcher {
  public:
   SingleHloMatcher(struct CompilerAnnotations& annotations,
                    const std::vector<HloMatcherPattern>& patterns,
-                   const std::vector<FusedGraphInfo>& fuse_info,
                    std::string op_prefix)
       : HloMatcher(patterns, annotations, false, /* look through max */ 3),
-        fuse_info_(std::move(fuse_info)),
         op_prefix_(op_prefix){};
 
   ~SingleHloMatcher() override = default;
-
- protected:
-  std::vector<FusedGraphInfo> fuse_info_;
 
  private:
   unsigned ReplaceNodes() override;

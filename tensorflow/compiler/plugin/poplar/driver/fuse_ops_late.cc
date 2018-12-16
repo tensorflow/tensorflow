@@ -23,39 +23,6 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-static const std::vector<FusedGraphInfo> fuse_info = {
-    {"const_slice_update", 0},
-    {"const_slice_update", 0},
-    {"const_slice", 0},
-    {"const_slice", 0},
-    {"relu", 0},
-    {"relu", 0},
-    {"sigmoid", 0},
-    {"sigmoid", 0},
-    {"relugrad", 0},
-    {"relugrad", 0},
-    {"sigmoidgrad", 0},
-    {"sigmoidgrad", 0},
-    {"conv_biasadd", 0},
-    {"conv_biasadd", 0},
-    {"conv_biasadd", 0},
-    {"matmul_biasadd", 0},
-    {"zero_pad", 0},
-    {"norm_scale_add", 4},
-    {"norm_scale_add", 6},
-    {"uniform_scale_add", 4},
-    {"uniform_scale_add", 6},
-    {"avg_pool", 1},
-    {"avg_pool", 1},
-    {"avg_pool", 1},
-    {"bias_apply", 0},
-    {"conv_scaled_inplace", 4},
-    {"conv_scaled_inplace", 4},
-    {"scaled_inplace", 0},
-    {"scaled_inplace", 0},
-    {"padding_reduce_window", 0},
-};
-
 /*
  * Note about constructing these patterns.  Due to the behaviour of the fuser
  * there must be no backward references.  All nodes should appear after any
@@ -64,242 +31,484 @@ static const std::vector<FusedGraphInfo> fuse_info = {
  * NOTE: Highest match priority is nearer the top of the list
  */
 
+// clang-format off
 static const std::vector<HloMatcherPattern> patterns = {
-    // dynamic update slice with constant coordinate
-    {{HloOpcode::kDynamicUpdateSlice, true, 0, nullptr, {2, 3, 1}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+  // dynamic update slice with constant coordinate
+  HloMatcherPattern(
+    PatternType("const_slice_update"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kDynamicUpdateSlice, NodeOperands({2, 3, 1})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // dynamic update slice with wide constant coordinate
-    {{HloOpcode::kDynamicUpdateSlice, true, 0, nullptr, {3, 4, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+  // dynamic update slice with wide constant coordinate
+  HloMatcherPattern(
+    PatternType("const_slice_update"),
+    PatternMetaTarget(0),
+    PatternInputs({3, 4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kDynamicUpdateSlice, NodeOperands({3, 4, 1})},
+      {HloOpcode::kBroadcast, NodeOperands({2})},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // dynamic slice with constant coordinate
-    {{HloOpcode::kDynamicSlice, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // dynamic slice with constant coordinate
+  HloMatcherPattern(
+    PatternType("const_slice"),
+    PatternMetaTarget(0),
+    PatternInputs({2}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kDynamicSlice, NodeOperands({2, 1})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // dynamic slice with wide constant coordinate
-    {{HloOpcode::kDynamicSlice, true, 0, nullptr, {3, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // dynamic slice with wide constant coordinate
+  HloMatcherPattern(
+    PatternType("const_slice"),
+    PatternMetaTarget(0),
+    PatternInputs({3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kDynamicSlice, NodeOperands({3, 1})},
+      {HloOpcode::kBroadcast, NodeOperands({2})},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Relu
-    {{HloOpcode::kMaximum, true, 0, IsFloatType, {2, 1}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // Relu
+  HloMatcherPattern(
+    PatternType("relu"),
+    PatternMetaTarget(0),
+    PatternInputs({2}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kMaximum, NodeOperands({2, 1}), IsFloatType},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Relu with broadcast
-    {{HloOpcode::kMaximum, true, 0, IsFloatType, {3, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // Relu with broadcast
+  HloMatcherPattern(
+    PatternType("relu"),
+    PatternMetaTarget(0),
+    PatternInputs({3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kMaximum, NodeOperands({3, 1}), IsFloatType},
+      {HloOpcode::kBroadcast, NodeOperands({2})},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Sigmoid
-    {{HloOpcode::kAdd, true, 0, IsFloatType, {4, 1}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 2}},
-     {HloOpcode::kTanh, true, 0, nullptr, {3}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 5}},
-     {HloOpcode::kConstant, true, 0, IsConstantHalf, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // Sigmoid
+  HloMatcherPattern(
+    PatternType("sigmoid"),
+    PatternMetaTarget(0),
+    PatternInputs({5}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({4, 1}), IsFloatType},
+      {HloOpcode::kMultiply, NodeOperands({4, 2})},
+      {HloOpcode::kTanh, NodeOperands({3})},
+      {HloOpcode::kMultiply, NodeOperands({4, 5})},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantHalf},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Sigmoid with broadcast
-    {{HloOpcode::kAdd, true, 0, IsFloatType, {1, 4}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {2, 4}},
-     {HloOpcode::kTanh, true, 0, nullptr, {3}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {6, 4}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
-     {HloOpcode::kConstant, true, 0, IsConstantHalf, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // Sigmoid with broadcast
+  HloMatcherPattern(
+    PatternType("sigmoid"),
+    PatternMetaTarget(0),
+    PatternInputs({6}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({1, 4}), IsFloatType},
+      {HloOpcode::kMultiply, NodeOperands({2, 4})},
+      {HloOpcode::kTanh, NodeOperands({3})},
+      {HloOpcode::kMultiply, NodeOperands({6, 4})},
+      {HloOpcode::kBroadcast, NodeOperands({5})},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantHalf},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // ReluGrad
-    {{HloOpcode::kSelect, true, 0, IsFloatType, {1, 3, 2}},
-     {HloOpcode::kGt, true, 0, IsTfReluGradOp, {4, 2}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // ReluGrad
+  HloMatcherPattern(
+    PatternType("relugrad"),
+    PatternMetaTarget(0),
+    PatternInputs({4, 3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kSelect, NodeOperands({1, 3, 2}), IsFloatType},
+      {HloOpcode::kGt, NodeOperands({4, 2}), IsTfReluGradOp},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // ReluGrad with broadcast
-    {{HloOpcode::kSelect, true, 0, IsFloatType, {1, 4, 2}},
-     {HloOpcode::kGt, true, 0, IsTfReluGradOp, {5, 2}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // ReluGrad with broadcast
+  HloMatcherPattern(
+    PatternType("relugrad"),
+    PatternMetaTarget(0),
+    PatternInputs({5, 4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kSelect, NodeOperands({1, 4, 2}), IsFloatType},
+      {HloOpcode::kGt, NodeOperands({5, 2}), IsTfReluGradOp},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // SigmoidGrad
-    {{HloOpcode::kMultiply, true, 0, IsFloatType, {1, 2}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 5}},
-     {HloOpcode::kSubtract, true, 0, nullptr, {3, 5}},
-     {HloOpcode::kConstant, true, 0, IsConstantOne, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // SigmoidGrad
+  HloMatcherPattern(
+    PatternType("sigmoidgrad"),
+    PatternMetaTarget(0),
+    PatternInputs({5, 4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kMultiply, NodeOperands({1, 2}), IsFloatType},
+      {HloOpcode::kMultiply, NodeOperands({4, 5})},
+      {HloOpcode::kSubtract, NodeOperands({3, 5})},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantOne},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // SigmoidGrad with broadcast
-    {{HloOpcode::kMultiply, true, 0, IsFloatType, {1, 2}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {5, 6}},
-     {HloOpcode::kSubtract, true, 0, nullptr, {3, 6}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
-     {HloOpcode::kConstant, true, 0, IsConstantOne, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // SigmoidGrad with broadcast
+  HloMatcherPattern(
+    PatternType("sigmoidgrad"),
+    PatternMetaTarget(0),
+    PatternInputs({6, 5}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kMultiply, NodeOperands({1, 2}), IsFloatType},
+      {HloOpcode::kMultiply, NodeOperands({5, 6})},
+      {HloOpcode::kSubtract, NodeOperands({3, 6})},
+      {HloOpcode::kBroadcast, NodeOperands({4})},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantOne},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // BiasAdd on convolution (w/ broadcast)
-    {{HloOpcode::kAdd, true, 0, IsBiasAdd, {2, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kCall, false, 0, IsPopOpsConvolution, {}},
-     {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
+  // BiasAdd on convolution (w/ broadcast)
+  HloMatcherPattern(
+    PatternType("conv_biasadd"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({2, 1}), IsBiasAdd},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kCall, NodeOperands({}), IsPopOpsConvolution},
+      {HloOpcode::kParameter, NodeOperands({}), Is1DVector}
+    })
+  ),
 
-    // BiasAdd on convolution (w/ broadcast)
-    {{HloOpcode::kAdd, true, 0, IsBiasAdd, {2, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kConvolution, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
+  // BiasAdd on convolution (w/ broadcast)
+  HloMatcherPattern(
+    PatternType("conv_biasadd"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({2, 1}), IsBiasAdd},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kConvolution, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({}), Is1DVector}
+    })
+  ),
 
-    // BiasAdd on convolution (w/ reshape)
-    {{HloOpcode::kAdd, true, 0, IsBiasAdd, {2, 1}},
-     {HloOpcode::kReshape, true, 0, IsExpandingReshape, {3}},
-     {HloOpcode::kConvolution, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
+  // BiasAdd on convolution (w/ reshape)
+  HloMatcherPattern(
+    PatternType("conv_biasadd"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({2, 1}), IsBiasAdd},
+      {HloOpcode::kReshape, NodeOperands({3}), IsExpandingReshape},
+      {HloOpcode::kConvolution, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({}), Is1DVector}
+    })
+  ),
 
-    // BiasAdd on a MatMul (w/ broadcast)
-    {{HloOpcode::kAdd, true, 0, IsBiasAdd, {2, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kDot, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, Is1DVector, {}}},
+  // BiasAdd on a MatMul (w/ broadcast)
+  HloMatcherPattern(
+    PatternType("matmul_biasadd"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({2, 1}), IsBiasAdd},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kDot, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({}), Is1DVector}
+    })
+  ),
 
-    // External padding with constant zero
-    {{HloOpcode::kPad, true, 0, IsExternalPadding, {2, 1}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // External padding with constant zero
+  HloMatcherPattern(
+    PatternType("zero_pad"),
+    PatternMetaTarget(0),
+    PatternInputs({2}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kPad, NodeOperands({2, 1}), IsExternalPadding},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Random normal with post scale and add
-    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 3}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kRng, true, 0, IsRandomNormal, {5, 6}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}}},
+  // Random normal with post scale and add
+  HloMatcherPattern(
+    PatternType("norm_scale_add"),
+    PatternMetaTarget(4),
+    PatternInputs({}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({2, 1})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kMultiply, NodeOperands({4, 3})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kRng, NodeOperands({5, 6}), IsRandomNormal},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kConstant, NodeOperands({})}
+    })
+  ),
 
-    // Random normal with broadcasted post scale and add
-    {{HloOpcode::kAdd, true, 0, nullptr, {3, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {6, 4}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kRng, true, 0, IsRandomNormal, {7, 8}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}}},
+  // Random normal with broadcasted post scale and add
+  HloMatcherPattern(
+    PatternType("norm_scale_add"),
+    PatternMetaTarget(6),
+    PatternInputs({}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({3, 1})},
+      {HloOpcode::kBroadcast, NodeOperands({2})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kMultiply, NodeOperands({6, 4})},
+      {HloOpcode::kBroadcast, NodeOperands({5})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kRng, NodeOperands({7, 8}), IsRandomNormal},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kConstant, NodeOperands({})}
+    })
+  ),
 
-    // Random uniform with post scale and add
-    {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 3}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kRng, true, 0, IsRandomUniform, {5, 6}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}}},
+  // Random uniform with post scale and add
+  HloMatcherPattern(
+    PatternType("uniform_scale_add"),
+    PatternMetaTarget(4),
+    PatternInputs({}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({2, 1})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kMultiply, NodeOperands({4, 3})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kRng, NodeOperands({5, 6}), IsRandomUniform},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kConstant, NodeOperands({})}
+    })
+  ),
 
-    // Random uniform with broadcasted post scale and add
-    {{HloOpcode::kAdd, true, 0, nullptr, {3, 1}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {6, 4}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kRng, true, 0, IsRandomUniform, {7, 8}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}}},
+  // Random uniform with broadcasted post scale and add
+  HloMatcherPattern(
+    PatternType("uniform_scale_add"),
+    PatternMetaTarget(6),
+    PatternInputs({}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({3, 1})},
+      {HloOpcode::kBroadcast, NodeOperands({2})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kMultiply, NodeOperands({6, 4})},
+      {HloOpcode::kBroadcast, NodeOperands({5})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kRng, NodeOperands({7, 8}), IsRandomUniform},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kConstant, NodeOperands({})}
+    })
+  ),
 
-    // Average pool (valid)
-    {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 3}},
-     {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {4, 2}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // Average pool (valid)
+  HloMatcherPattern(
+    PatternType("avg_pool"),
+    PatternMetaTarget(1),
+    PatternInputs({4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kDivide, NodeOperands({1, 3}), IsAveragePool},
+      {HloOpcode::kReduceWindow, NodeOperands({4, 2}), Is2DReductionWindow},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Average pool (same)
-    {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 2}},
-     {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {7, 6}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kReduceWindow, true, 0, nullptr, {4, 6}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
-     {HloOpcode::kConstant, true, 0, IsConstantOne, {}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // Average pool (same)
+  HloMatcherPattern(
+    PatternType("avg_pool"),
+    PatternMetaTarget(1),
+    PatternInputs({7}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kDivide, NodeOperands({1, 2}), IsAveragePool},
+      {HloOpcode::kReduceWindow, NodeOperands({7, 6}), Is2DReductionWindow},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kReduceWindow, NodeOperands({4, 6})},
+      {HloOpcode::kBroadcast, NodeOperands({5})},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantOne},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Average pool (same) - broadcast converted to reshape
-    {{HloOpcode::kDivide, true, 0, IsAveragePool, {1, 2}},
-     {HloOpcode::kReduceWindow, true, 0, Is2DReductionWindow, {7, 6}},
-     {HloOpcode::kReshape, true, 0, nullptr, {3}},
-     {HloOpcode::kReduceWindow, true, 0, nullptr, {4, 6}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
-     {HloOpcode::kConstant, true, 0, IsConstantOne, {}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  // Average pool (same) - broadcast converted to reshape
+  HloMatcherPattern(
+    PatternType("avg_pool"),
+    PatternMetaTarget(1),
+    PatternInputs({7}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kDivide, NodeOperands({1, 2}), IsAveragePool},
+      {HloOpcode::kReduceWindow, NodeOperands({7, 6}), Is2DReductionWindow},
+      {HloOpcode::kReshape, NodeOperands({3})},
+      {HloOpcode::kReduceWindow, NodeOperands({4, 6})},
+      {HloOpcode::kBroadcast, NodeOperands({5})},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantOne},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Bias reduction and application
-    {{HloOpcode::kSubtract, true, 0, IsOutputFeed, {1, 2}},
-     {HloOpcode::kParameter, false, 0, IsTrueParameter, {}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {5, 3}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {4}},
-     {HloOpcode::kConstant, true, 0, nullptr, {}},
-     {HloOpcode::kReduce, true, 0, IsBiasReduce, {7, 6}},
-     {HloOpcode::kConstant, true, 0, IsConstantZero, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+  // Bias reduction and application
+  HloMatcherPattern(
+    PatternType("bias_apply"),
+    PatternMetaTarget(0),
+    PatternInputs({1, 7}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kSubtract, NodeOperands({1, 2}), IsOutputFeed},
+      {HloOpcode::kParameter, NodeOperands({}), IsTrueParameter},
+      {HloOpcode::kMultiply, NodeOperands({5, 3})},
+      {HloOpcode::kBroadcast, NodeOperands({4})},
+      {HloOpcode::kConstant, NodeOperands({})},
+      {HloOpcode::kReduce, NodeOperands({7, 6}), IsBiasReduce},
+      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Convolution followed by scaled add to - A = A + B * c
-    {{HloOpcode::kAdd, true, 0, nullptr, {5, 1}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 2}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
-     {HloOpcode::kConvolution, true, 0, nullptr, {6, 7}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}},
-     {HloOpcode::kParameter, false, 2, nullptr, {}}},
+  // Convolution followed by scaled add to - A = A + B * c
+  HloMatcherPattern(
+    PatternType("conv_scaled_inplace"),
+    PatternMetaTarget(4),
+    PatternInputs({5, 6, 7}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({5, 1})},
+      {HloOpcode::kMultiply, NodeOperands({4, 2})},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
+      {HloOpcode::kConvolution, NodeOperands({6, 7})},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Convolution followed by scaled subtract from - A = A - B * c
-    {{HloOpcode::kSubtract, true, 0, nullptr, {5, 1}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {4, 2}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
-     {HloOpcode::kConvolution, true, 0, nullptr, {6, 7}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}},
-     {HloOpcode::kParameter, false, 2, nullptr, {}}},
+  // Convolution followed by scaled subtract from - A = A - B * c
+  HloMatcherPattern(
+    PatternType("conv_scaled_inplace"),
+    PatternMetaTarget(4),
+    PatternInputs({5, 6, 7}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kSubtract, NodeOperands({5, 1})},
+      {HloOpcode::kMultiply, NodeOperands({4, 2})},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
+      {HloOpcode::kConvolution, NodeOperands({6, 7})},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Scaled add to - A = A + B * c
-    {{HloOpcode::kAdd, true, 0, nullptr, {4, 1}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {5, 2}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+  // Scaled add to - A = A + B * c
+  HloMatcherPattern(
+    PatternType("scaled_inplace"),
+    PatternMetaTarget(0),
+    PatternInputs({4, 5}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({4, 1})},
+      {HloOpcode::kMultiply, NodeOperands({5, 2})},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Scaled subtract from - A = A - B * c
-    {{HloOpcode::kSubtract, true, 0, nullptr, {4, 1}},
-     {HloOpcode::kMultiply, true, 0, nullptr, {5, 2}},
-     {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstant, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+  // Scaled subtract from - A = A - B * c
+  HloMatcherPattern(
+    PatternType("scaled_inplace"),
+    PatternMetaTarget(0),
+    PatternInputs({4, 5}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kSubtract, NodeOperands({4, 1})},
+      {HloOpcode::kMultiply, NodeOperands({5, 2})},
+      {HloOpcode::kBroadcast, NodeOperands({3})},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstant},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
-    // Reduce window with a window size of 1x1, stride 1 and identity reduction
-    // function (param 1 is returned)
-    {{HloOpcode::kReduceWindow, true, 0, IsPaddingReduceWindow, {1, 2}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+  // Reduce window with a window size of 1x1, stride 1 and identity reduction
+  // function (param 1 is returned)
+  HloMatcherPattern(
+    PatternType("padding_reduce_window"),
+    PatternMetaTarget(0),
+    PatternInputs({1, 2}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kReduceWindow, NodeOperands({1, 2}), IsPaddingReduceWindow},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 };
+// clang-format on
 
 FuseOpsLate::FuseOpsLate(struct CompilerAnnotations& annotations)
-    : SingleHloMatcher(annotations, patterns, fuse_info, "_pop_op_") {}
+    : SingleHloMatcher(annotations, patterns, "_pop_op_") {}
 
 }  // namespace poplarplugin
 }  // namespace xla

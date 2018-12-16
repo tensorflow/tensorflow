@@ -27,23 +27,13 @@ class HloModule;
 
 namespace poplarplugin {
 
+using NodeId = int64;
+using NodeOperands = std::vector<NodeId>;
+using NodeCondition = std::function<bool(HloInstruction*)>;
+
 struct HloMatcherNode {
   // The opcode of the instruction to match
   HloOpcode opcode;
-
-  // If true then don't include this instruction in the fusion. The fused
-  // subgraph will have a parameter where this instruction would be, and the
-  // index of that parameter is given by the one entry in the parameter_indices
-  // member
-  bool include_in_replacement;
-
-  // If this instruction is a parameter to the fusion, this indicates the
-  // parameter number which should be assigned in the fused subgraph
-  int parameter_index;
-
-  // If not null, this function will be called with the instruction. Only if
-  // it returns true does the matching proceed.
-  std::function<bool(HloInstruction*)> verification_fn;
 
   // A list of operands of this instruction. A positive number refers to one of
   // the other entries in the match pattern. A negative number indicates that
@@ -51,7 +41,18 @@ struct HloMatcherNode {
   // nodes have the same negative number, then the same instruction must be
   // the operand to each match node. The parameter number is given by the value
   // in the matching position in the parameter_indices list.
-  std::vector<unsigned int> operands;
+  NodeOperands operands;
+
+  // If provided, this function will be called with the instruction. Only if
+  // it returns true does the matching proceed.
+  absl::optional<NodeCondition> node_condition;
+
+  HloMatcherNode(HloOpcode opcode, NodeOperands operands)
+      : opcode(opcode), operands(operands), node_condition(absl::nullopt){};
+
+  HloMatcherNode(HloOpcode opcode, NodeOperands operands,
+                 NodeCondition node_condition)
+      : opcode(opcode), operands(operands), node_condition(node_condition){};
 };
 
 struct InstructionIndex {
@@ -69,16 +70,67 @@ struct HloMatcherMatched {
   std::vector<Trace> replacement_traces;
 };
 
-struct FusedGraphInfo {
-  // The names to give the extracted fused graphs
-  const char* name;
+using PatternType = std::string;
+using PatternMetaTarget = NodeId;
+using PatternInputs = std::vector<NodeId>;
+using PatternOutputs = std::vector<NodeId>;
+using Pattern = std::vector<HloMatcherNode>;
 
-  // The index of the op within each fusion which should have its op_metadata
+struct HloMatcherPattern {
+  // The name to give the extracted fused graph.
+  PatternType type;
+
+  // The index of the op within the fusion which should have its op_metadata
   // copied to the kCall instruction.
-  const char op_index;
+  PatternMetaTarget meta_target;
+
+  // If op is an input then don't include this instruction in the fusion. The
+  // fused subgraph will have a parameter where this instruction would be, and
+  // the index of that parameter is given by the relative index in the inputs
+  // vector.
+  // Example:
+  // inputs = {2, 1}
+  // Then the instruction with label 2 will be a parameter instruction with
+  // index 0 and the instruction with label 1 will be a parameter instruction
+  // with index 1.
+  PatternInputs inputs;
+
+  // If an op is an output then replace all the uses of this node in the
+  // computation with the output tensor from this fusion. If there is more than
+  // one output then the fusion returns a tuple and the output tensor tuple
+  // index is determined by the relative index in the outputs.
+  // Example:
+  // outputs = {2, 0}
+  // will insert two GTE instructions into the graph, where GTE with tuple_index
+  // == 0 will correspond to output tensor with label 2 and GTE with tuple_index
+  // == 1 will correspond to output tensor with label 0.
+  PatternOutputs outputs;
+
+  // A vector of HloMatcherNode, describing the pattern to match.
+  Pattern pattern;
+
+  HloMatcherPattern(PatternType type, PatternMetaTarget meta_target,
+                    PatternInputs inputs, PatternOutputs outputs,
+                    Pattern pattern)
+      : type(type),
+        meta_target(meta_target),
+        inputs(inputs),
+        outputs(outputs),
+        pattern(pattern) {
+    Verify();
+  }
+
+  // This function verifies that the pattern is correct. We define a pattern
+  // correct if the following conditions are all met:
+  // * It has at least one output
+  // * If we perform traversal from any output node, we can reach any input
+  //   node.
+  // * If we perform traversals from all the output nodes and combine the
+  //   visited nodes, then every node in the pattern has to be visited at least
+  //   once.
+  void Verify();
 };
 
-using HloMatcherPattern = std::vector<HloMatcherNode>;
 using ReplacedInstructions = std::vector<HloInstruction*>;
 
 struct OutlinedInfo {

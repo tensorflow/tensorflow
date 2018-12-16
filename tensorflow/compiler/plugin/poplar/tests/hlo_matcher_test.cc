@@ -28,24 +28,22 @@ using HloMatcherTest = HloTestBase;
 class TestMatcher : public HloMatcher {
  public:
   TestMatcher(const std::vector<HloMatcherPattern>& patterns,
-              CompilerAnnotations& annotations, const char* name,
-              const char index, bool root_only,
+              CompilerAnnotations& annotations, bool root_only,
               unsigned int look_through_depth = 0)
-      : HloMatcher(patterns, annotations, root_only, look_through_depth),
-        match_index(index),
-        match_name(name) {}
+      : HloMatcher(patterns, annotations, root_only, look_through_depth) {}
 
  private:
   unsigned ReplaceNodes() override {
     unsigned int replacement_count = 0;
-    for (int pattern = 0; pattern < matches_.size(); pattern++) {
-      for (HloMatcherMatched& match : matches_[pattern]) {
+    for (int pattern_idx = 0; pattern_idx < matches_.size(); pattern_idx++) {
+      for (HloMatcherMatched& match : matches_[pattern_idx]) {
         if (match.ok) {
           replace_count++;
-          match_pattern.push_back(pattern);
+          match_pattern.push_back(pattern_idx);
+          auto pattern = patterns_[pattern_idx];
           match_count.push_back(match.instructions.size());
-          const OutlinedInfo outlined_info =
-              OutlineExpressionFromComputation(match, match_name, match_index);
+          const OutlinedInfo outlined_info = OutlineExpressionFromComputation(
+              match, pattern.type, pattern.meta_target);
           replacement_count += MarkReplacedInstructions(outlined_info);
         }
       }
@@ -55,8 +53,6 @@ class TestMatcher : public HloMatcher {
 
  public:
   int replace_count = 0;
-  char match_index = 0;
-  const char* match_name = nullptr;
   std::vector<unsigned int> match_pattern;
   std::vector<unsigned int> match_count;
 };
@@ -83,12 +79,24 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}},
-       {HloOpcode::kParameter, false, 1, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({1, 2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "test", 0, false);
+  TestMatcher matcher(patterns, annotations, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
@@ -115,12 +123,24 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}},
-       {HloOpcode::kParameter, false, 1, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({1, 2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "test", 0, false);
+  TestMatcher matcher(patterns, annotations, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -162,25 +182,44 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
-       {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-       {HloOpcode::kParameter, false, 1, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}}},
+    HloMatcherPattern(
+      PatternType("add"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 3}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({3, 1})},
+        {HloOpcode::kBroadcast, NodeOperands({2})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    ),
+    HloMatcherPattern(
+      PatternType("add"),
+      PatternMetaTarget(0),
+      PatternInputs({1, 2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
 
-      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}},
-       {HloOpcode::kParameter, false, 1, nullptr, {}}}};
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "test2", 0, false);
-
+  TestMatcher matcher(patterns, annotations, false);
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+
   EXPECT_EQ(2, matcher.replace_count);
   EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
 
   auto* comp = hlo_module->entry_computation();
   auto* call_inst = comp->root_instruction()->operand(0);
-  EXPECT_EQ("test2", call_inst->to_apply()->name());
+  EXPECT_EQ("add", call_inst->to_apply()->name());
 
   EXPECT_EQ("long/add2", call_inst->metadata().op_name());
   EXPECT_EQ("long/add1", call_inst->operand(1)->metadata().op_name());
@@ -221,13 +260,25 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
-       {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}},
-       {HloOpcode::kParameter, false, 1, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("fuse"),
+      PatternMetaTarget(1),
+      PatternInputs({2, 3}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({3, 1})},
+        {HloOpcode::kBroadcast, NodeOperands({2})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "fuse", 1, false);
+  TestMatcher matcher(patterns, annotations, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -270,14 +321,25 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  std::vector<HloMatcherPattern> patterns = {{
-      {HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
-      {HloOpcode::kBroadcast, true, 0, nullptr, {3}},
-      {HloOpcode::kParameter, false, 0, nullptr, {}},
-      {HloOpcode::kParameter, false, 1, nullptr, {}},
-  }};
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 3}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({3, 1})},
+        {HloOpcode::kBroadcast, NodeOperands({2})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "test", 0, false);
+  TestMatcher matcher(patterns, annotations, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
@@ -312,14 +374,26 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kSubtract, true, 0, nullptr, {1, 3}},
-       {HloOpcode::kAdd, true, 0, nullptr, {4, 2}},
-       {HloOpcode::kBroadcast, false, 1, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}},
-       {HloOpcode::kParameter, false, 2, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({3, 2, 4}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kSubtract, NodeOperands({1, 3})},
+        {HloOpcode::kAdd, NodeOperands({4, 2})},
+        {HloOpcode::kBroadcast, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "test", 0, false);
+  TestMatcher matcher(patterns, annotations, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -350,12 +424,24 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kSubtract, true, 0, nullptr, {2, 1}},
-       {HloOpcode::kConstant, true, 0, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("abc"),
+      PatternMetaTarget(0),
+      PatternInputs({2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kSubtract, NodeOperands({2, 1})},
+        {HloOpcode::kConstant, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "abc", 0, false);
+  TestMatcher matcher(patterns, annotations, false);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -389,15 +475,25 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOps) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kSubtract, true, 0, nullptr, {3, 2}},
-       {HloOpcode::kParameter, false, 1, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("abc"),
+      PatternMetaTarget(0),
+      PatternInputs({3, 2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kSubtract, NodeOperands({3, 2})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "abc", 0, false,
-                      look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, look_through_depth);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -452,14 +548,24 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsParameter) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kSubtract, false, 1, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("abc"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 1}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kSubtract, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "abc", 0, false,
-                      look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, look_through_depth);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -520,15 +626,25 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsLongerChain) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kMultiply, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kSubtract, true, 0, nullptr, {3, 2}},
-       {HloOpcode::kParameter, false, 1, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("abc"),
+      PatternMetaTarget(0),
+      PatternInputs({3, 2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kMultiply, NodeOperands({1, 2})},
+        {HloOpcode::kSubtract, NodeOperands({3, 2})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "abc", 0, false,
-                      look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, look_through_depth);
 
   EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
   EXPECT_EQ(1, matcher.replace_count);
@@ -593,14 +709,24 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsChainTooLong) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kMultiply, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kSubtract, false, 1, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("abc"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 1}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kMultiply, NodeOperands({1, 2})},
+        {HloOpcode::kSubtract, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "abc", 0, false,
-                      look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
 }
@@ -639,14 +765,24 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsPartialInChainUsed) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kMultiply, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kSubtract, false, 1, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("abc"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 1}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kMultiply, NodeOperands({1, 2})},
+        {HloOpcode::kSubtract, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "abc", 0, false,
-                      look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
 }
@@ -676,14 +812,24 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsDifferentAssociativitySets) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kAdd, true, 0, nullptr, {1, 2}},
-       {HloOpcode::kSubtract, false, 1, nullptr, {}},
-       {HloOpcode::kParameter, false, 0, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("abc"),
+      PatternMetaTarget(0),
+      PatternInputs({2, 1}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloOpcode::kSubtract, NodeOperands({})},
+        {HloOpcode::kParameter, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "abc", 0, false,
-                      look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
 }
@@ -711,13 +857,25 @@ TEST_F(HloMatcherTest, LookThroughAssociativeOpsRootNonAssociative) {
   auto hlo_module = CreateNewModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+  // clang-format off
   std::vector<HloMatcherPattern> patterns = {
-      {{HloOpcode::kBroadcast, true, 0, nullptr, {1}},
-       {HloOpcode::kConstant, true, 0, nullptr, {}}}};
+    HloMatcherPattern(
+      PatternType("abc"),
+      PatternMetaTarget(0),
+      PatternInputs({2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kBroadcast, NodeOperands({1})},
+        {HloOpcode::kAdd, NodeOperands({2, 3})},
+        {HloOpcode::kParameter, NodeOperands({})},
+        {HloOpcode::kConstant, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
 
   CompilerAnnotations annotations(hlo_module.get());
-  TestMatcher matcher(patterns, annotations, "abc", 0, false,
-                      look_through_depth);
+  TestMatcher matcher(patterns, annotations, false, look_through_depth);
 
   EXPECT_FALSE(matcher.Run(hlo_module.get()).ValueOrDie());
 }

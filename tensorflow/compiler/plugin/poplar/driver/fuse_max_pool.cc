@@ -25,10 +25,6 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-static const std::vector<FusedGraphInfo> fuse_info = {
-    {"max_pool", 0}, {"max_pool_grad", 0},
-};
-
 /*
  * Note about constructing these patterns.  Due to the behaviour of the fuser
  * there must be no backward references.  All nodes should appear after any
@@ -36,18 +32,36 @@ static const std::vector<FusedGraphInfo> fuse_info = {
  *
  */
 
+// clang-format off
 static const std::vector<HloMatcherPattern> patterns = {
     // Max Pool fwd
-    {{HloOpcode::kReduceWindow, true, 0, Is2DMaxPool, {2, 1}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstantNegativeInfinity, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}}},
+  HloMatcherPattern(
+    PatternType("max_pool"),
+    PatternMetaTarget(0),
+    PatternInputs({2}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kReduceWindow, NodeOperands({2, 1}), Is2DMaxPool},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstantNegativeInfinity},
+      {HloOpcode::kParameter, NodeOperands({})}
+    })
+  ),
 
     // Max Pool bwd
-    {{HloOpcode::kSelectAndScatter, true, 0, Is2DMaxPoolGrad, {2, 3, 1}},
-     {HloOpcode::kConstant, true, 0, IsScalarConstantOne, {}},
-     {HloOpcode::kParameter, false, 0, nullptr, {}},
-     {HloOpcode::kParameter, false, 1, nullptr, {}}},
+  HloMatcherPattern(
+    PatternType("max_pool_grad"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kSelectAndScatter, NodeOperands({2, 3, 1}), Is2DMaxPoolGrad},
+      {HloOpcode::kConstant, NodeOperands({}), IsScalarConstantOne},
+      {HloOpcode::kParameter, NodeOperands({})},
+      {HloOpcode::kParameter, NodeOperands({})}
+     })
+  ),
 };
+// clang-format on
 
 FuseMaxPool::FuseMaxPool(struct CompilerAnnotations& annotations)
     : HloMatcher(patterns, annotations, false) {}
@@ -61,11 +75,11 @@ unsigned FuseMaxPool::ReplaceNodes() {
   // First handle all the fwd Max Pools
   for (HloMatcherMatched& match : matches_[max_pool_fwd_pattern_index]) {
     if (match.ok) {
-      auto& fuse = fuse_info[max_pool_fwd_pattern_index];
-      std::string name = op_prefix_ + fuse.name;
+      const auto& pattern = patterns[max_pool_fwd_pattern_index];
+      std::string name = op_prefix_ + pattern.type;
       const HloInstruction* input = match.instructions[0]->operand(0);
       const OutlinedInfo outlined_info =
-          OutlineExpressionFromComputation(match, name, fuse.op_index);
+          OutlineExpressionFromComputation(match, name, pattern.meta_target);
       input_to_fwd_max_pool_map[input] =
           outlined_info.call_to_outlined_computation;
       replacement_count += MarkReplacedInstructions(outlined_info);
@@ -80,10 +94,10 @@ unsigned FuseMaxPool::ReplaceNodes() {
       if (it != input_to_fwd_max_pool_map.end()) {
         // Found a match, we can outline now, but do need to add the output
         // tensor as a parameter
-        auto& fuse = fuse_info[max_pool_bwd_pattern_index];
-        std::string name = op_prefix_ + fuse.name;
+        const auto& pattern = patterns[max_pool_bwd_pattern_index];
+        std::string name = op_prefix_ + pattern.type;
         const OutlinedInfo outlined_info = OutlineExpressionFromComputation(
-            match, name, fuse.op_index, {it->second});
+            match, name, pattern.meta_target, {it->second});
         replacement_count += MarkReplacedInstructions(outlined_info);
       }
     }
