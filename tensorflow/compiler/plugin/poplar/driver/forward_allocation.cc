@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/meta_graph.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -34,98 +35,6 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
-
-template <typename T>
-using Graph = absl::flat_hash_map<T, absl::flat_hash_set<T>>;
-
-static void create_graph(HloInstruction* inst, Graph<HloInstruction*>& result) {
-  for (const auto& operand : inst->operands()) {
-    const bool traverse = !result.contains(operand);
-    result[operand].insert(inst);
-    if (traverse) {
-      create_graph(operand, result);
-    }
-  }
-}
-
-static Graph<HloInstruction*> create_graph(const HloComputation* module) {
-  Graph<HloInstruction*> result;
-  create_graph(module->root_instruction(), result);
-  return result;
-}
-
-static Graph<HloInstruction*> transpose(const Graph<HloInstruction*>& graph) {
-  Graph<HloInstruction*> result;
-
-  for (const auto& edge : graph) {
-    for (const auto& v2 : edge.second) {
-      result[v2].insert(edge.first);
-    }
-  }
-
-  return result;
-}
-
-static absl::flat_hash_set<HloInstruction*> get_vertices(
-    const Graph<HloInstruction*>& graph) {
-  absl::flat_hash_set<HloInstruction*> result;
-
-  for (auto pair : graph) {
-    result.insert(pair.first);
-    result.merge(pair.second);
-  }
-
-  return result;
-}
-
-template <typename Predicate>
-static absl::flat_hash_set<HloInstruction*> find_consumers(
-    const Graph<HloInstruction*>& graph, HloInstruction* inst, Predicate pred,
-    bool inclusive, absl::flat_hash_set<HloInstruction*>& visited) {
-  absl::flat_hash_set<HloInstruction*> consumers;
-
-  const auto itr = graph.find(inst);
-  if (itr != graph.end()) {
-    for (const auto& neighbour : itr->second) {
-      if (inclusive) {
-        consumers.insert(neighbour);
-      }
-      const bool already_visited = visited.count(neighbour);
-      if (pred(neighbour) && !already_visited) {
-        consumers.insert(neighbour);
-        visited.insert(neighbour);
-        consumers.merge(
-            find_consumers(graph, neighbour, pred, inclusive, visited));
-      }
-    }
-  }
-
-  return consumers;
-}
-
-template <typename Predicate>
-static absl::flat_hash_set<HloInstruction*> find_consumers(
-    const Graph<HloInstruction*>& graph, HloInstruction* inst, Predicate pred,
-    bool inclusive = false) {
-  // find_consumers is a depth first traversal - this is a wrapper for it where
-  // we create a set of visited instructions to prevent getting stuck in cycles.
-  absl::flat_hash_set<HloInstruction*> visited;
-  return find_consumers(graph, inst, pred, inclusive, visited);
-}
-
-template <typename Predicate>
-static absl::flat_hash_set<HloInstruction*> find_vertices(
-    const Graph<HloInstruction*>& graph, Predicate pred) {
-  absl::flat_hash_set<HloInstruction*> result;
-
-  for (const auto& v : get_vertices(graph)) {
-    if (pred(v)) {
-      result.insert(v);
-    }
-  }
-
-  return result;
-}
 
 template <typename Predicate>
 static absl::flat_hash_set<HloInstruction*> reduce(
@@ -186,93 +95,61 @@ static absl::optional<HloInstruction*> reduce_to_one_with_no_dependencies(
              : absl::nullopt;
 }
 
-static std::vector<const HloInstruction*> shortest_path(
-    const Graph<HloInstruction*>& graph, HloInstruction* src,
-    HloInstruction* dst) {
-  absl::flat_hash_map<HloInstruction*, int> dist;
-  absl::flat_hash_map<HloInstruction*, HloInstruction*> prev;
-  absl::flat_hash_set<HloInstruction*> visited;
-
-  const auto comp = [&](HloInstruction* a, HloInstruction* b) {
-    return dist[a] < dist[b];
+// TODO - fix this.  it needs to take into account the indices of the path
+// from one op to the next. and probably do something to do with in-place ops
+static bool IsPrefixPathOk(const std::vector<HloInstruction*>& path) {
+  const auto is_node_ok_on_path = [](HloInstruction* inst, const unsigned,
+                                     const unsigned) {
+    // Element-wise ops are ok.
+    if (IsPopOpsElementwise(inst)) {
+      return true;
+    }
+    switch (inst->opcode()) {
+      case HloOpcode::kReshape:
+      case HloOpcode::kTranspose:
+        return true;
+      default:
+        break;
+    }
+    return false;
   };
-
-  std::priority_queue<HloInstruction*, std::vector<HloInstruction*>,
-                      decltype(comp)>
-      queue(comp);
-
-  const auto vs = get_vertices(graph);
-  for (const auto& v : vs) {
-    dist[v] = std::numeric_limits<int>::max();
-  }
-
-  dist[src] = 0;
-  queue.push(src);
-
-  while (!queue.empty() && dist[dst] == std::numeric_limits<int>::max()) {
-    const auto top = queue.top();
-    queue.pop();
-    visited.insert(top);
-
-    const auto itr = graph.find(top);
-    std::for_each(itr->second.begin(), itr->second.end(),
-                  [&](HloInstruction* v) {
-                    if (!visited.contains(v)) {
-                      dist[v] = dist[top] + 1;
-                      prev[v] = top;
-                      queue.push(v);
-                    }
-                  });
-  }
-
-  std::vector<HloInstruction*> path = {dst};
-  while (path.back() != src) {
-    path.push_back(prev[path.back()]);
-  }
-  std::reverse(path.begin(), path.end());
-
-  return std::vector<const HloInstruction*>(path.begin(), path.end());
+  return MetaGraph<HloInstruction*>::IsPathOk(path, is_node_ok_on_path);
 }
 
 // TODO - fix this.  it needs to take into account the indices of the path
-// from one op to the next. and probably do something to do with in-place ops
-// Returns the tensor index of the last instruction in the path.
-static absl::optional<int64> IsPathOk(
-    const std::vector<const HloInstruction*>& path,
-    bool allow_gte_at_the_end = false) {
-  int64 tensor_index = 0;
-  for (unsigned i = 0; i < path.size(); i++) {
-    auto* inst = path[i];
-    // Element-wise ops are ok.
-    if (!IsPopOpsElementwise(inst)) {
-      switch (inst->opcode()) {
-        case HloOpcode::kGetTupleElement:
-          // We only allow GTEs at the end of the path
-          if (!(allow_gte_at_the_end && i == (path.size() - 1))) {
-            return absl::nullopt;
-          }
-          tensor_index = inst->tuple_index();
-        case HloOpcode::kReshape:
-        case HloOpcode::kTranspose:
-          break;
-        default:
-          return absl::nullopt;
-          break;
-      }
-    }
-  }
-  return tensor_index;
-};
-
-static absl::optional<int64> IsPrefixPathOk(
-    const std::vector<const HloInstruction*>& path) {
-  return IsPathOk(path, false);
-}
-
+// from one op to the next. and probably do something to do with in-place ops.
 // We allow the suffix path to have a GTE at the end of the path.
+// For valid paths, either returns the GTE index for the last node or 0.
 static absl::optional<int64> IsSuffixPathOk(
-    const std::vector<const HloInstruction*>& path) {
-  return IsPathOk(path, true);
+    const std::vector<HloInstruction*>& path) {
+  const auto is_node_ok_on_path = [](HloInstruction* inst,
+                                     const unsigned path_idx,
+                                     const unsigned path_size) {
+    // Element-wise ops are ok.
+    if (IsPopOpsElementwise(inst)) {
+      return true;
+    }
+    switch (inst->opcode()) {
+      case HloOpcode::kGetTupleElement:
+        // We only allow GTEs at the end of the path
+        return path_idx == (path_size - 1);
+      case HloOpcode::kReshape:
+      case HloOpcode::kTranspose:
+        return true;
+      default:
+        break;
+    }
+    return false;
+  };
+  bool path_ok = MetaGraph<HloInstruction*>::IsPathOk(path, is_node_ok_on_path);
+  if (!path_ok) {
+    return absl::nullopt;
+  }
+  // Get the GTE index at the end of the path if there was one.
+  return (path.size() >= 1 &&
+          path.back()->opcode() == HloOpcode::kGetTupleElement)
+             ? path.back()->tuple_index()
+             : 0LL;
 }
 
 // TODO - this should probably be in a more central location
@@ -317,43 +194,48 @@ StatusOr<bool> ForwardAllocation::Run(
                tensor_allocation_map.end();
   };
 
-  const auto is_layout_producer =
-      [&ops_with_layout](const HloInstruction* inst) {
-        return ops_with_layout.count(inst);
-      };
+  const auto is_layout_producer = [&ops_with_layout](HloInstruction* inst) {
+    return ops_with_layout.count(inst);
+  };
 
-  const auto g = create_graph(comp);
-  const auto g_tr = transpose(g);
-  const auto layout_producing_ops = find_vertices(g, is_layout_producer);
+  const auto get_operands = [](HloInstruction* inst) {
+    return inst->operands();
+  };
+
+  const auto g =
+      MetaGraph<HloInstruction*>(comp->root_instruction(), get_operands);
+  const auto layout_producing_ops = g.FindVertices(is_layout_producer);
 
   std::unique_ptr<HloReachabilityMap> reachability_map =
       comp->ComputeReachability();
 
   // Get everything that depends upon an op with a special layout
-  Graph<HloInstruction*> layout_op_consumers;
-  for (const auto& inst : layout_producing_ops) {
-    layout_op_consumers[inst] =
-        find_consumers(g, inst, [is_layout_producer](HloInstruction* inst) {
-          return !is_layout_producer(inst);
-        });
-  }
+  const auto get_consumers = [is_layout_producer, &g](HloInstruction* inst) {
+    return g.FindConsumers(inst, [is_layout_producer](HloInstruction* inst) {
+      return !is_layout_producer(inst);
+    });
+  };
+  const MetaGraph<HloInstruction*> layout_op_consumers(layout_producing_ops,
+                                                       get_consumers);
 
-  const auto alloc_dependencies = transpose(layout_op_consumers);
-  const auto source_ops = find_vertices(g, is_param_no_layout_pred);
+  const auto alloc_dependencies = layout_op_consumers.Transpose();
+  const auto source_ops = g.FindVertices(is_param_no_layout_pred);
 
   // Get everything that depends on a source op
-  Graph<HloInstruction*> source_consumers;
-  for (const auto& inst : source_ops) {
-    source_consumers[inst] =
-        find_consumers(g, inst,
-                       [is_layout_producer, layout_producing_ops,
-                        alloc_dependencies](HloInstruction* inst) {
-                         return !is_layout_producer(inst) &&
-                                !alloc_dependencies.contains(inst) &&
-                                !layout_producing_ops.contains(inst);
-                       },
-                       true);
-  }
+  const auto get_source_consumers = [is_layout_producer, layout_producing_ops,
+                                     alloc_dependencies,
+                                     g](HloInstruction* inst) {
+    return g.FindConsumers(inst,
+                           [is_layout_producer, layout_producing_ops,
+                            alloc_dependencies](HloInstruction* inst) {
+                             return !is_layout_producer(inst) &&
+                                    !alloc_dependencies.contains(inst) &&
+                                    !layout_producing_ops.contains(inst);
+                           },
+                           true);
+  };
+  const MetaGraph<HloInstruction*> source_consumers(source_ops,
+                                                    get_source_consumers);
 
   for (const auto& edges : source_consumers) {
     const auto& source = edges.first;
@@ -386,8 +268,8 @@ StatusOr<bool> ForwardAllocation::Run(
         }
         auto* layout_producer = *optional_layout_producer;
 
-        auto prefix = shortest_path(g, source, target);
-        auto suffix = shortest_path(g, layout_producer, target);
+        auto prefix = g.ShortestPath(source, target);
+        auto suffix = g.ShortestPath(layout_producer, target);
         // Only some operands are layout sensitive.
         auto optional_op_idx =
             IsLayoutSensitiveOperand(target, prefix.rbegin()[1]);
@@ -404,9 +286,13 @@ StatusOr<bool> ForwardAllocation::Run(
             if (!source_consumers[source].contains(layout_producer)) {
               auto layout_output_idx = *suffix_path_ok;
               auto src = std::make_pair(source, 0);
+              std::vector<const HloInstruction*> csuffix(suffix.begin(),
+                                                         suffix.end());
+              std::vector<const HloInstruction*> cprefix(prefix.begin(),
+                                                         prefix.end());
               tensor_allocation_map[src] =
                   TensorTarget(target, op_idx, layout_producer,
-                               layout_output_idx, suffix, prefix);
+                               layout_output_idx, csuffix, cprefix);
               // Make sure the layout_producer is executed before the source
               // instruction.
               layout_producer->AddControlDependencyTo(source);

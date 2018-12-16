@@ -112,6 +112,7 @@ cc_library(
         "driver/inplace_util.h",
         "driver/input_output_aliasing_map.h",
         "driver/matcher_predicates.h",
+        "driver/meta_graph.h",
         "driver/scheduler.h",
         "driver/single_hlo_matcher.h",
         "driver/util.h",
