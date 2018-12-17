@@ -153,7 +153,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
 
   // Build operation name.
   os << "  static StringRef getOperationName() { return \""
-     << def.getValueAsString("name") << "\"; };\n";
+     << def.getValueAsString("opName") << "\"; };\n";
 
   emitter.emitBuilder();
   emitter.emitParser();
@@ -498,7 +498,7 @@ static void emitOpDefFile(const RecordKeeper &recordKeeper, raw_ostream &os) {
   os << "#ifndef ALL_OPS\n#define ALL_OPS(OP, NAME)\n#endif\n";
   for (const auto *def : defs) {
     os << "ALL_OPS(" << def->getName() << ", \""
-       << def->getValueAsString("name") << "\")\n";
+       << def->getValueAsString("opName") << "\")\n";
   }
   os << "#undef ALL_OPS";
 }

@@ -64,7 +64,7 @@ static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
     DefInit *root = cast<DefInit>(tree->getOperator());
     std::string rewriteName =
         baseRewriteName + llvm::utostr(rewritePatternCount++);
-    auto *rootName = cast<StringInit>(root->getDef()->getValueInit("name"));
+    auto *rootName = cast<StringInit>(root->getDef()->getValueInit("opName"));
     os << "struct " << rewriteName << " : public RewritePattern {\n"
        << "  " << rewriteName << "(MLIRContext *context) : RewritePattern("
        << rootName->getAsString() << ", 1, context) {}\n"

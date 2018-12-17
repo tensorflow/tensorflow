@@ -125,7 +125,7 @@ def ins;
 // Base class for all ops.
 class Op<string mnemonic, list<OpProperty> props = []> {
   // The mnemonic of the op.
-  string name = mnemonic;
+  string opName = mnemonic;
 
   // One-line human-readable description of what the op does.
   string summary = ?;
