@@ -260,7 +260,6 @@ XrtAllocation::~XrtAllocation() {
 StatusOr<XrtAllocation*> XrtAllocation::FromLiteral(
     const Literal& argument, const string& session_target) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = argument.ToProto();
 
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
