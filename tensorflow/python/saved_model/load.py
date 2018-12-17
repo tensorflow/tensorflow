@@ -20,7 +20,8 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.framework import function as function_lib
+from tensorflow.python.eager import function
+from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables
@@ -42,15 +43,19 @@ class _Loader(object):
     self._asset_file_def = meta_graph.asset_file_def
     self._proto = object_graph_proto
     self._export_dir = export_dir
-    self._defined_functions = {}
-    for defined_function in function_lib.from_library(
-        meta_graph.graph_def.library):
-      # TODO(allenl): Do we need to do name mapping here? Not quite sure what
-      # happens when loaded names collide with existing names.
-      defined_function.add_to_graph(None)
-      self._defined_functions[defined_function.name] = defined_function
+    self._load_func_graphs(meta_graph.graph_def.library)
     self._load_all()
     self._restore_checkpoint()
+
+  def _load_func_graphs(self, function_library):
+    # TODO(allenl): Do we need to do name mapping here? Not quite sure what
+    # happens when loaded names collide with existing names.
+    # TODO(andresp): Look into gradient functions and the need to restore
+    # functions in the right order.
+    self._functions = {}
+    for fdef in function_library.function:
+      self._functions[fdef.signature.name] = function.Function(
+          function_def_lib.function_def_to_graph(fdef))
 
   def _load_all(self):
     self._nodes = [self._recreate(proto) for proto in self._proto.nodes]
@@ -92,7 +97,7 @@ class _Loader(object):
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_polymorphic_function(
-        proto, self._defined_functions)
+        proto, self._functions)
 
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?
