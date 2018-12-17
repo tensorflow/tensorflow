@@ -1644,6 +1644,12 @@ class Layer(checkpointable.CheckpointableBase):
           getattr(layer, attribute) for layer in self._layers))
     return []
 
+  # This is a hack so that the is_layer (within
+  # training/checkpointable/layer_utils.py) check doesn't get the weights attr.
+  # TODO(b/110718070): Remove when fixed.
+  def _is_layer(self):
+    return True
+
 
 class Node(object):
   """A `Node` describes the connectivity between two layers.
