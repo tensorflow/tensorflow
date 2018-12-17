@@ -27,6 +27,7 @@
 
 namespace mlir {
 
+class ForStmt;
 class FunctionPass;
 class ModulePass;
 
@@ -50,9 +51,15 @@ FunctionPass *createVectorizerTestPass();
 /// Creates a pass to lower super-vectors to target-dependent HW vectors.
 FunctionPass *createMaterializeVectorsPass();
 
-/// Creates a loop unrolling pass. Default option or command-line options take
-/// effect if -1 is passed as parameter.
-FunctionPass *createLoopUnrollPass(int unrollFactor = -1, int unrollFull = -1);
+/// Creates a loop unrolling pass with the provided parameters.
+/// 'getUnrollFactor' is a function callback for clients to supply a function
+/// that computes an unroll factor - the callback takes precedence over unroll
+/// factors supplied through other means. If -1 is passed as the unrollFactor
+/// and no callback is provided, anything passed from the command-line (if at
+/// all) or the default unroll factor is used (LoopUnroll:kDefaultUnrollFactor).
+FunctionPass *createLoopUnrollPass(
+    int unrollFactor = -1, int unrollFull = -1,
+    const std::function<unsigned(const ForStmt &)> &getUnrollFactor = nullptr);
 
 /// Creates a loop unroll jam pass to unroll jam by the specified factor. A
 /// factor of -1 lets the pass use the default factor or the one on the command
