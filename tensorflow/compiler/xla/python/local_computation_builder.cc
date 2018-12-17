@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -113,6 +114,20 @@ LocalClient* GetOrCreateLocalClient() {
   g_local_client = ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
   CHECK(g_local_client != nullptr);
   return g_local_client;
+}
+
+Status RegisterCpuCustomCallTarget(const string& fn_name, PyObject* capsule) {
+  const char* name = "xla._CPU_CUSTOM_CALL_TARGET";
+  if (!PyCapsule_IsValid(capsule, name)) {
+    return InvalidArgument(
+        "Argument to RegisterCpuCustomCallTargetRegistry was not a "
+        "xla._CPU_CUSTOM_CALL_TARGET capsule.");
+  }
+  void* fn_ptr = PyCapsule_GetPointer(capsule, name);
+  CHECK(fn_ptr != nullptr);
+  cpu::CustomCallTargetRegistry::Global()->Register(
+      std::string(fn_name.begin(), fn_name.end()), fn_ptr);
+  return Status::OK();
 }
 
 Status TransferToInfeedLocal(const Literal& literal) {
