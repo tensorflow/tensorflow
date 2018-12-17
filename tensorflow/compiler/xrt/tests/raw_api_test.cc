@@ -217,7 +217,6 @@ xla::ProgramShape XlaCompiledProgramShape(
 
 TEST(RawApiTest, AllocAndRewrite) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() =
       xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
 
@@ -267,7 +266,6 @@ TEST(RawApiTest, AllocAndRewrite) {
 
 TEST(RawApiTest, AllocAndClearAll) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() =
       xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
 
@@ -298,7 +296,6 @@ TEST(RawApiTest, AllocAndClearAll) {
 
 TEST(RawApiTest, ReadAndWriteState) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = TwoElementTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -323,7 +320,6 @@ TEST(RawApiTest, ReadAndWriteState) {
 
 TEST(RawApiTest, ReadAndWriteStateAutoFree) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = TwoElementTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -344,7 +340,6 @@ TEST(RawApiTest, ReadAndWriteStateAutoFree) {
 
 TEST(RawApiTest, SubBuffer) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = NestedTuple();
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
@@ -385,10 +380,8 @@ TEST(RawApiTest, SubBuffer) {
 
 TEST(RawApiTest, MakeTuple) {
   xrt::XLAAllocation alloc_0;
-  alloc_0.set_device_ordinal(0);
   *alloc_0.mutable_value() = TwoElementTuple();
   xrt::XLAAllocation alloc_1;
-  alloc_1.set_device_ordinal(0);
   *alloc_1.mutable_value() = ScalarLiteral();
 
   // The trivial tuple that just forwards its input and releases it.
@@ -459,10 +452,8 @@ TEST(RawApiTest, MakeTuple) {
 
 TEST(RawApiTest, CompileAndExecute) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -514,10 +505,8 @@ TEST(RawApiTest, CompileAndExecute) {
 
 TEST(RawApiTest, CompileAndExecuteWithArgumentVector) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -637,10 +626,8 @@ TEST(RawApiTest, DotGeneralWithLayoutTest) {
   auto layout = xla::LayoutUtil::MakeLayout({0, 1});
 
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatMatrix({{1.0f, 2.0f}, {3.0f, 4.0f}}, layout);
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatMatrix({{8.0f}, {5.0f}}, layout);
 
   xrt::XLAComputation c;
@@ -723,10 +710,8 @@ TEST(RawApiTest, CompileAndExecuteZeroArg) {
 
 TEST(RawApiTest, CompileAndExecuteReturnTuple) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = FloatVector({1.0f, 2.0f});
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = FloatVector({8.0f, 5.0f});
 
   xrt::XLAComputation c;
@@ -776,11 +761,9 @@ TEST(RawApiTest, CompileAndExecuteReturnTuple) {
 
 TEST(RawApiTest, CompileAndExecuteReturnExplodedTuple) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = xla::LiteralUtil::CreateR0<float>(12.0f).ToProto();
 
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = xla::LiteralUtil::CreateR0<float>(3.0f).ToProto();
 
   xrt::XLAComputation c;
@@ -864,10 +847,8 @@ TEST(RawApiTest, LeakCompilationReference) {
 
 TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   xrt::XLAAllocation p0;
-  p0.set_device_ordinal(0);
   *p0.mutable_value() = xla::LiteralUtil::CreateR0<int64>(11031965).ToProto();
   xrt::XLAAllocation p1;
-  p1.set_device_ordinal(0);
   *p1.mutable_value() = xla::LiteralUtil::CreateR0<int64>(4091934).ToProto();
 
   xrt::XLAComputation c;
