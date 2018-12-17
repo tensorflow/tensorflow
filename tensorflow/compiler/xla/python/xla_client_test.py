@@ -24,6 +24,7 @@ import threading
 
 import numpy as np
 
+from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
 import unittest
 
@@ -281,6 +282,20 @@ class ComputationsWithConstantsTest(LocalComputationTest):
             c.Constant(NumpyArrayF64([2.2, 3.3, 4.4, 5.5]))),
         c.Constant(NumpyArrayF64([100, -100, 200, -200])))
     self._ExecuteAndCompareClose(c, expected=[104.4, -93.4, 208.8, -189])
+
+  def testCustomCall(self):
+    c = self._NewComputation()
+    for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
+      xla_client.register_cpu_custom_call_target(name, fn)
+    c.CustomCall(
+        b"test_subtract_f32",
+        operands=(c.ConstantF32Scalar(1.25), c.ConstantF32Scalar(0.5)),
+        shape_with_layout=xla_client.Shape.array_shape(np.float32, (), ()),
+        operand_shapes_with_layout=(
+            xla_client.Shape.array_shape(np.float32, (), ()),
+            xla_client.Shape.array_shape(np.float32, (), ()),
+        ))
+    self._ExecuteAndCompareClose(c, expected=0.75)
 
 
 class ParametersTest(LocalComputationTest):

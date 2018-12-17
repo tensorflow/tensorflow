@@ -415,7 +415,7 @@ class Shape(object):
       assert mtm is None, self
     if mtm is not None:
       assert self.rank() == len(mtm), self
-      assert sorted(mtm) == range(len(mtm)), self
+      assert sorted(mtm) == list(range(len(mtm))), self
 
   def update_minor_to_major(self, minor_to_major):
     if not self.is_array():
@@ -1149,7 +1149,7 @@ class ComputationBuilder(object):
     Returns:
       A LocalOp representing the added custom call op.
     """
-    opaque = opaque or ''
+    opaque = opaque or b''
     return self._client.CustomCall(call_target_name, operands,
                                    shape_with_layout,
                                    operand_shapes_with_layout, opaque)
@@ -1550,6 +1550,16 @@ def get_replica_count():
   yet or not.
   """
   return c_api.GetReplicaCount()
+
+
+def register_cpu_custom_call_target(name, fn):
+  """Registers a CPU custom call target.
+
+  Args:
+    name: bytes containing the name of the function.
+    fn: a PyCapsule object containing the function pointer.
+  """
+  c_api.RegisterCpuCustomCallTarget(name, fn)
 
 
 def GetPaddingConfigFromTriples(triples):
