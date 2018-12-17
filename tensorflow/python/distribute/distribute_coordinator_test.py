@@ -230,7 +230,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
       with ops.device("/job:worker/task:0"):
         result = math_ops.add_n(xs)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       result_value = sess.run(result)
     self.assertEqual(result_value, expected)
     if result_value == expected:
@@ -278,7 +278,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
       train_op = control_flow_ops.group([x_add, y_sub])
 
       if context.is_chief:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       # Synchronize workers after initializaton.
       if context.has_barrier:

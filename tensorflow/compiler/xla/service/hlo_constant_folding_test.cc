@@ -252,7 +252,7 @@ const char* const kConstantFoldLargePad = R"(
   HloModule ConstantFoldLargePad
 
   ENTRY r {
-    a = f32[1,1,1] constant(f32[1,1,1]{{{7}}})
+    a = f32[1,1,1] constant({{{7}}})
     b = f32[] constant(42)
     ROOT pad = f32[2048,2048,128] pad(a, b), padding=1024_1023x1024_1023x64_63
   })";

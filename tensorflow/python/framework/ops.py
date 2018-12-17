@@ -2896,6 +2896,9 @@ class Graph(object):
     self._last_loss_reduction = None
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
+    # Set to True if this graph is being built in an
+    # AutomaticControlDependencies context.
+    self._add_control_dependencies = False
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation

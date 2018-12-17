@@ -92,8 +92,7 @@ class RaggedUtilTest(ragged_test_util.RaggedTensorTestCase,
   ])
   def testRepeat(self, data, repeats, expected, axis=None):
     result = ragged_util.repeat(data, repeats, axis)
-    with self.test_session():
-      self.assertAllEqual(result, expected)
+    self.assertAllEqual(result, expected)
 
   @parameterized.parameters([
       dict(mode=mode, **args)
@@ -158,8 +157,7 @@ class RaggedUtilTest(ragged_test_util.RaggedTensorTestCase,
       repeats = array_ops.placeholder_with_default(repeats, None)
 
     result = ragged_util.repeat(data, repeats, axis)
-    with self.test_session():
-      self.assertAllEqual(result, expected)
+    self.assertAllEqual(result, expected)
 
   @parameterized.parameters([
       dict(

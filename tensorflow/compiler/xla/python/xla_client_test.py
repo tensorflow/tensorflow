@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import itertools
 import threading
 
@@ -51,9 +52,11 @@ class LocalComputationTest(unittest.TestCase):
   def _ExecuteAndCompareExact(self, c, arguments=(), expected=None):
     self._ExecuteAndAssertWith(np.testing.assert_equal, c, arguments, expected)
 
-  def _ExecuteAndCompareClose(self, c, arguments=(), expected=None):
-    self._ExecuteAndAssertWith(np.testing.assert_allclose, c, arguments,
-                               expected)
+  def _ExecuteAndCompareClose(self, c, arguments=(), expected=None, rtol=1e-7,
+                              atol=0):
+    self._ExecuteAndAssertWith(
+        functools.partial(np.testing.assert_allclose, rtol=rtol, atol=atol),
+        c, arguments, expected)
 
 
 def NumpyArrayF32(*args, **kwargs):
@@ -142,6 +145,17 @@ class ComputationsWithConstantsTest(LocalComputationTest):
     c = self._NewComputation()
     c.Pow(c.Constant(NumpyArrayF64([1.5, 2.5, 3.0])), c.ConstantF64Scalar(2.))
     self._ExecuteAndCompareClose(c, expected=[2.25, 6.25, 9.])
+
+  def testIota(self):
+    c = self._NewComputation()
+    c.Iota(np.float32, 10)
+    self._ExecuteAndCompareExact(c, expected=np.arange(10, dtype=np.float32))
+
+  def testBroadcastedIota(self):
+    c = self._NewComputation()
+    c.BroadcastedIota(np.int64, (2, 3), 1)
+    expected = np.array([[0, 1, 2], [0, 1, 2]], dtype=np.int64)
+    self._ExecuteAndCompareExact(c, expected=expected)
 
   def testBooleanAnd(self):
     c = self._NewComputation()
@@ -1056,6 +1070,38 @@ class SingleOpTest(LocalComputationTest):
     self.assertEqual(result.dtype, np.int32)
     self.assertTrue(np.all(lo <= result))
     self.assertTrue(np.all(result < hi))
+
+  def testCholesky(self):
+    l = np.array([[4, 0, 0, 0], [6, 5, 0, 0], [2, 14, 16, 0], [3, 6, 1, 4]],
+                 dtype=np.float32)
+    c = self._NewComputation()
+    c.Cholesky(c.Constant(np.dot(l, l.T)))
+    self._ExecuteAndCompareClose(c, expected=l, rtol=1e-4)
+
+  def testQR(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    c = self._NewComputation()
+    c.QR(c.Constant(a), full_matrices=True)
+    q, r = self._Execute(c, ())
+    np.testing.assert_allclose(np.dot(q, r), a, rtol=1e-4)
+
+  def testTriangularSolve(self):
+    a_vals = np.array(
+        [[2, 0, 0, 0], [3, 6, 0, 0], [4, 7, 9, 0], [5, 8, 10, 11]],
+        dtype=np.float32)
+    b_vals = np.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]],
+                      dtype=np.float32)
+
+    c = self._NewComputation()
+    c.TriangularSolve(c.Constant(a_vals), c.Constant(b_vals), left_side=False,
+                      lower=True, transpose_a=True)
+    self._ExecuteAndCompareClose(c, expected=np.array([
+        [0.5, 0.08333334, 0.04629629, 0.03367003],
+        [2.5, -0.25, -0.1388889, -0.1010101],
+        [4.5, -0.58333331, -0.32407406, -0.23569024],
+    ], dtype=np.float32), rtol=1e-4)
 
   def testIsConstant(self):
     c = self._NewComputation()

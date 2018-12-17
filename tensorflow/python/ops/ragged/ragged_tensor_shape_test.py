@@ -23,8 +23,11 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_shape
 from tensorflow.python.ops.ragged import ragged_test_util
+from tensorflow.python.ops.ragged.ragged_tensor_shape import RaggedTensorDynamicShape
 from tensorflow.python.platform import googletest
 
 
@@ -33,8 +36,8 @@ class RaggedTensorBoundingShapeOp(ragged_test_util.RaggedTensorTestCase,
                                   parameterized.TestCase):
 
   def assertShapeEq(self, x, y):
-    assert isinstance(x, ragged.RaggedTensorDynamicShape)
-    assert isinstance(y, ragged.RaggedTensorDynamicShape)
+    assert isinstance(x, RaggedTensorDynamicShape)
+    assert isinstance(y, RaggedTensorDynamicShape)
     x_partitioned_dim_sizes = [
         self.eval_to_list(splits)  #
         for splits in x.partitioned_dim_sizes
@@ -54,39 +57,40 @@ class RaggedTensorBoundingShapeOp(ragged_test_util.RaggedTensorTestCase,
           value=[[['a', 'b', 'c'], ['d', 'e', 'f']]],
           expected_dim_sizes=[1, 2, 3]),
       dict(
-          value=ragged.constant_value([['a', 'b', 'c'], ['d', 'e']]),
+          value=ragged_factory_ops.constant_value([['a', 'b', 'c'], ['d',
+                                                                     'e']]),
           expected_dim_sizes=[2, [3, 2]]),
       dict(
-          value=ragged.constant_value([[['a', 'b', 'c'], ['d', 'e']]]),
+          value=ragged_factory_ops.constant_value([[['a', 'b', 'c'], ['d',
+                                                                      'e']]]),
           expected_dim_sizes=[1, [2], [3, 2]]),
       dict(
-          value=ragged.constant_value([[['a', 'b', 'c'], ['d', 'e', 'f']]],
-                                      ragged_rank=1),
+          value=ragged_factory_ops.constant_value(
+              [[['a', 'b', 'c'], ['d', 'e', 'f']]], ragged_rank=1),
           expected_dim_sizes=[1, [2], 3]),
       dict(
-          value=ragged.constant_value([[[[1], [2]], [[3], [4]]],
-                                       [[[5], [6]]]], ragged_rank=1),
+          value=ragged_factory_ops.constant_value(
+              [[[[1], [2]], [[3], [4]]], [[[5], [6]]]], ragged_rank=1),
           expected_dim_sizes=[2, [2, 1], 2, 1]),
       dict(
-          value=ragged.constant_value([[10, 20], [30]]),
+          value=ragged_factory_ops.constant_value([[10, 20], [30]]),
           expected_dim_sizes=[2, [2, 1]]),
       # Docstring examples:
       dict(value=[[1, 2, 3], [4, 5, 6]], expected_dim_sizes=[2, 3]),
       dict(
-          value=ragged.constant_value([[1, 2], [], [3, 4, 5]]),
+          value=ragged_factory_ops.constant_value([[1, 2], [], [3, 4, 5]]),
           expected_dim_sizes=[3, [2, 0, 3]]),
       dict(
-          value=ragged.constant_value([[[1, 2], [3, 4]], [[5, 6]]],
-                                      ragged_rank=1),
+          value=ragged_factory_ops.constant_value([[[1, 2], [3, 4]], [[5, 6]]],
+                                                  ragged_rank=1),
           expected_dim_sizes=[2, [2, 1], 2]),
       dict(
-          value=ragged.constant_value([[[1, 2], [3]], [[4, 5]]]),
+          value=ragged_factory_ops.constant_value([[[1, 2], [3]], [[4, 5]]]),
           expected_dim_sizes=[2, [2, 1], [2, 1, 2]]),
   ])
   def testFromTensor(self, value, expected_dim_sizes):
-    shape = ragged.RaggedTensorDynamicShape.from_tensor(value)
-    expected = ragged.RaggedTensorDynamicShape.from_dim_sizes(
-        expected_dim_sizes)
+    shape = RaggedTensorDynamicShape.from_tensor(value)
+    expected = RaggedTensorDynamicShape.from_dim_sizes(expected_dim_sizes)
     self.assertShapeEq(shape, expected)
 
   @parameterized.parameters([
@@ -106,9 +110,8 @@ class RaggedTensorBoundingShapeOp(ragged_test_util.RaggedTensorTestCase,
           expected_dim_sizes=[1, 3, [3, 2, 4], 2, 3]),
   ])
   def testBroadcastToRank(self, dim_sizes, rank, expected_dim_sizes):
-    shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
-    expected = ragged.RaggedTensorDynamicShape.from_dim_sizes(
-        expected_dim_sizes)
+    shape = RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
+    expected = RaggedTensorDynamicShape.from_dim_sizes(expected_dim_sizes)
     broadcasted_shape = shape.broadcast_to_rank(rank)
     self.assertShapeEq(broadcasted_shape, expected)
     self.assertEqual(broadcasted_shape.rank, rank)
@@ -297,21 +300,19 @@ class RaggedTensorBoundingShapeOp(ragged_test_util.RaggedTensorTestCase,
         original_dim_sizes[axis] should be equal to `1` or `row_length`.
       broadcast_dim_sizes: THe dimension sizes after broadcasting.
     """
-    original_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(
-        original_dim_sizes)
-    broadcast_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(
-        broadcast_dim_sizes)
-    self.assertEqual(original_shape.rank, broadcast_shape.rank)
+    original_shape = RaggedTensorDynamicShape.from_dim_sizes(original_dim_sizes)
+    bcast_shape = RaggedTensorDynamicShape.from_dim_sizes(broadcast_dim_sizes)
+    self.assertEqual(original_shape.rank, bcast_shape.rank)
     # shape[axis].value == 1 and row_length > 1:
     bcast1 = original_shape.broadcast_dimension(axis, row_length)
     # shape[axis].value > 1 and row_length == shape[axis].value:
-    bcast2 = broadcast_shape.broadcast_dimension(axis, row_length)
+    bcast2 = bcast_shape.broadcast_dimension(axis, row_length)
     # shape[axis].value > 1 and row_length == 1:
-    bcast3 = broadcast_shape.broadcast_dimension(axis, 1)
+    bcast3 = bcast_shape.broadcast_dimension(axis, 1)
 
-    self.assertShapeEq(bcast1, broadcast_shape)
-    self.assertShapeEq(bcast2, broadcast_shape)
-    self.assertShapeEq(bcast3, broadcast_shape)
+    self.assertShapeEq(bcast1, bcast_shape)
+    self.assertShapeEq(bcast2, bcast_shape)
+    self.assertShapeEq(bcast3, bcast_shape)
 
   @parameterized.parameters(
       [
@@ -369,104 +370,115 @@ class RaggedTensorBoundingShapeOp(ragged_test_util.RaggedTensorTestCase,
               expected_dims=[2, (2, 1), 2, (2, 1, 2, 1, 2, 1)]),
       ])
   def testBroadcastDynamicShape(self, x_dims, y_dims, expected_dims):
-    x_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(x_dims)
-    y_shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(y_dims)
-    expected = ragged.RaggedTensorDynamicShape.from_dim_sizes(expected_dims)
-    result1 = ragged.broadcast_dynamic_shape(x_shape, y_shape)
-    result2 = ragged.broadcast_dynamic_shape(y_shape, x_shape)
+    x_shape = RaggedTensorDynamicShape.from_dim_sizes(x_dims)
+    y_shape = RaggedTensorDynamicShape.from_dim_sizes(y_dims)
+    expected = RaggedTensorDynamicShape.from_dim_sizes(expected_dims)
+    result1 = ragged_tensor_shape.broadcast_dynamic_shape(x_shape, y_shape)
+    result2 = ragged_tensor_shape.broadcast_dynamic_shape(y_shape, x_shape)
     self.assertShapeEq(expected, result1)
     self.assertShapeEq(expected, result2)
 
   def testRepr(self):
-    shape = ragged.RaggedTensorDynamicShape.from_dim_sizes([2, (2, 1), 2, 1])
+    shape = RaggedTensorDynamicShape.from_dim_sizes([2, (2, 1), 2, 1])
     self.assertRegexpMatches(
         repr(shape),
         r'RaggedTensorDynamicShape\('
         r'partitioned_dim_sizes=\(<[^>]+>, <[^>]+>\), '
         r'inner_dim_sizes=<[^>]+>\)')
 
-  @parameterized.parameters([
-      dict(
-          x=[[10], [20], [30]],  # shape=[3, 1]
-          dim_sizes=[3, 2],
-          expected=[[10, 10], [20, 20], [30, 30]]),
-      dict(
-          x=[[10], [20], [30]],  # shape=[3, 1]
-          dim_sizes=[3, [3, 0, 2]],
-          expected=ragged.constant_value([[10, 10, 10], [], [30, 30]],
-                                         dtype=np.int32)),
-      dict(
-          x=[[[1, 2, 3]], [[4, 5, 6]]],  # shape = [2, 1, 3]
-          dim_sizes=[2, [2, 3], 3],
-          expected=ragged.constant_value(
-              [[[1, 2, 3], [1, 2, 3]], [[4, 5, 6], [4, 5, 6], [4, 5, 6]]],
-              dtype=np.int32,
-              ragged_rank=1)),
-      dict(
-          x=[[[1]], [[2]]],  # shape = [2, 1, 1]
-          dim_sizes=[2, [2, 3], [0, 2, 1, 2, 0]],
-          expected=ragged.constant_value([[[], [1, 1]], [[2], [2, 2], []]],
-                                         dtype=np.int32,
-                                         ragged_rank=2)),
-      dict(
-          x=10,
-          dim_sizes=[3, [3, 0, 2]],
-          expected=ragged.constant_value([[10, 10, 10], [], [10, 10]])),
-  ])
+  @parameterized.parameters(
+      [
+          dict(
+              x=[[10], [20], [30]],  # shape=[3, 1]
+              dim_sizes=[3, 2],
+              expected=[[10, 10], [20, 20], [30, 30]]),
+          dict(
+              x=[[10], [20], [30]],  # shape=[3, 1]
+              dim_sizes=[3, [3, 0, 2]],
+              expected=ragged_factory_ops.constant_value(
+                  [[10, 10, 10], [], [30, 30]], dtype=np.int32)),
+          dict(
+              x=[[[1, 2, 3]], [[4, 5, 6]]],  # shape = [2, 1, 3]
+              dim_sizes=[2, [2, 3], 3],
+              expected=ragged_factory_ops.constant_value(
+                  [[[1, 2, 3], [1, 2, 3]], [[4, 5, 6], [4, 5, 6], [4, 5, 6]]],
+                  dtype=np.int32,
+                  ragged_rank=1)),
+          dict(
+              x=[[[1]], [[2]]],  # shape = [2, 1, 1]
+              dim_sizes=[2, [2, 3], [0, 2, 1, 2, 0]],
+              expected=ragged_factory_ops.constant_value(
+                  [[[], [1, 1]], [[2], [2, 2], []]],
+                  dtype=np.int32,
+                  ragged_rank=2)),
+          dict(
+              x=10,
+              dim_sizes=[3, [3, 0, 2]],
+              expected=ragged_factory_ops.constant_value([[10, 10, 10], [],
+                                                          [10, 10]])),
+      ])
   def testRaggedBroadcastTo(self, x, dim_sizes, expected):
-    shape = ragged.RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
-    result = ragged.broadcast_to(x, shape)
+    shape = RaggedTensorDynamicShape.from_dim_sizes(dim_sizes)
+    result = ragged_tensor_shape.broadcast_to(x, shape)
     self.assertEqual(
         getattr(result, 'ragged_rank', 0), getattr(expected, 'ragged_rank', 0))
     self.assertRaggedEqual(result, expected)
 
-  @parameterized.parameters([
-      dict(
-          doc='x.shape=[3, (D1)]; y.shape=[3, 1]; bcast.shape=[3, (D1)]',
-          x=ragged.constant_value([[1, 2, 3], [], [4, 5]], dtype=np.int32),
-          y=[[10], [20], [30]],
-          expected=ragged.constant_value([[11, 12, 13], [], [34, 35]])),
-      dict(
-          doc='x.shape=[3, (D1)]; y.shape=[]; bcast.shape=[3, (D1)]',
-          x=ragged.constant_value([[1, 2, 3], [], [4, 5]], dtype=np.int32),
-          y=10,
-          expected=ragged.constant_value([[11, 12, 13], [], [14, 15]])),
-      dict(
-          doc='x.shape=[1, (D1)]; y.shape=[3, 1]; bcast.shape=[3, (D1)]',
-          x=ragged.constant_value([[1, 2, 3]], dtype=np.int32),
-          y=[[10], [20], [30]],
-          expected=ragged.constant_value(
-              [[11, 12, 13], [21, 22, 23], [31, 32, 33]], dtype=np.int32)),
-      dict(
-          doc=('x.shape=[2, (D1), 1]; y.shape=[1, (D2)]; '
-               'bcast.shape=[2, (D1), (D2)]'),
-          x=ragged.constant_value([[[1], [2], [3]], [[4]]], ragged_rank=1),
-          y=ragged.constant_value([[10, 20, 30]]),
-          expected=ragged.constant_value([[[11, 21, 31], [12, 22, 32],
-                                           [13, 23, 33]], [[14, 24, 34]]])),
-      dict(
-          doc=('x.shape=[2, (D1), 1]; y.shape=[1, 1, 4]; '
-               'bcast.shape=[2, (D1), 4]'),
-          x=ragged.constant_value([[[10], [20]], [[30]]], ragged_rank=1),
-          y=[[[1, 2, 3, 4]]],
-          expected=ragged.constant_value(
-              [[[11, 12, 13, 14], [21, 22, 23, 24]], [[31, 32, 33, 34]]],
-              ragged_rank=1)),
-      dict(
-          doc=('x.shape=[2, (D1), 2, 1]; y.shape=[2, (D2)]; '
-               'bcast.shape=[2, (D1), (2), (D2)'),
-          x=ragged.constant_value([[[[1], [2]], [[3], [4]]],
-                                   [[[5], [6]]]],
-                                  ragged_rank=1),
-          y=ragged.constant_value([[10, 20], [30]]),
-          expected=ragged.constant_value(
-              [[[[11, 21], [32]], [[13, 23], [34]]],
-               [[[15, 25], [36]]]])),
-  ])
+  @parameterized.parameters(
+      [
+          dict(
+              doc='x.shape=[3, (D1)]; y.shape=[3, 1]; bcast.shape=[3, (D1)]',
+              x=ragged_factory_ops.constant_value([[1, 2, 3], [], [4, 5]],
+                                                  dtype=np.int32),
+              y=[[10], [20], [30]],
+              expected=ragged_factory_ops.constant_value([[11, 12, 13], [],
+                                                          [34, 35]])),
+          dict(
+              doc='x.shape=[3, (D1)]; y.shape=[]; bcast.shape=[3, (D1)]',
+              x=ragged_factory_ops.constant_value([[1, 2, 3], [], [4, 5]],
+                                                  dtype=np.int32),
+              y=10,
+              expected=ragged_factory_ops.constant_value([[11, 12, 13], [],
+                                                          [14, 15]])),
+          dict(
+              doc='x.shape=[1, (D1)]; y.shape=[3, 1]; bcast.shape=[3, (D1)]',
+              x=ragged_factory_ops.constant_value([[1, 2, 3]], dtype=np.int32),
+              y=[[10], [20], [30]],
+              expected=ragged_factory_ops.constant_value(
+                  [[11, 12, 13], [21, 22, 23], [31, 32, 33]], dtype=np.int32)),
+          dict(
+              doc=('x.shape=[2, (D1), 1]; y.shape=[1, (D2)]; '
+                   'bcast.shape=[2, (D1), (D2)]'),
+              x=ragged_factory_ops.constant_value([[[1], [2], [3]], [[4]]],
+                                                  ragged_rank=1),
+              y=ragged_factory_ops.constant_value([[10, 20, 30]]),
+              expected=ragged_factory_ops.constant_value([[[11, 21, 31],
+                                                           [12, 22, 32],
+                                                           [13, 23, 33]],
+                                                          [[14, 24, 34]]])),
+          dict(
+              doc=('x.shape=[2, (D1), 1]; y.shape=[1, 1, 4]; '
+                   'bcast.shape=[2, (D1), 4]'),
+              x=ragged_factory_ops.constant_value([[[10], [20]], [[30]]],
+                                                  ragged_rank=1),
+              y=[[[1, 2, 3, 4]]],
+              expected=ragged_factory_ops.constant_value(
+                  [[[11, 12, 13, 14], [21, 22, 23, 24]], [[31, 32, 33, 34]]],
+                  ragged_rank=1)),
+          dict(
+              doc=('x.shape=[2, (D1), 2, 1]; y.shape=[2, (D2)]; '
+                   'bcast.shape=[2, (D1), (2), (D2)'),
+              x=ragged_factory_ops.constant_value(
+                  [[[[1], [2]], [[3], [4]]], [[[5], [6]]]], ragged_rank=1),
+              y=ragged_factory_ops.constant_value([[10, 20], [30]]),
+              expected=ragged_factory_ops.constant_value([[[[11, 21], [32]],
+                                                           [[13, 23], [34]]],
+                                                          [[[15, 25], [36]]]])),
+      ])
   def testRaggedAddWithBroadcasting(self, x, y, expected, doc):
     expected_rrank = getattr(expected, 'ragged_rank', 0)
-    x = ragged.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
-    y = ragged.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
+    y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
     result = x + y
     result_rrank = getattr(result, 'ragged_rank', 0)
     self.assertEqual(expected_rrank, result_rrank)

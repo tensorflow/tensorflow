@@ -226,7 +226,6 @@ class TestSequential(keras_parameterized.TestCase):
     inner_model.trainable = True
     self.assertEqual(len(model.trainable_weights), 4)
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_sequential_update_disabling(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))

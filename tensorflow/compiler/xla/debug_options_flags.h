@@ -29,7 +29,10 @@ void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list);
 // Fetches a DebugOptions proto message from flags provided to the program.
 // Flags must be registered with the flags parser using AppendDebugOptionsFlags
 // first.
-xla::DebugOptions GetDebugOptionsFromFlags();
+DebugOptions GetDebugOptionsFromFlags();
+
+// Gets a DebugOptions proto that reflects the defaults as if no flags were set.
+DebugOptions DefaultDebugOptionsIgnoringFlags();
 
 }  // namespace xla
 

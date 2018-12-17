@@ -38,7 +38,7 @@ def ragged_tensor_getitem(self, key):
   IndexError; (2) use a default value; or (3) skip that value and return a
   tensor with fewer rows than we started with.  Following the guiding
   principles of Python ("In the face of ambiguity, refuse the temptation to
-  guess" <go/pep20>), we simply disallow this operation.
+  guess"), we simply disallow this operation.
 
   Any dimensions added by `array_ops.newaxis` will be ragged if the following
   dimension is ragged.

@@ -190,7 +190,7 @@ def _get_win_cuda_defines(repository_ctx):
       get_env_var(repository_ctx, "TMP", "C:\\Windows\\Temp").replace(
           "\\", "\\\\"),)
 
-  msvc_cl_path = "windows/msvc_wrapper_for_nvcc.bat"
+  msvc_cl_path = _get_python_bin(repository_ctx)
   msvc_ml_path = find_msvc_tool(repository_ctx, vc_path, "ml64.exe").replace(
       "\\", "/")
   msvc_link_path = find_msvc_tool(repository_ctx, vc_path, "link.exe").replace(
@@ -1426,7 +1426,6 @@ def _create_local_cuda_repository(repository_ctx):
     repository_ctx.file(
         "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc", "")
     repository_ctx.file("crosstool/windows/msvc_wrapper_for_nvcc.py", "")
-    repository_ctx.file("crosstool/windows/msvc_wrapper_for_nvcc.bat", "")
   else:
     cuda_defines[
         "%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
@@ -1485,13 +1484,6 @@ def _create_local_cuda_repository(repository_ctx):
         repository_ctx,
         "crosstool:windows/msvc_wrapper_for_nvcc.py",
         wrapper_defines,
-    )
-    _tpl(
-        repository_ctx,
-        "crosstool:windows/msvc_wrapper_for_nvcc.bat",
-        {
-            "%{python_binary}": _get_python_bin(repository_ctx),
-        },
     )
 
   _tpl(

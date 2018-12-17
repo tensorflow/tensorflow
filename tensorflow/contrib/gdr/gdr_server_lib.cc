@@ -74,9 +74,8 @@ Status GdrServer::Start() {
 }
 
 Status GdrServer::Stop() {
-  TF_RETURN_IF_ERROR(GrpcServer::Stop());
   remote_memory_manager_->Stop();
-  return Status::OK();
+  return GrpcServer::Stop();
 }
 
 Status GdrServer::Join() {

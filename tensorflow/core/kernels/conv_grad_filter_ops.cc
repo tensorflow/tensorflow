@@ -941,7 +941,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
-                                              ctx);
+                                            ctx);
       ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
@@ -994,7 +994,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);
   }
-
   DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
   bool cudnn_launch_status =
       stream

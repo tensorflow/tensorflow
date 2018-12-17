@@ -34,18 +34,24 @@ namespace tensorflow {
 namespace data {
 namespace model {
 
+// A constant that can be used to enable auto-tuning.
+constexpr int kAutoTune = -1;
+
 // Represents thread-safe state that can be shared between an input pipeline and
 // the performance model.
 struct SharedState {
  public:
   SharedState(int64 value, std::shared_ptr<mutex> mu,
               std::shared_ptr<condition_variable> cond_var)
-      : value(value), mu(std::move(mu)), cond_var(std::move(cond_var)) {}
+      : value(value),
+        mu(std::move(mu)),
+        cond_var(std::move(cond_var)),
+        tunable(value == kAutoTune) {}
 
   int64 value;
   std::shared_ptr<mutex> mu;
   std::shared_ptr<condition_variable> cond_var;
-  bool tunable = false;
+  const bool tunable;
 };
 
 // Represents a parameter.
@@ -134,6 +140,15 @@ class Node {
   int64 buffered_bytes() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return buffered_bytes_;
+  }
+
+  // Indicates whether the node has tunable parameters.
+  bool has_tunable_parameters() const LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    for (const auto& pair : parameters_) {
+      if (pair.second->state->tunable) return true;
+    }
+    return false;
   }
 
   // Returns the unique node ID.
@@ -344,7 +359,10 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args);
 // implementation of `DatasetBase` and `DatasetBaseIterator` respectively.
 class Model {
  public:
-  Model() = default;
+  Model() : collect_resource_usage_(false) {}
+
+  // Indicates whether to collect resource usage.
+  bool collect_resource_usage() const { return collect_resource_usage_; }
 
   // Adds a node with the given name and given output.
   std::shared_ptr<Node> AddNode(Node::Factory factory, const string& name,
@@ -388,6 +406,14 @@ class Model {
   int64 id_counter_ GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ GUARDED_BY(mu_);
   std::map<string, std::shared_ptr<Node>> lookup_table_ GUARDED_BY(mu_);
+
+  // Indicates whether the modeling framework should collect resource usage
+  // (e.g. CPU, memory). The logic for collecting this information assumes that
+  // the collection is not repeatedly disabled and enabled. As a consequence,
+  // the implementation starts collecting resource usage when it encounters a
+  // tunable parameter (because the information is used for for tuning the value
+  // of the parameter) and never stops.
+  std::atomic<bool> collect_resource_usage_;
 };
 
 }  // namespace model

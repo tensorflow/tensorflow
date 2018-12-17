@@ -22,7 +22,8 @@ from absl.testing import parameterized
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -117,11 +118,11 @@ class RaggedRowLengthsOp(ragged_test_util.RaggedTensorTestCase,
                      axis=1,
                      ragged_rank=None,
                      expected_ragged_rank=None):
-    rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
+    rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
     lengths = rt.row_lengths(axis)
     self.assertRaggedEqual(lengths, expected)
     if expected_ragged_rank is not None:
-      if isinstance(lengths, ragged.RaggedTensor):
+      if isinstance(lengths, ragged_tensor.RaggedTensor):
         self.assertEqual(lengths.ragged_rank, expected_ragged_rank)
       else:
         self.assertEqual(0, expected_ragged_rank)
@@ -137,7 +138,7 @@ class RaggedRowLengthsOp(ragged_test_util.RaggedTensorTestCase,
           exception=(ValueError, errors.InvalidArgumentError)),
   ])
   def testErrors(self, rt_input, exception, message=None, axis=1):
-    rt = ragged.constant(rt_input)
+    rt = ragged_factory_ops.constant(rt_input)
     with self.assertRaisesRegexp(exception, message):
       rt.row_lengths(axis)
 

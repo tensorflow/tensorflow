@@ -465,6 +465,14 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
             "Currently only support sum & mean in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
 
+    if not isinstance(value, values.DistributedValues):
+      # This function handles reducing values that are not PerReplica or
+      # Mirrored values. For example, the same value could be present on all
+      # replicas in which case `value` would be a single value or value could
+      # be 0.
+      return cross_device_ops_lib.reduce_non_distributed_value(
+          self, reduce_op, value, destinations)
+
     # Validate that the destination is same as the host device
     # Note we don't do this when in replicate context as the reduction is
     # performed on the TPU device itself.

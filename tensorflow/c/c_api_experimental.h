@@ -67,9 +67,10 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 // a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
 // `enable_xla_compilation` is non-zero, and OFF otherwise.
 // b) ConfigProto.gpu_options.allow_growth is set to `gpu_memory_allow_growth`.
+// c) ConfigProto.device_count is set to `num_cpu_devices`.
 TF_CAPI_EXPORT extern TF_Buffer* TF_CreateConfig(
-    unsigned char enable_xla_compilation,
-    unsigned char gpu_memory_allow_growth);
+    unsigned char enable_xla_compilation, unsigned char gpu_memory_allow_growth,
+    unsigned int num_cpu_devices);
 
 // Create a serialized tensorflow.RunOptions proto, where RunOptions.trace_level
 // is set to FULL_TRACE if `enable_full_trace` is non-zero, and NO_TRACE

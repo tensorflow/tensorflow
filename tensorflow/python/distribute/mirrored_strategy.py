@@ -50,12 +50,17 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @contextlib.contextmanager
-def _enter_graph(g):
-  if context.executing_eagerly():
+def _enter_graph(g, eager, creator_stack=None):
+  """Context manager for selecting a graph and maybe eager mode."""
+  if eager:
     with g.as_default(), context.eager_mode():
+      if creator_stack is not None:
+        g._variable_creator_stack = creator_stack  # pylint: disable=protected-access
       yield
   else:
     with g.as_default():
+      if creator_stack is not None:
+        g._variable_creator_stack = creator_stack  # pylint: disable=protected-access
       yield
 
 
@@ -69,10 +74,9 @@ class _RequestedStop(Exception):  # pylint: disable=g-bad-exception-name
   pass
 
 
-# _call_for_each_replica and _reduce_non_distributed_value are not members of
-# MirroredStrategy so that they are generally not allowed to use anything
-# specific to MirroredStrategy and thus can be shared with other distribution
-# strategies.
+# _call_for_each_replica is not a member of MirroredStrategy so that it is
+# not allowed to use anything specific to MirroredStrategy and thus
+# can be shared with other distribution strategies.
 
 
 # TODO(yuefengz): maybe create a common class for those who need to call this
@@ -185,43 +189,6 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
     coord.join(threads)
 
   return values.regroup({t.device: t.main_result for t in threads})
-
-
-def _reduce_non_distributed_value(extended, reduce_op, value, destinations):
-  """Reduce a non-DistributedValue `value` to `destinations`."""
-  if isinstance(value, values.DistributedValues):
-    raise ValueError("You are passing a `DistributedValue` to "
-                     "`_reduce_non_distributed_value`, which is not allowed.")
-
-  # If the same value is present on all replicas then the PerReplica value will
-  # be a single value. We also handle the case when `value` is a single value
-  # and equal to 0.
-  if value == 0:
-    return 0
-  # If there is only a single value and the reduce op is MEAN,
-  # that value should be on all destinations.
-  if reduce_op == reduce_util.ReduceOp.MEAN:
-    return value
-
-  cross_device_ops_lib.validate_destinations(destinations)
-  # We do not support a reduce op of SUM if the value is the same across
-  # all replicas. We call this as part of assign functions for MirroredVariables
-  # and summing up identical values across replicas is not clearly defined.
-  if (len(extended.worker_devices) != 1 or
-      not cross_device_ops_lib.check_destinations(destinations)):
-    raise ValueError("A non-DistributedValues value %s cannot be reduced with "
-                     "the given reduce op %s." % (value, reduce_op))
-  # TODO(anjalisridhar): Moves these methods to a device utility file?
-  devices = cross_device_ops_lib.get_devices_from(destinations)
-  if len(devices) == 1:
-    with ops.device(devices[0]):
-      return array_ops.identity(value)
-  else:
-    value_updates = {}
-    for d in devices:
-      with ops.device(d):
-        value_updates[d] = array_ops.identity(value)
-    return values.Mirrored(value_updates)
 
 
 def _create_mirrored_variable(devices, real_mirrored_creator, *args, **kwargs):  # pylint: disable=g-missing-docstring
@@ -709,8 +676,8 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       # Mirrored values. For example, the same value could be present on all
       # replicas in which case `value` would be a single value or value could
       # be 0.
-      return _reduce_non_distributed_value(self, reduce_op, value,
-                                           destinations)
+      return cross_device_ops_lib.reduce_non_distributed_value(
+          self, reduce_op, value, destinations)
     return self._get_cross_device_ops().reduce(
         reduce_op, value, destinations=destinations)
 
@@ -839,14 +806,19 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       self.has_paused = threading.Event()
       # These fields have to do with inheriting various contexts from the
       # parent thread:
+      ctx = context.context()
+      self.in_eager = ctx.executing_eagerly()
       # pylint: disable=protected-access
-      self.context_mode = context.context()._eager_context.mode
-      if not context.context()._context_handle:
-        context.context()._initialize_handle_and_devices()
+      if not ctx._context_handle:
+        ctx._initialize_handle_and_devices()
       self.context_device_policy = (
           pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
-              context.context()._context_handle))
+              ctx._context_handle))
       self.graph = ops.get_default_graph()
+      with ops.init_scope():
+        self._init_in_eager = context.executing_eagerly()
+        self._init_graph = ops.get_default_graph()
+
       self._variable_creator_stack = self.graph._variable_creator_stack[:]
       self._captured_var_scope = variable_scope.get_variable_scope()
       # Adding a "/" at end lets us re-enter this scope later.
@@ -860,16 +832,16 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
     def run(self):
       # pylint: disable=protected-access
-      self.graph._variable_creator_stack = self._variable_creator_stack
       self.should_run.wait()
       self.should_run.clear()
       try:
         if self.coord.should_stop():
           return
         with self.coord.stop_on_exception(), \
-            context.context()._mode(self.context_mode), \
+            _enter_graph(self._init_graph, self._init_in_eager), \
+            _enter_graph(self.graph, self.in_eager,
+                         self._variable_creator_stack), \
             context.context().device_policy(self.context_device_policy), \
-            _enter_graph(self.graph), \
             MirroredReplicaContext(self.distribution, constant_op.constant(
                 self.replica_id, dtypes.int32)), \
             ops.device(self.device), \

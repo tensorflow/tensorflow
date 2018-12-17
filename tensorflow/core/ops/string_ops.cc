@@ -296,6 +296,27 @@ REGISTER_OP("UnicodeTranscode")
     .Attr("replace_control_characters: bool = false")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("UnicodeDecode")
+    .Input("input: string")
+    .Output("row_splits: int64")
+    .Output("char_values: int32")
+    .Attr("input_encoding: string")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      // row_splits.shape == [input.size() + 1]
+      DimensionHandle num_row_splits;
+      DimensionHandle input_size = c->NumElements(c->input(0));
+      TF_RETURN_IF_ERROR(c->Add(input_size, 1, &num_row_splits));
+      c->set_output(0, c->Vector(num_row_splits));
+
+      // char_values.shape == [num_chars]
+      DimensionHandle num_chars = c->UnknownDim();
+      c->set_output(1, c->Vector(num_chars));
+      return Status::OK();
+    });
+
 REGISTER_OP("UnicodeDecodeWithOffsets")
     .Input("input: string")
     .Output("row_splits: int64")

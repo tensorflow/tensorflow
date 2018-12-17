@@ -45,7 +45,7 @@ from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('keras.optimizers.Optimizer')
+@tf_export(v1=['keras.optimizers.Optimizer'])
 class Optimizer(object):
   """Abstract optimizer base class.
 
@@ -159,7 +159,7 @@ class Optimizer(object):
     return cls(**config)
 
 
-@tf_export('keras.optimizers.SGD')
+@tf_export(v1=['keras.optimizers.SGD'])
 class SGD(Optimizer):
   """Stochastic gradient descent optimizer.
 
@@ -224,7 +224,7 @@ class SGD(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.RMSprop')
+@tf_export(v1=['keras.optimizers.RMSprop'])
 class RMSprop(Optimizer):
   """RMSProp optimizer.
 
@@ -291,7 +291,7 @@ class RMSprop(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Adagrad')
+@tf_export(v1=['keras.optimizers.Adagrad'])
 class Adagrad(Optimizer):
   """Adagrad optimizer.
 
@@ -358,7 +358,7 @@ class Adagrad(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Adadelta')
+@tf_export(v1=['keras.optimizers.Adadelta'])
 class Adadelta(Optimizer):
   """Adadelta optimizer.
 
@@ -442,7 +442,7 @@ class Adadelta(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Adam')
+@tf_export(v1=['keras.optimizers.Adam'])
 class Adam(Optimizer):
   """Adam optimizer.
 
@@ -539,7 +539,7 @@ class Adam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Adamax')
+@tf_export(v1=['keras.optimizers.Adamax'])
 class Adamax(Optimizer):
   """Adamax optimizer from Adam paper's Section 7.
 
@@ -827,6 +827,7 @@ def deserialize(config, custom_objects=None):
         'sgd': SGD,
         'tfoptimizer': TFOptimizer
     }
+
   # Make deserialization case-insensitive for built-in optimizers.
   if config['class_name'].lower() in all_classes:
     config['class_name'] = config['class_name'].lower()

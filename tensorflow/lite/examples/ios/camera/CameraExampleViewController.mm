@@ -48,7 +48,7 @@ namespace {
 // GPU Delegate only supports float model now.
 NSString* model_file_name = @"mobilenet_v1_1.0_224";
 #else
-NSString* model_file_name = @"mobilenet_quant_v1_224.tflite";
+NSString* model_file_name = @"mobilenet_quant_v1_224";
 #endif
 NSString* model_file_type = @"tflite";
 // If you have your own model, point this to the labels file.

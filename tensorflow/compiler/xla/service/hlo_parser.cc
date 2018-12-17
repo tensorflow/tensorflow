@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -74,6 +75,7 @@ class HloParser {
   string GetError() const { return StrJoin(error_, "\n"); }
 
   // Stand alone parsing utils for various aggregate data types.
+  StatusOr<Shape> ParseShapeOnly();
   StatusOr<HloSharding> ParseShardingOnly();
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
@@ -255,7 +257,9 @@ class HloParser {
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
   bool ParseString(string* result);
+  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes);
   bool ParseShape(Shape* result);
+  bool ParseLayout(Layout* layout);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
@@ -279,9 +283,6 @@ class HloParser {
   // If the current token is 'kind', eats it (i.e. lexes the next token) and
   // returns true.
   bool EatIfPresent(TokKind kind);
-  // Parses a shape, and returns true if the result is compatible with the given
-  // shape.
-  bool EatShapeAndCheckCompatible(const Shape& shape);
 
   // Adds the instruction to the pool. Returns false and emits an error if the
   // instruction already exists.
@@ -1697,11 +1698,6 @@ bool HloParser::ParseSingleSharding(OpSharding* sharding,
         }
         break;
       }
-      case TokKind::kShape:
-        // TODO(b/112302613): Left here for backward compatibility to ignore the
-        // removed tile shape data.
-        lexer_.Lex();
-        break;
       case TokKind::kRbrace:
         break;
       default:
@@ -1925,19 +1921,6 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
   return true;
 }
 
-bool HloParser::EatShapeAndCheckCompatible(const Shape& shape) {
-  Shape new_shape;
-  if (!ParseShape(&new_shape)) {
-    return TokenError(StrCat("expects shape ", ShapeUtil::HumanString(shape)));
-  }
-  if (!ShapeUtil::Compatible(shape, new_shape)) {
-    return TokenError(StrCat(
-        "expects shape ", ShapeUtil::HumanString(shape),
-        ", but sees a different shape: ", ShapeUtil::HumanString(new_shape)));
-  }
-  return true;
-}
-
 // literal
 //  ::= tuple
 //  ::= non_tuple
@@ -1952,10 +1935,6 @@ bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
 //  ::= /*empty*/
 //  ::= literal (',' literal)*
 bool HloParser::ParseTupleLiteral(Literal* literal, const Shape& shape) {
-  if (!EatShapeAndCheckCompatible(shape)) {
-    return TokenError(StrCat("expects tuple constant in shape ",
-                             ShapeUtil::HumanString(shape)));
-  }
   if (!ParseToken(TokKind::kLparen, "expects '(' in front of tuple elements")) {
     return false;
   }
@@ -1990,16 +1969,12 @@ bool HloParser::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
     return ParseSparseLiteral(literal, shape);
   }
 
-  CHECK(LayoutUtil::IsDenseArray(shape));
+  CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ToString(true);
   return ParseDenseLiteral(literal, shape);
 }
 
 bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
   const tensorflow::int64 rank = ShapeUtil::Rank(shape);
-  if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
-    return false;
-  }
-
   // Create a literal with the given shape in default layout.
   *literal = LiteralUtil::CreateFromDimensions(
       shape.element_type(), AsInt64Slice(shape.dimensions()));
@@ -2126,10 +2101,6 @@ bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
 }
 
 bool HloParser::ParseSparseLiteral(Literal* literal, const Shape& shape) {
-  if (!EatShapeAndCheckCompatible(shape)) {
-    return false;
-  }
-
   switch (shape.element_type()) {
     case PRED:
       return ParseSparseLiteralHelper<tensorflow::uint8>(literal, shape);
@@ -2994,6 +2965,39 @@ bool HloParser::ParseParamList() {
   return ParseToken(TokKind::kRparen, "expects ')' at the end of param list");
 }
 
+// dimension_sizes ::= '[' int64_list ']'
+bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes) {
+  auto parse_and_add_item = [&]() {
+    tensorflow::int64 i;
+    if (!ParseInt64(&i)) {
+      return false;
+    }
+    dimension_sizes->push_back(i);
+    return true;
+  };
+  return ParseList(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
+                   parse_and_add_item);
+}
+
+// layout ::= '{' int64_list '}'
+bool HloParser::ParseLayout(Layout* layout) {
+  std::vector<int64> minor_to_major;
+  auto parse_and_add_item = [&]() {
+    tensorflow::int64 i;
+    if (!ParseInt64(&i)) {
+      return false;
+    }
+    minor_to_major.push_back(i);
+    return true;
+  };
+  if (!ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                 parse_and_add_item)) {
+    return false;
+  }
+  *layout = LayoutUtil::MakeLayout(minor_to_major);
+  return true;
+}
+
 // shape ::= shape_val_
 // shape ::= '(' tuple_elements ')'
 // tuple_elements
@@ -3017,19 +3021,61 @@ bool HloParser::ParseShape(Shape* result) {
     return ParseToken(TokKind::kRparen, "expects ')' at the end of tuple.");
   }
 
-  if (lexer_.GetKind() != TokKind::kShape) {
-    return TokenError(absl::StrCat("expected shape, saw ",
+  if (lexer_.GetKind() != TokKind::kPrimitiveType) {
+    return TokenError(absl::StrCat("expected primitive type, saw ",
                                    TokKindToString(lexer_.GetKind())));
   }
-  *result = lexer_.GetShapeVal();
+  PrimitiveType primitive_type = lexer_.GetPrimitiveTypeVal();
   lexer_.Lex();
+
+  std::vector<int64> dimension_sizes;
+  if (!ParseDimensionSizes(&dimension_sizes)) {
+    return false;
+  }
+  result->set_element_type(primitive_type);
+  *result->mutable_dimensions() = dimension_sizes;
+  LayoutUtil::SetToDefaultLayout(result);
+
+  if (lexer_.GetKind() == TokKind::kw_sparse) {
+    lexer_.Lex();
+    const string message =
+        "expects a brace-bracketed integer for sparse layout";
+    tensorflow::int64 max_sparse_elements;
+    if (!ParseToken(TokKind::kLbrace, message) ||
+        !ParseInt64(&max_sparse_elements) ||
+        !ParseToken(TokKind::kRbrace, message)) {
+      return false;
+    }
+    *result->mutable_layout() =
+        LayoutUtil::MakeSparseLayout(max_sparse_elements);
+    return true;
+  }
+
+  // We need to lookahead to see if a following open brace is the start of a
+  // layout. The specific problematic case is:
+  //
+  // ENTRY %foo (x: f32[42]) -> f32[123] {
+  //  ...
+  // }
+  //
+  // The open brace could either be the start of a computation or the start of a
+  // layout for the f32[123] shape. We consider it the start of a layout if the
+  // next token after the open brace is a integer
+  if (lexer_.GetKind() == TokKind::kLbrace &&
+      lexer_.LookAhead() == TokKind::kInt) {
+    Layout layout;
+    if (!ParseLayout(&layout)) {
+      return false;
+    }
+    *result->mutable_layout() = layout;
+  }
   return true;
 }
 
 bool HloParser::CanBeShape() {
-  // A non-tuple shape starts with a kShape token; a tuple shape starts with
-  // '('.
-  return lexer_.GetKind() == TokKind::kShape ||
+  // A non-tuple shape starts with a kPrimitiveType token; a tuple shape starts
+  // with '('.
+  return lexer_.GetKind() == TokKind::kPrimitiveType ||
          lexer_.GetKind() == TokKind::kLparen;
 }
 
@@ -3332,6 +3378,18 @@ bool HloParser::AddComputation(const string& name, HloComputation* computation,
   return true;
 }
 
+StatusOr<Shape> HloParser::ParseShapeOnly() {
+  lexer_.Lex();
+  Shape shape;
+  if (!ParseShape(&shape)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after shape");
+  }
+  return shape;
+}
+
 StatusOr<HloSharding> HloParser::ParseShardingOnly() {
   lexer_.Lex();
   OpSharding op_sharding;
@@ -3473,6 +3531,11 @@ StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbers(
 StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
   HloParser parser(str);
   return parser.ParsePaddingConfigOnly();
+}
+
+StatusOr<Shape> ParseShape(absl::string_view str) {
+  HloParser parser(str);
+  return parser.ParseShapeOnly();
 }
 
 }  // namespace xla

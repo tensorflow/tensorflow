@@ -120,6 +120,10 @@ class Node {
   int assigned_device_name_index() const { return assigned_device_name_index_; }
   void set_assigned_device_name_index(int index);
 
+  // Sets 'original_node_names' field of this node's DebugInfo proto to
+  // 'names'.
+  void set_original_node_names(const std::vector<string>& names);
+
   // Read only access to attributes
   AttrSlice attrs() const;
 
@@ -288,6 +292,15 @@ class Node {
   WhileContext* while_ctx_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
+};
+
+// Stores debug information associated with the Node.
+struct NodeDebugInfo {
+  const string name;
+  const std::vector<string> original_node_names;
+
+  NodeDebugInfo(const Node& n);
+  NodeDebugInfo(const NodeDef& ndef);
 };
 
 // Represents an input of a node, i.e., the `index`-th input to `node`.

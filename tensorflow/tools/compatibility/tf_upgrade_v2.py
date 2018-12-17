@@ -470,6 +470,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.rnn.RNNCell":
+            "tf.nn.rnn_cell.RNNCell",
+        "tf.contrib.rnn.LSTMStateTuple":
+            "tf.nn.rnn_cell.LSTMStateTuple",
         "tf.contrib.framework.sort":
             "tf.sort",
         "tf.contrib.framework.argsort":
@@ -492,6 +496,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.sparse.reduce_max",
         "tf.random.stateless_multinomial":
             "tf.random.stateless_categorical",
+        "tf.substr":
+            "tf.strings.substr",
         "tf.string_to_hash_bucket":
             "tf.strings.to_hash_bucket",
         "tf.string_to_number":
@@ -600,9 +606,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.sparse.reduce_max",
         "tf.sparse_reduce_max",
         "tf.io.decode_csv",
-        "tf.strings.substr",
-        "tf.strings.reduce_join",
         "tf.strings.length",
+        "tf.strings.reduce_join",
+        "tf.strings.substr",
+        "tf.substr",
         "tf.transpose",
         "tf.tuple",
         "tf.parse_example",

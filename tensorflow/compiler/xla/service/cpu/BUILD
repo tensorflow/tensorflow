@@ -572,6 +572,7 @@ cc_library(
         ":runtime_matvec",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//third_party/eigen3",
     ],
 )

@@ -30,9 +30,11 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_test_util
-from tensorflow.python.ops.ragged import RaggedTensor
+from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 from tensorflow.python.platform import googletest
 
 
@@ -176,7 +178,7 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     splits2 = np.array([0, 3, 5], dtype=np.int64)
 
     # Test construction of a RaggedTensorValue with ragged_rank=1.
-    rt_value = ragged.RaggedTensorValue(values, splits)
+    rt_value = ragged_tensor_value.RaggedTensorValue(values, splits)
     self.assertEqual(rt_value.row_splits.dtype, np.int64)
     self.assertEqual(rt_value.shape, (5, None))
     self.assertEqual(len(rt_value.nested_row_splits), 1)
@@ -186,8 +188,9 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     self.assertAllEqual(values, rt_value.flat_values)
 
     # Test construction of a RaggedTensorValue with ragged_rank=2.
-    rt_value = ragged.RaggedTensorValue(
-        values=ragged.RaggedTensorValue(values, splits), row_splits=splits2)
+    rt_value = ragged_tensor_value.RaggedTensorValue(
+        values=ragged_tensor_value.RaggedTensorValue(values, splits),
+        row_splits=splits2)
     self.assertEqual(rt_value.row_splits.dtype, np.int64)
     self.assertEqual(rt_value.shape, (2, None, None))
     self.assertEqual(len(rt_value.nested_row_splits), 2)
@@ -1096,7 +1099,7 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
   def testRaggedTensorValueStr(self):
     values = [b'a', b'b', b'c', b'd', b'e', b'f', b'g']
     row_splits = [0, 2, 5, 6, 6, 7]
-    rt = ragged.RaggedTensorValue(
+    rt = ragged_tensor_value.RaggedTensorValue(
         np.array(values), np.array(row_splits, dtype=np.int64))
     expected_str = '<tf.RaggedTensorValue {}>'.format([[b'a', b'b'],
                                                        [b'c', b'd', b'e'],
@@ -1111,8 +1114,9 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
   #=============================================================================
 
   def testWithValues(self):
-    rt1 = ragged.constant([[1, 2], [3, 4, 5], [6], [], [7]])
-    rt2 = ragged.constant([[[1, 2], [3, 4, 5]], [[6]], [], [[], [7]]])
+    rt1 = ragged_factory_ops.constant([[1, 2], [3, 4, 5], [6], [], [7]])
+    rt2 = ragged_factory_ops.constant([[[1, 2], [3, 4, 5]], [[6]], [], [[],
+                                                                        [7]]])
 
     rt1_plus_10 = rt1.with_values(rt1.values + 10)
     rt2_times_10 = rt2.with_flat_values(rt2.flat_values * 10)
@@ -1135,8 +1139,8 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     if context.executing_eagerly():
       return
 
-    rt1 = ragged.constant([[1, 2, 3], [4]])
-    rt2 = ragged.constant([[[], [1, 2]], [[3]]])
+    rt1 = ragged_factory_ops.constant([[1, 2, 3], [4]])
+    rt2 = ragged_factory_ops.constant([[[], [1, 2]], [[3]]])
     with self.test_session() as session:
       result = session.run({'rt1': rt1, 'rt2': rt2})
       self.assertCountEqual(sorted(result.keys()), ['rt1', 'rt2'])
@@ -1156,8 +1160,8 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
             array_ops.placeholder(dtypes.int64)
         ])
 
-    rt1_feed_val = ragged.constant_value([[1, 2, 3], [4]])
-    rt2_feed_val = ragged.constant_value([[[], [1, 2]], [[3]]])
+    rt1_feed_val = ragged_factory_ops.constant_value([[1, 2, 3], [4]])
+    rt2_feed_val = ragged_factory_ops.constant_value([[[], [1, 2]], [[3]]])
 
     with self.test_session() as session:
       result = session.run({
@@ -1186,13 +1190,13 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
     c = array_ops.placeholder(dtypes.int32, shape=[], name='c')
 
     # Feed values for placeholder inputs.
-    a_val = ragged.constant_value([[1, 2, 3], [4]])
-    b_val = ragged.constant_value([[5, 4, 3], [2]])
+    a_val = ragged_factory_ops.constant_value([[1, 2, 3], [4]])
+    b_val = ragged_factory_ops.constant_value([[5, 4, 3], [2]])
     c_val = 3
 
     # Compute some values.
-    r1 = ragged.reduce_sum(a * b, axis=1)
-    r2 = ragged.reduce_sum(a + c, axis=1)
+    r1 = ragged_math_ops.reduce_sum(a * b, axis=1)
+    r2 = ragged_math_ops.reduce_sum(a + c, axis=1)
 
     with self.test_session() as session:
       handle = session.partial_run_setup([r1, r2], [a, b, c])
