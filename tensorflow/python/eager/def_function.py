@@ -263,8 +263,33 @@ class PolymorphicFunction(object):
         input_signature=self._input_signature,
         autograph=self._autograph)
 
+  def _canonicalize_function_inputs(self, args, kwds):
+    """Canonicalize the inputs to the Python function."""
+    if not self._stateful_fn:
+      raise ValueError(
+          "_canonicalize_function_inputs must be called only after _initialize "
+          "has run.")
+    if self._input_signature is None or args or kwds:
+      return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
+    # If an input signature is defined, we may need to fetch a concrete function
+    # without any inputs specified. In this case args and kwds should be ignored
+    # but running _canonicalize_function_inputs would raise an exception.
+    return (), {}
+
   def _initialize(self, args, kwds, add_initializers_to=None):
-    """Initializes, on the first call."""
+    """Initializes, on the first call.
+
+    Creates two polymorphic functions, one that will allow creation of variables
+    and one that won't.
+
+    Additionally runs a trace for the polymorphic function that allows creation
+    of variables.
+
+    Args:
+      args: Arguments to the underlying python callable.
+      kwds: Keyword arguments to the python callable.
+      add_initializers_to: Where to collect variable initializers, if not None.
+    """
 
     created_variables = []
 
@@ -291,12 +316,6 @@ class PolymorphicFunction(object):
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
-    if self._input_signature is None or args or kwds:
-      return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
-    # If an input signature is defined, we may need to fetch a concrete function
-    # without any inputs specified. In this case args and kwds should be ignored
-    # but running _canonicalize_function_inputs would raise an exception.
-    return (), {}
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
@@ -313,7 +332,9 @@ class PolymorphicFunction(object):
                          " decorated with tf.function.")
       return results
 
-    canon_args, canon_kwds = self._initialize(args, kwds)
+    # This is the first call of __call__, so we have to initialize.
+    self._initialize(args, kwds)
+    canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
 
     if not self._created_variables:
       # If we did not create any variables the trace we have is good enough.
