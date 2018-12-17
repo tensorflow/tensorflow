@@ -93,6 +93,9 @@ build --define=PREFIX=/usr
 build --define=LIBDIR=$(PREFIX)/lib
 build --define=INCLUDEDIR=$(PREFIX)/include
 
+# Disable MKL-DNN contraction kernels by default.
+build --define=tensorflow_mkldnn_contraction_kernel=0
+
 # Default options should come above this line
 
 # Options from ./configure
