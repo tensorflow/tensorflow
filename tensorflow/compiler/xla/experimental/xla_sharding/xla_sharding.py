@@ -104,9 +104,9 @@ class Sharding(object):
       ValueError: The tensor to split was smaller in the split dimension than
         the number of devices to split over.
     """
-    tensor.shape.assert_is_fully_defined()
     shape = tensor.shape.as_list()
-    if shape[split_dimension] < num_devices:
+    if (shape[split_dimension] is not None and
+        shape[split_dimension] < num_devices):
       raise ValueError('Split dimension was smaller than the required number '
                        'of splits: shape=%r, dimension=%r, num_devices=%r' %
                        (shape, split_dimension, num_devices))
