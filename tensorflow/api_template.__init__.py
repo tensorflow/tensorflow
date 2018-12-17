@@ -19,6 +19,7 @@ from __future__ import division as _division
 from __future__ import print_function as _print_function
 
 import os as _os
+import sys as _sys
 
 # API IMPORTS PLACEHOLDER
 
@@ -26,13 +27,23 @@ import os as _os
 from tensorflow.python.tools import component_api_helper as _component_api_helper
 _component_api_helper.package_hook(
     parent_package_str=__name__,
-    child_package_str=('tensorflow_estimator.python.estimator.api.estimator'))
+    child_package_str=(
+        'tensorflow_estimator.python.estimator.api._v2.estimator'))
+
+_current_module = _sys.modules[__name__]
+if not hasattr(_current_module, 'estimator'):
+  _component_api_helper.package_hook(
+      parent_package_str=__name__,
+      child_package_str=(
+          'tensorflow_estimator.python.estimator.api.estimator'))
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
 # We're using bitwise, but there's nothing special about that.
 _tf_api_dir = _os.path.dirname(_os.path.dirname(bitwise.__file__))  # pylint: disable=undefined-variable
-if _tf_api_dir not in __path__:
+if not hasattr(_current_module, '__path__'):
+  __path__ = [_tf_api_dir]
+elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
 # Enable TF2 behaviors
