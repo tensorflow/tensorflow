@@ -348,7 +348,8 @@ class TFLiteConverter(object):
                             model_file,
                             input_arrays=None,
                             input_shapes=None,
-                            output_arrays=None):
+                            output_arrays=None,
+                            custom_objects=None):
     """Creates a TFLiteConverter class from a tf.keras model file.
 
     Args:
@@ -367,7 +368,7 @@ class TFLiteConverter(object):
     """
     _keras.backend.clear_session()
     _keras.backend.set_learning_phase(False)
-    keras_model = _keras.models.load_model(model_file)
+    keras_model = _keras.models.load_model(model_file, custom_objects=custom_objects)
     sess = _keras.backend.get_session()
 
     # Get input and output tensors.
