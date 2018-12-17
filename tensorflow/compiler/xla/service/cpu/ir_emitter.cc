@@ -2862,7 +2862,9 @@ llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
   if (slice.allocation()->is_thread_local()) {
     return EmitThreadLocalBufferPointer(slice, target_shape);
   } else if (slice.allocation()->is_constant()) {
-    return FindOrDie(constant_buffer_to_global_, slice.allocation()->index());
+    return BitCast(
+        FindOrDie(constant_buffer_to_global_, slice.allocation()->index()),
+        IrShapeType(target_shape)->getPointerTo());
   } else {
     return EmitGlobalBufferPointer(slice, target_shape);
   }
