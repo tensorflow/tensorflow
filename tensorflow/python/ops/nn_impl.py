@@ -398,7 +398,7 @@ def _count_nonzero(input_tensor, dtype=dtypes.int64):
   Returns:
       number of nonzero values with type dtype
   """
-  with ops.name_scope("count_nonzero", values=[input_tensor]):
+  with ops.name_scope("count_nonzero", [input_tensor]):
     zero = array_ops.zeros([], dtype=input_tensor.dtype)
     nonzero_count = math_ops.reduce_sum(
         math_ops.cast(
