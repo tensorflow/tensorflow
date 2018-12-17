@@ -126,6 +126,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
   context_->recommended_num_threads = -1;
   context_->GetExternalContext = GetExternalContext;
   context_->SetExternalContext = SetExternalContext;
+  context_->profiler = nullptr;
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
