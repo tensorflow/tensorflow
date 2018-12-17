@@ -297,7 +297,7 @@ class Node {
 // Stores debug information associated with the Node.
 struct NodeDebugInfo {
   const string name;
-  const std::vector<string> original_node_names;
+  std::vector<string> original_node_names;
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);
