@@ -368,6 +368,7 @@ package_group(
     name = "internal",
     packages = [
         "-//third_party/tensorflow/python/estimator",
+        "//learning/deepmind/...",
         "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_estimator/contrib/...",
