@@ -199,6 +199,30 @@ private:
   explicit VectorTransferWriteOp(const Operation *state) : Op(state) {}
 };
 
+/// VectorTypeCastOp performs a conversion from a memref with scalar element to
+/// memref with vector element, copying the shape of the memref to the vector.
+///
+/// Example:
+///
+/// ```mlir
+///  %A  = alloc() : memref<5x4x3xf32>
+///  %VA = vector_type_cast %A : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
+/// ```
+class VectorTypeCastOp
+    : public Op<VectorTypeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
+public:
+  static StringRef getOperationName() { return "vector_type_cast"; }
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *srcVector, Type dstType);
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  bool verify() const;
+
+private:
+  friend class Operation;
+  explicit VectorTypeCastOp(const Operation *state) : Op(state) {}
+};
+
 } // end namespace mlir
 
 #endif // MLIR_INCLUDE_MLIR_SUPERVECTOROPS_SUPERVECTOROPS_H

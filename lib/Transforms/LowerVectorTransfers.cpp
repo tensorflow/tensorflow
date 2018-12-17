@@ -128,18 +128,15 @@ static void lowerAsLoops(VectorTransferOpTy *transfer,
   // TODO(ntv): CL memory space.
   // TODO(ntv): Allocation padding for potential bank conflicts (e.g. GPUs).
   auto tmpScalarAlloc = b.create<AllocOp>(transfer->getLoc(), tmpMemRefType);
-  // TODO(ntv): Proper OperationStmt.
-  OperationState opState(b.getContext(), transfer->getLoc(), "vector_type_cast",
-                         ArrayRef<SSAValue *>{tmpScalarAlloc->getResult()},
-                         ArrayRef<Type>{vectorMemRefType});
-  auto vecView = b.createOperation(opState);
+  auto vecView = b.create<VectorTypeCastOp>(
+      transfer->getLoc(), tmpScalarAlloc->getResult(), vectorMemRefType);
 
   // 2. Store the vector to local storage in case of a vector_transfer_write.
   // TODO(ntv): This vector_store operation should be further lowered in the
   // case of GPUs.
   if (std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value) {
     b.create<StoreOp>(vecView->getLoc(), transfer->getVector(),
-                      vecView->getResult(0), ArrayRef<SSAValue *>{state.zero});
+                      vecView->getResult(), ArrayRef<SSAValue *>{state.zero});
   }
 
   // 3. Emit the loop-nest.
@@ -196,7 +193,7 @@ static void lowerAsLoops(VectorTransferOpTy *transfer,
   // case of GPUs.
   if (std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value) {
     b.setInsertionPoint(cast<OperationStmt>(transfer->getOperation()));
-    auto *vector = b.create<LoadOp>(transfer->getLoc(), vecView->getResult(0),
+    auto *vector = b.create<LoadOp>(transfer->getLoc(), vecView->getResult(),
                                     ArrayRef<SSAValue *>{state.zero})
                        ->getResult();
     transfer->getVector()->replaceAllUsesWith(vector);

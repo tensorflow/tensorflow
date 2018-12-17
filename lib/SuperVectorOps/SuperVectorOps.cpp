@@ -25,6 +25,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 using namespace mlir;
 
@@ -34,7 +35,8 @@ using namespace mlir;
 
 SuperVectorOpsDialect::SuperVectorOpsDialect(MLIRContext *context)
     : Dialect(/*opPrefix=*/"", context) {
-  addOperations<VectorTransferReadOp, VectorTransferWriteOp>();
+  addOperations<VectorTransferReadOp, VectorTransferWriteOp,
+                VectorTypeCastOp>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -449,4 +451,46 @@ bool VectorTransferWriteOp::verify() const {
   }
   return verifyPermutationMap(permutationMap,
                               [this](Twine t) { return emitOpError(t); });
+}
+
+//===----------------------------------------------------------------------===//
+// VectorTypeCastOp
+//===----------------------------------------------------------------------===//
+void VectorTypeCastOp::build(Builder *builder, OperationState *result,
+                             SSAValue *srcVector, Type dstType) {
+  result->addOperands(srcVector);
+  result->addTypes(dstType);
+}
+
+bool VectorTypeCastOp::parse(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType operand;
+  Type srcType, dstType;
+  return parser->parseOperand(operand) ||
+         parser->parseOptionalAttributeDict(result->attributes) ||
+         parser->parseColonType(srcType) || parser->parseComma() ||
+         parser->parseType(dstType) ||
+         parser->addTypeToList(dstType, result->types) ||
+         parser->resolveOperand(operand, srcType, result->operands);
+}
+
+void VectorTypeCastOp::print(OpAsmPrinter *p) const {
+  *p << getOperationName() << ' ' << *getOperand() << " : "
+     << getOperand()->getType() << ", " << getType();
+}
+
+bool VectorTypeCastOp::verify() const {
+  auto dstMemrefType = getType().dyn_cast<MemRefType>();
+  if (!dstMemrefType)
+    return emitOpError("expects target type to be a memref type");
+  auto dstVectorType = dstMemrefType.getElementType().dyn_cast<VectorType>();
+  if (!dstVectorType)
+    return emitOpError(
+        "expects vector as an element of the target memref type");
+  if (llvm::any_of(dstMemrefType.getShape(), [](int s) { return s == -1; }))
+    return emitOpError("does not support dynamic shapes");
+
+  if (!getOperand()->getType().isa<MemRefType>())
+    return emitOpError("expects source type to be a memref type");
+
+  return false;
 }

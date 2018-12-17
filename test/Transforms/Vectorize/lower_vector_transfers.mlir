@@ -8,7 +8,7 @@ mlfunc @materialize_read(%M : index, %N : index, %O : index, %P : index) {
   // CHECK-NEXT:     for %i2 = 0 to %arg2 {
   // CHECK-NEXT:       for %i3 = 0 to %arg3 step 5 {
   // CHECK-NEXT:         %1 = alloc() : memref<5x4x3xf32>
-  // CHECK-NEXT:         %2 = "vector_type_cast"(%1) : (memref<5x4x3xf32>) -> memref<1xvector<5x4x3xf32>>
+  // CHECK-NEXT:         %2 = vector_type_cast %1 : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
   // CHECK-NEXT:         for %i4 = 0 to 5 {
   // CHECK-NEXT:           %3 = affine_apply #[[ADD]](%i3, %i4)
   // CHECK-NEXT:           for %i5 = 0 to 4 {
@@ -41,7 +41,7 @@ mlfunc @materialize_write(%M : index, %N : index, %O : index, %P : index) {
   // CHECK-NEXT:     for %i2 = 0 to %arg2 {
   // CHECK-NEXT:       for %i3 = 0 to %arg3 step 5 {
   // CHECK-NEXT:         %1 = alloc() : memref<5x4x3xf32>
-  // CHECK-NEXT:         %2 = "vector_type_cast"(%1) : (memref<5x4x3xf32>) -> memref<1xvector<5x4x3xf32>>
+  // CHECK-NEXT:         %2 = vector_type_cast %1 : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
   // CHECK-NEXT:         store %cst, %2[%c0] : memref<1xvector<5x4x3xf32>>
   // CHECK-NEXT:         for %i4 = 0 to 5 {
   // CHECK-NEXT:           %3 = affine_apply #[[ADD]](%i3, %i4)

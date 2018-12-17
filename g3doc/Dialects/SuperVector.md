@@ -154,3 +154,26 @@ a mid-level abstraction that supports super-vectorization with non-effecting
 padding for full-tile-only code. It is the responsibility of
 `vector_transfer_write`'s implementation to ensure the memory writes are valid.
 Different lowerings may be pertinent depending on the hardware support.
+
+### Vector views {#vector-views}
+
+#### `vector_type_cast` operation {#'vector_type_cast'-operation}
+
+Syntax:
+
+``` {.ebnf}
+operation ::= `vector_type_cast` ssa-use : memref-type, memref-type
+```
+
+Examples:
+
+```mlir
+ %A  = alloc() : memref<5x4x3xf32>
+ %VA = vector_type_cast %A : memref<5x4x3xf32>, memref<1xvector<5x4x3xf32>>
+```
+
+The `vector_type_cast` operation performs a conversion from a memref with scalar
+element to memref with a *single* vector element, copying the shape of the
+memref to the vector. This is the minimal viable operation that is required to
+make super-vectorization operational. It can be seen as a special case of the
+`view` operation but scoped in the super-vectorization context.
