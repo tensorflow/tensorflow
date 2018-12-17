@@ -24,6 +24,7 @@ from absl.testing import parameterized
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -746,6 +747,34 @@ class InputIteratorMultiWorkerTest(
       expected_values = [[(i, i**2), (i, i**2)] for i in range(0, 4)]
       self._test_iterator(input_type, dataset_fn, worker_devices,
                           expected_values, sess)
+
+
+class SplitDatasetBatchTest(test.TestCase):
+
+  def testBatchDataset(self):
+    dataset = dataset_ops.Dataset.range(100).batch(20)
+    split_batch_by = 2
+    result_dataset = values._split_dataset_batch(dataset, split_batch_by)
+    expected_values = [range(i, i+10) for i in range(0, 100, 10)]
+    result = [self.evaluate(el) for el in result_dataset]
+    self.assertAllEqual(expected_values, result)
+
+  def testMapAndBatchDataset(self):
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.apply(batching.map_and_batch(lambda x: x, 20))
+    split_batch_by = 2
+    result_dataset = values._split_dataset_batch(dataset, split_batch_by)
+    expected_values = [range(i, i+10) for i in range(0, 100, 10)]
+    result = [self.evaluate(el) for el in result_dataset]
+    self.assertAllEqual(expected_values, result)
+
+  def testPrefetchDataset(self):
+    dataset = dataset_ops.Dataset.range(100).batch(20).prefetch(1)
+    split_batch_by = 2
+    result_dataset = values._split_dataset_batch(dataset, split_batch_by)
+    expected_values = [range(i, i+10) for i in range(0, 100, 10)]
+    result = [self.evaluate(el) for el in result_dataset]
+    self.assertAllEqual(expected_values, result)
 
 
 class MirroredVariableTest(test.TestCase, parameterized.TestCase):
