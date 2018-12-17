@@ -30,10 +30,12 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -265,6 +267,35 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(
           round_trip_dataset, [self.evaluate(tf_value_fn())],
           requires_initialization=True)
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerSameGraphErrorOneShot(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      dataset = dataset.batch(2)
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        _ = dataset.make_one_shot_iterator()
+        self.assertRegexpMatches(
+            str(mock_log.call_args), "Please ensure that all datasets in the "
+            "pipeline are created in the same graph as the iterator.")
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerSameGraphErrorOneShotSimple(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        _ = dataset.make_one_shot_iterator()
+        self.assertRegexpMatches(
+            str(mock_log.call_args), "Please ensure that all datasets in the "
+            "pipeline are created in the same graph as the iterator.")
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerSameGraphErrorInitializable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      dataset = dataset.batch(2)
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        _ = dataset.make_initializable_iterator()
 
 
 if __name__ == "__main__":
