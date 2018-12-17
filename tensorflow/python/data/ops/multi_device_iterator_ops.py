@@ -35,6 +35,7 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
 
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
                source_device, target_device, element_structure):
+    super(_PerDeviceGenerator, self).__init__()
     self._target_device = target_device
     self._structure = element_structure
 
