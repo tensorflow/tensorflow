@@ -135,9 +135,9 @@ public:
   /// Return true if this is an integer type with the specified width.
   bool isInteger(unsigned width) const;
 
-  /// Return the bitwidth of this type. For vector or tensor types, returns the
-  /// element type's bitwidth.
-  unsigned getBitWidth() const;
+  /// Return the bit width of an integer or a float type, assert failure on
+  /// other types.
+  unsigned getIntOrFloatBitWidth() const;
 
   /// Return true if this is an integer or index type.
   bool isIntOrIndex() const;
@@ -251,6 +251,9 @@ public:
     return kind >= Kind::FIRST_FLOATING_POINT_TYPE &&
            kind <= Kind::LAST_FLOATING_POINT_TYPE;
   }
+
+  /// Return the bitwidth of this float type.
+  unsigned getWidth() const;
 };
 
 inline FloatType Type::getBF16(MLIRContext *ctx) {
@@ -357,7 +360,12 @@ public:
   VectorOrTensorType() = default;
   /* implicit */ VectorOrTensorType(Type::ImplType *ptr);
 
+  /// Return the element type.
   Type getElementType() const;
+
+  /// If an element type is an integer or a float, return its width.  Abort
+  /// otherwise.
+  unsigned getElementTypeBitWidth() const;
 
   /// If this is ranked tensor or vector type, return the number of elements. If
   /// it is an unranked tensor, abort.
@@ -380,6 +388,14 @@ public:
   /// dimension. It aborts if the tensor is unranked (this can be checked by
   /// the getRank call method).
   int getDimSize(unsigned i) const;
+
+  /// Get the total amount of bits occupied by a value of this type.  This does
+  /// not take into account any memory layout or widening constraints, e.g. a
+  /// vector<3xi57> is reported to occupy 3x57=171 bit, even though in practice
+  /// it will likely be stored as in a 4xi64 vector register.  Fail an assertion
+  /// if the size cannot be computed statically, i.e. if the tensor has a
+  /// dynamic shape or if its elemental type does not have a known bit width.
+  long getSizeInBits() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) {

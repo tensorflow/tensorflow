@@ -62,7 +62,7 @@ struct IntegerAttributeStorage final
   APInt getValue() const {
     if (type.isIndex())
       return APInt(64, {getTrailingObjects<uint64_t>(), numObjects});
-    return APInt(type.getBitWidth(),
+    return APInt(type.getIntOrFloatBitWidth(),
                  {getTrailingObjects<uint64_t>(), numObjects});
   }
 };

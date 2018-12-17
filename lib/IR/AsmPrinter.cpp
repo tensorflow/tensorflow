@@ -420,8 +420,8 @@ void ModulePrinter::printAttribute(Attribute attr) {
   case Attribute::Kind::Integer: {
     auto intAttr = attr.cast<IntegerAttr>();
     // Print all integer attributes as signed unless i1.
-    bool isSigned =
-        intAttr.getType().isIndex() || intAttr.getType().getBitWidth() != 1;
+    bool isSigned = intAttr.getType().isIndex() ||
+                    intAttr.getType().getIntOrFloatBitWidth() != 1;
     intAttr.getValue().print(os, isSigned);
     break;
   }

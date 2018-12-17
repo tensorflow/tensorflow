@@ -128,7 +128,7 @@ IntegerAttr Builder::getIntegerAttr(int64_t value) {
 IntegerAttr Builder::getIntegerAttr(Type type, int64_t value) {
   if (type.isIndex())
     return IntegerAttr::get(type, APInt(64, value));
-  return IntegerAttr::get(type, APInt(type.getBitWidth(), value));
+  return IntegerAttr::get(type, APInt(type.getIntOrFloatBitWidth(), value));
 }
 
 IntegerAttr Builder::getIntegerAttr(Type type, const APInt &value) {

@@ -241,11 +241,23 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
 }
 
 /// Returns the size of memref data in bytes if it's statically shaped, None
-/// otherwise.
+/// otherwise.  If the element of the memref has vector type, takes into account
+/// size of the vector as well.
 Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
   if (memRefType.getNumDynamicDims() > 0)
     return None;
-  uint64_t sizeInBits = memRefType.getElementType().getBitWidth();
+  auto elementType = memRefType.getElementType();
+  if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
+    return None;
+
+  uint64_t sizeInBits;
+  if (elementType.isIntOrFloat()) {
+    sizeInBits = elementType.getIntOrFloatBitWidth();
+  } else {
+    auto vectorType = elementType.cast<VectorType>();
+    sizeInBits =
+        vectorType.getElementTypeBitWidth() * vectorType.getNumElements();
+  }
   for (unsigned i = 0, e = memRefType.getRank(); i < e; i++) {
     sizeInBits = sizeInBits * memRefType.getDimSize(i);
   }

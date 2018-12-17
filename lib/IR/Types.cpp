@@ -28,28 +28,6 @@ Type::Kind Type::getKind() const { return type->kind; }
 
 MLIRContext *Type::getContext() const { return type->context; }
 
-unsigned Type::getBitWidth() const {
-  switch (getKind()) {
-    // TODO: Currently the IR uses host double type to store all the float
-    // datatypes. This is completely incorrect for BF16 and other datatypes.
-    // We have to fix this once APFloat is used in the IR.
-  case Type::Kind::BF16:
-  case Type::Kind::F16:
-  case Type::Kind::F32:
-  case Type::Kind::F64:
-    return 64;
-  case Type::Kind::Integer:
-    return cast<IntegerType>().getWidth();
-  case Type::Kind::Vector:
-  case Type::Kind::RankedTensor:
-  case Type::Kind::UnrankedTensor:
-    return cast<VectorOrTensorType>().getElementType().getBitWidth();
-    // TODO: Handle more types.
-  default:
-    llvm_unreachable("unexpected type");
-  }
-}
-
 unsigned Type::getSubclassData() const { return type->getSubclassData(); }
 void Type::setSubclassData(unsigned val) { type->setSubclassData(val); }
 
@@ -62,6 +40,30 @@ unsigned IntegerType::getWidth() const {
 }
 
 FloatType::FloatType(Type::ImplType *ptr) : Type(ptr) {}
+
+unsigned FloatType::getWidth() const {
+  switch (getKind()) {
+  case Type::Kind::BF16:
+  case Type::Kind::F16:
+    return 16;
+  case Type::Kind::F32:
+    return 32;
+  case Type::Kind::F64:
+    return 64;
+  default:
+    llvm_unreachable("unexpected type");
+  }
+}
+
+unsigned Type::getIntOrFloatBitWidth() const {
+  assert(isIntOrFloat() && "only ints and floats have a bitwidth");
+  if (auto intType = dyn_cast<IntegerType>()) {
+    return intType.getWidth();
+  }
+
+  auto floatType = cast<FloatType>();
+  return floatType.getWidth();
+}
 
 OtherType::OtherType(Type::ImplType *ptr) : Type(ptr) {}
 
@@ -83,6 +85,10 @@ VectorOrTensorType::VectorOrTensorType(Type::ImplType *ptr) : Type(ptr) {}
 
 Type VectorOrTensorType::getElementType() const {
   return static_cast<ImplType *>(type)->elementType;
+}
+
+unsigned VectorOrTensorType::getElementTypeBitWidth() const {
+  return getElementType().getIntOrFloatBitWidth();
 }
 
 unsigned VectorOrTensorType::getNumElements() const {
@@ -122,6 +128,24 @@ int VectorOrTensorType::getDimSize(unsigned i) const {
   default:
     llvm_unreachable("not a VectorOrTensorType or not ranked");
   }
+}
+
+// Get the number of number of bits require to store a value of the given vector
+// or tensor types.  Compute the value recursively since tensors are allowed to
+// have vectors as elements.
+long VectorOrTensorType::getSizeInBits() const {
+  assert(hasStaticShape() &&
+         "cannot get the bit size of an aggregate with a dynamic shape");
+
+  auto elementType = getElementType();
+  if (elementType.isIntOrFloat())
+    return elementType.getIntOrFloatBitWidth() * getNumElements();
+
+  // Tensors can have vectors and other tensors as elements, vectors cannot.
+  assert(!isa<VectorType>() && "unsupported vector element type");
+  auto elementVectorOrTensorType = elementType.dyn_cast<VectorOrTensorType>();
+  assert(elementVectorOrTensorType && "unsupported tensor element type");
+  return getNumElements() * elementVectorOrTensorType.getSizeInBits();
 }
 
 ArrayRef<int> VectorOrTensorType::getShape() const {

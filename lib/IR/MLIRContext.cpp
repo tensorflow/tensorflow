@@ -230,7 +230,10 @@ struct IntegerAttrKeyInfo : DenseMapInfo<IntegerAttributeStorage *> {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
     assert(lhs.first.isIndex() ||
-           (lhs.first.getBitWidth() == lhs.second.getBitWidth()));
+           (lhs.first.isa<IntegerType>() &&
+            lhs.first.cast<IntegerType>().getWidth() ==
+                lhs.second.getBitWidth()) &&
+               "mismatching integer type and value bitwidth");
     return lhs.first == rhs->type && lhs.second == rhs->getValue();
   }
 };
@@ -1167,8 +1170,12 @@ IntegerAttr IntegerAttr::get(Type type, const APInt &value) {
 
 IntegerAttr IntegerAttr::get(Type type, int64_t value) {
   // This uses 64 bit APInts by default for index type.
-  auto width = type.isIndex() ? 64 : type.getBitWidth();
-  return get(type, APInt(width, value));
+  if (type.isIndex())
+    return get(type, APInt(64, value));
+
+  auto intType = type.dyn_cast<IntegerType>();
+  assert(intType && "expected an integer type for an integer attribute");
+  return get(type, APInt(intType.getWidth(), value));
 }
 
 /// Returns the floating semantics for the given type.
@@ -1461,7 +1468,7 @@ SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
 
 DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
                                          ArrayRef<char> data) {
-  auto bitsRequired = (long)type.getBitWidth() * type.getNumElements();
+  auto bitsRequired = type.getSizeInBits();
   (void)bitsRequired;
   assert((bitsRequired <= data.size() * 8L) &&
          "Input data bit size should be larger than that type requires");

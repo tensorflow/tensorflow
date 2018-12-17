@@ -624,7 +624,7 @@ namespace {
 class TensorLiteralParser {
 public:
   TensorLiteralParser(Parser &p, Type eltTy)
-      : p(p), eltTy(eltTy), currBitPos(0), bitsWidth(eltTy.getBitWidth()) {}
+      : p(p), eltTy(eltTy), currBitPos(0) {}
 
   ParseResult parse() { return parseList(shape); }
 
@@ -648,21 +648,27 @@ private:
   ParseResult parseList(llvm::SmallVectorImpl<int> &dims);
 
   void addToStorage(uint64_t value) {
-    if (bitsWidth == 64)
+    // Only tensors of integers or floats are supported.
+    // TODO: we currently use 64 bit for all floating point constants for legacy
+    // reasoins.  For f16 and f32, this is fixable by bitcasting APFloat value
+    // to APInt, but APFloat does not support bf16 semantics.
+    auto eltIntTy = eltTy.dyn_cast<IntegerType>();
+    size_t bitWidth = eltIntTy ? eltIntTy.getWidth() : 64;
+
+    if (bitWidth == 64)
       storage.push_back(value);
 
-    if (currBitPos + bitsWidth > storage.size() * 64)
+    if (currBitPos + bitWidth > storage.size() * 64)
       storage.push_back(0L);
 
     auto *rawData = reinterpret_cast<char *>(storage.data());
-    DenseIntElementsAttr::writeBits(rawData, currBitPos, bitsWidth, value);
-    currBitPos += bitsWidth;
+    DenseIntElementsAttr::writeBits(rawData, currBitPos, bitWidth, value);
+    currBitPos += bitWidth;
   }
 
   Parser &p;
   Type eltTy;
   size_t currBitPos;
-  size_t bitsWidth;
   SmallVector<int, 4> shape;
   std::vector<uint64_t> storage;
 };
@@ -705,7 +711,8 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
       if (!result.isa<IntegerAttr>())
         return p.emitError("expected tensor literal element has integer type");
       auto value = result.cast<IntegerAttr>().getValue();
-      if (value.getMinSignedBits() > bitsWidth)
+      auto bitWidth = eltTy.getIntOrFloatBitWidth();
+      if (value.getMinSignedBits() > bitWidth)
         return p.emitError("tensor literal element has more bits than that "
                            "specified in the type");
       addToStorage(value.getSExtValue());
@@ -849,7 +856,7 @@ Attribute Parser::parseAttribute(Type type) {
     }
     if (!type.isIntOrIndex())
       return (emitError("integer value not valid for specified type"), nullptr);
-    int width = type.isIndex() ? 64 : type.getBitWidth();
+    int width = type.isIndex() ? 64 : type.getIntOrFloatBitWidth();
     APInt apInt(width, val.getValue());
     if (apInt != *val)
       return emitError("integer constant out of range for attribute"), nullptr;
@@ -875,7 +882,7 @@ Attribute Parser::parseAttribute(Type type) {
       }
       if (!type.isIntOrIndex())
         return (emitError("integer value not valid for type"), nullptr);
-      int width = type.isIndex() ? 64 : type.getBitWidth();
+      int width = type.isIndex() ? 64 : type.getIntOrFloatBitWidth();
       APInt apInt(width, *val, /*isSigned=*/true);
       if (apInt != *val)
         return (emitError("integer constant out of range for attribute"),

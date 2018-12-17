@@ -157,7 +157,7 @@ llvm::IntegerType *ModuleLowerer::convertIndexType(IndexType type) {
 }
 
 llvm::IntegerType *ModuleLowerer::convertIntegerType(IntegerType type) {
-  return builder.getIntNTy(type.getBitWidth());
+  return builder.getIntNTy(type.getWidth());
 }
 
 llvm::Type *ModuleLowerer::convertFloatType(FloatType type) {

@@ -259,6 +259,26 @@ fixed-width integer types, at the SSA value level. It has an additional benefit
 of supporting smaller integer types, e.g. `i8` or `i16`, for small indices
 instead of (presumably larger) `index` type.
 
+### Bit width of a non-primitive types and `index` is undefined {#bit-width-of-a-compound-type}
+
+The bit width of a compound type is not defined by MLIR, it may be defined by a
+specific lowering pass. In MLIR, bit width is a property of certain primitive
+_type_, in particular integers and floats. It is equal to the number that
+appears in the type definition, e.g. the bit width of `i32` is `32`, so is the
+bit width of `f32`. The bit width is not _necessarily_ related to the amount of
+memory (in bytes) or the size of register (in bits) that is necessary to store
+the value of the given type. These quantities are target and ABI-specific and
+should be defined during the lowering process rather than imposed from above.
+For example, `vector<3xi57>` is likely to be lowered to a vector of four 64-bit
+integers, so that its storage requirement is `4 x 64 / 8 = 32` bytes, rather
+than `(3 x 57) ceildiv 8 = 22` bytes as can be naively computed from the
+bitwidth. Individual components of MLIR that allocate space for storing values
+may use the bit size as the baseline and query the target description when it is
+introduced.
+
+The bit width is not defined for dialect-specific types at MLIR level. Dialects
+are free to define their own quantities for type sizes.
+
 ### Splitting floating point vs integer operations {#splitting-floating-point-vs-integer-operations}
 
 The MLIR operation set is likely to
