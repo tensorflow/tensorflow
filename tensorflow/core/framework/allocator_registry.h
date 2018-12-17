@@ -43,6 +43,13 @@ class AllocatorFactory {
   virtual SubAllocator* CreateSubAllocator(int numa_node) = 0;
 };
 
+// ProcessState is defined in a package that cannot be a dependency of
+// framework.  This definition allows us to access the one method we need.
+class ProcessStateInterface {
+ public:
+  virtual Allocator* GetCPUAllocator(int numa_node) = 0;
+};
+
 // A singleton registry of AllocatorFactories.
 //
 // Allocators should be obtained through ProcessState or cpu_allocator()
@@ -71,6 +78,12 @@ class AllocatorFactoryRegistry {
 
   // Returns the singleton value.
   static AllocatorFactoryRegistry* singleton();
+
+  ProcessStateInterface* process_state() const { return process_state_; }
+
+ protected:
+  friend class ProcessState;
+  ProcessStateInterface* process_state_ = nullptr;
 
  private:
   mutex mu_;

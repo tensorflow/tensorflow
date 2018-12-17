@@ -171,6 +171,8 @@ class OpKernel {
   // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
   Status MakeShape(const Tensor& shape, TensorShape* out) const;
 
+  static int DeviceNumaNode(const DeviceBase* device);
+
  private:
   const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;
