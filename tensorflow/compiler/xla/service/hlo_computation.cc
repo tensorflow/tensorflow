@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 
-#include <stddef.h>
 #include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <list>
 #include <queue>
@@ -396,6 +396,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
   absl::flat_hash_map<HloInstruction*, VisitState> visited;
+  visited.reserve(instruction_count());
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
