@@ -117,18 +117,15 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
          intermidates_shape});
 
     xla::XlaBuilder& b = *ctx->builder();
-    xla::OpMetadata metadata;
-    metadata.set_op_type("popnn");
-    metadata.set_op_name("lstm_layer_fwd");
-    b.SetOpMetadata(metadata);
 
     std::vector<xla::XlaOp> args;
     for (unsigned idx = 0; idx < ctx->num_inputs(); idx++) {
       args.push_back(ctx->Input(idx));
     }
 
-    xla::XlaOp output_tuple = xla::CustomCall(&b, attribute_map_.Serialise(),
-                                              args, output_tuple_shape);
+    xla::XlaOp output_tuple =
+        xla::CustomCall(&b, "popnn::lstm_layer_fwd", args, output_tuple_shape,
+                        attribute_map_.Serialise());
 
     xla::XlaOp output_seq = xla::GetTupleElement(output_tuple, 0);
     xla::XlaOp output_h_state = xla::GetTupleElement(output_tuple, 1);
@@ -138,7 +135,6 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
     ctx->SetOutput(1, output_h_state);
     ctx->SetOutput(2, output_c_state);
     ctx->SetOutput(3, intermediates);
-    b.ClearOpMetadata();
   }
 
  protected:
@@ -197,18 +193,15 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
          biases_backprop_shape});
 
     xla::XlaBuilder& b = *ctx->builder();
-    xla::OpMetadata metadata;
-    metadata.set_op_type("popnn");
-    metadata.set_op_name("lstm_layer_bwd");
-    b.SetOpMetadata(metadata);
 
     std::vector<xla::XlaOp> args;
     for (unsigned idx = 0; idx < ctx->num_inputs(); idx++) {
       args.push_back(ctx->Input(idx));
     }
 
-    xla::XlaOp output_tuple = xla::CustomCall(&b, attribute_map_.Serialise(),
-                                              args, output_tuple_shape);
+    xla::XlaOp output_tuple =
+        xla::CustomCall(&b, "popnn::lstm_layer_bwd", args, output_tuple_shape,
+                        attribute_map_.Serialise());
     xla::XlaOp input_backprop = xla::GetTupleElement(output_tuple, 0);
     xla::XlaOp input_h_state_backprop = xla::GetTupleElement(output_tuple, 1);
     xla::XlaOp input_c_state_backprop = xla::GetTupleElement(output_tuple, 2);
@@ -220,7 +213,6 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
     ctx->SetOutput(2, input_c_state_backprop);
     ctx->SetOutput(3, kernel_backprop);
     ctx->SetOutput(4, biases_backprop);
-    b.ClearOpMetadata();
   }
 
  protected:

@@ -39,11 +39,9 @@ absl::flat_hash_set<std::string> poplibs_lib_names = {
 
 const bool IsPoplibsOp(const HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kCustomCall) {
-    // For a poplibs call, the name of the poplibs library is stored in the
-    // op_type of metadata.
-    auto metadata = inst->metadata();
-    std::string op_type = metadata.op_type();
-    return poplibs_lib_names.count(op_type);
+    std::vector<std::string> split =
+        absl::StrSplit(inst->custom_call_target(), "::");
+    return split.size() == 2 && poplibs_lib_names.count(split[0]);
   }
   return false;
 }
@@ -52,15 +50,14 @@ AttributeMap::AttributeMap() {}
 AttributeMap::AttributeMap(const HloInstruction* custom_call) {
   CHECK_EQ(custom_call->opcode(), HloOpcode::kCustomCall);
 
-  std::string call_target =
-      static_cast<const HloCustomCallInstruction*>(custom_call)
-          ->custom_call_target();
+  std::string attributes_json =
+      static_cast<const HloCustomCallInstruction*>(custom_call)->opaque();
 
   Json::Reader reader;
-  bool parsed = reader.parse(call_target.c_str(), attributes_);
+  bool parsed = reader.parse(attributes_json.c_str(), attributes_);
   if (!parsed) {
     LOG(FATAL) << "Could not parse the call target for custom op as JSON "
-               << call_target;
+               << attributes_json;
   }
 }
 

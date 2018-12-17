@@ -573,7 +573,7 @@ ENTRY c1 {
   p0 = s32[20] parameter(0)
   p1 = s32[20] parameter(1)
 
-  c = s32[20] custom-call(p0, p1), custom_call_target="{\"allocating_indexes\":\"\",\"num_inplace_operands\":1}\n", metadata={op_type="popnn" op_name="_"}
+  c = s32[20] custom-call(p0, p1), custom_call_target="popnn::_", opaque="{\"allocating_indexes\":\"\",\"num_inplace_operands\":1}\n"
 
   ROOT t = (s32[20]) tuple(c)
 }
@@ -608,7 +608,7 @@ ENTRY c1 {
   p0 = s32[20] parameter(0)
   p1 = s32[20] parameter(1)
 
-  c = s32[20] custom-call(p0, p1), custom_call_target="{\"allocating_indexes\":\"\",\"num_inplace_operands\":0}\n", metadata={op_type="popnn" op_name="_"}
+  c = s32[20] custom-call(p0, p1), custom_call_target="popnn::_", opaque="{\"allocating_indexes\":\"\",\"num_inplace_operands\":0}\n"
 
   ROOT t = (s32[20]) tuple(c)
 }
@@ -676,7 +676,7 @@ HloModule top
 ENTRY c1 {
   p0 = (s32[20], s32[20], s32[20], s32[20]) parameter(0)
   p0_0 = s32[20] get-tuple-element(p0), index=0
-  c = s32[20] custom-call(p0), custom_call_target="{\"allocating_indexes\":\"\",\"num_inplace_operands\":0}\n", metadata={op_type="popnn" op_name="_"}
+  c = s32[20] custom-call(p0), custom_call_target="popnn::_", opaque="{\"allocating_indexes\":\"\",\"num_inplace_operands\":0}\n"
 
   ROOT a = s32[20] add(p0_0, c)
 }

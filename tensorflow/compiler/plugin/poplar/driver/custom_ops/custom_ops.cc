@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -53,24 +54,27 @@ StatusOr<const CustomPoplibOpInfo> GetCustomPoplibOpInfo(
   // Mapping of getting the right Create function given the metadata:
   // * op_type - poplibs library name
   // * op_name - function inside given library
-  auto metadata = inst->metadata();
-  const std::string op_type = metadata.op_type();
-  const std::string op_name = metadata.op_name();
+  std::vector<std::string> op_info =
+      absl::StrSplit(inst->custom_call_target(), "::");
+  if (op_info.size() != 2) {
+    return xla::FailedPrecondition("Invalid custom poplibs call info: ",
+                                   inst->custom_call_target());
+  }
   // First find the right poplibs library map
-  auto it_type = poplibs_info_map.find(op_type);
+  auto it_type = poplibs_info_map.find(op_info[0]);
   if (it_type == poplibs_info_map.end()) {
-    return xla::FailedPrecondition("Unknown poplibs library: %s.", op_type);
+    return xla::FailedPrecondition("Unknown poplibs library: %s.", op_info[0]);
   }
   // Then find the right Create function
   auto lib_info_map = it_type->second();
-  auto it_name = lib_info_map.find(op_name);
+  auto it_name = lib_info_map.find(op_info[1]);
   if (it_name == lib_info_map.end()) {
     return xla::FailedPrecondition("Unknown custom poplibs function: %s.",
-                                   op_name);
+                                   op_info[1]);
   }
   return it_name->second;
 }
-}
+}  // namespace
 
 StatusOr<poplar::Tensor> AllocatePoplibsOpTensor(poplar::Graph& graph,
                                                  CompilerResources& res,
