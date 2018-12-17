@@ -242,7 +242,10 @@ class Subgraph {
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensors();
 
-  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+  void SetProfiler(profiling::Profiler* profiler) {
+    profiler_ = profiler;
+    context_->profiler = profiler;
+  }
 
   profiling::Profiler* GetProfiler() { return profiler_; }
 
