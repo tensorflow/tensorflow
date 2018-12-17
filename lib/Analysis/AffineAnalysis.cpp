@@ -560,10 +560,8 @@ bool mlir::addIndexSet(ArrayRef<const MLValue *> indices,
     const ForStmt *forStmt = dyn_cast<ForStmt>(indices[i]);
     if (!forStmt || !forStmt->hasConstantBounds())
       return false;
-    // Add inequality for lower bound.
-    domain->addConstantLowerBound(i, forStmt->getConstantLowerBound());
-    // Add inequality for upper bound. (ForStmt's upper bound is exclusive).
-    domain->addConstantUpperBound(i, forStmt->getConstantUpperBound() - 1);
+    // Add inequalities from forStmt bounds.
+    domain->addBoundsFromForStmt(*forStmt);
   }
   return true;
 }
@@ -582,7 +580,7 @@ struct IterationDomainContext {
   // The list of MLValues in this iteration domain, with MLValues in
   // [0, numDims) representing dimension identifiers, and MLValues in
   // [numDims, values.size()) representing symbol identifiers.
-  SmallVector<const MLValue *, 4> values;
+  SmallVector<MLValue *, 4> values;
   IterationDomainContext() : numDims(0) {}
   unsigned getNumDims() const { return numDims; }
   unsigned getNumSymbols() const { return values.size() - numDims; }
@@ -602,8 +600,8 @@ static bool getIterationDomainContext(const Statement *stmt,
   // Walk up tree storing parent statements in 'loops'.
   // TODO(andydavis) Extend this to gather enclosing IfStmts and consider
   // factoring it out into a utility function.
-  SmallVector<const ForStmt *, 4> loops;
-  const auto *currStmt = stmt->getParentStmt();
+  SmallVector<ForStmt *, 4> loops;
+  auto *currStmt = stmt->getParentStmt();
   while (currStmt != nullptr) {
     if (isa<IfStmt>(currStmt))
       return false;
@@ -630,7 +628,7 @@ static bool getIterationDomainContext(const Statement *stmt,
   ctx->domain.reset(/*newNumReservedInequalities=*/2 * numDims,
                     /*newNumReservedEqualities=*/0,
                     /*newNumReservedCols=*/numDims + numSymbols + 1, numDims,
-                    numSymbols);
+                    numSymbols, /*numLocals=*/0, /*idArgs=*/ctx->values);
   return addIndexSet(ctx->values, &ctx->domain);
 }
 

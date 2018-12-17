@@ -136,14 +136,14 @@ static void checkDependences(ArrayRef<OperationStmt *> loadsAndStores) {
     auto *srcOpStmt = loadsAndStores[i];
     MemRefAccess srcAccess;
     getMemRefAccess(srcOpStmt, &srcAccess);
-    SmallVector<const ForStmt *, 4> srcLoops;
+    SmallVector<ForStmt *, 4> srcLoops;
     getLoopIVs(*srcOpStmt, &srcLoops);
     for (unsigned j = 0; j < e; ++j) {
       auto *dstOpStmt = loadsAndStores[j];
       MemRefAccess dstAccess;
       getMemRefAccess(dstOpStmt, &dstAccess);
 
-      SmallVector<const ForStmt *, 4> dstLoops;
+      SmallVector<ForStmt *, 4> dstLoops;
       getLoopIVs(*dstOpStmt, &dstLoops);
       unsigned numCommonLoops =
           getNumCommonSurroundingLoops(srcLoops, dstLoops);

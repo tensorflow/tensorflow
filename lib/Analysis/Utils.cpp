@@ -70,9 +70,10 @@ bool mlir::dominates(const Statement &a, const Statement &b) {
 
 /// Populates 'loops' with IVs of the loops surrounding 'stmt' ordered from
 /// the outermost 'for' statement to the innermost one.
+//  TODO(mlir-team): skip over 'if' statements.
 void mlir::getLoopIVs(const Statement &stmt,
-                      SmallVector<const ForStmt *, 4> *loops) {
-  const auto *currStmt = stmt.getParentStmt();
+                      SmallVectorImpl<ForStmt *> *loops) {
+  auto *currStmt = stmt.getParentStmt();
   while (currStmt != nullptr && isa<ForStmt>(currStmt)) {
     loops->push_back(dyn_cast<ForStmt>(currStmt));
     currStmt = currStmt->getParentStmt();
@@ -209,7 +210,7 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
 
   // Eliminate any loop IVs other than the outermost 'loopDepth' IVs, on which
   // this memref region is symbolic.
-  SmallVector<const ForStmt *, 4> outerIVs;
+  SmallVector<ForStmt *, 4> outerIVs;
   getLoopIVs(*opStmt, &outerIVs);
   outerIVs.resize(loopDepth);
   for (auto *operand : accessValueMap.getOperands()) {

@@ -190,8 +190,8 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
   moveLoopBody(origLoops[origLoops.size() - 1], innermostPointLoop);
 
   SmallVector<MLValue *, 6> origLoopIVs(band.begin(), band.end());
-
-  FlatAffineConstraints cst(width, 0);
+  SmallVector<Optional<MLValue *>, 6> ids(band.begin(), band.end());
+  FlatAffineConstraints cst(width, /*numSymbols=*/0, /*numLocals=*/0, ids);
   addIndexSet(origLoopIVs, &cst);
 
   if (!cst.isHyperRectangular(0, width)) {

@@ -254,6 +254,7 @@ public:
       : numReservedCols(numReservedCols), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
+    assert(idArgs.empty() || idArgs.size() == numDims + numSymbols + numLocals);
     equalities.reserve(numReservedCols * numReservedEqualities);
     inequalities.reserve(numReservedCols * numReservedInequalities);
     numIds = numDims + numSymbols + numLocals;
@@ -267,12 +268,18 @@ public:
   /// Constructs a constraint system with the specified number of
   /// dimensions and symbols.
   FlatAffineConstraints(unsigned numDims = 0, unsigned numSymbols = 0,
-                        unsigned numLocals = 0)
+                        unsigned numLocals = 0,
+                        ArrayRef<Optional<MLValue *>> idArgs = {})
       : numReservedCols(numDims + numSymbols + numLocals + 1), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
+    assert(idArgs.empty() || idArgs.size() == numDims + numSymbols + numLocals);
     numIds = numDims + numSymbols + numLocals;
-    ids.resize(numIds, None);
+    ids.reserve(numIds);
+    if (idArgs.empty())
+      ids.resize(numIds, None);
+    else
+      ids.insert(ids.end(), idArgs.begin(), idArgs.end());
   }
 
   explicit FlatAffineConstraints(const HyperRectangularSet &set);
