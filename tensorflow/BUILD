@@ -203,6 +203,12 @@ config_setting(
 )
 
 config_setting(
+    name = "arm",
+    values = {"cpu": "arm"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
