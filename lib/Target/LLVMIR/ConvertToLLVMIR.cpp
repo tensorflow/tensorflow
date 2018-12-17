@@ -25,6 +25,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Target/LLVMIR.h"
@@ -675,6 +676,28 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
             indexedValue.value();
       }
     }
+    return false;
+  }
+
+  // TODO(zinenko): LLVM IR lowering should not be aware of all the other
+  // dialects.  Instead, we should have separate definitions for conversions in
+  // a global lowering framework.  However, this requires LLVM dialect to be
+  // implemented, which is currently blocked by the absence of user-defined
+  // types.
+  if (auto vectorTypeCastOp = inst.dyn_cast<VectorTypeCastOp>()) {
+    auto targetMemRefType = vectorTypeCastOp->getType().dyn_cast<MemRefType>();
+
+    llvm::Value *oldDescriptor =
+        valueMapping.lookup(vectorTypeCastOp->getOperand());
+    llvm::StructType *llvmTargetMemrefStructType =
+        convertMemRefType(targetMemRefType);
+    llvm::Value *newDescriptor =
+        llvm::UndefValue::get(llvmTargetMemrefStructType);
+    llvm::Value *dataPtr = builder.CreateExtractValue(oldDescriptor, 0);
+    dataPtr = builder.CreateBitCast(
+        dataPtr, llvmTargetMemrefStructType->getElementType(0));
+    newDescriptor = builder.CreateInsertValue(newDescriptor, dataPtr, 0);
+    valueMapping[vectorTypeCastOp->getResult()] = newDescriptor;
     return false;
   }
 
