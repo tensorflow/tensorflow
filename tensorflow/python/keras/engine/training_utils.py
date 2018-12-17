@@ -1229,7 +1229,8 @@ def trace_model_call(model, input_signature=None):
     # all tensor inputs must be passed in as the first argument.
     input_signature = [input_specs] if len(input_specs) > 1 else input_specs
 
-  @def_function.function(input_signature=input_signature)
+  # TODO(mdan): Should the model's call be autographed by default?
+  @def_function.function(input_signature=input_signature, autograph=False)
   def _wrapped_model(*args):
     """A concrete tf.function that wraps the model's call function."""
     # When given a single input, Keras models will call the model on the tensor

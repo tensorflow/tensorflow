@@ -49,7 +49,8 @@ def recreate_polymorphic_function(
   # instead of creating a new PolymorphicFunction backed by a Python layer to
   # glue things together. Current approach is nesting functions deeper for each
   # serialization cycle.
-  @def_function.function
+  # TODO(mdan): We may enable autograph once exceptions are supported.
+  @def_function.function(autograph=False)
   def restored_function(*args):
     """Calls a restored function."""
     # TODO(allenl): Functions saved with input_signatures should revive with

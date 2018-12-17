@@ -183,6 +183,12 @@ def converted_call(f, owner, options, *args, **kwargs):
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
 
+    # TODO(mdan): This may be inconsistent in certain situations.
+    # If the function had already been annotated with @tf.function, it
+    # may be bound to the incorrect object. It's unclear if those situations
+    # are possible, but if they happen, we need to check if f is bound
+    # to a shim like WeakrefSelf and unpack it.
+
     # Args typically include `self`, as required by the conversion process.
     # When conversion is skipped, `self` is not necessary, because the
     # original bound method is being executed. This code removes it.
