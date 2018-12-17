@@ -106,6 +106,7 @@ public:
   // TODO(jpienaar): remove these.
   IntegerAttr getIntegerAttr(int64_t value);
   FloatAttr getFloatAttr(double value);
+  FloatAttr getFloatAttr(float value);
   StringAttr getStringAttr(StringRef bytes);
   ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
   AffineMapAttr getAffineMapAttr(AffineMap map);

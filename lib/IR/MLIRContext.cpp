@@ -1171,11 +1171,56 @@ IntegerAttr IntegerAttr::get(Type type, int64_t value) {
   return get(type, APInt(width, value));
 }
 
+/// Returns the floating semantics for the given type.
+static const fltSemantics &getFloatSemantics(Type type) {
+  if (type.isBF16())
+    // Treat BF16 like a double. This is unfortunate but BF16 fltSemantics is
+    // not defined in LLVM.
+    // TODO(jpienaar): add BF16 to LLVM? fltSemantics are internal to APFloat.cc
+    // else one could add it.
+    //  static const fltSemantics semBF16 = {127, -126, 8, 16};
+    return APFloat::IEEEdouble();
+  if (type.isF16())
+    // Treat F16 as double. This avoids needing to change the tensor element
+    // parsing for now. TODO: Fix this to use the correct semantics instead.
+    return APFloat::IEEEdouble();
+  if (type.isF32())
+    return APFloat::IEEEsingle();
+  if (type.isF64())
+    return APFloat::IEEEdouble();
+  llvm_unreachable("non-floating point type used");
+}
+
 FloatAttr FloatAttr::get(Type type, double value) {
-  return get(type, APFloat(value));
+  Optional<APFloat> val;
+  if (type.isBF16() || type.isF16())
+    // Treat BF16 and F16 as double. This avoids needing to change the tensor
+    // element parsing for now. TODO: Fix this to use the correct semantics
+    // instead.
+    val = APFloat(value);
+  else if (type.isF32())
+    val = APFloat(static_cast<float>(value));
+  else if (type.isF64())
+    val = APFloat(value);
+  else {
+    bool unused;
+    val = APFloat(value);
+    auto status =
+        (*val).convert(getFloatSemantics(type), APFloat::rmTowardZero, &unused);
+    if (status != APFloat::opOK) {
+      auto context = type.getContext();
+      context->emitError(
+          UnknownLoc::get(context),
+          "failed to convert floating point value to requested type");
+      val.reset();
+    }
+  }
+  return get(type, *val);
 }
 
 FloatAttr FloatAttr::get(Type type, const APFloat &value) {
+  assert(&getFloatSemantics(type) == &value.getSemantics() &&
+         "FloatAttr type doesn't match the type implied by its value");
   auto &impl = type.getContext()->getImpl();
 
   // Look to see if the float attribute has been created already.
@@ -1393,6 +1438,8 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
 
 SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
                                          Attribute elt) {
+  // TODO(fengliuai): Add verification that the Attribute matches the element
+  // type.
   auto &impl = type.getContext()->getImpl();
 
   // Look to see if we already have this.

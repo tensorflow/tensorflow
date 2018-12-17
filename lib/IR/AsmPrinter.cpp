@@ -392,7 +392,7 @@ static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
              (strValue[1] >= '0' && strValue[1] <= '9'))) &&
            "[-+]?[0-9] regex does not match!");
     // Reparse stringized version!
-    if (APFloat(APFloat::IEEEdouble(), strValue).bitwiseIsEqual(apValue)) {
+    if (APFloat(apValue.getSemantics(), strValue).bitwiseIsEqual(apValue)) {
       os << strValue;
       return;
     }

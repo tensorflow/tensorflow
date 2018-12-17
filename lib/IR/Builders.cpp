@@ -136,11 +136,15 @@ IntegerAttr Builder::getIntegerAttr(Type type, const APInt &value) {
 }
 
 FloatAttr Builder::getFloatAttr(double value) {
+  return FloatAttr::get(getF64Type(), APFloat(value));
+}
+
+FloatAttr Builder::getFloatAttr(float value) {
   return FloatAttr::get(getF32Type(), APFloat(value));
 }
 
 FloatAttr Builder::getFloatAttr(Type type, double value) {
-  return FloatAttr::get(type, APFloat(value));
+  return FloatAttr::get(type, value);
 }
 
 FloatAttr Builder::getFloatAttr(Type type, const APFloat &value) {

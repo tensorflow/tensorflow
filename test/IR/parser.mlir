@@ -518,18 +518,18 @@ mlfunc @mlfuncattrempty() -> ()
 #map_non_simple2 = ()[s0, s1] -> (s0 + s1)
 #map_non_simple3 = ()[s0] -> (s0 + 3)
 mlfunc @mlfuncsimplemap(%arg0 : index, %arg1 : index) -> () {
-  for %i0 = 0 to #map_simple0()[] { 
+  for %i0 = 0 to #map_simple0()[] {
   // CHECK: for %i0 = 0 to 10 {
-    for %i1 = 0 to #map_simple1()[%arg1] { 
+    for %i1 = 0 to #map_simple1()[%arg1] {
     // CHECK: for %i1 = 0 to %arg1 {
-      for %i2 = 0 to #map_non_simple0(%i0)[] { 
+      for %i2 = 0 to #map_non_simple0(%i0)[] {
       // CHECK: for %i2 = 0 to #map{{[a-z_0-9]*}}(%i0) {
-        for %i3 = 0 to #map_non_simple1(%i0)[%arg1] { 
+        for %i3 = 0 to #map_non_simple1(%i0)[%arg1] {
         // CHECK: for %i3 = 0 to #map{{[a-z_0-9]*}}(%i0)[%arg1] {
-          for %i4 = 0 to #map_non_simple2()[%arg1, %arg0] { 
-          // CHECK: for %i4 = 0 to #map{{[a-z_0-9]*}}()[%arg1, %arg0] { 
-            for %i5 = 0 to #map_non_simple3()[%arg0] { 
-            // CHECK: for %i5 = 0 to #map{{[a-z_0-9]*}}()[%arg0] { 
+          for %i4 = 0 to #map_non_simple2()[%arg1, %arg0] {
+          // CHECK: for %i4 = 0 to #map{{[a-z_0-9]*}}()[%arg1, %arg0] {
+            for %i5 = 0 to #map_non_simple3()[%arg0] {
+            // CHECK: for %i5 = 0 to #map{{[a-z_0-9]*}}()[%arg0] {
               %c42_i32 = constant 42 : i32
             }
           }
@@ -704,7 +704,7 @@ bb0:
   "fooi64"(){bar: sparse<vector<1xi64>, [[0]], [-1]>} : () -> ()
 // CHECK: "foo2"() {bar: sparse<vector<0xi32>, {{\[}}], {{\[}}]>} : () -> ()
   "foo2"(){bar: sparse<vector<0 x i32>, [], []>} : () -> ()
-  
+
 // CHECK: "foof16"() {bar: sparse<vector<1x1x1xf16>, {{\[\[}}0, 0, 0]], {{\[}}-2.000000e+00]>} : () -> ()
   "foof16"(){bar: sparse<vector<1x1x1xf16>, [[0, 0, 0]], [-2.0]>} : () -> ()
 // CHECK: "foobf16"() {bar: sparse<vector<2x2x2xbf16>, {{\[\[}}1, 1, 0], {{\[}}0, 1, 0], {{\[}}0, 0, 1]], {{\[}}2.000000e+00, -1.000000e+00, 5.000000e+00]>} : () -> ()

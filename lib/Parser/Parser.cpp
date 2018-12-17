@@ -678,17 +678,25 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
   case Token::floatliteral:
   case Token::integer:
   case Token::minus: {
-    auto result = p.parseAttribute();
+    auto result = p.parseAttribute(eltTy);
     if (!result)
-      return p.emitError("expected tensor element");
+      return ParseResult::ParseFailure;
     // check result matches the element type.
     switch (eltTy.getKind()) {
+    case Type::Kind::F32: {
+      if (!result.isa<FloatAttr>())
+        return p.emitError(
+            "expected tensor literal element has floating point type");
+      double value = result.cast<FloatAttr>().getValue().convertToFloat();
+      addToStorage(*(uint64_t *)(&value));
+      break;
+    }
     case Type::Kind::BF16:
     case Type::Kind::F16:
-    case Type::Kind::F32:
     case Type::Kind::F64: {
       if (!result.isa<FloatAttr>())
-        return p.emitError("expected tensor literal element has float type");
+        return p.emitError(
+            "expected tensor literal element has floating point type");
       double value = result.cast<FloatAttr>().getDouble();
       addToStorage(*(uint64_t *)(&value));
       break;
@@ -815,19 +823,20 @@ Attribute Parser::parseAttribute(Type type) {
         if (!(type = parseType()))
           return nullptr;
       } else {
-        // Default to F32 when no type is specified.
-        type = builder.getF32Type();
+        // Default to F64 when no type is specified.
+        type = builder.getF64Type();
       }
     }
     if (!type.isa<FloatType>())
       return (emitError("floating point value not valid for specified type"),
               nullptr);
-    return builder.getFloatAttr(type, APFloat(val.getValue()));
+    return builder.getFloatAttr(type, val.getValue());
   }
   case Token::integer: {
     auto val = getToken().getUInt64IntegerValue();
     if (!val.hasValue() || (int64_t)val.getValue() < 0)
-      return (emitError("integer too large for attribute"), nullptr);
+      return (emitError("integer constant out of range for attribute"),
+              nullptr);
     consumeToken(Token::integer);
     if (!type) {
       if (consumeIf(Token::colon)) {
@@ -841,7 +850,10 @@ Attribute Parser::parseAttribute(Type type) {
     if (!type.isIntOrIndex())
       return (emitError("integer value not valid for specified type"), nullptr);
     int width = type.isIndex() ? 64 : type.getBitWidth();
-    return builder.getIntegerAttr(type, APInt(width, val.getValue()));
+    APInt apInt(width, val.getValue());
+    if (apInt != *val)
+      return emitError("integer constant out of range for attribute"), nullptr;
+    return builder.getIntegerAttr(type, apInt);
   }
 
   case Token::minus: {
@@ -849,7 +861,8 @@ Attribute Parser::parseAttribute(Type type) {
     if (getToken().is(Token::integer)) {
       auto val = getToken().getUInt64IntegerValue();
       if (!val.hasValue() || (int64_t)-val.getValue() >= 0)
-        return (emitError("integer too large for attribute"), nullptr);
+        return (emitError("integer constant out of range for attribute"),
+                nullptr);
       consumeToken(Token::integer);
       if (!type) {
         if (consumeIf(Token::colon)) {
@@ -863,7 +876,11 @@ Attribute Parser::parseAttribute(Type type) {
       if (!type.isIntOrIndex())
         return (emitError("integer value not valid for type"), nullptr);
       int width = type.isIndex() ? 64 : type.getBitWidth();
-      return builder.getIntegerAttr(type, -APInt(width, val.getValue()));
+      APInt apInt(width, *val, /*isSigned=*/true);
+      if (apInt != *val)
+        return (emitError("integer constant out of range for attribute"),
+                nullptr);
+      return builder.getIntegerAttr(type, -apInt);
     }
     if (getToken().is(Token::floatliteral)) {
       auto val = getToken().getFloatingPointValue();
@@ -882,7 +899,7 @@ Attribute Parser::parseAttribute(Type type) {
       }
       if (!type.isa<FloatType>())
         return (emitError("floating point value not valid for type"), nullptr);
-      return builder.getFloatAttr(type, APFloat(-val.getValue()));
+      return builder.getFloatAttr(type, -val.getValue());
     }
 
     return (emitError("expected constant integer or floating point value"),

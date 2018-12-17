@@ -702,28 +702,30 @@ bb0:
 
 cfgfunc @elementsattr_floattype1() -> () {
 bb0:
-  "foo"(){bar: dense<tensor<1xi32>, [4.0]>} : () -> () // expected-error {{expected tensor literal element has integer type}}
+  // expected-error@+1 {{floating point value not valid for specified type}}
+  "foo"(){bar: dense<tensor<1xi32>, [4.0]>} : () -> ()
 }
 
 // -----
 
 cfgfunc @elementsattr_floattype2() -> () {
 bb0:
-  "foo"(){bar: dense<tensor<1xf32>, [4]>} : () -> () // expected-error {{expected tensor literal element has float type}}
+  // expected-error@+1 {{integer value not valid for specified type}}
+  "foo"(){bar: dense<tensor<1xf32>, [4]>} : () -> ()
 }
 
 // -----
 
 cfgfunc @elementsattr_toolarge1() -> () {
 bb0:
-  "foo"(){bar: dense<tensor<1xi8>, [777]>} : () -> () // expected-error {{tensor literal element has more bits than that specified in the type}}
+  "foo"(){bar: dense<tensor<1xi8>, [777]>} : () -> () // expected-error {{integer constant out of range for attribute}}
 }
 
 // -----
 
 cfgfunc @elementsattr_toolarge2() -> () {
 bb0:
-  "foo"(){bar: dense<tensor<1xi8>, [-777]>} : () -> () // expected-error {{tensor literal element has more bits than that specified in the type}}
+  "foo"(){bar: dense<tensor<1xi8>, [-777]>} : () -> () // expected-error {{integer constant out of range for attribute}}
 }
 
 // -----
