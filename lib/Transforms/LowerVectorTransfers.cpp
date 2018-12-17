@@ -30,7 +30,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLValue.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass.h"
@@ -38,6 +40,7 @@
 #include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/MLPatternLoweringPass.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/ADT/SetVector.h"
@@ -59,29 +62,6 @@ using namespace mlir;
 
 #define DEBUG_TYPE "lower-vector-transfers"
 
-namespace {
-
-struct LowerVectorTransfersPass : public FunctionPass {
-  LowerVectorTransfersPass()
-      : FunctionPass(&LowerVectorTransfersPass::passID) {}
-
-  PassResult runOnMLFunction(MLFunction *f) override;
-
-  // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
-  MLFunctionMatcherContext mlContext;
-
-  static char passID;
-};
-
-struct LowerVectorTransfersState {
-  // Top of the function constant zero index.
-  SSAValue *zero;
-};
-
-} // end anonymous namespace
-
-char LowerVectorTransfersPass::passID = 0;
-
 /// Creates the SSAValue for the sum of `a` and `b` without building a
 /// full-fledged AffineMap for all indices.
 ///
@@ -98,6 +78,13 @@ static SSAValue *add(MLFuncBuilder *b, Location loc, SSAValue *v, SSAValue *w) {
       ->getResult(0);
 }
 
+namespace {
+struct LowerVectorTransfersState : public MLFuncGlobalLoweringState {
+  // Top of the function constant zero index.
+  SSAValue *zero;
+};
+} // namespace
+
 /// Performs simple lowering into a combination of:
 ///   1. local memory allocation,
 ///   2. vector_load/vector_store from/to local buffer
@@ -108,8 +95,9 @@ static SSAValue *add(MLFuncBuilder *b, Location loc, SSAValue *v, SSAValue *w) {
 // argument being one of the two types. Extract the common behavior into helper
 // functions and detemplatizing it.
 template <typename VectorTransferOpTy>
-static void lowerAsLoops(VectorTransferOpTy *transfer,
-                         const LowerVectorTransfersState &state) {
+static void rewriteAsLoops(VectorTransferOpTy *transfer,
+                           MLFuncLoweringRewriter *rewriter,
+                           LowerVectorTransfersState *state) {
   static_assert(
       std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value ||
           std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value,
@@ -122,7 +110,14 @@ static void lowerAsLoops(VectorTransferOpTy *transfer,
   // vectorMemRefType is a view of tmpMemRefType as one vector.
   auto vectorMemRefType = MemRefType::get({1}, vectorType, {}, 0);
 
-  MLFuncBuilder b(cast<OperationStmt>(transfer->getOperation()));
+  // Get the ML function builder.
+  // We need access to the MLFunction builder stored internally in the
+  // MLFunctionLoweringRewriter general rewriting API does not provide
+  // ML-specific functions (ForStmt and StmtBlock manipulation).  While we could
+  // forward them or define a whole rewriting chain based on MLFunctionBuilder
+  // instead of Builer, the code for it would be duplicate boilerplate.  As we
+  // go towards unifying ML and CFG functions, this separation will disappear.
+  MLFuncBuilder &b = *rewriter->getBuilder();
 
   // 1. First allocate the local buffer in fast memory.
   // TODO(ntv): CL memory space.
@@ -136,7 +131,7 @@ static void lowerAsLoops(VectorTransferOpTy *transfer,
   // case of GPUs.
   if (std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value) {
     b.create<StoreOp>(vecView->getLoc(), transfer->getVector(),
-                      vecView->getResult(), ArrayRef<SSAValue *>{state.zero});
+                      vecView->getResult(), ArrayRef<SSAValue *>{state->zero});
   }
 
   // 3. Emit the loop-nest.
@@ -191,12 +186,13 @@ static void lowerAsLoops(VectorTransferOpTy *transfer,
   // 5. Read the vector from local storage in case of a vector_transfer_read.
   // TODO(ntv): This vector_load operation should be further lowered in the
   // case of GPUs.
+  llvm::SmallVector<SSAValue *, 1> newResults = {};
   if (std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value) {
     b.setInsertionPoint(cast<OperationStmt>(transfer->getOperation()));
     auto *vector = b.create<LoadOp>(transfer->getLoc(), vecView->getResult(),
-                                    ArrayRef<SSAValue *>{state.zero})
+                                    ArrayRef<SSAValue *>{state->zero})
                        ->getResult();
-    transfer->getVector()->replaceAllUsesWith(vector);
+    newResults.push_back(vector);
   }
 
   // 6. Free the local buffer.
@@ -204,46 +200,55 @@ static void lowerAsLoops(VectorTransferOpTy *transfer,
   b.create<DeallocOp>(transfer->getLoc(), tmpScalarAlloc);
 
   // 7. It is now safe to erase the statement.
-  transfer->erase();
+  rewriter->replaceOp(transfer->getOperation(), newResults);
 }
 
-PassResult LowerVectorTransfersPass::runOnMLFunction(MLFunction *f) {
-  LowerVectorTransfersState state;
-  {
-    MLFuncBuilder b(f);
-    b.setInsertionPointToStart(f);
-    state.zero = b.create<ConstantIndexOp>(b.getUnknownLoc(), 0);
+namespace {
+template <typename VectorTransferOpTy>
+class VectorTransferExpander : public MLLoweringPattern {
+public:
+  explicit VectorTransferExpander(MLIRContext *context)
+      : MLLoweringPattern(VectorTransferOpTy::getOperationName(), 1, context) {}
+
+  PatternMatchResult match(Operation *op) const override {
+    if (m_Op<VectorTransferOpTy>().match(op))
+      return matchSuccess();
+    return matchFailure();
   }
 
-  using matcher::Op;
-  LLVM_DEBUG(dbgs() << "\nLowerVectorTransfersPass on MLFunction\n");
-  LLVM_DEBUG(f->print(dbgs()));
+  void rewriteOpStmt(Operation *op, MLFuncGlobalLoweringState *funcWiseState,
+                     std::unique_ptr<PatternState> opState,
+                     MLFuncLoweringRewriter *rewriter) const override {
+    rewriteAsLoops(&*op->dyn_cast<VectorTransferOpTy>(), rewriter,
+                   static_cast<LowerVectorTransfersState *>(funcWiseState));
+  }
+};
+} // namespace
 
-  // Avoid any read/write ordering considerations: do it in 2 steps.
-  // 1. vector_transfer_reads;
-  auto filterReads = [](const Statement &stmt) {
-    const auto &opStmt = cast<OperationStmt>(stmt);
-    return opStmt.isa<VectorTransferReadOp>();
-  };
-  for (auto m : Op(filterReads).match(f)) {
-    auto read = cast<OperationStmt>(m.first)->cast<VectorTransferReadOp>();
-    // TODO(ntv): Drop &* once lowerAsLoops is detemplatized.
-    lowerAsLoops(&*read, state);
+namespace {
+
+struct LowerVectorTransfersPass
+    : public MLPatternLoweringPass<
+          VectorTransferExpander<VectorTransferReadOp>,
+          VectorTransferExpander<VectorTransferWriteOp>> {
+  LowerVectorTransfersPass()
+      : MLPatternLoweringPass(&LowerVectorTransfersPass::passID) {}
+
+  std::unique_ptr<MLFuncGlobalLoweringState>
+  makeFuncWiseState(MLFunction *f) const override {
+    auto state = llvm::make_unique<LowerVectorTransfersState>();
+    auto builder = MLFuncBuilder(f);
+    builder.setInsertionPointToStart(f);
+    state->zero = builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
+    return state;
   }
 
-  // 2. vector_transfer_writes;
-  auto filterWrites = [](const Statement &stmt) {
-    const auto &opStmt = cast<OperationStmt>(stmt);
-    return opStmt.isa<VectorTransferWriteOp>();
-  };
-  for (auto m : Op(filterWrites).match(f)) {
-    auto write = cast<OperationStmt>(m.first)->cast<VectorTransferWriteOp>();
-    // TODO(ntv): Drop &* once lowerAsLoops is detemplatized.
-    lowerAsLoops(&*write, state);
-  }
+  static char passID;
+};
 
-  return PassResult::Success;
-}
+} // end anonymous namespace
+
+char LowerVectorTransfersPass::passID = 0;
 
 FunctionPass *mlir::createLowerVectorTransfersPass() {
   return new LowerVectorTransfersPass();
