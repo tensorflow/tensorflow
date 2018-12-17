@@ -19,28 +19,50 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.util import nest
+
+
+def _inputs_compatible(args, function):
+  # TODO(vbardiovsky): The compatibility check should be about the signature,
+  # not the flattened version of it.
+  flattened_inputs = nest.flatten(args)
+  if len(flattened_inputs) != len(function.inputs):
+    return False
+  for a, b in zip(flattened_inputs, function.inputs):
+    if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
+      return False
+  return True
 
 
 def recreate_polymorphic_function(
-    saved_polymorphic_function, defined_functions):
-  """Creates a PolymorphicFunction which runs restored function definitions."""
+    saved_polymorphic_function, functions):
+  """Creates a PolymorphicFunction from a SavedPolymorphicFunction.
+
+  Args:
+    saved_polymorphic_function: SavedPolymorphicFunction proto.
+    functions: map from function name to Function.
+
+  Returns:
+    A PolymorphicFunction.
+  """
+  # TODO(andresp): Construct a PolymorphicFunction with the cache populated
+  # instead of creating a new PolymorphicFunction backed by a Python layer to
+  # glue things together. Current approach is nesting functions deeper for each
+  # serialization cycle.
   @def_function.function
   def restored_function(*args):
     """Calls a restored function."""
-    # Try calling each function, return a value from the first one whose
-    # signature matches.
-    # TODO(allenl): Consider re-populating the function cache directly.
     # TODO(allenl): Functions saved with input_signatures should revive with
     # input_signatures.
     for monomorphic_function in saved_polymorphic_function.monomorphic_function:
-      try:
-        # TODO(allenl): Passing an explicit name here prevents invalid name
-        # errors. We should replace this with something based on the actual
-        # Python function name.
-        return defined_functions[monomorphic_function.concrete_function](
-            *args, name="imported_function")
-      except ValueError:
-        continue
+      function_obj = functions[monomorphic_function.concrete_function]
+      if _inputs_compatible(args, function_obj):
+        flattened_inputs = nest.flatten(args)
+        flattened_outputs = function_obj._call_flat(flattened_inputs)  # pylint: disable=protected-access
+        # TODO(vbardiovsky): rebuild output structure.
+        single_output, = flattened_outputs
+        return single_output
+
     raise AssertionError(
         "Could not find matching function to call for arguments: %s" % (args,))
   return restored_function
