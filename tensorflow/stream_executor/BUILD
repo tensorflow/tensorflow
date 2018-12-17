@@ -54,7 +54,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":dnn_proto_cc_impl",
+        ":logging_proto_cc_impl",
         "//tensorflow/core:lib",
+        "//tensorflow/core:logger",
         "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -71,6 +73,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":dnn_proto_cc",
+        ":logging_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "@com_google_absl//absl/strings",
