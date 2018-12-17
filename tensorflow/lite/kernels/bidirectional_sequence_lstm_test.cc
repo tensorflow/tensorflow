@@ -463,6 +463,8 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
+          // TODO(b/121134029): Update tests so tensor shapes after state tensor
+          // are used. They are currently ignored by test_util.
           {n_batch, sequence_length, 0},  // aux_input tensor
           {n_cell, 0},                    // aux_fw_input_to_input tensor
           {n_cell, 0},                    // aux_fw_input_to_forget tensor
@@ -625,6 +627,8 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
+          // TODO(b/121134029): Update tests so tensor shapes after state tensor
+          // are used. They are currently ignored by test_util.
           {n_batch, sequence_length, 0},  // aux_input tensor
           {n_cell, 0},                    // aux_fw_input_to_input tensor
           {n_cell, 0},                    // aux_fw_input_to_forget tensor
@@ -786,6 +790,8 @@ TEST(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClippingReverse) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
+          // TODO(b/121134029): Update tests so tensor shapes after state tensor
+          // are used. They are currently ignored by test_util.
           {n_batch, sequence_length, 0},  // aux_input tensor
           {n_cell, 0},                    // aux_fw_input_to_input tensor
           {n_cell, 0},                    // aux_fw_input_to_forget tensor
@@ -944,6 +950,8 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
+          // TODO(b/121134029): Update tests so tensor shapes after state tensor
+          // are used. They are currently ignored by test_util.
           {n_batch, sequence_length, 0},  // aux_input tensor
           {n_cell, 0},                    // aux_fw_input_to_input tensor
           {n_cell, 0},                    // aux_fw_input_to_forget tensor
@@ -1094,6 +1102,8 @@ TEST(LSTMOpTest,
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
+          // TODO(b/121134029): Update tests so tensor shapes after state tensor
+          // are used. They are currently ignored by test_util.
           {n_batch, sequence_length, 0},  // aux_input tensor
           {n_cell, 0},                    // aux_fw_input_to_input tensor
           {n_cell, 0},                    // aux_fw_input_to_forget tensor
@@ -1244,6 +1254,8 @@ TEST(LSTMOpTest, BlackBoxTestWithPeepholeWithProjectionNoClipping) {
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
 
+          // TODO(b/121134029): Update tests so tensor shapes after state tensor
+          // are used. They are currently ignored by test_util.
           {n_batch, sequence_length, 0},  // aux_input tensor
           {n_cell, 0},                    // aux_fw_input_to_input tensor
           {n_cell, 0},                    // aux_fw_input_to_forget tensor
