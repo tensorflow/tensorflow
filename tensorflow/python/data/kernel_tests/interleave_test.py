@@ -22,7 +22,7 @@ import threading
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
@@ -116,9 +116,7 @@ def _make_coordinated_sloppy_dataset(input_values, cycle_length, block_length,
   dataset = dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
       2).interleave(interleave_fn, cycle_length, block_length,
                     num_parallel_calls).with_options(options)
-  iterator = dataset_ops.make_one_shot_iterator(dataset)
-  get_next = iterator.get_next()
-  return get_next, coordination_events
+  return dataset, coordination_events
 
 
 def _repeat(values, count):
@@ -264,22 +262,24 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("8", np.int64([4, 0, 6]), 2, 3, 1),
       ("9", np.int64([4, 0, 6]), 2, 3, 2),
   )
-  @test_util.run_v1_only("b/120545219")
-  def testSkipEagerSloppyInterleaveInOrder(self, input_values, cycle_length,
-                                           block_length, num_parallel_calls):
-    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+  def testSloppyInterleaveInOrder(self, input_values, cycle_length,
+                                  block_length, num_parallel_calls):
+    dataset, coordination_events = _make_coordinated_sloppy_dataset(
         input_values, cycle_length, block_length, num_parallel_calls)
-    config = config_pb2.ConfigProto(
-        inter_op_parallelism_threads=num_parallel_calls + 1,
-        use_per_session_threads=True)
-    with self.cached_session(config=config) as sess:
-      for expected_element in _interleave(
-          _repeat(input_values, 2), cycle_length, block_length):
-        coordination_events[expected_element].set()
-        self.assertEqual(expected_element * expected_element,
-                         self.evaluate(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    options = dataset_ops.Options()
+    options.experimental_threading = threading_options.ThreadingOptions()
+    options.experimental_threading.private_threadpool_size = (
+        num_parallel_calls + 1)
+    dataset = dataset.with_options(options)
+
+    get_next = self.getNext(dataset, requires_initialization=True)
+    for expected_element in _interleave(
+        _repeat(input_values, 2), cycle_length, block_length):
+      coordination_events[expected_element].set()
+      self.assertEqual(expected_element * expected_element,
+                       self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   @parameterized.named_parameters(
       ("1", np.int64([4, 5, 6]), 2, 1, 2),
@@ -287,27 +287,28 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("3", np.int64([4, 5, 6]), 3, 2, 3),
       ("4", np.int64([4, 0, 6]), 2, 3, 2),
   )
-  @test_util.run_v1_only("b/120545219")
-  def testSkipEagerSloppyInterleaveOutOfOrder(self, input_values, cycle_length,
-                                              block_length, num_parallel_calls):
-    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+  def testSloppyInterleaveOutOfOrder(self, input_values, cycle_length,
+                                     block_length, num_parallel_calls):
+    dataset, coordination_events = _make_coordinated_sloppy_dataset(
         input_values, cycle_length, block_length, num_parallel_calls)
-    config = config_pb2.ConfigProto(
-        inter_op_parallelism_threads=num_parallel_calls + 1,
-        use_per_session_threads=True)
-    with self.cached_session(config=config) as sess:
-      elements = [
-          x for x in _interleave(
-              _repeat(input_values, 2), cycle_length, block_length)
-      ]
-      for i in [1, 4, 7]:
-        elements[i], elements[i + 1] = elements[i + 1], elements[i]
+    options = dataset_ops.Options()
+    options.experimental_threading = threading_options.ThreadingOptions()
+    options.experimental_threading.private_threadpool_size = (
+        num_parallel_calls + 1)
+    dataset = dataset.with_options(options)
+    get_next = self.getNext(dataset, requires_initialization=True)
+    elements = [
+        x for x in _interleave(
+            _repeat(input_values, 2), cycle_length, block_length)
+    ]
+    for i in [1, 4, 7]:
+      elements[i], elements[i + 1] = elements[i + 1], elements[i]
 
-      for element in elements:
-        coordination_events[element].set()
-        self.assertEqual(element * element, self.evaluate(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    for element in elements:
+      coordination_events[element].set()
+      self.assertEqual(element * element, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":
