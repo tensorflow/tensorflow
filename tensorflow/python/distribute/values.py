@@ -1602,8 +1602,12 @@ def _split_dataset_batch(dataset, split_batch_by):
         "The batch operations can be followed by a prefetch.")
 
   batched_dataset = _get_batch_dataset(dataset)
-  batch_size = batched_dataset._batch_size
-  drop_remainder = batched_dataset._drop_remainder
+  if isinstance(batched_dataset, dataset_ops.BatchDataset):
+    batch_size = batched_dataset._batch_size
+    drop_remainder = batched_dataset._drop_remainder
+  elif isinstance(batched_dataset, batching._MapAndBatchDataset):
+    batch_size = batched_dataset._batch_size_t
+    drop_remainder = batched_dataset._drop_remainder_t
   # pylint: enable=protected-access
 
   if tensor_util.is_tensor(batch_size):
