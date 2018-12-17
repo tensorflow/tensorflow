@@ -405,6 +405,7 @@ class BasicRNNCell(LayerRNNCell):
                **kwargs):
     super(BasicRNNCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    _check_supported_dtypes(self.dtype)
     if context.executing_eagerly() and context.num_gpus() > 0:
       logging.warn("%s: Note that this cell is not optimized for performance. "
                    "Please use tf.contrib.cudnn_rnn.CudnnRNNTanh for better "
@@ -432,6 +433,7 @@ class BasicRNNCell(LayerRNNCell):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % str(inputs_shape))
+    _check_supported_dtypes(self.dtype)
 
     input_depth = inputs_shape[-1]
     self._kernel = self.add_variable(
@@ -446,7 +448,7 @@ class BasicRNNCell(LayerRNNCell):
 
   def call(self, inputs, state):
     """Most basic RNN: output = new_state = act(W * input + U * state + B)."""
-
+    _check_rnn_cell_input_dtypes([inputs, state])
     gate_inputs = math_ops.matmul(
         array_ops.concat([inputs, state], 1), self._kernel)
     gate_inputs = nn_ops.bias_add(gate_inputs, self._bias)
@@ -502,6 +504,7 @@ class GRUCell(LayerRNNCell):
                **kwargs):
     super(GRUCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    _check_supported_dtypes(self.dtype)
 
     if context.executing_eagerly() and context.num_gpus() > 0:
       logging.warn("%s: Note that this cell is not optimized for performance. "
@@ -531,7 +534,7 @@ class GRUCell(LayerRNNCell):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % str(inputs_shape))
-
+    _check_supported_dtypes(self.dtype)
     input_depth = inputs_shape[-1]
     self._gate_kernel = self.add_variable(
         "gates/%s" % _WEIGHTS_VARIABLE_NAME,
@@ -560,6 +563,7 @@ class GRUCell(LayerRNNCell):
 
   def call(self, inputs, state):
     """Gated recurrent unit (GRU) with nunits cells."""
+    _check_rnn_cell_input_dtypes([inputs, state])
 
     gate_inputs = math_ops.matmul(
         array_ops.concat([inputs, state], 1), self._gate_kernel)
@@ -675,6 +679,7 @@ class BasicLSTMCell(LayerRNNCell):
     """
     super(BasicLSTMCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    _check_supported_dtypes(self.dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -708,7 +713,7 @@ class BasicLSTMCell(LayerRNNCell):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % str(inputs_shape))
-
+    _check_supported_dtypes(self.dtype)
     input_depth = inputs_shape[-1]
     h_depth = self._num_units
     self._kernel = self.add_variable(
@@ -736,6 +741,8 @@ class BasicLSTMCell(LayerRNNCell):
         `LSTMStateTuple` or a concatenated state, depending on
         `state_is_tuple`).
     """
+    _check_rnn_cell_input_dtypes([inputs, state])
+
     sigmoid = math_ops.sigmoid
     one = constant_op.constant(1, dtype=dtypes.int32)
     # Parameters of gates are concatenated into one multiply for efficiency.
@@ -858,6 +865,7 @@ class LSTMCell(LayerRNNCell):
     """
     super(LSTMCell, self).__init__(
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
+    _check_supported_dtypes(self.dtype)
     if not state_is_tuple:
       logging.warn("%s: Using a concatenated state is slower and will soon be "
                    "deprecated.  Use state_is_tuple=True.", self)
@@ -913,7 +921,7 @@ class LSTMCell(LayerRNNCell):
     if inputs_shape[-1] is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % str(inputs_shape))
-
+    _check_supported_dtypes(self.dtype)
     input_depth = inputs_shape[-1]
     h_depth = self._num_units if self._num_proj is None else self._num_proj
     maybe_partitioner = (
@@ -979,6 +987,8 @@ class LSTMCell(LayerRNNCell):
       ValueError: If input size cannot be inferred from inputs via
         static shape inference.
     """
+    _check_rnn_cell_input_dtypes([inputs, state])
+
     num_proj = self._num_units if self._num_proj is None else self._num_proj
     sigmoid = math_ops.sigmoid
 
@@ -1519,3 +1529,31 @@ class MultiRNNCell(RNNCell):
                   array_ops.concat(new_states, 1))
 
     return cur_inp, new_states
+
+
+def _check_rnn_cell_input_dtypes(inputs):
+  """Check whether the input tensors are with supported dtypes.
+
+  Default RNN cells only support floats and complex as its dtypes since the
+  activation function (tanh and sigmoid) only allow those types. This function
+  will throw a proper error message if the inputs is not in a supported type.
+
+  Args:
+    inputs: tensor or nested structure of tensors that are feed to RNN cell as
+      input or state.
+
+  Raises:
+    ValueError: if any of the input tensor are not having dtypes of float or
+      complex.
+  """
+  for t in nest.flatten(inputs):
+    _check_supported_dtypes(t.dtype)
+
+
+def _check_supported_dtypes(dtype):
+  if dtype is None:
+    return
+  dtype = dtypes.as_dtype(dtype)
+  if not (dtype.is_floating or dtype.is_complex):
+    raise ValueError("RNN cell only supports floating point inputs, "
+                     "but saw dtype: %s" % dtype)
