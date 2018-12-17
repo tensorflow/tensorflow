@@ -25,7 +25,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -80,9 +80,7 @@ def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
   options.experimental_deterministic = False
   dataset = dataset_ops.Dataset.range(num_elements).map(
       map_fn, num_parallel_calls).with_options(options)
-  iterator = dataset_ops.make_one_shot_iterator(dataset)
-  next_element = iterator.get_next()
-  return next_element, coordination_events
+  return dataset, coordination_events
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -892,7 +890,6 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual(42, self.evaluate(get_next()))
 
-  # TODO(b/117581999): Add eager coverage.
   @parameterized.named_parameters(
       ("1", 1, 1),
       ("2", 10, 1),
@@ -901,45 +898,46 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("5", 100, 10),
       ("6", 100, 100),
   )
-  @test_util.run_v1_only("b/120545219")
-  def testSkipEagerSloppyInterleaveInOrder(self, num_elements,
-                                           num_parallel_calls):
-    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+  def testSloppyInterleaveInOrder(self, num_elements, num_parallel_calls):
+    dataset, coordination_events = _make_coordinated_sloppy_dataset(
         num_elements, num_parallel_calls)
-    config = config_pb2.ConfigProto(
-        inter_op_parallelism_threads=num_parallel_calls + 1,
-        use_per_session_threads=True)
-    with self.cached_session(config=config) as sess:
-      for i in range(num_elements):
-        coordination_events[i].set()
-        self.assertEqual(i * i, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    options = dataset_ops.Options()
+    options.experimental_threading = threading_options.ThreadingOptions()
+    options.experimental_threading.private_threadpool_size = (
+        num_parallel_calls + 1)
+    dataset = dataset.with_options(options)
+    get_next = self.getNext(dataset, requires_initialization=True)
+    for i in range(num_elements):
+      coordination_events[i].set()
+      self.assertEqual(i * i, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
-  # TODO(b/117581999): Add eager coverage.
   @parameterized.named_parameters(
       ("1", 10, 10),
       ("2", 100, 10),
       ("3", 100, 100),
   )
-  @test_util.run_v1_only("b/120545219")
-  def testSkipEagerSloppyInterleaveOutOfOrder(self, num_elements,
-                                              num_parallel_calls):
-    get_next, coordination_events = _make_coordinated_sloppy_dataset(
+  def testSloppyInterleaveOutOfOrder(self, num_elements, num_parallel_calls):
+    dataset, coordination_events = _make_coordinated_sloppy_dataset(
         num_elements, num_parallel_calls)
-    config = config_pb2.ConfigProto(
-        inter_op_parallelism_threads=num_parallel_calls + 1,
-        use_per_session_threads=True)
-    with self.cached_session(config=config) as sess:
-      elements = [x for x in range(num_elements)]
-      for i in [1, 4, 7]:
-        elements[i], elements[i + 1] = elements[i + 1], elements[i]
+    options = dataset_ops.Options()
+    options.experimental_threading = threading_options.ThreadingOptions()
+    options.experimental_threading.private_threadpool_size = (
+        num_parallel_calls + 1)
+    dataset = dataset.with_options(options)
 
-      for element in elements:
-        coordination_events[element].set()
-        self.assertEqual(element * element, sess.run(get_next))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    get_next = self.getNext(dataset, requires_initialization=True)
+
+    elements = [x for x in range(num_elements)]
+    for i in [1, 4, 7]:
+      elements[i], elements[i + 1] = elements[i + 1], elements[i]
+
+    for element in elements:
+      coordination_events[element].set()
+      self.assertEqual(element * element, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
   @parameterized.named_parameters(
       ("Map", None),
