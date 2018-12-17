@@ -48,6 +48,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -2019,13 +2020,13 @@ class Model(Network):
             **kwargs)
 
   def _make_execution_function(self, mode):
-    if mode == 'train':
+    if mode == ModeKeys.TRAIN:
       self._make_fit_function()
       return self._fit_function
-    if mode == 'test':
+    if mode == ModeKeys.TEST:
       self._make_eval_function()
       return self._eval_function
-    if mode == 'predict':
+    if mode == ModeKeys.PREDICT:
       self._make_predict_function()
       return self.predict_function
 
