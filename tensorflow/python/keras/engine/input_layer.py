@@ -77,6 +77,8 @@ class InputLayer(base_layer.Layer):
         dtype = backend.floatx()
       else:
         dtype = backend.dtype(input_tensor)
+    elif input_tensor and input_tensor.dtype != dtype:
+      raise ValueError('`input_tensor.dtype` differs from `dtype`.')
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse
@@ -215,8 +217,6 @@ def Input(  # pylint: disable=invalid-name
   if kwargs:
     raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
 
-  if dtype is None:
-    dtype = backend.floatx()
   if shape is None and tensor is None:
     raise ValueError('Please provide to Input either a `shape`'
                      ' or a `tensor` argument. Note that '
