@@ -242,16 +242,17 @@ sh_binary(
     name = "build_pip_package",
     srcs = ["build_pip_package.sh"],
     data = select({
-        "//tensorflow:windows": [
-            ":simple_console_for_windows",
-        ],
-        "api_version_2": COMMON_PIP_DEPS + [
-            ":simple_console",
-        ],
-        "//conditions:default": COMMON_PIP_DEPS_V1 + [
-            ":simple_console",
-        ],
-    }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+               "api_version_2": COMMON_PIP_DEPS,
+               "//conditions:default": COMMON_PIP_DEPS_V1,
+           }) +
+           select({
+               "//tensorflow:windows": [
+                   ":simple_console_for_windows",
+               ],
+               "//conditions:default": [
+                   ":simple_console",
+               ],
+           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows
