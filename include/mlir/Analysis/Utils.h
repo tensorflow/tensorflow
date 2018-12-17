@@ -33,7 +33,9 @@
 namespace mlir {
 
 class FlatAffineConstraints;
+class ForStmt;
 class MLValue;
+class MemRefAccess;
 class OperationStmt;
 class Statement;
 
@@ -139,6 +141,21 @@ template <typename LoadOrStoreOpPointer>
 bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
                              bool emitError = true);
 
+/// Creates a clone of the computation contained in the loop nest surrounding
+/// 'srcAccess', and inserts it at the beginning of the statement block of the
+/// loop containing 'dstAccess'. Returns the top-level loop of the computation
+/// slice on success, returns nullptr otherwise.
+// Computes memref dependence between 'srcAccess' and 'dstAccess' and uses the
+// dependence constraint system to create AffineMaps with which to adjust the
+// loop bounds of the inserted compution slice so that they are functions of the
+// loop IVs and symbols of the loops surrounding 'dstAccess'.
+// TODO(andydavis) Add 'dstLoopDepth' argument for computation slice insertion.
+// Loop depth is a crucial optimization choice that determines where to
+// materialize the results of the backward slice - presenting a trade-off b/w
+// storage and redundant computation in several cases
+// TODO(andydavis) Support computation slices with common surrounding loops.
+ForStmt *insertBackwardComputationSlice(MemRefAccess *srcAccess,
+                                        MemRefAccess *dstAccess);
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_UTILS_H

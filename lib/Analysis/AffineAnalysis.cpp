@@ -1152,7 +1152,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 // The access functions would be the following:
 //
 //   src: (%i0 * 2 - %i1 * 4 + %N, %i1 * 3 - %M)
-//   src: (%i2 * 7 + %i3 * 9 - %M, %i3 * 11 - %K)
+//   dst: (%i2 * 7 + %i3 * 9 - %M, %i3 * 11 - %K)
 //
 // The iteration domains for the src/dst accesses would be the following:
 //
@@ -1166,7 +1166,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //   symbol  pos:  0   1   2
 //
 // Equality constraints are built by equating each result of src/destination
-// access functions. For this example, the folloing two equality constraints
+// access functions. For this example, the following two equality constraints
 // will be added to the dependence constraint system:
 //
 //   [src_dim0, src_dim1, dst_dim0, dst_dim1, sym0, sym1, sym2, const]
@@ -1190,7 +1190,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 // TODO(andydavis) Support AffineExprs mod/floordiv/ceildiv.
 bool mlir::checkMemrefAccessDependence(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
-    unsigned loopDepth,
+    unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
     llvm::SmallVector<DependenceComponent, 2> *dependenceComponents) {
   // Return 'false' if these accesses do not acces the same memref.
   if (srcAccess.memref != dstAccess.memref)
@@ -1247,28 +1247,31 @@ bool mlir::checkMemrefAccessDependence(
   unsigned numCols = numIds + 1;
 
   // Create flat affine constraints reserving space for 'numEq' and 'numIneq'.
-  FlatAffineConstraints dependenceDomain(numIneq, numEq, numCols, numDims,
-                                         numSymbols);
+  dependenceConstraints->reset(numIneq, numEq, numCols, numDims, numSymbols,
+                               /*numLocals=*/0);
   // Create memref access constraint by equating src/dst access functions.
   // Note that this check is conservative, and will failure in the future
   // when local variables for mod/div exprs are supported.
   if (!addMemRefAccessConstraints(srcAccessMap, dstAccessMap, valuePosMap,
-                                  &dependenceDomain))
+                                  dependenceConstraints))
     return true;
 
   // Add 'src' happens before 'dst' ordering constraints.
   addOrderingConstraints(srcIterationDomainContext, dstIterationDomainContext,
-                         valuePosMap, loopDepth, &dependenceDomain);
+                         valuePosMap, loopDepth, dependenceConstraints);
   // Add src and dst domain constraints.
   addDomainConstraints(srcIterationDomainContext, dstIterationDomainContext,
-                       valuePosMap, &dependenceDomain);
+                       valuePosMap, dependenceConstraints);
 
   // Return false if the solution space is empty: no dependence.
-  if (dependenceDomain.isEmpty()) {
+  if (dependenceConstraints->isEmpty()) {
     return false;
   }
   // Compute dependence direction vector and return true.
-  computeDirectionVector(srcIterationDomainContext, dstIterationDomainContext,
-                         loopDepth, &dependenceDomain, dependenceComponents);
+  if (dependenceComponents != nullptr) {
+    computeDirectionVector(srcIterationDomainContext, dstIterationDomainContext,
+                           loopDepth, dependenceConstraints,
+                           dependenceComponents);
+  }
   return true;
 }

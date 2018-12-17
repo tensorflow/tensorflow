@@ -745,7 +745,6 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
   //  add two equalities overall: d_0 - i0 - 1 == 0, d1 - i0 - 8*i2 == 0.
   for (unsigned r = 0, e = flatExprs.size(); r < e; r++) {
     const auto &flatExpr = flatExprs[r];
-
     // eqToAdd is the equality corresponding to the flattened affine expression.
     SmallVector<int64_t, 8> eqToAdd(getNumCols(), 0);
     // Set the coefficient for this result to one.
@@ -1098,6 +1097,54 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
   // Remove eliminated columns from all constraints.
   removeIdRange(posStart, posLimit);
   return posLimit - posStart;
+}
+
+// Returns an AffineMap which represents 'pos' in equality constraint 'idx',
+// as a function of dim and symbols identifers in all other positions.
+// TODO(andydavis) Add local variable support to this function.
+AffineMap FlatAffineConstraints::toAffineMapFromEq(
+    unsigned idx, unsigned pos, MLIRContext *context,
+    SmallVectorImpl<unsigned> *nonZeroDimIds,
+    SmallVectorImpl<unsigned> *nonZeroSymbolIds) {
+  assert(getNumLocalIds() == 0);
+  assert(idx < getNumEqualities());
+  int64_t v = atEq(idx, pos);
+  // Return if coefficient at (idx, pos) is zero or does not divide constant.
+  if (v == 0 || (atEq(idx, getNumIds()) % v != 0))
+    return AffineMap::Null();
+  // Check that coefficient at 'pos' divides all other coefficient in row 'idx'.
+  for (unsigned j = 0, e = getNumIds(); j < e; ++j) {
+    if (j != pos && (atEq(idx, j) % v != 0))
+      return AffineMap::Null();
+  }
+  // Build AffineExpr solving for identifier 'pos' in terms of all others.
+  auto expr = getAffineConstantExpr(0, context);
+  unsigned mapNumDims = 0;
+  unsigned mapNumSymbols = 0;
+  for (unsigned j = 0, e = getNumIds(); j < e; ++j) {
+    if (j == pos)
+      continue;
+    int64_t c = atEq(idx, j);
+    if (c == 0)
+      continue;
+    // Divide 'c' by 'v' from 'pos' for which we are solving.
+    c /= v;
+    if (j < numDims) {
+      expr = expr + getAffineDimExpr(mapNumDims++, context) * c;
+      nonZeroDimIds->push_back(j);
+    } else {
+      expr =
+          expr + getAffineSymbolExpr(mapNumDims + mapNumSymbols++, context) * c;
+      nonZeroSymbolIds->push_back(j);
+    }
+    expr = expr * (-1);
+  }
+  // Add constant term to AffineExpr.
+  int64_t c = atEq(idx, getNumIds());
+  if (c > 0) {
+    expr = expr + (c / v) * (-1);
+  }
+  return AffineMap::get(mapNumDims, mapNumSymbols, {expr}, {});
 }
 
 void FlatAffineConstraints::addEquality(ArrayRef<int64_t> eq) {

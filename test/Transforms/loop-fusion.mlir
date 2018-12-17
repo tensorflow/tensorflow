@@ -1,141 +1,555 @@
-// RUN: mlir-opt %s -loop-fusion | FileCheck %s
+// RUN: mlir-opt %s -loop-fusion -split-input-file -verify | FileCheck %s
 
-// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0 * 2 + 2)
-// CHECK: [[MAP1:#map[0-9]+]] = (d0) -> (d0 * 3 + 1)
-// CHECK: [[MAP2:#map[0-9]+]] = (d0) -> (d0 * 2)
-// CHECK: [[MAP3:#map[0-9]+]] = (d0) -> (d0 * 2 + 1)
-// CHECK: [[MAP4:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0 * 2 - d1 - s0 * 7 + 3, d0 * 9 + d1 * 3 + s1 * 13 - 10)
-// CHECK: [[MAP6:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0 * 2 - 1, d1 * 3 + s0 + s1 * 3)
+// TODO(andydavis) Add more tests:
+// *) Add nested fusion test cases when non-constant loop bound support is
+//    added to iteration domain in dependence check.
+// *) Add a test w/ floordiv/ceildiv/mod when supported in dependence check.
+// *) Add tests which check fused computation slice indexing and loop bounds.
+// TODO(andydavis) Test clean up: move memref allocs to mlfunc args.
 
-// The dependence check for this test builds the following set of constraints,
-// where the equality contraint equates the two accesses to the memref (from
-// different loops), and the inequality constraints represent the upper and
-// lower bounds for each loop. After elimination, this linear system can be
-// shown to be non-empty (i.e. x0 = x1 = 1 is a solution). As such, the
-// dependence check between accesses in the two loops will return true, and
-// the loops (according to the current test loop fusion algorithm) should not be
-// fused.
-//
-//   x0   x1   x2
-//   2   -3    1   =  0
-//   1    0    0   >= 0
-//  -1    0    100 >= 0
-//   0    1    0   >= 0
-//   0   -1    100 >= 0
-//
-// CHECK-LABEL: mlfunc @loop_fusion_1d_should_not_fuse_loops() {
-mlfunc @loop_fusion_1d_should_not_fuse_loops() {
-  %m = alloc() : memref<100xf32, (d0) -> (d0)>
-  // Check that the first loop remains unfused.
-  // CHECK:      for %i0 = 0 to 100 {
-  // CHECK-NEXT:   [[I0:%[0-9]+]] = affine_apply [[MAP0]](%i0)
-  // CHECK:        store {{.*}}, %{{[0-9]+}}{{\[}}[[I0]]{{\]}}
-  // CHECK-NEXT: }
-  for %i0 = 0 to 100 {
-    %a0 = affine_apply (d0) -> (d0 * 2 + 2) (%i0)
-    %c1 = constant 1.0 : f32
-    store %c1, %m[%a0] : memref<100xf32, (d0) -> (d0)>
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
+
+// CHECK-LABEL: mlfunc @should_fuse_raw_dep_for_locality() {
+mlfunc @should_fuse_raw_dep_for_locality() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %m[%i0] : memref<10xf32>
   }
-  // Check that the second loop remains unfused.
-  // CHECK:      for %i1 = 0 to 100 {
-  // CHECK-NEXT:   [[I1:%[0-9]+]] = affine_apply [[MAP1]](%i1)
-  // CHECK-NEXT:   load %{{[0-9]+}}{{\[}}[[I1]]{{\]}}
-  // CHECK-NEXT: } 
-  for %i1 = 0 to 100 {
-    %a1 = affine_apply (d0) -> (d0 * 3 + 1) (%i1)
-    %v0 = load %m[%a1] : memref<100xf32, (d0) -> (d0)>
+  for %i1 = 0 to 10 {
+    %v0 = load %m[%i1] : memref<10xf32>
   }
-  return
-}
-
-// The dependence check for this test builds the following set of constraints:
-//
-//   x0   x1   x2
-//   2   -2   -1   =  0
-//   1    0    0   >= 0
-//  -1    0    100 >= 0
-//   0    1    0   >= 0
-//   0   -1    100 >= 0
-//
-// After elimination, this linear system can be shown to have no solutions, and
-// so no dependence exists and the loops should be fused in this test (according
-// to the current trivial test loop fusion policy).
-//
-//
-// CHECK-LABEL: mlfunc @loop_fusion_1d_should_fuse_loops() {
-mlfunc @loop_fusion_1d_should_fuse_loops() {
-  %m = alloc() : memref<100xf32, (d0) -> (d0)>
-  // Should fuse statements from the second loop into the first loop.
-  // CHECK:      for %i0 = 0 to 100 {
-  // CHECK-NEXT:   [[I0:%[0-9]+]] = affine_apply [[MAP2]](%i0)
-  // CHECK:        store {{.*}}, %{{[0-9]+}}{{\[}}[[I0]]{{\]}}
-  // CHECK-NEXT:   [[I1:%[0-9]+]] = affine_apply [[MAP3]](%i0)
-  // CHECK-NEXT:   load %{{[0-9]+}}{{\[}}[[I1]]{{\]}}
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   %1 = affine_apply [[MAP0]](%i0)
+  // CHECK-NEXT:   store %cst, %0[%1] : memref<10xf32>
+  // CHECK-NEXT:   %2 = load %0[%i0] : memref<10xf32>
   // CHECK-NEXT: }
   // CHECK-NEXT: return
-  for %i0 = 0 to 100 {
-    %a0 = affine_apply (d0) -> (d0 * 2) (%i0)
-    %c1 = constant 1.0 : f32
-    store %c1, %m[%a0] : memref<100xf32, (d0) -> (d0)>
-  }
-  
-  for %i1 = 0 to 100 {
-    %a1 = affine_apply (d0) -> (d0 * 2 + 1) (%i1)
-
-    %v0 = load %m[%a1] : memref<100xf32, (d0) -> (d0)>
-  }
   return
 }
 
-// TODO(andydavis) Add LoopFusion tests based on fusion policy and cost model.
+// -----
 
-// The dependence check for this test builds the following set of
-// equality constraints (one for each memref dimension). Note: inequality
-// constraints for loop bounds not shown.
-//
-//   i0  i1  i2  i3  s0  s1  s2  c
-//   2  -1  -2   0  -7   0   0   4  = 0
-//   9   3   0  -3   0   12 -3  -10 = 0
-//
-// The second equality will fail the GCD test and so the system has no solution,
-// so the loops should be fused under the current test policy.
-//
-// CHECK-LABEL: mlfunc @loop_fusion_2d_should_fuse_loops() {
-mlfunc @loop_fusion_2d_should_fuse_loops() {
-  %m = alloc() : memref<10x10xf32>
+// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
 
-  %s0 = constant 7 : index
-  %s1 = constant 11 : index
-  %s2 = constant 13 : index
-  // Should fuse statements from the second loop into the first loop.
-  // CHECK:      for %i0 = 0 to 100 {
-  // CHECK-NEXT:   for %i1 = 0 to 50 {
-  // CHECK-NEXT:     [[I0:%[0-9]+]] = affine_apply [[MAP4]](%i0, %i1)[%c7, %c11]
-  // CHECK:          store {{.*}}, %{{[0-9]+}}{{\[}}[[I0]]#0, [[I0]]#1{{\]}}
-  // CHECK-NEXT:     [[I1:%[0-9]+]] = affine_apply [[MAP6]](%i0, %i1)[%c11, %c13]
-  // CHECK-NEXT:     load %{{[0-9]+}}{{\[}}[[I1]]#0, [[I1]]#1{{\]}}
+// TODO(andydavis) Turn this into a proper reduction when constraints on
+// the current greedy fusion policy are relaxed.
+// CHECK-LABEL: mlfunc @should_fuse_reduction_to_pointwise() {
+mlfunc @should_fuse_reduction_to_pointwise() {
+  %a = alloc() : memref<10x10xf32>
+  %b = alloc() : memref<10xf32>
+  %c = alloc() : memref<10xf32>
+  %d = alloc() : memref<10xf32>
+
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    for %i1 = 0 to 10 {
+      %v0 = load %d[%i0] : memref<10xf32>
+      %v1 = load %a[%i0, %i1] : memref<10x10xf32>
+      %v3 = addf %v0, %v1 : f32
+      store %v3, %b[%i0] : memref<10xf32>
+    }
+  }
+  for %i2 = 0 to 10 {
+    %v4 = load %b[%i2] : memref<10xf32>
+    store %v4, %c[%i2] : memref<10xf32>
+  }
+
+  // Should fuse in entire inner loop on %i1 from source loop nest, as %i1
+  // is not used in the access function of the store/load on %b.
+  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK-NEXT:    %4 = affine_apply [[MAP0]](%i0)
+  // CHECK-NEXT:    for %i1 = 0 to 10 {
+  // CHECK-NEXT:      %5 = load %3[%4] : memref<10xf32>
+  // CHECK-NEXT:      %6 = load %0[%4, %i1] : memref<10x10xf32>
+  // CHECK-NEXT:      %7 = addf %5, %6 : f32
+  // CHECK-NEXT:      store %7, %1[%4] : memref<10xf32>
+  // CHECK-NEXT:    }  
+  // CHECK-NEXT:    %8 = load %1[%i0] : memref<10xf32>
+  // CHECK-NEXT:    store %8, %2[%i0] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return
+  return
+}
+
+// -----
+
+// CHECK: [[MAP_SHIFT_MINUS_ONE:#map[0-9]+]] = (d0) -> (d0 - 1)
+// CHECK: [[MAP_SHIFT_BY_ONE:#map[0-9]+]] = (d0, d1) -> (d0 + 1, d1 + 1)
+
+// CHECK-LABEL: mlfunc @should_fuse_loop_nests_with_shifts() {
+mlfunc @should_fuse_loop_nests_with_shifts() {
+  %a = alloc() : memref<10x10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    for %i1 = 0 to 10 {
+      %a0 = affine_apply (d0, d1) -> (d0 + 1, d1 + 1) (%i0, %i1)
+      store %cf7, %a[%a0#0, %a0#1] : memref<10x10xf32>
+    }
+  }
+  for %i2 = 0 to 10 {
+    for %i3 = 0 to 10 {
+      %v0 = load %a[%i2, %i3] : memref<10x10xf32>
+    }
+  }
+
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   for %i1 = 0 to 10 {
+  // CHECK-NEXT:     %1 = affine_apply [[MAP_SHIFT_MINUS_ONE]](%i0)
+  // CHECK-NEXT:     %2 = affine_apply [[MAP_SHIFT_MINUS_ONE]](%i1)
+  // CHECK-NEXT:     %3 = affine_apply [[MAP_SHIFT_BY_ONE]](%1, %2)
+  // CHECK-NEXT:     store %cst, %0[%3#0, %3#1] : memref<10x10xf32>
+  // CHECK-NEXT:     %4 = load %0[%i0, %i1] : memref<10x10xf32>
   // CHECK-NEXT:   }
   // CHECK-NEXT: }
   // CHECK-NEXT: return
-  for %i0 = 0 to 100 {
-    for %i1 = 0 to 50 {
-      %a0 = affine_apply
-        (d0, d1)[s0, s1] ->
-	  (d0 * 2 -d1 + -7 * s0 + 3 , d0 * 9 + d1 * 3 + 13 * s1 - 10)
-	    (%i0, %i1)[%s0, %s1]
-      %c1 = constant 1.0 : f32
-      store %c1, %m[%a0#0, %a0#1] : memref<10x10xf32>
+  return
+}
+
+// -----
+
+// CHECK: [[MAP_IDENTITY:#map[0-9]+]] = (d0) -> (d0)
+
+// CHECK-LABEL: mlfunc @should_fuse_loop_nest() {
+mlfunc @should_fuse_loop_nest() {
+  %a = alloc() : memref<10x10xf32>
+  %b = alloc() : memref<10x10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    for %i1 = 0 to 10 {
+      store %cf7, %a[%i0, %i1] : memref<10x10xf32>
+    }
+  }
+  for %i2 = 0 to 10 {
+    for %i3 = 0 to 10 {
+      %v0 = load %a[%i3, %i2] : memref<10x10xf32>
+      store %v0, %b[%i2, %i3] : memref<10x10xf32>
+    }
+  }
+  for %i4 = 0 to 10 {
+    for %i5 = 0 to 10 {
+      %v1 = load %b[%i4, %i5] : memref<10x10xf32>
     }
   }
 
-  for %i2 = 0 to 100 {
-    for %i3 = 0 to 50 {
-      %a1 = affine_apply
-        (d0, d1)[s0, s1] ->
-	  (d0 * 2 - 1, d1 * 3 + s0 + s1 * 3) (%i2, %i3)[%s1, %s2]
-      %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   for %i1 = 0 to 10 {
+  // CHECK-NEXT:     %2 = affine_apply [[MAP_IDENTITY]](%i1)
+  // CHECK-NEXT:     %3 = affine_apply [[MAP_IDENTITY]](%i0)
+  // CHECK-NEXT:     store %cst, %0[%2, %3] : memref<10x10xf32>
+  // CHECK-NEXT:     %4 = affine_apply [[MAP_IDENTITY]](%i0)
+  // CHECK-NEXT:     %5 = affine_apply [[MAP_IDENTITY]](%i1)
+  // CHECK-NEXT:     %6 = load %0[%5, %4] : memref<10x10xf32>
+  // CHECK-NEXT:     store %6, %1[%4, %5] : memref<10x10xf32>
+  // CHECK-NEXT:     %7 = load %1[%i0, %i1] : memref<10x10xf32>
+  // CHECK-NEXT:   }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
+
+// CHECK-LABEL: mlfunc @should_fuse_across_intermediate_loop_with_no_deps() {
+mlfunc @should_fuse_across_intermediate_loop_with_no_deps() {
+  %a = alloc() : memref<10xf32>
+  %b = alloc() : memref<10xf32>
+  %c = alloc() : memref<10xf32>
+
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    %v0 = load %a[%i0] : memref<10xf32>
+    store %v0, %b[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    store %cf7, %c[%i1] : memref<10xf32>
+  }
+  for %i2 = 0 to 10 {
+    %v1 = load %b[%i2] : memref<10xf32>
+  }
+
+  // Should fuse first loop (past second loop with no dependences) into third.
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %2[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   %3 = affine_apply [[MAP0]](%i1)
+  // CHECK-NEXT:   %4 = load %0[%3] : memref<10xf32>
+  // CHECK-NEXT:   store %4, %1[%3] : memref<10xf32>
+  // CHECK-NEXT:   %5 = load %1[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
+
+// CHECK-LABEL: mlfunc @should_fuse_all_loops() {
+mlfunc @should_fuse_all_loops() {
+  %a = alloc() : memref<10xf32>
+  %b = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  // Set up flow dependences from first and second loops to third.
+  for %i0 = 0 to 10 {
+    store %cf7, %a[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    store %cf7, %b[%i1] : memref<10xf32>
+  }
+  for %i2 = 0 to 10 {
+    %v0 = load %a[%i2] : memref<10xf32>
+    %v1 = load %b[%i2] : memref<10xf32>
+  }
+
+  // Should fuse first and second loops into third.
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   %2 = affine_apply [[MAP0]](%i0)
+  // CHECK-NEXT:   store %cst, %0[%2] : memref<10xf32>
+  // CHECK-NEXT:   %3 = affine_apply [[MAP0]](%i0)
+  // CHECK-NEXT:   store %cst, %1[%3] : memref<10xf32>
+  // CHECK-NEXT:   %4 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT:   %5 = load %1[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
+
+// CHECK-LABEL: mlfunc @should_fuse_first_and_second_loops() {
+mlfunc @should_fuse_first_and_second_loops() {
+  %a = alloc() : memref<10xf32>
+  %b = alloc() : memref<10xf32>
+  %c = alloc() : memref<10xf32>
+
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %a[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %a[%i1] : memref<10xf32>
+    store %cf7, %b[%i1] : memref<10xf32>
+  }
+  for %i2 = 0 to 10 {
+    %v1 = load %c[%i2] : memref<10xf32>
+  }
+
+  // Should fuse first loop into the second (last loop should not be fused).
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   %3 = affine_apply [[MAP0]](%i0)
+  // CHECK-NEXT:   store %cst, %0[%3] : memref<10xf32>
+  // CHECK-NEXT:   %4 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT:   store %cst, %1[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   %5 = load %2[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+
+  return
+}
+
+// -----
+
+// CHECK-LABEL: mlfunc @should_not_fuse_would_create_cycle() {
+mlfunc @should_not_fuse_would_create_cycle() {
+  %a = alloc() : memref<10xf32>
+  %b = alloc() : memref<10xf32>
+  %c = alloc() : memref<10xf32>
+
+  %cf7 = constant 7.0 : f32
+
+  // Set up the following dependences:
+  // 1) loop0 -> loop1 on memref '%a'
+  // 2) loop0 -> loop2 on memref '%b'
+  // 3) loop1 -> loop2 on memref '%c'
+  for %i0 = 0 to 10 {
+    %v0 = load %a[%i0] : memref<10xf32>
+    store %cf7, %b[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    store %cf7, %a[%i1] : memref<10xf32>
+    %v1 = load %c[%i1] : memref<10xf32>
+  }
+  for %i2 = 0 to 10 {
+    %v2 = load %b[%i2] : memref<10xf32>
+    store %cf7, %c[%i2] : memref<10xf32>
+  }
+  // Should not fuse: fusing loop first loop into last would create a cycle.
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   %3 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT:   store %cst, %1[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT:   %4 = load %2[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i2 = 0 to 10 {
+  // CHECK-NEXT:   %5 = load %1[%i2] : memref<10xf32>
+  // CHECK-NEXT:   store %cst, %2[%i2] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: mlfunc @should_not_fuse_raw_dep_would_be_violated() {
+mlfunc @should_not_fuse_raw_dep_would_be_violated() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %m[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %m[%i1] : memref<10xf32>
+  }
+  for %i2 = 0 to 10 {
+    %v1 = load %m[%i2] : memref<10xf32>
+  }
+  // Fusing loop %i0 to %i2 would violate the RAW dependence between %i0 and %i1
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   %1 = load %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i2 = 0 to 10 {
+  // CHECK-NEXT:   %2 = load %0[%i2] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: mlfunc @should_not_fuse_waw_dep_would_be_violated() {
+mlfunc @should_not_fuse_waw_dep_would_be_violated() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %m[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    store %cf7, %m[%i1] : memref<10xf32>
+  }
+  for %i2 = 0 to 10 {
+    %v1 = load %m[%i2] : memref<10xf32>
+  }
+  // Fusing loop %i0 to %i2 would violate the WAW dependence between %i0 and %i1
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i2 = 0 to 10 {
+  // CHECK-NEXT:   %1 = load %0[%i2] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: mlfunc @should_not_fuse_war_dep_would_be_violated() {
+mlfunc @should_not_fuse_war_dep_would_be_violated() {
+  %a = alloc() : memref<10xf32>
+  %b = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    %v0 = load %a[%i0] : memref<10xf32>
+    store %v0, %b[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    store %cf7, %a[%i1] : memref<10xf32>
+  }
+  for %i2 = 0 to 10 {
+    %v1 = load %b[%i2] : memref<10xf32>
+  }
+  // Fusing loop %i0 to %i2 would violate the WAR dependence between %i0 and %i1
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   %2 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT:   store %2, %1[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i2 = 0 to 10 {
+  // CHECK-NEXT:   %3 = load %1[%i2] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// CHECK-LABEL: mlfunc @should_not_fuse_if_top_level_access() {
+mlfunc @should_not_fuse_if_top_level_access() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %m[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %m[%i1] : memref<10xf32>
+  }
+
+  %c0 = constant 4 : index
+  %v1 = load %m[%c0] : memref<10xf32>
+  // Top-level load to '%m' should prevent fusion.
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   %1 = load %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
+
+// CHECK-LABEL: mlfunc @should_fuse_no_top_level_access() {
+mlfunc @should_fuse_no_top_level_access() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %m[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %m[%i1] : memref<10xf32>
+  }
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   %1 = affine_apply #map0(%i0)
+  // CHECK-NEXT:   store %cst, %0[%1] : memref<10xf32>
+  // CHECK-NEXT:   %2 = load %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+#set0 = (d0) : (1 == 0)
+
+// CHECK-LABEL: mlfunc @should_not_fuse_if_stmt_at_top_level() {
+mlfunc @should_not_fuse_if_stmt_at_top_level() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  for %i0 = 0 to 10 {
+    store %cf7, %m[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %m[%i1] : memref<10xf32>
+  }
+  %c0 = constant 4 : index
+  if #set0(%c0) {
+  }
+  // Top-level IfStmt should prevent fusion.
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   %1 = load %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  return
+}
+
+// -----
+
+#set0 = (d0) : (1 == 0)
+
+// CHECK-LABEL: mlfunc @should_not_fuse_if_stmt_in_loop_nest() {
+mlfunc @should_not_fuse_if_stmt_in_loop_nest() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+  %c4 = constant 4 : index
+
+  for %i0 = 0 to 10 {
+    store %cf7, %m[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    if #set0(%c4) {
+    }
+    %v0 = load %m[%i1] : memref<10xf32>
+  }
+
+  // IfStmt in ForStmt should prevent fusion.
+  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
+  // CHECK-NEXT: }
+  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK-NEXT:   if #set0(%c4) {
+  // CHECK-NEXT:   }  
+  // CHECK-NEXT:   %1 = load %0[%i1] : memref<10xf32>
+  // CHECK-NEXT: }
+  return
+}
+
+// -----
+
+// CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
+// CHECK: [[MAP1:#map[0-9]+]] = (d0, d1, d2) -> (d0, d1, d2)
+// CHECK: [[MAP2:#map[0-9]+]] = (d0, d1, d2) -> (d1, d2, d0)
+
+// CHECK-LABEL: mlfunc @remap_ivs() {
+mlfunc @remap_ivs() {
+  %m = alloc() : memref<10x20x30xf32>
+
+  %cf7 = constant 7.0 : f32
+  for %i0 = 0 to 10 {
+    for %i1 = 0 to 20 {
+      for %i2 = 0 to 30 {
+        %a0 = affine_apply (d0, d1, d2) -> (d0, d1, d2) (%i0, %i1, %i2)
+        store %cf7, %m[%a0#0, %a0#1, %a0#2] : memref<10x20x30xf32>
+      }
     }
   }
+  for %i3 = 0 to 30 {
+    for %i4 = 0 to 10 {
+      for %i5 = 0 to 20 {
+        %a1 = affine_apply (d0, d1, d2) -> (d1, d2, d0) (%i3, %i4, %i5)
+        %v0 = load %m[%a1#0, %a1#1, %a1#2] : memref<10x20x30xf32>
+      }
+    }
+  }
+// CHECK:       for %i0 = 0 to 30 {
+// CHECK-NEXT:    for %i1 = 0 to 10 {
+// CHECK-NEXT:      for %i2 = 0 to 20 {
+// CHECK-NEXT:        %1 = affine_apply [[MAP0]](%i1)
+// CHECK-NEXT:        %2 = affine_apply [[MAP0]](%i2)
+// CHECK-NEXT:        %3 = affine_apply [[MAP0]](%i0)
+// CHECK-NEXT:        %4 = affine_apply [[MAP1]](%1, %2, %3)
+// CHECK-NEXT:        store %cst, %0[%4#0, %4#1, %4#2] : memref<10x20x30xf32>
+// CHECK-NEXT:        %5 = affine_apply [[MAP2]](%i0, %i1, %i2)
+// CHECK-NEXT:        %6 = load %0[%5#0, %5#1, %5#2] : memref<10x20x30xf32>
+// CHECK-NEXT:      }
+// CHECK-NEXT:    }
+// CHECK-NEXT:  }
+// CHECK-NEXT:  return
 
   return
 }

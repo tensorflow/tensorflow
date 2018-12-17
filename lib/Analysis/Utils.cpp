@@ -310,3 +310,132 @@ template bool mlir::boundCheckLoadOrStoreOp(OpPointer<LoadOp> loadOp,
                                             bool emitError);
 template bool mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
                                             bool emitError);
+
+// Returns in 'positions' the StmtBlock positions of 'stmt' in each ancestor
+// StmtBlock from the StmtBlock containing statement, stopping at 'limitBlock'.
+static void findStmtPosition(const Statement *stmt, StmtBlock *limitBlock,
+                             SmallVectorImpl<unsigned> *positions) {
+  StmtBlock *block = stmt->getBlock();
+  while (block != limitBlock) {
+    int stmtPosInBlock = block->findStmtPosInBlock(*stmt);
+    assert(stmtPosInBlock >= 0);
+    positions->push_back(stmtPosInBlock);
+    stmt = block->getContainingStmt();
+    block = stmt->getBlock();
+  }
+  std::reverse(positions->begin(), positions->end());
+}
+
+// Returns the Statement in a possibly nested set of StmtBlocks, where the
+// position of the statement is represented by 'positions', which has a
+// StmtBlock position for each level of nesting.
+static Statement *getStmtAtPosition(ArrayRef<unsigned> positions,
+                                    unsigned level, StmtBlock *block) {
+  unsigned i = 0;
+  for (auto &stmt : *block) {
+    if (i != positions[level]) {
+      ++i;
+      continue;
+    }
+    if (level == positions.size() - 1)
+      return &stmt;
+    if (auto *childForStmt = dyn_cast<ForStmt>(&stmt))
+      return getStmtAtPosition(positions, level + 1, childForStmt);
+
+    if (auto *ifStmt = dyn_cast<IfStmt>(&stmt)) {
+      auto *ret = getStmtAtPosition(positions, level + 1, ifStmt->getThen());
+      if (ret != nullptr)
+        return ret;
+      if (auto *elseClause = ifStmt->getElse())
+        return getStmtAtPosition(positions, level + 1, elseClause);
+    }
+  }
+  return nullptr;
+}
+
+// TODO(andydavis) Support a 'dstLoopDepth' argument for computation slice
+// insertion (currently the computation slice is inserted at the same
+// loop depth as 'dstAccess.opStmt'.
+ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
+                                              MemRefAccess *dstAccess) {
+  FlatAffineConstraints dependenceConstraints;
+  if (!checkMemrefAccessDependence(*srcAccess, *dstAccess, /*loopDepth=*/0,
+                                   &dependenceConstraints,
+                                   /*dependenceComponents=*/nullptr)) {
+    return nullptr;
+  }
+  // Get loop nest surrounding src operation.
+  SmallVector<ForStmt *, 4> srcLoopNest;
+  getLoopIVs(*srcAccess->opStmt, &srcLoopNest);
+  unsigned srcLoopNestSize = srcLoopNest.size();
+
+  // Get loop nest surrounding dst operation.
+  SmallVector<ForStmt *, 4> dstLoopNest;
+  getLoopIVs(*dstAccess->opStmt, &dstLoopNest);
+  unsigned dstLoopNestSize = dstLoopNest.size();
+
+  // Solve for src IVs in terms of dst IVs, symbols and constants.
+  SmallVector<AffineMap, 4> srcIvMaps(srcLoopNestSize, AffineMap::Null());
+  std::vector<SmallVector<MLValue *, 2>> srcIvOperands(srcLoopNestSize);
+  for (unsigned i = 0; i < srcLoopNestSize; ++i) {
+    auto cst = dependenceConstraints.clone();
+    for (int j = srcLoopNestSize - 1; j >= 0; --j) {
+      if (i != j)
+        cst->projectOut(j);
+    }
+    if (cst->getNumEqualities() != 1) {
+      srcIvMaps[i] = AffineMap::Null();
+      continue;
+    }
+    SmallVector<unsigned, 2> nonZeroDimIds;
+    SmallVector<unsigned, 2> nonZeroSymbolIds;
+    srcIvMaps[i] = cst->toAffineMapFromEq(0, 0, srcAccess->opStmt->getContext(),
+                                          &nonZeroDimIds, &nonZeroSymbolIds);
+    if (srcIvMaps[i] == AffineMap::Null())
+      continue;
+    // Add operands for all non-zero dst dims and symbols.
+    // TODO(andydavis) Add local variable support.
+    for (auto dimId : nonZeroDimIds) {
+      srcIvOperands[i].push_back(dstLoopNest[dimId - 1]);
+    }
+    // TODO(andydavis) Add symbols from the access function. Ideally, we
+    // should be able to query the constaint system for the MLValue associated
+    // with a symbol identifiers in 'nonZeroSymbolIds'.
+  }
+
+  // Find the stmt block positions of 'srcAccess->opStmt' within 'srcLoopNest'.
+  SmallVector<unsigned, 4> positions;
+  findStmtPosition(srcAccess->opStmt, srcLoopNest[0]->getBlock(), &positions);
+
+  // Clone src loop nest and insert it a the beginning of the statement block
+  // of the same loop in which containts 'dstAccess->opStmt'.
+  auto *dstForStmt = dstLoopNest[dstLoopNestSize - 1];
+  MLFuncBuilder b(dstForStmt, dstForStmt->begin());
+  DenseMap<const MLValue *, MLValue *> operandMap;
+  auto *sliceLoopNest = cast<ForStmt>(b.clone(*srcLoopNest[0], operandMap));
+
+  // Lookup stmt in cloned 'sliceLoopNest' at 'positions'.
+  Statement *sliceStmt =
+      getStmtAtPosition(positions, /*level=*/0, sliceLoopNest);
+  // Get loop nest surrounding 'sliceStmt'.
+  SmallVector<ForStmt *, 4> sliceSurroundingLoops;
+  getLoopIVs(*sliceStmt, &sliceSurroundingLoops);
+  unsigned sliceSurroundingLoopsSize = sliceSurroundingLoops.size();
+
+  // Update loop bounds for loops in 'sliceLoopNest'.
+  for (unsigned i = dstLoopNestSize; i < sliceSurroundingLoopsSize; ++i) {
+    auto *forStmt = sliceSurroundingLoops[i];
+    unsigned index = i - dstLoopNestSize;
+    AffineMap lbMap = srcIvMaps[index];
+    if (lbMap == AffineMap::Null())
+      continue;
+    forStmt->setLowerBound(srcIvOperands[index], lbMap);
+    // Create upper bound map with is lower bound map + 1;
+    assert(lbMap.getNumResults() == 1);
+    AffineExpr ubResultExpr = lbMap.getResult(0) + 1;
+    AffineMap ubMap = AffineMap::get(lbMap.getNumDims(), lbMap.getNumSymbols(),
+                                     {ubResultExpr}, {});
+    forStmt->setUpperBound(srcIvOperands[index], ubMap);
+  }
+  return sliceLoopNest;
+}

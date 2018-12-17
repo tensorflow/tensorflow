@@ -148,8 +148,10 @@ static void checkDependences(ArrayRef<OperationStmt *> loadsAndStores) {
       unsigned numCommonLoops =
           getNumCommonSurroundingLoops(srcLoops, dstLoops);
       for (unsigned d = 1; d <= numCommonLoops + 1; ++d) {
+        FlatAffineConstraints dependenceConstraints;
         llvm::SmallVector<DependenceComponent, 2> dependenceComponents;
         bool ret = checkMemrefAccessDependence(srcAccess, dstAccess, d,
+                                               &dependenceConstraints,
                                                &dependenceComponents);
         // TODO(andydavis) Print dependence type (i.e. RAW, etc) and print
         // distance vectors as: ([2, 3], [0, 10]). Also, shorten distance

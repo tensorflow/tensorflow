@@ -145,9 +145,12 @@ struct DependenceComponent {
 /// the operation statement, indices and memref associated with the access.
 /// Returns 'false' if it can be determined conclusively that the accesses do
 /// not access the same memref element. Returns 'true' otherwise.
+// TODO(andydavis) Wrap 'dependenceConstraints' and 'dependenceComponents' into
+// a single struct.
+// TODO(andydavis) Make 'dependenceConstraints' optional arg.
 bool checkMemrefAccessDependence(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
-    unsigned loopDepth,
+    unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
     llvm::SmallVector<DependenceComponent, 2> *dependenceComponents);
 } // end namespace mlir
 
