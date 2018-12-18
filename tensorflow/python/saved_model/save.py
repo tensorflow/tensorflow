@@ -482,8 +482,9 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
   # the exported graph (thus the `to_graph` argument).
   saver = object_saver.freeze(object_map=object_map, to_graph=exported_graph)
 
-  # We must resolve the concrete function to add to MetaGraph while in eager
-  # mode.
+  # We must instantiate and list all concrete functions of polymorphic functions
+  # while in eager mode so they end up added to the graph and can later be used
+  # by the object based saved model.
   concrete_functions = []
   for accessible_object in accessible_objects:
     for function in function_serialization.list_all_polymorphic_functions(
