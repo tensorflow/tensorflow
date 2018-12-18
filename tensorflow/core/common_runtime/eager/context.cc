@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
+#include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
+#include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
@@ -360,6 +363,36 @@ Status EagerContext::GetClientAndContextID(Device* device,
   *context_id = context_iterator->second;
 
   device_to_client_cache_.insert({device, {*client, *context_id}});
+
+  return Status::OK();
+}
+
+Status EagerContext::StoreCollectiveOpsServer(
+    std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
+    CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
+  collective_executor_mgr_.reset(nullptr);
+  unowned_collective_executor_mgr_ = rpc_collective_executor_mgr;
+
+  local_device_manager_.reset(nullptr);
+  local_unowned_device_manager_ = device_mgr;
+
+  devices_ = local_unowned_device_manager_->ListDevices();
+  devices_map_.clear();
+
+  InitDeviceMapAndAsync();
+  ClearCaches();
+
+  pflr_.reset(new ProcessFunctionLibraryRuntime(
+      local_unowned_device_manager_, env_, TF_GRAPH_DEF_VERSION, &func_lib_def_,
+      {}, thread_pool_.get()));
+
+  // Memory leak!
+  if (server_ != nullptr) {
+    LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
+                    "Servers don't support clean shutdown.";
+    server_.release();
+  }
+  server_ = std::move(server);
 
   return Status::OK();
 }
