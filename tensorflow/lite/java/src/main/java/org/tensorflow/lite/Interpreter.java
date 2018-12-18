@@ -116,9 +116,26 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Advanced: Set if buffer handle output is allowed.
+     *
+     * <p>When a {@link Delegate} supports hardware acceleration, the interpreter will make the data
+     * of output tensors available in the CPU-allocated tensor buffers by default. If the client can
+     * consume the buffer handle directly (e.g. reading output from OpenGL texture), it can set this
+     * flag to false, avoiding the copy of data to the CPU buffer. The delegate documentation should
+     * indicate whether this is supported and how it can be used.
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options setAllowBufferHandleOutput(boolean allow) {
+      this.allowBufferHandleOutput = allow;
+      return this;
+    }
+
     int numThreads = -1;
-    boolean useNNAPI = false;
-    boolean allowFp16PrecisionForFp32 = false;
+    Boolean useNNAPI;
+    Boolean allowFp16PrecisionForFp32;
+    Boolean allowBufferHandleOutput;
     final List<Delegate> delegates = new ArrayList<>();
   }
 
@@ -347,6 +364,20 @@ public final class Interpreter implements AutoCloseable {
   public void setNumThreads(int numThreads) {
     checkNotClosed();
     wrapper.setNumThreads(numThreads);
+  }
+
+  /**
+   * Advanced: Modifies the graph with the provided {@link Delegate}.
+   *
+   * <p>Note: The typical path for providing delegates is via {@link Options#addDelegate}, at
+   * creation time. This path should only be used when a delegate might require coordinated
+   * interaction between Interpeter creation and delegate application.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public void modifyGraphWithDelegate(Delegate delegate) {
+    checkNotClosed();
+    wrapper.modifyGraphWithDelegate(delegate);
   }
 
   /** Release resources associated with the {@code Interpreter}. */
