@@ -54,7 +54,7 @@ tar xvf "${ROOT}/bazel-bin/${PKG}/generate/${TARGET}_outputs.tar"
 
 # Other than @local_config_tensorrt, the remote config repo is a subpackage of
 # @org_tensorflow and we need to add '-iquote <package_path>' manually.
-buildozer "set strip_include_prefix [package_name()]" //local_config_tensorrt:%cc_library
+buildozer "set strip_include_prefix package_name()" //local_config_tensorrt:%cc_library
 
 # Delete all empty files: configurations leave empty files around when they are
 # unnecessary.
