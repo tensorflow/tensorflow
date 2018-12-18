@@ -128,5 +128,5 @@ pip2 install --upgrade h5py==2.8.0
 pip3 install --upgrade h5py==2.8.0
 
 # Estimator
-pip2 install tensorflow_estimator --no-deps
-pip3 install tensorflow_estimator --no-deps
+pip2 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
+pip3 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
