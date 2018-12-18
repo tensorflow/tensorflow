@@ -518,13 +518,13 @@ FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
 
   // Flatten expressions and add them to the constraint system.
   std::vector<SmallVector<int64_t, 8>> flatExprs;
-  FlatAffineConstraints cst;
-  if (!getFlattenedAffineExprs(set, &flatExprs, &cst)) {
+  FlatAffineConstraints localVarCst;
+  if (!getFlattenedAffineExprs(set, &flatExprs, &localVarCst)) {
     assert(false && "flattening unimplemented for semi-affine integer sets");
     return;
   }
   assert(flatExprs.size() == set.getNumConstraints());
-  for (unsigned l = 0, e = cst.getNumLocalIds(); l < e; l++) {
+  for (unsigned l = 0, e = localVarCst.getNumLocalIds(); l < e; l++) {
     addLocalId(getNumLocalIds());
   }
 
@@ -538,7 +538,7 @@ FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
     }
   }
   // Add the other constraints involving local id's from flattening.
-  append(cst);
+  append(localVarCst);
 }
 
 void FlatAffineConstraints::reset(unsigned numReservedInequalities,
@@ -1282,13 +1282,13 @@ bool FlatAffineConstraints::addBoundsFromForStmt(const ForStmt &forStmt) {
     auto boundMap =
         lower ? forStmt.getLowerBoundMap() : forStmt.getUpperBoundMap();
 
-    FlatAffineConstraints cst;
+    FlatAffineConstraints localVarCst;
     std::vector<SmallVector<int64_t, 8>> flatExprs;
-    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &cst)) {
+    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
       LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
       return false;
     }
-    if (cst.getNumLocalIds() > 0) {
+    if (localVarCst.getNumLocalIds() > 0) {
       LLVM_DEBUG(llvm::dbgs()
                  << "loop bounds with mod/floordiv expr's not yet supported\n");
       return false;

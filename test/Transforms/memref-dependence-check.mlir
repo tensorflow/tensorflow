@@ -111,9 +111,9 @@ mlfunc @store_load_different_symbols(%arg0 : index, %arg1 : index) {
 mlfunc @store_load_diff_element_affine_apply_const() {
   %m = alloc() : memref<100xf32>
   %c1 = constant 1 : index
-  %c7 = constant 7.0 : f32
+  %c8 = constant 8.0 : f32
   %a0 = affine_apply (d0) -> (d0) (%c1)
-  store %c7, %m[%a0] : memref<100xf32>
+  store %c8, %m[%a0] : memref<100xf32>
   // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
   // expected-note@-2 {{dependence from 0 to 1 at depth 1 = false}}
   %a1 = affine_apply (d0) -> (d0 + 1) (%c1)
@@ -562,6 +562,31 @@ mlfunc @war_raw_waw_deps() {
       // expected-note@-5 {{dependence from 1 to 1 at depth 2 = false}}
       // expected-note@-6 {{dependence from 1 to 1 at depth 3 = false}}
     }
+  }
+  return
+}
+
+// -----
+// CHECK-LABEL: mlfunc @mod_deps() {
+mlfunc @mod_deps() {
+  %m = alloc() : memref<100xf32>
+  %c7 = constant 7.0 : f32
+  for %i0 = 0 to 10 {
+    %a0 = affine_apply (d0) -> (d0 mod 2) (%i0)
+    // Results are conservative here since constraint information after
+    // flattening isn't being completely added. Will be done in the next CL.
+    // The third and the fifth dependence below shouldn't have existed.
+    %v0 = load %m[%a0] : memref<100xf32>
+    // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 0 to 1 at depth 1 = [1, 9]}}
+    // expected-note@-4 {{dependence from 0 to 1 at depth 2 = false}}
+    %a1 = affine_apply (d0) -> ( (d0 + 1) mod 2) (%i0)
+    store %c7, %m[%a1] : memref<100xf32>
+    // expected-note@-1 {{dependence from 1 to 0 at depth 1 = [1, 9]}}
+    // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 1 to 1 at depth 1 = [2, 9]}}
+    // expected-note@-4 {{dependence from 1 to 1 at depth 2 = false}}
   }
   return
 }
