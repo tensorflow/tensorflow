@@ -712,6 +712,16 @@ TEST_F(OpLevelCostEstimatorTest, ReluExecutionTime) {
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
+TEST_F(OpLevelCostEstimatorTest, CastExecutionTime) {
+  auto cost = PredictCosts(DescribeUnaryOp("Cast", 1000));
+  EXPECT_EQ(Costs::Duration(800), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(100), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(900), cost.execution_time);
+  EXPECT_EQ(1, cost.num_ops_total);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
 TEST_F(OpLevelCostEstimatorTest, UnknownOrPartialShape) {
   {
     auto cost = PredictCosts(DescribeMatMul(2, 4, 7, 7));
