@@ -44,7 +44,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 # The following string constants are used by Defun approach for unified backend
@@ -55,7 +55,7 @@ _CPU_DEVICE_NAME = 'CPU'
 _GPU_DEVICE_NAME = 'GPU'
 
 
-@tf_export('keras.layers.StackedRNNCells')
+@keras_export('keras.layers.StackedRNNCells')
 class StackedRNNCells(Layer):
   """Wrapper allowing a stack of RNN cells to behave as a single cell.
 
@@ -259,7 +259,7 @@ class StackedRNNCells(Layer):
     return updates + self._updates
 
 
-@tf_export('keras.layers.RNN')
+@keras_export('keras.layers.RNN')
 class RNN(Layer):
   """Base class for recurrent layers.
 
@@ -1000,7 +1000,7 @@ class RNN(Layer):
     return updates + self._updates
 
 
-@tf_export('keras.layers.SimpleRNNCell')
+@keras_export('keras.layers.SimpleRNNCell')
 class SimpleRNNCell(Layer):
   """Cell class for SimpleRNN.
 
@@ -1170,7 +1170,7 @@ class SimpleRNNCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.SimpleRNN')
+@keras_export('keras.layers.SimpleRNN')
 class SimpleRNN(RNN):
   """Fully-connected RNN where the output is to be fed back to input.
 
@@ -1382,7 +1382,7 @@ class SimpleRNN(RNN):
     return cls(**config)
 
 
-@tf_export('keras.layers.GRUCell')
+@keras_export('keras.layers.GRUCell')
 class GRUCell(Layer):
   """Cell class for the GRU layer.
 
@@ -1663,7 +1663,7 @@ class GRUCell(Layer):
     return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
 
 
-@tf_export(v1=['keras.layers.GRU'])
+@keras_export(v1=['keras.layers.GRU'])
 class GRU(RNN):
   """Gated Recurrent Unit - Cho et al. 2014.
 
@@ -1922,7 +1922,7 @@ class GRU(RNN):
     return cls(**config)
 
 
-@tf_export('keras.layers.GRU', v1=[])
+@keras_export('keras.layers.GRU', v1=[])
 class UnifiedGRU(GRU):
   """Gated Recurrent Unit - Cho et al. 2014.
 
@@ -2307,7 +2307,7 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, time_major):
       'cudnn', dtype=dtypes.string, name='runtime')
 
 
-@tf_export('keras.layers.LSTMCell')
+@keras_export('keras.layers.LSTMCell')
 class LSTMCell(Layer):
   """Cell class for the LSTM layer.
 
@@ -2587,7 +2587,7 @@ class LSTMCell(Layer):
         self, inputs, batch_size, dtype))
 
 
-@tf_export('keras.experimental.PeepholeLSTMCell')
+@keras_export('keras.experimental.PeepholeLSTMCell')
 class PeepholeLSTMCell(LSTMCell):
   """Equivalent to LSTMCell class but adds peephole connections.
 
@@ -2667,7 +2667,7 @@ class PeepholeLSTMCell(LSTMCell):
     return c, o
 
 
-@tf_export(v1=['keras.layers.LSTM'])
+@keras_export(v1=['keras.layers.LSTM'])
 class LSTM(RNN):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
@@ -2926,7 +2926,7 @@ class LSTM(RNN):
     return cls(**config)
 
 
-@tf_export('keras.layers.LSTM', v1=[])
+@keras_export('keras.layers.LSTM', v1=[])
 class UnifiedLSTM(LSTM):
   """Long Short-Term Memory layer - Hochreiter 1997.
 

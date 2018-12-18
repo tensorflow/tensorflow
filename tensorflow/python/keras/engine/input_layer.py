@@ -23,10 +23,10 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.InputLayer')
+@keras_export('keras.layers.InputLayer')
 class InputLayer(base_layer.Layer):
   """Layer to be used as an entry point into a Network (a graph of layers).
 
@@ -140,7 +140,7 @@ class InputLayer(base_layer.Layer):
     return config
 
 
-@tf_export('keras.layers.Input', 'keras.Input')
+@keras_export('keras.layers.Input', 'keras.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,

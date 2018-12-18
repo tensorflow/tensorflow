@@ -31,7 +31,7 @@ from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -47,7 +47,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-@tf_export('keras.models.save_model')
+@keras_export('keras.models.save_model')
 def save_model(model, filepath, overwrite=True, include_optimizer=True):
   """Saves a model to a HDF5 file.
 
@@ -161,7 +161,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
       f.close()
 
 
-@tf_export('keras.models.load_model')
+@keras_export('keras.models.load_model')
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model`.
 
@@ -300,7 +300,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
   return model
 
 
-@tf_export('keras.models.model_from_config')
+@keras_export('keras.models.model_from_config')
 def model_from_config(config, custom_objects=None):
   """Instantiates a Keras model from its config.
 
@@ -324,7 +324,7 @@ def model_from_config(config, custom_objects=None):
   return deserialize(config, custom_objects=custom_objects)
 
 
-@tf_export('keras.models.model_from_yaml')
+@keras_export('keras.models.model_from_yaml')
 def model_from_yaml(yaml_string, custom_objects=None):
   """Parses a yaml model configuration file and returns a model instance.
 
@@ -347,7 +347,7 @@ def model_from_yaml(yaml_string, custom_objects=None):
   return deserialize(config, custom_objects=custom_objects)
 
 
-@tf_export('keras.models.model_from_json')
+@keras_export('keras.models.model_from_json')
 def model_from_json(json_string, custom_objects=None):
   """Parses a JSON model configuration file and returns a model instance.
 

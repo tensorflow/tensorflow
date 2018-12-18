@@ -44,10 +44,10 @@ from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.experimental.export')
+@keras_export('keras.experimental.export')
 def export(
     model, saved_model_path, custom_objects=None, as_text=None,
     input_signature=None, serving_only=False):
@@ -367,7 +367,7 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
   return True
 
 
-@tf_export('keras.experimental.load_from_saved_model')
+@keras_export('keras.experimental.load_from_saved_model')
 def load_from_saved_model(saved_model_path):
   """Loads a keras.Model from a SavedModel created by keras export().
 

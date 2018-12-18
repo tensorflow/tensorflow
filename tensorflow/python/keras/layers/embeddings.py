@@ -28,10 +28,10 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.Embedding')
+@keras_export('keras.layers.Embedding')
 class Embedding(Layer):
   """Turns positive integers (indexes) into dense vectors of fixed size.
 

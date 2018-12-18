@@ -34,10 +34,10 @@ from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.models.Sequential', 'keras.Sequential')
+@keras_export('keras.models.Sequential', 'keras.Sequential')
 class Sequential(Model):
   """Linear stack of layers.
 

@@ -32,12 +32,12 @@ import six
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
 
 
-@tf_export('keras.utils.CustomObjectScope')
+@keras_export('keras.utils.CustomObjectScope')
 class CustomObjectScope(object):
   """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
 
@@ -73,7 +73,7 @@ class CustomObjectScope(object):
     _GLOBAL_CUSTOM_OBJECTS.update(self.backup)
 
 
-@tf_export('keras.utils.custom_object_scope')
+@keras_export('keras.utils.custom_object_scope')
 def custom_object_scope(*args):
   """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
 
@@ -104,7 +104,7 @@ def custom_object_scope(*args):
   return CustomObjectScope(*args)
 
 
-@tf_export('keras.utils.get_custom_objects')
+@keras_export('keras.utils.get_custom_objects')
 def get_custom_objects():
   """Retrieves a live reference to the global dictionary of custom objects.
 
@@ -130,7 +130,7 @@ def serialize_keras_class_and_config(cls_name, cls_config):
   return {'class_name': cls_name, 'config': cls_config}
 
 
-@tf_export('keras.utils.serialize_keras_object')
+@keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
@@ -167,7 +167,7 @@ def class_and_config_for_serialized_keras_object(
   return (cls, config['config'])
 
 
-@tf_export('keras.utils.deserialize_keras_object')
+@keras_export('keras.utils.deserialize_keras_object')
 def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
@@ -306,7 +306,7 @@ def has_arg(fn, name, accept_all=False):
   return name in arg_spec.args
 
 
-@tf_export('keras.utils.Progbar')
+@keras_export('keras.utils.Progbar')
 class Progbar(object):
   """Displays a progress bar.
 

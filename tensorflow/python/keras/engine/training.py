@@ -50,10 +50,10 @@ from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.models.Model', 'keras.Model')
+@keras_export('keras.models.Model', 'keras.Model')
 class Model(Network):
   """`Model` groups layers into an object with training and inference features.
 

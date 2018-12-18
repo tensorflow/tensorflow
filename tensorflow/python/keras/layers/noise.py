@@ -25,10 +25,10 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.GaussianNoise')
+@keras_export('keras.layers.GaussianNoise')
 class GaussianNoise(Layer):
   """Apply additive zero-centered Gaussian noise.
 
@@ -74,7 +74,7 @@ class GaussianNoise(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.GaussianDropout')
+@keras_export('keras.layers.GaussianDropout')
 class GaussianDropout(Layer):
   """Apply multiplicative 1-centered Gaussian noise.
 
@@ -121,7 +121,7 @@ class GaussianDropout(Layer):
     return input_shape
 
 
-@tf_export('keras.layers.AlphaDropout')
+@keras_export('keras.layers.AlphaDropout')
 class AlphaDropout(Layer):
   """Applies Alpha Dropout to the input.
 
