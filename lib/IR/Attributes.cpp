@@ -159,13 +159,10 @@ ArrayRef<char> DenseElementsAttr::getRawData() const {
   return static_cast<ImplType *>(attr)->data;
 }
 
-DenseIntElementsAttr::DenseIntElementsAttr(Attribute::ImplType *ptr)
-    : DenseElementsAttr(ptr) {}
-
 /// Writes the lowest `bitWidth` bits of `value` to bit position `bitPos`
 /// starting from `rawData`.
-void DenseIntElementsAttr::writeBits(char *data, size_t bitPos, size_t bitWidth,
-                                     uint64_t value) {
+void DenseElementsAttr::writeBits(char *data, size_t bitPos, size_t bitWidth,
+                                  uint64_t value) {
   // Read the destination bytes which will be written to.
   uint64_t dst = 0;
   auto dstData = reinterpret_cast<char *>(&dst);
@@ -189,8 +186,8 @@ void DenseIntElementsAttr::writeBits(char *data, size_t bitPos, size_t bitWidth,
 
 /// Reads the next `bitWidth` bits from the bit position `bitPos` of `rawData`
 /// and put them in the lowest bits.
-uint64_t DenseIntElementsAttr::readBits(const char *rawData, size_t bitPos,
-                                        size_t bitsWidth) {
+uint64_t DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
+                                     size_t bitsWidth) {
   uint64_t dst = 0;
   auto dstData = reinterpret_cast<char *>(&dst);
   auto endPos = bitPos + bitsWidth;
@@ -202,6 +199,9 @@ uint64_t DenseIntElementsAttr::readBits(const char *rawData, size_t bitPos,
   dst &= ~(-1UL << bitsWidth);
   return dst;
 }
+
+DenseIntElementsAttr::DenseIntElementsAttr(Attribute::ImplType *ptr)
+    : DenseElementsAttr(ptr) {}
 
 void DenseIntElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   auto bitsWidth = static_cast<ImplType *>(attr)->bitsWidth;
@@ -230,14 +230,38 @@ void DenseIntElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
 DenseFPElementsAttr::DenseFPElementsAttr(Attribute::ImplType *ptr)
     : DenseElementsAttr(ptr) {}
 
+// Construct a FloatAttr wrapping a float value of `elementType` type from its
+// bit representation.  The APFloat stored in the attribute will have the
+// semantics defined by the float semantics of the element type.
+static inline FloatAttr makeFloatAttrFromBits(size_t bitWidth, uint64_t bits,
+                                              FloatType elementType) {
+  auto apint = APInt(bitWidth, bits);
+  auto apfloat = APFloat(elementType.getFloatSemantics(), apint);
+  return FloatAttr::get(elementType, apfloat);
+}
+
 void DenseFPElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   auto elementNum = getType().getNumElements();
-  ArrayRef<double> vs({reinterpret_cast<const double *>(getRawData().data()),
-                       getRawData().size() / 8});
+  auto elementType = getType().getElementType().dyn_cast<FloatType>();
+  assert(elementType && "non-float type in FP attribute");
+  // FIXME: using 64 bits for BF16 because it is currently stored with double
+  // semantics.
+  size_t bitWidth =
+      elementType.isBF16() ? 64 : elementType.getIntOrFloatBitWidth();
+
   values.reserve(elementNum);
-  for (auto v : vs) {
-    auto attr = FloatAttr::get(getType().getElementType(), v);
-    values.push_back(attr);
+  if (bitWidth == 64) {
+    ArrayRef<int64_t> vs(
+        {reinterpret_cast<const int64_t *>(getRawData().data()),
+         getRawData().size() / 8});
+    for (auto bitValue : vs) {
+      values.push_back(makeFloatAttrFromBits(64, bitValue, elementType));
+    }
+    return;
+  }
+  for (unsigned i = 0; i < elementNum; ++i) {
+    uint64_t bits = readBits(getRawData().data(), i * bitWidth, bitWidth);
+    values.push_back(makeFloatAttrFromBits(bitWidth, bits, elementType));
   }
 }
 

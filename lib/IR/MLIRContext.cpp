@@ -1178,42 +1178,23 @@ IntegerAttr IntegerAttr::get(Type type, int64_t value) {
   return get(type, APInt(intType.getWidth(), value));
 }
 
-/// Returns the floating semantics for the given type.
-static const fltSemantics &getFloatSemantics(Type type) {
-  if (type.isBF16())
-    // Treat BF16 like a double. This is unfortunate but BF16 fltSemantics is
-    // not defined in LLVM.
-    // TODO(jpienaar): add BF16 to LLVM? fltSemantics are internal to APFloat.cc
-    // else one could add it.
-    //  static const fltSemantics semBF16 = {127, -126, 8, 16};
-    return APFloat::IEEEdouble();
-  if (type.isF16())
-    // Treat F16 as double. This avoids needing to change the tensor element
-    // parsing for now. TODO: Fix this to use the correct semantics instead.
-    return APFloat::IEEEdouble();
-  if (type.isF32())
-    return APFloat::IEEEsingle();
-  if (type.isF64())
-    return APFloat::IEEEdouble();
-  llvm_unreachable("non-floating point type used");
-}
-
 FloatAttr FloatAttr::get(Type type, double value) {
   Optional<APFloat> val;
-  if (type.isBF16() || type.isF16())
-    // Treat BF16 and F16 as double. This avoids needing to change the tensor
-    // element parsing for now. TODO: Fix this to use the correct semantics
-    // instead.
+  if (type.isBF16())
+    // Treat BF16 as double because it is not supported in LLVM's APFloat.
+    // TODO(jpienaar): add BF16 support to APFloat?
     val = APFloat(value);
   else if (type.isF32())
     val = APFloat(static_cast<float>(value));
   else if (type.isF64())
     val = APFloat(value);
   else {
+    // This handles, e.g., F16 because there is no APFloat constructor for it.
     bool unused;
     val = APFloat(value);
-    auto status =
-        (*val).convert(getFloatSemantics(type), APFloat::rmTowardZero, &unused);
+    auto fltType = type.cast<FloatType>();
+    auto status = (*val).convert(fltType.getFloatSemantics(),
+                                 APFloat::rmTowardZero, &unused);
     if (status != APFloat::opOK) {
       auto context = type.getContext();
       context->emitError(
@@ -1226,8 +1207,10 @@ FloatAttr FloatAttr::get(Type type, double value) {
 }
 
 FloatAttr FloatAttr::get(Type type, const APFloat &value) {
-  assert(&getFloatSemantics(type) == &value.getSemantics() &&
+  auto fltType = type.cast<FloatType>();
+  assert(&fltType.getFloatSemantics() == &value.getSemantics() &&
          "FloatAttr type doesn't match the type implied by its value");
+  (void)fltType;
   auto &impl = type.getContext()->getImpl();
 
   // Look to see if the float attribute has been created already.

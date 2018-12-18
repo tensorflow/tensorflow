@@ -22,6 +22,10 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
 
+namespace llvm {
+class fltSemantics;
+} // namespace llvm
+
 namespace mlir {
 class AffineMap;
 class FloatType;
@@ -254,6 +258,9 @@ public:
 
   /// Return the bitwidth of this float type.
   unsigned getWidth() const;
+
+  /// Return the floating semantics of this float type.
+  const llvm::fltSemantics &getFloatSemantics() const;
 };
 
 inline FloatType Type::getBF16(MLIRContext *ctx) {

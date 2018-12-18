@@ -649,11 +649,9 @@ private:
 
   void addToStorage(uint64_t value) {
     // Only tensors of integers or floats are supported.
-    // TODO: we currently use 64 bit for all floating point constants for legacy
-    // reasoins.  For f16 and f32, this is fixable by bitcasting APFloat value
-    // to APInt, but APFloat does not support bf16 semantics.
-    auto eltIntTy = eltTy.dyn_cast<IntegerType>();
-    size_t bitWidth = eltIntTy ? eltIntTy.getWidth() : 64;
+    // FIXME: use full word to store BF16 as double because APFloat, which we
+    // use to work with floats, does not have support for BF16 yet.
+    size_t bitWidth = eltTy.isBF16() ? 64 : eltTy.getIntOrFloatBitWidth();
 
     if (bitWidth == 64)
       storage.push_back(value);
@@ -662,7 +660,7 @@ private:
       storage.push_back(0L);
 
     auto *rawData = reinterpret_cast<char *>(storage.data());
-    DenseIntElementsAttr::writeBits(rawData, currBitPos, bitWidth, value);
+    DenseElementsAttr::writeBits(rawData, currBitPos, bitWidth, value);
     currBitPos += bitWidth;
   }
 
@@ -689,22 +687,24 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
       return ParseResult::ParseFailure;
     // check result matches the element type.
     switch (eltTy.getKind()) {
-    case Type::Kind::F32: {
-      if (!result.isa<FloatAttr>())
-        return p.emitError(
-            "expected tensor literal element has floating point type");
-      double value = result.cast<FloatAttr>().getValue().convertToFloat();
-      addToStorage(*(uint64_t *)(&value));
-      break;
-    }
     case Type::Kind::BF16:
     case Type::Kind::F16:
+    case Type::Kind::F32:
     case Type::Kind::F64: {
-      if (!result.isa<FloatAttr>())
+      // Bitcast the APFloat value to APInt and store the bit representation.
+      auto fpAttrResult = result.dyn_cast<FloatAttr>();
+      if (!fpAttrResult)
         return p.emitError(
-            "expected tensor literal element has floating point type");
-      double value = result.cast<FloatAttr>().getDouble();
-      addToStorage(*(uint64_t *)(&value));
+            "expected tensor literal element with floating point type");
+      auto apInt = fpAttrResult.getValue().bitcastToAPInt();
+
+      // FIXME: using 64 bits and double semantics for BF16 because APFloat does
+      // not support BF16 directly.
+      size_t bitWidth = eltTy.isBF16() ? 64 : eltTy.getIntOrFloatBitWidth();
+      assert(apInt.getBitWidth() == bitWidth);
+      (void)bitWidth;
+
+      addToStorage(apInt.getRawData()[0]);
       break;
     }
     case Type::Kind::Integer: {

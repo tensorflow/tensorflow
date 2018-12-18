@@ -369,6 +369,16 @@ public:
 
   ArrayRef<char> getRawData() const;
 
+  /// Writes the lowest `bitWidth` bits of `value` to the bit position `bitPos`
+  /// in array `rawData`.
+  static void writeBits(char *rawData, size_t bitPos, size_t bitWidth,
+                        uint64_t value);
+
+  /// Reads the next `bitWidth` bits from the bit position `bitPos` in array
+  /// `rawData` and return them as the lowest bits of an uint64 integer.
+  static uint64_t readBits(const char *rawData, size_t bitPos,
+                           size_t bitsWidth);
+
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) {
     return kind == Kind::DenseIntElements || kind == Kind::DenseFPElements;
@@ -388,16 +398,6 @@ public:
   void getValues(SmallVectorImpl<Attribute> &values) const;
 
   APInt getValue(ArrayRef<unsigned> indices) const;
-
-  /// Writes the lowest `bitWidth` bits of `value` to the bit position `bitPos`
-  /// in array `rawData`.
-  static void writeBits(char *rawData, size_t bitPos, size_t bitWidth,
-                        uint64_t value);
-
-  /// Reads the next `bitWidth` bits from the bit position `bitPos` in array
-  /// `rawData` and return them as the lowest bits of an uint64 integer.
-  static uint64_t readBits(const char *rawData, size_t bitPos,
-                           size_t bitsWidth);
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::DenseIntElements; }
