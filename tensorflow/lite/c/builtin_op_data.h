@@ -207,13 +207,18 @@ typedef struct {
 } TfLiteUnidirectionalSequenceLSTMParams;
 
 typedef struct {
-  // Parameters for the LSTM kernel.
+  // Parameters supported by version 1:
+  // Parameters inherited for the LSTM kernel.
   TfLiteFusedActivation activation;
   float cell_clip;
   float proj_clip;
 
   // If true, store the outputs of both directions in the first output.
   bool merge_outputs;
+
+  // Parameters supported by version 2:
+  // If set to true then the first dimension is time, otherwise batch.
+  bool time_major;
 } TfLiteBidirectionalSequenceLSTMParams;
 
 typedef struct {
