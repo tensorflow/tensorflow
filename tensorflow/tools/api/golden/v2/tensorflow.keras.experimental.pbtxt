@@ -4,4 +4,12 @@ tf_module {
     name: "PeepholeLSTMCell"
     mtype: "<type \'type\'>"
   }
+  member_method {
+    name: "export"
+    argspec: "args=[\'model\', \'saved_model_path\', \'custom_objects\', \'as_text\', \'input_signature\', \'serving_only\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "load_from_saved_model"
+    argspec: "args=[\'saved_model_path\'], varargs=None, keywords=None, defaults=None"
+  }
 }

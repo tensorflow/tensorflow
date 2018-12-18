@@ -31,8 +31,6 @@ from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.util.tf_export import tf_export
 
 # API entries importable from `keras.models`:
@@ -308,6 +306,10 @@ def _in_place_subclassed_model_reset(model):
     if isinstance(value, Layer):
       attributes_cache[name] = value
       assert value in model._layers
+      if hasattr(value, '_layers') and value._layers:
+        raise ValueError('We do not support the use of nested layers '
+                         'in `model_to_estimator` at this time. Found nested '
+                         'layer: %s' % value)
     elif isinstance(
         value,
         (list, tuple)) and name not in ('layers', '_layers', 'metrics',
@@ -322,7 +324,9 @@ def _in_place_subclassed_model_reset(model):
   # Replace layers on the model with fresh layers
   layers_to_names = {value: key for key, value in attributes_cache.items()}
   original_layers = model._layers[:]
-  model._layers = data_structures.NoDependency([])
+  setattr_tracking = model._setattr_tracking
+  model._setattr_tracking = False
+  model._layers = []
   for layer in original_layers:  # We preserve layer order.
     config = layer.get_config()
     # This will not work for nested subclassed models used as layers.
@@ -335,6 +339,7 @@ def _in_place_subclassed_model_reset(model):
     fresh_layer = layer.__class__.from_config(config)
     name = layers_to_names[layer]
     setattr(model, name, fresh_layer)
+    model._layers.append(fresh_layer)
 
   # Cache original model build attributes (in addition to layers)
   if (not hasattr(model, '_original_attributes_cache') or
@@ -367,12 +372,12 @@ def _in_place_subclassed_model_reset(model):
       ]
       for name in attributes_to_cache:
         attributes_cache[name] = getattr(model, name)
-  model._original_attributes_cache = data_structures.NoDependency(
-      attributes_cache)
+  model._original_attributes_cache = attributes_cache
   # Reset built state
   model.built = False
   model.inputs = None
   model.outputs = None
+  model._setattr_tracking = setattr_tracking
 
 
 def in_place_subclassed_model_state_restoration(model):
@@ -393,15 +398,15 @@ def in_place_subclassed_model_state_restoration(model):
     # back the previous attributes and track Layers by their original names
     # without adding dependencies on "utility" attributes which Models exempt
     # when they're constructed.
-    model._layers = data_structures.NoDependency([])
+    setattr_tracking = model._setattr_tracking
+    model._setattr_tracking = False
+    model._layers = []
     for name, value in model._original_attributes_cache.items():
-      if not isinstance(value, checkpointable.CheckpointableBase):
-        # If this value is not already checkpointable, it's probably that way
-        # for a reason; we don't want to start tracking data structures that the
-        # original Model didn't.
-        value = data_structures.NoDependency(value)
       setattr(model, name, value)
+      if isinstance(value, Layer):
+        model._layers.append(value)
     model._original_attributes_cache = None
+    model._setattr_tracking = setattr_tracking
   else:
     # Restore to the state of a never-called model.
     model.built = False

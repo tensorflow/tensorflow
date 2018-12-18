@@ -20,13 +20,13 @@ from __future__ import print_function as _print_function
 
 import os as _os
 
+# API IMPORTS PLACEHOLDER
+
 # pylint: disable=g-bad-import-order
 from tensorflow.python.tools import component_api_helper as _component_api_helper
 _component_api_helper.package_hook(
     parent_package_str=__name__,
     child_package_str=('tensorflow_estimator.python.estimator.api.estimator'))
-
-# API IMPORTS PLACEHOLDER
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.

@@ -176,12 +176,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_view",
-        ":grappler_item",
+        ":op_types",
         ":utils",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -191,7 +193,9 @@ tf_cc_test(
     deps = [
         ":grappler_item",
         ":mutable_graph_view",
+        ":utils",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:graph",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

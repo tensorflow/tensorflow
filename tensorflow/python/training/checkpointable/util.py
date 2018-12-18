@@ -39,7 +39,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import optimizer as optimizer_lib
+from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training import saver as v1_saver_lib
 from tensorflow.python.training.checkpointable import base
 from tensorflow.python.training.checkpointable import data_structures
@@ -560,7 +560,9 @@ def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
   non_slot_objects = list(checkpointable_objects)
   slot_variables = _ObjectIdentityDictionary()
   for checkpointable in non_slot_objects:
-    if isinstance(checkpointable, optimizer_lib.Optimizer):
+    if (isinstance(checkpointable, optimizer_v1.Optimizer)
+        # TODO(b/110718070): Fix Keras imports.
+        or hasattr(checkpointable, "_create_or_restore_slot_variable")):
       naming_scheme = _slot_variable_naming_for_optimizer(
           optimizer_path=object_names[checkpointable])
       slot_names = checkpointable.get_slot_names()
@@ -570,7 +572,7 @@ def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
           try:
             slot_variable = checkpointable.get_slot(
                 original_variable, slot_name)
-          except AttributeError:
+          except (AttributeError, KeyError):
             slot_variable = None
           if slot_variable is None:
             continue
@@ -1863,7 +1865,7 @@ class Checkpoint(tracking.Checkpointable):
       checkpoint_number = assign_op.numpy()
     file_path = self.write("%s-%d" % (file_prefix, checkpoint_number),
                            session=session)
-    checkpoint_management.update_checkpoint_state(
+    checkpoint_management.update_checkpoint_state_internal(
         save_dir=os.path.dirname(file_prefix),
         model_checkpoint_path=file_path,
         all_model_checkpoint_paths=[file_path])

@@ -2069,6 +2069,8 @@ class KerasTPUModel(models.Model):
       # tpu_model may not be compiled, e.g., loading weights and then predict.
       return
     for k, v in six.iteritems(cpu_optimizer_config):
+      if k == 'name':
+        continue
       opt_var = getattr(self._tpu_model.optimizer, k)
       if isinstance(opt_var, variables.Variable):
         logging.info('CPU -> TPU %s: %s {%s}', k, v, K.get_value(opt_var))
@@ -2097,6 +2099,8 @@ class KerasTPUModel(models.Model):
     self._cpu_model.set_weights(tpu_weights)
     for k, v in six.iteritems(tpu_optimizer_config):
       logging.info('TPU -> CPU %s: %s', k, v)
+      if k == 'name':
+        continue
       opt_var = getattr(self.cpu_optimizer, k)
       if isinstance(opt_var, variables.Variable):
         K.get_session().run(opt_var.assign(v))

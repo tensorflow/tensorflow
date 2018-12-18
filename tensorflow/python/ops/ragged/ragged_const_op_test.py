@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.constant."""
+"""Tests for ragged_factory_ops.constant."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,6 +23,8 @@ from absl.testing import parameterized
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -157,7 +159,7 @@ class RaggedConstOpTest(ragged_test_util.RaggedTensorTestCase,
       expected_dtype: The expected dtype for the resulting ragged tensor (used
         to test default/inferred types when dtype=None).
     """
-    rt = ragged.constant(
+    rt = ragged_factory_ops.constant(
         pylist, dtype=dtype, ragged_rank=ragged_rank, inner_shape=inner_shape)
 
     # If dtype was explicitly specified, check it.
@@ -168,14 +170,14 @@ class RaggedConstOpTest(ragged_test_util.RaggedTensorTestCase,
 
     # If ragged_rank was explicitly specified, check it.
     if ragged_rank is not None:
-      if isinstance(rt, ragged.RaggedTensor):
+      if isinstance(rt, ragged_tensor.RaggedTensor):
         self.assertEqual(rt.ragged_rank, ragged_rank)
       else:
         self.assertEqual(0, ragged_rank)
 
     # If inner_shape was explicitly specified, check it.
     if inner_shape is not None:
-      if isinstance(rt, ragged.RaggedTensor):
+      if isinstance(rt, ragged_tensor.RaggedTensor):
         self.assertEqual(rt.flat_values.shape.as_list()[1:], list(inner_shape))
       else:
         self.assertEqual(rt.shape.as_list(), list(inner_shape))
@@ -257,7 +259,7 @@ class RaggedConstOpTest(ragged_test_util.RaggedTensorTestCase,
     self.assertRaisesRegexp(
         exception,
         message,
-        ragged.constant,
+        ragged_factory_ops.constant,
         pylist,
         dtype=dtype,
         ragged_rank=ragged_rank,
@@ -294,12 +296,12 @@ class RaggedConstOpTest(ragged_test_util.RaggedTensorTestCase,
                                   message=None):
     """Tests for the _find_scalar_and_max_depth helper function."""
     if exception is not None:
-      self.assertRaisesRegexp(
-          exception, message,
-          ragged.ragged_factory_ops._find_scalar_and_max_depth, pylist)
+      self.assertRaisesRegexp(exception, message,
+                              ragged_factory_ops._find_scalar_and_max_depth,
+                              pylist)
     else:
       self.assertEqual(
-          ragged.ragged_factory_ops._find_scalar_and_max_depth(pylist),
+          ragged_factory_ops._find_scalar_and_max_depth(pylist),
           (scalar_depth, max_depth))
 
   @parameterized.parameters([

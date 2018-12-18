@@ -17,7 +17,8 @@ limitations under the License.
 static void PrintArray(FILE* fp, const char* name, const int16_t* values,
                        size_t size) {
   fprintf(fp, "static int16_t filterbank_%s[] = {", name);
-  for (int i = 0; i < size; ++i) {
+  int i;
+  for (i = 0; i < size; ++i) {
     fprintf(fp, "%d", values[i]);
     if (i < size - 1) {
       fprintf(fp, ", ");

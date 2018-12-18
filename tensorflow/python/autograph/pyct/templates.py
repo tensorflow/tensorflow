@@ -184,6 +184,9 @@ class ReplaceTransformer(gast.NodeTransformer):
 
     new_nodes = self._prepare_replacement(node, node.id)
 
+    if not new_nodes:
+      return new_nodes
+
     # Preserve the target context.
     adjuster = ContextAdjuster(type(node.ctx))
     for n in new_nodes:

@@ -58,8 +58,8 @@ def gather(params, indices, validate_indices=None, axis=0, name=None):
   ```python
   >>> params = tf.constant(['a', 'b', 'c', 'd', 'e'])
   >>> indices = tf.constant([3, 1, 2, 1, 0])
-  >>> ragged_params = ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
-  >>> ragged_indices = ragged.constant([[3, 1, 2], [1], [], [0]])
+  >>> ragged_params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
+  >>> ragged_indices = tf.ragged.constant([[3, 1, 2], [1], [], [0]])
 
   >>> print ragged.gather(params, ragged_indices)
   [['d', 'b', 'c'], ['b'], [], ['a']]
@@ -149,8 +149,8 @@ def batch_gather(params, indices, name=None):
 
   #### Example:
     ```python
-    >>> params = ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
-    >>> indices = ragged.constant([[1, 2, 0], [], [], [0, 0]])
+    >>> params = tf.ragged.constant([['a', 'b', 'c'], ['d'], [], ['e']])
+    >>> indices = tf.ragged.constant([[1, 2, 0], [], [], [0, 0]])
     >>> ragged.batch_gather(params, indices)
     [['b', 'c', 'a'], [], [], ['e', 'e']]
     ```
@@ -573,8 +573,8 @@ def concat(values, axis, name=None):
 
   #### Example:
     ```python
-    >>> t1 = ragged.constant([[1, 2], [3, 4, 5]])
-    >>> t2 = ragged.constant([[6], [7, 8, 9]])
+    >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
+    >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
     >>> ragged.concat([t1, t2], axis=0)
     [[1, 2], [3, 4, 5], [6], [7, 8, 9]]
     >>> ragged.concat([t1, t2], axis=1)
@@ -587,7 +587,7 @@ def concat(values, axis, name=None):
     return _ragged_stack_concat_helper(values, axis, stack_values=False)
 
 
-def stack(values, axis, name=None):
+def stack(values, axis=0, name=None):
   """Stacks potentially ragged tensors along one dimension.
 
   Given a list of tensors with the same rank `K` (`K >= axis`), returns a
@@ -614,8 +614,8 @@ def stack(values, axis, name=None):
 
   #### Example:
     ```python
-    >>> t1 = ragged.constant([[1, 2], [3, 4, 5]])
-    >>> t2 = ragged.constant([[6], [7, 8, 9]])
+    >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
+    >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
     >>> ragged.stack([t1, t2], axis=0)
     [[[1, 2], [3, 4, 5]], [[6], [7, 9, 0]]]
     >>> ragged.stack([t1, t2], axis=1)
@@ -819,7 +819,7 @@ def tile(input, multiples, name=None):  # pylint: disable=redefined-builtin
 
   #### Example:
     ```python
-    >>> rt = ragged.constant([[1, 2], [3]])
+    >>> rt = tf.ragged.constant([[1, 2], [3]])
     >>> ragged.tile(rt, [3, 2])
     [[1, 2, 1, 2], [3, 3], [1, 2, 1, 2], [3, 3], [1, 2, 1, 2], [3, 3]]
     ```
@@ -862,7 +862,7 @@ def _tile_ragged_values(rt_input, multiples, const_multiples=None):
 
   #### Example:
     ```python
-    >>> rt = ragged.constant([[1, 2], [3]])
+    >>> rt = tf.ragged.constant([[1, 2], [3]])
     >>> _tile_ragged_values(rt, [3, 2])
     [1, 2, 1, 2, 3, 3, 1, 2, 1, 2, 3, 3, 1, 2, 1, 2, 3, 3]
     ```
@@ -921,7 +921,7 @@ def _tile_ragged_splits(rt_input, multiples, const_multiples=None):
 
   #### Example:
     ```python
-    >>> rt = ragged.constant([[1, 2], [3]])
+    >>> rt = tf.ragged.constant([[1, 2], [3]])
     >>> _tile_ragged_splits(rt, [3, 2])
     [0, 4, 6, 10, 12, 16, 18]
     ```
@@ -1018,7 +1018,7 @@ def expand_dims(input, axis, name=None):  # pylint: disable=redefined-builtin
 
   #### Examples:
     ```python
-    >>> rt = ragged.constant([[1, 2], [3]])
+    >>> rt = tf.ragged.constant([[1, 2], [3]])
     >>> print rt.shape
     TensorShape([2, None])
 
@@ -1109,21 +1109,23 @@ def where(condition, x=None, y=None, name=None):
   #### Examples:
     ```python
     >>> # Coordinates where condition is true.
-    >>> condition = ragged.constant_value([[True, False, True], [False, True]])
+    >>> condition = tf.ragged.constant_value(
+    ...     [[True, False, True], [False, True]])
     >>> ragged.where(condition)
     [[0, 0], [0, 2], [1, 1]]
 
     >>> # Elementwise selection between x and y, based on condition.
-    >>> condition = ragged.constant_value([[True, False, True], [False, True]])
-    >>> x=ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
-    >>> y=ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
+    >>> condition = tf.ragged.constant_value(
+    ...     [[True, False, True], [False, True]])
+    >>> x = tf.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
+    >>> y = tf.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
     >>> ragged.where(condition, x, y)
     [['A', 'b', 'C'], ['d', 'E']]
 
     >>> # Row selection between x and y, based on condition.
     >>> condition = [True, False]
-    >>> x=ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
-    >>> y=ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
+    >>> x = tf.ragged.constant_value([['A', 'B', 'C'], ['D', 'E']])
+    >>> y = tf.ragged.constant_value([['a', 'b', 'c'], ['d', 'e']])
     >>> ragged.where(condition, x, y)
     [['A', 'B', 'C'], ['d', 'e']]
     ```
@@ -1220,4 +1222,3 @@ def _nrows(rt_input, out_type=dtypes.int64, name=None):
   else:
     with ops.name_scope(name, 'RaggedNRows', [rt_input]):
       return array_ops.shape(rt_input, out_type=out_type)[0]
-

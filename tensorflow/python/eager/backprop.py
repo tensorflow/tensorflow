@@ -1104,8 +1104,13 @@ class GradientTape(object):
         dimension of `target` and `source` do not match.
     """
     target_shape = target.shape
-    if not target_shape.with_rank_at_least(2)[0].is_compatible_with(
-        source.shape.with_rank_at_least(2)[0]):
+    if target_shape.rank is None:
+      dim = Dimension(None)
+    else:
+      dim = target_shape.dims[0]
+    if not (target_shape.with_rank_at_least(2) and
+            source.shape.with_rank_at_least(2) and
+            dim.is_compatible_with(source.shape[0])):
       raise ValueError(
           "Need first dimension of target shape (%s) and "
           "source shape (%s) to match." % (target.shape, source.shape))

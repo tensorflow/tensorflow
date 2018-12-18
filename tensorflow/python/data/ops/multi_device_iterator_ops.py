@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
@@ -197,9 +196,7 @@ class MultiDeviceIterator(object):
       # non-CPU devices.
       options = dataset_ops.Options()
       options.experimental_autotune = False
-      opt_options = optimization_options.OptimizationOptions()
-      opt_options.apply_default_optimizations = False
-      options.experimental_optimization = opt_options
+      options.experimental_optimization.apply_default_optimizations = False
       ds = ds.with_options(options)
       with ops.device(device):
         self._device_iterators.append(ds.make_initializable_iterator())

@@ -114,6 +114,15 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
       result.insert(NodeName(queue_runner.cancel_op_name()));
     }
   }
+
+  if (!allowed_optimizations_.prune_ops_with_side_effects) {
+    for (const NodeDef& node : graph.node()) {
+      if (!IsFreeOfSideEffect(node)) {
+        result.insert(node.name());
+      }
+    }
+  }
+
   return result;
 }
 

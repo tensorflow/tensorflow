@@ -75,6 +75,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_run"
+    argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "finalize"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

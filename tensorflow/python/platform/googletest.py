@@ -112,6 +112,9 @@ def GetTempDir():
                               os.path.basename(tf_inspect.getfile(first_frame)))
       temp_dir = tempfile.mkdtemp(prefix=temp_dir.rstrip('.py'))
 
+    # Make sure we have the correct path separators.
+    temp_dir = temp_dir.replace('/', os.sep)
+
     def delete_temp_dir(dirname=temp_dir):
       try:
         file_io.delete_recursively(dirname)
@@ -119,6 +122,7 @@ def GetTempDir():
         logging.error('Error removing %s: %s', dirname, e)
 
     atexit.register(delete_temp_dir)
+
     _googletest_temp_dir = temp_dir
 
   return _googletest_temp_dir

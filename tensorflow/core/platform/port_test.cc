@@ -33,6 +33,14 @@ TEST(Port, AlignedMalloc) {
   }
 }
 
+TEST(Port, GetCurrentCPU) {
+  const int cpu = GetCurrentCPU();
+  // TODO(b/120919972): Re-enable this EXPECT_GE after fixing MacOS Kokoro
+  // failures.
+  // EXPECT_GE(cpu, 0);
+  EXPECT_LT(cpu, NumTotalCPUs());
+}
+
 TEST(ConditionVariable, WaitForMilliseconds_Timeout) {
   mutex m;
   mutex_lock l(m);

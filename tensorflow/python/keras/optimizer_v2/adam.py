@@ -24,8 +24,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.optimizers.Adam', v1=[])
 class Adam(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adam algorithm.
 
@@ -127,12 +129,12 @@ class Adam(optimizer_v2.OptimizerV2):
     """
 
     super(Adam, self).__init__(name, **kwargs)
-    self._set_hyper('learning_rate', learning_rate)
+    self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._set_hyper('beta_1', beta_1)
     self._set_hyper('beta_2', beta_2)
     self._set_hyper('epsilon', epsilon)
-    self._amsgrad = amsgrad
+    self.amsgrad = amsgrad
 
   def _create_slots(self, var_list):
     # Create slots for the first and second moments.
@@ -141,7 +143,7 @@ class Adam(optimizer_v2.OptimizerV2):
       self.add_slot(var, 'm')
     for var in var_list:
       self.add_slot(var, 'v')
-    if self._amsgrad:
+    if self.amsgrad:
       for var in var_list:
         self.add_slot(var, 'vhat')
 
@@ -166,7 +168,7 @@ class Adam(optimizer_v2.OptimizerV2):
     local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     beta_2_power = math_ops.pow(beta_2_t, local_step)
-    if not self._amsgrad:
+    if not self.amsgrad:
       return training_ops.resource_apply_adam(
           var.handle,
           m.handle,
@@ -220,7 +222,7 @@ class Adam(optimizer_v2.OptimizerV2):
     with ops.control_dependencies([v_t]):
       v_t = self._resource_scatter_add(v, indices, v_scaled_g_values)
 
-    if not self._amsgrad:
+    if not self.amsgrad:
       v_sqrt = math_ops.sqrt(v_t)
       var_update = state_ops.assign_sub(
           var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
@@ -251,6 +253,6 @@ class Adam(optimizer_v2.OptimizerV2):
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
         'epsilon': self._serialize_hyperparameter('epsilon'),
-        'amsgrad': self._amsgrad,
+        'amsgrad': self.amsgrad,
     })
     return config

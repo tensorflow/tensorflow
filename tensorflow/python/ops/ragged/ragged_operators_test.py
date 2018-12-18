@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -28,16 +28,16 @@ from tensorflow.python.platform import googletest
 class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase):
 
   def testOrderingOperators(self):
-    x = ragged.constant([[1, 5], [3]])
-    y = ragged.constant([[4, 5], [1]])
+    x = ragged_factory_ops.constant([[1, 5], [3]])
+    y = ragged_factory_ops.constant([[4, 5], [1]])
     self.assertRaggedEqual((x > y), [[False, False], [True]])
     self.assertRaggedEqual((x >= y), [[False, True], [True]])
     self.assertRaggedEqual((x < y), [[True, False], [False]])
     self.assertRaggedEqual((x <= y), [[True, True], [False]])
 
   def testArithmeticOperators(self):
-    x = ragged.constant([[1.0, -2.0], [8.0]])
-    y = ragged.constant([[4.0, 4.0], [2.0]])
+    x = ragged_factory_ops.constant([[1.0, -2.0], [8.0]])
+    y = ragged_factory_ops.constant([[4.0, 4.0], [2.0]])
     self.assertRaggedEqual(abs(x), [[1.0, 2.0], [8.0]])
 
     self.assertRaggedEqual((-x), [[-1.0, 2.0], [-8.0]])
@@ -70,8 +70,8 @@ class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase):
     self.assertRaggedEqual((x % 2.0), [[1.0, 0.0], [0.0]])
 
   def testLogicalOperators(self):
-    a = ragged.constant([[True, True], [False]])
-    b = ragged.constant([[True, False], [False]])
+    a = ragged_factory_ops.constant([[True, True], [False]])
+    b = ragged_factory_ops.constant([[True, False], [False]])
     self.assertRaggedEqual((~a), [[False, False], [True]])
 
     self.assertRaggedEqual((a & b), [[True, False], [False]])
@@ -87,7 +87,7 @@ class RaggedElementwiseOpsTest(ragged_test_util.RaggedTensorTestCase):
     self.assertRaggedEqual((True ^ b), [[False, True], [True]])
 
   def testDummyOperators(self):
-    a = ragged.constant([[True, True], [False]])
+    a = ragged_factory_ops.constant([[True, True], [False]])
     with self.assertRaisesRegexp(TypeError,
                                  'RaggedTensor may not be used as a boolean.'):
       bool(a)

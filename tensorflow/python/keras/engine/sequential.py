@@ -121,8 +121,8 @@ class Sequential(Model):
     return layers[:]
 
   @property
-  def _static_graph_friendly(self):
-    return all(layer._static_graph_friendly for layer in self.layers)
+  def dynamic(self):
+    return any(layer.dynamic for layer in self.layers)
 
   @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
@@ -253,7 +253,12 @@ class Sequential(Model):
           with ops.name_scope(layer._name_scope()):
             layer._maybe_build(x)
           layer.built = True
-        x = layer.call(x, **kwargs)
+        if context.executing_eagerly():
+          x = layer(x, **kwargs)
+        elif layer.dynamic:
+          x = layer._symbolic_call(x)
+        else:
+          x = layer.call(x, **kwargs)
         if layer.supports_masking:
           mask = layer.compute_mask(x, mask)
         else:

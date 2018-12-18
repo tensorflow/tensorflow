@@ -1964,6 +1964,40 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_MklLeakyRelu")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("alpha: float = 0.2")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of LeakyRelu operator. Uses MKL DNN APIs to implement
+LeakyRelu operator.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklLeakyReluGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("alpha: float = 0.2")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of LeakyReluGrad operator. Uses MKL DNN APIs to compute rectified
+linear gradients for LeakyReluGrad operation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklElu")
     .Input("features: T")
     .Input("mkl_features: uint8")
