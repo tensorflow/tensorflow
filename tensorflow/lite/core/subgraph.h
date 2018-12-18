@@ -393,6 +393,10 @@ class Subgraph {
   // Allow a delegate to look at the graph and modify the graph to handle
   // parts of the graph themselves. After this is called, the graph may
   // contain new nodes that replace 1 more nodes.
+  // NOTE: If tensors were allocated prior to delegate application, they will
+  // be reallocated if the graph was modified (i.e., the caller does *not* need
+  // to explicitly call |AllocateTensors()| again). If tensors were unallocated,
+  // they will remain unallocated after delegate application.
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
