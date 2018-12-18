@@ -70,22 +70,30 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "xla_test",
     srcs = ["xla_test.py"],
     additional_deps = [
         ":xla",
-        "@six_archive//:six",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/contrib/tpu:tpu_estimator",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    xla_enabled = True,
 )
