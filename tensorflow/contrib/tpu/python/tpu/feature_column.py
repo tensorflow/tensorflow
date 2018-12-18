@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import math
 
 from tensorflow.contrib.tpu.python.tpu import tpu
@@ -278,10 +279,11 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     if tpu.under_tpu_inference_context():
-      def host_computation():
+      # TODO(shizhiw, b/112012627, b/112336539): Replace _outside_all_rewrites()
+      # with outside compilation.
+      with _outside_all_rewrites():
         return fc._EmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._EmbeddingColumn._get_dense_tensor(
@@ -296,6 +298,13 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
                                     'embedding_weights')
 
     return tensor
+
+
+@contextlib.contextmanager
+def _outside_all_rewrites():
+  """'Break out' of a tpu.rewrite() (or shard(), etc.)."""
+  with ops.control_dependencies(None):
+    yield
 
 
 class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
@@ -376,10 +385,11 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
 
   def _get_dense_tensor(self, inputs, weight_collections=None, trainable=None):
     if tpu.under_tpu_inference_context():
-      def host_computation():
+      # TODO(shizhiw, b/112012627, b/112336539): Replace _outside_all_rewrites()
+      # with outside compilation.
+      with _outside_all_rewrites():
         return fc._SharedEmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._SharedEmbeddingColumn._get_dense_tensor(
