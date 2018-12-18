@@ -35,9 +35,9 @@ extern "C" {
 // `TF_RegisterKernelBuilder`, which will allow TF to construct user-provided
 // kernels when necessary.
 
-struct TF_KernelBuilder;
-struct TF_OpKernelConstruction;
-struct TF_OpKernelContext;
+typedef struct TF_KernelBuilder TF_KernelBuilder;
+typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
+typedef struct TF_OpKernelContext TF_OpKernelContext;
 
 // Allocates a new kernel builder and returns a pointer to it.
 //
