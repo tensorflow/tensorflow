@@ -189,14 +189,12 @@ tf_cuda_library(
             ":c_api",
             ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
-            "//tensorflow/core:platform_env",
             "//tensorflow/core:lib",
         ],
         "//conditions:default": [
             ":c_api",
             ":tf_status_helper",
             "//tensorflow/core:framework",
-            "//tensorflow/core:platform_env",
             "//tensorflow/core:lib",
         ],
     }) + [":c_api_internal"],
@@ -247,6 +245,18 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core:test",
+    ],
+)
+
+tf_cc_test(
+    name = "c_test",
+    srcs = ["c_test.c"],
+    extra_copts = ["-std=c11"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":env",
+        ":kernels",
     ],
 )
 
