@@ -44,6 +44,8 @@ py_library(
         "momentum.py",
         "optimizer_v2.py",
         "rmsprop.py",
+        "irprop_plus.py",
+        "rprop_minus.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -192,6 +194,44 @@ cuda_py_test(
     name = "rmsprop_test",
     size = "small",
     srcs = ["rmsprop_test.py"],
+    additional_deps = [
+        ":training",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+    tags = ["optonly"],
+)
+
+cuda_py_test(
+    name = "irprop_plus_test",
+    size = "small",
+    srcs = ["irprop_plus_test.py"],
+    additional_deps = [
+        ":training",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+    tags = ["optonly"],
+)
+
+cuda_py_test(
+    name = "rprop_minus_test",
+    size = "small",
+    srcs = ["rprop_minus_test.py"],
     additional_deps = [
         ":training",
         "@absl_py//absl/testing:parameterized",

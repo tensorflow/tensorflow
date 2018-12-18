@@ -26,6 +26,8 @@ from tensorflow.contrib.optimizer_v2.gradient_descent import GradientDescentOpti
 from tensorflow.contrib.optimizer_v2.momentum import MomentumOptimizer
 from tensorflow.contrib.optimizer_v2.optimizer_v2 import OptimizerV2
 from tensorflow.contrib.optimizer_v2.rmsprop import RMSPropOptimizer
+from tensorflow.contrib.optimizer_v2.irprop_plus import IRpropPlusOptimizer
+from tensorflow.contrib.optimizer_v2.rprop_minus import RpropMinusOptimizer
 
 from tensorflow.python.util.all_util import remove_undocumented
 
@@ -37,6 +39,8 @@ _allowed_symbols = [
     'MomentumOptimizer',
     'OptimizerV2',
     'RMSPropOptimizer',
+    'IRpropPlusOptimizer',
+    'RpropMinusOptimizer',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)
