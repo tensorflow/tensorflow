@@ -194,6 +194,8 @@ class CallbackList(object):
 
   def _call_batch_hook(self, mode, hook, batch, logs=None):
     """Helper function for all batch_{begin | end} methods."""
+    if not self.callbacks:
+      return
     hook_name = 'on_{mode}_batch_{hook}'.format(mode=mode, hook=hook)
     if hook == 'begin':
       self._t_enter_batch = time.time()
