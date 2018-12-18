@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -78,6 +79,21 @@ class WrapFunctionTest(test.TestCase):
 
     f_wrapped = wrap_function.wrap_function(f, [])
     self.assertAllEqual(1.0, f_wrapped())
+
+  def testCaptures(self):
+
+    v1 = variables.Variable(2.)
+
+    def f():
+      v2 = variables.Variable(3.)
+      return array_ops.identity(v1 * v2 * constant_op.constant(1.), 'fetch')
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    self.assertAllEqual(6.0, f_wrapped())
+    pruned = f_wrapped.prune(
+        feeds=(),
+        fetches=f_wrapped.graph.get_tensor_by_name('fetch:0'))
+    self.assertAllEqual(6.0, pruned())
 
 
 if __name__ == '__main__':
