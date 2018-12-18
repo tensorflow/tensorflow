@@ -291,6 +291,15 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   xla::XlaOp while_result = xla::While(cond_wrapper, *body.computation, init);
 
+  auto while_shape_or = builder->GetShape(while_result);
+  OP_REQUIRES_OK(ctx, while_shape_or.status());
+  auto count = xla::ShapeUtil::TupleElementCount(while_shape_or.ValueOrDie());
+  int max_index = body.outputs.size() + body.resource_updates.size() - 1;
+  OP_REQUIRES(
+      ctx, max_index < count,
+      errors::Internal("Max tuple element requested (", max_index,
+                       ") needs to be less than tuple size (", count, ")"));
+
   // Sets non-variable outputs.
   for (int i = 0; i < ctx->num_outputs(); ++i) {
     if (ctx->input_type(i) != DT_RESOURCE) {
