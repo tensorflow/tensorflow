@@ -410,7 +410,7 @@ def _map_resources(accessible_objects):
   """
   # TODO(allenl): Handle MirroredVariables and other types of variables which
   # may need special casing.
-  object_map = {}
+  object_map = util.ObjectIdentityDictionary()
   resource_map = {}
   asset_info = _AssetInfo(
       asset_defs=[],
