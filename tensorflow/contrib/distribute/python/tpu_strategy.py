@@ -521,6 +521,11 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       # be represented using a PerReplica wrapper instead of a list with
       # one entry per device.
       return tuple(val)
+    elif isinstance(val, values.TPUMirroredVariable):
+      # pylint: disable=protected-access
+      if values._enclosing_tpu_context() is not None:
+        return (val,)
+      return tuple(val._get(device=d) for d in sorted(val._index.keys()))
     return (val,)
 
   def value_container(self, value):
