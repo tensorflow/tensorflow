@@ -304,7 +304,7 @@ def main():
     new_version = Version(old_version.major,
                           str(nightly_minor_ver),
                           old_version.patch,
-                          "a-dev" + time.strftime("%Y%m%d"),  # TODO(annarev): remove 'a'
+                          "-dev" + time.strftime("%Y%m%d"),
                           NIGHTLY_VERSION)
   else:
     new_version = Version.parse_from_string(args.version, REGULAR_VERSION)
