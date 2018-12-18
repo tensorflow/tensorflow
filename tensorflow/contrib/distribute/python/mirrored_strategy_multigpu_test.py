@@ -1123,7 +1123,7 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       # When we read the value using `read_var` we should see the SUM of each of
       # values on each of the replicas.
       self.assertEqual(2.0, self.evaluate(
-          distribution.read_var(replica_local_var)))
+          distribution.extended.read_var(replica_local_var)))
       # Assigning 6.0 in cross replica context will assign a value of
       # 6.0/num_replicas to each replica.
       tlv_ops = replica_local_var.assign(6.0)
@@ -1132,7 +1132,7 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       # The value on all the replicas are added before being returned by
       # `read_var`.
       self.assertEqual(6.0, self.evaluate(
-          distribution.read_var(replica_local_var)))
+          distribution.extended.read_var(replica_local_var)))
 
   def testAssignReplicaLocalVarMeanAggregation(self, distribution):
     def model_fn():
@@ -1151,13 +1151,13 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       # When we read the value using `read_var` we should see the MEAN of values
       # on all replicas which is the value assigned in replica context.
       self.assertEqual(1.0, self.evaluate(
-          distribution.read_var(replica_local_var)))
+          distribution.extended.read_var(replica_local_var)))
       tlv_ops = replica_local_var.assign(6.0)
       self.evaluate(tlv_ops)
       # On reading the replica local var we should get the MEAN of all values
       # which is equal to the value assigned.
       self.assertEqual(6.0, self.evaluate(
-          distribution.read_var(replica_local_var)))
+          distribution.extended.read_var(replica_local_var)))
 
 
 class MockModel(object):

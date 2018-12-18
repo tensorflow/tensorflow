@@ -112,7 +112,7 @@ class DistributionTestBase(test.TestCase):
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.read_var(v)
+          fetched = d.extended.read_var(v)
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
@@ -120,7 +120,7 @@ class DistributionTestBase(test.TestCase):
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
-              after_list.append(d.read_var(v))
+              after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
       for i in range(10):
@@ -168,14 +168,14 @@ class DistributionTestBase(test.TestCase):
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.read_var(v)
+          fetched = d.extended.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
-              after_list.append(d.read_var(v))
+              after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
       before_out, after_out = step()
