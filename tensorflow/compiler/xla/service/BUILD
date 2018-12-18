@@ -1700,9 +1700,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "convolution_feature_group_converter",
-    srcs = ["convolution_feature_group_converter.cc"],
-    hdrs = ["convolution_feature_group_converter.h"],
+    name = "convolution_group_converter",
+    srcs = ["convolution_group_converter.cc"],
+    hdrs = ["convolution_group_converter.h"],
     deps = [
         ":hlo",
         ":hlo_pass",
@@ -1724,7 +1724,7 @@ tf_cc_test(
     size = "small",
     srcs = ["convolution_feature_group_converter_test.cc"],
     deps = [
-        ":convolution_feature_group_converter",
+        ":convolution_group_converter",
         ":hlo",
         ":hlo_matchers",
         ":hlo_parser",

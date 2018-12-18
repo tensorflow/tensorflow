@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_FEATURE_GROUP_CONVERTER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_FEATURE_GROUP_CONVERTER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_GROUP_CONVERTER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_GROUP_CONVERTER_H_
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -25,18 +25,29 @@ namespace xla {
 
 // A pass which rewrites convolutions with feature_group_count > 1 into
 // convolutions with feature_group_count = 1.
-class ConvolutionFeatureGroupConverter : public HloModulePass {
+class ConvolutionGroupConverter : public HloModulePass {
  public:
-  ConvolutionFeatureGroupConverter(bool canonicalize_depthwise_filter = false)
-      : filter_expansion_(canonicalize_depthwise_filter) {}
+  ConvolutionGroupConverter(std::function<bool(HloInstruction*)> is_cost_viable,
+                            bool convert_batch_groups_only,
+                            bool canonicalize_depthwise_filter = false)
+      : is_cost_viable_(is_cost_viable),
+        convert_batch_groups_only_(convert_batch_groups_only),
+        filter_expansion_(canonicalize_depthwise_filter) {}
 
   absl::string_view name() const override {
-    return "convolution-feature-group-converter";
+    return "convolution-group-converter";
   }
 
   // Run convolution rewriting on the given computation. Returns whether the
   // computation was changed.
   StatusOr<bool> Run(HloModule* module) override;
+
+  // Lambda containing cost model that decides whether to expand
+  // batch_group_count.
+  std::function<bool(HloInstruction*)> is_cost_viable_;
+
+  // Decides whether to convert batch groups or feature groups.
+  bool convert_batch_groups_only_;
 
   // Tells whether filter expansion is required.
   bool filter_expansion_;
@@ -44,4 +55,4 @@ class ConvolutionFeatureGroupConverter : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_FEATURE_GROUP_CONVERTER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CONVOLUTION_GROUP_CONVERTER_H_

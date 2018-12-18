@@ -933,7 +933,7 @@ class HloConvolutionInstruction : public HloInstruction {
  public:
   explicit HloConvolutionInstruction(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      int64 feature_group_count, const Window& window,
+      int64 feature_group_count, int64 batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
   const Window& window() const override { return window_; }
@@ -948,6 +948,10 @@ class HloConvolutionInstruction : public HloInstruction {
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count() const { return feature_group_count_; }
+
+  // The number of feature groups. Must be a divisor of the input batch
+  // dimension.
+  int64 batch_group_count() const { return batch_group_count_; }
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -977,6 +981,9 @@ class HloConvolutionInstruction : public HloInstruction {
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count_;
+  // The number of feature groups. Must be a divisor of the input batch
+  // dimension.
+  int64 batch_group_count_;
   // Describes the window used for a convolution.
   Window window_;
   // Describes the dimension numbers used for a convolution.
@@ -1099,7 +1106,11 @@ class HloCustomCallInstruction : public HloInstruction {
   void set_feature_group_count(int64 feature_group_count) {
     feature_group_count_ = feature_group_count;
   }
+  void set_batch_group_count(int64 batch_group_count) {
+    batch_group_count_ = batch_group_count;
+  }
   int64 feature_group_count() const { return feature_group_count_; }
+  int64 batch_group_count() const { return batch_group_count_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1134,6 +1145,7 @@ class HloCustomCallInstruction : public HloInstruction {
   std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
   // The number of feature groups. This is used for grouped convolutions.
   int64 feature_group_count_;
+  int64 batch_group_count_;
   // Whether the result and operand layouts are constrained.
   bool layout_constrained_;
   // For layout-constrained custom calls, this vector holds the shape with

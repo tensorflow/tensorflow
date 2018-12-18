@@ -426,7 +426,7 @@ class HloInstruction {
   // and window describes how the filter is applied to lhs.
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      int64 feature_group_count, const Window& window,
+      int64 feature_group_count, int64 batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 
@@ -1494,6 +1494,11 @@ class HloInstruction {
   int64 feature_group_count() const;
 
   void set_feature_group_count(int64 feature_group_count);
+
+  // The number of batch groups. Must be a divisor of the input batch dimension
+  int64 batch_group_count() const;
+
+  void set_batch_group_count(int64 batch_group_count);
 
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;

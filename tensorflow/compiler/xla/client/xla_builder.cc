@@ -959,27 +959,29 @@ Status XlaBuilder::VerifyConvolution(
 
 XlaOp XlaBuilder::Conv(const XlaOp& lhs, const XlaOp& rhs,
                        absl::Span<const int64> window_strides, Padding padding,
-                       int64 feature_group_count,
+                       int64 feature_group_count, int64 batch_group_count,
                        const PrecisionConfig* precision_config) {
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
       CreateDefaultConvDimensionNumbers(window_strides.size()),
-      feature_group_count, precision_config);
+      feature_group_count, batch_group_count, precision_config);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralPadding(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding,
-    int64 feature_group_count, const PrecisionConfig* precision_config) {
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config) {
   return ConvGeneral(lhs, rhs, window_strides, padding,
                      CreateDefaultConvDimensionNumbers(window_strides.size()),
-                     feature_group_count, precision_config);
+                     feature_group_count, batch_group_count, precision_config);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count, const PrecisionConfig* precision_config) {
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
     TF_ASSIGN_OR_RETURN(const Shape& rhs_shape, GetShape(rhs));
@@ -1007,7 +1009,7 @@ XlaOp XlaBuilder::ConvWithGeneralDimensions(
                        MakePadding(base_area_dimensions, window_dimensions,
                                    window_strides, padding),
                        dimension_numbers, feature_group_count,
-                       precision_config);
+                       batch_group_count, precision_config);
   });
 }
 
@@ -1015,10 +1017,11 @@ XlaOp XlaBuilder::ConvGeneral(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count, const PrecisionConfig* precision_config) {
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config) {
   return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
                             dimension_numbers, feature_group_count,
-                            precision_config);
+                            batch_group_count, precision_config);
 }
 
 XlaOp XlaBuilder::ConvGeneralDilated(
@@ -1026,7 +1029,8 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     absl::Span<const std::pair<int64, int64>> padding,
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count, const PrecisionConfig* precision_config) {
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -1045,14 +1049,15 @@ XlaOp XlaBuilder::ConvGeneralDilated(
                         MakeWindow(window_dimensions, window_strides, padding,
                                    lhs_dilation, rhs_dilation));
 
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferConvolveShape(
-                            lhs_shape, rhs_shape, feature_group_count,
-                            instr.window(), dimension_numbers));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape, ShapeInference::InferConvolveShape(
+                         lhs_shape, rhs_shape, feature_group_count,
+                         batch_group_count, instr.window(), dimension_numbers));
     *instr.mutable_shape() = shape.ToProto();
 
     *instr.mutable_convolution_dimension_numbers() = dimension_numbers;
     instr.set_feature_group_count(feature_group_count);
+    instr.set_batch_group_count(batch_group_count);
 
     if (precision_config != nullptr) {
       *instr.mutable_precision_config() = *precision_config;
@@ -2786,38 +2791,42 @@ XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
 
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
            absl::Span<const int64> window_strides, Padding padding,
-           int64 feature_group_count, const PrecisionConfig* precision_config) {
+           int64 feature_group_count, int64 batch_group_count,
+           const PrecisionConfig* precision_config) {
   return lhs.builder()->Conv(lhs, rhs, window_strides, padding,
-                             feature_group_count, precision_config);
+                             feature_group_count, batch_group_count,
+                             precision_config);
 }
 
 XlaOp ConvWithGeneralPadding(const XlaOp& lhs, const XlaOp& rhs,
                              absl::Span<const int64> window_strides,
                              absl::Span<const std::pair<int64, int64>> padding,
-                             int64 feature_group_count,
+                             int64 feature_group_count, int64 batch_group_count,
                              const PrecisionConfig* precision_config) {
   return lhs.builder()->ConvWithGeneralPadding(
-      lhs, rhs, window_strides, padding, feature_group_count, precision_config);
+      lhs, rhs, window_strides, padding, feature_group_count, batch_group_count,
+      precision_config);
 }
 
 XlaOp ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count, const PrecisionConfig* precision_config) {
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config) {
   return lhs.builder()->ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding, dimension_numbers, feature_group_count,
-      precision_config);
+      batch_group_count, precision_config);
 }
 
 XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                   absl::Span<const int64> window_strides,
                   absl::Span<const std::pair<int64, int64>> padding,
                   const ConvolutionDimensionNumbers& dimension_numbers,
-                  int64 feature_group_count,
+                  int64 feature_group_count, int64 batch_group_count,
                   const PrecisionConfig* precision_config) {
   return lhs.builder()->ConvGeneral(lhs, rhs, window_strides, padding,
                                     dimension_numbers, feature_group_count,
-                                    precision_config);
+                                    batch_group_count, precision_config);
 }
 
 XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
@@ -2826,11 +2835,12 @@ XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
                          absl::Span<const int64> lhs_dilation,
                          absl::Span<const int64> rhs_dilation,
                          const ConvolutionDimensionNumbers& dimension_numbers,
-                         int64 feature_group_count,
+                         int64 feature_group_count, int64 batch_group_count,
                          const PrecisionConfig* precision_config) {
   return lhs.builder()->ConvGeneralDilated(
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
-      dimension_numbers, feature_group_count, precision_config);
+      dimension_numbers, feature_group_count, batch_group_count,
+      precision_config);
 }
 
 XlaOp Fft(const XlaOp& operand, FftType fft_type,

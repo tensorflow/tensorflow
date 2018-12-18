@@ -1011,10 +1011,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK_EQ(num_spatial_dims + 2, lhs_rank);
     CHECK_EQ(num_spatial_dims + 2, rhs_rank);
 
-    TF_ASSIGN_OR_RETURN(
-        auto inferred_return_shape,
-        ShapeInference::InferConvolveShape(
-            lhs_shape, rhs_shape, conv->feature_group_count(), window, dnums));
+    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
+                        ShapeInference::InferConvolveShape(
+                            lhs_shape, rhs_shape, conv->feature_group_count(),
+                            conv->batch_group_count(), window, dnums));
     CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
@@ -1038,7 +1038,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto rhs_literal_data = rhs_literal.data<ReturnT>();
 
     int64 feature_group_count = conv->feature_group_count();
+    int64 batch_group_count = conv->batch_group_count();
 
+    // The batch count > 1 case is unimplemented in the HLO evaluator so far.
+    TF_RET_CHECK(batch_group_count == 1);
     auto func = [&window_shape, &dnums, &lhs_shape, &rhs_shape, &window,
                  &lhs_dim_multipliers, &rhs_dim_multipliers, lhs_literal_data,
                  rhs_literal_data,

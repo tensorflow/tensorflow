@@ -1273,7 +1273,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   // Create add computation.
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m->AddEntryComputation(builder.Build());
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -2971,11 +2971,11 @@ TEST_P(ConvInputPaddingTest, DoTest) {
           .ValueOrDie();
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(lhs_pad->shape(), filter->shape(),
-                                         /*feature_group_count=*/1, window,
-                                         dnums)
+                                         /*feature_group_count=*/1,
+                                         /*batch_group_count=*/1, window, dnums)
           .ValueOrDie(),
-      lhs_pad, filter, /*feature_group_count=*/1, window, dnums,
-      DefaultPrecisionConfig(2)));
+      lhs_pad, filter, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
@@ -3088,11 +3088,11 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
-                                         /*feature_group_count=*/1, window,
-                                         dnums)
+                                         /*feature_group_count=*/1,
+                                         /*batch_group_count=*/1, window, dnums)
           .ValueOrDie(),
-      input, rhs_pad, /*feature_group_count=*/1, window, dnums,
-      precision_config));
+      input, rhs_pad, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      window, dnums, precision_config));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -3240,7 +3240,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
 
     b.AddInstruction(HloInstruction::CreateConvolve(
         out_shape, input, filter,
-        /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+        /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+        DefaultPrecisionConfig(2)));
 
     // TODO(b/80488902): verify this module.
     auto module = CreateNewUnverifiedModule();

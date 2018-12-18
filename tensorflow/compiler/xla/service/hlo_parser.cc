@@ -1007,11 +1007,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
+      optional<int64> batch_group_count;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                       &feature_group_count};
+      attrs["batch_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                    &batch_group_count};
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
@@ -1025,6 +1028,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!feature_group_count) {
         feature_group_count = 1;
       }
+      if (!batch_group_count) {
+        batch_group_count = 1;
+      }
       PrecisionConfig precision_config;
       if (operand_precision) {
         *precision_config.mutable_operand_precision() = {
@@ -1035,7 +1041,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
           shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
-          feature_group_count.value(), *window, *dnums, precision_config));
+          feature_group_count.value(), batch_group_count.value(), *window,
+          *dnums, precision_config));
       break;
     }
     case HloOpcode::kFft: {
