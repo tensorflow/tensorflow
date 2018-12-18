@@ -24,10 +24,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.optimizers.Adam', v1=[])
+@keras_export('keras.optimizers.Adam', v1=[])
 class Adam(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adam algorithm.
 

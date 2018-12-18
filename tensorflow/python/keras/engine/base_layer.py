@@ -51,11 +51,11 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
-@tf_export('keras.layers.Layer')
+@keras_export('keras.layers.Layer')
 class Layer(checkpointable.CheckpointableBase):
   """Base layer class.
 

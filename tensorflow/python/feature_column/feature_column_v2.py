@@ -165,6 +165,7 @@ from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -303,7 +304,7 @@ class _StateManagerImpl(StateManager):
     raise ValueError('Variable does not exist.')
 
 
-@tf_export('keras.layers.DenseFeatures', v1=[])
+@keras_export('keras.layers.DenseFeatures', v1=[])
 class DenseFeatures(Layer):
   """A layer that produces a dense `Tensor` based on given `feature_columns`.
 
@@ -518,7 +519,7 @@ class _LinearModelLayer(Layer):
       return predictions
 
 
-@tf_export('keras.layers.LinearModel', v1=[])
+@keras_export('keras.layers.LinearModel', v1=[])
 class LinearModel(training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 

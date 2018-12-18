@@ -49,7 +49,6 @@ from tensorflow.python.util.deprecation import  deprecated_arg_values
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("keras.initializers.Initializer")
 class Initializer(object):
   """Initializer base class: all initializers inherit from this class.
   """
@@ -96,8 +95,7 @@ class Initializer(object):
     return cls(**config)
 
 
-@tf_export("keras.initializers.Zeros", "initializers.zeros",
-           "zeros_initializer", "keras.initializers.zeros")
+@tf_export("initializers.zeros", "zeros_initializer")
 class Zeros(Initializer):
   """Initializer that generates tensors initialized to 0."""
 
@@ -113,8 +111,7 @@ class Zeros(Initializer):
     return {"dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.Ones", "initializers.ones", "ones_initializer",
-           "keras.initializers.ones")
+@tf_export("initializers.ones", "ones_initializer")
 class Ones(Initializer):
   """Initializer that generates tensors initialized to 1."""
 
@@ -130,8 +127,7 @@ class Ones(Initializer):
     return {"dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.Constant", "initializers.constant",
-           "constant_initializer", "keras.initializers.constant")
+@tf_export("initializers.constant", "constant_initializer")
 class Constant(Initializer):
   """Initializer that generates tensors with constant values.
 
@@ -422,10 +418,9 @@ class UniformUnitScaling(Initializer):
 
 
 @tf_export(
-    "keras.initializers.VarianceScaling",
     "initializers.variance_scaling",
     v1=[
-        "keras.initializers.VarianceScaling", "initializers.variance_scaling",
+        "initializers.variance_scaling",
         "variance_scaling_initializer"
     ])
 @deprecation.deprecated_endpoints("variance_scaling_initializer")
@@ -522,12 +517,10 @@ class VarianceScaling(Initializer):
 
 
 @tf_export(
-    "keras.initializers.Orthogonal",
     "initializers.orthogonal",
-    "keras.initializers.orthogonal",
     v1=[
-        "keras.initializers.Orthogonal", "initializers.orthogonal",
-        "orthogonal_initializer", "keras.initializers.orthogonal"
+        "initializers.orthogonal",
+        "orthogonal_initializer",
     ])
 @deprecation.deprecated_endpoints("orthogonal_initializer")
 class Orthogonal(Initializer):
@@ -1144,8 +1137,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
     return self._dict_to_tensor(p, ksize, ksize, ksize)
 
 
-@tf_export("keras.initializers.Identity", "initializers.identity",
-           "keras.initializers.identity")
+@tf_export("initializers.identity")
 class Identity(Initializer):
   """Initializer that generates the identity matrix.
 
@@ -1178,8 +1170,7 @@ class Identity(Initializer):
     return {"gain": self.gain, "dtype": self.dtype.name}
 
 
-@tf_export("glorot_uniform_initializer", "keras.initializers.glorot_uniform",
-           "initializers.glorot_uniform")
+@tf_export("glorot_uniform_initializer", "initializers.glorot_uniform")
 class GlorotUniform(VarianceScaling):
   """The Glorot uniform initializer, also called Xavier uniform initializer.
 
@@ -1213,10 +1204,9 @@ class GlorotUniform(VarianceScaling):
 
 
 @tf_export(
-    "keras.initializers.glorot_normal",
     "initializers.glorot_normal",
     v1=[
-        "glorot_normal_initializer", "keras.initializers.glorot_normal",
+        "glorot_normal_initializer",
         "initializers.glorot_normal"
     ])
 @deprecation.deprecated_endpoints("glorot_normal_initializer")
@@ -1273,7 +1263,7 @@ convolutional_orthogonal_3d = ConvolutionOrthogonal3D
 # pylint: enable=invalid-name
 
 
-@tf_export("keras.initializers.lecun_normal", "initializers.lecun_normal")
+@tf_export("initializers.lecun_normal")
 def lecun_normal(seed=None):
   """LeCun normal initializer.
 
@@ -1298,7 +1288,7 @@ def lecun_normal(seed=None):
       scale=1., mode="fan_in", distribution="truncated_normal", seed=seed)
 
 
-@tf_export("keras.initializers.lecun_uniform", "initializers.lecun_uniform")
+@tf_export("initializers.lecun_uniform")
 def lecun_uniform(seed=None):
   """LeCun uniform initializer.
 
@@ -1323,7 +1313,7 @@ def lecun_uniform(seed=None):
       scale=1., mode="fan_in", distribution="uniform", seed=seed)
 
 
-@tf_export("keras.initializers.he_normal", "initializers.he_normal")
+@tf_export("initializers.he_normal")
 def he_normal(seed=None):
   """He normal initializer.
 
@@ -1345,7 +1335,7 @@ def he_normal(seed=None):
       scale=2., mode="fan_in", distribution="truncated_normal", seed=seed)
 
 
-@tf_export("keras.initializers.he_uniform", "initializers.he_uniform")
+@tf_export("initializers.he_uniform")
 def he_uniform(seed=None):
   """He uniform variance scaling initializer.
 

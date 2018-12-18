@@ -81,6 +81,7 @@ py_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/estimator:__subpackages__",
+        "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",

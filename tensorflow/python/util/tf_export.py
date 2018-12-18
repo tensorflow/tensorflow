@@ -48,6 +48,7 @@ import sys
 from tensorflow.python.util import tf_decorator
 
 ESTIMATOR_API_NAME = 'estimator'
+KERAS_API_NAME = 'keras'
 TENSORFLOW_API_NAME = 'tensorflow'
 
 # List of subpackage names used by TensorFlow components. Have to check that
@@ -64,7 +65,10 @@ API_ATTRS = {
         '_tf_api_constants'),
     ESTIMATOR_API_NAME: _Attributes(
         '_estimator_api_names',
-        '_estimator_api_constants')
+        '_estimator_api_constants'),
+    KERAS_API_NAME: _Attributes(
+        '_keras_api_names',
+        '_keras_api_constants')
 }
 
 API_ATTRS_V1 = {
@@ -73,7 +77,10 @@ API_ATTRS_V1 = {
         '_tf_api_constants_v1'),
     ESTIMATOR_API_NAME: _Attributes(
         '_estimator_api_names_v1',
-        '_estimator_api_constants_v1')
+        '_estimator_api_constants_v1'),
+    KERAS_API_NAME: _Attributes(
+        '_keras_api_names_v1',
+        '_keras_api_constants_v1')
 }
 
 
@@ -160,6 +167,7 @@ def get_v1_names(symbol):
   names_v1 = []
   tensorflow_api_attr_v1 = API_ATTRS_V1[TENSORFLOW_API_NAME].names
   estimator_api_attr_v1 = API_ATTRS_V1[ESTIMATOR_API_NAME].names
+  keras_api_attr_v1 = API_ATTRS_V1[KERAS_API_NAME].names
 
   if not hasattr(symbol, tensorflow_api_attr_v1):
     return names_v1
@@ -167,6 +175,8 @@ def get_v1_names(symbol):
     names_v1.extend(getattr(symbol, tensorflow_api_attr_v1))
   if estimator_api_attr_v1 in symbol.__dict__:
     names_v1.extend(getattr(symbol, estimator_api_attr_v1))
+  if keras_api_attr_v1 in symbol.__dict__:
+    names_v1.extend(getattr(symbol, keras_api_attr_v1))
   return names_v1
 
 
@@ -183,6 +193,7 @@ def get_v2_names(symbol):
   names_v2 = []
   tensorflow_api_attr = API_ATTRS[TENSORFLOW_API_NAME].names
   estimator_api_attr = API_ATTRS[ESTIMATOR_API_NAME].names
+  keras_api_attr = API_ATTRS[KERAS_API_NAME].names
 
   if not hasattr(symbol, tensorflow_api_attr):
     return names_v2
@@ -190,6 +201,8 @@ def get_v2_names(symbol):
     names_v2.extend(getattr(symbol, tensorflow_api_attr))
   if estimator_api_attr in symbol.__dict__:
     names_v2.extend(getattr(symbol, estimator_api_attr))
+  if keras_api_attr in symbol.__dict__:
+    names_v2.extend(getattr(symbol, keras_api_attr))
   return names_v2
 
 
@@ -364,3 +377,4 @@ class api_export(object):  # pylint: disable=invalid-name
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
 estimator_export = functools.partial(api_export, api_name=ESTIMATOR_API_NAME)
+keras_export = functools.partial(api_export, api_name=KERAS_API_NAME)

@@ -38,7 +38,9 @@ if not hasattr(_current_module, 'estimator'):
       parent_package_str=__name__,
       child_package_str=(
           'tensorflow_estimator.python.estimator.api.estimator'))
-
+_component_api_helper.package_hook(
+    parent_package_str=__name__,
+    child_package_str=('tensorflow.python.keras.api._v1.keras'))
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 _CONTRIB_WARNING = """
 WARNING: The TensorFlow contrib module will not be included in TensorFlow 2.0.

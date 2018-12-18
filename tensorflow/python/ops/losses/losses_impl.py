@@ -34,7 +34,7 @@ from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("losses.Reduction", "keras.losses.Reduction", v1=[])
+@tf_export("losses.Reduction", v1=[])
 class ReductionV2(object):
   """Types of loss reduction.
 

@@ -40,10 +40,10 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.BatchNormalization', v1=[])
+@keras_export('keras.layers.BatchNormalization', v1=[])
 class BatchNormalizationV2(Layer):
   """Batch normalization layer (Ioffe and Szegedy, 2014).
 
@@ -740,7 +740,7 @@ def _replace_in_v2_docstring(old, new):
   return string.replace(old, new)
 
 
-@tf_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
+@keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
 class BatchNormalizationV1(BatchNormalizationV2):
 
   __doc__ = _replace_in_v2_docstring(

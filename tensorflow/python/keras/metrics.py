@@ -62,7 +62,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
@@ -517,7 +517,7 @@ class Metric(Layer):
   ### End: For use by subclasses ###
 
 
-@tf_export('keras.metrics.Mean')
+@keras_export('keras.metrics.Mean')
 class Mean(Metric):
   """Computes the (weighted) mean of the given values.
 
@@ -657,7 +657,7 @@ class MeanMetricWrapper(Mean):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.metrics.Accuracy')
+@keras_export('keras.metrics.Accuracy')
 class Accuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
 
@@ -699,7 +699,7 @@ class Accuracy(MeanMetricWrapper):
     return super(Accuracy, cls).from_config(config)
 
 
-@tf_export('keras.metrics.BinaryAccuracy')
+@keras_export('keras.metrics.BinaryAccuracy')
 class BinaryAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
 
@@ -750,7 +750,7 @@ class BinaryAccuracy(MeanMetricWrapper):
     return super(BinaryAccuracy, cls).from_config(config)
 
 
-@tf_export('keras.metrics.CategoricalAccuracy')
+@keras_export('keras.metrics.CategoricalAccuracy')
 class CategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
 
@@ -806,7 +806,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
     return super(CategoricalAccuracy, cls).from_config(config)
 
 
-@tf_export('keras.metrics.SparseCategoricalAccuracy')
+@keras_export('keras.metrics.SparseCategoricalAccuracy')
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
 
@@ -912,7 +912,7 @@ class _ConfusionMatrixConditionCount(Metric):
       K.set_value(v, np.zeros((num_thresholds,)))
 
 
-@tf_export('keras.metrics.FalsePositives')
+@keras_export('keras.metrics.FalsePositives')
 class FalsePositives(_ConfusionMatrixConditionCount):
   """Calculates the number of false positives.
 
@@ -962,7 +962,7 @@ class FalsePositives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@tf_export('keras.metrics.FalseNegatives')
+@keras_export('keras.metrics.FalseNegatives')
 class FalseNegatives(_ConfusionMatrixConditionCount):
   """Calculates the number of false negatives.
 
@@ -1012,7 +1012,7 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@tf_export('keras.metrics.TrueNegatives')
+@keras_export('keras.metrics.TrueNegatives')
 class TrueNegatives(_ConfusionMatrixConditionCount):
   """Calculates the number of true negatives.
 
@@ -1062,7 +1062,7 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@tf_export('keras.metrics.TruePositives')
+@keras_export('keras.metrics.TruePositives')
 class TruePositives(_ConfusionMatrixConditionCount):
   """Calculates the number of true positives.
 
@@ -1112,7 +1112,7 @@ class TruePositives(_ConfusionMatrixConditionCount):
         dtype=dtype)
 
 
-@tf_export('keras.metrics.Precision')
+@keras_export('keras.metrics.Precision')
 class Precision(Metric):
   """Computes the precision of the predictions with respect to the labels.
 
@@ -1196,7 +1196,7 @@ class Precision(Metric):
       K.set_value(v, np.zeros((num_thresholds,)))
 
 
-@tf_export('keras.metrics.Recall')
+@keras_export('keras.metrics.Recall')
 class Recall(Metric):
   """Computes the recall of the predictions with respect to the labels.
 
@@ -1344,7 +1344,7 @@ class SensitivitySpecificityBase(Metric):
       K.set_value(v, np.zeros((num_thresholds,)))
 
 
-@tf_export('keras.metrics.SensitivityAtSpecificity')
+@keras_export('keras.metrics.SensitivityAtSpecificity')
 class SensitivityAtSpecificity(SensitivitySpecificityBase):
   """Computes the sensitivity at a given specificity.
 
@@ -1413,7 +1413,7 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
                                self.tp[min_index] + self.fn[min_index])
 
 
-@tf_export('keras.metrics.SpecificityAtSensitivity')
+@keras_export('keras.metrics.SpecificityAtSensitivity')
 class SpecificityAtSensitivity(SensitivitySpecificityBase):
   """Computes the specificity at a given sensitivity.
 
@@ -1526,14 +1526,14 @@ def accuracy(y_true, y_pred):
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
 
-@tf_export('keras.metrics.binary_accuracy')
+@keras_export('keras.metrics.binary_accuracy')
 def binary_accuracy(y_true, y_pred, threshold=0.5):
   threshold = math_ops.cast(threshold, y_pred.dtype)
   y_pred = math_ops.cast(y_pred > threshold, y_pred.dtype)
   return K.mean(math_ops.equal(y_true, y_pred), axis=-1)
 
 
-@tf_export('keras.metrics.categorical_accuracy')
+@keras_export('keras.metrics.categorical_accuracy')
 def categorical_accuracy(y_true, y_pred):
   return math_ops.cast(
       math_ops.equal(
@@ -1541,7 +1541,7 @@ def categorical_accuracy(y_true, y_pred):
       K.floatx())
 
 
-@tf_export('keras.metrics.sparse_categorical_accuracy')
+@keras_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
@@ -1556,13 +1556,13 @@ def sparse_categorical_accuracy(y_true, y_pred):
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
 
-@tf_export('keras.metrics.top_k_categorical_accuracy')
+@keras_export('keras.metrics.top_k_categorical_accuracy')
 def top_k_categorical_accuracy(y_true, y_pred, k=5):
   return K.mean(
       nn.in_top_k(y_pred, math_ops.argmax(y_true, axis=-1), k), axis=-1)
 
 
-@tf_export('keras.metrics.sparse_top_k_categorical_accuracy')
+@keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
@@ -1579,12 +1579,12 @@ msle = MSLE = mean_squared_logarithmic_error
 cosine = cosine_proximity
 
 
-@tf_export('keras.metrics.serialize')
+@keras_export('keras.metrics.serialize')
 def serialize(metric):
   return serialize_keras_object(metric)
 
 
-@tf_export('keras.metrics.deserialize')
+@keras_export('keras.metrics.deserialize')
 def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
       config,
@@ -1593,7 +1593,7 @@ def deserialize(config, custom_objects=None):
       printable_module_name='metric function')
 
 
-@tf_export('keras.metrics.get')
+@keras_export('keras.metrics.get')
 def get(identifier):
   if isinstance(identifier, dict):
     return deserialize(identifier)

@@ -27,10 +27,10 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.optimizers.Adagrad', v1=[])
+@keras_export('keras.optimizers.Adagrad', v1=[])
 class Adagrad(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adagrad algorithm.
 

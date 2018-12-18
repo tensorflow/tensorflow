@@ -42,6 +42,7 @@ py_library(
         "datasets/reuters.py",
         "estimator/__init__.py",
         "keras_parameterized.py",
+        "ops.py",
         "preprocessing/__init__.py",
         "preprocessing/image.py",
         "preprocessing/sequence.py",
