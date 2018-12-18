@@ -347,9 +347,39 @@ class PolymorphicFunction(object):
         variable = wr()
         if variable is None:
           raise ValueError(
-              "Variable created in a tf.function garbage-collected. Code needs"
-              " to keep python references to variables created in a"
-              " tf.function.")
+              "A tf.Variable created inside your tf.function has been"
+              " garbage-collected. Your code needs to keep Python references"
+              " to variables created inside `tf.function`s.\n"
+              "\n"
+              "A common way to raise this error is to create and return a"
+              " variable only referenced inside your function:\n"
+              "\n"
+              "@tf.function\n"
+              "def f():\n"
+              "  v = tf.Variable(1.0)\n"
+              "  return v\n"
+              "\n"
+              "v = f()  # Crashes with this error message!\n"
+              "\n"
+              "The reason this crashes is that @tf.function annotated"
+              " function returns a **`tf.Tensor`** with the **value** of the"
+              " variable when the function is called rather than the"
+              " variable instance itself. As such there is no code holding a"
+              " reference to the `v` created inside the function and Python"
+              " garbage collects it.\n"
+              "\n"
+              "The simplest way to fix this issue is to create variables"
+              " outside the function and capture them:\n"
+              "\n"
+              "v = tf.Variable(1.0)\n"
+              "\n"
+              "@tf.function\n"
+              "def f():\n"
+              "  return v\n"
+              "\n"
+              "f()  # <tf.Tensor: ... numpy=1.>\n"
+              "v.assign_add(1.)\n"
+              "f()  # <tf.Tensor: ... numpy=2.>")
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
                 variable.handle))
