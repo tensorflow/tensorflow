@@ -23,10 +23,12 @@ from tensorflow.python.util import nest
 
 
 def _inputs_compatible(args, function):
+  """Check if args are compatible with a concrete function."""
   # TODO(vbardiovsky): The compatibility check should be about the signature,
   # not the flattened version of it.
   flattened_inputs = nest.flatten(args)
-  if len(flattened_inputs) != len(function.inputs):
+  expected_input_count = len(function.inputs) - len(function.captured_inputs)
+  if len(flattened_inputs) != expected_input_count:
     return False
   for a, b in zip(flattened_inputs, function.inputs):
     if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):

@@ -73,7 +73,7 @@ message SavedAsset {
   //
   // Only the field `AssetFileDef.filename` is used. Other fields, such as
   // `AssetFileDef.tensor_info`, MUST be ignored.
-  uint32 asset_file_def_index = 1;
+  int32 asset_file_def_index = 1;
 }
 
 // A function with multiple signatures, possibly with non-Tensor arguments.
@@ -84,6 +84,12 @@ message SavedPolymorphicFunction {
 message SavedMonomorphicFunction {
   // A reference to a TensorFlow function in the MetaGraph's FunctionDefLibrary
   string concrete_function = 1;
+
+  // Bound inputs to the function. The SavedObjects identified by the node ids
+  // given here are appended as extra inputs to the caller-supplied inputs.
+  // The only types of SavedObjects valid here are SavedVariable, SavedResource
+  // and SavedAsset.
+  repeated int32 bound_inputs = 2;
 }
 
 // Represents a Variable that is initialized by loading the contents from the
