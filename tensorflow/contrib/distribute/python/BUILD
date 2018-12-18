@@ -1,5 +1,8 @@
 # Implementation of a prototype TF distributed computation library.
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -9,9 +12,6 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # TODO(priyag): Figure out testonly issues that are preventing us from
 # including our tests in pip for now.
