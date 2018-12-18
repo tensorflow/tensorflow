@@ -1,8 +1,3 @@
-/* This file is a modification of the Tensorflow Micro Lite file _main.c
- * We have retained the original copyright and header information, in
- * accordance with the Apache 2.0 license terms.
- */
-
 /* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+/* This file is a modification of the Tensorflow Micro Lite file _main.c */
 
 #include <stdint.h>
 #include "am_mcu_apollo.h"              // Defines AM_CMSIS_REGS
