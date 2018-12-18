@@ -98,7 +98,7 @@ class GRULayerTest(keras_parameterized.TestCase):
                                  reset_after=True)
     output = gru_layer(inputs)
     gru_model = keras.models.Model(inputs, output)
-    gru_model.compile('rmsprop', 'mse',
+    gru_model.compile(RMSPropOptimizer(0.01), 'mse',
                       run_eagerly=testing_utils.should_run_eagerly())
     gru_model.fit(x_train, y_train)
     gru_model.predict(x_train)
