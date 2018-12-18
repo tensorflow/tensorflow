@@ -601,8 +601,8 @@ void FlatAffineConstraints::addDimId(unsigned pos, MLValue *id) {
   addId(IdKind::Dimension, pos, id);
 }
 
-void FlatAffineConstraints::addSymbolId(unsigned pos) {
-  addId(IdKind::Symbol, pos);
+void FlatAffineConstraints::addSymbolId(unsigned pos, MLValue *id) {
+  addId(IdKind::Symbol, pos, id);
 }
 
 /// Adds a dimensional identifier. The added column is initialized to
@@ -967,7 +967,7 @@ void FlatAffineConstraints::removeIdRange(unsigned idStart, unsigned idLimit) {
 
 // Checks for emptiness of the set by eliminating identifiers successively and
 // using the GCD test (on all equality constraints) and checking for trivially
-// invalid constraints. Returns 'true' if the constaint system is found to be
+// invalid constraints. Returns 'true' if the constraint system is found to be
 // empty; false otherwise.
 bool FlatAffineConstraints::isEmpty() const {
   if (isEmptyByGCDTest() || hasInvalidConstraint())
@@ -1264,18 +1264,32 @@ bool FlatAffineConstraints::addBoundsFromForStmt(const ForStmt &forStmt) {
   auto addLowerOrUpperBound = [&](bool lower) -> bool {
     auto operands = lower ? forStmt.getLowerBoundOperands()
                           : forStmt.getUpperBoundOperands();
-    SmallVector<unsigned, 8> positions;
     for (const auto &operand : operands) {
       unsigned loc;
       // TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds
       // code in dependence analysis.
       if (!findId(*operand, &loc)) {
-        // Adding this as a dimensional identifier even if this operand was a
-        // symblic operand to the bound map. TODO(mlir-team): if needed, check
-        // which one it is and add as dimensional or a symbolic one.
-        addDimId(getNumDimIds(), const_cast<MLValue *>(operand));
-        loc = getNumDimIds() - 1;
+        if (operand->isValidSymbol()) {
+          addSymbolId(getNumSymbolIds(), const_cast<MLValue *>(operand));
+          loc = getNumDimIds() + getNumSymbolIds() - 1;
+          // Check if the symbol is a constant.
+          if (auto *opStmt = operand->getDefiningStmt()) {
+            if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
+              setIdToConstant(*operand, constOp->getValue());
+            }
+          }
+        } else {
+          addDimId(getNumDimIds(), const_cast<MLValue *>(operand));
+          loc = getNumDimIds() - 1;
+        }
       }
+    }
+    // Record positions of the operands in the constraint system.
+    SmallVector<unsigned, 8> positions;
+    for (const auto &operand : operands) {
+      unsigned loc;
+      if (!findId(*operand, &loc))
+        assert(0 && "expected to be found");
       positions.push_back(loc);
     }
 

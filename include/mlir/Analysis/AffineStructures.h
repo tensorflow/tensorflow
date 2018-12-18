@@ -417,9 +417,10 @@ public:
   /// right identifier is first looked up using forStmt's MLValue. Returns
   /// false for the yet unimplemented/unsupported cases, and true if the
   /// information is succesfully added. Asserts if the MLValue corresponding to
-  /// the 'for' statement isn't found in the system. Any new identifiers that
-  /// may need to be added due to the bound operands of the 'for' statement are
-  /// added as trailing dimensional identifiers (just before symbolic ones).
+  /// the 'for' statement isn't found in the constaint system. Any new
+  /// identifiers that are found in the bound operands of the 'for' statement
+  /// are added as trailing identifiers (either dimensional or symbolic
+  /// depending on whether the operand is a valid MLFunction symbol).
   bool addBoundsFromForStmt(const ForStmt &forStmt);
 
   /// Adds an upper bound expression for the specified expression.
@@ -446,7 +447,7 @@ public:
   // the kind of identifier. 'id' is the MLValue corresponding to the
   // identifier that can optionally be provided.
   void addDimId(unsigned pos, MLValue *id = nullptr);
-  void addSymbolId(unsigned pos);
+  void addSymbolId(unsigned pos, MLValue *id = nullptr);
   void addLocalId(unsigned pos);
   void addId(IdKind kind, unsigned pos, MLValue *id = nullptr);
 

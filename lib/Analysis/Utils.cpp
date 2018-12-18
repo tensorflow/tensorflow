@@ -124,8 +124,8 @@ Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
 
 /// Computes the memory region accessed by this memref with the region
 /// represented as constraints symbolic/parameteric in 'loopDepth' loops
-/// surrounding opStmt. Returns false if this fails due to yet unimplemented
-/// cases.
+/// surrounding opStmt and any additional MLFunction symbols. Returns false if
+/// this fails due to yet unimplemented cases.
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:
 //
@@ -176,6 +176,9 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
   forwardSubstituteReachableOps(&accessValueMap);
   AffineMap accessMap = accessValueMap.getAffineMap();
 
+  // We'll first associate the dims and symbols of the access map to the dims
+  // and symbols resp. of regionCst. This will change below once regionCst is
+  // fully constructed out.
   regionCst->reset(accessMap.getNumDims(), accessMap.getNumSymbols(), 0,
                    accessValueMap.getOperands());
 

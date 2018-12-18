@@ -190,13 +190,14 @@ mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
 // CHECK-LABEL: mlfunc @dma_constant_dim_access
 mlfunc @dma_constant_dim_access(%A : memref<100x100xf32>) {
   %one = constant 1 : index
+  %N = constant 100 : index
   // CHECK:      %0 = alloc() : memref<1x100xf32, 1>
   // CHECK-NEXT: %1 = alloc() : memref<1xi32>
   // No strided DMA needed here.
   // CHECK:      dma_start %arg0[%c1, %c0], %0[%c0, %c0], %c100, %1[%c0] : memref<100x100xf32>, memref<1x100xf32, 1>,
   // CHECK-NEXT: dma_wait %1[%c0], %c100 : memref<1xi32>
   for %i = 0 to 100 {
-    for %j = 0 to 100 {
+    for %j = 0 to ()[s0] -> (s0) ()[%N] {
       // CHECK:      %2 = affine_apply [[MAP_MINUS_ONE]](%c1, %i1)
       // CHECK-NEXT: %3 = load %0[%2#0, %2#1] : memref<1x100xf32, 1>
       load %A[%one, %j] : memref<100 x 100 x f32>
