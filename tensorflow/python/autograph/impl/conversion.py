@@ -80,12 +80,48 @@ def is_whitelisted_for_graph(o):
     m = functools
   else:
     m = tf_inspect.getmodule(o)
+  if not hasattr(m, '__name__'):
+    logging.vlog(1, '%s is NOT whitelisted for graph: unknown module name', o)
+    return False
+
   for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
     if m.__name__.startswith(prefix):
+      logging.vlog(1, '%s is whitelisted: name starts with "%s"', o, prefix)
       return True
 
   if hasattr(o, 'autograph_info__'):
     return True
+
+  if (not inspect_utils.isweakrefself(o) and not tf_inspect.isclass(o) and
+      hasattr(o, '__call__') and hasattr(o, '__class__')):
+    # Callable objects: whitelisted if their __call__ method is.
+    retval = is_whitelisted_for_graph(o.__call__)
+    logging.vlog(1, '%s is whitelisted: object __call__ whitelisted', o)
+    return retval
+
+  if tf_inspect.ismethod(o):
+    # Methods of whitelisted classes are also whitelisted, even if they are
+    # bound via user subclasses.
+    #
+    # For example, suppose `tf.Foo` has a method called `bar`, and `baz` is
+    # defined as below. `tf.Foo` is whitelisted. Then `baz.bar` is also
+    # whitelisted.
+    #
+    #   class Custom(tf.Foo):
+    #     pass
+    #
+    #   baz = Custom()
+    #
+    # For the example above, if `Custom` did overload `bar`, then it would no
+    # longer be whitelisted.
+
+    owner_class = inspect_utils.getmethodclass(o)
+    if owner_class is not None:
+      owner_class = inspect_utils.getdefiningclass(o, owner_class)
+      if is_whitelisted_for_graph(owner_class):
+        logging.vlog(1, '%s is whitelisted: owner is whitelisted %s', o,
+                     owner_class)
+        return True
 
   if inspect_utils.isnamedtuple(o):
     # Due to the way they're constructed, namedtuple types cannot be converted
@@ -96,8 +132,10 @@ def is_whitelisted_for_graph(o):
           logging.level_warning(),
           'Entity {} looks like a namedtuple subclass. If it has any custom'
           ' methods, they will not be converted by AutoGraph.'.format(o), 1)
+    logging.vlog(1, '%s is whitelisted: named tuple', o)
     return True
 
+  logging.vlog(1, '%s is NOT whitelisted for graph', o)
   return False
 
 
@@ -129,8 +167,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
-  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
-    logging.info('Converting {}'.format(o))
+  logging.vlog(logging.DEBUG, 'Converting %s', o)
 
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, program_ctx)
@@ -164,9 +201,9 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
-    logging.info('Compiled output of {}:\n\n{}\n'.format(
-        o, compiler.ast_to_source(node)))
+  if logging.get_verbosity() <= logging.DEBUG:
+    logging.vlog(logging.DEBUG, 'Compiled output of %s:\n\n%s\n', o,
+                 compiler.ast_to_source(node))
 
   if program_ctx.options.recursive:
     while True:
@@ -315,10 +352,11 @@ def function_to_graph(f,
           ' in a separate expression.'.format(f, source))
     else:
       raise ValueError(
-          'Unable to identify source code of function {}. The source code'
+          'Unable to identify source code of function {}({}). The source code'
           ' reported by Python did not include exactly one matching signature:'
           '\n{}\n. This is an extremely rare occurrence. Please report it to'
-          ' the TensorFlow team.'.format(f, source))
+          ' the TensorFlow team.'.format(f, tf_inspect.getfullargspec(f),
+                                         source))
   node, = nodes
 
   # TODO(znado): Place inside standard_analysis.

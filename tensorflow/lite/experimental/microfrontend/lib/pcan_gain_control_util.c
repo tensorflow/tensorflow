@@ -62,7 +62,8 @@ int PcanGainControlPopulateState(const struct PcanGainControlConfig* config,
   state->gain_lut[0] = PcanGainLookupFunction(config, input_bits, 0);
   state->gain_lut[1] = PcanGainLookupFunction(config, input_bits, 1);
   state->gain_lut -= 6;
-  for (int interval = 2; interval <= kWideDynamicFunctionBits; ++interval) {
+  int interval;
+  for (interval = 2; interval <= kWideDynamicFunctionBits; ++interval) {
     const uint32_t x0 = (uint32_t) 1 << (interval - 1);
     const uint32_t x1 = x0 + (x0 >> 1);
     const uint32_t x2 = (interval == kWideDynamicFunctionBits)

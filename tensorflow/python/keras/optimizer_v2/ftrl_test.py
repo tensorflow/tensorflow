@@ -113,8 +113,11 @@ class FtrlOptimizerTest(test.TestCase):
       with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-        loss = pred * pred
+
+        def loss():
+          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+          return pred * pred
+
         sgd_op = ftrl.Ftrl(1.0).minimize(loss, var_list=[var0])
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values

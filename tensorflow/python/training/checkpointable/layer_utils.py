@@ -25,9 +25,7 @@ from __future__ import print_function
 def is_layer(obj):
   """Implicit check for Layer-like objects."""
   # TODO(b/110718070): Replace with isinstance(obj, base_layer.Layer).
-  return (hasattr(obj, "call")
-          and hasattr(obj, "build")
-          and hasattr(obj, "variables"))
+  return hasattr(obj, "_is_layer")
 
 
 def has_weights(obj):

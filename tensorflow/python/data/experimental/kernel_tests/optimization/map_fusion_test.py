@@ -20,7 +20,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
@@ -75,7 +74,6 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset.cache()
     options = dataset_ops.Options()
-    options.experimental_optimization = OptimizationOptions()
     options.experimental_optimization.map_fusion = True
     dataset = dataset.with_options(options)
     expected_output = []

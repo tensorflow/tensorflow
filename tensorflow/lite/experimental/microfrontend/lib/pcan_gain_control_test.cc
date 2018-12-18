@@ -49,7 +49,8 @@ TEST_F(PcanGainControlTest, TestPcanGainControl) {
 
   const uint32_t expected[] = {3578, 1533};
   ASSERT_EQ(state.num_channels, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i < state.num_channels; ++i) {
+  int i;
+  for (i = 0; i < state.num_channels; ++i) {
     EXPECT_EQ(signal[i], expected[i]);
   }
 

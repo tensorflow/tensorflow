@@ -103,6 +103,8 @@ class Sequential(Model):
     self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
 
+    self._layer_call_argspecs = {}
+
     # Add to the model any layers passed to the constructor.
     if layers:
       for layer in layers:
@@ -121,8 +123,8 @@ class Sequential(Model):
     return layers[:]
 
   @property
-  def _static_graph_friendly(self):
-    return all(layer._static_graph_friendly for layer in self.layers)
+  def dynamic(self):
+    return any(layer.dynamic for layer in self.layers)
 
   @checkpointable.no_automatic_dependency_tracking
   def add(self, layer):
@@ -192,6 +194,8 @@ class Sequential(Model):
     if self._layers:
       self._track_layers(self._layers)
 
+    self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+
   @checkpointable.no_automatic_dependency_tracking
   def pop(self):
     """Removes the last layer in the model.
@@ -202,7 +206,8 @@ class Sequential(Model):
     if not self.layers:
       raise TypeError('There are no layers in the model.')
 
-    self._layers.pop()
+    layer = self._layers.pop()
+    self._layer_call_argspecs.pop(layer)
     if not self.layers:
       self.outputs = None
       self.inputs = None
@@ -240,9 +245,10 @@ class Sequential(Model):
     x = inputs
     for layer in self.layers:
       kwargs = {}
-      if 'mask' in tf_inspect.getfullargspec(layer.call).args:
+      argspec = self._layer_call_argspecs[layer].args
+      if 'mask' in argspec:
         kwargs['mask'] = mask
-      if 'training' in tf_inspect.getfullargspec(layer.call).args:
+      if 'training' in argspec:
         kwargs['training'] = training
 
       if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
@@ -253,7 +259,12 @@ class Sequential(Model):
           with ops.name_scope(layer._name_scope()):
             layer._maybe_build(x)
           layer.built = True
-        x = layer.call(x, **kwargs)
+        if context.executing_eagerly():
+          x = layer(x, **kwargs)
+        elif layer.dynamic:
+          x = layer._symbolic_call(x)
+        else:
+          x = layer.call(x, **kwargs)
         if layer.supports_masking:
           mask = layer.compute_mask(x, mask)
         else:

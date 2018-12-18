@@ -20,6 +20,9 @@ from __future__ import print_function
 
 import os
 
+import six
+from six.moves.urllib.error import URLError
+
 from tensorflow.python.client import session
 from tensorflow.python.distribute import cluster_resolver
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -64,6 +67,28 @@ def mock_request_compute_metadata(cls, *args, **kwargs):
   return ''
 
 
+def mock_is_running_in_gce(cls, *args, **kwargs):
+  del cls, args, kwargs  # Unused.
+  return True
+
+
+def mock_is_not_running_in_gce(cls, *args, **kwargs):
+  del cls, args, kwargs  # Unused.
+  return False
+
+
+def mock_running_in_gce_urlopen(cls, *args, **kwargs):
+  del cls, args, kwargs  # Unused.
+  mock_response = mock.MagicMock()
+  mock_response.info.return_value = {'Metadata-Flavor': 'Google'}
+  return mock_response
+
+
+def mock_not_running_in_gce_urlopen(cls, *args, **kwargs):
+  del cls, args, kwargs  # Unused.
+  raise URLError(reason='Host does not exist.')
+
+
 class TPUClusterResolverTest(test.TestCase):
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
@@ -103,6 +128,25 @@ class TPUClusterResolverTest(test.TestCase):
     mock_client.projects.return_value = mock_project
 
     return mock_client
+
+  @mock.patch.object(cluster_resolver.TPUClusterResolver,
+                     '_isRunningInGCE',
+                     mock_is_running_in_gce)
+  def testCheckRunningInGceWithNoTpuName(self):
+    with self.assertRaisesRegexp(RuntimeError, '.*Google Cloud.*'):
+      cluster_resolver.TPUClusterResolver(tpu='')
+
+  @mock.patch.object(six.moves.urllib.request,
+                     'urlopen',
+                     mock_running_in_gce_urlopen)
+  def testIsRunningInGce(self):
+    self.assertTrue(cluster_resolver.TPUClusterResolver._isRunningInGCE())
+
+  @mock.patch.object(six.moves.urllib.request,
+                     'urlopen',
+                     mock_not_running_in_gce_urlopen)
+  def testIsNotRunningInGce(self):
+    self.assertFalse(cluster_resolver.TPUClusterResolver._isRunningInGCE())
 
   @mock.patch.object(cluster_resolver.TPUClusterResolver,
                      '_requestComputeMetadata',
@@ -388,6 +432,9 @@ class TPUClusterResolverTest(test.TestCase):
     self.assertEqual(should_resolve, resolver._shouldResolve(),
                      "TPU: '%s'" % tpu)
 
+  @mock.patch.object(cluster_resolver.TPUClusterResolver,
+                     '_isRunningInGCE',
+                     mock_is_not_running_in_gce)
   def testShouldResolveNoName(self):
     self.verifyShouldResolve('', False)
 
@@ -595,6 +642,9 @@ class TPUClusterResolverTest(test.TestCase):
           {0: [0], 1: [1, 2]})
 
   @mock.patch.object(session.BaseSession, 'list_devices')
+  @mock.patch.object(cluster_resolver.TPUClusterResolver,
+                     '_isRunningInGCE',
+                     mock_is_not_running_in_gce)
   def testNumAcceleratorsSuccess(self, mock_list_devices):
     device_names = [
         '/job:tpu_worker/task:0/device:TPU:0',
@@ -616,6 +666,9 @@ class TPUClusterResolverTest(test.TestCase):
     self.assertEqual(resolver.num_accelerators(), 2)
 
   @mock.patch.object(session.BaseSession, 'list_devices')
+  @mock.patch.object(cluster_resolver.TPUClusterResolver,
+                     '_isRunningInGCE',
+                     mock_is_not_running_in_gce)
   def testNumAcceleratorsRetryFailure(self, mock_list_devices):
     resolver = cluster_resolver.TPUClusterResolver(tpu='')
     mock_list_devices.side_effect = errors.DeadlineExceededError(

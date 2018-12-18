@@ -81,6 +81,12 @@ string DumpAllPathsFromTo(const HloInstruction& from, const HloInstruction& to,
 void DumpText(const HloModule& module, const string& label,
               const string& directory_path, bool do_prefix = true);
 
+// Renders DOT graph as inline SVG and saves it in an HTML file in a temprary
+// directory or directory specified via --xla_hlo_graph_path. Returns the file
+// URI pointing to the file.
+string RenderDotAsHTMLFile(const string& dot,
+                           const DebugOptions& debug_options);
+
 // Graph renderers may be added using a registration mechanism, e.g.:
 // XLA_REGISTER_GRAPH_RENDERER(AGraphRendererClass, 100)
 // The renderer with the highest numeric priority value is used.

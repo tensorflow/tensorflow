@@ -49,7 +49,7 @@
 # filegroup ":android_proto_srcs" - Protos
 # filegroup ":android_srcs" - Core sources
 # cc_library ":android_tensorflow_lib" - Native library
-# cc_library ":android_tensorflow_lib_selective_registration" - Native library
+# cc_library ":android_tensorflow_lib_lite" - Native library, without ops,
 #   supporting SELECTIVE_REGISTRATION feature.
 # portable_proto_library ":android_proto_lib" (Google-internal)
 #
@@ -113,7 +113,6 @@ load(
     "tf_additional_device_tracer_test_flags",
     "tf_additional_gdr_lib_defines",
     "tf_additional_human_readable_json_deps",
-    "tf_additional_logger_deps",
     "tf_additional_lib_defines",
     "tf_additional_lib_deps",
     "tf_additional_lib_hdrs",
@@ -446,15 +445,31 @@ cc_library(
 )
 
 cc_library(
-    name = "logger",
-    srcs = tf_platform_srcs(["logger.cc"]),
-    hdrs = ["platform/logger.h"] + tf_platform_hdrs(["logger.h"]),
+    name = "logger_interface",
+    hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":lib",
-        ":lib_internal",
-    ] + tf_additional_logger_deps(),
+        ":lib_proto_parsing",
+        "@protobuf_archive//:protobuf",
+    ],
+)
+
+cc_library(
+    name = "default_logger",
+    srcs = ["platform/default/logger.cc"],
+    hdrs = ["platform/logger.h"],
+    deps = [
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:logger_interface",
+    ],
+)
+
+cc_library(
+    name = "logger",
+    hdrs = ["platform/logger.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/core/platform/default/build_config:logger"],
 )
 
 filegroup(
@@ -1611,6 +1626,9 @@ filegroup(
             "**/*main.cc",
             "debug/**/*",
             "framework/op_gen_*",
+            "framework/node_def_util.*",
+            "framework/op_kernel.*",
+            "framework/dataset.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
@@ -1619,7 +1637,6 @@ filegroup(
             "util/reporter.*",
             "platform/**/cuda_libdevice_path.*",
             "platform/**/logger.cc",
-            "platform/**/logger.h",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
             "platform/google/**/*",
@@ -1654,6 +1671,9 @@ filegroup(
             "common_runtime/**/*.cc",
             "graph/**/*.h",
             "graph/**/*.cc",
+            "framework/node_def_util.*",
+            "framework/op_kernel.*",
+            "framework/dataset.*",
         ],
         exclude = [
             "**/*test.*",
@@ -1827,27 +1847,6 @@ cc_library(
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
-)
-
-# Android library for use with the SELECTIVE_REGISTRATION feature.
-# Does not contain operators. In contrast to android_tensorflow_lib_lite,
-# this links in framework support for all types, relying on selective
-# registration of ops to prune code size.
-#
-# TODO(gonnet): Move all users of these aliases to the corresponding
-#     :android_tensorflow_lib_lite* targets and remove.
-alias(
-    name = "android_tensorflow_lib_selective_registration",
-    actual = ":android_tensorflow_lib_lite",
-    visibility = ["//visibility:public"],
-)
-
-# Android library for use with the SELECTIVE_REGISTRATION feature with
-# no proto_rtti.
-alias(
-    name = "android_tensorflow_lib_selective_registration_nortti",
-    actual = ":android_tensorflow_lib_lite_nortti",
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -4059,20 +4058,6 @@ tf_cuda_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
-    name = "cuda_libdevice_path_test",
-    size = "small",
-    srcs = ["platform/cuda_libdevice_path_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":cuda_libdevice_path",
-        ":lib",
-        ":test",
-        ":test_main",
-    ],
-)
-
 tf_cuda_only_cc_test(
     name = "util_cuda_kernel_helper_test",
     srcs = [
@@ -4928,7 +4913,7 @@ filegroup(
 
 cc_library(
     name = "cuda_libdevice_path",
-    srcs = ["platform/cuda_libdevice_path.cc"] + tf_additional_libdevice_srcs(),
+    srcs = tf_additional_libdevice_srcs(),
     hdrs = ["platform/cuda_libdevice_path.h"],
     copts = tf_copts(),
     data = tf_additional_libdevice_data(),

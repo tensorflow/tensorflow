@@ -214,7 +214,7 @@ def get_pruning_hparams():
       target_sparsity=0.5,
       sparsity_function_begin_step=0,
       sparsity_function_end_step=100,
-      sparsity_function_exponent=3,
+      sparsity_function_exponent=3.0,
       use_tpu=False)
 
 

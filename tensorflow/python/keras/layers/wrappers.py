@@ -29,6 +29,7 @@ from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -45,6 +46,7 @@ class Wrapper(Layer):
       layer: The layer to be wrapped.
   """
 
+  @checkpointable.no_automatic_dependency_tracking
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
@@ -380,6 +382,7 @@ class Bidirectional(Wrapper):
   ```
   """
 
+  @checkpointable.no_automatic_dependency_tracking
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(

@@ -52,13 +52,6 @@ from tensorflow.python.util import nest
 # to them and then pass those in as data inputs. This should probably be
 # handled in the CapturingGraph itself.
 
-# Op types that output a resource tensor representing a TensorArray handle.
-TENSOR_ARRAY_HANDLE_OPS = (
-    "TensorArrayV3",
-    "TensorArrayGradV3",
-    "TensorArrayGradWithShape",
-)
-
 
 def while_loop(cond,
                body,
@@ -106,7 +99,7 @@ def while_loop(cond,
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
-    add_control_dependencies = util.in_defun()
+    add_control_dependencies = ops.get_default_graph()._add_control_dependencies
 
     # Build a `cond` wrapper that can handle the extra counter loop_var.
     def wrapped_cond(loop_counter, *args):
@@ -257,24 +250,19 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       "_maximum_iterations") if _is_in_xla_context() else None
   assert not _is_in_xla_context() or maximum_iterations is not None
 
-  # Set the incoming gradient of TensorArray handles to None. The gradient
-  # implementation currently assumes all resource tensors correspond to float32
-  # ResourceVariables, which can lead to runtime shape errors when used with a
-  # TensorArray. This is a workaround until TensorArrays are reimplemented with
-  # TensorLists instead of resources.
-  # Also set the incoming gradient of non-trainable inputs to None. It is
-  # possible that we receive non-None gradients for non-trainable types in
-  # nested while loops because we accumulate outputs of the inner while as
-  # variant tensors which are trainable and hence receive zeros_like tensors in
-  # the gradient pass. The non-trainable tensors then receive the popped zeros
-  # tensor from this zeros variant. The gradient for the loop vars corresponding
-  # to these tensors is None or zeros (this happens only if the loop var is
-  # accumulated as well) in _grad_fn so we reset these.
+  # Set the incoming gradient of non-trainable inputs to None. It is possible
+  # that we receive non-None gradients for non-trainable types in nested while
+  # loops because we accumulate outputs of the inner while as variant tensors
+  # which are trainable and hence receive zeros_like tensors in the gradient
+  # pass. The non-trainable tensors then receive the popped zeros tensor from
+  # this zeros variant. The gradient for the loop vars corresponding to these
+  # tensors is None or zeros (this happens only if the loop var is accumulated
+  # as well) in _grad_fn so we reset these.
   # TODO(b/118712257): Remove the IsTrainable filter once we can handle None
   # output grads in _grad_fn.
   grads = [
-      None if _is_tensor_array_handle(output) or not _is_trainable(output)
-      else grad for grad, output in zip(grads, body_graph.outputs)
+      None if not _is_trainable(output) else grad
+      for grad, output in zip(grads, body_graph.outputs)
   ]
 
   # Ensure that all non-resource trainable outputs have incoming gradients.
@@ -339,8 +327,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
 
-  # Set None as the output gradient for tensors with None input gradient
-  # e.g. TensorArray handles.
+  # Set None as the output gradient for tensors with None input gradient.
   # outputs[0] is the loop counter.
   # outputs[1] is the total number of loop iterations.
   index = 2
@@ -851,28 +838,6 @@ def _graph_name(graph):
   if isinstance(graph, func_graph_module.FuncGraph):
     return graph.name
   return "Base"
-
-
-def _is_tensor_array_handle(tensor):
-  """Returns whether tensor is a TensorArray handle."""
-  if tensor.dtype != dtypes.resource:
-    return False
-
-  if tensor.op.type == "While":
-    # We assume that any resource outputs of a While op correspond to a captured
-    # resource input (as opposed to a loop variable specified by the user).
-    # NOTE(skyewm): we could actually check this, but I can't think of when you
-    # would have a resource loop variable.
-    tensor = tensor.op.inputs[tensor.value_index]
-
-  # TODO(b/118452219): add test coverage for this.
-  tensor = func_graph_module.maybe_captured(tensor)
-
-  if isinstance(tensor, ops.EagerTensor):
-    # Eager execution doesn't quite support legacy tensorarray
-    return False
-
-  return tensor.op.type in TENSOR_ARRAY_HANDLE_OPS
 
 
 def _pack_sequence_as(structure_with_tas, loop_vars):

@@ -481,7 +481,9 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
       const Shape& operand_shape_with_layout =
           custom_call->operand_shapes_with_layout()[i];
       TF_RET_CHECK(ShapeUtil::Compatible(custom_call->operand(i)->shape(),
-                                         operand_shape_with_layout));
+                                         operand_shape_with_layout))
+          << custom_call->operand(i)->shape().ToString() << " operand "
+          << operand_shape_with_layout.ToString();
       TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
     }
   }

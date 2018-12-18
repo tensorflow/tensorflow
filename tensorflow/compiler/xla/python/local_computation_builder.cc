@@ -24,12 +24,16 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/xla/client/lib/cholesky.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
+#include "tensorflow/compiler/xla/client/lib/qr.h"
+#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -110,6 +114,20 @@ LocalClient* GetOrCreateLocalClient() {
   g_local_client = ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
   CHECK(g_local_client != nullptr);
   return g_local_client;
+}
+
+Status RegisterCpuCustomCallTarget(const string& fn_name, PyObject* capsule) {
+  const char* name = "xla._CPU_CUSTOM_CALL_TARGET";
+  if (!PyCapsule_IsValid(capsule, name)) {
+    return InvalidArgument(
+        "Argument to RegisterCpuCustomCallTargetRegistry was not a "
+        "xla._CPU_CUSTOM_CALL_TARGET capsule.");
+  }
+  void* fn_ptr = PyCapsule_GetPointer(capsule, name);
+  CHECK(fn_ptr != nullptr);
+  cpu::CustomCallTargetRegistry::Global()->Register(
+      std::string(fn_name.begin(), fn_name.end()), fn_ptr);
+  return Status::OK();
 }
 
 Status TransferToInfeedLocal(const Literal& literal) {
@@ -242,7 +260,6 @@ XrtAllocation::~XrtAllocation() {
 StatusOr<XrtAllocation*> XrtAllocation::FromLiteral(
     const Literal& argument, const string& session_target) {
   xrt::XLAAllocation alloc;
-  alloc.set_device_ordinal(0);
   *alloc.mutable_value() = argument.ToProto();
 
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
@@ -644,6 +661,15 @@ LocalOp LocalComputationBuilder::ConstantLiteral(const Literal& literal) {
   return xla::ConstantLiteral(&builder_, literal);
 }
 
+LocalOp LocalComputationBuilder::Iota(PrimitiveType element_type, int64 size) {
+  return xla::Iota(&builder_, element_type, size);
+}
+
+LocalOp LocalComputationBuilder::BroadcastedIota(const Shape& shape,
+                                                 int64 dimension) {
+  return xla::Iota(&builder_, shape, dimension);
+}
+
 LocalOp LocalComputationBuilder::Broadcast(
     const LocalOp& operand, absl::Span<const int64> broadcast_sizes) {
   return xla::Broadcast(operand.op(), broadcast_sizes);
@@ -780,6 +806,21 @@ LocalOp LocalComputationBuilder::Call(const LocalComputation& local_computation,
   return xla::Call(&builder_, local_computation.computation(), xla_ops);
 }
 
+LocalOp LocalComputationBuilder::CustomCall(
+    const string& call_target_name, absl::Span<const LocalOp> operands,
+    const Shape& shape_with_layout,
+    const std::vector<Shape>& operand_shapes_with_layout,
+    const string& opaque) {
+  std::vector<XlaOp> xla_ops;
+  xla_ops.reserve(operands.size());
+  for (const auto& op : operands) {
+    xla_ops.push_back(op.op());
+  }
+  return xla::CustomCallWithLayout(&builder_, call_target_name, xla_ops,
+                                   shape_with_layout,
+                                   operand_shapes_with_layout, opaque);
+}
+
 LocalOp LocalComputationBuilder::Transpose(
     const LocalOp& operand, absl::Span<const int64> permutation) {
   return xla::Transpose(operand.op(), permutation);
@@ -863,6 +904,27 @@ LocalOp LocalComputationBuilder::SortKeyVal(const LocalOp& keys,
                                             const LocalOp& values,
                                             int64 dimension) {
   return xla::Sort(keys.op(), {values.op()}, dimension);
+}
+
+LocalOp LocalComputationBuilder::Cholesky(const LocalOp& a) {
+  return xla::Cholesky(a.op());
+}
+
+LocalOp LocalComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
+  XlaBuilder* builder = a.op().builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto qr, xla::QRDecomposition(a.op(), full_matrices));
+    return xla::Tuple(builder, {qr.q, qr.r});
+  });
+}
+
+LocalOp LocalComputationBuilder::TriangularSolve(const LocalOp& a,
+                                                 const LocalOp& b,
+                                                 bool left_side, bool lower,
+                                                 bool transpose_a,
+                                                 bool conjugate_a) {
+  return xla::TriangularSolve(a.op(), b.op(), left_side, lower, transpose_a,
+                              conjugate_a);
 }
 
 StatusOr<LocalComputation*> LocalComputationBuilder::BuildConstantSubGraph(

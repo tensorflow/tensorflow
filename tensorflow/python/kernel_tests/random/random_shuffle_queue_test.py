@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("RandomShuffleQueue removed from v2")
 class RandomShuffleQueueTest(test.TestCase):
 
   def setUp(self):
@@ -1417,7 +1417,6 @@ class RandomShuffleQueueTest(test.TestCase):
 
       self.assertItemsEqual(elem, results)
 
-  @test_util.run_v1_only("b/120545219")
   def testBigDequeueMany(self):
     with self.cached_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(2, 0, dtypes_lib.int32, ((),))

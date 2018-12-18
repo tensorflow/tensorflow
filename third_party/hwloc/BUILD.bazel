@@ -1,0 +1,87 @@
+# hwloc: Portable Hardware Locality Library
+
+package(
+    default_visibility = ["//visibility:public"],
+)
+
+licenses(["notice"])
+
+exports_files(["LICENSE"])
+
+COMMON_INCLUDE_COPTS = [
+    "-I.",
+    "-Ihwloc",
+    "-Iinclude",
+]
+
+DISABLE_WARNINGS_COPTS = [
+    "-Wno-vla",
+]
+
+VAR_SETTINGS_COPTS = [
+    "-DHWLOC_DUMPED_HWDATA_DIR=",
+    "-DRUNSTATEDIR=",
+]
+
+cc_library(
+    name = "hwloc",
+    srcs = [
+        "hwloc/base64.c",
+        "hwloc/bind.c",
+        "hwloc/bitmap.c",
+        "hwloc/components.c",
+        "hwloc/diff.c",
+        "hwloc/distances.c",
+        "hwloc/misc.c",
+        "hwloc/pci-common.c",
+        "hwloc/shmem.c",
+        "hwloc/static-components.h",
+        "hwloc/topology.c",
+        "hwloc/topology-hardwired.c",
+        "hwloc/topology-linux.c",
+        "hwloc/topology-noos.c",
+        "hwloc/topology-synthetic.c",
+        "hwloc/topology-x86.c",
+        "hwloc/topology-xml.c",
+        "hwloc/topology-xml-nolibxml.c",
+        "hwloc/traversal.c",
+        "include/hwloc/linux.h",
+        "include/hwloc/plugins.h",
+        "include/hwloc/shmem.h",
+        "include/private/autogen/config.h",
+        "include/private/components.h",
+        "include/private/cpuid-x86.h",
+        "include/private/debug.h",
+        "include/private/internal-components.h",
+        "include/private/misc.h",
+        "include/private/private.h",
+        "include/private/xml.h",
+    ],
+    hdrs = [
+        "include/hwloc.h",
+        "include/hwloc/autogen/config.h",
+        "include/hwloc/bitmap.h",
+        "include/hwloc/deprecated.h",
+        "include/hwloc/diff.h",
+        "include/hwloc/distances.h",
+        "include/hwloc/export.h",
+        "include/hwloc/helper.h",
+        "include/hwloc/inlines.h",
+        "include/hwloc/rename.h",
+    ],
+    copts = COMMON_INCLUDE_COPTS + DISABLE_WARNINGS_COPTS + VAR_SETTINGS_COPTS,
+    features = [
+        "-parse_headers",
+        "-layering_check",
+    ],
+    deps = [],
+)
+
+cc_binary(
+    name = "hwloc_print",
+    srcs = ["hwloc_print.cc"],
+    copts = COMMON_INCLUDE_COPTS,
+    deps = [
+        ":hwloc",
+    ],
+)

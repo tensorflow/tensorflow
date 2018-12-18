@@ -19,16 +19,25 @@ from __future__ import division as _division
 from __future__ import print_function as _print_function
 
 import os as _os
+import sys as _sys
 
 # pylint: disable=g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
+# API IMPORTS PLACEHOLDER
+
 from tensorflow.python.tools import component_api_helper as _component_api_helper
 _component_api_helper.package_hook(
     parent_package_str=__name__,
-    child_package_str=('tensorflow_estimator.python.estimator.api.estimator'))
+    child_package_str=(
+        'tensorflow_estimator.python.estimator.api._v1.estimator'))
 
-# API IMPORTS PLACEHOLDER
+_current_module = _sys.modules[__name__]
+if not hasattr(_current_module, 'estimator'):
+  _component_api_helper.package_hook(
+      parent_package_str=__name__,
+      child_package_str=(
+          'tensorflow_estimator.python.estimator.api.estimator'))
 
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
 contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
@@ -45,9 +54,10 @@ app.flags = flags  # pylint: disable=undefined-variable
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
 _tf_api_dir = _os.path.dirname(_os.path.dirname(app.__file__))  # pylint: disable=undefined-variable
-if _tf_api_dir not in __path__:
+if not hasattr(_current_module, '__path__'):
+  __path__ = [_tf_api_dir]
+elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
-
 
 # These symbols appear because we import the python package which
 # in turn imports from tensorflow.core and tensorflow.python. They

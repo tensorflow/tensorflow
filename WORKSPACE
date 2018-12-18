@@ -1,6 +1,6 @@
 workspace(name = "org_tensorflow")
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 http_archive(
     name = "io_bazel_rules_closure",
@@ -16,38 +16,64 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
 
-http_archive(
-    name = "base_images_docker",
-    sha256 = "e2b1b7254270bb7605e814a9dbf6d1e4ae04a11136ff1714fbfdabe3f87f7cf9",
-    strip_prefix = "base-images-docker-12801524f867e657fbb5d1a74f31618aff181ac6",
-    urls = ["https://github.com/GoogleCloudPlatform/base-images-docker/archive/12801524f867e657fbb5d1a74f31618aff181ac6.tar.gz"],
+load("//third_party/toolchains/preconfig/generate:archives.bzl",
+     "bazel_toolchains_archive")
+
+bazel_toolchains_archive()
+
+load(
+    "@bazel_toolchains//repositories:repositories.bzl",
+    bazel_toolchains_repositories = "repositories",
 )
 
-http_archive(
-    name = "bazel_toolchains",
-    sha256 = "15b5858b1b5541ec44df31b94c3b8672815b31d71215a98398761ea9f4c4eedb",
-    strip_prefix = "bazel-toolchains-6200b238c9c2d137c0d9a7262c80cc71d98e692b",
-    urls = [
-        "https://github.com/bazelbuild/bazel-toolchains/archive/6200b238c9c2d137c0d9a7262c80cc71d98e692b.tar.gz",
-    ],
+bazel_toolchains_repositories()
+
+load(
+    "@io_bazel_rules_docker//container:container.bzl",
+    container_repositories = "repositories",
 )
 
-http_archive(
-    name = "io_bazel_rules_docker",
-    sha256 = "29d109605e0d6f9c892584f07275b8c9260803bf0c6fcb7de2623b2bedc910bd",
-    strip_prefix = "rules_docker-0.5.1",
-    urls = ["https://github.com/bazelbuild/rules_docker/archive/v0.5.1.tar.gz"],
-)
+container_repositories()
 
-load("//third_party/toolchains/preconfig/generate:workspace.bzl", "remote_config_workspace")
+load("//third_party/toolchains/preconfig/generate:workspace.bzl",
+     "remote_config_workspace")
 
 remote_config_workspace()
+
+# Apple and Swift rules.
+http_archive(
+    name = "build_bazel_rules_apple",
+    sha256 = "4fe4ee824200b48821730f89ff260984332dc3551db587c24691235d1d96a8a7",
+    strip_prefix = "rules_apple-0.10.0",
+    urls = ["https://github.com/bazelbuild/rules_apple/archive/0.10.0.tar.gz"],
+)
+http_archive(
+    name = "build_bazel_rules_swift",
+    sha256 = "6544ff5615febec0342de1127144d2f3e43ea80fb7f9b1ade65e6a184e39e618",
+    strip_prefix = "rules_swift-0.5.0",
+    urls = ["https://github.com/bazelbuild/rules_swift/archive/0.5.0.tar.gz"],
+)
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "eb5c57e4c12e68c0c20bc774bfbc60a568e800d025557bc4ea022c6479acc867",
+    strip_prefix = "bazel-skylib-0.6.0",
+    urls = ["https://github.com/bazelbuild/bazel-skylib/archive/0.6.0.tar.gz"],
+)
+http_file(
+    name = "xctestrunner",
+    executable = 1,
+    urls = ["https://github.com/google/xctestrunner/releases/download/0.2.5/ios_test_runner.par"],
+)
+load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
+apple_rules_dependencies(ignore_version_differences = True)
+load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
+swift_rules_dependencies()
 
 # We must check the bazel version before trying to parse any other BUILD
 # files, in case the parsing of those build files depends on the bazel
 # version we require here.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
-check_bazel_version_at_least("0.15.0")
+check_bazel_version_at_least("0.18.0")
 
 load("//tensorflow:workspace.bzl", "tf_workspace")
 

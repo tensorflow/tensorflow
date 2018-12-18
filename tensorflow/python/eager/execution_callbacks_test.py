@@ -24,6 +24,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
+RAISE = execution_callbacks.ExecutionCallback.RAISE
+IGNORE = execution_callbacks.ExecutionCallback.IGNORE
+
 
 def log_zero():
   """Computes `log(0.0)`."""
@@ -33,17 +36,17 @@ def log_zero():
 class ExecutionCallbacksTest(test.TestCase):
 
   def test_errstate_inf_raise(self):
-    with execution_callbacks.errstate(inf_or_nan=execution_callbacks.RAISE):
+    with execution_callbacks.errstate(inf_or_nan=RAISE):
       with self.assertRaises(execution_callbacks.InfOrNanError):
         log_zero()
 
   def test_errstate_inf_ignore(self):
-    with execution_callbacks.errstate(inf_or_nan=execution_callbacks.IGNORE):
+    with execution_callbacks.errstate(inf_or_nan=IGNORE):
       self.assertEqual(-float("inf"), log_zero().numpy())
 
   def test_errstate_nesting(self):
-    with execution_callbacks.errstate(inf_or_nan=execution_callbacks.RAISE):
-      with execution_callbacks.errstate(inf_or_nan=execution_callbacks.IGNORE):
+    with execution_callbacks.errstate(inf_or_nan=RAISE):
+      with execution_callbacks.errstate(inf_or_nan=IGNORE):
         self.assertEqual(-float("inf"), log_zero().numpy())
 
       with self.assertRaises(execution_callbacks.InfOrNanError):

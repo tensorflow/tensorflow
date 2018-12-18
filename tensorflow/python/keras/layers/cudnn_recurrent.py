@@ -158,7 +158,7 @@ class _CuDNNRNN(RNN):
         RNN, self).get_losses_for(inputs=inputs)
 
 
-@tf_export('keras.layers.CuDNNGRU')
+@tf_export(v1=['keras.layers.CuDNNGRU'])
 class CuDNNGRU(_CuDNNRNN):
   """Fast GRU implementation backed by cuDNN.
 
@@ -335,7 +335,7 @@ class CuDNNGRU(_CuDNNRNN):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.CuDNNLSTM')
+@tf_export(v1=['keras.layers.CuDNNLSTM'])
 class CuDNNLSTM(_CuDNNRNN):
   """Fast LSTM implementation backed by cuDNN.
 

@@ -317,17 +317,6 @@ TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
                             ShapeUtil::MakeShape(F32, {10, 20, 30, 15, 25}))));
 }
 
-TEST_F(LayoutUtilTest, SparseLayoutMaxElements) {
-  EXPECT_EQ(LayoutUtil::MaxSparseElements(LayoutUtil::MakeSparseLayout(101)),
-            101);
-}
-
-TEST_F(LayoutUtilTest, StreamOut) {
-  std::ostringstream oss;
-  oss << LayoutUtil::MakeLayout({0, 1, 2});
-  EXPECT_EQ(oss.str(), "{0,1,2}");
-}
-
 TEST_F(LayoutUtilTest, ValidateLayout_ValidArrayLayout) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
   auto status =

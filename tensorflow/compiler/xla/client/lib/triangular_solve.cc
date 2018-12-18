@@ -393,6 +393,12 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
           block_size);
     }
 
+    if (ShapeUtil::IsZeroElementArray(b_shape)) {
+      // The output has the same shape as 'b', and since the output has zero
+      // elements, any such array will do.
+      return b;
+    }
+
     // We find the diagonal blocks of the coefficient matrix
     auto diag_blocks = DiagonalBlocks(a, block_size);
 
