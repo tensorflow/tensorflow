@@ -15,7 +15,6 @@ py_library(
         ":metrics",
         ":network",
         ":parameter_server",
-        ":remote",
         ":saver",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
@@ -31,6 +30,7 @@ py_library(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:remote",
     ],
 )
 
@@ -238,24 +238,12 @@ py_test(
     ],
 )
 
-py_library(
-    name = "remote",
-    srcs = ["remote.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
-        "//tensorflow/python/eager:context",
-    ],
-)
-
 cuda_py_test(
     name = "remote_test",
     srcs = ["remote_test.py"],
     additional_deps = [
         ":parameter_server",
-        ":remote",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",

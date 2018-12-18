@@ -321,6 +321,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "config"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "constant_initializer"
     mtype: "<type \'type\'>"
   }
