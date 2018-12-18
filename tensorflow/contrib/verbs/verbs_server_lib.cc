@@ -33,6 +33,8 @@ RendezvousMgrInterface* NewRdmaRendezvousMgr(const WorkerEnv* env) {
   return new RdmaRendezvousMgr(env);
 }
 
+std::once_flag reg_mem_visitors_call;
+
 }  // namespace
 
 VerbsServer::VerbsServer(const ServerDef& server_def, Env* env)
@@ -75,10 +77,6 @@ Status VerbsServer::ChannelCacheFactory(const ServerDef& server_def,
 
   return Status::OK();
 }
-
-namespace {
-std::once_flag reg_mem_visitors_call;
-}  // namespace
 
 Status VerbsServer::Init(ServiceInitFunction service_func,
                          RendezvousMgrCreationFunction rendezvous_mgr_func) {
