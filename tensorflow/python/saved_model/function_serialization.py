@@ -47,6 +47,9 @@ def _serialize_polymorphic_function(polymorphic_function, node_ids):
 
 def list_all_concrete_functions(polymorphic_function):
   """Given a polymorphic function, returns all of its concrete functions."""
+  input_signature = polymorphic_function._input_signature  # pylint: disable=protected-access
+  if input_signature is not None:
+    polymorphic_function.get_concrete_function()
   concrete_functions = []
   for signature in polymorphic_function._cached_input_signatures:  # pylint: disable=protected-access
     if any(isinstance(arg, defun_lib.UnknownArgument) for arg in signature):
