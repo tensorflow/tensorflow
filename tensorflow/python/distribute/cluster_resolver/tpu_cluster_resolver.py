@@ -22,6 +22,8 @@ import collections
 import os
 import re
 
+from six.moves import urllib
+from six.moves.urllib.error import URLError
 from six.moves.urllib.request import Request
 from six.moves.urllib.request import urlopen
 
@@ -160,6 +162,20 @@ class TPUClusterResolver(ClusterResolver):
   def _environmentDiscoveryUrl():
     return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
 
+  @staticmethod
+  def _isRunningInGCE():
+    """Checks for GCE presence by attempting to query the metadata service."""
+    try:
+      req = Request('http://metadata.google.internal/computeMetadata/v1',
+                    headers={'Metadata-Flavor': 'Google'})
+      resp = urllib.request.urlopen(req, timeout=1)
+      info = resp.info()
+      if 'Metadata-Flavor' in info and info['Metadata-Flavor'] == 'Google':
+        return True
+    except URLError:
+      pass
+    return False
+
   def __init__(self,
                tpu=None,
                zone=None,
@@ -208,6 +224,8 @@ class TPUClusterResolver(ClusterResolver):
     Raises:
       ImportError: If the googleapiclient is not installed.
       ValueError: If no TPUs are specified.
+      RuntimeError: If an empty TPU name is specified and this is running in a
+        Google Cloud environment.
     """
     if isinstance(tpu, list):
       if not tpu:
@@ -229,6 +247,11 @@ class TPUClusterResolver(ClusterResolver):
       raise ValueError('Please provide a TPU Name to connect to.')
 
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
+
+    # If we are running in Cloud and don't specify a TPU name
+    if self._isRunningInGCE() and not self._tpu:
+      raise RuntimeError('You need to specify a TPU Name if you are running in '
+                         'the Google Cloud environment.')
 
     # By default the task_type is 'worker` and the task_index is 0 (which is the
     # first worker in the task).
