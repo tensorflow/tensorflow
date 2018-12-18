@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Logger::FactoryFunc Logger::singleton_factory_ = []() -> Logger* {
+Logger* Logger::Singleton() {
   class DefaultLogger : public Logger {
    private:
     void DoLogProto(google::protobuf::Any* proto) override {
@@ -27,7 +27,8 @@ Logger::FactoryFunc Logger::singleton_factory_ = []() -> Logger* {
     }
     void DoFlush() override {}
   };
-  return new DefaultLogger();
-};
+  static Logger* instance = new DefaultLogger();
+  return instance;
+}
 
 }  // namespace tensorflow
