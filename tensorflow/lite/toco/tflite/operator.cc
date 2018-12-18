@@ -406,8 +406,23 @@ class FullyConnected
   int GetVersion(const OperatorSignature& op_signature) const override {
     const auto& fc_op =
         static_cast<const FullyConnectedOperator&>(*op_signature.op);
-    return fc_op.weights_format == FullyConnectedWeightsFormat::kDefault ? 1
-                                                                         : 2;
+    if (fc_op.weights_format == FullyConnectedWeightsFormat::kDefault) {
+      return 1;
+    }
+    const string& input_name = op_signature.op->inputs[0];
+    const string& weights_name = op_signature.op->inputs[1];
+    const string& output_name = op_signature.op->outputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    const Array& weights_array = op_signature.model->GetArray(weights_name);
+    const Array& output_array = op_signature.model->GetArray(output_name);
+    // If the op is a signed int8 hybrid operation, we need to return
+    // version 3.
+    if (input_array.data_type == ArrayDataType::kFloat &&
+        weights_array.data_type == ArrayDataType::kInt8 &&
+        output_array.data_type == ArrayDataType::kFloat) {
+      return 3;
+    }
+    return 2;
   }
 };
 
