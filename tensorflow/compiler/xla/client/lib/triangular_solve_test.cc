@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -337,6 +338,33 @@ XLA_TEST_F(TriangularSolveTest, SimpleLeftUpperTransposeNoconjugate) {
 
   ComputeAndCompareR2<complex64>(
       &builder, expected, {a_data.get(), b_data.get()}, ErrorSpec(1e-2, 1e-2));
+}
+
+XLA_TEST_F(TriangularSolveTest, BatchedLeftUpper) {
+  XlaBuilder builder(TestName());
+
+  Array3D<float> bvals(7, 5, 5);
+  bvals.FillIota(1.);
+
+  // Set avals to the upper triangle of bvals.
+  Array3D<float> avals = bvals;
+  avals.Each([](absl::Span<const int64> indices, float* value) {
+    if (indices[1] > indices[2]) {
+      *value = 0;
+    }
+  });
+
+  XlaOp a, b;
+  auto a_data = CreateR3Parameter<float>(avals, 0, "a", &builder, &a);
+  auto b_data = CreateR3Parameter<float>(bvals, 1, "b", &builder, &b);
+  BatchDot(ConstantR3FromArray3D(&builder, avals),
+           TriangularSolve(a, b,
+                           /*left_side=*/true, /*lower=*/false,
+                           /*transpose_a=*/false, /*conjugate_a=*/false,
+                           /*block_size=*/2));
+
+  ComputeAndCompareR3<float>(&builder, bvals, {a_data.get(), b_data.get()},
+                             ErrorSpec(1e-2, 1e-2));
 }
 
 }  // namespace
