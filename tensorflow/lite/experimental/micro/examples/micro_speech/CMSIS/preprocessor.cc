@@ -21,7 +21,7 @@ extern "C" {
   #define FFT_SIZE_DIV2 256
   #include <arm_math.h>
   #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/hanning.h"
-  #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/arm_cmplx_mag_squared_q10p6.h"
+  #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS_ext/arm_cmplx_mag_squared_q10p6.h"
 }
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.h"

@@ -21,6 +21,7 @@ cd "$SCRIPT_DIR/../../../../../.."
 
 DOWNLOADS_DIR=tensorflow/lite/experimental/micro/tools/make/downloads
 BZL_FILE_PATH=tensorflow/workspace.bzl
+AP3_DOWNLOADS_DIR=tensorflow/lite/experimental/micro/examples/micro_speech
 
 # Ensure it is being run from repo root
 if [ ! -f $BZL_FILE_PATH ]; then
@@ -33,6 +34,8 @@ GEMMLOWP_URL="https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37
 FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/1f5eae5d6a135ff6811724f6c57f911d1f46bb15.tar.gz"
 CMSIS_URL="https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
 STM32_BARE_LIB_URL="https://github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
+AP3_URL="https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276c087d95aab7cb234f1d4c9eaaba.zip"
+CUST_CMSIS_URL="https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
 
 download_and_extract() {
   local usage="Usage: download_and_extract URL DIR"
@@ -69,5 +72,7 @@ download_and_extract "${GEMMLOWP_URL}" "${DOWNLOADS_DIR}/gemmlowp"
 download_and_extract "${FLATBUFFERS_URL}" "${DOWNLOADS_DIR}/flatbuffers"
 download_and_extract "${CMSIS_URL}" "${DOWNLOADS_DIR}/cmsis"
 download_and_extract "${STM32_BARE_LIB_URL}" "${DOWNLOADS_DIR}/stm32_bare_lib"
+download_and_extract "${AP3_URL}" "${AP3_DOWNLOADS_DIR}/apollo3_ext"
+download_and_extract "${CUST_CMSIS_URL}" "${AP3_DOWNLOADS_DIR}/CMSIS_ext"
 
 echo "download_dependencies.sh completed successfully." >&2

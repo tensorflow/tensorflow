@@ -46,7 +46,6 @@
 # Description of files
 
 * **.gitignore**: Git should ignore \*.txt and \*.wav files that result from experiments run in this directory
-* **apollo3.h**: Apollo 3 version of the [CMSIS Device Header File (device.h)](https://www.keil.com/pack/doc/CMSIS/Core/html/device_h_pg.html). Available in the [Ambiq Keil Pack](http://s3.ambiqmicro.com/pack/AmbiqMicro.Apollo_DFP.1.1.0.pack).
 * **captured\_data\_to\_wav.py**: Python script that parses a text file containing data dumped from GDB (specifically the verilog format) and creates a \*.wav file using [PySoundFile](https://pysoundfile.readthedocs.io/en/0.9.0/).
 * **compare\_1k.py**: This script compares the intermediate variables and final outputs of the micro-lite fixed-point preprocessor function and the CMSIS version of this function. The stimulus provided to each preprocessor is the same: a 1 kHz sinusoid.
 * **get\_yesno\_data.cmd**: A GDB command file that runs preprocessor_test (where TARGET=apollo3evb) and dumps the calculated data for the "yes" and "no" input wavfeorms to text files
@@ -59,6 +58,10 @@
 * **pushbutton_cmsis_voice.cmd**: GDB command file that runs pushbutton_cmsis_speech_test_bin. Dumps the recorded 1 second of audio to captured_data.txt, which can then be processed by the python file captured_data_to_wav.py.
 * **pushbutton_main.c**: Source file containing program point of entry \_main() for the pushbutton\_\* tests. Contains Interrupt Service Routines for PDM data capture and pushbuttons. Calls the main() function of pushbutton_test.cc
 * **pushbutton_test.cc**: Source file containing main() function for the pushbutton\_\* tests. main() calls the preprocessor function and the neural net inference function.
+
+# Description of externally downloaded files in ../apollo3_ext
+
+* **apollo3.h**: Apollo 3 version of the [CMSIS Device Header File (device.h)](https://www.keil.com/pack/doc/CMSIS/Core/html/device_h_pg.html). Available in the [Ambiq Keil Pack](http://s3.ambiqmicro.com/pack/AmbiqMicro.Apollo_DFP.1.1.0.pack).
 * **system_apollo3.c**: Apollo 3 version of the [CMSIS System Configuration File system\_\<device\>.c](https://www.keil.com/pack/doc/CMSIS/Core/html/system_c_pg.html). Available in the [Ambiq Keil Pack](http://s3.ambiqmicro.com/pack/AmbiqMicro.Apollo_DFP.1.1.0.pack).
 * **system_apollo3.h**: Apollo 3 version of the [CMSIS System Configuration File system\_\<device\>.h](https://www.keil.com/pack/doc/CMSIS/Core/html/system_c_pg.html). Available in the [Ambiq Keil Pack](http://s3.ambiqmicro.com/pack/AmbiqMicro.Apollo_DFP.1.1.0.pack).
 
