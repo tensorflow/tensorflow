@@ -43,7 +43,11 @@ model_from_yaml = saving.model_from_yaml
 model_from_json = saving.model_from_json
 
 
-def _clone_functional_model(model, input_tensors=None):
+def clone_layer(layer):
+  return layer.__class__.from_config(layer.get_config())
+
+
+def _clone_functional_model(model, input_tensors=None, share_weights=False):
   """Clone a functional `Model` instance.
 
   Model cloning is similar to calling a model on new inputs,
@@ -55,6 +59,11 @@ def _clone_functional_model(model, input_tensors=None):
       input_tensors: optional list of input tensors
           to build the model upon. If not provided,
           placeholders will be created.
+      share_weights: flag to enable sharing of non-input layers between the
+          cloned and original model. Note this still clones the input layers.
+          This is required when we create a per-replica copy of the model with
+          distribution strategy; we want the weights to be shared but still
+          feed inputs separately so we create new input layers.
 
   Returns:
       An instance of `Model` reproducing the behavior
@@ -127,10 +136,11 @@ def _clone_functional_model(model, input_tensors=None):
 
       # Get or create layer.
       if layer not in layer_map:
-        # Clone layer.
-        new_layer = layer.__class__.from_config(layer.get_config())
-        layer_map[layer] = new_layer
-        layer = new_layer
+        if not share_weights:
+          # Clone layer.
+          new_layer = clone_layer(layer)
+          layer_map[layer] = new_layer
+          layer = new_layer
       else:
         # Reuse previously cloned layer.
         layer = layer_map[layer]
@@ -177,7 +187,7 @@ def _clone_functional_model(model, input_tensors=None):
   return Model(input_tensors, output_tensors, name=model.name)
 
 
-def _clone_sequential_model(model, input_tensors=None):
+def _clone_sequential_model(model, input_tensors=None, share_weights=False):
   """Clone a `Sequential` model instance.
 
   Model cloning is similar to calling a model on new inputs,
@@ -189,6 +199,11 @@ def _clone_sequential_model(model, input_tensors=None):
       input_tensors: optional list of input tensors
           to build the model upon. If not provided,
           placeholders will be created.
+      share_weights: flag to enable sharing of non-input layers between the
+          cloned and original model. Note this still clones the input layers.
+          This is required when we create a per-replica copy of the model with
+          distribution strategy; we want the weights to be shared but still
+          feed inputs separately so we create new input layers.
 
   Returns:
       An instance of `Sequential` reproducing the behavior
@@ -203,23 +218,28 @@ def _clone_sequential_model(model, input_tensors=None):
                      'to be a `Sequential` model instance, '
                      'but got:', model)
 
-  def clone(layer):
-    return layer.__class__.from_config(layer.get_config())
-
   # Use model._layers to ensure that all layers are cloned. The model's layers
   # property will exclude the initial InputLayer (if it exists) in the model,
   # resulting in a different Sequential model structure.
   if input_tensors is None:
-    layers = [clone(layer) for layer in model._layers]
+    if share_weights:
+      # In preserve weights case we still want the input layers to be cloned.
+      layers = []
+      for layer in model._layers:
+        if isinstance(layer, InputLayer):
+          layers.append(clone_layer(layer))
+        else:
+          layers.append(layer)
+    else:
+      layers = [clone_layer(layer) for layer in model._layers]
     return Sequential(layers=layers, name=model.name)
   else:
     # If input tensors are provided, the original model's InputLayer is
     # overwritten with a different InputLayer.
     layers = [
-        clone(layer)
-        for layer in model._layers
-        if not isinstance(layer, InputLayer)
-    ]
+        layer for layer in model._layers if not isinstance(layer, InputLayer)]
+    if not share_weights:
+      layers = [clone_layer(layer) for layer in layers]
     if len(generic_utils.to_list(input_tensors)) != 1:
       raise ValueError('To clone a `Sequential` model, we expect '
                        ' at most one tensor '
