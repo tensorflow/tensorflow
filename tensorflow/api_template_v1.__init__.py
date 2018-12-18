@@ -40,7 +40,15 @@ if not hasattr(_current_module, 'estimator'):
           'tensorflow_estimator.python.estimator.api.estimator'))
 
 from tensorflow.python.util.lazy_loader import LazyLoader  # pylint: disable=g-import-not-at-top
-contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
+_CONTRIB_WARNING = """
+WARNING: The TensorFlow contrib module will not be included in TensorFlow 2.0.
+For more information, please see:
+  * https://github.com/tensorflow/community/blob/master/rfcs/20180907-contrib-sunset.md
+  * https://github.com/tensorflow/addons
+If you depend on functionality not listed there, please file an issue.
+"""
+contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib',
+                     _CONTRIB_WARNING)
 del LazyLoader
 # The templated code that replaces the placeholder above sometimes
 # sets the __all__ variable. If it does, we have to be sure to add
