@@ -54,6 +54,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:evaluation_utils",
     ] + tf_protos_grappler(),
 )
 
