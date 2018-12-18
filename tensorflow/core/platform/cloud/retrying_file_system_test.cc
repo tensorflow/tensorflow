@@ -78,6 +78,9 @@ class MockWritableFile : public WritableFile {
   Status Close() override { return calls_.ConsumeNextCall("Close"); }
   Status Flush() override { return calls_.ConsumeNextCall("Flush"); }
   Status Sync() override { return calls_.ConsumeNextCall("Sync"); }
+  Status Tell(int64* position) override {
+    return calls_.ConsumeNextCall("Tell");
+  }
 
  private:
   mutable MockCallSequence calls_;

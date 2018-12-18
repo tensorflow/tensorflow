@@ -406,6 +406,14 @@ class GcsWritableFile : public WritableFile {
     return status;
   }
 
+  Status Tell(int64* position) override {
+    *position = outfile_.tellp();
+    if (*position == -1) {
+      return errors::Internal("tellp on the internal temporary file failed");
+    }
+    return Status::OK();
+  }
+
  private:
   /// Copies the current version of the file to GCS.
   ///

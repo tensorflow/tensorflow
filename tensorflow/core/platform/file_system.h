@@ -305,6 +305,16 @@ class WritableFile {
   /// be properly saved.
   virtual Status Sync() = 0;
 
+  /// \brief Retrieves the current write position in the file, or -1 on
+  /// error.
+  ///
+  /// This is an optional operation, subclasses may choose to return
+  /// errors::Unimplemented.
+  virtual Status Tell(int64* position) {
+    *position = -1;
+    return errors::Unimplemented("This filesystem does not support Tell()");
+  }
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
 };

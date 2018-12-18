@@ -80,6 +80,10 @@ class ZlibOutputBuffer : public WritableFile {
   // Deflates any cached input, writes all output to file and syncs it.
   Status Sync() override;
 
+  // Returns the write position in the underlying file. The position does not
+  // reflect buffered, un-flushed data.
+  Status Tell(int64* position) override;
+
  private:
   WritableFile* file_;  // Not owned
   Status init_status_;
