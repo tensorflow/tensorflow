@@ -76,7 +76,7 @@ inline void Export(const Model& model, string* output_file_contents) {
 
 namespace details {
 
-// A maps from tensor name to its final position in the TF Lite buffer.
+// A map from tensor name to its final position in the TF Lite buffer.
 using TensorsMap = std::unordered_map<string, int>;
 
 // A key to identify an operator.
@@ -88,7 +88,7 @@ class OperatorKey {
 
   // Construct OperatorKey by Toco op.
   OperatorKey(
-      const ::toco::Operator& op,
+      const ::toco::OperatorSignature& op_signature,
       const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
       bool enable_select_tf_ops);
 
@@ -158,7 +158,7 @@ class OperatorKey {
   std::string flex_tensorflow_op_;
 };
 
-// A maps from operator type to its final position in the TF Lite buffer.
+// A map from OperatorKey to its final position in the TF Lite buffer.
 using OperatorsMap = std::unordered_map<OperatorKey, int, OperatorKey::Hash>;
 
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map);
