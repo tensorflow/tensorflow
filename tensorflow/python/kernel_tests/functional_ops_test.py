@@ -466,7 +466,7 @@ class FunctionalOpsTest(test.TestCase):
     loss = l0 + array_ops.stop_gradient(l1)
     grad = gradients_impl.gradients(ys=[loss], xs=[a, b])
     with self.test_session(use_gpu=True) as sess:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.evaluate(grad)
 
   @test_util.run_in_graph_and_eager_modes

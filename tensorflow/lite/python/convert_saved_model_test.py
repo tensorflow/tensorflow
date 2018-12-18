@@ -93,7 +93,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
         str(error.exception))
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_deprecated_v1
   def testSetTensorShapeDimensionInvalid(self):
     # Tests set_tensor_shape where the shape passed in is incompatiable.
     tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
@@ -102,9 +102,8 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as error:
       convert_saved_model.set_tensor_shapes([tensor],
                                             {"Placeholder": [1, 5, 5]})
-    self.assertIn(
-        "The shape of tensor 'Placeholder' cannot be changed from "
-        "(?, 3, 5) to [1, 5, 5].", str(error.exception))
+    self.assertIn("The shape of tensor 'Placeholder' cannot be changed",
+                  str(error.exception))
     self.assertEqual([None, 3, 5], tensor.shape.as_list())
 
   @test_util.run_v1_only("b/120545219")

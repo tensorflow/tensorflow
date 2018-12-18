@@ -39,9 +39,9 @@ from tensorflow.python.training import queue_runner_impl
 _MockOp = collections.namedtuple("MockOp", ["name"])
 
 
+@test_util.run_v1_only("QueueRunner removed from v2")
 class QueueRunnerTest(test.TestCase):
 
-  @test_util.run_v1_only("b/120545219")
   def testBasic(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -49,7 +49,7 @@ class QueueRunnerTest(test.TestCase):
       var = variables.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       threads = qr.create_threads(sess)
       self.assertEqual(sorted(t.name for t in threads),
@@ -62,7 +62,6 @@ class QueueRunnerTest(test.TestCase):
       # The variable should be 3.
       self.assertEqual(3, self.evaluate(var))
 
-  @test_util.run_v1_only("b/120545219")
   def testTwoOps(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -77,7 +76,7 @@ class QueueRunnerTest(test.TestCase):
       self.assertEqual(sorted(t.name for t in threads),
                        ["QueueRunnerThread-fifo_queue-CountUpTo:0",
                         "QueueRunnerThread-fifo_queue-CountUpTo_1:0"])
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for t in threads:
         t.start()
       for t in threads:
@@ -86,14 +85,13 @@ class QueueRunnerTest(test.TestCase):
       self.assertEqual(3, self.evaluate(var0))
       self.assertEqual(30, self.evaluate(var1))
 
-  @test_util.run_deprecated_v1
   def testExceptionsCaptured(self):
     with self.cached_session() as sess:
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
       qr = queue_runner_impl.QueueRunner(queue, [_MockOp("i fail"),
                                                  _MockOp("so fail")])
       threads = qr.create_threads(sess)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       for t in threads:
         t.start()
       for t in threads:
@@ -103,7 +101,6 @@ class QueueRunnerTest(test.TestCase):
       self.assertTrue("Operation not in the graph" in str(exceptions[0]))
       self.assertTrue("Operation not in the graph" in str(exceptions[1]))
 
-  @test_util.run_deprecated_v1
   def testRealDequeueEnqueue(self):
     with self.cached_session() as sess:
       q0 = data_flow_ops.FIFOQueue(3, dtypes.float32)
@@ -132,7 +129,6 @@ class QueueRunnerTest(test.TestCase):
       with self.assertRaisesRegexp(errors_impl.OutOfRangeError, "is closed"):
         self.evaluate(dequeue1)
 
-  @test_util.run_v1_only("b/120545219")
   def testRespectCoordShouldStop(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -140,7 +136,7 @@ class QueueRunnerTest(test.TestCase):
       var = variables.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       # As the coordinator to stop.  The queue runner should
       # finish immediately.
@@ -157,7 +153,6 @@ class QueueRunnerTest(test.TestCase):
       # The variable should be 0.
       self.assertEqual(0, self.evaluate(var))
 
-  @test_util.run_deprecated_v1
   def testRequestStopOnException(self):
     with self.cached_session() as sess:
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
@@ -170,7 +165,6 @@ class QueueRunnerTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, "Operation not in the graph"):
         coord.join()
 
-  @test_util.run_deprecated_v1
   def testGracePeriod(self):
     with self.cached_session() as sess:
       # The enqueue will quickly block.
@@ -188,7 +182,6 @@ class QueueRunnerTest(test.TestCase):
       # the queue to be closed and the enqueue to terminate.
       coord.join(stop_grace_period_secs=1.0)
 
-  @test_util.run_deprecated_v1
   def testMultipleSessions(self):
     with self.cached_session() as sess:
       with session.Session() as other_sess:
@@ -196,7 +189,7 @@ class QueueRunnerTest(test.TestCase):
         var = variables.VariableV1(zero64)
         count_up_to = var.count_up_to(3)
         queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         coord = coordinator.Coordinator()
         qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
         # NOTE that this test does not actually start the threads.
@@ -204,7 +197,6 @@ class QueueRunnerTest(test.TestCase):
         other_threads = qr.create_threads(other_sess, coord=coord)
         self.assertEqual(len(threads), len(other_threads))
 
-  @test_util.run_deprecated_v1
   def testIgnoreMultiStarts(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -212,7 +204,7 @@ class QueueRunnerTest(test.TestCase):
       var = variables.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       coord = coordinator.Coordinator()
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to])
       threads = []
@@ -221,7 +213,6 @@ class QueueRunnerTest(test.TestCase):
       new_threads = qr.create_threads(sess, coord=coord)
       self.assertEqual([], new_threads)
 
-  @test_util.run_v1_only("b/120545219")
   def testThreads(self):
     with self.cached_session() as sess:
       # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
@@ -229,7 +220,7 @@ class QueueRunnerTest(test.TestCase):
       var = variables.VariableV1(zero64)
       count_up_to = var.count_up_to(3)
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       qr = queue_runner_impl.QueueRunner(queue, [count_up_to,
                                                  _MockOp("bad_op")])
       threads = qr.create_threads(sess, start=True)
@@ -249,7 +240,6 @@ class QueueRunnerTest(test.TestCase):
       self.assertEqual(1, len(exceptions))
       self.assertTrue("Operation not in the graph" in str(exceptions[0]))
 
-  @test_util.run_deprecated_v1
   def testName(self):
     with ops.name_scope("scope"):
       queue = data_flow_ops.FIFOQueue(10, dtypes.float32, name="queue")
@@ -259,7 +249,6 @@ class QueueRunnerTest(test.TestCase):
     self.assertEqual(
         1, len(ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS, "scope")))
 
-  @test_util.run_deprecated_v1
   def testStartQueueRunners(self):
     # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
@@ -278,7 +267,6 @@ class QueueRunnerTest(test.TestCase):
       # The variable should be 3.
       self.assertEqual(3, self.evaluate(var))
 
-  @test_util.run_deprecated_v1
   def testStartQueueRunnersRaisesIfNotASession(self):
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
     var = variables.VariableV1(zero64)
@@ -292,7 +280,6 @@ class QueueRunnerTest(test.TestCase):
       with self.assertRaisesRegexp(TypeError, "tf.Session"):
         queue_runner_impl.start_queue_runners("NotASession")
 
-  @test_util.run_deprecated_v1
   def testStartQueueRunnersIgnoresMonitoredSession(self):
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
     var = variables.VariableV1(zero64)
@@ -307,7 +294,6 @@ class QueueRunnerTest(test.TestCase):
           monitored_session.MonitoredSession())
       self.assertFalse(threads)
 
-  @test_util.run_deprecated_v1
   def testStartQueueRunnersNonDefaultGraph(self):
     # CountUpTo will raise OUT_OF_RANGE when it reaches the count.
     graph = ops.Graph()

@@ -381,7 +381,10 @@ class LinearOperator(object):
       `Dimension` object.
     """
     # Derived classes get this "for free" once .shape is implemented.
-    return self.shape[-1]
+    if self.shape.rank is None:
+      return tensor_shape.Dimension(None)
+    else:
+      return self.shape.dims[-1]
 
   def domain_dimension_tensor(self, name="domain_dimension_tensor"):
     """Dimension (in the sense of vector spaces) of the domain of this operator.

@@ -132,9 +132,6 @@ tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    cuda_deps = [
-        "@local_config_cuda//cuda:cudnn_header",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/eigen3",

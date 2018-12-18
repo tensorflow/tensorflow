@@ -38,7 +38,8 @@ TEST(FftTest, CheckOutputValues) {
       {-887, 0}, {3000, 3000}, {0, -6401}, {-3000, 3000}, {886, 0}, {118, 119},
       {0, 25},   {9, -10},     {19, 0},    {9, 9},        {0, 0}};
   ASSERT_EQ(state.fft_size / 2 + 1, sizeof(expected) / sizeof(expected[0]));
-  for (int i = 0; i <= state.fft_size / 2; ++i) {
+  int i;
+  for (i = 0; i <= state.fft_size / 2; ++i) {
     EXPECT_EQ(state.output[i].real, expected[i].real);
     EXPECT_EQ(state.output[i].imag, expected[i].imag);
   }

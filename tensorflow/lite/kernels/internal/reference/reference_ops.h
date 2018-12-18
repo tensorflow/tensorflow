@@ -735,6 +735,40 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
   }
 }
 
+// Scalar-broadcast add that can be used for inner loop of more general
+// broadcast add, so that, for example, scalar-broadcast with batch will still
+// be fast.
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               uint8 input1_data, const uint8* input2_data,
+                               uint8* output_data) {
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+
+  const int32 input1_val = params.input1_offset + input1_data;
+  const int32 shifted_input1_val = input1_val * (1 << params.left_shift);
+  const int32 scaled_input1_val =
+      MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          shifted_input1_val, params.input1_multiplier, params.input1_shift);
+  for (int i = 0; i < size; ++i) {
+    const int32 input2_val = params.input2_offset + input2_data[i];
+    const int32 shifted_input2_val = input2_val * (1 << params.left_shift);
+    const int32 scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, params.input2_multiplier, params.input2_shift);
+    const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+    const int32 raw_output =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            raw_sum, params.output_multiplier, params.output_shift) +
+        params.output_offset;
+    const int32 clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, raw_output));
+    output_data[i] = static_cast<uint8>(clamped_output);
+  }
+}
+
 inline void Add(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const uint8* input1_data,
                 const RuntimeShape& input2_shape, const uint8* input2_data,
@@ -975,26 +1009,63 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
   uint8* output_data_ptr = output_data;
   const uint8* input1_data_ptr = input1_data;
   const uint8* input2_data_reset = input2_data;
+  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
+  // between input shapes. y3 for input 1 is always broadcast, and so the
+  // dimension there is 1, whereas optionally y1 might be broadcast for input 2.
+  // Put another way,
+  // input1.shape.FlatSize = y0 * y1 * y2 * y4,
+  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
   int y0 = params.broadcast_shape[0];
   int y1 = params.broadcast_shape[1];
   int y2 = params.broadcast_shape[2];
   int y3 = params.broadcast_shape[3];
   int y4 = params.broadcast_shape[4];
-  for (int i0 = 0; i0 < y0; ++i0) {
-    const uint8* input2_data_ptr;
-    for (int i1 = 0; i1 < y1; ++i1) {
-      input2_data_ptr = input2_data_reset;
-      for (int i2 = 0; i2 < y2; ++i2) {
-        for (int i3 = 0; i3 < y3; ++i3) {
-          AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
-                         output_data_ptr);
-          input2_data_ptr += y4;
-          output_data_ptr += y4;
+  if (y4 > 1) {
+    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
+    // dimension.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          // We have broadcast y4 of input1 data y3 times, and now move on.
+          input1_data_ptr += y4;
         }
-        input1_data_ptr += y4;
       }
+      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
+      input2_data_reset = input2_data_ptr;
     }
-    input2_data_reset = input2_data_ptr;
+  } else {
+    // Special case of y4 == 1, in which the innermost loop is a single element
+    // and can be combined with the next (y3) as an inner broadcast.
+    //
+    // Note that this handles the case of pure scalar broadcast when
+    // y0 == y1 == y2 == 1. With low overhead it handles cases such as scalar
+    // broadcast with batch (as y2 > 1).
+    //
+    // NOTE The process is the same as the above general case except simplified
+    // for y4 == 1 and the loop over y3 is contained within the
+    // AddScalarBroadcast function.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          AddScalarBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          input1_data_ptr += 1;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
   }
 }
 

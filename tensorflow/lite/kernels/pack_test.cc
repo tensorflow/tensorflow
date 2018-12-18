@@ -82,6 +82,19 @@ TEST(PackOpTest, FloatMultilDimensions) {
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 
+TEST(PackOpTest, FloatFiveDimensions) {
+  PackOpModel<float> model({TensorType_FLOAT32, {2, 2, 2, 2}}, 1, 2);
+  model.SetInput(0, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  model.SetInput(
+      1, {17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 2, 2, 2));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  17, 18, 19,
+                                20, 21, 22, 23, 24, 9,  10, 11, 12, 13, 14,
+                                15, 16, 25, 26, 27, 28, 29, 30, 31, 32}));
+}
+
 // int32 tests.
 TEST(PackOpTest, Int32ThreeInputs) {
   PackOpModel<int32_t> model({TensorType_INT32, {2}}, 0, 3);

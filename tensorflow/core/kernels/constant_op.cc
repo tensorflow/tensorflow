@@ -47,7 +47,7 @@ namespace {
 std::unique_ptr<const NodeDef> StripTensorDataFromNodeDef(
     OpKernelConstruction* ctx) {
 #ifndef __ANDROID__
-  DCHECK_EQ(NodeDef::descriptor()->field_count(), 5)
+  DCHECK_EQ(NodeDef::descriptor()->field_count(), 6)
       << "The NodeDef format has changed, and the attr-stripping code may need "
       << "to be updated.";
 #endif
@@ -61,6 +61,7 @@ std::unique_ptr<const NodeDef> StripTensorDataFromNodeDef(
   // attrs that affect the cardinality of list-typed inputs and outputs, so it
   // is safe to drop other attrs from the NodeDef.
   AddNodeAttr("dtype", ctx->output_type(0), ret);
+  MergeDebugInfo(original, ret);
   return std::unique_ptr<const NodeDef>(ret);
 }
 
@@ -261,7 +262,8 @@ class ZerosLikeOp : public OpKernel {
       const Variant& v = input.scalar<Variant>()();
       // DT_VARIANT tensors must be allocated on CPU since they wrap C++
       // objects which can not be efficiently represented in GPU memory.
-      Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
+      int numa_node = DeviceNumaNode(ctx->device());
+      Tensor out(cpu_allocator(numa_node), DT_VARIANT, TensorShape({}));
       Variant* out_v = &(out.scalar<Variant>()());
       OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(
                               ctx, ZEROS_LIKE_VARIANT_UNARY_OP, v, out_v));

@@ -615,6 +615,9 @@ class OperationTest(test_util.TensorFlowTestCase):
       self.assertEqual(while_op.type, "While")
       orig_num_inputs = len(while_op.inputs)
 
+      # Make sure we can handle the while op having a control input.
+      while_op._add_control_input(constant_op.constant(0).op)
+
       new_input1 = constant_op.constant(1.0)
       new_input2 = constant_op.constant(True)
 

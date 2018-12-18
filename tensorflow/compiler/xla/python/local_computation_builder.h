@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <Python.h>
+
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -48,6 +50,11 @@ Status InitializePlatformName(const string& platform_name);
 // Returns the replica count that is currently set, regardless of whether the
 // local XLA service has been instantiated yet or not.
 int GetReplicaCount();
+
+// Registers a 'fn_capsule' as a CPU custom call target.
+// 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
+// "xla._CPU_CUSTOM_CALL_TARGET".
+Status RegisterCpuCustomCallTarget(const string& name, PyObject* fn_capsule);
 
 // Wraps the local client's infeed-transfer function.
 //
@@ -286,6 +293,10 @@ class LocalComputationBuilder {
 
   LocalOp ConstantLiteral(const Literal& literal);
 
+  LocalOp Iota(PrimitiveType element_type, int64 size);
+
+  LocalOp BroadcastedIota(const Shape& shape, int64 dimension);
+
   LocalOp Broadcast(const LocalOp& operand,
                     absl::Span<const int64> broadcast_sizes);
 
@@ -352,6 +363,12 @@ class LocalComputationBuilder {
   LocalOp Call(const LocalComputation& local_computation,
                absl::Span<const LocalOp> operands);
 
+  LocalOp CustomCall(const string& call_target_name,
+                     absl::Span<const LocalOp> operands,
+                     const Shape& shape_with_layout,
+                     const std::vector<Shape>& operand_shapes_with_layout,
+                     const string& opaque);
+
   LocalOp Transpose(const LocalOp& operand,
                     absl::Span<const int64> permutation);
 
@@ -393,6 +410,13 @@ class LocalComputationBuilder {
 
   LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
                      int64 dimension);
+
+  LocalOp QR(const LocalOp& a, bool full_matrices);
+
+  LocalOp Cholesky(const LocalOp& a);
+
+  LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
+                          bool lower, bool transpose_a, bool conjugate_a);
 
   StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
 

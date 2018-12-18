@@ -549,7 +549,8 @@ class Flatten(Layer):
       inputs = array_ops.transpose(inputs, perm=permutation)
 
     outputs = array_ops.reshape(
-        inputs, (inputs.shape[0].value or array_ops.shape(inputs)[0], -1))
+        inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
+                 array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs

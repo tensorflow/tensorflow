@@ -86,13 +86,12 @@ struct GrapplerItem {
     // Is it allowed to add nodes to the graph that do not have registered
     // gradient function.
     bool non_differentiable_rewrites = true;
-    // By default we are not allowed to inline ops with side effects into the
-    // main graph, because we can't guarantee that after pruning these ops will
-    // be executed. However if we are optimizing a function library (see
-    // meta_optimizer.cc) and a graph was instantiated by a function definition,
-    // we can do that, because functions guarantee that all side effects will be
-    // executed (see function_optimizer.cc for details).
-    bool inline_ops_with_side_effects = false;
+
+    // By default we are allowed to prune ops with side-effects from the main
+    // graph if they are not in transitive fanin of the fetch nodes. If we are
+    // optimizing a graph that was instantiated by a function definition, we
+    // must keep all side effects intact.
+    bool prune_ops_with_side_effects = true;
   };
 
   const std::unordered_set<string>& devices() const;

@@ -86,7 +86,8 @@ class DefunnedMiniModel(MiniModel):
 class FunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
     t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
     sq = matmul(t, t, transpose_a=True)
     sq2 = matmul(sq, t, transpose_a=True)
@@ -123,7 +124,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(add_2._name, 'add_2')
 
   def testBasicGraphMode(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(a):
@@ -134,7 +136,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedInputsGraphMode(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -148,7 +151,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputsGraphMode(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -177,7 +181,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(f().shape, ())
 
   def testBasicGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(a):
@@ -191,7 +196,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testInputSpecGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(a):
@@ -210,7 +216,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out2, math_ops.matmul(t2, t2).numpy())
 
   def testNestedInputSpecGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(mats):
@@ -304,7 +311,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(f(), x)
 
   def testNestedInputsGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
@@ -321,7 +329,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(out, math_ops.matmul(t, t).numpy())
 
   def testNestedOutputGraphFunction(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     @def_function.function
     def sq(a):
@@ -462,6 +471,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     var_t = resource_variable_ops.read_variable_op(var_handle, dtype=v.dtype)
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
+  @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
 
     @function.defun
@@ -544,7 +554,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertIsInstance(
         self.v, resource_variable_ops.ResourceVariable)
 
-  def disabled_testRunMetadata(self):
+  def testRunMetadata(self):
 
     @def_function.function
     def f(x):
@@ -579,7 +589,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return self.v * 2
 
       o = HasAVar()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       call = def_function.function(o.call)
       op = call()
       self.assertAllEqual(self.evaluate(op), 2.0)
@@ -725,7 +735,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('No GPUs found')
 
     x = constant_op.constant([1.]).gpu()
-    f = def_function.function(math_ops.add)
+    # TODO(b/121134877): Remove the autograph override.
+    f = def_function.function(math_ops.add, autograph=False)
     y = f(x, x).cpu()
     self.assertAllEqual(y, [2.])
 
@@ -794,7 +805,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('No GPUs found')
 
     # The Reshape op requires the shape tensor to be placed in host memory.
-    reshape = def_function.function(array_ops.reshape)
+    # TODO(b/121134877): Remove the autograph override.
+    reshape = def_function.function(array_ops.reshape, autograph=False)
     value = constant_op.constant([1., 2.]).gpu()
     shape = constant_op.constant([2, 1])
     reshaped = reshape(value, shape).cpu()
@@ -805,7 +817,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('No GPUs found')
 
     # The Reshape op requires the shape tensor to be placed in host memory.
-    reshape = def_function.function(array_ops.reshape)
+    # TODO(b/121134877): Remove the autograph override.
+    reshape = def_function.function(array_ops.reshape, autograph=False)
     value = constant_op.constant([1., 2.])
     shape = constant_op.constant([2, 1]).gpu()
     reshape(value, shape)  # No error is raised
@@ -864,7 +877,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(1, int(self.evaluate(read())))
 
   def testSequenceInputs(self):
-    clip_by_global_norm = def_function.function(clip_ops.clip_by_global_norm)
+    # TODO(b/121134877): Remove the autograph override.
+    clip_by_global_norm = def_function.function(
+        clip_ops.clip_by_global_norm, autograph=False)
     t_list = [constant_op.constant(1.0), constant_op.constant(2.0)]
     clipped_list, global_norm = clip_by_global_norm(t_list,
                                                     constant_op.constant(.2))
@@ -936,9 +951,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
-    # Remove reference cycles in model
-    test_util.dismantle_polymorphic_function(model)
-
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDefunKerasModelCall(self):
     model = MiniModel()
@@ -952,8 +964,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([[3.0]], self.evaluate(y))
 
-    # Remove reference cycles in defun.
-    test_util.dismantle_polymorphic_function(model.call)
     # Break the reference cycle between the MiniModel and the defun:
     # MiniModel --(through its `call` method)--> PolymorphicFunction
     # PolymorphicFunction --(instancemethod on MiniModel)--> MiniModel
@@ -2039,6 +2049,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(
             5,
             add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
+
+  @test_util.assert_no_garbage_created
+  def testReferenceCycles(self):
+
+    fn = function.defun(lambda x: 2. * x)
+
+    fn(constant_op.constant(4.0))
+    weak_fn = weakref.ref(fn)
+    del fn
+    # Tests that the weak reference we made to the function is now dead, which
+    # means the object has been deleted. This should be true as long as the
+    # function itself is not involved in a reference cycle.
+    self.assertIs(None, weak_fn())
 
 
 if __name__ == '__main__':

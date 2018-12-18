@@ -43,6 +43,7 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
 
 
 def get_resource_handle_data(graph_op):
@@ -685,6 +686,7 @@ class ResourceVariable(variables.RefVariable):
     raise NotImplementedError(
         "numpy() is only available when eager execution is enabled.")
 
+  @deprecated(None, "Prefer Dataset.range instead.")
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
 
@@ -806,9 +808,6 @@ class ResourceVariable(variables.RefVariable):
       raise RuntimeError("from_proto not supported in EAGER mode.")
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
-
-  def _AsTensor(self):
-    return self.value()
 
   def _ref(self):
     """Unsupported."""

@@ -87,7 +87,10 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
   def while_body(iterate_index, *state):
     iterate = iter_[iterate_index]
     new_state = body(iterate, *state)
-    return (iterate_index + 1,) + new_state
+    if new_state:
+      return (iterate_index + 1,) + new_state
+    else:
+      return iterate_index + 1
 
   def while_cond(iterate_index, *state):
     return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
@@ -98,13 +101,19 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
       init_state=(0,) + init_state,
       extra_deps=(iter_,),
       opts=dict(maximum_iterations=n))
+
   # Dropping the iteration index because it's not syntactically visible.
   # TODO(mdan): Don't.
-  results = results[1:]
+  if isinstance(results, (tuple, list)):
+    assert len(results) >= 1  # Has at least the iterate.
+    if len(results) > 1:
+      results = results[1:]
+    if len(results) == 1:
+      # TODO(mdan): Remove this special case.
+      results, = results
+  else:
+    results = ()
 
-  # TODO(mdan): Remove this special case.
-  if len(results) == 1:
-    return results[0]
   return results
 
 

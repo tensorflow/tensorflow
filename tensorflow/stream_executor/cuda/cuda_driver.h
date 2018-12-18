@@ -514,6 +514,10 @@ class CudaContext {
   const int64 id_;
 };
 
+inline CUcontext CurrentContextOrDie() {
+  return CUDADriver::CurrentContextOrDie();
+}
+
 }  // namespace cuda
 }  // namespace stream_executor
 

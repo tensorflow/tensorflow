@@ -50,6 +50,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -149,10 +150,9 @@ class _EagerDefinedFunction(object):
       outputs: the tensors in the graph which will be outputs to the function
       attrs: dict mapping names of attributes to their AttrValue values
     """
-    operations = [
-        op for op in graph.get_operations()
-        if op not in set(arg.op for arg in inputs)
-    ]
+    input_ops = set(arg.op for arg in inputs)
+    operations = [op for op in graph.get_operations() if op not in input_ops]
+
     fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
         graph._c_graph,  # pylint: disable=protected-access
         compat.as_str(name),
@@ -340,7 +340,7 @@ class Function(object):
       TypeError: For invalid positional/keyword argument combinations.
     """
     if self._arg_keywords is None or self._num_positional_args is None:
-      if self._signature:
+      if self._signature is not None:
         if kwargs:
           raise NotImplementedError(
               "Keyword arguments not supported when calling a "
@@ -748,6 +748,19 @@ class Function(object):
     return ret
 
 
+class UnknownArgument(object):
+  """Signifies an argument which is not currently handled."""
+  pass
+
+
+def _encode_arg_for_serialization(arg):
+  """A representation for this argument, for serializing signatures."""
+  if isinstance(arg, ops.Tensor):
+    return tensor_spec.TensorSpec(arg.shape, arg.dtype)
+  else:
+    return UnknownArgument()
+
+
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
 pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
 
@@ -804,6 +817,8 @@ class PolymorphicFunction(object):
     self._name = name
     self._autograph = autograph
     self._function_cache = collections.OrderedDict()
+    self._garbage_collector = _PolymorphicFunctionGarbageCollector(
+        self._function_cache)
     self._function_attributes = attributes or {}
 
     self._lock = threading.Lock()
@@ -857,11 +872,22 @@ class PolymorphicFunction(object):
     """Returns the wrapped Python function."""
     return self._python_function
 
-  def _get_concrete_function_internal(self, *args, **kwargs):
-    """Bypasses error checking when getting a graph function."""
+  def _get_concrete_function_internal_garbage_collected(self, *args, **kwargs):
+    """Returns a concrete function which cleans up its graph function."""
     if self._input_signature:
       args, kwargs = None, None
     graph_function, _, _ = self._maybe_define_function(args, kwargs)
+    return graph_function
+
+  def _get_concrete_function_internal(self, *args, **kwargs):
+    """Bypasses error checking when getting a graph function."""
+    graph_function = self._get_concrete_function_internal_garbage_collected(
+        *args, **kwargs)
+    # We're returning this concrete function to someone, and they may keep a
+    # reference to the FuncGraph without keeping a reference to the Function
+    # object. So we won't clean up the reference cycles manually and instead
+    # will leave them to Python's garbage collector.
+    graph_function._garbage_collector.release()  # pylint: disable=protected-access
     return graph_function
 
   def get_concrete_function(self, *args, **kwargs):
@@ -1163,6 +1189,22 @@ class PolymorphicFunction(object):
                 autograph=self._autograph,
                 arg_names=arg_names),
             self._function_attributes)
+        if self._input_signature:
+          python_call_signature = self._input_signature
+        else:
+          python_call_signature = tuple(
+              _encode_arg_for_serialization(arg) for arg in args)
+        # pylint: disable=protected-access
+        # Save information about non-Tensor arguments with the concrete
+        # function. Used to serialize PolymorphicFunctions.
+        graph_function._python_call_signature = python_call_signature
+        # Tell the Function to clean up its graph once it goes out of
+        # scope. Function does not do this in its constructor since it gets used
+        # in some places (like Keras) where the FuncGraph lives longer than the
+        # Function.
+        graph_function._garbage_collector = _FunctionGarbageCollector(
+            graph_function.graph)
+        # pylint: enable=protected-access
         self._function_cache[cache_key] = graph_function
       return graph_function, args, kwargs
 
@@ -1203,19 +1245,18 @@ def validate_signature(signature):
 def defun(func=None, input_signature=None, autograph=True):
   """Compiles a Python function into a callable TensorFlow graph.
 
-  `defun` (short for "define function") trace-compiles a Python function
+  `defun` (short for "define function") compiles a Python function
   composed of TensorFlow operations into a callable that executes a `tf.Graph`
   containing those operations. The callable produced by `defun` contains only
   the subgraph of TensorFlow operations that were executed when the Python
   function was called with a particular input signature, defined as a list
   of the shapes and dtypes of the Python function's Tensor-valued arguments and
-  the values of its non-Tensor Python objects. In particular, `defun` is _not_ a
-  compiler for arbitrary Python code.
+  the values of its non-Tensor Python objects.
 
   When eager execution is enabled, the ability to create graphs from Python
   functions makes it possible to incrementally trade off debugability and
   interactivity for performance.  Functions compiled with `defun` cannot be
-  inspected with `pdb` and `print` statements; however, executing a graph
+  inspected with `pdb`; however, executing a graph
   generated by `defun` sometimes takes less time and memory than eagerly
   executing the corresponding Python function, since specifying computations as
   graphs allows for optimizations like automatic buffer reuse and
@@ -1306,6 +1347,7 @@ def defun(func=None, input_signature=None, autograph=True):
   outer graph otherwise.
 
   _Input Signatures_
+
   By default, `F = tf.contrib.eager.defun(f)` instantiates a separate graph
   for every unique sequence of the shapes and dtypes of Tensor arguments and
   the values of Python objects it is invoked with. For example, calling
@@ -1364,6 +1406,7 @@ def defun(func=None, input_signature=None, autograph=True):
   Tensors as arguments and must not take unnamed keyword arguments (**kwargs).
 
   _Tracing_
+
   Be aware that because `F` only logs TensorFlow operations, all the other
   Python code that `f` executes will only shape the _construction_ of the graphs
   that `F` executes: the Python code won't be executed when the graphs
@@ -1389,6 +1432,7 @@ def defun(func=None, input_signature=None, autograph=True):
   replace the call to `np.random.randn` with `tf.random_normal((5, 5))`.
 
   _Python Side-Effects_
+
   A corollary of the previous discussion on tracing is the following: If a
   Python function `f` has Python side-effects, then executing `f` multiple times
   will not necessarily be semantically equivalent to executing `F =
@@ -1396,7 +1440,8 @@ def defun(func=None, input_signature=None, autograph=True):
   that `defun` only captures the subgraph of TensorFlow operations that is
   constructed when `f` is called in a graph-building context.
 
-  _Python Control Flow_.
+  _Python Control Flow_
+
   The structure of many machine learning computations depend upon whether one is
   training or validating, and it is common to nest specialized logic under `if
   training:` blocks. By mapping each input signature to a unique graph, `defun`
@@ -1425,27 +1470,26 @@ def defun(func=None, input_signature=None, autograph=True):
   exact_outputs = lossy_matmul(W, x, training=False)
   ```
 
-  On the other hand, because `defun` generates graphs by tracing and not by
-  source code analysis, it fully unrolls Python `for` and `while` loops,
-  potentially creating large graphs. If your Python function has native loops
-  that run for many iterations, consider replacing them with `tf.while_loop`
-  operations.
+  _TensorFlow Control Flow_
 
-  When constructing graphs, `tf.Tensor` objects cannot be used as Python
-  `bool` objects. This means, for example, that you should replace code in `f`
-  resembling
+  When `autograph` is `True`, data-dependent control flow is allowed as well.
+  Control flow statements that depend on `Tensor` values are staged into
+  corresponding TensorFlow ops. For example, the following code will work as
+  expected:
 
   ```python
-
-  if tensor < 10:
-    true_fn()
-  else:
-    false_fn()
+  @tf.contrib.eager.defun
+  def dynamic_rnn_loop(cell, seq):
+    state, output = cell.zero_state()
+    for input in seq:
+      state, output = cell(input, state)
+    return output
   ```
 
-  with `tf.cond(tensor < 10, true_fn, false_fn)`.
+  For more information see `tf.autograph`.
 
   _Variables_
+
   TensorFlow operations related to variable creation and initialization are
   automatically lifted out of the graphs generated by `defun`. In practice, this
   implies that variable creation and initialization only happen the first time
@@ -1617,14 +1661,24 @@ def class_method_to_instance_method(original_function, instance):
   assert hasattr(original_function, "_input_signature")
   assert hasattr(original_function, "python_function")
 
+  weak_bound_method_wrapper = None
   def bound_method_wrapper(*args, **kwargs):
+    """Wraps either a dummy MethodType or a converted AutoGraph function."""
     # __wrapped__ allows AutoGraph to swap in a converted function.
-    wrapped_fn = bound_method_wrapper.__wrapped__
-    # If __wrapped__ was not replaced, then call original_function.
-    # TODO(b/119246461): This needs to be simplified.
-    if tf_inspect.ismethod(wrapped_fn):
+    strong_bound_method_wrapper = weak_bound_method_wrapper()
+    wrapped_fn = strong_bound_method_wrapper.__wrapped__
+
+    if wrapped_fn is strong_bound_method_wrapper.__original_wrapped__:
+      # If __wrapped__ was not replaced, then call original_function.
       wrapped_fn = original_function.python_function
+      if tf_inspect.ismethod(wrapped_fn):
+        wrapped_fn = six.get_unbound_function(wrapped_fn)
+      return wrapped_fn(weak_instance(), *args, **kwargs)
+
+    # If __wrapped__ was replaced, then it is always an unbound function
+    # that takes self as first argument.
     return wrapped_fn(weak_instance(), *args, **kwargs)
+  weak_bound_method_wrapper = weakref.ref(bound_method_wrapper)
 
   # pylint: disable=protected-access
   # We make a dummy MethodType object to generate the correct bound method
@@ -1641,3 +1695,33 @@ def class_method_to_instance_method(original_function, instance):
   wrapped_instance_func = tf_decorator.make_decorator(
       original_function.python_function, instance_func)
   return wrapped_instance_func
+
+
+class _PolymorphicFunctionGarbageCollector(object):
+  """Cleans up cycles when a defun goes out of scope."""
+
+  def __init__(self, cache):
+    self._cache = cache
+
+  def __del__(self):
+    if func_graph_module is None or memory is None:
+      return
+    while self._cache:
+      self._cache.popitem()
+    memory.dismantle_ordered_dict(self._cache)
+
+
+class _FunctionGarbageCollector(object):
+  """Cleans up reference cycles when a Function goes out of scope."""
+
+  def __init__(self, func_graph):
+    self._func_graph = func_graph
+
+  def release(self):
+    """Call off the FuncGraph deletion."""
+    self._func_graph = None
+
+  def __del__(self):
+    if func_graph_module is None or memory is None or self._func_graph is None:
+      return
+    func_graph_module.dismantle_func_graph(self._func_graph)

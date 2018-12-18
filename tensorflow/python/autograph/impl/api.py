@@ -40,6 +40,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 # TODO(mdan): Properly document the type hints.
 # TODO(mdan): Reduce the type hint information to (module, type).
@@ -157,11 +158,9 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   return decorator
 
 
-# TODO(mdan): Move to a private, undocumented module.
 def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
-  if options.verbose >= converter.Verbosity.VERBOSE:
-    logging.info('Converted call: {}; owner: {}'.format(f, owner))
+  logging.vlog(logging.DEBUG, 'Converted call: %s; owner: %s', f, owner)
 
   if owner is not None:
     if not isinstance(f, str):
@@ -184,12 +183,18 @@ def converted_call(f, owner, options, *args, **kwargs):
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
 
+    # TODO(mdan): This may be inconsistent in certain situations.
+    # If the function had already been annotated with @tf.function, it
+    # may be bound to the incorrect object. It's unclear if those situations
+    # are possible, but if they happen, we need to check if f is bound
+    # to a shim like WeakrefSelf and unpack it.
+
     # Args typically include `self`, as required by the conversion process.
     # When conversion is skipped, `self` is not necessary, because the
     # original bound method is being executed. This code removes it.
     if tf_inspect.ismethod(f) and args:
-      f_class = inspect_utils.getmethodclass(f)
-      if args[0] is f_class:
+      f_self = inspect_utils.getmethodself(f)
+      if args[0] is f_self:
         args = args[1:]
 
     return f(*args, **kwargs)
@@ -202,7 +207,7 @@ def converted_call(f, owner, options, *args, **kwargs):
     return f(*args, **kwargs)
 
   # Unwrap functools.partial objects
-  # TODO(allenl, mdan): Consider sharing unwrapping logic with tf_inspect.
+  # TODO(mdan): Consider sharing unwrapping logic with tf_inspect.
   while isinstance(f, functools.partial):
     args = f.args + args
     new_kwargs = {}
@@ -216,10 +221,10 @@ def converted_call(f, owner, options, *args, **kwargs):
     # Regular functions
     target_entity = f
     arg_map_target = f
-    f_class = inspect_utils.getmethodclass(f)
+    f_self = inspect_utils.getmethodself(f)
 
     # TODO(b/119246461): This may be more elegantly handled using __get__?
-    if f_class is not None:
+    if f_self is not None:
       # If this is a method call, it may or may not include self.
       #
       # Example when self is included:
@@ -234,11 +239,11 @@ def converted_call(f, owner, options, *args, **kwargs):
         # When the owner is not specified, use the result of
         # inspect_utils.getmethodclass.
         # TODO(b/119246461): Make sure an owner is always specified.
-        if not args or args[0] is not f_class:
-          effective_args = (f_class,) + args
+        if not args or args[0] is not f_self:
+          effective_args = (f_self,) + args
         else:
-          effective_args = (f_class,) + args[1:]
-      partial_types = (f_class,)
+          effective_args = (f_self,) + args[1:]
+      partial_types = (f_self,)
     else:
       effective_args = args
       partial_types = ()
@@ -280,12 +285,12 @@ def converted_call(f, owner, options, *args, **kwargs):
   converted_f = to_graph(
       target_entity,
       recursive=options.recursive,
-      verbose=options.verbose,
       arg_values=arg_values,
       arg_types=arg_types,
-      partial_types=partial_types,
-      strip_decorators=options.strip_decorators,
-      optional_features=options.optional_features)
+      experimental_optional_features=options.optional_features,
+      experimental_strip_decorators=options.strip_decorators,
+      experimental_verbose=options.verbose,
+      experimental_partial_types=partial_types)
 
   result = converted_f(*effective_args, **kwargs)
 
@@ -314,63 +319,100 @@ def _is_not_callable(obj):
   return False
 
 
-# TODO(mdan): Rename: to_ops?
-# TODO(mdan): Look into overloading as function and decorator, like tfe.defun?
-# TODO(mdan): Remove partial_types.
-def to_graph(e,
+@tf_export('autograph.to_graph')
+def to_graph(entity,
              recursive=True,
-             verbose=converter.Verbosity.VERBOSE,
              arg_values=None,
              arg_types=None,
-             partial_types=None,
-             strip_decorators=None,
-             optional_features=converter.Feature.ALL):
-  """Converts a Python entity into equivalent code that uses TensorFlow ops.
+             experimental_optional_features=converter.Feature.ALL,
+             experimental_strip_decorators=None,
+             experimental_verbose=converter.Verbosity.BRIEF,
+             experimental_partial_types=None):
+  """Converts a Python entity into a TensorFlow graph.
+
+  Also see: `tf.autograph.to_code`, `tf.function`.
+
+  Unlike `tf.function`, `to_graph` is a low-level transpiler that converts
+  Python code to TensorFlow graph code. It does not implement any caching,
+  variable management or create any actual ops, and is best used where greater
+  control over the generated TensorFlow graph is desired. Another difference
+  from `tf.function` is that `to_graph` will not wrap the graph into a
+  TensorFlow function or a Python callable. Internally, `tf.function` uses
+  `to_graph`.
+
+  _Example Usage_
+
+  ```python
+    def foo(x):
+      if x > 0:
+        y = x * x
+      else:
+        y = -x
+      return y
+
+    converted_foo = to_graph(foo)
+
+    x = tf.constant(1)
+    y = converted_foo(x)  # converted_foo is a TensorFlow Op-like.
+    assert is_tensor(y)
+  ```
 
   Supported Python entities include:
     * functions
     * classes
+    * object methods
 
-  Classes are converted by converting all their methods into a new class.
+  Functions are converted into new functions with converted code.
+
+  Classes are converted by generating a new class whose methods use converted
+  code.
+
+  Methods are converted into unbound function that have an additional first
+  argument called `self`.
 
   Args:
-    e: Union[Callable, Type], the Python entity to convert.
-    recursive: bool, whether to recursively convert any functions that the
+    entity: Python callable or class to convert.
+    recursive: Whether to recursively convert any functions that the
       converted function may call.
-    verbose: converter.Verbosity, the level of printing verbosity to use.
-    arg_values: Optional[Dict[Text, Any]], value hints for symbols including
-      function arguments.
-    arg_types: Optional[Dict[Text, Type]], type hints for symbols including
-      function arguments.
-    partial_types: Set[Type], reserved for internal use.
-    strip_decorators: Tuple[Callable], same as
-      ConversionOptions.strip_decorators.
-    optional_features: Union[Feature, Set[Feature]], same as
-      ConversionOptions.optional_features.
+    arg_values: Optional dict of value hints for symbols including
+      function arguments mapping string names to actual values. For example,
+      `arg_values={'a': 1}` will map the variable `a` to the value `1`.
+    arg_types: Optional dict of type hints for symbols including function
+      arguments. Type hints allow specifying just the type of a variable, rather
+      than a specific value.
+    experimental_optional_features: `None`, a tuple of, or a single
+      `tf.autograph.experimental.Feature` value. Controls the use of
+      optional features in the conversion process.
+    experimental_strip_decorators: A tuple specifying decorators that should be
+      excluded from the compiled output. By default, when converting a function
+      before the decorators are applied, the compiled output will include those
+      decorators.
+    experimental_verbose: The level of printing verbosity to use, as a
+      `tf.autograph.experimental.Verbosity` value.
+    experimental_partial_types: A `set` of `type` values, reserved for internal
+      use.
 
   Returns:
-    Union[Callable, Type], the converted entity, which is the same kind as e
-    (that is, a function is e is a function, a class if e is a class, etc.) but
-    its code has been converted to use TF ops.
+    Same as `entity`, the converted Python function or class.
 
   Raises:
     ValueError: If the entity could not be converted.
   """
-  if strip_decorators is None:
-    strip_decorators = ()
-  strip_decorators += (convert, do_not_convert, converted_call)
+  if experimental_strip_decorators is None:
+    experimental_strip_decorators = ()
+  experimental_strip_decorators += (convert, do_not_convert, converted_call)
 
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
           recursive=recursive,
-          verbose=verbose,
-          strip_decorators=strip_decorators,
-          optional_features=optional_features),
-      partial_types=partial_types,
+          verbose=experimental_verbose,
+          strip_decorators=experimental_strip_decorators,
+          optional_features=experimental_optional_features),
+      partial_types=experimental_partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
-  _, name, namespace = conversion.entity_to_graph(e, program_ctx, arg_values,
-                                                  arg_types)
+  _, name, namespace = conversion.entity_to_graph(entity, program_ctx,
+                                                  arg_values, arg_types)
 
   nodes = []
   for dep in reversed(program_ctx.conversion_order):
@@ -387,10 +429,13 @@ def to_graph(e,
     # Avoid overwriting entities that have been transformed.
     if key not in compiled_module.__dict__:
       compiled_module.__dict__[key] = val
+  for key, val in program_ctx.additional_symbols.items():
+    if key not in compiled_module.__dict__:
+      compiled_module.__dict__[key] = val
   compiled = getattr(compiled_module, name)
 
-  if tf_inspect.isfunction(e):
-    compiled.__defaults__ = e.__defaults__
+  if tf_inspect.isfunction(entity):
+    compiled.__defaults__ = entity.__defaults__
 
   if hasattr(compiled, '__globals__'):
     # Remove self to avoid circular references. This will probably only work
@@ -415,38 +460,52 @@ def to_graph(e,
   return compiled
 
 
-def to_code(e,
+@tf_export('autograph.to_code')
+def to_code(entity,
             recursive=True,
             arg_values=None,
             arg_types=None,
-            partial_types=None,
-            indentation='  '):
-  """Returns the equivalent code that uses TensorFlow ops.
+            indentation='  ',
+            experimental_optional_features=converter.Feature.ALL,
+            experimental_partial_types=None):
+  """Similar to `to_graph`, but returns Python source code as a string.
 
-  Also see: `to_graph`, `convert`
+  Also see: `tf.autograph.to_graph`.
+
+  `to_graph` returns the Python source code that can be used to generate a
+  TensorFlow graph that is functionally identical to the input Python code.
 
   Args:
-    e: Union[Callable, Type], the Python entity to convert.
-    recursive: bool, whether to recursively convert any functions that the
+    entity: Python callable or class to convert.
+    recursive: Whether to recursively convert any functions that the
       converted function may call.
-    arg_values: Optional[Dict[Text, Any]], value hints for symbols including
-      function arguments.
-    arg_types: Optional[Dict[Text, Type]], type hints for symbols including
-      function arguments.
-    partial_types: Set[Type], reserved for internal use.
-    indentation: Text, when to use for each level of indentation.
+    arg_values: Optional dict of value hints for symbols including
+      function arguments mapping string names to actual values. For example,
+      `arg_values={'a': 1}` will map the variable `a` to the value `1`.
+    arg_types: Optional dict of type hints for symbols including function
+      arguments. Type hints allow specifying just the type of a variable, rather
+      than a specific value.
+    indentation: The string to use for indenting. Typically two or four spaces,
+      or just the tab character.
+    experimental_optional_features: `None`, a tuple of, or a single
+      `tf.autograph.experimental.Feature` value. Controls the use of
+      optional features in the conversion process.
+    experimental_partial_types: A `set` of `type` values, reserved for internal
+      use.
 
   Returns:
-    Text, the converted code.
+    The converted code as string.
   """
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
           recursive=recursive,
-          strip_decorators=(convert, do_not_convert, converted_call)),
-      partial_types=partial_types,
+          verbose=converter.Verbosity.BRIEF,
+          strip_decorators=(convert, do_not_convert, converted_call),
+          optional_features=experimental_optional_features),
+      partial_types=experimental_partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
-  conversion.entity_to_graph(e, program_ctx, arg_values, arg_types)
+  conversion.entity_to_graph(entity, program_ctx, arg_values, arg_types)
 
   code = '\n'.join(
       compiler.ast_to_source(program_ctx.dependency_cache[dep], indentation)

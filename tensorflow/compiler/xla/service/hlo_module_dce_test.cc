@@ -373,9 +373,9 @@ TEST_F(HloModuleDceTest, WhileWithOutfeed) {
   HloModule OutfeedLoop
   WhileBody {
     body_param = (s32[]) parameter(0)
-    token = token[] after-all()
+    token0 = token[] after-all()
     constant.2 = s32[] constant(2)
-    outfeed_tuple = (s32[]) outfeed(constant.2, token)
+    outfeed_tuple = (s32[]) outfeed(constant.2, token0)
     get-tuple-element.1 = s32[] get-tuple-element(body_param), index=0
     constant.1 = s32[] constant(1)
     add = s32[] add(get-tuple-element.1, constant.1)

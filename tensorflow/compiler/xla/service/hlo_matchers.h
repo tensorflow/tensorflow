@@ -312,8 +312,8 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
     absl::string_view shape) {
-  return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(
-      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShapeMatcher(ParseShape(shape).ValueOrDie()));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
     const class Shape& shape) {
@@ -323,7 +323,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
     absl::string_view shape) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
-      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+      ParseShape(shape).ValueOrDie()));
 }
 
 // Verifies the value of the HloSharing against the provided sharding object.

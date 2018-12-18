@@ -356,7 +356,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
-      return mirrored_strategy._reduce_non_distributed_value(
+      return cross_device_ops_lib.reduce_non_distributed_value(
           self, reduce_op, value, destinations)
     return self._cross_device_ops.reduce(
         reduce_op, value, destinations=destinations)

@@ -183,7 +183,7 @@ class CallTreeTransformer(converter.Base):
       for dec in target_node.decorator_list:
         decorator_fn = self._resolve_decorator_name(dec)
         if (decorator_fn is not None and
-            decorator_fn in self.ctx.program.options.strip_decorators):
+            self.ctx.program.options.should_strip(decorator_fn)):
           return False
 
     return True
@@ -261,7 +261,7 @@ class CallTreeTransformer(converter.Base):
         func=func,
         owner=owner,
         options=self.ctx.program.options.to_ast(
-            self.ctx.info.namespace,
+            self.ctx,
             internal_convert_user_code=self.ctx.program.options.recursive),
         args=node.args)
     # TODO(mdan): Improve the template mechanism to better support this.
@@ -323,12 +323,12 @@ class CallTreeTransformer(converter.Base):
 
       # 1. super() calls - these are preserved. The class conversion mechanism
       # will ensure that they return the correct value.
-      if ast_util.matches(node, 'super(_)'):
+      if ast_util.matches(node, parser.parse_expression('super(_)')):
         return node
 
       # 2. super().method calls - these are preserved as well, when the
       # conversion processes the entire class.
-      if (ast_util.matches(node, 'super(_)._(_)') and
+      if (ast_util.matches(node, parser.parse_expression('super(_)._(_)')) and
           self.ctx.info.owner_type is not None):
         return node
 

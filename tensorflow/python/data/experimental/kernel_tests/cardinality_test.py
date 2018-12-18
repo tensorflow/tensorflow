@@ -22,9 +22,11 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class NumElementsTest(test_base.DatasetTestBase, parameterized.TestCase):
   """Tests for `tf.data.experimental.cardinality()`."""
 

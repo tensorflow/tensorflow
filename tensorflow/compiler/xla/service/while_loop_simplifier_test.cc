@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -554,8 +555,7 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTuple) {
 
   HloInstruction* new_while = FindFirstWhile(m.get());
   Shape flat_tuple =
-      ShapeUtil::ParseShapeString("(s32[1], s32[2], s32[3], s32[4])")
-          .ValueOrDie();
+      ParseShape("(s32[1], s32[2], s32[3], s32[4])").ValueOrDie();
   SCOPED_TRACE(m->ToString());
   EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), flat_tuple));
   EXPECT_TRUE(ShapeUtil::Equal(
@@ -567,8 +567,7 @@ TEST_F(WhileLoopSimplifierTest, FlattenNestedTuple) {
       flat_tuple));
   EXPECT_TRUE(ShapeUtil::Equal(
       m->entry_computation()->root_instruction()->shape(),
-      ShapeUtil::ParseShapeString("((s32[1]), (s32[2], s32[3], (s32[4])))")
-          .ValueOrDie()));
+      ParseShape("((s32[1]), (s32[2], s32[3], (s32[4])))").ValueOrDie()));
 }
 
 // Edge-case: All elements of the loop carry are constants which can be removed,
@@ -641,8 +640,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarry) {
   EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
 
   HloInstruction* new_while = FindFirstWhile(m.get());
-  Shape new_while_shape =
-      ShapeUtil::ParseShapeString("(s32[1], s32[3])").ValueOrDie();
+  Shape new_while_shape = ParseShape("(s32[1], s32[3])").ValueOrDie();
   EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_body()->root_instruction()->shape(), new_while_shape));
@@ -652,9 +650,9 @@ TEST_F(WhileLoopSimplifierTest, RemoveConstantFromLoopCarry) {
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_condition()->parameter_instruction(0)->shape(),
       new_while_shape));
-  EXPECT_TRUE(ShapeUtil::Equal(
-      m->entry_computation()->root_instruction()->shape(),
-      ShapeUtil::ParseShapeString("(s32[1], s32[2], s32[3])").ValueOrDie()));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(m->entry_computation()->root_instruction()->shape(),
+                       ParseShape("(s32[1], s32[2], s32[3])").ValueOrDie()));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Tuple(_, op::Constant(), _));
 }
@@ -712,7 +710,7 @@ TEST_F(WhileLoopSimplifierTest, MergeInductionVariables_Simple) {
   // We should have added a new loop counter for s32[] to the end of the tuple.
   SCOPED_TRACE(m->ToString());
   Shape new_while_shape =
-      ShapeUtil::ParseShapeString("(s32[], s32[], s32[], s32[])").ValueOrDie();
+      ParseShape("(s32[], s32[], s32[], s32[])").ValueOrDie();
   EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_body()->root_instruction()->shape(), new_while_shape));

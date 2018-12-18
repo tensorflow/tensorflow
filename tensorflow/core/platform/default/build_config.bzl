@@ -34,6 +34,7 @@ def pyx_library(
         deps = [],
         py_deps = [],
         srcs = [],
+        testonly = None,
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -75,6 +76,7 @@ def pyx_library(
             # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
             # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
             cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+            testonly = testonly,
             tools = ["@cython//:cython_binary"] + pxd_srcs,
         )
 
@@ -85,8 +87,9 @@ def pyx_library(
         native.cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
-            deps = deps + ["//third_party/python_runtime:headers"],
+            deps = deps + ["@org_tensorflow//third_party/python_runtime:headers"],
             linkshared = 1,
+            testonly = testonly,
         )
         shared_objects.append(shared_object_name)
 
@@ -97,6 +100,7 @@ def pyx_library(
         deps = py_deps,
         srcs_version = "PY2AND3",
         data = shared_objects,
+        testonly = testonly,
         **kwargs
     )
 
@@ -541,9 +545,6 @@ def tf_additional_proto_srcs():
     ]
 
 def tf_additional_human_readable_json_deps():
-    return []
-
-def tf_additional_logger_deps():
     return []
 
 def tf_additional_all_protos():

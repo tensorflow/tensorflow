@@ -23,7 +23,7 @@ from absl.testing import parameterized
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -34,7 +34,7 @@ class RaggedTensorToTensorOpTest(ragged_test_util.RaggedTensorTestCase,
 
   def testDocStringExamples(self):
     """Example from ragged_to_tensor.__doc__."""
-    rt = ragged.constant([[9, 8, 7], [], [6, 5], [4]])
+    rt = ragged_factory_ops.constant([[9, 8, 7], [], [6, 5], [4]])
     dt = rt.to_tensor()
     self.assertAllEqual(dt, [[9, 8, 7], [0, 0, 0], [6, 5, 0], [4, 0, 0]])
 
@@ -100,7 +100,7 @@ class RaggedTensorToTensorOpTest(ragged_test_util.RaggedTensorTestCase,
                                ragged_rank=None,
                                default=None,
                                expected_shape=None):
-    rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
+    rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
     dt = rt.to_tensor(default)
     self.assertIsInstance(dt, ops.Tensor)
     self.assertEqual(rt.dtype, dt.dtype)
@@ -129,7 +129,7 @@ class RaggedTensorToTensorOpTest(ragged_test_util.RaggedTensorTestCase,
       },
   )
   def testError(self, rt_input, default, error, ragged_rank=None):
-    rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
+    rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
     with self.assertRaisesRegexp(error[0], error[1]):
       rt.to_tensor(default)
 

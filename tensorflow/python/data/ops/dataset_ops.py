@@ -24,6 +24,8 @@ import warnings
 
 import numpy as np
 import six
+from six.moves import queue as Queue  # pylint: disable=redefined-builtin
+
 
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import filter_for_shard_ops
@@ -54,6 +56,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -71,6 +74,9 @@ class DatasetV2(object):
   collection of elements (nested structures of tensors) and a "logical
   plan" of transformations that act on those elements.
   """
+
+  def __init__(self):
+    self._graph_attr = ops.get_default_graph()
 
   def _as_serialized_graph(self):
     """Produces serialized graph representation of the dataset.
@@ -95,6 +101,14 @@ class DatasetV2(object):
     """Returns a list of the input datasets of the dataset."""
 
     raise NotImplementedError("Dataset._inputs")
+
+  @property
+  def _graph(self):
+    return self._graph_attr
+
+  @_graph.setter
+  def _graph(self, _):
+    raise ValueError("The _graph property is read-only")
 
   def _has_captured_ref(self):
     """Whether this dataset uses a function that captures ref variables.
@@ -1300,8 +1314,8 @@ class DatasetV1(DatasetV2):
   plan" of transformations that act on those elements.
   """
 
-  def __init__(self):
-    pass
+  def __init__(self):  # pylint: disable=useless-super-delegation
+    super(DatasetV1, self).__init__()
 
   @deprecation.deprecated(
       None, "Use `for ... in dataset:` to iterate over a dataset. If using "
@@ -1320,6 +1334,7 @@ class DatasetV1(DatasetV2):
     if context.executing_eagerly():
       return iterator_ops.EagerIterator(self)
 
+    _ensure_same_dataset_graph(self)
     graph_level_seed, op_level_seed = core_random_seed.get_seed(None)
 
     # NOTE(mrry): We capture by value here to ensure that `_make_dataset()` is
@@ -1389,6 +1404,7 @@ class DatasetV1(DatasetV2):
       raise RuntimeError(
           "dataset.make_initializable_iterator is not supported when eager "
           "execution is enabled.")
+    _ensure_same_dataset_graph(self)
     dataset = self._apply_options()
     if shared_name is None:
       shared_name = ""
@@ -1628,6 +1644,32 @@ class DatasetV1Adapter(DatasetV1):
     return iter(self._dataset)
 
 
+def _ensure_same_dataset_graph(dataset):
+  """Walks the dataset graph to ensure all datasets come from the same graph."""
+  current_graph = ops.get_default_graph()
+  bfs_q = Queue.Queue()
+  bfs_q.put(dataset)  # pylint: disable=protected-access
+  visited = []
+  while not bfs_q.empty():
+    ds = bfs_q.get()
+    visited.append(ds)
+    ds_graph = ds._graph  # pylint: disable=protected-access
+    if current_graph != ds_graph:
+      logging.warning("The graph (" + str(current_graph) + ") of the iterator "
+                      "is different from the graph (" + str(ds_graph) + ") "
+                      "the dataset: " + str(ds) + " was created in. "
+                      "If you are using the Estimator API, make sure that no "
+                      "part of the dataset returned by the `input_fn` function "
+                      "is defined outside the `input_fn` function."
+                      "Please ensure that all datasets in the pipeline are "
+                      "created in the same graph as the iterator. NOTE: This "
+                      "warning will become an error in future versions of "
+                      "TensorFlow.")
+    for input_ds in ds._inputs():  # pylint: disable=protected-access
+      if input_ds not in visited:
+        bfs_q.put(input_ds)
+
+
 @tf_export(v1=["data.make_one_shot_iterator"])
 def make_one_shot_iterator(dataset):
   """Creates a `tf.data.Iterator` for enumerating the elements of a dataset.
@@ -1695,43 +1737,50 @@ class Options(options_lib.OptionsBase):
       ty=bool,
       docstring=
       "Whether to dynamically adjust the values of tunable parameters (e.g. "
-      "degrees of parallelism).")
+      "degrees of parallelism). If None, defaults to True.")
 
   experimental_deterministic = options_lib.create_option(
       name="experimental_deterministic",
       ty=bool,
       docstring=
-      "Whether the outputs need to be produced in deterministic order."
-  )
+      "Whether the outputs need to be produced in deterministic order. If None,"
+      " defaults to True.")
 
   experimental_numa_aware = options_lib.create_option(
       name="experimental_numa_aware",
       ty=bool,
-      docstring="Whether to use NUMA-aware operations.")
+      docstring=
+      "Whether to use NUMA-aware operations. If None, defaults to False.")
 
   experimental_optimization = options_lib.create_option(
       name="experimental_optimization",
       ty=optimization_options.OptimizationOptions,
-      docstring="Associates the given optimization options with the dataset.")
+      docstring=
+      "The optimization options associated with the dataset. See "
+      "`tf.data.experimental.OptimizationOptions` for more details.",
+      default_factory=optimization_options.OptimizationOptions)
 
   experimental_stats = options_lib.create_option(
       name="experimental_stats",
       ty=stats_options.StatsOptions,
-      docstring="Associates the given statistics options with the dataset.")
+      docstring=
+      "The statistics options associated with the dataset. See "
+      "`tf.data.experimental.StatsOptions` for more details.",
+      default_factory=stats_options.StatsOptions)
 
   experimental_threading = options_lib.create_option(
       name="experimental_threading",
       ty=threading_options.ThreadingOptions,
-      docstring="Associates the given threading options with the dataset.")
+      docstring=
+      "The threading options associated with the dataset. See "
+      "`tf.data.experimental.ThreadingOptions` for more details.",
+      default_factory=threading_options.ThreadingOptions)
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
 
     result = []
-    exp_optimization_options = (
-        self.experimental_optimization or
-        optimization_options.OptimizationOptions())  # If not set, use default
-    result.extend(exp_optimization_options._static_optimizations())  # pylint: disable=protected-access
+    result.extend(self.experimental_optimization._static_optimizations())  # pylint: disable=protected-access
 
     if self.experimental_numa_aware:
       result.append("make_numa_aware")

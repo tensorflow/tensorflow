@@ -32,7 +32,7 @@ Shape::Shape(const ShapeProto& shape_proto) {
     *add_tuple_shapes() = Shape(element_shape);
   }
   if (shape_proto.has_layout()) {
-    *mutable_layout() = shape_proto.layout();
+    *mutable_layout() = Layout::CreateFromProto(shape_proto.layout());
   }
 }
 
@@ -48,7 +48,7 @@ ShapeProto Shape::ToProto() const {
     *proto.add_tuple_shapes() = shape.ToProto();
   }
   if (has_layout()) {
-    *proto.mutable_layout() = layout();
+    *proto.mutable_layout() = layout().ToProto();
   }
   return proto;
 }

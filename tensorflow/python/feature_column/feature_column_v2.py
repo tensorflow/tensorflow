@@ -1354,8 +1354,9 @@ def bucketized_column(source_column, boundaries):
     raise ValueError(
         'source_column must be one-dimensional column. '
         'Given: {}'.format(source_column))
-  if (not boundaries or
-      not (isinstance(boundaries, list) or isinstance(boundaries, tuple))):
+  if not boundaries:
+    raise ValueError('boundaries must not be empty.')
+  if not (isinstance(boundaries, list) or isinstance(boundaries, tuple)):
     raise ValueError('boundaries must be a sorted list.')
   for i in range(len(boundaries) - 1):
     if boundaries[i] >= boundaries[i + 1]:
@@ -3111,7 +3112,7 @@ class EmbeddingColumn(
           'Suggested fix: Use one of sequence_categorical_column_with_*. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
-    sparse_tensors = self.categorical_column.get_sequence_sparse_tensors(
+    sparse_tensors = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
     dense_tensor = self._get_dense_tensor_internal(sparse_tensors,
                                                    state_manager)
@@ -3307,7 +3308,7 @@ class SharedEmbeddingColumn(
           'Suggested fix A: If you wish to use input_layer, use a '
           'non-sequence categorical_column_with_*. '
           'Suggested fix B: If you wish to create sequence input, use '
-          'sequence_input_layer instead of input_layer. '
+          'SequenceFeatureLayer instead of FeatureLayer. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
     return self._get_dense_tensor_internal(transformation_cache, state_manager)
@@ -3321,12 +3322,12 @@ class SharedEmbeddingColumn(
       raise ValueError(
           'In embedding_column: {}. '
           'categorical_column must be of type SequenceCategoricalColumn '
-          'to use sequence_input_layer. '
+          'to use SequenceFeatureLayer. '
           'Suggested fix: Use one of sequence_categorical_column_with_*. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
-    dense_tensor = self.get_dense_tensor_internal(transformation_cache,
-                                                  state_manager)
+    dense_tensor = self._get_dense_tensor_internal(transformation_cache,
+                                                   state_manager)
     sparse_tensors = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
     sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
@@ -4469,8 +4470,8 @@ def _verify_static_batch_size_equality(tensors, columns):
 
 
 class SequenceCategoricalColumn(
-    FeatureColumn,
-    fc_old._CategoricalColumn,  # pylint: disable=protected-access
+    CategoricalColumn,
+    fc_old._SequenceCategoricalColumn,  # pylint: disable=protected-access
     collections.namedtuple('SequenceCategoricalColumn',
                            ('categorical_column'))):
   """Represents sequences of categorical data."""
@@ -4533,7 +4534,7 @@ class SequenceCategoricalColumn(
       weight_tensor = sparse_ops.sparse_reshape(weight_tensor, target_shape)
     return CategoricalColumn.IdWeightPair(id_tensor, weight_tensor)
 
-  def get_sequence_sparse_tensors(self, transformation_cache, state_manager):
+  def get_sparse_tensors(self, transformation_cache, state_manager):
     """Returns an IdWeightPair.
 
     `IdWeightPair` is a pair of `SparseTensor`s which represents ids and

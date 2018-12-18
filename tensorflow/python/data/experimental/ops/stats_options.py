@@ -28,26 +28,18 @@ from tensorflow.python.util.tf_export import tf_export
 class StatsOptions(options.OptionsBase):
   """Represents options for collecting dataset stats using `StatsAggregator`.
 
-  To apply `StatsOptions` with a `tf.data.Dataset` object, use the following
-  pattern:
+  You can set the stats options of a dataset through the `experimental_stats`
+  property of `tf.data.Options`; the property is an instance of
+  `tf.data.experimental.StatsOptions`. For example, to collect latency stats
+  on all dataset edges, use the following pattern:
 
   ```python
   aggregator = tf.data.experimental.StatsAggregator()
 
   options = tf.data.Options()
-  options.experimental_stats = tf.data.experimental.StatsOptions()
   options.experimental_stats.aggregator = aggregator
+  options.experimental_stats.latency_all_edges = True
   dataset = dataset.with_options(options)
-  ```
-
-  Note: a `StatsAggregator` object can be attached either duing construction or
-  can be provided later like in above example.
-
-  ```python
-  aggretator = tf.data.experimental.StatsAggregator()
-  # attach aggregator during construction
-  options.experimental_stats = tf.data.experimental.StatsOptions(aggregator)
-  .....
   ```
   """
 
@@ -62,18 +54,16 @@ class StatsOptions(options.OptionsBase):
       ty=str,
       docstring=
       "Prefix to prepend all statistics recorded for the input `dataset` with.",
-      default="")
+      default_factory=lambda: "")
 
   counter_prefix = options.create_option(
       name="counter_prefix",
       ty=str,
-      docstring=
-      "Prefix for the statistics recorded as counter.",
-      default="")
+      docstring="Prefix for the statistics recorded as counter.",
+      default_factory=lambda: "")
 
   latency_all_edges = options.create_option(
       name="latency_all_edges",
       ty=bool,
       docstring=
-      "Whether to add latency measurements on all edges.",
-      default=True)
+      "Whether to add latency measurements on all edges. Defaults to False.")
