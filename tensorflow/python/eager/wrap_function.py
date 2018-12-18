@@ -69,9 +69,15 @@ class WrappedFunction(function.Function):
       pruned_graph = func_graph.FuncGraph("pruned")
       sink_tensor = array_ops.identity_n(flat_fetches)[0]
     lift_map = lift_to_graph.lift_to_graph(
-        sink_tensor, pruned_graph, sources=flat_feeds)
+        sink_tensor, pruned_graph,
+        sources=flat_feeds + self.graph.internal_captures)
     pruned_graph.outputs.extend(lift_map[x] for x in flat_fetches)
+    for external_capture, internal_capture in self.graph.captures.items():
+      pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
+    pruned_graph.inputs.extend(pruned_graph.captures.values())
+    pruned_graph.structured_outputs = nest.map_structure(
+        lambda node: lift_map[node], fetches)
     pruned_fn = WrappedFunction(
         pruned_graph, variable_holder=self._variable_holder)
     pruned_fn._num_positional_args = len(flat_feeds)  # pylint: disable=protected-access
