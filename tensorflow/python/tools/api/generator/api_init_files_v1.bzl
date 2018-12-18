@@ -9,6 +9,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "autograph/experimental/__init__.py",
     "bitwise/__init__.py",
     "compat/__init__.py",
+    "config/__init__.py",
     "data/__init__.py",
     "data/experimental/__init__.py",
     "debugging/__init__.py",

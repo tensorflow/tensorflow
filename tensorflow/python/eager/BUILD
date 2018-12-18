@@ -529,3 +529,15 @@ py_test(
         "//tensorflow/python:framework_ops",
     ],
 )
+
+py_library(
+    name = "remote",
+    srcs = ["remote.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/eager:context",
+    ],
+)
