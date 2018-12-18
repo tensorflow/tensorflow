@@ -1041,7 +1041,7 @@ class SymbolicShapeRefiner {
           // Propagate size value.
           int64 sz = ic->Value(size);
           bool valid = false;
-          if (node.attr().at("T").type() == DT_INT32) {
+          if (node.attr().at("out_type").type() == DT_INT32) {
             if (sz < std::numeric_limits<int32>::max()) {
               const_tensors_to_propagate_.push_back(
                   MakeIntegerScalarTensorProto(DT_INT32, sz));
