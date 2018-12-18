@@ -269,8 +269,11 @@ class PolymorphicFunction(object):
       raise ValueError(
           "_canonicalize_function_inputs must be called only after _initialize "
           "has run.")
+    # pylint: disable=protected-access
     if self._input_signature is None or args or kwds:
-      return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
+      return self._stateful_fn._function_spec.canonicalize_function_inputs(
+          *args, **kwds)
+    # pylint: enable=protected-access
     # If an input signature is defined, we may need to fetch a concrete function
     # without any inputs specified. In this case args and kwds should be ignored
     # but running _canonicalize_function_inputs would raise an exception.
