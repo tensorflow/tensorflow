@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,6 +37,8 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
@@ -133,6 +136,34 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
       l1 = layer_class(units=1, stateful=stateful)
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
+
+
+class GRULayerGradientTapeTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes(config=_config)
+  def test_in_tape(self):
+    if not context.executing_eagerly():
+      self.skipTest('bloo')
+    time_steps = 10
+    embedding_size = 11
+    gru_unit_size = 12
+
+    gru = keras.layers.UnifiedGRU(gru_unit_size,
+                                  return_sequences=True,
+                                  return_state=True,
+                                  recurrent_activation='sigmoid',
+                                  recurrent_initializer='glorot_uniform')
+
+    x = random_ops.random_uniform([1, time_steps, embedding_size])
+    y = random_ops.random_uniform([1, gru_unit_size])
+
+    with backprop.GradientTape() as tape:
+      hidden_state = array_ops.zeros([1, gru_unit_size], dtype=dtypes.float32)
+      _, state = gru(x, initial_state=hidden_state)
+
+      loss = math_ops.reduce_mean(math_ops.square(state - y))
+
+    tape.gradient(loss, gru.variables)
 
 
 # TODO(scottzhu): Re-enable those tests in v2 mode once bugs attached are fixed.
