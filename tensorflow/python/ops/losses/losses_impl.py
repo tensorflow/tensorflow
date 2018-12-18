@@ -139,7 +139,7 @@ def _num_present(losses, weights, per_batch=False):
        and not math_ops.equal(weights, 0.0))):
     return _num_elements(losses)
   with ops.name_scope(None, "num_present", (losses, weights)) as scope:
-    weights = math_ops.to_float(weights)
+    weights = math_ops.cast(weights, dtype=dtypes.float32)
     present = array_ops.where(
         math_ops.equal(weights, 0.0),
         array_ops.zeros_like(weights),
@@ -207,8 +207,8 @@ def compute_weighted_loss(
         weights_broadcast_ops.assert_broadcastable(weights, losses),)):
       losses = ops.convert_to_tensor(losses)
       input_dtype = losses.dtype
-      losses = math_ops.to_float(losses)
-      weights = math_ops.to_float(weights)
+      losses = math_ops.cast(losses, dtype=dtypes.float32)
+      weights = math_ops.cast(weights, dtype=dtypes.float32)
       weighted_losses = math_ops.multiply(losses, weights)
       if reduction == Reduction.NONE:
         loss = weighted_losses
@@ -275,8 +275,8 @@ def absolute_difference(
     raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "absolute_difference",
                       (predictions, labels, weights)) as scope:
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
+    predictions = math_ops.cast(predictions, dtype=dtypes.float32)
+    labels = math_ops.cast(labels, dtype=dtypes.float32)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     losses = math_ops.abs(math_ops.subtract(predictions, labels))
     return compute_weighted_loss(
@@ -329,8 +329,8 @@ def cosine_distance(
     raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       (predictions, labels, weights)) as scope:
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
+    predictions = math_ops.cast(predictions, dtype=dtypes.float32)
+    labels = math_ops.cast(labels, dtype=dtypes.float32)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
@@ -377,8 +377,8 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
   if logits is None:
     raise ValueError("logits must not be None.")
   with ops.name_scope(scope, "hinge_loss", (logits, labels, weights)) as scope:
-    logits = math_ops.to_float(logits)
-    labels = math_ops.to_float(labels)
+    logits = math_ops.cast(logits, dtype=dtypes.float32)
+    labels = math_ops.cast(labels, dtype=dtypes.float32)
     logits.get_shape().assert_is_compatible_with(labels.get_shape())
     # We first need to convert binary labels to -1/1 labels (as floats).
     all_ones = array_ops.ones_like(labels)
@@ -446,8 +446,8 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "huber_loss",
                       (predictions, labels, weights)) as scope:
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
+    predictions = math_ops.cast(predictions, dtype=dtypes.float32)
+    labels = math_ops.cast(labels, dtype=dtypes.float32)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     error = math_ops.subtract(predictions, labels)
     abs_error = math_ops.abs(error)
@@ -512,8 +512,8 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
     raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "log_loss",
                       (predictions, labels, weights)) as scope:
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
+    predictions = math_ops.cast(predictions, dtype=dtypes.float32)
+    labels = math_ops.cast(labels, dtype=dtypes.float32)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     losses = -math_ops.multiply(
         labels,
@@ -580,11 +580,11 @@ def mean_pairwise_squared_error(
     raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "mean_pairwise_squared_error",
                       (predictions, labels, weights)) as scope:
-    weights = math_ops.to_float(weights)
-    labels = math_ops.to_float(labels)
+    weights = math_ops.cast(weights, dtype=dtypes.float32)
+    labels = math_ops.cast(labels, dtype=dtypes.float32)
     with ops.control_dependencies((
         weights_broadcast_ops.assert_broadcastable(weights, labels),)):
-      predictions = math_ops.to_float(predictions)
+      predictions = math_ops.cast(predictions, dtype=dtypes.float32)
       predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
       diffs = math_ops.subtract(predictions, labels)
