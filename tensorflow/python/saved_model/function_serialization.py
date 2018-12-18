@@ -20,18 +20,29 @@ from __future__ import print_function
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun_lib
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import saved_object_graph_pb2
 
 
-def _serialize_polymorphic_function(polymorphic_function):
-  monomorphic_functions = []
+def _serialize_polymorphic_function(polymorphic_function, node_ids):
+  """Build a SavedPolymorphicProto."""
+  proto = saved_object_graph_pb2.SavedPolymorphicFunction()
   for concrete_function in list_all_concrete_functions(polymorphic_function):
-    monomorphic_functions.append(
-        saved_object_graph_pb2.SavedMonomorphicFunction(
-            concrete_function=concrete_function.name))
-  saved_polymorphic_function = saved_object_graph_pb2.SavedPolymorphicFunction(
-      monomorphic_function=monomorphic_functions)
-  return saved_polymorphic_function
+    bound_inputs = []
+    try:
+      for capture in concrete_function.captured_inputs:
+        bound_inputs.append(node_ids[capture])
+    except KeyError:
+      # TODO(andresp): Would it better to throw an exception?
+      logging.warning(
+          "Concrete function %s not added to object based saved model as it "
+          "captures tensor %s which is unsupported or not reachable from root.",
+          concrete_function.name, capture)
+      continue
+    function_proto = proto.monomorphic_function.add()
+    function_proto.concrete_function = concrete_function.name
+    function_proto.bound_inputs.extend(bound_inputs)
+  return proto
 
 
 def list_all_concrete_functions(polymorphic_function):
@@ -63,7 +74,8 @@ def list_all_polymorphic_functions(checkpointable_object):
 
 
 def add_polymorphic_functions_to_object_graph_proto(checkpointable_objects,
-                                                    saved_object_graph):
+                                                    saved_object_graph,
+                                                    node_ids):
   """Finds PolymorphicFunctions attached to objects and saves them."""
   existing_objects = list(zip(checkpointable_objects, saved_object_graph.nodes))
   for obj, obj_proto in existing_objects:
@@ -72,7 +84,7 @@ def add_polymorphic_functions_to_object_graph_proto(checkpointable_objects,
       function_node_id = len(saved_object_graph.nodes)
       function_node = saved_object_graph.nodes.add()
       function_node.function.CopyFrom(
-          _serialize_polymorphic_function(polymorphic_function))
+          _serialize_polymorphic_function(polymorphic_function, node_ids))
       reference = obj_proto.children.add()
       reference.node_id = function_node_id
       reference.local_name = name

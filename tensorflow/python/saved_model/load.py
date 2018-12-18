@@ -24,6 +24,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_deserialization
@@ -45,17 +46,48 @@ class _Loader(object):
     self._export_dir = export_dir
     self._load_func_graphs(meta_graph.graph_def.library)
     self._load_all()
+    self._bind_function_captures()
     self._restore_checkpoint()
 
   def _load_func_graphs(self, function_library):
     # TODO(allenl): Do we need to do name mapping here? Not quite sure what
     # happens when loaded names collide with existing names.
-    # TODO(andresp): Look into gradient functions and the need to restore
-    # functions in the right order.
+    # TODO(andresp): Look into restoring nested and gradient functions in the
+    # right order.
     self._functions = {}
     for fdef in function_library.function:
-      self._functions[fdef.signature.name] = function.Function(
-          function_def_lib.function_def_to_graph(fdef))
+      graph = function_def_lib.function_def_to_graph(fdef)
+      self._functions[fdef.signature.name] = function.Function(graph)
+
+  def _bind_function_captures(self):
+    """Setup captured tensors in restored concrete functions."""
+    seen_functions = set()
+    for object_proto in self._proto.nodes:
+      if object_proto.WhichOneof("kind") == "function":
+        for monomorphic_function in object_proto.function.monomorphic_function:
+          name = monomorphic_function.concrete_function
+          bound_inputs = [
+              self._get_tensor_from_node(node_id)
+              for node_id in monomorphic_function.bound_inputs]
+          if name in seen_functions:
+            if self._functions[name]._captured_inputs != bound_inputs:  # pylint: disable=protected-access
+              raise NotImplementedError(
+                  "Function %s is used more than once with different "
+                  "captured inputs." % name)
+          else:
+            seen_functions.add(name)
+            # TODO(andresp): This is only injecting the captured inputs into the
+            # concrete function, note that we did not modify the FuncGraph
+            # itself.
+            self._functions[name]._captured_inputs = bound_inputs  # pylint: disable=protected-access
+
+  def _get_tensor_from_node(self, node_id):
+    obj = self._nodes[node_id]
+    if resource_variable_ops.is_resource_variable(obj):
+      return obj.handle
+    elif isinstance(obj, tracking.TrackableAsset):
+      return obj.asset_path.handle
+    raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
   def _load_all(self):
     self._nodes = [self._recreate(proto) for proto in self._proto.nodes]

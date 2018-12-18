@@ -53,16 +53,17 @@ class LoadTest(test.TestCase):
 
   def test_variables(self):
     root = tracking.Checkpointable()
-    root.f = def_function.function(
-        lambda x: 2. * x,
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     root.v1 = variables.Variable(1.)
     root.v2 = variables.Variable(2.)
+    root.f = def_function.function(
+        lambda x: root.v2 * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(root, save_dir)
     imported = load.load(save_dir)
     self.assertEquals(imported.v1.numpy(), 1.0)
     self.assertEquals(imported.v2.numpy(), 2.0)
+    self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
 
   def _make_asset(self, contents):
     filename = tempfile.mktemp(prefix=self.get_temp_dir())
@@ -94,6 +95,21 @@ class LoadTest(test.TestCase):
       self.assertEquals("contents 1", f.read())
     with open(imported.asset2.asset_path.numpy(), "r") as f:
       self.assertEquals("contents 2", f.read())
+
+  def test_capture_assets(self):
+    root = tracking.Checkpointable()
+    root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
+    root.f = def_function.function(
+        lambda: root.vocab.asset_path,
+        input_signature=[])
+    save_dir = os.path.join(self.get_temp_dir(), "save_dir")
+    save.save(root, save_dir)
+    imported = load.load(save_dir)
+    origin_output = root.f().numpy()
+    imported_output = imported.f().numpy()
+    self.assertNotEqual(origin_output, imported_output)
+    with open(imported_output, "r") as f:
+      self.assertEquals("contents", f.read())
 
   def test_assets_dedup(self):
     vocab = self._make_asset("contents")
@@ -129,6 +145,7 @@ class LoadTest(test.TestCase):
 
     self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
     self.assertEqual(14, imported.f(constant_op.constant(7)).numpy())
+
 
 if __name__ == "__main__":
   test.main()

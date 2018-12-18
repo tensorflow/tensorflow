@@ -521,11 +521,20 @@ def _write_object_graph(root, export_dir, asset_file_def_index):
   util.fill_object_graph_proto(checkpointable_objects, node_ids, slot_variables,
                                proto)
 
+  node_ids = util.ObjectIdentityDictionary()
+  for i in range(len(checkpointable_objects)):
+    obj = checkpointable_objects[i]
+    node_ids[obj] = i
+    if resource_variable_ops.is_resource_variable(obj):
+      node_ids[obj.handle] = i
+    elif isinstance(obj, tracking.TrackableAsset):
+      node_ids[obj.asset_path.handle] = i
+
   for obj, obj_proto in zip(checkpointable_objects, proto.nodes):
     _write_object_proto(obj, obj_proto, asset_file_def_index)
 
   function_serialization.add_polymorphic_functions_to_object_graph_proto(
-      checkpointable_objects, proto)
+      checkpointable_objects, proto, node_ids)
 
   extra_asset_dir = os.path.join(
       compat.as_bytes(export_dir),
