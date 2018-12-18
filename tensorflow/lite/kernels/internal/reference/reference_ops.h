@@ -1662,6 +1662,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const int32* input2_data,
                               const RuntimeShape& output_shape,
                               int32* output_data) {
+  gemmlowp::ScopedProfilingLabel label("SubWithActivation");
   const int flat_size =
       MatchingFlatSize(input1_shape, input2_shape, input2_shape);
   for (int i = 0; i < flat_size; ++i) {
@@ -1693,6 +1694,7 @@ inline void Concatenation(const ConcatenationParams& params,
                           const Scalar* const* input_data,
                           const RuntimeShape& output_shape,
                           Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Concatenation");
   int axis = params.axis;
   int inputs_count = params.inputs_count;
   const int concat_dimensions = output_shape.DimensionsCount();
@@ -1740,6 +1742,7 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
                                      const uint8* const* input_data,
                                      const RuntimeShape& output_shape,
                                      uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ConcatenationWithScaling/Uint8");
   int axis = params.axis;
   const int32* input_zeropoint = params.input_zeropoint;
   const float* input_scale = params.input_scale;
@@ -1801,6 +1804,7 @@ template <typename Scalar>
 void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
           const Scalar* const* input_data, const RuntimeShape& output_shape,
           Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Pack");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   int inputs_count = params.inputs_count;
@@ -1828,6 +1832,7 @@ template <typename Scalar>
 void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
             const Scalar* input_data, const RuntimeShape& output_shape,
             Scalar* const* output_datas) {
+  gemmlowp::ScopedProfilingLabel label("Unpack");
   const int dimensions = input_shape.DimensionsCount();
   const int outputs_count = params.num_split;
 
@@ -1855,6 +1860,7 @@ void PackWithScaling(const PackParams& params,
                      const RuntimeShape* const* input_shapes,
                      const uint8* const* input_data,
                      const RuntimeShape& output_shape, uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("PackWithScaling");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   const int32* input_zeropoint = params.input_zeropoint;
@@ -1904,6 +1910,7 @@ void DepthConcatenation(const ConcatenationParams& params,
                         const RuntimeShape* const* input_shapes,
                         const Scalar* const* input_data,
                         const RuntimeShape& output_shape, Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("DepthConcatenation");
   auto params_copy = params;
   params_copy.axis = 3;
   Concatenation(params_copy, input_shapes, input_data, output_shape,
@@ -2305,6 +2312,7 @@ template <typename Scalar>
 void Split(const SplitParams& params, const RuntimeShape& input_shape,
            const Scalar* input_data, const RuntimeShape* const* output_shapes,
            Scalar* const* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Split");
   const int concat_dimensions = input_shape.DimensionsCount();
   int axis = params.axis < 0 ? params.axis + concat_dimensions : params.axis;
   int outputs_count = params.num_split;
@@ -2791,6 +2799,7 @@ log_x_for_x_greater_than_or_equal_to_1(
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LogSoftmax/8bit");
   const int32 input_multiplier = params.input_multiplier;
   const int32 input_left_shift = params.input_left_shift;
   const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
@@ -3056,6 +3065,7 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
 inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Dequantize");
   int32 zero_point = op_params.zero_point;
   double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -3070,6 +3080,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("FakeQuant");
   float rmin = op_params.minmax.min;
   float rmax = op_params.minmax.max;
   int num_bits = op_params.num_bits;
@@ -3116,6 +3127,7 @@ inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& coords_shape, const CoordsT* coords_data,
                    const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Gather");
   int axis = op_params.axis;
   if (axis < 0) {
     axis += input_shape.DimensionsCount();
@@ -3219,6 +3231,7 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("SpaceToBatchND");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input1_shape =
@@ -3276,6 +3289,7 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* crops_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input1_shape =
@@ -3549,6 +3563,7 @@ inline void Slice(const tflite::SliceParams& op_params,
 template <typename T>
 inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
     output_data[idx] = exp(input_data[idx]);
   }
@@ -3679,6 +3694,7 @@ inline bool Mean(const T* input_data, const int* input_dims,
                  const int* output_dims, const int output_num_dims,
                  const int* axis, const int num_axis_dimensions, bool keep_dims,
                  int* temp_index, int* resolved_axis, U* temp_sum) {
+  gemmlowp::ScopedProfilingLabel label("Mean");
   // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
@@ -3732,7 +3748,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const RuntimeShape& unextended_input_shape,
                  const T* input_data,
                  const RuntimeShape& unextended_output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mean");
+  gemmlowp::ScopedProfilingLabel label("Mean4D");
 
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
@@ -3784,6 +3800,8 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                                const int num_axis_dimensions, bool keep_dims,
                                int* temp_index, int* resolved_axis, U* temp_sum,
                                bool compute_sum) {
+  gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Uint8"
+                                                   : "Mean/Uint8");
   // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
@@ -3899,6 +3917,7 @@ void MaximumMinimumBroadcast4DSlow(const RuntimeShape& unextended_input1_shape,
                                    const T* input2_data,
                                    const RuntimeShape& unextended_output_shape,
                                    T* output_data, Op op) {
+  gemmlowp::ScopedProfilingLabel label("MaximumMinimumBroadcast4DSlow");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -3930,6 +3949,7 @@ template <typename T1, typename T2, typename T3, typename Cmp>
 void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
                const T3* input2_data, const RuntimeShape& output_shape,
                T2* output_data, const Cmp& cmp) {
+  gemmlowp::ScopedProfilingLabel label("ArgMinMax");
   // For ArgMax, the number of output dimensions = (number of input dimensions -
   // 1). For the sake of simplicity, the output dimensions are equal to the
   // input dimensions here. We enforce the constraint that the axis dimension
