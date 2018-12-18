@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import confusion_matrix
@@ -664,8 +665,8 @@ def mean_squared_error(
     raise ValueError("predictions must not be None.")
   with ops.name_scope(scope, "mean_squared_error",
                       (predictions, labels, weights)) as scope:
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
+    predictions = math_ops.cast(predictions, dtype=dtypes.float32)
+    labels = math_ops.cast(labels, dtype=dtypes.float32)
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
     losses = math_ops.squared_difference(predictions, labels)
     return compute_weighted_loss(
