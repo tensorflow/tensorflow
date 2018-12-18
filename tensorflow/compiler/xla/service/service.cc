@@ -113,6 +113,16 @@ int ServiceOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
 }
 
+ServiceOptions& ServiceOptions::set_allowed_devices(
+    const absl::optional<std::set<int>>& allowed_devices) {
+  allowed_devices_ = allowed_devices;
+  return *this;
+}
+
+const absl::optional<std::set<int>>& ServiceOptions::allowed_devices() const {
+  return allowed_devices_;
+}
+
 /* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
     se::Platform* platform) {
   ServiceOptions default_options;
@@ -129,6 +139,7 @@ int ServiceOptions::intra_op_parallelism_threads() const {
   }
   BackendOptions backend_options;
   backend_options.set_platform(platform);
+  backend_options.set_allowed_devices(options.allowed_devices());
   TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
 
   std::unique_ptr<Service> service(
@@ -150,17 +161,13 @@ Service::Service(const ServiceOptions& options,
     LOG(INFO) << StrFormat(
         "XLA service %p executing computations on platform %s. Devices:", this,
         execute_backend_->platform()->Name());
+    auto stream_executors = execute_backend_->stream_executors();
     for (int i = 0; i < execute_backend_->device_count(); ++i) {
-      if (execute_backend_->device_ordinal_supported(i)) {
-        se::StreamExecutor* executor =
-            execute_backend_->stream_executor(i).ValueOrDie();
-        const auto& description = executor->GetDeviceDescription();
-        LOG(INFO) << StrFormat("  StreamExecutor device (%d): %s, %s", i,
-                               description.name(),
-                               description.platform_version());
-      } else {
-        LOG(INFO) << StrFormat("  StreamExecutor device (%d) not supported", i);
-      }
+      se::StreamExecutor* executor = stream_executors.at(i);
+      const auto& description = executor->GetDeviceDescription();
+      LOG(INFO) << StrFormat("  StreamExecutor device (%d): %s, %s", i,
+                             description.name(),
+                             description.platform_version());
     }
   } else {
     VLOG(1) << "XLA compile-only service constructed";

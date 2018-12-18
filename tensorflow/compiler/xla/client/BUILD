@@ -170,6 +170,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

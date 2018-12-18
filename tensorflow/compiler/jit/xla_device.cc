@@ -201,7 +201,8 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
       jit_device_name_(options.compilation_device_name),
       platform_(options.platform),
       use_multiple_streams_(options.use_multiple_streams),
-      shape_representation_fn_(options.shape_representation_fn) {
+      shape_representation_fn_(options.shape_representation_fn),
+      allowed_devices_(options.allowed_devices) {
   VLOG(1) << "Created XLA device " << options.compilation_device_name << " "
           << this;
   thread_pool_.reset(new thread::ThreadPool(session_options.env, "xla_device",
@@ -234,7 +235,8 @@ xla::LocalClient* XlaDevice::client() const {
 
   // TODO(b/78468222): This can fail, at least when the backend is GPU and
   // there is no GPU on the host.
-  return xla::ClientLibrary::GetOrCreateLocalClient(platform_).ValueOrDie();
+  return xla::ClientLibrary::GetOrCreateLocalClient(platform_, allowed_devices_)
+      .ValueOrDie();
 }
 
 Allocator* XlaDevice::GetAllocator(AllocatorAttributes attr) {
