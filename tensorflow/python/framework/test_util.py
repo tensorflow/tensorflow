@@ -1052,7 +1052,16 @@ def run_deprecated_v1(func=None):
 
   def decorator(f):
     if tf_inspect.isclass(f):
-      raise ValueError("`run_deprecated_v1` only supports test methods.")
+      setup = f.__dict__.get("setUp")
+      if setup is not None:
+        setattr(f, "setUp", decorator(setup))
+
+      for name, value in f.__dict__.copy().items():
+        if (callable(value) and
+            name.startswith(unittest.TestLoader.testMethodPrefix)):
+          setattr(f, name, decorator(value))
+
+      return f
 
     def decorated(self, *args, **kwargs):
       if tf2.enabled():
