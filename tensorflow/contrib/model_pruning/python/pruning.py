@@ -397,28 +397,26 @@ class Pruning(object):
       raise ValueError('Sparsity variable undefined')
 
     sparsity = self._get_sparsity(weights.op.name)
-
     with ops.name_scope(weights.op.name + '_pruning_ops'):
       abs_weights = math_ops.abs(weights)
-      max_value = math_ops.reduce_max(abs_weights)
-      cdf_fn = pruning_utils.compute_cdf_from_histogram
-      if self._spec.use_tpu:
-        cdf_fn = pruning_utils.compute_cdf
-
-      norm_cdf = cdf_fn(abs_weights, [0.0, max_value], nbins=self._spec.nbins)
-      current_threshold = math_ops.multiply(
-          math_ops.div(
-              math_ops.reduce_sum(
-                  math_ops.cast(
-                      math_ops.less(norm_cdf, sparsity), dtypes.float32)),
-              float(self._spec.nbins)), max_value)
-
+      k = math_ops.cast(
+          math_ops.round(
+              math_ops.cast(array_ops.size(abs_weights), dtypes.float32) *
+              (1 - sparsity)), dtypes.int32)
+      # Sort the entire array
+      values, _ = nn_ops.top_k(
+          array_ops.reshape(abs_weights, [-1]), k=array_ops.size(abs_weights))
+      # Grab the (k-1) th value
+      current_threshold = array_ops.gather(values, k - 1)
       smoothed_threshold = math_ops.add_n([
           math_ops.multiply(current_threshold, 1 - self._spec.threshold_decay),
           math_ops.multiply(threshold, self._spec.threshold_decay)
       ])
+
       new_mask = math_ops.cast(
-          math_ops.greater(abs_weights, smoothed_threshold), dtypes.float32)
+          math_ops.greater_equal(abs_weights, smoothed_threshold),
+          dtypes.float32)
+
     return smoothed_threshold, new_mask
 
   def _maybe_update_block_mask(self, weights, threshold):
