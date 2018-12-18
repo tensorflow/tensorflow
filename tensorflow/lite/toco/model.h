@@ -376,7 +376,7 @@ struct Operator {
   // Output activation arrays. Same comments as for inputs apply here too.
   std::vector<string> outputs;
 
-  // If true, the array has more outputs than are listed in the 'outputs'
+  // If true, the operator has more outputs than are listed in the 'outputs'
   // member. These need to be resolved by some graph transformation.
   // This flag is only here to indicate that an operator should not be
   // discarded as unused, even if from its 'outputs' member alone it
@@ -2207,6 +2207,16 @@ class Model {
   // The Operator's refer to these Array's by their name strings, not by their
   // addresses. See Operator::inputs, Operator::outputs.
   std::unordered_map<string, std::unique_ptr<Array>> arrays;
+};
+
+// OperatorSignature contains the information required to making versioning
+// decisions.
+struct OperatorSignature {
+  // The operator.
+  const Operator* op;
+
+  // The model in which the operator resides.
+  const Model* model;
 };
 }  // namespace toco
 

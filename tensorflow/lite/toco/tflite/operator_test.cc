@@ -111,8 +111,6 @@ class OperatorTest : public ::testing::Test {
 };
 
 TEST_F(OperatorTest, SimpleOperators) {
-  CheckSimpleOperator<DequantizeOperator>("DEQUANTIZE",
-                                          OperatorType::kDequantize);
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
@@ -467,6 +465,12 @@ TEST_F(OperatorTest, BuiltinArgMin) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("ARG_MIN", OperatorType::kArgMin), op);
   EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
+}
+
+TEST_F(OperatorTest, BuiltinDequantize) {
+  DequantizeOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("DEQUANTIZE", OperatorType::kDequantize), op);
 }
 
 TEST_F(OperatorTest, BuiltinTransposeConv) {

@@ -42,7 +42,9 @@ class SimpleOperator : public BaseOperator {
     return std::unique_ptr<Operator>(new T);
   }
 
-  int GetVersion(const Operator& op) const override { return 1; }
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
 };
 
 }  // namespace tflite
