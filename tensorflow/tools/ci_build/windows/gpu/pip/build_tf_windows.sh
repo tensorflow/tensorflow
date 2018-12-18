@@ -108,7 +108,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
   if [ -z ${PROJECT_NAME} ]; then
     EXTRA_PIP_FLAGS="--nightly_flag"
   else
-    EXTRA_PIP_FLAGS="--project_name=${PROJECT_NAME} --nightly_flag"
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
   fi
 fi
 
