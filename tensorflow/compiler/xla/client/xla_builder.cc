@@ -211,7 +211,7 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
 
     // Non functional ops.
     case HloOpcode::kRng:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
       // TODO(b/33009255): Implmement constant folding for cross replica sum.
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
@@ -2020,8 +2020,8 @@ XlaOp XlaBuilder::CrossReplicaSum(
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
-    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCrossReplicaSumShape(
-                                         {&operand_shape}));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferAllReduceShape({&operand_shape}));
     *instr.mutable_shape() = shape.ToProto();
 
     for (const ReplicaGroup& group : replica_groups) {
@@ -2034,8 +2034,7 @@ XlaOp XlaBuilder::CrossReplicaSum(
 
     AddCalledComputation(computation, &instr);
 
-    return AddInstruction(std::move(instr), HloOpcode::kCrossReplicaSum,
-                          {operand});
+    return AddInstruction(std::move(instr), HloOpcode::kAllReduce, {operand});
   });
 }
 

@@ -1833,7 +1833,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 #undef RET_CHECK_RANK
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferCrossReplicaSumShape(
+/* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
     absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
     TF_RETURN_IF_ERROR(

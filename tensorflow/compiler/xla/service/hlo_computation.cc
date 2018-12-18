@@ -332,7 +332,7 @@ void HloComputation::ComputeInstructionPostOrder(
       dfs_stack.emplace_back(op);
     }
 
-    // Add inputs for send->recv_done dependencies and cross-replica-sum
+    // Add inputs for send->recv_done dependencies and all-reduce
     // dependencies.
     switch (current->opcode()) {
       case HloOpcode::kRecvDone: {
@@ -344,7 +344,7 @@ void HloComputation::ComputeInstructionPostOrder(
         }
         break;
       }
-      case HloOpcode::kCrossReplicaSum: {
+      case HloOpcode::kAllReduce: {
         auto all_reduce_id = current->all_reduce_id();
         if (all_reduce_id) {
           auto it = channel_dependency_map.find(all_reduce_id.value());
@@ -372,7 +372,7 @@ HloComputation::ComputeChannelDependencies() const {
             instruction.get());
         break;
       }
-      case HloOpcode::kCrossReplicaSum: {
+      case HloOpcode::kAllReduce: {
         auto all_reduce_id = instruction->all_reduce_id();
         if (all_reduce_id) {
           auto& dependencies = channel_dependency_map[all_reduce_id.value()];

@@ -127,7 +127,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCustomCall:

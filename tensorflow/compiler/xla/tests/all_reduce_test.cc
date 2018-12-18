@@ -41,7 +41,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
 
   ENTRY test_computation {
     p = f32[3] parameter(0)
-    ROOT crs = f32[3] cross-replica-sum(p), to_apply=add
+    ROOT crs = f32[3] all-reduce(p), to_apply=add
   })";
   auto module =
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
@@ -62,7 +62,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
   ENTRY test_computation {
     p0 = f32[3] parameter(0)
     p1 = f32[2] parameter(1)
-    ROOT crs = (f32[3], f32[2]) cross-replica-sum(p0, p1), to_apply=add
+    ROOT crs = (f32[3], f32[2]) all-reduce(p0, p1), to_apply=add
   })";
   auto module =
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
@@ -88,7 +88,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, ConstantOperand) {
   ENTRY test_computation {
     p0 = f32[3] parameter(0)
     p1 = f32[2] constant({10, 20})
-    ROOT crs = (f32[3], f32[2]) cross-replica-sum(p0, p1), to_apply=add
+    ROOT crs = (f32[3], f32[2]) all-reduce(p0, p1), to_apply=add
   })";
   auto module =
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();

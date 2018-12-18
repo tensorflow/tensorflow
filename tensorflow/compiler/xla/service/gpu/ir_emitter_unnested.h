@@ -176,7 +176,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
 
   Status EmitTargetElementLoop(

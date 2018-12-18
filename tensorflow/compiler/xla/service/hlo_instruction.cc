@@ -333,20 +333,20 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                   proto.outfeed_config());
       break;
     }
-    case HloOpcode::kCrossReplicaSum: {
+    case HloOpcode::kAllReduce: {
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
-          << "CrossReplicaSum should have 1 called computation but sees "
+          << "AllReduce should have 1 called computation but sees "
           << proto.called_computation_ids_size();
       absl::optional<int64> all_reduce_id;
       if (proto.all_reduce_id() > 0) {
         all_reduce_id = proto.all_reduce_id();
       }
-      instruction = CreateCrossReplicaSum(
+      instruction = CreateAllReduce(
           shape, all_operands(), computations(0),
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
-          /*barrier=*/proto.cross_replica_sum_barrier(),
+          /*barrier=*/proto.all_reduce_barrier(),
           /*all_reduce_id=*/all_reduce_id);
       break;
     }
@@ -770,8 +770,7 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
       shape, operand, exponent_bits, mantissa_bits);
 }
 
-/* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateCrossReplicaSum(
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
@@ -1165,7 +1164,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
       return true;
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
       return all_reduce_id().has_value();
     default:
       return false;
@@ -1288,7 +1287,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kReducePrecision:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kInfeed:
@@ -1745,7 +1744,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReducePrecision:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kConvolution:
@@ -1894,7 +1893,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kMap:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kScatter:
       CHECK_EQ(called_computations_.size(), 1);
       return called_computations_[0];
@@ -1913,7 +1912,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kMap:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kReduce:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kScatter:
       CHECK_EQ(called_computations_.size(), 1);
       called_computations_[0] = computation;
@@ -2071,11 +2070,11 @@ bool HloInstruction::IsElementwiseImpl(
 }
 
 bool HloInstruction::IsCrossModuleAllReduce() const {
-  return opcode() == HloOpcode::kCrossReplicaSum && all_reduce_id();
+  return opcode() == HloOpcode::kAllReduce && all_reduce_id();
 }
 
 bool HloInstruction::IsCrossReplicaAllReduce() const {
-  return opcode() == HloOpcode::kCrossReplicaSum && !all_reduce_id();
+  return opcode() == HloOpcode::kAllReduce && !all_reduce_id();
 }
 
 string HloInstruction::ToStringWithCanonicalNameMap(
@@ -2186,7 +2185,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
     } else if (opcode() == HloOpcode::kCall || opcode() == HloOpcode::kMap ||
                opcode() == HloOpcode::kReduceWindow ||
                opcode() == HloOpcode::kReduce ||
-               opcode() == HloOpcode::kCrossReplicaSum ||
+               opcode() == HloOpcode::kAllReduce ||
                opcode() == HloOpcode::kScatter) {
       extra.push_back(
           StrCat("to_apply=", PrintName(to_apply()->name(), options)));
@@ -2222,7 +2221,7 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kMap:
       case HloOpcode::kReduceWindow:
       case HloOpcode::kReduce:
-      case HloOpcode::kCrossReplicaSum:
+      case HloOpcode::kAllReduce:
       case HloOpcode::kScatter:
         extra.push_back(
             StrCat("to_apply=\n", to_apply()->ToString(new_options)));
@@ -2419,8 +2418,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConvolution(this);
     case HloOpcode::kFft:
       return visitor->HandleFft(this);
-    case HloOpcode::kCrossReplicaSum:
-      return visitor->HandleCrossReplicaSum(this);
+    case HloOpcode::kAllReduce:
+      return visitor->HandleAllReduce(this);
     case HloOpcode::kAllToAll:
       return visitor->HandleAllToAll(this);
     case HloOpcode::kCollectivePermute:
@@ -3275,13 +3274,12 @@ HloInstruction::source_target_pairs() const {
   return Cast<HloCollectivePermuteInstruction>(this)->source_target_pairs();
 }
 
-string HloInstruction::cross_replica_sum_barrier() const {
-  return Cast<HloAllReduceInstruction>(this)->cross_replica_sum_barrier();
+string HloInstruction::all_reduce_barrier() const {
+  return Cast<HloAllReduceInstruction>(this)->all_reduce_barrier();
 }
 
-void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
-  return Cast<HloAllReduceInstruction>(this)->set_cross_replica_sum_barrier(
-      barrier);
+void HloInstruction::set_all_reduce_barrier(const string& barrier) {
+  return Cast<HloAllReduceInstruction>(this)->set_all_reduce_barrier(barrier);
 }
 
 absl::optional<int64> HloInstruction::all_reduce_id() const {

@@ -552,7 +552,7 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
+Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
   //

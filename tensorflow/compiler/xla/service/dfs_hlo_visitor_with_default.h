@@ -91,7 +91,7 @@ class DfsHloVisitorWithDefaultBase
   Status HandleFft(HloInstructionPtr fft) override {
     return DefaultAction(fft);
   }
-  Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
+  Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
   Status HandleAllToAll(HloInstructionPtr hlo) override {

@@ -2012,7 +2012,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kConditional:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:

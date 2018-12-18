@@ -1635,8 +1635,8 @@ xla_test(
 )
 
 xla_test(
-    name = "cross_replica_sum_test",
-    srcs = ["cross_replica_sum_test.cc"],
+    name = "all_reduce_test",
+    srcs = ["all_reduce_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

@@ -1333,11 +1333,11 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
+Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() != 1) {
     // TODO(b/33011107): Support nontrivial cross replica sum on CPU.
     return Unimplemented(
-        "CrossReplicaSum with >1 replica is not implemented on CPU.");
+        "AllReduce with >1 replica is not implemented on CPU.");
   }
 
   // When there is a single replica, a cross replica sum is the identity
@@ -1363,7 +1363,7 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
 
     const Shape& operand_shape = crs->operand(i)->shape();
     CHECK(ShapeUtil::IsArray(operand_shape))
-        << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
+        << "Operands to all-reduce must be arrays: " << crs->ToString();
     operand_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
 
     // TODO(b/63762267): Be more aggressive about specifying alignment.

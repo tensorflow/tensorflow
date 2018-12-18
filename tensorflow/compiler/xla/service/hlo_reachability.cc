@@ -93,7 +93,7 @@ std::unique_ptr<HloReachabilityMap> HloReachabilityMap::Build(
         }
         break;
       }
-      case HloOpcode::kCrossReplicaSum: {
+      case HloOpcode::kAllReduce: {
         auto all_reduce_id = hlo->all_reduce_id();
         if (all_reduce_id) {
           auto it = channel_dependency_map.find(all_reduce_id.value());
