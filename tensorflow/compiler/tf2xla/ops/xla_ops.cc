@@ -409,5 +409,29 @@ body: A function that takes a list of tensors and returns another
       list of tensors. Both lists have the same types as specified by T.
 )doc");
 
+REGISTER_OP("XlaDequantize")
+    .Input("input: uint32")
+    .Output("output: bfloat16")
+    .Attr("min_range: float")
+    .Attr("max_range: float")
+    .Attr("mode: string")
+    .Attr("transpose_output: bool")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Takes the packed uint32 input and unpacks the input to uint8 to do
+Dequantization on deivce.
+
+input: Input tensors whose types is uint32, shape is [d0, ..., dn].
+output: Output tensors whose types is bloat16. If transpose_output is true,
+     output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
+     is false, output shape is [d0,..., dn * 4].
+min_range: The minimum scalar value possibly produced for the input.
+max_range: The maximum scalar value possibly produced for the input.
+mode: String to determine the dequantize mode in {"MIN_COMBINED", "MIN_FIRST", "SCALED"}.
+transpose_output: Boolean to determine if output is transposed. transpose_output
+     is faster when input is large and rank of input is higher than 1.
+)doc");
+
 }  // namespace
 }  // namespace tensorflow
