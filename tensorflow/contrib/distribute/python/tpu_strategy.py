@@ -35,6 +35,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -119,7 +120,10 @@ def _create_tpu_mirrored_variable(devices, real_mirrored_creator, *args,
 class TPUStrategy(distribute_lib.DistributionStrategy):
   """TPU distribution strategy implementation."""
 
-  def __init__(self, tpu_cluster_resolver, steps_per_run, num_cores=None):
+  def __init__(self,
+               tpu_cluster_resolver=None,
+               steps_per_run=None,
+               num_cores=None):
     """Initializes the TPUStrategy object.
 
     Args:
@@ -145,12 +149,26 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 class TPUExtended(distribute_lib.DistributionStrategyExtended):
   """Implementation of TPUStrategy."""
 
-  # Track what TPU devices have been initialized.
+  # Track what TPU devices have been initialized. This is *intentionally*
+  # shared across all instances of TPUExtended as we want to keep track of which
+  # devices are initialized globally.
   _initialized_devices = []
 
-  def __init__(self, container_strategy, tpu_cluster_resolver, steps_per_run,
+  def __init__(self,
+               container_strategy,
+               tpu_cluster_resolver=None,
+               steps_per_run=None,
                num_cores=None):
     super(TPUExtended, self).__init__(container_strategy)
+
+    if tpu_cluster_resolver is None:
+      tpu_cluster_resolver = resolver_lib.TPUClusterResolver("")
+
+    if steps_per_run is None:
+      # TODO(frankchn): Warn when we are being used by DS/Keras and this is
+      # not specified.
+      steps_per_run = 1
+
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
     # TODO(sourabhbajaj): Change this from num_cores to metadata_override
