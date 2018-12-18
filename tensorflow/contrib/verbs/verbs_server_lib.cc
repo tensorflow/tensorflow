@@ -33,15 +33,12 @@ RendezvousMgrInterface* NewRdmaRendezvousMgr(const WorkerEnv* env) {
   return new RdmaRendezvousMgr(env);
 }
 
-std::once_flag reg_mem_allocator_call;
 std::once_flag reg_mem_visitors_call;
 
 }  // namespace
 
 VerbsServer::VerbsServer(const ServerDef& server_def, Env* env)
-    : GrpcServer(server_def, env), verbs_state_(DISCONNECTED) {
-  std::call_once(reg_mem_allocator_call, []() { RdmaMgr::RegMemAllocator(); });
-}
+    : GrpcServer(server_def, env), verbs_state_(DISCONNECTED) {}
 
 VerbsServer::~VerbsServer() {
   TF_CHECK_OK(Stop());
