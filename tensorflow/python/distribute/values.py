@@ -319,8 +319,8 @@ class DistributedVariable(DistributedDelegate):
     return self._primary_var._in_graph_mode   # pylint: disable=protected-access
 
   def read_value(self):
-    return distribution_strategy_context.get_distribution_strategy().read_var(
-        self)
+    strategy = distribution_strategy_context.get_distribution_strategy()
+    return strategy.extended.read_var(self)
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -873,8 +873,9 @@ class _ReplicaLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
-      return distribution_strategy_context.get_distribution_strategy().read_var(
-          replica_local_variable)
+      strategy = distribution_strategy_context.get_distribution_strategy()
+      return strategy.extended.read_var(replica_local_variable)
+
     spec = saver.BaseSaverBuilder.SaveSpec(
         tensor=tensor,
         slice_spec="",
