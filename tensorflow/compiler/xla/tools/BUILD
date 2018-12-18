@@ -14,7 +14,7 @@ filegroup(
     visibility = ["//tensorflow/compiler/xla:internal"],
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 tf_cc_binary(
     name = "hex_floats_to_packed_literal",
@@ -232,5 +232,52 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_extractor_test",
+    srcs = ["hlo_extractor_test.cc"],
+    deps = [
+        ":hlo_extractor",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "hlo_extractor",
+    srcs = ["hlo_extractor.cc"],
+    hdrs = ["hlo_extractor.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_binary(
+    name = "interactive_graphviz",
+    srcs = ["interactive_graphviz.cc"],
+    deps = [
+        ":hlo_extractor",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service:local_service",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
