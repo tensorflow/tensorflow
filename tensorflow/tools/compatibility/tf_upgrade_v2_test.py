@@ -529,6 +529,17 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testEstimatorInputs(self):
+    text = "tf.estimator.inputs.numpy_input_fn(0)"
+    expected_text = "tf.compat.v1.estimator.inputs.numpy_input_fn(0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.estimator.inputs.pandas_input_fn(0)"
+    expected_text = "tf.compat.v1.estimator.inputs.pandas_input_fn(0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testBatchToSpace(self):
     text = "tf.batch_to_space_nd(input, block_shape, crops, name)"
     expected_text = "tf.batch_to_space(input, block_shape, crops, name)"

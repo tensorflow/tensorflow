@@ -360,6 +360,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.space_to_batch",
         "tf.nn.space_to_batch":
             "tf.space_to_batch",
+        "tf.estimator.inputs":
+            "tf.compat.v1.estimator.inputs",
         "tf.extract_image_patches":
             "tf.image.extract_image_patches",
         "tf.gfile.Copy":
