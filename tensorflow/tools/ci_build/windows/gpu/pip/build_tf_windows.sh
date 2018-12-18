@@ -68,7 +68,7 @@ EXTRA_BUILD_FLAGS=""
 # --test_core_only       Use tensorflow/python/... as test target
 # --test_contrib_only    Use tensorflow/contrib/... as test target
 while [[ $# -gt 0 ]]; do
-  case "$ARG" in
+  case "$1" in
     --tf_nightly) TF_NIGHTLY=1 ;;
     --skip_test) SKIP_TEST=1 ;;
     --enable_remote_cache) set_remote_cache_options ;;
