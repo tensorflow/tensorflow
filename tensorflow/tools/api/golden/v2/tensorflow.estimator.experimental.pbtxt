@@ -36,4 +36,8 @@ tf_module {
     name: "stop_if_higher_hook"
     argspec: "args=[\'estimator\', \'metric_name\', \'threshold\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
   }
+  member_method {
+    name: "stop_if_lower_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'threshold\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
+  }
 }
