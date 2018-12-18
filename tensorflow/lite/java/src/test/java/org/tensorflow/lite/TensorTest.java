@@ -50,6 +50,7 @@ public final class TensorTest {
     outputs.put(0, new float[2][8][8][3]);
     wrapper.run(inputs, outputs);
     tensor = wrapper.getOutputTensor(0);
+    assertThat(tensor.index()).isGreaterThan(-1);
   }
 
   @After

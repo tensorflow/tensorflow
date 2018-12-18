@@ -81,6 +81,15 @@ public final class Tensor {
   }
 
   /**
+   * Returns the (global) index of the tensor within the owning {@link Interpreter}.
+   *
+   * @hide
+   */
+  public int index() {
+    return index(nativeHandle);
+  }
+
+  /**
    * Copies the contents of the provided {@code src} object to the Tensor.
    *
    * <p>The {@code src} should either be a (multi-dimensional) array with a shape matching that of
@@ -278,9 +287,15 @@ public final class Tensor {
 
   private static native int numBytes(long handle);
 
+  private static native int setBufferHandle(long handle, long delegateHandle, int bufferHandle);
+
+  private static native int bufferHandle(long handle);
+
   private static native void readMultiDimensionalArray(long handle, Object dst);
 
   private static native void writeMultiDimensionalArray(long handle, Object src);
+
+  private static native int index(long handle);
 
   static {
     TensorFlowLite.init();
