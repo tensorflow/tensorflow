@@ -103,6 +103,7 @@ tf_gen_op_libs(
         "tpu_configuration_ops",
         "tpu_embedding_ops",
         "tpu_ordinal_selector_op",
+        "functional_ops",
     ],
     deps = [
         "//tensorflow/contrib/tpu/proto:tpu_embedding_configuration_proto_cc",
@@ -158,6 +159,26 @@ tf_gen_op_wrapper_py(
     name = "tpu_ordinal_selector_op",
     deps = [
         ":tpu_ordinal_selector_op_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_functional_ops",
+    out = "python/tpu/gen_functional_ops.py",
+    hidden = [
+        "TPUPartitionedCall",
+    ],
+    deps = [":functional_ops_op_lib"],
+)
+
+py_library(
+    name = "functional",
+    srcs = ["python/tpu/functional.py"],
+    visibility = [
+        "//visibility:public",
+    ],
+    deps = [
+        ":gen_functional_ops",
     ],
 )
 
