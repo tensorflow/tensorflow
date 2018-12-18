@@ -123,7 +123,6 @@ tf_cuda_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/compiler/jit:flags",
-        "//tensorflow/contrib/tpu:all_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

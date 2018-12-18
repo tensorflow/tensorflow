@@ -247,6 +247,14 @@ TF_CAPI_EXPORT int TF_PickUnusedPortOrDie(void);
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromScalar(
     TF_DataType dtype, void* scalar, size_t len);
 
+// Specify the server_def that enables collective ops.
+// This is different to the above function in that it doesn't create remote
+// contexts, and remotely executing ops is not possible. It just enables
+// communication for collective ops.
+TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
