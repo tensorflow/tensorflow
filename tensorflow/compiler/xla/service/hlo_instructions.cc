@@ -363,9 +363,9 @@ HloAllReduceInstruction::HloAllReduceInstruction(
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, absl::string_view barrier,
     const absl::optional<int64>& all_reduce_id)
-    : HloCollectiveInstruction(HloOpcode::kCrossReplicaSum, shape, operands,
+    : HloCollectiveInstruction(HloOpcode::kAllReduce, shape, operands,
                                replica_groups),
-      cross_replica_sum_barrier_(barrier),
+      all_reduce_barrier_(barrier),
       all_reduce_id_(all_reduce_id) {
   AppendComputation(reduce_computation);
 }
@@ -381,7 +381,7 @@ HloInstructionProto HloAllReduceInstruction::ToProto() const {
   if (all_reduce_id_) {
     proto.set_all_reduce_id(*all_reduce_id_);
   }
-  proto.set_cross_replica_sum_barrier(cross_replica_sum_barrier_);
+  proto.set_all_reduce_barrier(all_reduce_barrier_);
   return proto;
 }
 
@@ -389,8 +389,8 @@ std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> result =
       HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
-  if (!cross_replica_sum_barrier().empty()) {
-    result.push_back(StrCat("barrier=\"", cross_replica_sum_barrier(), "\""));
+  if (!all_reduce_barrier().empty()) {
+    result.push_back(StrCat("barrier=\"", all_reduce_barrier(), "\""));
   }
   if (all_reduce_id_) {
     result.push_back(StrCat("all_reduce_id=", *all_reduce_id_));
@@ -405,8 +405,7 @@ bool HloAllReduceInstruction::IdenticalSlowPath(
   const auto& casted_other = static_cast<const HloAllReduceInstruction&>(other);
   return HloCollectiveInstruction::IdenticalSlowPath(other, eq_computations) &&
          eq_computations(to_apply(), casted_other.to_apply()) &&
-         cross_replica_sum_barrier() ==
-             casted_other.cross_replica_sum_barrier() &&
+         all_reduce_barrier() == casted_other.all_reduce_barrier() &&
          all_reduce_id() == casted_other.all_reduce_id();
 }
 
@@ -415,8 +414,8 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllReduceInstruction>(
-      shape, new_operands, to_apply(), replica_groups(),
-      cross_replica_sum_barrier(), all_reduce_id());
+      shape, new_operands, to_apply(), replica_groups(), all_reduce_barrier(),
+      all_reduce_id());
 }
 
 HloAllToAllInstruction::HloAllToAllInstruction(

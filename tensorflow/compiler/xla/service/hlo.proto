@@ -168,7 +168,7 @@ message HloInstructionProto {
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
   int64 all_reduce_id = 45;
-  string cross_replica_sum_barrier = 46;
+  string all_reduce_barrier = 46;
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone

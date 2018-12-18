@@ -1295,11 +1295,11 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   return IrEmitter::HandleTupleSelect(tuple_select);
 }
 
-Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
+Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() != 1) {
     // TODO(b/33011107): Support nontrivial cross replica sum on GPU.
     return Unimplemented(
-        "CrossReplicaSum with >1 replica is not implemented on GPU.");
+        "AllReduce with >1 replica is not implemented on GPU.");
   }
 
   // CRS with one operand and one replica is simply the identity function.
@@ -1311,7 +1311,7 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
   // and when it's run.
   if (crs->operand_count() == 1) {
     CHECK(ShapeUtil::IsArray(crs->operand(0)->shape()))
-        << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
+        << "Operands to all-reduce must be arrays: " << crs->ToString();
     AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/GetAllocationSlice(*crs->operand(0)),
         /*destination_buffer=*/GetAllocationSlice(*crs),

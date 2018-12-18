@@ -232,7 +232,7 @@ TEST_F(BFloat16NormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
   EXPECT_EQ(reduce->operand(1)->shape().element_type(), F32);
 }
 
-TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
+TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
@@ -253,11 +253,10 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateParameter(1, bf16_shape, "b"));
 
-  HloInstruction* crs =
-      builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
-          ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
-          /*replica_groups=*/{}, /*barrier=*/"",
-          /*all_reduce_id=*/absl::nullopt));
+  HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
+      ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
+      /*replica_groups=*/{}, /*barrier=*/"",
+      /*all_reduce_id=*/absl::nullopt));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, crs, 1));
 

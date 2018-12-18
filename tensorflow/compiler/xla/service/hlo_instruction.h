@@ -462,9 +462,7 @@ class HloInstruction {
   // `all_reduce_id`: for Allreduce nodes from different modules, if they have
   // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
-  //
-  // TODO(b/117564385): Rename this to AllReduce.
-  static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
+  static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
@@ -1459,9 +1457,9 @@ class HloInstruction {
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
 
-  // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
-  string cross_replica_sum_barrier() const;
-  void set_cross_replica_sum_barrier(const string& barrier);
+  // Delegates to HloAllReduceInstruction::all_reduce_barrier.
+  string all_reduce_barrier() const;
+  void set_all_reduce_barrier(const string& barrier);
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;

@@ -44,7 +44,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
@@ -167,13 +167,12 @@ Status ShapeVerifier::HandleFft(HloInstruction* fft) {
   return CheckShape(fft, expected);
 }
 
-Status ShapeVerifier::HandleCrossReplicaSum(HloInstruction* crs) {
+Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : crs->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(crs,
-                    ShapeInference::InferCrossReplicaSumShape(operand_shapes));
+  return CheckShape(crs, ShapeInference::InferAllReduceShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
@@ -685,7 +684,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
@@ -1346,7 +1345,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleCrossReplicaSum(HloInstruction* crs) override {
+  Status HandleAllReduce(HloInstruction* crs) override {
     if (crs->all_reduce_id().has_value()) {
       TF_RET_CHECK(crs->all_reduce_id().value() > 0)
           << "All reduce id must be greater than 0 for "

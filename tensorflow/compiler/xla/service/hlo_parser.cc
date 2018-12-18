@@ -767,7 +767,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           HloInstruction::CreateBitcastConvert(shape, operands[0]));
       break;
     }
-    case HloOpcode::kCrossReplicaSum: {
+    case HloOpcode::kAllReduce: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
@@ -787,10 +787,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
-              shape, operands, *to_apply, replica_groups,
-              barrier ? *barrier : "", all_reduce_id));
+      instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
+          shape, operands, *to_apply, replica_groups, barrier ? *barrier : "",
+          all_reduce_id));
       break;
     }
     case HloOpcode::kAllToAll: {
