@@ -1655,11 +1655,12 @@ std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
 
 HloConvolutionInstruction::HloConvolutionInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    int64 feature_group_count, const Window& window,
+    int64 feature_group_count, int64 batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config)
     : HloInstruction(HloOpcode::kConvolution, shape),
       feature_group_count_(feature_group_count),
+      batch_group_count_(batch_group_count),
       window_(window),
       convolution_dimension_numbers_(dimension_numbers),
       precision_config_(precision_config) {
@@ -1737,8 +1738,9 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloConvolutionInstruction>(
-      shape, new_operands[0], new_operands[1], feature_group_count_, window(),
-      convolution_dimension_numbers_, precision_config_);
+      shape, new_operands[0], new_operands[1], feature_group_count_,
+      batch_group_count_, window(), convolution_dimension_numbers_,
+      precision_config_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(

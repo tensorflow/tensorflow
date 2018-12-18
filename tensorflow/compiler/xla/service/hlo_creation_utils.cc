@@ -69,11 +69,11 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(Shape convolve_shape,
                       ShapeInference::InferConvolveShape(
-                          lhs->shape(), rhs->shape(), feature_group_count,
+                          lhs->shape(), rhs->shape(), feature_group_count, 1,
                           window, dimension_numbers));
   return computation->AddInstruction(HloInstruction::CreateConvolve(
-      convolve_shape, lhs, rhs, feature_group_count, window, dimension_numbers,
-      precision_config));
+      convolve_shape, lhs, rhs, feature_group_count, 1, window,
+      dimension_numbers, precision_config));
 }
 
 StatusOr<HloInstruction*> MakeTransposeHlo(HloInstruction* operand,

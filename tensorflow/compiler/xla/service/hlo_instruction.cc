@@ -383,7 +383,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       instruction = CreateConvolve(
           shape, operands(0), operands(1),
-          std::max<int64>(proto.feature_group_count(), 1), proto.window(),
+          std::max<int64>(proto.feature_group_count(), 1),
+          std::max<int64>(proto.batch_group_count(), 1), proto.window(),
           proto.convolution_dimension_numbers(), precision_config);
       break;
     }
@@ -438,6 +439,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       static_cast<HloCustomCallInstruction*>(instruction.get())
           ->set_feature_group_count(
               std::max(static_cast<int64>(proto.feature_group_count()), 1LL));
+      static_cast<HloCustomCallInstruction*>(instruction.get())
+          ->set_batch_group_count(
+              std::max(static_cast<int64>(proto.batch_group_count()), 1LL));
       break;
     case HloOpcode::kPad:
       TF_RET_CHECK(proto.operand_ids_size() == 2)
@@ -734,12 +738,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateConvolve(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    int64 feature_group_count, const Window& window,
+    int64 feature_group_count, int64 batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config) {
   return absl::make_unique<HloConvolutionInstruction>(
-      shape, lhs, rhs, feature_group_count, window, dimension_numbers,
-      precision_config);
+      shape, lhs, rhs, feature_group_count, batch_group_count, window,
+      dimension_numbers, precision_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -3321,6 +3325,18 @@ int64 HloInstruction::feature_group_count() const {
 void HloInstruction::set_feature_group_count(int64 feature_group_count) {
   Cast<HloCustomCallInstruction>(this)->set_feature_group_count(
       feature_group_count);
+}
+
+int64 HloInstruction::batch_group_count() const {
+  if (auto convolution = DynCast<HloConvolutionInstruction>(this)) {
+    return convolution->batch_group_count();
+  }
+  return Cast<HloCustomCallInstruction>(this)->batch_group_count();
+}
+
+void HloInstruction::set_batch_group_count(int64 batch_group_count) {
+  Cast<HloCustomCallInstruction>(this)->set_batch_group_count(
+      batch_group_count);
 }
 
 HloComputation* HloInstruction::select() const {

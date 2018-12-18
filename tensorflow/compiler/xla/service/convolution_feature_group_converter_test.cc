@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/convolution_feature_group_converter.h"
+#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 
 #include <memory>
 #include <string>
@@ -30,10 +30,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ConvolutionFeatureGroupConverterTest = HloTestBase;
+using ConvolutionGroupConverterTest = HloTestBase;
 namespace op = testing::opcode_matchers;
 
-TEST_F(ConvolutionFeatureGroupConverterTest,
+TEST_F(ConvolutionGroupConverterTest,
        ConvertFeatureGroupCountEqualToInputFeatureDim) {
   string hlo_string = R"(HloModule Convolve1D1Window_0_module
 
@@ -49,7 +49,8 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,2], filter: f32[1,1,2]) -> f32[1,2
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
-  ConvolutionFeatureGroupConverter converter;
+  ConvolutionGroupConverter converter(nullptr, /*convert_batch_groups_only=*/
+                                      false);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
   // Make sure the convolution is converted to one with feature_group_count = 1.
@@ -63,7 +64,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,2], filter: f32[1,1,2]) -> f32[1,2
                          op::Broadcast(op::Constant())));
 }
 
-TEST_F(ConvolutionFeatureGroupConverterTest,
+TEST_F(ConvolutionGroupConverterTest,
        ConvertFeatureGroupCountDivisorOfInputFeatureDim) {
   string hlo_string = R"(HloModule Convolve1D1Window_0_module
 
@@ -79,7 +80,8 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
-  ConvolutionFeatureGroupConverter converter;
+  ConvolutionGroupConverter converter(nullptr, /*convert_batch_groups_only=*/
+                                      false);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
   // Make sure the convolution is replaced with a concatenate.
