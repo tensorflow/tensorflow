@@ -99,8 +99,10 @@ ifeq ($(TARGET), apollo3evb)
   $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_mean_q15.c \
   $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_max_q7.c
 
+  AP3_EXT_MICRO_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/apollo3_ext
   AP3_MICRO_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
   CMSIS_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS
+  CMSIS_EXT_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS_ext
 
   MICRO_SPEECH_TEST_SRCS += \
     $(AP3_MICRO_DIR)/_main.c
@@ -108,16 +110,16 @@ ifeq ($(TARGET), apollo3evb)
   PREPROCESSOR_1K_CMSIS_TEST_SRCS := \
   $(PREPROCESSOR_1K_SRCS) \
   $(CMSIS_DIR)/preprocessor.cc \
-  $(CMSIS_DIR)/arm_cmplx_mag_squared_q10p6.c \
+  $(CMSIS_EXT_DIR)/arm_cmplx_mag_squared_q10p6.c \
   $(CMSIS_DIR)/hanning.c \
-  $(AP3_MICRO_DIR)/system_apollo3.c \
+  $(AP3_EXT_MICRO_DIR)/system_apollo3.c \
   $(AP3_MICRO_DIR)/_main.c \
   $(CMSIS_SRCS)
 
   PREPROCESSOR_1K_MICRO_TEST_SRCS := \
   $(PREPROCESSOR_1K_SRCS) \
-  tensorflow/lite/experimental/micro/examples/micro_speech/fixed_point/preprocessor.cc \
-  tensorflow/lite/experimental/micro/examples/micro_speech/apollo3/system_apollo3.c \
+  $(AP3_MICRO_DIR)/../fixed_point/preprocessor.cc \
+  $(AP3_EXT_MICRO_DIR)/system_apollo3.c \
   $(AP3_MICRO_DIR)/_main.c
 
   PUSHBUTTON_MICRO_SPEECH_TEST_SRCS := \
@@ -132,7 +134,7 @@ ifeq ($(TARGET), apollo3evb)
     $(AP3_MICRO_DIR)/pushbutton_test.cc \
     $(AP3_MICRO_DIR)/../tiny_conv_model_data.cc \
     $(CMSIS_DIR)/preprocessor.cc \
-    $(CMSIS_DIR)/arm_cmplx_mag_squared_q10p6.c \
+    $(CMSIS_EXT_DIR)/arm_cmplx_mag_squared_q10p6.c \
     $(CMSIS_DIR)/hanning.c \
     $(APOLLO3_SDK)/devices/am_devices_led.c \
     $(CMSIS_SRCS)

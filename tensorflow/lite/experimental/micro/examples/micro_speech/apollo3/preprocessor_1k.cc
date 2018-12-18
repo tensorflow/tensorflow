@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 extern "C" {
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/apollo3/system_apollo3.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/apollo3/apollo3.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/apollo3_ext/system_apollo3.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/apollo3_ext/apollo3.h"
 }
 
 #define output_data_size 43
