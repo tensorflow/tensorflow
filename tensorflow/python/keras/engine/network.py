@@ -223,6 +223,9 @@ class Network(base_layer.Layer):
     self._nodes_by_depth = nodes_by_depth
     self._layers = layers
     self._layers_by_depth = layers_by_depth
+    self._layer_call_argspecs = {}
+    for layer in self._layers:
+      self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
     self._track_layers(layers)
 
@@ -982,13 +985,14 @@ class Network(base_layer.Layer):
             else:
               kwargs = {}
             # Ensure `training` arg propagation if applicable.
-            if 'training' in tf_inspect.getfullargspec(layer.call).args:
+            argspec = self._layer_call_argspecs[layer].args
+            if 'training' in argspec:
               kwargs.setdefault('training', training)
 
             if len(computed_data) == 1:
               computed_tensor, computed_mask = computed_data[0]
               # Ensure mask propagation if applicable.
-              if 'mask' in tf_inspect.getfullargspec(layer.call).args:
+              if 'mask' in argspec:
                 kwargs.setdefault('mask', computed_mask)
 
               # Compute outputs and masks.
@@ -1014,7 +1018,7 @@ class Network(base_layer.Layer):
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
               # Ensure mask propagation if applicable.
-              if 'mask' in tf_inspect.getfullargspec(layer.call).args:
+              if 'mask' in argspec:
                 kwargs.setdefault('mask', computed_masks)
 
               # Compute outputs and masks.
