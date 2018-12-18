@@ -122,6 +122,17 @@ class PosixWritableFile : public WritableFile {
     }
     return s;
   }
+
+  Status Tell(int64* position) override {
+    Status s;
+    *position = ftell(file_);
+
+    if (*position == -1) {
+      s = IOError(filename_, errno);
+    }
+
+    return s;
+  }
 };
 
 class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {

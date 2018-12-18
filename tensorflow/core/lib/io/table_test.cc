@@ -97,6 +97,10 @@ class StringSink : public WritableFile {
   Status Close() override { return Status::OK(); }
   Status Flush() override { return Status::OK(); }
   Status Sync() override { return Status::OK(); }
+  Status Tell(int64* pos) override {
+    *pos = contents_.size();
+    return Status::OK();
+  }
 
   Status Append(StringPiece data) override {
     contents_.append(data.data(), data.size());
