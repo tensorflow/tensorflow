@@ -85,7 +85,7 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
   std::unique_ptr<FlatBufferModel> model;
   auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
                                           error_reporter, /*use_nnapi=*/true);
-  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
+  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
@@ -112,20 +112,21 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
                               allocation->bytes(), error_reporter)) {
     return model;
   }
-  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
+  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
 #endif
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
-    const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
+    const char* caller_owned_buffer, size_t buffer_size,
+    ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
   std::unique_ptr<FlatBufferModel> model;
-  Allocation* allocation =
-      new MemoryAllocation(buffer, buffer_size, error_reporter);
-  model.reset(new FlatBufferModel(allocation, error_reporter));
+  std::unique_ptr<Allocation> allocation(
+      new MemoryAllocation(caller_owned_buffer, buffer_size, error_reporter));
+  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
@@ -151,11 +152,12 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
-    const tflite::Model* model_spec, ErrorReporter* error_reporter) {
+    const tflite::Model* caller_owned_model_spec,
+    ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(model_spec, error_reporter));
+  model.reset(new FlatBufferModel(caller_owned_model_spec, error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
@@ -173,20 +175,18 @@ bool FlatBufferModel::CheckModelIdentifier() const {
 
 FlatBufferModel::FlatBufferModel(const Model* model,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(ValidateErrorReporter(error_reporter)) {
-  model_ = model;
-}
+    : model_(model), error_reporter_(ValidateErrorReporter(error_reporter)) {}
 
-FlatBufferModel::FlatBufferModel(Allocation* allocation,
+FlatBufferModel::FlatBufferModel(std::unique_ptr<Allocation> allocation,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(ValidateErrorReporter(error_reporter)) {
-  allocation_ = allocation;
+    : error_reporter_(ValidateErrorReporter(error_reporter)),
+      allocation_(std::move(allocation)) {
   if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
   model_ = ::tflite::GetModel(allocation_->base());
 }
 
-FlatBufferModel::~FlatBufferModel() { delete allocation_; }
+FlatBufferModel::~FlatBufferModel() {}
 
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
