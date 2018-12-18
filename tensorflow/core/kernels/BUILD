@@ -597,10 +597,6 @@ cc_library(
     srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
@@ -610,10 +606,6 @@ cc_library(
     deps = [
         "//third_party/eigen3",
     ] + select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
@@ -2494,10 +2486,6 @@ tf_cc_test(
     name = "eigen_mkldnn_contraction_kernel_test",
     size = "small",
     srcs = select({
-        "//tensorflow:android": [],
-        "//tensorflow:arm": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
         "//conditions:default": ["eigen_mkldnn_contraction_kernel_test.cc"],
     }),
