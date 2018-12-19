@@ -425,11 +425,8 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for(x)), 1)
 
 
-# TODO(scottzhu): Re-enable those tests in v2 mode once bugs attached are fixed.
-@test_util.run_v1_only
 class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
 
-  # b/120911602
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_dropout_LSTM(self):
     num_samples = 2
@@ -445,7 +442,6 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  # b/120911602
   def test_unified_lstm_feature_parity_with_canonical_lstm(self):
     with context.eager_mode():
       # Run this test under eager only due to b/120160788 for model.set_weights.
@@ -485,7 +481,6 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(y_1, y_3)
       self.assertAllClose(y_2, y_4)
 
-  # b/120911602
   @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_implementation_mode_LSTM(self, implementation_mode):
@@ -530,7 +525,6 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
         optimizer=gradient_descent.GradientDescentOptimizer(0.01))
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
-  # b/120911602
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_masking_with_stacking_LSTM(self):
     inputs = np.random.random((2, 3, 4))
@@ -545,7 +539,6 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
         optimizer=gradient_descent.GradientDescentOptimizer(0.01))
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
-  # b/120911602
   @parameterized.named_parameters(
       # test_name, time_major, go_backwards
       ('normal', False, False),
@@ -616,7 +609,6 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
     model.evaluate(x_train, y_train)
     model.predict(x_train)
 
-  # b/120911602
   @parameterized.named_parameters(
       # test_name, use_bias, bias_initializer, activation
       ('normal', True, 'zeros'),
@@ -657,7 +649,6 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(y, y_ref)
     self.assertAllClose(layer.get_weights(), new_layer.get_weights())
 
-  # b/120911602
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_unified_lstm_output_on_multiple_kernel(self):
     input_shape = 10
@@ -711,7 +702,8 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  # b/120911602
+
+  @test_util.run_v1_only("b/120941292")
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_statefulness_LSTM(self):
     num_samples = 2
