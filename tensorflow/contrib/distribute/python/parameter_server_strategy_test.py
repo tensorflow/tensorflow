@@ -532,21 +532,22 @@ class ParameterServerStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run(
-            [values.select_device(d, next_element) for d in devices])
+        computed_value = sess.run([values.select_replica(r, next_element)
+                                   for r in range(len(devices))])
         self.assertEqual(expected_value, computed_value)
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
-        sess.run([values.select_device(d, next_element) for d in devices])
+        sess.run([values.select_replica(r, next_element)
+                  for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
       sess.run(iterator.initialize())
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run(
-            [values.select_device(d, next_element) for d in devices])
+        computed_value = sess.run([values.select_replica(r, next_element)
+                                   for r in range(len(devices))])
         self.assertEqual(expected_value, computed_value)
 
 

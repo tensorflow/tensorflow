@@ -51,6 +51,10 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     super(OneDeviceExtended, self).__init__(container_strategy)
     self._device = device
     self._default_device = device
+    worker = device_util.canonicalize("/device:CPU:0")
+    worker_device_pairs = [(worker, [self._device])]
+    device_map = values.SingleDeviceMap(device)
+    self._input_workers = values.InputWorkers(device_map, worker_device_pairs)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
@@ -69,23 +73,18 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch."""
-    worker = device_util.canonicalize("/device:CPU:0")
-    worker_device_pairs = [(worker, [self._device])]
-    return values.DatasetIterator(dataset, worker_device_pairs)
+    return values.DatasetIterator(dataset, self._input_workers)
 
   def _distribute_dataset(self, dataset_fn):
     return values.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn), [self._device])
+        self._call_dataset_fn(dataset_fn), self._input_workers, 0)
 
   def _make_input_fn_iterator(
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    worker = device_util.canonicalize("/device:CPU:0")
-    worker_device_pairs = [(worker, [self._device])]
     return values.InputFunctionIterator(
-        input_fn, worker_device_pairs,
-        [distribute_lib.InputContext()])
+        input_fn, self._input_workers, [distribute_lib.InputContext()])
 
   def _broadcast_to(self, tensor, destinations):
     del destinations

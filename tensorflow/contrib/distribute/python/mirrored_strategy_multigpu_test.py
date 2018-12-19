@@ -558,10 +558,8 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       return v
 
     with distribution.scope():
-      names = values.DistributedValues({
-          "/device:CPU:0": "foo",
-          "/device:GPU:0": "bar"
-      })
+      device_map = values.ReplicaDeviceMap(("/device:CPU:0", "/device:GPU:0"))
+      names = values.DistributedValues(device_map, ("foo", "bar"))
       with self.assertRaises(RuntimeError):
         _ = distribution.extended.call_for_each_replica(model_fn, args=(names,))
 
@@ -1210,9 +1208,9 @@ class MirroredStrategyDefunTest(test.TestCase):
 
       result = distribution.extended.call_for_each_replica(
           model_fn, args=[mock_model] + inputs)
-      for device in devices:
-        device_result = values.select_device(device, result)
-        device_expected_result = values.select_device(device, expected_result)
+      for r in range(len(devices)):
+        device_result = values.select_replica(r, result)
+        device_expected_result = values.select_replica(r, expected_result)
         self.assertAllClose(device_expected_result,
                             self.evaluate(device_result))
 
@@ -1293,9 +1291,9 @@ class MirroredStrategyDefunTest(test.TestCase):
     def fn1(mock_model, factor):
       return mock_model(factor)
 
-    factors = values.PerReplica({"CPU:0": 5.0, "GPU:0": 3.0})
-    expected_result = values.PerReplica({"CPU:0": 5.0 * 1.25,
-                                         "GPU:0": 3.0 * 1.25})
+    device_map = values.ReplicaDeviceMap(("/device:CPU:0", "/device:GPU:0"))
+    factors = values.PerReplica(device_map, (5.0, 3.0))
+    expected_result = values.PerReplica(device_map, (5.0 * 1.25, 3.0 * 1.25))
     self._call_and_check(distribution, fn1, [factors], expected_result, [fn1])
 
   def testTrain(self, distribution):
