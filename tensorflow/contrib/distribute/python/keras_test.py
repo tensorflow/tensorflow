@@ -1034,7 +1034,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       ref_output = np.ones((160, 1), dtype=np.float32)
       self.assertArrayNear(output, ref_output, 1e-1)
 
-  @combinations.generate(strategy_minus_tpu_combinations())
+  @combinations.generate(all_strategy_combinations())
   def testOptimizerWithCallbacks(self, distribution):
     with self.cached_session():
       # TODO(b/120946189): Investigate why default strategy + eager fails.
