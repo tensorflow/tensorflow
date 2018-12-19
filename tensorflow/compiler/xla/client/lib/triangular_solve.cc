@@ -417,6 +417,11 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
     auto inv_diag_blocks = InvertDiagonalBlocks(diag_blocks, lower, transpose_a,
                                                 conjugate_a, precision);
 
+    // Mask off the ignored elements of the triangular matrix a.
+    // TODO(phawkins): it would probably be preferable to perform this masking
+    // block by block inside SolveWithInvertedDiagonalBlocks.
+    a = Triangle(a, lower);
+
     // We now find the solution using GEMMs
     auto x =
         SolveWithInvertedDiagonalBlocks(a, b, inv_diag_blocks, left_side, lower,
