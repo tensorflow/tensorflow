@@ -708,7 +708,7 @@ def ShapeEquals(tensor_proto, shape):
 def _ConstantValue(tensor, partial):
   # TODO(touts): Support Variables?
   if not isinstance(tensor, ops.Tensor):
-    raise TypeError("tensor is not a Tensor")
+    raise TypeError("%r is not a Tensor, has type %s" % (tensor, type(tensor)))
   if tensor.op.type == "Const":
     return MakeNdarray(tensor.op.get_attr("value"))
   elif tensor.op.type == "Shape":
