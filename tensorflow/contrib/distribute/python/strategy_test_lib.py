@@ -254,12 +254,13 @@ class DistributionTestBase(test.TestCase):
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
-          [values.select_device(d, next_element) for d in devices])
+          [values.select_replica(r, next_element) for r in range(len(devices))])
       self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
-      evaluate([values.select_device(d, next_element) for d in devices])
+      evaluate(
+          [values.select_replica(r, next_element) for r in range(len(devices))])
 
     # After re-initializing the iterator, should be able to iterate again.
     evaluate(iterator.initialize())
@@ -267,7 +268,7 @@ class DistributionTestBase(test.TestCase):
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
-          [values.select_device(d, next_element) for d in devices])
+          [values.select_replica(r, next_element) for r in range(len(devices))])
       self.assertEqual(expected_value, computed_value)
 
   def _test_global_step_update(self, strategy):

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import functools
 
-from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import values
@@ -136,21 +135,16 @@ class MirroredExtended(CoreMirroredExtended):
     Returns:
       An `InputIterator` which returns inputs for each step of the computation.
     """
-    if self._local_mode:
-      worker = device_util.canonicalize("/device:CPU:0")
-      worker_device_pairs = [(worker, self._devices)]
-    else:
-      worker_device_pairs = self._worker_devices
-    return values.DatasetIterator(dataset, worker_device_pairs)
+    return values.DatasetIterator(dataset, self._input_workers)
 
   def _distribute_dataset(self, dataset_fn):
     if self._local_mode:
       return values.PerReplicaDataset(
-          self._call_dataset_fn(dataset_fn), self._devices)
+          self._call_dataset_fn(dataset_fn), self._input_workers, 0)
     else:
       return values.MultiWorkerDataset(
           functools.partial(self._call_dataset_fn, dataset_fn),
-          self._worker_devices,
+          self._input_workers,
           auto_shard=self._auto_shard_dataset)
 
   # TODO(priyag): Delete this once all strategies use global batch size.

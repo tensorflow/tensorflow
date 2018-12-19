@@ -139,22 +139,22 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
                        "`task_type` and `task_id`")
     cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
 
-    self._worker_device = "/job:%s/task:%d" % (self._task_type, self._task_id)
+    worker_device = "/job:%s/task:%d" % (self._task_type, self._task_id)
 
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
     if num_gpus_per_worker > 0:
-      self._compute_devices = tuple(
-          "%s/device:GPU:%d" % (self._worker_device, i)
+      compute_devices = tuple(
+          "%s/device:GPU:%d" % (worker_device, i)
           for i in range(num_gpus_per_worker)
       )
     else:
-      self._compute_devices = (self._worker_device,)
+      compute_devices = (worker_device,)
 
-    self._compute_devices = tuple(
-        map(device_util.resolve, self._compute_devices))
-    self._canonical_compute_device_set = set(self._compute_devices)
+    self._device_map = values.ReplicaDeviceMap(compute_devices)
+    self._input_workers = values.InputWorkers(
+        self._device_map, [(worker_device, compute_devices)])
 
     # In distributed mode, place variables on ps jobs in a round-robin fashion.
     # Note that devices returned from `replica_device_setter` are not
@@ -169,7 +169,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       raise ValueError("The cluster spec needs to have `ps` jobs.")
     self._variable_device = device_setter.replica_device_setter(
         ps_tasks=num_ps_replicas,
-        worker_device=self._worker_device,
+        worker_device=worker_device,
         merge_devices=True,
         cluster=cluster_spec)
 
@@ -181,7 +181,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
     # Add a default device so that ops without specified devices will not end up
     # on other workers.
-    self._default_device = self._worker_device
+    self._default_device = worker_device
 
     self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
                                                 task_id)
@@ -192,31 +192,31 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     logging.info(
         "Multi-worker ParameterServerStrategy with "
         "cluster_spec = %r, task_type = %r, task_id = %r, "
-        "num_ps_replicas = %r, is_chief = %r, compute_devices = %r, "
+        "num_ps_replicas = %r, is_chief = %r, device_map = %r, "
         "variable_device = %r", cluster_spec.as_dict(), task_type, task_id,
-        num_ps_replicas, self._is_chief, self._compute_devices,
+        num_ps_replicas, self._is_chief, self._device_map,
         self._variable_device)
 
   def _initialize_local(self, num_gpus_per_worker):
     """Initialize internal devices for local training."""
-    self._worker_device = device_util.canonicalize("/device:CPU:0")
+    worker_device = device_util.canonicalize("/device:CPU:0")
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
     if num_gpus_per_worker > 0:
-      self._compute_devices = tuple(
+      compute_devices = tuple(
           map("/device:GPU:{}".format, range(num_gpus_per_worker)))
     else:
-      self._compute_devices = (_LOCAL_CPU,)
+      compute_devices = (_LOCAL_CPU,)
 
-    self._compute_devices = tuple(
-        map(device_util.resolve, self._compute_devices))
-    self._canonical_compute_device_set = set(self._compute_devices)
+    self._device_map = values.ReplicaDeviceMap(compute_devices)
+    self._input_workers = values.InputWorkers(
+        self._device_map, [(worker_device, compute_devices)])
 
     # If there is only one GPU, put everything on that GPU. Otherwise, place
     # variables on CPU.
     if num_gpus_per_worker == 1:
-      assert len(self._compute_devices) == 1
+      assert len(compute_devices) == 1
       self._variable_device = _LOCAL_GPU_0
       self._parameter_devices = (_LOCAL_GPU_0,)
     else:
@@ -230,16 +230,16 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
     logging.info(
         "ParameterServerStrategy with compute_devices = %r, "
-        "variable_device = %r", self._compute_devices, self._variable_device)
+        "variable_device = %r", compute_devices, self._variable_device)
 
   def _distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     return values.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn), self._compute_devices, True)
+        self._call_dataset_fn(dataset_fn), self._input_workers, 0,
+        prefetch_on_device=True)
 
   def _make_dataset_iterator(self, dataset):
-    worker_device_pairs = [(self._worker_device, self._compute_devices)]
-    return values.DatasetIterator(dataset, worker_device_pairs,
+    return values.DatasetIterator(dataset, self._input_workers,
                                   self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
@@ -259,9 +259,8 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
         num_input_pipelines=num_input_pipelines,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
-    worker_device_pairs = [(self._worker_device, self._compute_devices)]
     return values.InputFunctionIterator(
-        input_fn, worker_device_pairs, [input_context])
+        input_fn, self._input_workers, [input_context])
 
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay
@@ -272,7 +271,9 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     if isinstance(tensor, (float, int)):
       return tensor
     if not cross_device_ops_lib.check_destinations(destinations):
-      destinations = self._compute_devices
+      # TODO(josh11b): Use current logical device instead of 0 here.
+      destinations = values.LogicalDeviceSpec(
+          device_map=self._device_map, logical_device=0)
     return self._cross_device_ops.broadcast(tensor, destinations)
 
   def _allow_variable_partition(self):
@@ -338,7 +339,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
   def _call_for_each_replica(self, fn, args, kwargs):
     # pylint: disable=protected-access
     return mirrored_strategy._call_for_each_replica(
-        self._container_strategy(), fn, args, kwargs)
+        self._container_strategy(), self._device_map, fn, args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:
@@ -350,14 +351,14 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       if d_spec.job == self._task_type and d_spec.task != self._task_id:
         raise ValueError(
             "Cannot reduce to another worker: %r, current worker is %r" %
-            (d, self._worker_device))
+            (d, self._input_workers.worker_devices[0]))
 
   def _reduce_to(self, reduce_op, value, destinations):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
       return cross_device_ops_lib.reduce_non_distributed_value(
-          self, reduce_op, value, destinations)
+          reduce_op, self._device_map, value, destinations)
     return self._cross_device_ops.reduce(
         reduce_op, value, destinations=destinations)
 
@@ -373,7 +374,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     def _select_fn(x):  # pylint: disable=g-missing-docstring
       if isinstance(x, values.Mirrored):
         if len(x.devices) == 1:
-          return list(x._index.values())[0]  # pylint: disable=protected-access
+          return x.primary
         else:
           raise ValueError(
               "You cannot update variable with a Mirrored object with multiple "
@@ -415,10 +416,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
   def _unwrap(self, val):
     if isinstance(val, values.DistributedValues):
-      # Return in a deterministic order.
-      if set(val.devices) == self._canonical_compute_device_set:
-        return tuple(val.get(device=d) for d in self._compute_devices)
-      return tuple(val.get(device=d) for d in sorted(val.devices))
+      return val.values
     return (val,)
 
   def value_container(self, val):
@@ -493,11 +491,15 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
   @property
   def _num_replicas_in_sync(self):
-    return len(self._compute_devices)
+    return self._device_map.num_replicas_in_graph
 
   @property
   def worker_devices(self):
-    return self._compute_devices
+    return self._device_map.all_devices
+
+  @property
+  def worker_devices_by_replica(self):
+    return self._device_map.devices_by_replica
 
   @property
   def parameter_devices(self):

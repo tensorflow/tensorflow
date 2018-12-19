@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Various classes representing distributed values.
-
-See go/tf-distribution-strategy.
-"""
+"""Various classes representing distributed values."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -50,54 +47,262 @@ from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 
 
-# pylint: disable=line-too-long
-# TODO(josh11b): Should device values be strings or DeviceSpec objects?
-# Not sure DeviceSpec objects are usable as a dict key.
+def _devices_match(d1, d2):
+  return device_util.canonicalize(d1) == device_util.canonicalize(d2)
+
+
+class DeviceMap(object):
+  """A mapping of replicas & logical device ids to devices."""
+
+  @property
+  def all_devices(self):
+    """Returns a tuple of strings with all devices in this DeviceMap."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  @property
+  def devices_by_replica(self):
+    """Returns a tuple `t` where `t[replica]` is the devices for `replica`."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  @property
+  def num_logical_devices(self):
+    """Count of the number of devices each replica may be defined across."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  @property
+  def num_replicas_in_graph(self):
+    """Number of replicas defined in this graph."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def logical_device_from_values(self, values):
+    """Returns the logical device index `values` is on."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def logical_to_actual_devices(self, logical_device_id):
+    """Returns sequence of `num_replicas_in_graph` devices."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def select_for_current_replica(self, values, replica_context):
+    """Select the element of `values` for the current replica."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def replica_for_device(self, device):
+    """Return the replica id containing `device`."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def select_for_device(self, values, device):
+    """Select the element of `values` to access from `device`."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def is_device_in_replica(self, device, replica_id):
+    """Returns whether `device` is a member of replica `replica_id`."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+
+class SingleDeviceMap(DeviceMap):
+  """A device map for 1 non-computation device.
+
+  Use `SingleDeviceMap` when the device does not correspond to some replica of
+  the computation. For computation devices, use `ReplicaDeviceMap` below (even
+  if there is only a single device in the map).
+  """
+
+  def __init__(self, device):
+    """Initialize a `SingleDeviceMap`.
+
+    Args:
+      device: A string device.
+    """
+    assert isinstance(device, six.string_types)
+    self._device = device_util.canonicalize(device)
+    self._devices = (self._device,)
+
+  @property
+  def all_devices(self):
+    return self._devices
+
+  @property
+  def devices_by_replica(self):
+    raise ValueError("SingleDeviceMap not indexed by replicas")
+
+  @property
+  def num_logical_devices(self):
+    return 1
+
+  @property
+  def num_replicas_in_graph(self):
+    return 1
+
+  def logical_device_from_values(self, values):
+    del values
+    return 0
+
+  def logical_to_actual_devices(self, logical_device_id):
+    assert logical_device_id == 0
+    return self._devices
+
+  def select_for_current_replica(self, values, replica_context):
+    assert len(values) == 1
+    del replica_context
+    return values[0]
+
+  def replica_for_device(self, device):
+    raise ValueError("SingleDeviceMap not indexed by replicas")
+
+  def select_for_device(self, values, device):
+    assert len(values) == 1
+    if self._device != device:
+      raise ValueError("Device %s not found in %s (current device %s)" %
+                       (device, self._devices, device_util.current()))
+    return values[0]
+
+  def is_device_in_replica(self, device, replica_id):
+    raise ValueError("SingleDeviceMap not indexed by replicas")
+
+  def __repr__(self):
+    return "%s(%r)" % (self.__class__.__name__, self._device)
+
+
+class ReplicaDeviceMap(DeviceMap):
+  """A device map for 1 device per replica."""
+
+  def __init__(self, devices):
+    """Initialize a `ReplicaDeviceMap`.
+
+    Args:
+      devices: `devices[i]` is the string device for replica `i`.
+    """
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    if len(set(self._devices)) != len(self._devices):
+      raise ValueError("Duplicate devices in %s, after canonicalization: %s" %
+                       (devices, self._devices))
+    self._device_to_replica = {d: r for r, d in enumerate(self._devices)}
+
+  @property
+  def all_devices(self):
+    return self._devices
+
+  @property
+  def devices_by_replica(self):
+    return ((d,) for d in self._devices)
+
+  @property
+  def num_logical_devices(self):
+    return 1
+
+  @property
+  def num_replicas_in_graph(self):
+    return len(self._devices)
+
+  def logical_device_from_values(self, values):
+    del values
+    return 0
+
+  def logical_to_actual_devices(self, logical_device_id):
+    assert logical_device_id == 0
+    return self._devices
+
+  def select_for_current_replica(self, values, replica_context):
+    assert len(values) == len(self._devices)
+    replica_id = replica_context.replica_id_in_sync_group
+    if not isinstance(replica_id, int):
+      replica_id = tensor_util.constant_value(replica_id)
+    return values[replica_id]
+
+  def replica_for_device(self, device):
+    return self._device_to_replica.get(device)
+
+  def select_for_device(self, values, device):
+    assert len(values) == len(self._devices)
+    replica_id = self._device_to_replica.get(device)
+    if replica_id is None:
+      raise ValueError("Device %s not found in %s (current device %s)" %
+                       (device, self._devices, device_util.current()))
+    return values[replica_id]
+
+  def is_device_in_replica(self, device, replica_id):
+    return _devices_match(device, self._devices[replica_id])
+
+  def __str__(self):
+    return "[%s]" % (", ".join(self._devices))
+
+  def __repr__(self):
+    return "%s([%s])" % (self.__class__.__name__,
+                         ", ".join(repr(d) for d in self._devices))
+
+
+LogicalDeviceSpec = collections.namedtuple(
+    "LogicalDeviceSpec", ("device_map", "logical_device"))
+
+
 class DistributedValues(object):
   """Holds a map from device to values. Either PerReplica or Mirrored."""
 
-  def __init__(self, index):
-    self._index = {device_util.canonicalize(key): value
-                   for key, value in six.iteritems(index)}
+  def __init__(self, device_map, values, logical_device=None):
+    assert isinstance(device_map, DeviceMap)
+    self._device_map = device_map
+    self._values = tuple(values)
+    if logical_device is None:
+      logical_device = device_map.logical_device_from_values(self._values)
+    self._logical_device = logical_device
 
+  # TODO(josh11b): Split this into two functions, one with device, one without.
   def get(self, device=None):
     """Returns the value for the current device or raises a ValueError."""
     if device is None:
       replica_context = distribution_strategy_context.get_replica_context()
       if replica_context:
-        # TODO(josh11b): support model parallelism better here
-        device = replica_context.devices[0]
+        return self._device_map.select_for_current_replica(
+            self._values, replica_context)
       else:
         device = distribute_lib.get_update_device()
         if device is None:
           return self._get_cross_replica()
     device = device_util.canonicalize(device)
-    try:
-      return self._index[device]
-    except KeyError as e:
-      six.raise_from(
-          ValueError("Device %s not found in %s (current device %s)" %
-                     (device, self._index.keys(), device_util.current())), e)
+    return self._device_map.select_for_device(self._values, device)
+
+  @property
+  def primary(self):
+    """Returns a representative component."""
+    return self._values[0]
 
   @property
   def devices(self):
-    return list(self._index.keys())
+    return self._device_map.logical_to_actual_devices(self._logical_device)
+
+  @property
+  def logical_device(self):
+    return self._logical_device
+
+  @property
+  def device_map(self):
+    return self._device_map
+
+  # TODO(josh11b): Replace unwrap with this?
+  @property
+  def values(self):
+    return self._values
 
   @property
   def is_tensor_like(self):
-    for v in self._index.values():
+    for v in self._values:
       if not tensor_util.is_tensor(v):
         return False
     return True
 
   def __str__(self):
-    return "%s:%s" % (self.__class__.__name__, self._index)
+    devices = self.devices
+    assert len(self._values) == len(devices)
+    debug_str = ",\n".join("  %d %s: %s" % (i, devices[i], self._values[i])
+                           for i in range(len(devices)))
+    return "%s:{\n%s\n}" % (self.__class__.__name__, debug_str)
 
   def __repr__(self):
-    return "%s(%r)" % (self.__class__.__name__, self._index)
-
-  # TODO(josh11b): Possibly make an accessor for _index for use by
-  # DistributionStrategy implementations.
+    devices = self.devices
+    assert len(self._values) == len(devices)
+    debug_repr = ",\n".join("  %d %s: %r" % (i, devices[i], self._values[i])
+                            for i in range(len(devices)))
+    return "%s:{\n%s\n}" % (self.__class__.__name__, debug_repr)
 
 
 # NOTE(josh11b,apassos): It would be great if we could inspect the values this was
@@ -190,9 +395,10 @@ class Mirrored(DistributedDelegate):
 
   def _get_cross_replica(self):
     device = device_util.canonicalize(device_util.current())
-    if device in self._index:
-      return self._index[device]
-    return list(self._index.values())[0]
+    replica_id = self._device_map.replica_for_device(device)
+    if replica_id is None:
+      return self.primary
+    return self._values[replica_id]
 
   def _as_graph_element(self):
     obj = self.get()
@@ -216,13 +422,13 @@ class DistributedVariable(DistributedDelegate):
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
 
-  def __init__(self, index):
-    # Child class must set self._primary_var before calling
-    # super(...).__init__(index).
-    self._common_name = self._primary_var.name.split(":")[0]
+  def __init__(self, device_map, values, logical_device=None):
+    super(DistributedVariable, self).__init__(
+        device_map, values, logical_device=logical_device)
+    self._common_name = self.primary.name.split(":")[0]
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
-    for v in six.itervalues(index):
+    for v in values:
       v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
     # tf.keras keeps track of variables initialized using this attribute. When
     # tf.keras gets the default session, it initializes all uninitialized vars.
@@ -235,7 +441,6 @@ class DistributedVariable(DistributedDelegate):
     # when restoring from a checkpoint, we may set the _initializer_op
     # property on the entire `DistributedVariable`.
     self._initializer_op = None
-    super(DistributedVariable, self).__init__(index)
 
   def is_initialized(self, name=None):
     """Identifies if all the component variables are initialized.
@@ -247,18 +452,14 @@ class DistributedVariable(DistributedDelegate):
       The op that evaluates to True or False depending on if all the
       component variables are initialized.
     """
-    # We have to cast the self._index.values() to a `list` because when we
-    # use `model_to_estimator` to run tf.keras models, self._index.values() is
-    # of type `dict_values` and not `list`.
-    values_list = list(self._index.values())
-    result = values_list[0].is_initialized()
+    result = self.primary.is_initialized()
     # We iterate through the list of values except the last one to allow us to
     # name the final `logical_and` op the same name that is passed by the user
     # to the `is_initialized` op. For distributed variables, the
     # `is_initialized` op is a `logical_and` op.
-    for v in values_list[1:-1]:
+    for v in self._values[1:-1]:
       result = math_ops.logical_and(result, v.is_initialized())
-    result = math_ops.logical_and(result, values_list[-1].is_initialized(),
+    result = math_ops.logical_and(result, self._values[-1].is_initialized(),
                                   name=name)
     return result
 
@@ -269,13 +470,34 @@ class DistributedVariable(DistributedDelegate):
     else:
       # return grouped ops of all the var initializations of component values of
       # the mirrored variable
-      init_op = control_flow_ops.group(
-          [v.initializer for v in self._index.values()])
+      init_op = control_flow_ops.group(tuple(
+          v.initializer for v in self._values))
     return init_op
+
+  def _get_closest(self):
+    """Return member in the same replica if possible, else the primary."""
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context:
+      return self._device_map.select_for_current_replica(
+          self._values, replica_context)
+    device = distribute_lib.get_update_device()
+    if device is None:
+      device = device_util.canonicalize(device_util.current())
+    replica_id = self._device_map.replica_for_device(device)
+    if replica_id is None:
+      return self.primary
+    return self._values[replica_id]
+
+  def initialized_value(self):
+    return self._get_closest().initialized_value()
+
+  @property
+  def initial_value(self):
+    return self._get_closest().initial_value
 
   @property
   def graph(self):
-    return self._primary_var.graph
+    return self.primary.graph
 
   @property
   def _shared_name(self):
@@ -283,25 +505,25 @@ class DistributedVariable(DistributedDelegate):
 
   @property
   def _unique_id(self):
-    return self._primary_var._unique_id   # pylint: disable=protected-access
+    return self.primary._unique_id   # pylint: disable=protected-access
 
   @property
   def name(self):
-    return self._primary_var.name
+    return self.primary.name
 
   @property
   def dtype(self):
-    return self._primary_var.dtype
+    return self.primary.dtype
 
   @property
   def shape(self):
-    return self._primary_var.shape
+    return self.primary.shape
 
   def get_shape(self):
-    return self._primary_var.get_shape()
+    return self.primary.get_shape()
 
   def to_proto(self, export_scope=None):
-    return self._primary_var.to_proto(export_scope=export_scope)
+    return self.primary.to_proto(export_scope=export_scope)
 
   @property
   def op(self):
@@ -309,14 +531,14 @@ class DistributedVariable(DistributedDelegate):
     # to work (even if the current device isn't in self.devices), but
     # other uses of var.op in a cross-replica context to fail.
     if distribution_strategy_context.get_cross_replica_context():
-      return DistributedVarOp(self._primary_var.op.name,
-                              self._primary_var.op.graph,
-                              self._primary_var.op.type)
+      return DistributedVarOp(self.primary.op.name,
+                              self.primary.op.graph,
+                              self.primary.op.type)
     return self.get().op
 
   @property
   def _in_graph_mode(self):
-    return self._primary_var._in_graph_mode   # pylint: disable=protected-access
+    return self.primary._in_graph_mode   # pylint: disable=protected-access
 
   def read_value(self):
     strategy = distribution_strategy_context.get_distribution_strategy()
@@ -348,19 +570,19 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    return control_flow_ops.group([
-        _assign_on_device(d, v, tensor)
-        for d, v in six.iteritems(self._mirrored_variable._index)])  # pylint: disable=protected-access
+    return control_flow_ops.group(tuple(
+        _assign_on_device(v.device, v, tensor)
+        for v in self._mirrored_variable.values))
 
 
 class MirroredVariable(DistributedVariable, Mirrored,
                        checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are kept in sync."""
 
-  def __init__(self, index, primary_var, aggregation):
-    self._primary_var = primary_var
+  def __init__(self, device_map, values, aggregation, logical_device=None):
+    super(MirroredVariable, self).__init__(
+        device_map, values, logical_device=logical_device)
     self._aggregation = aggregation
-    super(MirroredVariable, self).__init__(index)
 
   # The arguments to update() are automatically unwrapped so the update()
   # function would normally see regular variables, not MirroredVariables.
@@ -379,7 +601,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
         return f(v, *args, **kwargs)
 
       # We are calling assign on the mirrored variable in cross replica context,
-      # use update to update the variable.
+      # use `strategy.update()` to update the variable.
       strategy = distribution_strategy_context.get_distribution_strategy()
       return strategy.update(self, f, *args, **kwargs)
     else:
@@ -419,14 +641,15 @@ class MirroredVariable(DistributedVariable, Mirrored,
 
   def _get_cross_replica(self):
     device = device_util.canonicalize(device_util.current())
-    if device in self._index:
-      return array_ops.identity(self._index[device])
-    return array_ops.identity(self._primary_var)
+    replica_id = self._device_map.replica_for_device(device)
+    if replica_id is None:
+      return array_ops.identity(self.primary)
+    return array_ops.identity(self._values[replica_id])
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
     if distribution_strategy_context.get_cross_replica_context():
-      return self._primary_var._as_graph_element()
+      return self.primary._as_graph_element()
     return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
@@ -439,7 +662,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
       A dictionary mapping attribute names to `SaveableObject` factories.
     """
     def _saveable_factory(name=self._common_name):
-      return _MirroredSaveable(self, self._primary_var, name)
+      return _MirroredSaveable(self, self.primary, name)
     return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
 
 
@@ -475,18 +698,22 @@ def _enclosing_tpu_context():
 class TPUMirroredVariable(checkpointable.CheckpointableBase):
   """Holds a map from device to TPU variables whose values are kept in sync."""
 
-  def __init__(self, index, primary_var, aggregation):
+  def __init__(self, device_map, values, aggregation, logical_device=None):
+    assert isinstance(device_map, DeviceMap)
+    self._device_map = device_map
+    self._values = tuple(values)
+    if logical_device is None:
+      logical_device = device_map.logical_device_from_values(self._values)
+    self._logical_device = logical_device
+
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
-    for v in six.itervalues(index):
+    for v in self._values:
       v._mirrored_container = weakref.ref(self)  # pylint: disable=protected-access
-    self._index = {device_util.canonicalize(key): value
-                   for key, value in six.iteritems(index)}
-    self._primary_var = primary_var
-    self._common_name = self._primary_var.name.split(":")[0]
+    self._common_name = self.primary.name.split(":")[0]
     self._aggregation = aggregation
     # Needed for GradientTape
-    self._trainable = self._primary_var.trainable
+    self._trainable = self.primary.trainable
     # Typically like `DistributedVariable`, a `TPUMirroredVariable`'s
     # initializer is composed of the initializers of the components variables.
     # However, in some cases, such as when restoring from a checkpoint, we may
@@ -498,19 +725,36 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     if device is None:
       replica_context = distribution_strategy_context.get_replica_context()
       if replica_context:
-        # TODO(josh11b): support model parallelism better here
-        device = replica_context.devices[0]
+        return self._device_map.select_for_current_replica(
+            self._values, replica_context)
       else:
         device = distribute_lib.get_update_device()
         if device is None:
           return self._get_cross_replica()
     device = device_util.canonicalize(device)
-    try:
-      return self._index[device]
-    except KeyError as e:
-      six.raise_from(
-          ValueError("Device %s not found in %s (current device %s)" %
-                     (device, self._index.keys(), device_util.current())), e)
+    return self._device_map.select_for_device(self._values, device)
+
+  @property
+  def primary(self):
+    """Returns a representative component."""
+    return self._values[0]
+
+  @property
+  def devices(self):
+    return self._device_map.logical_to_actual_devices(self._logical_device)
+
+  @property
+  def logical_device(self):
+    return self._logical_device
+
+  @property
+  def device_map(self):
+    return self._device_map
+
+  # TODO(josh11b): Replace unwrap with this?
+  @property
+  def values(self):
+    return self._values
 
   # pylint: disable=multiple-statements
   def __add__(self, o): return self.read_value() + o
@@ -571,10 +815,16 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       return NotImplemented
 
   def __str__(self):
-    return "%s:%s" % (self.__class__.__name__, self._index)
+    devices = self.devices
+    debug_str = ",\n".join("  %d %s: %s" % (i, devices[i], self._values[i])
+                           for i in range(len(devices)))
+    return "%s:{\n%s\n}" % (self.__class__.__name__, debug_str)
 
   def __repr__(self):
-    return "%s(%r)" % (self.__class__.__name__, self._index)
+    devices = self.devices
+    debug_repr = ",\n".join("  %d %s: %r" % (i, devices[i], self._values[i])
+                            for i in range(len(devices)))
+    return "%s:{\n%s\n}" % (self.__class__.__name__, debug_repr)
 
   @property
   def handle(self):
@@ -582,18 +832,12 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     tpu_context = _enclosing_tpu_context()
     if tpu_context is not None:
       return tpu_context.get_replicated_var_handle(
-          self._common_name, nest.flatten(self._index))
+          self._common_name, self._values)
 
     device = distribute_lib.get_update_device()
     if device is None:
-      return self._primary_var.handle
-    device = device_util.canonicalize(device)
-    try:
-      return self._index[device].handle
-    except KeyError as e:
-      six.raise_from(
-          ValueError("Device %s not found in %s (current device %s)" %
-                     (device, self._index.keys(), device_util.current())), e)
+      return self.primary.handle
+    return self._get(device=device).handle
 
   @property
   def device(self):
@@ -729,13 +973,13 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     if self._initializer_op:
       init_op = self._initializer_op
     else:
-      init_op = control_flow_ops.group(
-          [v.initializer for v in self._index.values()])
+      init_op = control_flow_ops.group(tuple(
+          v.initializer for v in self._values))
     return init_op
 
   @property
   def graph(self):
-    return self._primary_var.graph
+    return self.primary.graph
 
   @property
   def _shared_name(self):
@@ -743,36 +987,37 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
 
   @property
   def _unique_id(self):
-    return self._primary_var._unique_id  # pylint: disable=protected-access
+    return self.primary._unique_id  # pylint: disable=protected-access
 
   @property
   def name(self):
-    return self._primary_var.name
+    return self.primary.name
 
   @property
   def dtype(self):
-    return self._primary_var.dtype
+    return self.primary.dtype
 
   @property
   def shape(self):
-    return self._primary_var.shape
+    return self.primary.shape
 
   def get_shape(self):
-    return self._primary_var.get_shape()
+    return self.primary.get_shape()
 
   def to_proto(self, export_scope=None):
-    return self._primary_var.to_proto(export_scope=export_scope)
+    return self.primary.to_proto(export_scope=export_scope)
 
   def _get_cross_replica(self):
     device = device_util.canonicalize(device_util.current())
-    if device in self._index:
-      return self._index[device]
-    return self._primary_var
+    replica = self._device_map.replica_for_device(device)
+    if replica is None:
+      return self.primary
+    return self._values[replica]
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
     if distribution_strategy_context.get_cross_replica_context():
-      return self._primary_var._as_graph_element()
+      return self.primary._as_graph_element()
     return self._read_variable_op()
 
   def _gather_saveables_for_checkpoint(self):
@@ -785,7 +1030,7 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       A dictionary mapping attribute names to `SaveableObject` factories.
     """
     def _saveable_factory(name=self._common_name):
-      return _MirroredSaveable(self, self._primary_var, name)
+      return _MirroredSaveable(self, self.primary, name)
     return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   def _should_act_as_resource_variable(self):
@@ -795,23 +1040,23 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
   # Needed to pass ResourceVariable checks.
   @property
   def op(self):
-    return self._primary_var.op
+    return self.primary.op
 
   # pylint: disable=protected-access
   @property
   def _save_slice_info(self):
-    return self._primary_var._save_slice_info
+    return self.primary._save_slice_info
 
   def _get_save_slice_info(self):
-    return self._primary_var._get_save_slice_info()
+    return self.primary._get_save_slice_info()
 
   def _set_save_slice_info(self, save_slice_info):
-    return self._primary_var._set_save_slice_info(save_slice_info)
+    return self.primary._set_save_slice_info(save_slice_info)
   # pylint: enable=protected-access
 
   @property
   def _in_graph_mode(self):
-    return self._primary_var._in_graph_mode   # pylint: disable=protected-access
+    return self.primary._in_graph_mode   # pylint: disable=protected-access
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     """Converts a variable to a tensor."""
@@ -838,18 +1083,14 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     """
     # TODO(jhseu): Do we need TPU context implementation?
 
-    # We have to cast the self._index.values() to a `list` because when we
-    # use `model_to_estimator` to run tf.keras models, self._index.values() is
-    # of type `dict_values` and not `list`.
-    values_list = nest.flatten(self._index)
-    result = values_list[0].is_initialized()
+    result = self.primary.is_initialized()
     # We iterate through the list of values except the last one to allow us to
     # name the final `logical_and` op the same name that is passed by the user
     # to the `is_initialized` op. For distributed variables, the
     # `is_initialized` op is a `logical_and` op.
-    for v in values_list[1:-1]:
+    for v in self._values[1:-1]:
       result = math_ops.logical_and(result, v.is_initialized())
-    result = math_ops.logical_and(result, values_list[-1].is_initialized(),
+    result = math_ops.logical_and(result, self._values[-1].is_initialized(),
                                   name=name)
     return result
 
@@ -899,10 +1140,10 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
                            checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are reduced on save."""
 
-  def __init__(self, index, primary_var, aggregation):
-    self._primary_var = primary_var
+  def __init__(self, device_map, values, aggregation, logical_device=None):
     self._aggregation = aggregation
-    super(ReplicaLocalVariable, self).__init__(index)
+    super(ReplicaLocalVariable, self).__init__(
+        device_map, values, logical_device=logical_device)
 
   def assign_sub(self, *args, **kwargs):
     _assert_replica_context()
@@ -920,9 +1161,8 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
       tensor = args[0]
       if self._aggregation == vs.VariableAggregation.SUM:
         tensor *= 1. / len(self.devices)
-      return control_flow_ops.group(
-          [_assign_on_device(d, v, tensor)
-           for d, v in six.iteritems(self._index)])
+      return control_flow_ops.group(tuple(
+          _assign_on_device(v.device, v, tensor) for v in self._values))
     else:
       _assert_replica_context()
       return self.get().assign(*args, **kwargs)
@@ -933,12 +1173,11 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      return self._primary_var
-    all_components = tuple(self._index.values())
+      return self.primary
     # TODO(josh11b): Use a strategy-specific method.
-    total = math_ops.add_n(all_components)
+    total = math_ops.add_n(self._values)
     if self._aggregation == vs.VariableAggregation.MEAN:
-      return total * (1./ len(all_components))
+      return total * (1./ len(self._values))
     return total
 
   def _as_graph_element(self):
@@ -972,30 +1211,27 @@ ops.register_tensor_conversion_function(ReplicaLocalVariable,
                                         _tensor_conversion_replica_local)
 
 
-def _devices_match(d1, d2):
-  return device_util.canonicalize(d1) == device_util.canonicalize(d2)
-
-
-def regroup(per_replica, wrap_class=PerReplica):
-  """Makes device->nest map into a nest of PerReplica/Mirrored values."""
-  items = list(per_replica.items())
-  assert items
-  v0 = items[0][1]  # First value
+def regroup(device_map, values, wrap_class=PerReplica):
+  """Makes a nest per-replica into a nest of PerReplica/Mirrored values."""
+  assert isinstance(device_map, DeviceMap)
+  assert len(values) == device_map.num_replicas_in_graph
+  v0 = values[0]
 
   if isinstance(v0, list):
-    for _, v in items[1:]:
+    for v in values[1:]:
       assert isinstance(v, list)
       assert len(v) == len(v0), ("len(v) == %d, len(v0) == %d, v: %s, v0: %s" %
                                  (len(v), len(v0), v, v0))
-    return [regroup({k: v[i] for k, v in items}, wrap_class)
+    return [regroup(device_map, tuple(v[i] for v in values), wrap_class)
             for i in range(len(v0))]
 
   if isinstance(v0, tuple):
-    for _, v in items[1:]:
+    for v in values[1:]:
       assert isinstance(v, tuple)
       assert len(v) == len(v0)
-    regrouped_tuple = tuple(regroup({k: v[i] for k, v in items}, wrap_class)
-                            for i in range(len(v0)))
+    regrouped_tuple = tuple(
+        regroup(device_map, tuple(v[i] for v in values), wrap_class)
+        for i in range(len(v0)))
     if hasattr(v0, "_fields"):
       # This tuple is in fact a namedtuple! Create a new namedtuple instance
       # and initialize it with the regrouped values:
@@ -1006,15 +1242,16 @@ def regroup(per_replica, wrap_class=PerReplica):
 
   if isinstance(v0, dict):
     v0keys = set(v0.keys())
-    for _, v in items[1:]:
-      assert isinstance(v, dict)
-      assert set(v.keys()) == v0keys
-    return {key: regroup({k: v[key] for k, v in items}, wrap_class)
+    for v in values[1:]:
+      assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
+      assert set(v.keys()) == v0keys, ("v[0].keys: %s  v[i].keys: %s" %
+                                       (v0keys, set(v.keys())))
+    return {key: regroup(device_map, tuple(v[key] for v in values), wrap_class)
             for key in v0keys}
 
   # If exactly the same object across all devices, return it unwrapped.
   same_id = True
-  for _, v in items[1:]:
+  for v in values[1:]:
     if v is not v0:
       same_id = False
       break
@@ -1043,25 +1280,26 @@ def regroup(per_replica, wrap_class=PerReplica):
   if hasattr(v0, "_distributed_container"):
     # pylint: disable=protected-access
     assert not isinstance(v0, MirroredVariable), (
-        "ids = %s, items = %s" % ([id(v[1]) for v in items], items))
-    assert _devices_match(v0.device, items[0][0]), (
-        "v0.device = %s, items = %s" % (v0.device, items))
+        "ids = %s, values = %s" % ([id(v) for v in values], values))
+    assert device_map.is_device_in_replica(v0.device, 0), (
+        "v0.device = %s, device_map = %s" % (v0.device, device_map))
     distributed_container = v0._distributed_container()
     assert distributed_container is not None
-    for d, v in items[1:]:
-      assert _devices_match(v.device, d), (
-          "v.device = %s, d = %s, items = %s" % (v.device, d, items))
+    for r, v in enumerate(values[1:]):
+      assert device_map.is_device_in_replica(v.device, r + 1), (
+          "v.device = %s, r = %d, device_map = %s" %
+          (v.device, r + 1, device_map))
       assert distributed_container is v._distributed_container()
     return distributed_container
   # pylint: enable=protected-access
 
-  return wrap_class(per_replica)
+  return wrap_class(device_map, values)
 
 
-def select_device(device, structured):
-  """Specialize a nest of regular & per-replica values for one device."""
+def select_replica(replica_id, structured):
+  """Specialize a nest of regular & per-replica values for one replica."""
   def _get(x):
-    return x.get(device) if isinstance(x, DistributedValues) else x
+    return x.values[replica_id] if isinstance(x, DistributedValues) else x
 
   return nest.map_structure(_get, structured)
 
@@ -1081,9 +1319,11 @@ def select_device_mirrored(device, structured):
   return nest.map_structure(_get_mirrored, structured)
 
 
-def update_regroup(extended, updates, group):
+def update_regroup(extended, device_map, updates, group):
   """Regroup for an update, with dependencies to ensure all updates execute."""
-  regrouped = regroup(updates, Mirrored)
+  # TODO(josh11b): Replace "Mirrored" here with a function that does the following
+  # so we can avoid all these nest operations.
+  regrouped = regroup(device_map, updates, Mirrored)
   if not group:
     return nest.map_structure(extended._unwrap, regrouped)  # pylint: disable=protected-access
   grouped_flat = []
@@ -1093,47 +1333,113 @@ def update_regroup(extended, updates, group):
       if u.is_tensor_like:
         # Make sure we run all updates. Without this, something like
         # session.run(extended.update(...)) may only update one replica.
-        index = {}
+        values = []
         for d in u.devices:
           with ops.device(d), ops.control_dependencies([g]):
-            index[d] = array_ops.identity(u.get(d))
-        g = Mirrored(index)
+            values.append(array_ops.identity(u.get(d)))
+        g = Mirrored(u.device_map, values)
     else:
       g = u
     grouped_flat.append(g)
   return nest.pack_sequence_as(regrouped, grouped_flat)
 
 
+class InputWorkers(object):
+  """A 1-to-many mapping from input worker devices to compute devices."""
+
+  def __init__(self, device_map, worker_device_pairs=None, logical_device=0):
+    """Initialize an `InputWorkers` object.
+
+    Args:
+      device_map: A `DeviceMap` with the computation devices fed by the
+        input workers.
+      worker_device_pairs: A sequence of pairs:
+        `(input device, a tuple of compute devices fed by that input device)`.
+      logical_device: The logical device of `device_map` to feed.
+    """
+    self._device_map = device_map
+    self._logical_device = logical_device
+    if worker_device_pairs is None:
+      worker_device_pairs = ((
+          device_util.canonicalize("/device:CPU:0"),
+          device_map.logical_to_actual_devices(logical_device)),)
+    self._input_worker_devices = tuple(d for d, _ in worker_device_pairs)
+    self._fed_devices = tuple(tuple(device_util.canonicalize(d) for d in f)
+                              for _, f in worker_device_pairs)
+    flattened = tuple(d for l in self._fed_devices for d in l)
+    assert (flattened ==
+            device_map.logical_to_actual_devices(logical_device)), (
+                "flattened: %s logical device %d: %s" %
+                (flattened, logical_device,
+                 device_map.logical_to_actual_devices(logical_device)))
+
+  @property
+  def device_map(self):
+    return self._device_map
+
+  @property
+  def logical_device(self):
+    return self._logical_device
+
+  @property
+  def num_workers(self):
+    return len(self._input_worker_devices)
+
+  @property
+  def worker_devices(self):
+    return self._input_worker_devices
+
+  def compute_devices_for_worker(self, worker_index):
+    return self._fed_devices[worker_index]
+
+  def __repr__(self):
+    devices = self.worker_devices
+    debug_repr = ",\n".join("  %d %s: %s" %
+                            (i, devices[i], self._fed_devices[i])
+                            for i in range(len(devices)))
+    return "%s:{\n%s\n  device_map: %s}" % (
+        self.__class__.__name__, debug_repr, self._device_map)
+
+
 class PerReplicaDataIterator(object):
   """An iterator (like `tf.data.Iterator`) into a `PerReplicaDataset`."""
 
-  def __init__(self, iterator, devices, prefetch_on_device=None):
+  def __init__(self, iterator, input_workers, worker_index, prefetch_on_device):
+    assert isinstance(input_workers, InputWorkers)
     self._iterator = iterator
-    self._devices = devices
+    self._input_workers = input_workers
+    self._worker_index = worker_index
     self._prefetch_on_device = prefetch_on_device
 
   @property
   def initializer(self):
     return self._iterator.initializer
 
-  def get_next(self, name=None):
+  def get_next_as_list(self, name=None):
     """Scatter the input across devices."""
     if self._prefetch_on_device:
       data_list = self._iterator.get_next()
-      index = dict(zip(self._devices, data_list))
     else:
       batch = self._iterator.get_next(name=name)
-      index = {}
+      data_list = []
       def get_ith(i):
         return lambda x: x[i]
 
-      for i, d in enumerate(self._devices):
-        index[d] = nest.map_structure(get_ith(i), batch)
+      devices = self._input_workers.compute_devices_for_worker(
+          self._worker_index)
+      for i, d in enumerate(devices):
+        v = nest.map_structure(get_ith(i), batch)
         if context.executing_eagerly():
           with ops.device(d):
-            index[d] = nest.map_structure(array_ops.identity, index[d])
+            v = nest.map_structure(array_ops.identity, v)
+        data_list.append(v)
 
-    return regroup(index)
+    return data_list
+
+  def get_next(self, name=None):
+    assert self._input_workers.num_workers == 1
+    data_list = self.get_next_as_list(name)
+    return regroup(self._input_workers.device_map, data_list)
 
   @property
   def output_classes(self):
@@ -1151,8 +1457,14 @@ class PerReplicaDataIterator(object):
 class PerReplicaDataset(object):
   """Like `tf.data.Dataset` split devices, producing `PerReplica` data."""
 
-  def __init__(self, dataset, devices, prefetch_on_device=None):
-    self._devices = devices
+  def __init__(self, dataset, input_workers, worker_index,
+               prefetch_on_device=None):
+    assert isinstance(input_workers, InputWorkers)
+    assert worker_index is not None
+    assert worker_index is not True
+    assert worker_index is not False
+    self._input_workers = input_workers
+    self._worker_index = worker_index
 
     # Default to using prefetching in graph mode, unless specified.
     # TODO(rohanj): Enable prefetching in eager mode.
@@ -1167,7 +1479,8 @@ class PerReplicaDataset(object):
       # TODO(priyag): If dropping remainder is not appropriate, find another
       # approach to distributing the dataset when not possible to divide evenly.
       # Possibly not an issue when we start using PartitionedDataset.
-      self._dataset = dataset.batch(len(devices), drop_remainder=True)
+      num_replicas = len(input_workers.compute_devices_for_worker(worker_index))
+      self._dataset = dataset.batch(num_replicas, drop_remainder=True)
 
   def make_one_shot_iterator(self):
     """Get a one time use iterator for the distributed PerReplicaDataset."""
@@ -1180,7 +1493,8 @@ class PerReplicaDataset(object):
     # PerReplicaDataIterator to handle that case.
     dataset_iterator = dataset_ops.make_one_shot_iterator(self._dataset)
     return PerReplicaDataIterator(
-        dataset_iterator, self._devices, prefetch_on_device=False)
+        dataset_iterator, self._input_workers, self._worker_index,
+        prefetch_on_device=False)
 
   def make_initializable_iterator(self):
     """Get an initializable iterator for the distributed PerReplicaDataset."""
@@ -1190,43 +1504,46 @@ class PerReplicaDataset(object):
       raise ValueError("Cannot create initializable iterator in Eager mode. "
                        "Please use `make_one_shot_iterator` instead.")
     if self._prefetch_on_device:
+      replica_devices = self._input_workers.compute_devices_for_worker(
+          self._worker_index)
       dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-          self._dataset, self._devices)
+          self._dataset, replica_devices)
     else:
       dataset_iterator = dataset_ops.make_initializable_iterator(self._dataset)
     return PerReplicaDataIterator(
-        dataset_iterator,
-        self._devices,
+        dataset_iterator, self._input_workers, self._worker_index,
         prefetch_on_device=self._prefetch_on_device)
 
 
 class MultiWorkerDataIterator(object):
   """An iterator (like `tf.data.Iterator`) into a `MultiWorkerDataset`."""
 
-  def __init__(self, iterators, worker_device_pairs):
-    """Initialize the MultiWorkerDataIterator object.
+  def __init__(self, iterators, input_workers):
+    """Initialize the `MultiWorkerDataIterator` object.
 
     Args:
       iterators: a list of worker, iterator pairs.
-      worker_device_pairs: a list of (worker's devices, a list of
-        devices that belong to this worker) pairs.
+      input_workers: an `InputWorkers` object.
 
     Raises:
-      ValueError: if iterators and worker_device_pairs are not compatible.
+      ValueError: if iterators and input_workers are not compatible.
     """
-    if [d for d, _ in iterators] != [d for d, _ in worker_device_pairs]:
-      raise ValueError("iterators and worker_device_pairs are not compatible.")
-    self._workers = [d for d, _ in iterators]
-    self._iterators = [i for _, i in iterators]
-    self._worker_devices = [l for _, l in worker_device_pairs]
+    assert isinstance(input_workers, InputWorkers)
+    workers = tuple(d for d, _ in iterators)
+    if workers != input_workers.worker_devices:
+      raise ValueError("iterators and input_workers are not compatible. "
+                       "iterator workers: %r input_workers devices: %r" %
+                       (workers, input_workers.worker_devices))
+    self._iterators = tuple(i for _, i in iterators)
+    self._input_workers = input_workers
 
   @property
   def initializer(self):
     return control_flow_ops.group(
-        [iterator.initializer for iterator in self._iterators])
+        tuple(iterator.initializer for iterator in self._iterators))
 
   def get_iterator(self, worker):
-    for i, w in enumerate(self._workers):
+    for i, w in enumerate(self._input_workers.worker_devices):
       if worker == w:
         return self._iterators[i]
     return None
@@ -1241,26 +1558,20 @@ class MultiWorkerDataIterator(object):
 
   def get_next(self, name=None):
     """Scatter the input across hosts and devices."""
-    index = {}
-    worker_info = zip(self._workers, self._iterators, self._worker_devices)
-    for worker, iterator, worker_devices in worker_info:
+    replicas = []
+    for worker, iterator in zip(self._input_workers.worker_devices,
+                                self._iterators):
       if name is not None:
         d = tf_device.DeviceSpec.from_string(worker)
         new_name = "%s_%s_%d" % (name, d.job, d.task)
       else:
         new_name = None
       with ops.device(worker):
-        data_per_worker = iterator.get_next(name=new_name)
+        data_per_worker = iterator.get_next_as_list(name=new_name)
+        # Append to replicas to get a flat list of values indexed by replica.
+        replicas.extend(data_per_worker)
 
-      # Ungroup these per-replica value so as to get a flat map from devices to
-      # values.
-      for d in worker_devices:
-        v = select_device(d, data_per_worker)
-        if d in index:
-          raise ValueError("Duplicated devices in worker_device_pairs: %r" % v)
-        index[d] = v
-
-    return regroup(index)
+    return regroup(self._input_workers.device_map, replicas)
 
 
 class MultiWorkerDataset(object):
@@ -1270,41 +1581,40 @@ class MultiWorkerDataset(object):
   in eager mode.
   """
 
-  def __init__(self, dataset_fn, worker_device_pairs, prefetch_on_device=None,
+  def __init__(self, dataset_fn, input_workers, prefetch_on_device=None,
                auto_shard=False):
     """Initialize the MultiWorkerDataset object.
 
     Args:
       dataset_fn: a function or a list of functions that returns a
         `tf.data.Dataset`.
-      worker_device_pairs: a list of (worker, list of devices on that worker)
-        pairs; it must have same length with `dataset_fn` if `dataset_fn` is a
-        list.
+      input_workers: an `InputWorkers` object.
       prefetch_on_device: whether to prefetch to devices.
       auto_shard: whether to auto-shard the dataset.
     """
-    if isinstance(dataset_fn, list):
-      if len(dataset_fn) != len(worker_device_pairs):
-        raise ValueError("If `dataset_fn` is a list, it must have same length "
-                         "as `worker_device_pairs`")
+    assert isinstance(input_workers, InputWorkers)
+    if isinstance(dataset_fn, (list, tuple)):
+      if len(dataset_fn) != input_workers.num_workers:
+        raise ValueError("If `dataset_fn` is a list, it must have one entry "
+                         "per worker")
       if auto_shard:
         raise ValueError(
             "If `dataset_fn` is a list, `auto_shard` is not supported.")
-    self._worker_device_pairs = worker_device_pairs
+    self._input_workers = input_workers
     self._datasets = []
     # TODO(yuefengz, priyag): support different set of jobs for input
     # processing.
-    for i, (worker, worker_devices) in enumerate(worker_device_pairs):
+    for i, worker in enumerate(input_workers.worker_devices):
       with ops.device(worker):
-        if isinstance(dataset_fn, list):
+        if isinstance(dataset_fn, (list, tuple)):
           worker_input = dataset_fn[i]()
         else:
           worker_input = dataset_fn()
           if auto_shard:
             worker_input = input_ops.auto_shard_dataset(
-                worker_input, len(worker_device_pairs), i)
-        dataset = PerReplicaDataset(
-            worker_input, worker_devices, prefetch_on_device=prefetch_on_device)
+                worker_input, input_workers.num_workers, i)
+        dataset = PerReplicaDataset(worker_input, input_workers, i,
+                                    prefetch_on_device=prefetch_on_device)
         self._datasets.append((worker, dataset))
 
   def make_one_shot_iterator(self):
@@ -1312,7 +1622,7 @@ class MultiWorkerDataset(object):
     for worker, dataset in self._datasets:
       with ops.device(worker):
         iterators.append((worker, dataset_ops.make_one_shot_iterator(dataset)))
-    return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
+    return MultiWorkerDataIterator(iterators, self._input_workers)
 
   def make_initializable_iterator(self):
     iterators = []
@@ -1320,7 +1630,7 @@ class MultiWorkerDataset(object):
       with ops.device(worker):
         iterators.append(
             (worker, dataset_ops.make_initializable_iterator(dataset)))
-    return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
+    return MultiWorkerDataIterator(iterators, self._input_workers)
 
 
 class InputIterator(object):
@@ -1350,12 +1660,13 @@ class InputIterator(object):
 class InputIteratorImpl(InputIterator):
   """Common implementation for all input iterators."""
 
-  def __init__(self, worker_device_pairs, iterators):
-    if not worker_device_pairs:
+  def __init__(self, input_workers, iterators):
+    assert isinstance(input_workers, InputWorkers)
+    if not input_workers.worker_devices:
       raise ValueError("Should have at least one worker for input iterator.")
 
     self._iterators = iterators
-    self._worker_device_pairs = worker_device_pairs
+    self._input_workers = input_workers
     self._is_eager = context.executing_eagerly()
 
   def get_next(self, name=None):
@@ -1363,25 +1674,18 @@ class InputIteratorImpl(InputIterator):
     assert self._is_eager == context.executing_eagerly(), (
         "Iterator should be created and used in same execution mode.")
 
-    index = {}
-    for i, (worker, worker_devices) in enumerate(self._worker_device_pairs):
+    replicas = []
+    for i, worker in enumerate(self._input_workers.worker_devices):
       if name is not None:
         d = tf_device.DeviceSpec.from_string(worker)
         new_name = "%s_%s_%d" % (name, d.job, d.task)
       else:
         new_name = None
       with ops.device(worker):
-        data_per_worker = self._iterators[i].get_next(new_name)
+        # Make `replicas` a flat list of values across all replicas.
+        replicas.extend(self._iterators[i].get_next_as_list(new_name))
 
-      # Ungroup these per-replica value so as to get a flat map from devices to
-      # values.
-      for d in worker_devices:
-        v = select_device(d, data_per_worker)
-        if d in index:
-          raise ValueError("Duplicated devices in worker_device_pairs: %r" % v)
-        index[d] = v
-
-    return regroup(index)
+    return regroup(self._input_workers.device_map, replicas)
 
   def initialize(self):
     """Initialze underlying iterators.
@@ -1414,7 +1718,7 @@ class InputIteratorImpl(InputIterator):
 
   # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
   def get_iterator(self, worker):
-    for i, (w, _) in enumerate(self._worker_device_pairs):
+    for i, w in enumerate(self._input_workers.worker_devices):
       if worker == w:
         return self._iterators[i]
     return None
@@ -1423,7 +1727,7 @@ class InputIteratorImpl(InputIterator):
 class InputFunctionIterator(InputIteratorImpl):
   """Iterator created from input function."""
 
-  def __init__(self, input_fn, worker_device_pairs, input_contexts):
+  def __init__(self, input_fn, input_workers, input_contexts):
     """Make an iterator for input provided via an input function.
 
     Currently implements PER_WORKER mode, in which the `input_fn` is called
@@ -1435,36 +1739,36 @@ class InputFunctionIterator(InputIteratorImpl):
 
     Args:
       input_fn: Input function that returns a `tf.data.Dataset` object.
-      worker_device_pairs: A list of (worker, list of devices on that worker)
-        pairs.
+      input_workers: an `InputWorkers` object.
       input_contexts: A list of `InputContext` instances to be passed to call(s)
         to `input_fn`. Length and order should match worker order in
         `worker_device_pairs`.
     """
-    if len(worker_device_pairs) != len(input_contexts):
+    assert isinstance(input_workers, InputWorkers)
+    if input_workers.num_workers != len(input_contexts):
       raise ValueError(
-          "Number of worker_device_pairs (%d) is not same as number of"
-          "input_contexts (%d)" % (
-              len(worker_device_pairs), len(input_contexts)))
+          "Number of input workers (%d) is not same as number of "
+          "input_contexts (%d)" %
+          (input_workers.num_workers, len(input_contexts)))
 
     iterators = []
-    for (worker, devices), ctx in zip(worker_device_pairs, input_contexts):
-      # TODO(priyag): We should probably explicitly specify CPU device on worker.
+    for i, ctx in enumerate(input_contexts):
+      worker = input_workers.worker_devices[i]
       with ops.device(worker):
         result = input_fn(ctx)
         if not isinstance(result, dataset_ops.DatasetV2):
           raise ValueError("input_fn must return a tf.data.Dataset.")
+        devices = input_workers.compute_devices_for_worker(i)
         iterator = _SingleWorkerDatasetIterator(result, worker, devices)
         iterators.append(iterator)
 
-    super(InputFunctionIterator, self).__init__(
-        worker_device_pairs, iterators)
+    super(InputFunctionIterator, self).__init__(input_workers, iterators)
 
 
 class DatasetIterator(InputIteratorImpl):
   """Iterator created from input dataset."""
 
-  def __init__(self, dataset, worker_device_pairs, split_batch_by=None):
+  def __init__(self, dataset, input_workers, split_batch_by=None):
     """Make an iterator for the dataset on given devices.
 
     If `split_batch_by` is not None, we "split" each batch of the
@@ -1486,21 +1790,22 @@ class DatasetIterator(InputIteratorImpl):
 
     Args:
       dataset: `tf.data.Dataset` that will be used as the input source.
-      worker_device_pairs: A list of (worker, list of devices on that worker)
-        pairs.
+      input_workers: an `InputWorkers` object.
       split_batch_by: Optional integer. If present, we "split" each batch of the
         dataset by `split_batch_by` value.
     """
+    assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
       dataset = _split_dataset_batch(dataset, split_batch_by)
 
     iterators = []
-    for worker, worker_devices in worker_device_pairs:
+    for i, worker in enumerate(input_workers.worker_devices):
       with ops.device(worker):
+        worker_devices = input_workers.compute_devices_for_worker(i)
         iterator = _SingleWorkerDatasetIterator(dataset, worker, worker_devices)
         iterators.append(iterator)
 
-    super(DatasetIterator, self).__init__(worker_device_pairs, iterators)
+    super(DatasetIterator, self).__init__(input_workers, iterators)
 
 
 class _SingleWorkerDatasetIterator(object):
@@ -1537,23 +1842,23 @@ class _SingleWorkerDatasetIterator(object):
             self._dataset, self._devices)
     self._iterator = iterator
 
-  def get_next(self, name=None):
+  def get_next_as_list(self, name=None):
     """Get next element from the underlying iterator."""
     with ops.device(self._worker):
       if self._is_eager:
         # Batched dataset case.
         batch = self._iterator.get_next(name=name)
-        index = {}
+        data_list = []
         for i, d in enumerate(self._devices):
-          index[d] = nest.map_structure(operator.itemgetter(i), batch)
+          v = nest.map_structure(operator.itemgetter(i), batch)
           with ops.device(d):
-            index[d] = nest.map_structure(array_ops.identity, index[d])
+            v = nest.map_structure(array_ops.identity, v)
+          data_list.append(v)
       else:
         # MultiDeviceIterator case.
         data_list = self._iterator.get_next()
-        index = dict(zip(self._devices, data_list))
 
-      return regroup(index)
+      return data_list
 
   def initialize(self):
     """Initialze underlying iterator.
