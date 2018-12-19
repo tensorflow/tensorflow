@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <math.h>
+#include <limits>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -38,7 +39,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
  public:
   explicit MklRequantizationRangePerChannelOp(OpKernelConstruction* ctx)
       : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("is_relu6", &is_relu6_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_value_max", &clip_value_max_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -82,8 +83,8 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     for (size_t i = 0; i < depth; i++) {
       if (out_min_max < ranges[i]) out_min_max = ranges[i];
     }
-    // Fixing max to 6.0 for relu6
-    if (is_relu6_ && out_min_max > 6.0f) out_min_max = 6.0f;
+    // Fixing max to clip_value_max_ (example 6.0 to support relu6)
+    if (out_min_max > clip_value_max_) out_min_max = clip_value_max_;
 
     Tensor* output_min = nullptr;
     Tensor* output_max = nullptr;
@@ -94,7 +95,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
   }
 
  private:
-  bool is_relu6_ = false;
+  float clip_value_max_ = std::numeric_limits<float>::infinity();
   const int kInputTensorIndex = 0;
   const int kInputMin = 1;
   const int kInputMax = 2;

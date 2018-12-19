@@ -1,0 +1,66 @@
+op {
+  graph_op_name: "RequantizePerChannel"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+The original input tensor.
+END
+  }
+  in_arg {
+    name: "input_min"
+    description: <<END
+The original input minimum tensor.
+END
+  }
+  in_arg {
+    name: "input_max"
+    description: <<END
+The original input maximum tensor.
+END
+  }
+  in_arg {
+    name: "requested_output_min"
+    description: <<END
+The original requested_output value minimum tensor.
+END
+  }
+  in_arg {
+    name: "requested_output_max"
+    description: <<END
+The original requested_output value maximum tensor.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Gradients w.r.t. the input to `max_pool`.
+END
+  }
+  out_arg {
+    name: "output_min"
+    description: <<END
+The final output value minimum tensor.
+END
+  }
+  out_arg {
+    name: "output_max"
+    description: <<END
+The final output value maximum tensor.
+END
+  }
+  attr {
+    name: "T"
+    description: <<END
+The quantized type of input tensor that needs to be converted. 
+END
+  }
+  attr {
+    name: "out_type"
+    description: <<END
+The quantized type of output tensor that needs to be converted. 
+input tensor.
+END
+  }
+  summary: "Computes Requantize per channel."
+}

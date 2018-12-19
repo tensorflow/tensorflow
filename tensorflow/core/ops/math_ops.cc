@@ -1715,7 +1715,7 @@ REGISTER_OP("RequantizationRangePerChannel")
     .Output("output_min: float")
     .Output("output_max: float")
     .Attr("T: quantizedtype = DT_QINT32")
-    .Attr("is_relu6: bool = false")
+    .Attr("clip_value_max: float")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
@@ -1724,7 +1724,7 @@ REGISTER_OP("RequantizationRangePerChannel")
       c->set_output(1, c->Scalar());
       return Status::OK();
     });
-REGISTER_OP("_MklRequantizePerChannel")
+/*REGISTER_OP("_MklRequantizePerChannel")
     .Input("input: T")
     .Input("input_min: float")
     .Input("input_max: float")
@@ -1774,6 +1774,7 @@ REGISTER_OP("_MklRequantizationRangePerChannel")
       c->set_output(1, c->Scalar());
       return Status::OK();
     });
+*/    
 #endif  // INTEL_MKL
 
 }  // namespace tensorflow
