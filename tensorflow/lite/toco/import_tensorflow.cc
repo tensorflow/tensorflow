@@ -1399,6 +1399,36 @@ tensorflow::Status ConvertUnsupportedOperator(
   return tensorflow::Status::OK();
 }
 
+// Same as ConvertConstOperator, but revert to ConvertUnsupportedOperator if
+// the types are not supported. Converting Const operators here avoids
+// expensive copies of the protocol buffers downstream in the flex delegate.
+tensorflow::Status ConditionallyConvertConstOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  // We avoid incomplete and zero shapes because the resulting arrays
+  // are not completely compatible with Eager/TensorFlow.
+  const auto& tensor = GetTensorAttr(node, "value");
+  const auto& shape = tensor.tensor_shape();
+  for (const auto& dim : shape.dim()) {
+    if (dim.size() <= 0) {
+      return ConvertUnsupportedOperator(node, tf_import_flags, model);
+    }
+  }
+
+  switch (GetDataTypeAttr(node, "dtype")) {
+    case DT_FLOAT:
+    case DT_INT32:
+    case DT_QUINT8:
+    case DT_INT64:
+    case DT_STRING:
+    case DT_BOOL:
+    case DT_COMPLEX64:
+      return ConvertConstOperator(node, tf_import_flags, model);
+    default:
+      return ConvertUnsupportedOperator(node, tf_import_flags, model);
+  }
+}
+
 tensorflow::Status ConvertStridedSliceOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
@@ -2290,10 +2320,11 @@ using ConverterMapType = std::unordered_map<std::string, ConverterType>;
 
 ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
   return std::unordered_map<std::string, ConverterType>({
-      // We need to let TCO convert Placeholder information into
+      // We need to let TOCO convert Placeholder information into
       // array data, so that the data types are correct.
       {"LegacyFedInput", ConvertPlaceholderOperator},
       {"Placeholder", ConvertPlaceholderOperator},
+      {"Const", ConditionallyConvertConstOperator},
   });
 }
 
