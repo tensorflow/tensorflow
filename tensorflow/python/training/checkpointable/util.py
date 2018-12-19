@@ -1412,10 +1412,7 @@ class CheckpointableSaver(object):
           base.NoRestoreSaveable(
               tensor=object_graph_tensor,
               name=base.OBJECT_GRAPH_PROTO_KEY))
-      # TODO(allenl): Swap in a function-based saver here once it can serialize
-      # to a SaverDef.
-      return v1_saver_lib.Saver(
-          var_list=named_saveable_objects, max_to_keep=None)
+      return functional_saver.Saver(named_saveable_objects)
 
   def _save_cached_when_graph_building(
       self,

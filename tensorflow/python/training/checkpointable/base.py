@@ -144,7 +144,10 @@ class PythonStringStateSaveable(PythonStateSaveable):
       restore_callback: A function taking a Python string, used to restore
         state. Optional; defaults to doing nothing.
     """
-    self._state_callback = state_callback
+    def _state_callback_wrapper():
+      with ops.init_scope():
+        return state_callback()
+    self._state_callback = _state_callback_wrapper
     self._restore_callback = restore_callback
     with ops.device("/cpu:0"):
       self._save_string = constant_op.constant("", dtype=dtypes.string)
