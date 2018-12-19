@@ -169,6 +169,7 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     self._slots = {}
     self._slot_names = []
     self._weights = []
+    self._iterations = None
 
     # For implementing Checkpointable. Stores information about how to restore
     # slot variables which have not yet been created
@@ -463,14 +464,15 @@ class OptimizerV2(checkpointable.CheckpointableBase):
   def _prepare(self):
     if self._prepared:
       return
-    with ops.device("cpu:0"):
-      self._iterations = self.add_weight(
-          "iter",
-          shape=[],
-          dtype=dtypes.int64,
-          trainable=False,
-          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-      self._weights.append(self._iterations)
+    if self._iterations is None:
+      with ops.device("cpu:0"):
+        self._iterations = self.add_weight(
+            "iter",
+            shape=[],
+            dtype=dtypes.int64,
+            trainable=False,
+            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+        self._weights.append(self._iterations)
     for name, value in self._hyper.items():
       if isinstance(value, ops.Tensor) or callable(value):
         pass
@@ -485,9 +487,18 @@ class OptimizerV2(checkpointable.CheckpointableBase):
 
   @property
   def iterations(self):
+    """Variable. The number of training steps this Optimizer has run."""
     if not self._prepared:
       self._prepare()
     return self._iterations
+
+  @iterations.setter
+  def iterations(self, variable):
+    if self._prepared:
+      raise RuntimeError("Cannot set `iterations` to a new Variable after"
+                         "the Optimizer weights have been created")
+    self._iterations = variable
+    self._weights.append(self._iterations)
 
   def _decayed_lr(self, var_dtype):
     """Get decayed learning rate as a Tensor with dtype=var_dtype."""
