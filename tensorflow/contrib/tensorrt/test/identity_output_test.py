@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Model script to test TF-TensorRT integration."""
+"""This test checks a situation where the same tensor is considered as an output
+multiple times because it has been duplicated by 2+ indentity ops. Previously,
+the tensor would be renamed multiple times, overwriting the output binding name
+which resulted in a runtime error when the binding would not be found.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
