@@ -30,6 +30,7 @@ using ops::Const;
 using ops::ResizeBicubic;
 using ops::ResizeBilinear;
 using ops::ResizeNearestNeighbor;
+using ops::ScaleAndTranslate;
 
 class ImageGradTest : public ::testing::Test {
  protected:
@@ -152,6 +153,46 @@ TEST_F(ImageGradTest, TestBicubic) {
   // between X_T and Y_T.
   TestResize<double, float, double>(RESIZE_BICUBIC);
 }
+
+class ScaleAndTranslateGradTest : public ::testing::Test {
+ protected:
+  ScaleAndTranslateGradTest() : scope_(Scope::NewRootScope()) {}
+
+  template <typename T>
+  Tensor MakeData(const TensorShape& data_shape) {
+    DataType data_type = DataTypeToEnum<T>::v();
+    Tensor data(data_type, data_shape);
+    auto data_flat = data.flat<T>();
+    for (int i = 0; i < data_flat.size(); ++i) {
+      data_flat(i) = T(i);
+    }
+    return data;
+  }
+
+  template <typename T>
+  void MakeOp(const Tensor& x_data, const Input& y_shape, Output* x,
+              Output* y) {
+    *x = Const<T>(scope_, x_data);
+    *y = ScaleAndTranslate(scope_, *x, y_shape, {1.8f, 2.1f}, {0.5f, 0.7f});
+    TF_ASSERT_OK(scope_.status());
+  }
+
+  template <typename X_T, typename Y_T, typename JAC_T>
+  void TestResize() {
+    TensorShape x_shape({1, 2, 3, 1});
+    Tensor x_data = MakeData<X_T>(x_shape);
+    Output x, y;
+    MakeOp<X_T>(x_data, {4, 6}, &x, &y);
+    JAC_T max_error;
+    TF_ASSERT_OK((ComputeGradientError<X_T, Y_T, JAC_T>(
+        scope_, x, x_data, y, {1, 4, 6, 1}, &max_error)));
+    EXPECT_LT(max_error, 1e-3);
+  }
+
+  Scope scope_;
+};
+
+TEST_F(ScaleAndTranslateGradTest, Works) { TestResize<float, float, float>(); }
 
 }  // namespace
 }  // namespace tensorflow
