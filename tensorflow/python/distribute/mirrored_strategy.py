@@ -574,10 +574,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     def body(i, *args):
       """A wrapper around `fn` to create the while loop body."""
       del args
-      fn_inputs = iterator.get_next()
-      if not isinstance(fn_inputs, tuple):
-        fn_inputs = (fn_inputs,)
-      fn_result = fn(ctx, fn_inputs)
+      fn_result = fn(ctx, iterator.get_next())
       for (name, output) in ctx.last_step_outputs.items():
         # Convert all outputs to tensors, potentially from `DistributedValues`.
         ctx.last_step_outputs[name] = self._unwrap(output)
