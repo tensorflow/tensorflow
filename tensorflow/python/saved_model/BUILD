@@ -270,14 +270,6 @@ py_test(
     ],
 )
 
-tf_proto_library(
-    name = "saved_object_graph",
-    srcs = ["saved_object_graph.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
-    visibility = ["//tensorflow:internal"],
-)
-
 py_library(
     name = "save",
     srcs = [
@@ -384,4 +376,41 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python/eager:def_function"],
+)
+
+tf_proto_library(
+    name = "struct",
+    srcs = ["struct.proto"],
+    cc_api_version = 2,
+    protodeps = tf_additional_all_protos(),
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_proto_library(
+    name = "saved_object_graph",
+    srcs = ["saved_object_graph.proto"],
+    cc_api_version = 2,
+    protodeps = tf_additional_all_protos(),
+    visibility = ["//tensorflow:internal"],
+)
+
+py_library(
+    name = "nested_structure_coder",
+    srcs = ["nested_structure_coder.py"],
+    deps = [
+        ":struct_py",
+        "//tensorflow/python:framework",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "nested_structure_coder_test",
+    srcs = ["nested_structure_coder_test.py"],
+    deps = [
+        ":nested_structure_coder",
+        ":struct_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python/eager:test",
+    ],
 )
