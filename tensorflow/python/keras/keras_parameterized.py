@@ -145,12 +145,32 @@ def run_with_all_model_types(
     @functools.wraps(f)
     def decorated(self, model_type, *args, **kwargs):
       """A run of a single test case w/ the specified model type."""
-      with testing_utils.model_type_scope(model_type):
-        f(self, *args, **kwargs)
-
+      if model_type == 'functional':
+        _test_functional_model_type(f, self, *args, **kwargs)
+      elif model_type == 'subclass':
+        _test_subclass_model_type(f, self, *args, **kwargs)
+      elif model_type == 'sequential':
+        _test_sequential_model_type(f, self, *args, **kwargs)
+      else:
+        raise ValueError('Unknown model type: %s' % (model_type,))
     return decorated
 
   return _test_or_class_decorator(test_or_class, single_method_decorator)
+
+
+def _test_functional_model_type(f, test_or_class, *args, **kwargs):
+  with testing_utils.model_type_scope('functional'):
+    f(test_or_class, *args, **kwargs)
+
+
+def _test_subclass_model_type(f, test_or_class, *args, **kwargs):
+  with testing_utils.model_type_scope('subclass'):
+    f(test_or_class, *args, **kwargs)
+
+
+def _test_sequential_model_type(f, test_or_class, *args, **kwargs):
+  with testing_utils.model_type_scope('sequential'):
+    f(test_or_class, *args, **kwargs)
 
 
 def run_all_keras_modes(
