@@ -246,7 +246,7 @@ def _parse_input_graph_proto(input_graph, input_binary):
     return -1
   input_graph_def = graph_pb2.GraphDef()
   mode = "rb" if input_binary else "r"
-  with gfile.FastGFile(input_graph, mode) as f:
+  with gfile.GFile(input_graph, mode) as f:
     if input_binary:
       input_graph_def.ParseFromString(f.read())
     else:
@@ -261,7 +261,7 @@ def _parse_input_meta_graph_proto(input_graph, input_binary):
     return -1
   input_meta_graph_def = MetaGraphDef()
   mode = "rb" if input_binary else "r"
-  with gfile.FastGFile(input_graph, mode) as f:
+  with gfile.GFile(input_graph, mode) as f:
     if input_binary:
       input_meta_graph_def.ParseFromString(f.read())
     else:
@@ -276,7 +276,7 @@ def _parse_input_saver_proto(input_saver, input_binary):
     print("Input saver file '" + input_saver + "' does not exist!")
     return -1
   mode = "rb" if input_binary else "r"
-  with gfile.FastGFile(input_saver, mode) as f:
+  with gfile.GFile(input_saver, mode) as f:
     saver_def = saver_pb2.SaverDef()
     if input_binary:
       saver_def.ParseFromString(f.read())
