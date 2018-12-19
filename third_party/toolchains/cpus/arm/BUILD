@@ -5,6 +5,7 @@ cc_toolchain_suite(
     toolchains = {
         "armeabi|compiler": ":cc-compiler-armeabi",
         "local|compiler": ":cc-compiler-local",
+        "armeabi": ":cc-compiler-armeabi",
     },
 )
 
