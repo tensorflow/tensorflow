@@ -895,9 +895,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
     class_weight = dict([(i, 1.) for i in range(num_classes)])
     class_weight[weighted_class] = weight
 
-    sample_weight = np.ones((y_train.shape[0]))
-    sample_weight[int_y_train == weighted_class] = 2.
-
     model.fit(
         x_train,
         y_train,
@@ -905,7 +902,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
         epochs=epochs // 3,
         verbose=0,
         class_weight=class_weight,
-        validation_data=(x_train, y_train, sample_weight))
+        validation_data=(x_train, y_train))
     model.fit(
         x_train,
         y_train,
