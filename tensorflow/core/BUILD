@@ -445,8 +445,7 @@ cc_library(
 )
 
 cc_library(
-    name = "logger",
-    srcs = ["platform/logger.cc"],
+    name = "logger_interface",
     hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -454,6 +453,23 @@ cc_library(
         ":lib_proto_parsing",
         "@protobuf_archive//:protobuf",
     ],
+)
+
+cc_library(
+    name = "default_logger",
+    srcs = ["platform/default/logger.cc"],
+    hdrs = ["platform/logger.h"],
+    deps = [
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:logger_interface",
+    ],
+)
+
+cc_library(
+    name = "logger",
+    hdrs = ["platform/logger.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/core/platform/default/build_config:logger"],
 )
 
 filegroup(
