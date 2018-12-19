@@ -265,10 +265,6 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       for grad, output in zip(grads, body_graph.outputs)
   ]
 
-  # Ensure that all non-resource trainable outputs have incoming gradients.
-  assert all(g is not None or o.dtype == dtypes.resource or not _is_trainable(o)
-             for o, g in zip(body_graph.outputs, grads)
-            ), "All trainable loop vars must receive incoming gradients."
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
   # outputs.
