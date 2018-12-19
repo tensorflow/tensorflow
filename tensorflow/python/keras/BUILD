@@ -838,6 +838,7 @@ py_test(
     shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",
         "notsan",
     ],
     deps = [
