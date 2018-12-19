@@ -1025,8 +1025,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             e->dst_input() == kPermTensorIndex) {
           // we find the "perm" node, now try to retrieve its value.
           const TensorProto* proto = nullptr;
-          bool perm_has_value_attr = GetNodeAttr(perm_node->def(), "value", &proto).ok();
-          DCHECK(perm_has_value_attr);
+          TF_CHECK_OK(GetNodeAttr(perm_node->def(), "value", &proto));
 
           DataType type;
           GetNodeAttr(perm_node->def(), "dtype", &type);
@@ -3111,9 +3110,9 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   for (const Edge* e : transpose_to_nchw->out_edges()) {
     if (!e->IsControlEdge()) {
       const int kTransposeWithMklOpOutputSlot = 0;
-      bool succ_add_edge = (*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot, e->dst(),
-                                         e->dst_input());
-      DCHECK(succ_add_edge);
+      auto new_edge = (*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot, e->dst(),
+                                    e->dst_input());
+      DCHECK(new_edge);
     }
   }
 
