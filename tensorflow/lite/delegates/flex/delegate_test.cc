@@ -252,6 +252,56 @@ TEST_F(DelegateTest, MultipleInterpretersSameDelegate) {
   }
 }
 
+TEST_F(DelegateTest, SingleThreaded) {
+  AddTensors(9, {0, 3}, {8}, kTfLiteFloat32, {3});
+  AddTfOp(testing::kUnpack, {0}, {1, 2});
+  AddTfOp(testing::kUnpack, {3}, {4, 5});
+  AddTfOp(testing::kAdd, {1, 4}, {6});
+  AddTfOp(testing::kAdd, {2, 5}, {7});
+  AddTfOp(testing::kMul, {6, 7}, {8});
+
+  // Explicitly disable multi-threading before installing the delegate.
+  interpreter_->SetNumThreads(1);
+  ConfigureDelegate();
+
+  SetShape(0, {2, 2, 1});
+  SetValues(0, {1.1f, 2.2f, 3.3f, 4.4f});
+  SetShape(3, {2, 2, 1});
+  SetValues(3, {1.1f, 2.2f, 3.3f, 4.4f});
+
+  // Invocation should behave as expected.
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(8), ElementsAre(2, 1));
+  ASSERT_THAT(GetValues(8), ElementsAre(14.52f, 38.72f));
+  ASSERT_EQ(GetType(8), kTfLiteFloat32);
+}
+
+TEST_F(DelegateTest, MultiThreaded) {
+  AddTensors(9, {0, 3}, {8}, kTfLiteFloat32, {3});
+  AddTfOp(testing::kUnpack, {0}, {1, 2});
+  AddTfOp(testing::kUnpack, {3}, {4, 5});
+  AddTfOp(testing::kAdd, {1, 4}, {6});
+  AddTfOp(testing::kAdd, {2, 5}, {7});
+  AddTfOp(testing::kMul, {6, 7}, {8});
+
+  // Explicitly enable multi-threading before installing the delegate.
+  interpreter_->SetNumThreads(4);
+  ConfigureDelegate();
+
+  SetShape(0, {2, 2, 1});
+  SetValues(0, {1.1f, 2.2f, 3.3f, 4.4f});
+  SetShape(3, {2, 2, 1});
+  SetValues(3, {1.1f, 2.2f, 3.3f, 4.4f});
+
+  // Invocation should behave as expected.
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(8), ElementsAre(2, 1));
+  ASSERT_THAT(GetValues(8), ElementsAre(14.52f, 38.72f));
+  ASSERT_EQ(GetType(8), kTfLiteFloat32);
+}
+
 }  // namespace
 }  // namespace flex
 }  // namespace tflite
