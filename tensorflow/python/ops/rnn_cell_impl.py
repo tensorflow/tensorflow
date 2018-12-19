@@ -1076,7 +1076,7 @@ def _default_dropout_state_filter_visitor(substate):
   return True
 
 
-@tf_export("nn.rnn_cell.DropoutWrapper")
+@tf_export(v1=["nn.rnn_cell.DropoutWrapper"])
 class DropoutWrapper(RNNCell):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
@@ -1282,8 +1282,25 @@ class DropoutWrapper(RNNCell):
           shallow_filtered_substructure, dropout,
           *[shallow_filtered_substructure, values, recurrent_noise])
 
-  def __call__(self, inputs, state, scope=None):
-    """Run the cell with the declared dropouts."""
+  def _call(self, inputs, state, call_fn, **kwargs):
+    """Defines a helper method that runs the wrapped cell and applies dropout.
+
+    This helper is called from the DropoutWrapper's `call` or `__call__`
+    methods.
+
+    Args:
+      inputs: A tensor with wrapped cell's input.
+      state: A tensor or tuple of tensors with wrapped cell's state.
+      call_fn: Wrapped cell's method to use for step computation (cell's
+        `__call__` or 'call' method).
+      **kwargs: Additional arguments.
+
+    Returns:
+      A pair containing:
+
+      - Output: A tensor with cell's output.
+      - New state: A tensor or tuple of tensors with new wrapped cell's state.
+    """
     def _should_dropout(p):
       return (not isinstance(p, float)) or p < 1
 
@@ -1291,7 +1308,7 @@ class DropoutWrapper(RNNCell):
       inputs = self._dropout(inputs, "input",
                              self._recurrent_input_noise,
                              self._input_keep_prob)
-    output, new_state = self._cell(inputs, state, scope=scope)
+    output, new_state = call_fn(inputs, state, **kwargs)
     if _should_dropout(self._state_keep_prob):
       # Identify which subsets of the state to perform dropout on and
       # which ones to keep.
@@ -1306,6 +1323,80 @@ class DropoutWrapper(RNNCell):
                              self._recurrent_output_noise,
                              self._output_keep_prob)
     return output, new_state
+
+  def __call__(self, inputs, state, scope=None):
+    """Runs the cell with the declared dropouts.
+
+    We assume that the wrapped RNNCell is being built within its `__call__`
+    method. We directly use the wrapped cell's `__call__` in the overridden
+    DropoutWrapper `__call__` method.
+
+    This should allow to use the wrapped cell and the non-wrapped cell
+    equivalently when using `__call__`.
+
+    Args:
+      inputs: A tensor with wrapped cell's input.
+      state: A tensor or tuple of tensors with wrapped cell's state.
+      scope: VariableScope for the subgraph created in the wrapped cells'
+        `__call__`.
+
+    Returns:
+      A pair containing:
+
+      - Output: A tensor with cell's output.
+      - New state: A tensor or tuple of tensors with new wrapped cell's state.
+    """
+    return self._call(inputs, state, call_fn=self._cell.__call__, scope=scope)
+
+
+@tf_export("rnn.DropoutWrapper", v1=[])
+class DropoutWrapperV2(LayerRNNCell, DropoutWrapper):
+  """Operator adding dropout to inputs and outputs of the given cell."""
+
+  def __init__(self, cell, input_keep_prob=1.0, output_keep_prob=1.0,
+               state_keep_prob=1.0, variational_recurrent=False,
+               input_size=None, dtype=None, seed=None,
+               dropout_state_filter_visitor=None):
+    """Runs init in Keras style scope to use Keras-style variable management."""
+
+    with base_layer.keras_style_scope():
+      super(DropoutWrapperV2, self).__init__(
+          cell=cell,
+          input_keep_prob=input_keep_prob,
+          output_keep_prob=output_keep_prob,
+          state_keep_prob=state_keep_prob,
+          variational_recurrent=variational_recurrent,
+          input_size=input_size,
+          dtype=dtype,
+          seed=seed,
+          dropout_state_filter_visitor=dropout_state_filter_visitor)
+
+  def build(self, inputs_shape):
+    self._cell.build(inputs_shape)
+    self.built = True
+
+  def call(self, inputs, state, **kwargs):
+    """Runs the cell with the declared dropouts.
+
+    When `call` is being used, we assume that the DropoutWrapper object has
+    been built and therefore the wrapped cells has been built via its `build`
+    method and its `call` method can be used directly.
+
+    This should allow to use the wrapped cell and the non-wrapped cell
+    equivalently when using `call` and `build`.
+
+    Args:
+      inputs: A tensor with wrapped cell's input.
+      state: A tensor or tuple of tensors with wrapped cell's state.
+      **kwargs: Additional arguments passed to the wrapped cell's `call`.
+
+    Returns:
+      A pair containing:
+
+      - Output: A tensor with cell's output.
+      - New state: A tensor or tuple of tensors with new wrapped cell's state.
+    """
+    return self._call(inputs, state, call_fn=self._cell.call, **kwargs)
 
 
 @tf_export("nn.rnn_cell.ResidualWrapper")
