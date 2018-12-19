@@ -886,5 +886,4 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
   def devices(self):
     distribute_lib.require_replica_context(self)
     replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
-    extended = self._distribution_strategy.extended
-    return extended.worker_devices_by_replica[replica_id]
+    return [self._strategy.extended.worker_devices_by_replica[replica_id]]
