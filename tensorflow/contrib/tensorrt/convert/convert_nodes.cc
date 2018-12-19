@@ -950,6 +950,7 @@ Status Converter::RenameAndMarkOutputTensors(
     // TODO(tmorris): Remove this work-around once we use TRT's IIdentityLayer
     // in ConvertIdentity.
     if (tensorflow::str_util::StartsWith(tensor->getName(), kOutputPHName)) {
+      // Using shuffle layer for identity by not setting reshape or transpose.
       nvinfer1::IShuffleLayer* layer = network()->addShuffle(*tensor);
       TFTRT_RETURN_ERROR_IF_NULLPTR(
           layer, StrCat("Output Copy for ", tensor->getName()));
