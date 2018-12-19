@@ -879,6 +879,8 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     // We need to check the name before setting it. If the input is one of the
     // engine input, setting the name here will overwrite engine input
     // bindings which will cause runtime error.
+    // TODO(tmorris): Remove this work-around once we use TRT's IIdentityLayer
+    // in ConvertIdentity.
     if (output.is_tensor()) {
       const char* tensor_name = output.tensor()->getName();
       if (!tensorflow::str_util::StartsWith(tensor_name, kInputPHName)) {
@@ -938,6 +940,21 @@ Status Converter::RenameAndMarkOutputTensors(
     nvinfer1::ITensor* tensor = tensor_or_weights.tensor();
     if (tensor == nullptr) {
       return errors::NotFound("Output tensor not found: ", output.first);
+    }
+    // Check if this tensor has already been marked as an output.
+    // ConvertIdentity can cause the same tensor to be repeated in
+    // output_tensors, which can cause us to overwrite the name of the output
+    // tensor binding. For example, if we rename OutputPH_0 to OutputPH_1 then
+    // we won't be able to locate OutputPH_0 during runtime. To fix this,
+    // duplicate the tensor using no-op shuffle.
+    // TODO(tmorris): Remove this work-around once we use TRT's IIdentityLayer
+    // in ConvertIdentity.
+    if (tensorflow::str_util::StartsWith(tensor->getName(), kOutputPHName)) {
+      nvinfer1::IShuffleLayer* layer = network()->addShuffle(*tensor);
+      TFTRT_RETURN_ERROR_IF_NULLPTR(
+          layer, StrCat("Output Copy for ", tensor->getName()));
+      MarkQuantizationRangesAsInferrable(tensor, layer->getOutput(0));
+      tensor = layer->getOutput(0);
     }
     tensor->setName(output.second.c_str());
     VLOG(1) << "Marking output tensor " << output.first << ", as output tensor "
