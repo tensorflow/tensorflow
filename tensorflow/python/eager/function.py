@@ -1763,9 +1763,12 @@ class _PolymorphicFunctionGarbageCollector(object):
   def __del__(self):
     if func_graph_module is None or memory is None:
       return
-    while self._cache:
-      self._cache.popitem()
-    memory.dismantle_ordered_dict(self._cache)
+    try:
+      while self._cache:
+        self._cache.popitem()
+      memory.dismantle_ordered_dict(self._cache)
+    except:  # pylint: disable=bare-except
+      pass
 
 
 class _FunctionGarbageCollector(object):
@@ -1781,4 +1784,7 @@ class _FunctionGarbageCollector(object):
   def __del__(self):
     if func_graph_module is None or memory is None or self._func_graph is None:
       return
-    func_graph_module.dismantle_func_graph(self._func_graph)
+    try:
+      func_graph_module.dismantle_func_graph(self._func_graph)
+    except:  # pylint: disable=bare-except
+      pass
