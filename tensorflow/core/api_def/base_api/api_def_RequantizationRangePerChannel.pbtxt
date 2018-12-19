@@ -1,0 +1,47 @@
+op {
+  graph_op_name: "RequantizationRangePerChannel"
+  visibility: VISIBLE
+  in_arg {
+    name: "input"
+    description: <<END
+The original input tensor.
+END
+  }
+  in_arg {
+    name: "input_min"
+    description: <<END
+The original input minimum tensor.
+END
+  }
+  in_arg {
+    name: "input_max"
+    description: <<END
+The original input maximum tensor.
+END
+  }
+  out_arg {
+    name: "output_min"
+    description: <<END
+The final output value minimum tensor.
+END
+  }
+  out_arg {
+    name: "output_max"
+    description: <<END
+The final output value maximum tensor.
+END
+  }
+  attr {
+    name: "T"
+    description: <<END
+The quantized type of input tensor that needs to be converted. 
+END
+  }
+  attr {
+    name: "clip_value_max"
+    description: <<END
+The maximum value to be clipped. For example, when true value Clipped at 6 for Relu6.
+END
+  }
+  summary: "Computes Requantization range per channel."
+}
