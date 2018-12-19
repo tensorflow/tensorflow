@@ -641,17 +641,16 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
   """Replication Context class for TPU Strategy."""
 
-  # TODO(sourabhbajaj): Call for each tower should be updating this.
-  def __init__(self, distribution_strategy):
+  # TODO(sourabhbajaj): Call for each replica should be updating this.
+  def __init__(self, strategy):
+    # TODO(b/118385803): properly initialize replica_id, instead of always 0
+    replica_id = constant_op.constant(0, dtypes.int32)
     distribute_lib.ReplicaContext.__init__(
-        self,
-        distribution_strategy,
-        # TODO(b/118385803): properly initialize replica_id, instead of always 0
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
+        self, strategy, replica_id_in_sync_group=replica_id)
 
   @property
   def devices(self):
     distribute_lib.require_replica_context(self)
-    ds = self._distribution_strategy
+    ds = self._strategy
     replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
     return (ds.extended.worker_devices[replica_id],)

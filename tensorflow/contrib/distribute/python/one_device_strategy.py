@@ -204,12 +204,11 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""
 
-  def __init__(self, distribution_strategy):
+  def __init__(self, strategy):
+    zero = constant_op.constant(0, dtypes.int32)
     distribute_lib.ReplicaContext.__init__(
-        self,
-        distribution_strategy,
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
+        self, strategy, replica_id_in_sync_group=zero)
 
   @property
   def devices(self):
-    return self._distribution_strategy.extended.worker_devices
+    return self._strategy.extended.worker_devices

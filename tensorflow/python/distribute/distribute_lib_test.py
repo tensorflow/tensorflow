@@ -64,9 +64,9 @@ def _assert_in_default_state(t):
              distribution_strategy_context.get_replica_context())
   t.assertIs(None, distribution_strategy_context.get_cross_replica_context())
   t.assertFalse(distribution_strategy_context.in_cross_replica_context())
-  t.assertIs(distribution_strategy_context._get_default_distribution_strategy(),
-             distribution_strategy_context.get_distribution_strategy())
-  t.assertFalse(distribution_strategy_context.has_distribution_strategy())
+  t.assertIs(distribution_strategy_context._get_default_strategy(),
+             distribution_strategy_context.get_strategy())
+  t.assertFalse(distribution_strategy_context.has_strategy())
 
 
 class TestStrategyTest(test.TestCase):
@@ -81,9 +81,9 @@ class TestStrategyTest(test.TestCase):
       self.assertIs(None,
                     distribution_strategy_context.get_cross_replica_context())
       self.assertFalse(distribution_strategy_context.in_cross_replica_context())
-      self.assertTrue(distribution_strategy_context.has_distribution_strategy())
+      self.assertTrue(distribution_strategy_context.has_strategy())
       self.assertIs(dist,
-                    distribution_strategy_context.get_distribution_strategy())
+                    distribution_strategy_context.get_strategy())
       self.assertEqual("foo", replica_context.merge_call(None, test_arg="foo"))
       expected_value = _get_test_variable(
           "bar", variable_scope.VariableSynchronization.AUTO,
@@ -105,9 +105,9 @@ class TestStrategyTest(test.TestCase):
       self.assertIs(dist,
                     distribution_strategy_context.get_cross_replica_context())
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
-      self.assertTrue(distribution_strategy_context.has_distribution_strategy())
+      self.assertTrue(distribution_strategy_context.has_strategy())
       self.assertIs(dist,
-                    distribution_strategy_context.get_distribution_strategy())
+                    distribution_strategy_context.get_strategy())
       expected_value = _get_test_variable(
           "baz", variable_scope.VariableSynchronization.AUTO,
           variable_scope.VariableAggregation.NONE)
@@ -139,16 +139,16 @@ class DefaultDistributionStrategyTest(test.TestCase):
 
     def merge_fn(dist, s):
       self.assertIs(
-          distribution_strategy_context._get_default_distribution_strategy(),
+          distribution_strategy_context._get_default_strategy(),
           dist)
       self.assertIs(None, distribution_strategy_context.get_replica_context())
       self.assertIs(dist,
                     distribution_strategy_context.get_cross_replica_context())
       self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       self.assertIs(dist,
-                    distribution_strategy_context.get_distribution_strategy())
+                    distribution_strategy_context.get_strategy())
       self.assertFalse(
-          distribution_strategy_context.has_distribution_strategy())
+          distribution_strategy_context.has_strategy())
       return "foo_" + s
 
     replica_ctx = distribution_strategy_context.get_replica_context()
