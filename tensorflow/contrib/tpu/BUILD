@@ -337,6 +337,7 @@ py_library(
 
 tf_py_test(
     name = "datasets_test",
+    size = "medium",
     srcs = ["python/tpu/datasets_test.py"],
     additional_deps = [
         "//tensorflow/python:client_testlib",
@@ -344,6 +345,7 @@ tf_py_test(
     ],
     flaky = 1,  # TODO(b/117363808): fails 1/1000 OSS runs
     grpc_enabled = True,
+    shard_count = 4,
 )
 
 tf_py_test(
