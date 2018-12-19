@@ -6049,6 +6049,153 @@ func StagePeek(scope *Scope, index tf.Output, dtypes []tf.DataType, optional ...
 	return values
 }
 
+// UnstageAttr is an optional argument to Unstage.
+type UnstageAttr func(optionalAttr)
+
+// UnstageCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func UnstageCapacity(value int64) UnstageAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// UnstageMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func UnstageMemoryLimit(value int64) UnstageAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// UnstageContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func UnstageContainer(value string) UnstageAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// UnstageSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func UnstageSharedName(value string) UnstageAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op is similar to a lightweight Dequeue.
+//
+// The basic functionality is similar to dequeue with many fewer
+// capabilities and options.  This Op is optimized for performance.
+func Unstage(scope *Scope, dtypes []tf.DataType, optional ...UnstageAttr) (values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Unstage",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("Unstage", err)
+		return
+	}
+	return values
+}
+
+// StageAttr is an optional argument to Stage.
+type StageAttr func(optionalAttr)
+
+// StageCapacity sets the optional capacity attribute to value.
+//
+// value: Maximum number of elements in the Staging Area. If > 0, inserts
+// on the container will block when the capacity is reached.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func StageCapacity(value int64) StageAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// StageMemoryLimit sets the optional memory_limit attribute to value.
+//
+// value: The maximum number of bytes allowed for Tensors in the Staging Area.
+// If > 0, inserts will block until sufficient space is available.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func StageMemoryLimit(value int64) StageAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// StageContainer sets the optional container attribute to value.
+//
+// value: If non-empty, this queue is placed in the given container. Otherwise,
+// a default container is used.
+// If not specified, defaults to ""
+func StageContainer(value string) StageAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// StageSharedName sets the optional shared_name attribute to value.
+//
+// value: It is necessary to match this name to the matching Unstage Op.
+// If not specified, defaults to ""
+func StageSharedName(value string) StageAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Stage values similar to a lightweight Enqueue.
+//
+// The basic functionality of this Op is similar to a queue with many
+// fewer capabilities and options.  This Op is optimized for performance.
+//
+// Arguments:
+//	values: a list of tensors
+// dtypes A list of data types that inserted values should adhere to.
+//
+// Returns the created operation.
+func Stage(scope *Scope, values []tf.Output, optional ...StageAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Stage",
+		Input: []tf.Input{
+			tf.OutputList(values),
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 //
 // The regularized incomplete beta integral is defined as:
@@ -32022,75 +32169,6 @@ func PriorityQueueV2(scope *Scope, shapes []tf.Shape, optional ...PriorityQueueV
 	return op.Output(0)
 }
 
-// UnstageAttr is an optional argument to Unstage.
-type UnstageAttr func(optionalAttr)
-
-// UnstageCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func UnstageCapacity(value int64) UnstageAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// UnstageMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func UnstageMemoryLimit(value int64) UnstageAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// UnstageContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func UnstageContainer(value string) UnstageAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// UnstageSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func UnstageSharedName(value string) UnstageAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op is similar to a lightweight Dequeue.
-//
-// The basic functionality is similar to dequeue with many fewer
-// capabilities and options.  This Op is optimized for performance.
-func Unstage(scope *Scope, dtypes []tf.DataType, optional ...UnstageAttr) (values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Unstage",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("Unstage", err)
-		return
-	}
-	return values
-}
-
 // QueueEnqueueV2Attr is an optional argument to QueueEnqueueV2.
 type QueueEnqueueV2Attr func(optionalAttr)
 
@@ -33591,82 +33669,4 @@ func Conv2D(scope *Scope, input tf.Output, filter tf.Output, strides []int64, pa
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// StageAttr is an optional argument to Stage.
-type StageAttr func(optionalAttr)
-
-// StageCapacity sets the optional capacity attribute to value.
-//
-// value: Maximum number of elements in the Staging Area. If > 0, inserts
-// on the container will block when the capacity is reached.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func StageCapacity(value int64) StageAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// StageMemoryLimit sets the optional memory_limit attribute to value.
-//
-// value: The maximum number of bytes allowed for Tensors in the Staging Area.
-// If > 0, inserts will block until sufficient space is available.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func StageMemoryLimit(value int64) StageAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// StageContainer sets the optional container attribute to value.
-//
-// value: If non-empty, this queue is placed in the given container. Otherwise,
-// a default container is used.
-// If not specified, defaults to ""
-func StageContainer(value string) StageAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// StageSharedName sets the optional shared_name attribute to value.
-//
-// value: It is necessary to match this name to the matching Unstage Op.
-// If not specified, defaults to ""
-func StageSharedName(value string) StageAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Stage values similar to a lightweight Enqueue.
-//
-// The basic functionality of this Op is similar to a queue with many
-// fewer capabilities and options.  This Op is optimized for performance.
-//
-// Arguments:
-//	values: a list of tensors
-// dtypes A list of data types that inserted values should adhere to.
-//
-// Returns the created operation.
-func Stage(scope *Scope, values []tf.Output, optional ...StageAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Stage",
-		Input: []tf.Input{
-			tf.OutputList(values),
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
 }
