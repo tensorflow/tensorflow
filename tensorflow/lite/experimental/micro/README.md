@@ -31,7 +31,7 @@ This initial preview release is designed to get early feedback, and is not inten
 Building requires a Linux or OS X machine.
 
  - Open a terminal
- - Download the TensorFlow source with `git clone https://github.com/tensorflow`
+ - Download the TensorFlow source with `git clone https://github.com/tensorflow/tensorflow.git`
  - Enter the source root directory by running `cd tensorflow`
  - Download the dependencies by running `tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`. This may take a few minutes
  - Build and test the library with `make -f tensorflow/lite/experimental/micro/tools/make/Makefile test`
