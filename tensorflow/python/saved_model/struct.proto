@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+package tensorflow;
+
+// `StructuredValue` represents a dynamically typed value representing various
+// data structures that are inspired by Python data structures typically used in
+// TensorFlow functions as inputs and outputs.
+message StructuredValue {
+  // The kind of value.
+  oneof kind {
+    // Represents None.
+    NoneValue none_value = 1;
+
+    // Represents a double-precision floating-point value (a Python `float`).
+    double float64_value = 11;
+    // Represents a signed integer value, limited to 64 bits.
+    // Larger values from Python's arbitrary-precision integers are unsupported.
+    sint64 int64_value = 12;
+    // Represents a string of Unicode characters stored in a Python `str`.
+    // In Python 3, this is exactly what type `str` is.
+    // In Python 2, this is the UTF-8 encoding of the characters.
+    // For strings with ASCII characters only (as often used in TensorFlow code)
+    // there is effectively no difference between the language versions.
+    // The obsolescent `unicode` type of Python 2 is not supported here.
+    string string_value = 13;
+    // Represents a boolean value.
+    bool bool_value = 14;
+
+    // Represents a tf.TensorShape.
+    tensorflow.TensorShapeProto tensor_shape_value = 31;
+    // Represents an enum value for tf.DType.
+    tensorflow.DataType tensor_dtype_value = 32;
+    // Represents a value for tf.TensorShape.
+    TensorSpecProto tensor_spec_value = 33;
+
+    // Represents a list of `Value`.
+    ListValue list_value = 51;
+    // Represents a tuple of `Value`.
+    TupleValue tuple_value = 52;
+    // Represents a dict `Value`.
+    DictValue dict_value = 53;
+    // Represents Python's namedtuple.
+    NamedTupleValue named_tuple_value = 54;
+  }
+}
+
+// Represents None.
+message NoneValue {}
+
+// Represents a Python list.
+message ListValue {
+  repeated StructuredValue values = 1;
+}
+
+// Represents a Python tuple.
+message TupleValue {
+  repeated StructuredValue values = 1;
+}
+
+// Represents a Python dict keyed by `str`.
+// The comment on Unicode from Value.string_value applies analogously.
+message DictValue {
+  map<string, StructuredValue> fields = 1;
+}
+
+// Represents a (key, value) pair.
+message PairValue {
+  string key = 1;
+  StructuredValue value = 2;
+}
+
+// Represents Python's namedtuple.
+message NamedTupleValue {
+  string name = 1;
+  repeated PairValue values = 2;
+}
+
+// A protobuf to tf.TensorSpec.
+message TensorSpecProto {
+  string name = 1;
+  tensorflow.TensorShapeProto shape = 2;
+  tensorflow.DataType dtype = 3;
+};
