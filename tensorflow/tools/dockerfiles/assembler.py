@@ -92,11 +92,6 @@ flags.DEFINE_string(
      'Flag value must be a full path to the "tests" directory, which is usually'
      ' $(realpath ./tests). A failed tests counts the same as a failed build.'))
 
-flags.DEFINE_string(
-    'write_tags_to', None,
-    'Write the list of tagged images to a file. Useful for parallelizing tests.'
-)
-
 flags.DEFINE_boolean(
     'stop_on_failure', False,
     ('Stop processing tags if any one build fails. If False or not specified, '
