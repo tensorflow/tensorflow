@@ -366,6 +366,7 @@ void CopyConv2DAttributes(const NodeDef* conv2d, NodeDef* fused_conv2d,
   (*attr)["padding"] = src_attr.at("padding");
   (*attr)["dilations"] = src_attr.at("dilations");
   (*attr)["data_format"] = src_attr.at("data_format");
+  (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
 
   auto* fused_ops_attr = (*attr)["fused_ops"].mutable_list();
   for (const string& fused_op : fused_ops) {
