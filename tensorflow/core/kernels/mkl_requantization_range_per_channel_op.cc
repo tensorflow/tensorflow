@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/array_ops.cc.
-
+#ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
 #include <math.h>
@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#ifdef INTEL_MKL
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
