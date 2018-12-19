@@ -22,6 +22,7 @@ import collections
 import weakref
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
@@ -46,6 +47,7 @@ from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.mode_keys import ModeKeys
@@ -127,8 +129,23 @@ class Model(Network):
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
+    # This flag is used to track if the user is using the deprecated path of
+    # passing distribution strategy to compile rather than creating the model
+    # under distribution strategy scope.
+    self._compile_distribution = False
 
     self.run_eagerly = None
+
+  def get_weights(self):
+    """Retrieves the weights of the model.
+
+    Returns:
+        A flat list of Numpy arrays.
+    """
+    if self._distribution_strategy:
+      with self._distribution_strategy.scope():
+        return super(Model, self).get_weights()
+    return super(Model, self).get_weights()
 
   @checkpointable.no_automatic_dependency_tracking
   def compile(self,
@@ -182,9 +199,10 @@ class Model(Network):
             can specify them via the `target_tensors` argument. It can be
             a single tensor (for a single-output model), a list of tensors,
             or a dict mapping output names to target tensors.
-        distribute: The DistributionStrategy instance that we want to use to
-            distribute the training of the model.
-        **kwargs: These arguments are passed to `tf.Session.run`.
+        distribute: NOT SUPPORTED IN TF 2.0, please create and compile the
+            model under distribution strategy scope instead of passing it to
+            compile.
+        **kwargs: Any additional arguments.
 
     Raises:
         ValueError: In case of invalid arguments for
@@ -194,9 +212,28 @@ class Model(Network):
     self._run_eagerly = run_eagerly
     optimizer = optimizers.get(optimizer)
 
+    if distribute is not None:
+      if tf2.enabled():
+        raise ValueError(
+            'Distribute argument in compile is not available in TF 2.0 please '
+            'create the model under the distribution strategy scope.')
+      logging.warning('Distribute argument in compile is deprecated please '
+                      'create the model under the distribution strategy scope.')
+      self._distribution_strategy = distribute
+      self._compile_distribution = True
+    else:
+      if distribution_strategy_context.has_distribution_strategy():
+        # When the user builds the model in the DS scope and cross replica
+        # context we want distribution strategy to be set but when building the
+        # replica copies of the models internally we should not be compiling
+        # with distribution strategy and use the default compilation path.
+        if distribution_strategy_context.in_cross_replica_context():
+          self._distribution_strategy = (
+              distribution_strategy_context.get_distribution_strategy())
+
     # Validate that arguments passed by the user to `compile` are supported by
     # DistributionStrategy.
-    if distribute:
+    if self._distribution_strategy:
       if not isinstance(optimizer,
                         (tf_optimizer_module.Optimizer, optimizers.TFOptimizer,
                          optimizer_v2.OptimizerV2)):
@@ -240,9 +277,7 @@ class Model(Network):
     self.target_tensors = target_tensors
 
     # Set DistributionStrategy specific parameters.
-    self._distribution_strategy = distribute
-    # Reset the value of grouped_model
-    self._grouped_model = None
+    self._distributed_model = None
     if self._distribution_strategy is not None:
       distributed_training_utils.configure_and_create_session(
           self._distribution_strategy)
@@ -459,12 +494,8 @@ class Model(Network):
                 loss_fn, losses.Loss) else loss_fn.__name__
             mean_wrapped_loss = metrics_module.MeanMetricWrapper(
                 loss_fn, name=loss_name)
-            result_tensor = training_utils.call_metric_function(
-                mean_wrapped_loss,
-                y_true,
-                y_pred,
-                weights=sample_weight,
-                mask=mask)
+            result_tensor = self._call_metric_fn(mean_wrapped_loss, y_true,
+                                                 y_pred, sample_weight, mask)
             self._compile_stateful_metrics_tensors[self.output_names[i] +
                                                    '_loss'] = result_tensor
             self._compile_stateful_metric_functions.append(mean_wrapped_loss)
@@ -1784,6 +1815,22 @@ class Model(Network):
     self._per_output_metrics = updated_per_output_metrics
     self._per_output_weighted_metrics = updated_per_output_weighted_metrics
 
+  def _call_metric_fn(self, fn, y_true, y_pred, weights, mask):
+    """Helper function to call metric function with distribution strategy."""
+    # TODO(b/120571621): We want to avoid metric reductions here since
+    # since TPUStrategy does not implement replica local variables.
+    # Remove this hack once we support TPUReplicaLocalVariables.
+    is_tpu = distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy)
+    if ((not is_tpu) and self._distribution_strategy and
+        distribution_strategy_context.in_cross_replica_context()):
+      with self._distribution_strategy.scope():
+        return self._distribution_strategy.extended.call_for_each_replica(
+            training_utils.call_metric_function,
+            (fn, y_true, y_pred, weights, mask))
+    return training_utils.call_metric_function(
+        fn, y_true, y_pred, weights=weights, mask=mask)
+
   def _handle_per_output_metrics(self,
                                  metrics_dict,
                                  y_true,
@@ -1810,8 +1857,8 @@ class Model(Network):
       with K.name_scope(metric_name):
 
         def _call_stateful_fn(fn):
-          return training_utils.call_metric_function(
-              fn, y_true, y_pred, weights=weights, mask=mask)
+          """Create stateful metrics correctly."""
+          return self._call_metric_fn(fn, y_true, y_pred, weights, mask)
 
         def _call_stateless_fn(fn):
           weighted_metric_fn = training_utils.weighted_masked_objective(fn)

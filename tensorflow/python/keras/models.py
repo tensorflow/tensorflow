@@ -43,7 +43,7 @@ model_from_yaml = saving.model_from_yaml
 model_from_json = saving.model_from_json
 
 
-def clone_layer(layer):
+def _clone_layer(layer):
   return layer.__class__.from_config(layer.get_config())
 
 
@@ -138,7 +138,7 @@ def _clone_functional_model(model, input_tensors=None, share_weights=False):
       if layer not in layer_map:
         if not share_weights:
           # Clone layer.
-          new_layer = clone_layer(layer)
+          new_layer = _clone_layer(layer)
           layer_map[layer] = new_layer
           layer = new_layer
       else:
@@ -227,11 +227,11 @@ def _clone_sequential_model(model, input_tensors=None, share_weights=False):
       layers = []
       for layer in model._layers:
         if isinstance(layer, InputLayer):
-          layers.append(clone_layer(layer))
+          layers.append(_clone_layer(layer))
         else:
           layers.append(layer)
     else:
-      layers = [clone_layer(layer) for layer in model._layers]
+      layers = [_clone_layer(layer) for layer in model._layers]
     return Sequential(layers=layers, name=model.name)
   else:
     # If input tensors are provided, the original model's InputLayer is
@@ -239,7 +239,7 @@ def _clone_sequential_model(model, input_tensors=None, share_weights=False):
     layers = [
         layer for layer in model._layers if not isinstance(layer, InputLayer)]
     if not share_weights:
-      layers = [clone_layer(layer) for layer in layers]
+      layers = [_clone_layer(layer) for layer in layers]
     if len(generic_utils.to_list(input_tensors)) != 1:
       raise ValueError('To clone a `Sequential` model, we expect '
                        ' at most one tensor '

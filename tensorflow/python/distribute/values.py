@@ -843,6 +843,9 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
   def device(self):
     return self._get().device
 
+  def eval(self, session=None):
+    return self.primary.eval(session)
+
   # The arguments to update() are automatically unwrapped so the update()
   # function would normally see regular variables, not MirroredVariables.
   # However, the update function can still operate on wrapped MirroredVariables
