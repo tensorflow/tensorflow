@@ -29,7 +29,7 @@ limitations under the License.
 namespace tensorflow {
 
 class Node;
-class NodeDebugInfo;
+struct NodeDebugInfo;
 
 // We forward declare protos so that kernels don't need to depend on them
 class NodeDef;
