@@ -299,7 +299,7 @@ class SaveTest(test.TestCase):
     graph = ops.Graph()
     with graph.as_default(), self.session(graph) as session:
       loader.load(session, [tag_constants.SERVING], save_dir)
-      func, = graph._functions.values()
+      func, = [f for name, f in graph._functions.items() if "call" in name]
       complex_node, = [
           node for node in func.definition.node_def if node.op == "Complex"]
       self.assertNotIn("T", complex_node.attr)
