@@ -217,7 +217,13 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["nomsan"],  # disable to avoid false positives from scipy.
+    tags = [
+        # TODO(b/121223043): Re-enable this test on mac after fixing "mean not
+        # defined" errors.
+        "no_mac",
+        # disable to avoid false positives from scipy.
+        "nomsan",
+    ],
 )
 
 cuda_py_test(
