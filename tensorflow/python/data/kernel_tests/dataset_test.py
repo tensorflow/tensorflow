@@ -209,7 +209,6 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(2, inputs.count(ds2))
     self.assertEqual(1, inputs.count(ds3))
 
-  # TODO(b/119882922): use-after-free bug in eager mode.
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
@@ -233,8 +232,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
-  def testSkipEagerDatasetStructure(self, tf_value_fn,
-                                    expected_element_structure):
+  def testDatasetStructure(self, tf_value_fn, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
     dataset_structure = structure.Structure.from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
