@@ -40,6 +40,7 @@ REGISTER_OP("InfeedEnqueue")
     .Input("input: dtype")
     .Attr("dtype: type")
     .Attr("shape: shape = {}")
+    .Attr("layout: list(int) = []")
     .Attr("device_ordinal: int = -1")
     .SetShapeFn(shape_inference::NoOutputs)
     .SetIsStateful()
@@ -49,6 +50,9 @@ An op which feeds a single Tensor value into the computation.
 input: A tensor that will be provided using the infeed mechanism.
 dtype: The type of elements in the tensor.
 shape: The shape of the tensor.
+layout: A vector holding the requested layout in minor-to-major sequence.
+If a layout attribute is passed, but its values are all -1, the layout will
+be computed by the infeed operation.
 device_ordinal: The TPU device to use. This should be -1 when the Op
 is running on a TPU device, and >= 0 when the Op is running on the CPU
 device.
@@ -58,6 +62,7 @@ REGISTER_OP("InfeedEnqueueTuple")
     .Input("inputs: dtypes")
     .Attr("dtypes: list(type)")
     .Attr("shapes: list(shape)")
+    .Attr("layouts: list(int) = []")
     .Attr("device_ordinal: int = -1")
     .SetShapeFn(shape_inference::NoOutputs)
     .SetIsStateful()
@@ -67,6 +72,10 @@ An op which feeds multiple Tensor values into the computation as an XLA tuple.
 inputs: A list of tensors that will be provided using the infeed mechanism.
 dtypes: The element types of each element in `inputs`.
 shapes: The shapes of each tensor in `inputs`.
+layouts: A vector holding the requested layout in minor-to-major sequence for
+all the tuple shapes, in the order the shapes appear in the "shapes" input.
+The layout elements for a sub-shape can be set to -1, in which case the
+corresponding layout will be computed by the infeed operation.
 device_ordinal: The TPU device to use. This should be -1 when the Op
 is running on a TPU device, and >= 0 when the Op is running on the CPU
 device.
