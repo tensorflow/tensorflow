@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -35,7 +36,7 @@ TEST(MutableGraphViewTest, AddAndUpdateFanouts) {
        NDef("other", "NotImportant", {}, {}),
        NDef("foo_1", "NotImportant", {"bar", "other", "bar:1", "^bar"}),
        NDef("foo_2", "NotImportant", {"other:1", "bar:2", "^bar"})},
-      /* empty function library */ {});
+      /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
 
@@ -78,7 +79,7 @@ TEST(MutableGraphViewTest, AddAndUpdateFanoutsWithoutSelfLoops) {
   GraphDef graph_def =
       test::function::GDef({NDef("bar", "NotImportant", {}, {}),
                             NDef("foo", "NotImportant", {"bar", "^bar"})},
-                           /* empty function library */ {});
+                           /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
 
@@ -462,6 +463,213 @@ TEST(MutableGraphViewTest, UpdateFanin) {
                   /*modified=*/false, /*expected_node=*/nullptr);
 }
 
+GraphDef SimpleDuplicateControllingFaninsGraph() {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {}),
+       NDef("foo_1", "NotImportant", {"a", "b:1", "^b"}),
+       NDef("foo_2", "NotImportant", {"a", "^b", "^b"}),
+       NDef("foo_3", "NotImportant", {"a", "b:1", "^b", "^b"}),
+       NDef("foo_4", "NotImportant", {"a:2", "b:1", "^b", "^b", "^a", "^a"})},
+      /*funcs=*/{});
+  return graph_def;
+}
+
+void CheckDedupControllingFaninsForNode(MutableGraphView* graph,
+                                        absl::string_view node_name,
+                                        const NodeDef* expected_node) {
+  // Deduping again should result in no change.
+  EXPECT_FALSE(graph->DedupControllingFanins(node_name));
+  NodeDef* node = graph->GetNode(node_name);
+  ASSERT_NE(node, nullptr);
+  ASSERT_EQ(node->input_size(), expected_node->input_size());
+  CompareNodeInputs(*graph, expected_node, node);
+  for (int i = 0; i < node->input_size(); ++i) {
+    TensorId tensor_id = ParseTensorName(node->input(i));
+    if (tensor_id.index() > Graph::kControlSlot) {
+      CheckFanout(*graph, {tensor_id.node(), Graph::kControlSlot}, node_name);
+    }
+  }
+}
+
+void TestDedupControllingFaninsForNode(MutableGraphView* graph,
+                                       absl::string_view node_name,
+                                       const NodeDef* expected_node) {
+  EXPECT_TRUE(graph->DedupControllingFanins(node_name));
+  CheckDedupControllingFaninsForNode(graph, node_name, expected_node);
+}
+
+TEST(MutableGraphViewTest, DedupControllingFaninsForNode) {
+  GraphDef graph_def = SimpleDuplicateControllingFaninsGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  NodeDef expected_node;
+  // Remove redundant control dependency '^b'.
+  expected_node = NDef("", "", {"a", "b:1"});
+  TestDedupControllingFaninsForNode(&graph, "foo_1", &expected_node);
+  // Remove extra control dependency '^b'.
+  expected_node = NDef("", "", {"a", "^b"});
+  TestDedupControllingFaninsForNode(&graph, "foo_2", &expected_node);
+  // Remove redundant and extra control dependencies '^b'.
+  expected_node = NDef("", "", {"a", "b:1"});
+  TestDedupControllingFaninsForNode(&graph, "foo_3", &expected_node);
+  // Remove multiple redundant control dependencies.
+  expected_node = NDef("", "", {"a:2", "b:1"});
+  TestDedupControllingFaninsForNode(&graph, "foo_4", &expected_node);
+  // Missing node.
+  EXPECT_FALSE(graph.DedupControllingFanins("missing"));
+}
+
+TEST(MutableGraphViewTest, DedupControllingFaninsForGraph) {
+  GraphDef graph_def = SimpleDuplicateControllingFaninsGraph();
+
+  MutableGraphView graph(&graph_def);
+  EXPECT_TRUE(graph.DedupControllingFanins());
+  // Deduping again should result in no change.
+  EXPECT_FALSE(graph.DedupControllingFanins());
+
+  NodeDef expected_node;
+  // Remove redundant control dependency '^b'.
+  expected_node = NDef("", "", {"a", "b:1"});
+  CheckDedupControllingFaninsForNode(&graph, "foo_1", &expected_node);
+  // Remove extra control dependency '^b'.
+  expected_node = NDef("", "", {"a", "^b"});
+  CheckDedupControllingFaninsForNode(&graph, "foo_2", &expected_node);
+  // Remove redundant and extra control dependencies '^b'.
+  expected_node = NDef("", "", {"a", "b:1"});
+  CheckDedupControllingFaninsForNode(&graph, "foo_3", &expected_node);
+  // Remove multiple redundant control dependencies.
+  expected_node = NDef("", "", {"a:2", "b:1"});
+  CheckDedupControllingFaninsForNode(&graph, "foo_4", &expected_node);
+}
+
+TEST(MutableGraphViewTest, AddControllingFaninMissing) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+  // Missing fanin.
+  EXPECT_FALSE(graph.AddControllingFanin("a", {"c", Graph::kControlSlot}));
+  // Missing node.
+  EXPECT_FALSE(graph.AddControllingFanin("d", {"a", Graph::kControlSlot}));
+  // Missing node and fanin.
+  EXPECT_FALSE(graph.AddControllingFanin("c", {"d", Graph::kControlSlot}));
+
+  ASSERT_EQ(graph.graph()->node_size(), 2);
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  ASSERT_EQ(a->input_size(), 0);
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  ASSERT_EQ(b->input_size(), 0);
+}
+
+TEST(MutableGraphViewTest, AddControllingFaninExistingControl) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}));
+  EXPECT_FALSE(graph.AddControllingFanin("a", {"b", Graph::kControlSlot}));
+
+  ASSERT_EQ(graph.graph()->node_size(), 2);
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  ASSERT_EQ(a->input_size(), 1);
+  EXPECT_EQ(a->input(0), "^b");
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  ASSERT_EQ(b->input_size(), 0);
+}
+
+TEST(MutableGraphViewTest, AddControllingFaninNotSwitch) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"b", 2}));
+  EXPECT_FALSE(graph.AddControllingFanin("a", {"b", 2}));
+
+  ASSERT_EQ(graph.graph()->node_size(), 2);
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  ASSERT_EQ(a->input_size(), 1);
+  EXPECT_EQ(a->input(0), "^b");
+  NodeDef* b = graph.GetNode("b");
+  ASSERT_NE(b, nullptr);
+  ASSERT_EQ(b->input_size(), 0);
+}
+
+TEST(MutableGraphViewTest, AddControllingFaninSwitchWithIdentity) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("switch", "Switch", {}, {}),
+       NDef("identity", "Identity", {"switch"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}));
+  EXPECT_FALSE(graph.AddControllingFanin("a", {"switch", 0}));
+
+  ASSERT_EQ(graph.graph()->node_size(), 3);
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  ASSERT_EQ(a->input_size(), 1);
+  EXPECT_EQ(a->input(0), "^identity");
+}
+
+TEST(MutableGraphViewTest, AddControllingFaninSwitchWithNoExistingIdentity) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}),
+       NDef("switch", "Switch", {}, {{"T", DT_FLOAT}}, kDevice)},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}));
+  EXPECT_FALSE(graph.AddControllingFanin("a", {"switch", 0}));
+
+  ASSERT_EQ(graph.graph()->node_size(), 3);
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  ASSERT_EQ(a->input_size(), 1);
+  EXPECT_EQ(a->input(0), "^ConstantFoldingCtrl/switch_0");
+  NodeDef* identity = graph.GetNode("ConstantFoldingCtrl/switch_0");
+  ASSERT_NE(identity, nullptr);
+  ASSERT_EQ(identity->input_size(), 1);
+  EXPECT_EQ(identity->input(0), "switch");
+  EXPECT_EQ(identity->op(), "Identity");
+  EXPECT_EQ(identity->device(), kDevice);
+  ASSERT_TRUE(identity->attr().count("T"));
+  EXPECT_EQ(identity->attr().at("T").type(), DT_FLOAT);
+}
+
+TEST(MutableGraphViewTest, AddControllingFaninSwitchWithExistingAddedIdentity) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("switch", "Switch", {}, {}),
+       NDef("ConstantFoldingCtrl/switch_0", "Identity", {}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  EXPECT_TRUE(graph.AddControllingFanin("a", {"switch", 0}));
+  EXPECT_FALSE(graph.AddControllingFanin("a", {"switch", 0}));
+
+  ASSERT_EQ(graph.graph()->node_size(), 3);
+  NodeDef* a = graph.GetNode("a");
+  ASSERT_NE(a, nullptr);
+  ASSERT_EQ(a->input_size(), 1);
+  EXPECT_EQ(a->input(0), "^ConstantFoldingCtrl/switch_0");
+}
+
 TEST(MutableGraphViewTest, DeleteNodes) {
   // Actual node.op() is not important in this test.
   GraphDef graph_def = test::function::GDef(
@@ -469,7 +677,7 @@ TEST(MutableGraphViewTest, DeleteNodes) {
        NDef("other", "NotImportant", {}, {}),
        NDef("foo_1", "NotImportant", {"bar", "other", "bar:1", "^bar"}),
        NDef("foo_2", "NotImportant", {"other:1", "bar:2", "^bar"})},
-      /* empty function library */ {});
+      /*funcs=*/{});
 
   MutableGraphView graph(&graph_def);
 
