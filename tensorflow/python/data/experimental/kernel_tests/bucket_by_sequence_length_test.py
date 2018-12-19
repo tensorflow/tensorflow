@@ -76,11 +76,12 @@ def _get_record_shape(sparse):
 @test_util.run_all_in_graph_and_eager_modes
 class BucketBySequenceLengthTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  # TODO(b/117581999): add eager coverage.
   @parameterized.named_parameters(
     ("WithoutPadding", True),
     ("WithPadding", False),
   )
-  def testBucketDropReminder(self, param_no_padding):
+  def testSkipEagerBucketDropReminder(self, param_no_padding):
 
     boundaries = [10, 20, 30]
     batch_sizes = [10, 8, 4, 2]
@@ -142,14 +143,15 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase, parameterized.TestCa
               batch_sizes,
               no_padding=no_padding,
               drop_remainder=True))
-      batch, = dataset.make_one_shot_iterator().get_next()
 
-      with self.cached_session() as sess:
-        batches = []
-        for _ in range(n_expected_batches):
-          batches.append(self.evaluate(batch))
-        with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(batch)
+      get_next = self.getNext(dataset)
+      batches = []
+      for _ in range(n_expected_batches):
+        batch, = self.evaluate(get_next())
+        batches.append(batch)
+
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
       generated_lengths = []
 
