@@ -272,12 +272,8 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSkipEagerSameGraphErrorOneShot(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      dataset = dataset.batch(2)
-      with test.mock.patch.object(logging, "warning") as mock_log:
-        _ = dataset.make_one_shot_iterator()
-        self.assertRegexpMatches(
-            str(mock_log.call_args), "Please ensure that all datasets in the "
-            "pipeline are created in the same graph as the iterator.")
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        dataset = dataset.batch(2)
 
   @test_util.run_deprecated_v1
   def testSkipEagerSameGraphErrorOneShotSimple(self):
@@ -293,9 +289,8 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSkipEagerSameGraphErrorInitializable(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
-      dataset = dataset.batch(2)
       with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
-        _ = dataset.make_initializable_iterator()
+        dataset = dataset.batch(2)
 
 
 if __name__ == "__main__":

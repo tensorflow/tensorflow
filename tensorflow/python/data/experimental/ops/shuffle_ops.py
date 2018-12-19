@@ -30,7 +30,6 @@ class _ShuffleAndRepeatDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that fuses `shuffle` and `repeat`."""
 
   def __init__(self, input_dataset, buffer_size, count=None, seed=None):
-    super(_ShuffleAndRepeatDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
@@ -40,18 +39,15 @@ class _ShuffleAndRepeatDataset(dataset_ops.UnaryUnchangedStructureDataset):
       self._count = ops.convert_to_tensor(
           count, dtype=dtypes.int64, name="count")
     self._seed, self._seed2 = random_seed.get_seed(seed)
-
-  def _as_variant_tensor(self):
-    # pylint: disable=protected-access
-    input_resource = self._input_dataset._as_variant_tensor()
-    return gen_dataset_ops.shuffle_and_repeat_dataset(
-        input_resource,
+    variant_tensor = gen_dataset_ops.shuffle_and_repeat_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
         count=self._count,
         seed=self._seed,
         seed2=self._seed2,
         **dataset_ops.flat_structure(self))
-    # pylint: enable=protected-access
+    super(_ShuffleAndRepeatDataset, self).__init__(input_dataset,
+                                                   variant_tensor)
 
 
 @tf_export("data.experimental.shuffle_and_repeat")

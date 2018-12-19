@@ -120,8 +120,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset_fn(8, 0), expected_output=[])
 
     # Empty batch should be an initialization time error.
-    self.assertDatasetProduces(
-        dataset_fn(0, 14), expected_error=(errors.InvalidArgumentError, ""))
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.assertDatasetProduces(dataset_fn(0, 14), expected_output=[])
 
   @parameterized.named_parameters(
       ("Even", False, False),

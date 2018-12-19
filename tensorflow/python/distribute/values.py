@@ -1600,9 +1600,9 @@ class MultiWorkerDataset(object):
       if len(dataset_fn) != input_workers.num_workers:
         raise ValueError("If `dataset_fn` is a list, it must have one entry "
                          "per worker")
-      if auto_shard:
-        raise ValueError(
-            "If `dataset_fn` is a list, `auto_shard` is not supported.")
+    # TODO(rohanj): b/120673685 to track re-enabling auto sharding.
+    if auto_shard:
+      raise ValueError("Currently autosharding is not supported.")
     self._input_workers = input_workers
     self._datasets = []
     # TODO(yuefengz, priyag): support different set of jobs for input
@@ -1613,9 +1613,6 @@ class MultiWorkerDataset(object):
           worker_input = dataset_fn[i]()
         else:
           worker_input = dataset_fn()
-          if auto_shard:
-            worker_input = input_ops.auto_shard_dataset(
-                worker_input, input_workers.num_workers, i)
         dataset = PerReplicaDataset(worker_input, input_workers, i,
                                     prefetch_on_device=prefetch_on_device)
         self._datasets.append((worker, dataset))
@@ -1805,7 +1802,11 @@ class DatasetIterator(InputIteratorImpl):
     for i, worker in enumerate(input_workers.worker_devices):
       with ops.device(worker):
         worker_devices = input_workers.compute_devices_for_worker(i)
-        iterator = _SingleWorkerDatasetIterator(dataset, worker, worker_devices)
+        cloned_dataset = dataset
+        if not context.executing_eagerly():
+          cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
+        iterator = _SingleWorkerDatasetIterator(cloned_dataset, worker,
+                                                worker_devices)
         iterators.append(iterator)
 
     super(DatasetIterator, self).__init__(input_workers, iterators)

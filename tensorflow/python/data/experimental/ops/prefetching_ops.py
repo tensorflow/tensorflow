@@ -93,13 +93,15 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       target_device: The name of the device to which elements would be copied.
       source_device: Device where input_dataset would be placed.
     """
-    super(_CopyToDeviceDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._target_device = target_device
     spec = framework_device.DeviceSpec().from_string(self._target_device)
     self._is_gpu_target = (spec.device_type == "GPU")
     self._source_device_string = source_device
     self._source_device = ops.convert_to_tensor(source_device)
+
+    wrap_ds_variant = gen_dataset_ops.wrap_dataset_variant(
+        self._input_dataset._variant_tensor)  # pylint: disable=protected-access
 
     @function.defun()
     def _init_func():
@@ -108,8 +110,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       Returns:
         A `string` tensor that encapsulates the iterator created.
       """
-      # pylint: disable=protected-access
-      ds_variant = self._input_dataset._as_variant_tensor()
+      ds_variant = gen_dataset_ops.unwrap_dataset_variant(wrap_ds_variant)
       resource = gen_dataset_ops.anonymous_iterator(
           **dataset_ops.flat_structure(self._input_dataset))
       with ops.control_dependencies(
@@ -195,6 +196,17 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._finalize_func.add_to_graph(g)
     # pylint: enable=protected-scope
 
+    with ops.device(self._target_device):
+      variant_tensor = gen_dataset_ops.generator_dataset(
+          self._init_captured_args,
+          self._next_captured_args,
+          self._finalize_captured_args,
+          init_func=self._init_func,
+          next_func=self._next_func,
+          finalize_func=self._finalize_func,
+          **dataset_ops.flat_structure(self._input_dataset))
+    super(_CopyToDeviceDataset, self).__init__(input_dataset, variant_tensor)
+
   # The one_shot_iterator implementation needs a 0 arg _make_dataset function
   # that thereby captures all the inputs required to create the dataset. Since
   # there are strings that are inputs to the GeneratorDataset which can't be
@@ -208,24 +220,12 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
     else:
       return super(_CopyToDeviceDataset, self).make_one_shot_iterator()
 
-  def _as_variant_tensor(self):
-    with ops.device(self._target_device):
-      return gen_dataset_ops.generator_dataset(
-          self._init_captured_args,
-          self._next_captured_args,
-          self._finalize_captured_args,
-          init_func=self._init_func,
-          next_func=self._next_func,
-          finalize_func=self._finalize_func,
-          **dataset_ops.flat_structure(self._input_dataset))
-
 
 class _MapOnGpuDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over elements in its using a GPU."""
 
   def __init__(self, input_dataset, map_func, use_inter_op_parallelism=True):
     """See `Dataset.map()` for details."""
-    super(_MapOnGpuDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
@@ -234,18 +234,16 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
         self._transformation_name(),
         dataset=input_dataset,
         defun_kwargs={"experimental_ints_on_device": True})
-
-  def _functions(self):
-    return [self._map_func]
-
-  def _as_variant_tensor(self):
-    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
-    return ged_ops.experimental_map_dataset(
-        input_t,
+    variant_tensor = ged_ops.experimental_map_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
         f=self._map_func.function,
         use_inter_op_parallelism=self._use_inter_op_parallelism,
         **dataset_ops.flat_structure(self))
+    super(_MapOnGpuDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
 
   @property
   def _element_structure(self):

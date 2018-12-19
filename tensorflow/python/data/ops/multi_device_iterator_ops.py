@@ -30,12 +30,11 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
 
 
-class _PerDeviceGenerator(dataset_ops.Dataset):
+class _PerDeviceGenerator(dataset_ops.DatasetV2):
   """A `dummy` generator dataset."""
 
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
                source_device, target_device, element_structure):
-    super(_PerDeviceGenerator, self).__init__()
     self._target_device = target_device
     self._structure = element_structure
 
@@ -108,9 +107,8 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
     )
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
-  def _as_variant_tensor(self):
     with ops.device(self._target_device):
-      return gen_dataset_ops.generator_dataset(
+      variant_tensor = gen_dataset_ops.generator_dataset(
           self._init_captured_args,
           self._next_captured_args,
           self._finalize_captured_args,
@@ -118,6 +116,7 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           next_func=self._next_func,
           finalize_func=self._finalize_func,
           **dataset_ops.flat_structure(self))
+    super(_PerDeviceGenerator, self).__init__(variant_tensor)
 
   def _inputs(self):
     # TODO(b/116506223): Determine which datasets should be used as inputs here.
@@ -177,7 +176,7 @@ class MultiDeviceIterator(object):
       # The incarnation ID is used to ensure consistency between the per-device
       # iterators and the multi-device iterator.
       self._incarnation_id = gen_dataset_ops.multi_device_iterator_init(
-          self._dataset._as_variant_tensor(),  # pylint: disable=protected-access
+          self._dataset._variant_tensor,  # pylint: disable=protected-access
           self._multi_device_iterator_resource,
           max_buffer_size=max_buffer_size)
 
@@ -200,7 +199,8 @@ class MultiDeviceIterator(object):
       options.experimental_optimization.apply_default_optimizations = False
       ds = ds.with_options(options)
       with ops.device(device):
-        self._device_iterators.append(ds.make_initializable_iterator())
+        self._device_iterators.append(
+            dataset_ops.make_initializable_iterator(ds))
 
     device_iterator_initializers = [
         iterator.initializer for iterator in self._device_iterators
