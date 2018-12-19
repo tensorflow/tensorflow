@@ -82,6 +82,8 @@ def experimental_fit_loop(model,
       ValueError: in case of invalid arguments.
   """
   current_strategy = model._distribution_strategy
+  scope = current_strategy.scope()
+  scope.__enter__()
 
   def _per_device_fit_function(model):
     model._make_fit_function()
@@ -236,7 +238,7 @@ def experimental_fit_loop(model,
     with current_strategy.scope():
       _copy_weights_to_original_model(model, model._distributed_model_train,
                                       'train')
-
+  scope.__exit__(None, None, None)
   return model.history
 
 
@@ -261,6 +263,8 @@ def experimental_test_loop(model,
       the display labels for the outputs.
   """
   current_strategy = model._distribution_strategy
+  scope = current_strategy.scope()
+  scope.__enter__()
 
   def _per_device_eval_function(model):
     model._make_eval_function()
@@ -349,6 +353,7 @@ def experimental_test_loop(model,
     if verbose >= 1:
       progbar.update(step + 1)
 
+  scope.__exit__(None, None, None)
   if len(outs) >= 0:
     outs[0] /= (steps)
 
@@ -374,6 +379,8 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
       (if the model has multiple outputs).
   """
   current_strategy = model._distribution_strategy
+  scope = current_strategy.scope()
+  scope.__enter__()
 
   # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
   K.set_learning_phase(0)
@@ -457,6 +464,7 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
     if verbose >= 1:
       progbar.update(step + 1)
 
+  scope.__exit__(None, None, None)
   if len(unconcatenated_outs) == 1:
     return np.concatenate(unconcatenated_outs[0], axis=0)
   return [

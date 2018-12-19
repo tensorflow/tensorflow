@@ -786,8 +786,7 @@ class Model(Network):
 
     # Validate and standardize user data.
     if self._distribution_strategy:
-      distributed_training_utils.validate_callbacks(callbacks, self.optimizer,
-                                                    self._distribution_strategy)
+      distributed_training_utils.validate_callbacks(callbacks, self.optimizer)
 
       distributed_training_utils.validate_inputs(
           x, y, self._distribution_strategy)
