@@ -37,7 +37,7 @@ class IdentityTest(trt_test.TfTrtIntegrationTestBase):
     return constant_op.constant(np.random.randn(*shape), dtype=dtypes.float32)
 
   def GetParams(self):
-    """Testing conversion of BiasAdd MatMul in TF-TRT conversion."""
+    """Testing engine with the same tensor repeated as output via identity."""
     input_name = "input"
     input_dims = [100, 32]
     g = ops.Graph()
