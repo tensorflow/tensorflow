@@ -417,11 +417,12 @@ public:
   /// right identifier is first looked up using forStmt's MLValue. Returns
   /// false for the yet unimplemented/unsupported cases, and true if the
   /// information is succesfully added. Asserts if the MLValue corresponding to
-  /// the 'for' statement isn't found in the constaint system. Any new
+  /// the 'for' statement isn't found in the constraint system. Any new
   /// identifiers that are found in the bound operands of the 'for' statement
   /// are added as trailing identifiers (either dimensional or symbolic
   /// depending on whether the operand is a valid MLFunction symbol).
-  bool addBoundsFromForStmt(const ForStmt &forStmt);
+  //  TODO(bondhugula): add support for non-unit strides.
+  bool addForStmtDomain(const ForStmt &forStmt);
 
   /// Adds an upper bound expression for the specified expression.
   void addUpperBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> ub);
@@ -511,6 +512,24 @@ public:
 
   inline ArrayRef<Optional<MLValue *>> getIds() const {
     return {ids.data(), ids.size()};
+  }
+
+  /// Returns the MLValue's associated with the identifiers. Asserts if
+  /// no MLValue was associated with an identifier.
+  inline void getIdValues(SmallVectorImpl<MLValue *> *values) const {
+    values->clear();
+    values->reserve(numIds);
+    for (unsigned i = 0; i < numIds; i++) {
+      assert(ids[i].hasValue() && "identifier's MLValue not set");
+      values->push_back(ids[i].getValue());
+    }
+  }
+
+  /// Returns the MLValue associated with the pos^th identifier. Asserts if
+  /// no MLValue identifier was associated.
+  inline MLValue *getIdValue(unsigned pos) const {
+    assert(ids[pos].hasValue() && "identifier's ML Value not set");
+    return ids[pos].getValue();
   }
 
   /// Clears this list of constraints and copies other into it.

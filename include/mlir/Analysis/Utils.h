@@ -47,6 +47,7 @@ bool properlyDominates(const Statement &a, const Statement &b);
 
 /// Populates 'loops' with IVs of the loops surrounding 'stmt' ordered from
 /// the outermost 'for' statement to the innermost one.
+//  TODO(bondhugula): handle 'if' stmt's.
 void getLoopIVs(const Statement &stmt, SmallVectorImpl<ForStmt *> *loops);
 
 /// A region of a memref's data space; this is typically constructed by

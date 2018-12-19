@@ -191,8 +191,8 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
 
   SmallVector<MLValue *, 6> origLoopIVs(band.begin(), band.end());
   SmallVector<Optional<MLValue *>, 6> ids(band.begin(), band.end());
-  FlatAffineConstraints cst(width, /*numSymbols=*/0, /*numLocals=*/0, ids);
-  addIndexSet(origLoopIVs, &cst);
+  FlatAffineConstraints cst;
+  getIndexSet(band, &cst);
 
   if (!cst.isHyperRectangular(0, width)) {
     rootForStmt->emitError("tiled code generation unimplemented for the"

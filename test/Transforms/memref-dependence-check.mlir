@@ -197,21 +197,21 @@ mlfunc @store_range_load_after_range() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_func_symbol(%arg0 : index) {
-mlfunc @store_load_func_symbol(%arg0 : index) {
+// CHECK-LABEL: mlfunc @store_load_func_symbol(%arg0 : index, %arg1 : index) {
+mlfunc @store_load_func_symbol(%arg0 : index, %arg1 : index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c10 = constant 10 : index
-  for %i0 = 0 to 10 {
+  for %i0 = 0 to %arg1 {
     %a0 = affine_apply (d0) -> (d0) (%arg0)
     store %c7, %m[%a0] : memref<100xf32>
-    // expected-note@-1 {{dependence from 0 to 0 at depth 1 = [1, 9]}}
+    // expected-note@-1 {{dependence from 0 to 0 at depth 1 = [1, +inf]}}
     // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
-    // expected-note@-3 {{dependence from 0 to 1 at depth 1 = [1, 9]}}
+    // expected-note@-3 {{dependence from 0 to 1 at depth 1 = [1, +inf]}}
     // expected-note@-4 {{dependence from 0 to 1 at depth 2 = true}}
     %a1 = affine_apply (d0) -> (d0) (%arg0)
     %v0 = load %m[%a1] : memref<100xf32>
-    // expected-note@-1 {{dependence from 1 to 0 at depth 1 = [1, 9]}}
+    // expected-note@-1 {{dependence from 1 to 0 at depth 1 = [1, +inf]}}
     // expected-note@-2 {{dependence from 1 to 0 at depth 2 = false}}
     // expected-note@-3 {{dependence from 1 to 1 at depth 1 = false}}
     // expected-note@-4 {{dependence from 1 to 1 at depth 2 = false}}
@@ -511,12 +511,12 @@ mlfunc @dependence_cycle() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @negative_and_positive_direction_vectors() {
-mlfunc @negative_and_positive_direction_vectors() {
+// CHECK-LABEL: mlfunc @negative_and_positive_direction_vectors(%arg0 : index, %arg1 : index) {
+mlfunc @negative_and_positive_direction_vectors(%arg0 : index, %arg1 : index) {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
+  for %i0 = 0 to %arg0 {
+    for %i1 = 0 to %arg1 {
       %a0 = affine_apply (d0, d1) -> (d0 - 1, d1 + 1) (%i0, %i1)
       %v0 = load %m[%a0#0, %a0#1] : memref<10x10xf32>
       // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}

@@ -1250,9 +1250,7 @@ void FlatAffineConstraints::setDimSymbolSeparation(unsigned newSymbolCount) {
   numSymbols = newSymbolCount;
 }
 
-// TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds
-// code in dependence analysis.
-bool FlatAffineConstraints::addBoundsFromForStmt(const ForStmt &forStmt) {
+bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
   unsigned pos;
   // Pre-condition for this method.
   if (!findId(*cast<MLValue>(&forStmt), &pos)) {
@@ -1260,14 +1258,16 @@ bool FlatAffineConstraints::addBoundsFromForStmt(const ForStmt &forStmt) {
     return false;
   }
 
+  if (forStmt.getStep() != 1)
+    LLVM_DEBUG(llvm::dbgs()
+               << "Domain conservative: non-unit stride not handled\n");
+
   // Adds a lower or upper bound when the bounds aren't constant.
   auto addLowerOrUpperBound = [&](bool lower) -> bool {
     auto operands = lower ? forStmt.getLowerBoundOperands()
                           : forStmt.getUpperBoundOperands();
     for (const auto &operand : operands) {
       unsigned loc;
-      // TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds
-      // code in dependence analysis.
       if (!findId(*operand, &loc)) {
         if (operand->isValidSymbol()) {
           addSymbolId(getNumSymbolIds(), const_cast<MLValue *>(operand));

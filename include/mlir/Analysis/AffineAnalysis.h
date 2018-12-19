@@ -112,9 +112,13 @@ bool getFlattenedAffineExprs(
     IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineConstraints *cst = nullptr);
 
-/// Adds constraints capturing the index set of the ML values in indices to
-/// 'domain'.
-bool addIndexSet(llvm::ArrayRef<const MLValue *> indices,
+/// Builds a system of constraints with dimensional identifiers corresponding to
+/// the loop IVs of the forStmts appearing in that order. Bounds of the loop are
+/// used to add appropriate inequalities. Any symbols founds in the bound
+/// operands are added as symbols in the system. Returns false for the yet
+/// unimplemented cases.
+//  TODO(bondhugula): handle non-unit strides.
+bool getIndexSet(llvm::ArrayRef<ForStmt *> forStmts,
                  FlatAffineConstraints *domain);
 
 struct MemRefAccess {

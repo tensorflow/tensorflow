@@ -70,12 +70,16 @@ bool mlir::dominates(const Statement &a, const Statement &b) {
 
 /// Populates 'loops' with IVs of the loops surrounding 'stmt' ordered from
 /// the outermost 'for' statement to the innermost one.
-//  TODO(mlir-team): skip over 'if' statements.
 void mlir::getLoopIVs(const Statement &stmt,
                       SmallVectorImpl<ForStmt *> *loops) {
   auto *currStmt = stmt.getParentStmt();
-  while (currStmt != nullptr && isa<ForStmt>(currStmt)) {
-    loops->push_back(dyn_cast<ForStmt>(currStmt));
+  ForStmt *currForStmt;
+  // Traverse up the hierarchy collecing all 'for' statement while skipping over
+  // 'if' statements.
+  while (currStmt && ((currForStmt = dyn_cast<ForStmt>(currStmt)) ||
+                      isa<IfStmt>(currStmt))) {
+    if (currForStmt)
+      loops->push_back(currForStmt);
     currStmt = currStmt->getParentStmt();
   }
   std::reverse(loops->begin(), loops->end());
@@ -190,7 +194,9 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
     if (auto *loop = dyn_cast<ForStmt>(accessValueMap.getOperand(i))) {
       // Note that regionCst can now have more dimensions than accessMap if the
       // bounds expressions involve outer loops or other symbols.
-      if (!regionCst->addBoundsFromForStmt(*loop))
+      // TODO(bondhugula): rewrite this to use getStmtIndexSet; this way
+      // conditionals will be handled when the latter supports it.
+      if (!regionCst->addForStmtDomain(*loop))
         return false;
     } else {
       // Has to be a valid symbol.
