@@ -23,7 +23,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/fft.h"
@@ -34,7 +33,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
-#include "tensorflow/stream_executor/logging.pb.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
@@ -194,8 +192,6 @@ StreamExecutor::StreamExecutor(
     platform_kind_ = PlatformKind::kOpenCL;
   } else if (port::Lowercase(platform_->Name()) == "host") {
     platform_kind_ = PlatformKind::kHost;
-  } else {
-    platform_kind_ = PlatformKind::kInvalid;
   }
 }
 
@@ -221,31 +217,7 @@ StreamExecutor::~StreamExecutor() {
 port::Status StreamExecutor::Init(int device_ordinal,
                                   DeviceOptions device_options) {
   device_ordinal_ = device_ordinal;
-  TF_RETURN_IF_ERROR(
-      implementation_->Init(device_ordinal, std::move(device_options)));
-
-  if (platform_kind_ == PlatformKind::kCuda) {
-    CudaInfo info;
-
-    int cc_major, cc_minor;
-    GetDeviceDescription().cuda_compute_capability(&cc_major, &cc_minor);
-    info.mutable_compute_capability()->set_major(cc_major);
-    info.mutable_compute_capability()->set_minor(cc_minor);
-
-    if (auto *dnn = AsDnn()) {
-      port::StatusOr<dnn::VersionInfo> version_or = dnn->GetVersion();
-      if (version_or.ok()) {
-        const auto &version = version_or.ValueOrDie();
-        info.mutable_cudnn_version()->set_major(version.major_version());
-        info.mutable_cudnn_version()->set_minor(version.minor_version());
-        info.mutable_cudnn_version()->set_patch(version.patch());
-      }
-    }
-
-    tensorflow::Logger::Singleton()->LogProto(info);
-  }
-
-  return port::Status::OK();
+  return implementation_->Init(device_ordinal, std::move(device_options));
 }
 
 port::Status StreamExecutor::Init() {
