@@ -924,8 +924,9 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
       {NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu0),
        NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, cpu1),
 
-       // Function must be inlined and `mul` node placed on a requested device.
-       NDef("c/x", "Identity", {"a:0"}, {{"T", DT_FLOAT}}, cpu1),
+       // Function must be inlined and `mul` node placed on a requested device,
+       // and input `Identity` nodes must be colocated with their source nodes.
+       NDef("c/x", "Identity", {"a:0"}, {{"T", DT_FLOAT}}, cpu0),
        NDef("c/y", "Identity", {"b:0"}, {{"T", DT_FLOAT}}, cpu1),
        NDef("c/mul", "Mul", {"c/x", "c/y"}, {{"T", DT_FLOAT}}, cpu1),
 
