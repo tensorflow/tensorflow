@@ -92,6 +92,9 @@ $ asm_dockerfiles --release dockerfiles --construct_dockerfiles
 # Build all of the "nightly" images on your local machine:
 $ asm_images --release nightly --build_images
 
+# Save the list of built images to a file:
+$ asm_images --release nightly --build_images > tf-built.txt
+
 # Build version release for version 99.0, except "gpu" tags:
 $ asm_images --release versioned --arg _TAG_PREFIX=99.0 --build_images --exclude_tags_matching '.*gpu.*'
 

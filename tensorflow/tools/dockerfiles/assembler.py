@@ -18,6 +18,9 @@
 - Builds images (and optionally runs image tests)
 - Pushes images to Docker Hub (provided with credentials)
 
+Logs are written to stderr; the list of successfully built images is
+written to stdout.
+
 Read README.md (in this directory) for instructions!
 """
 
@@ -676,13 +679,10 @@ def main(argv):
         'errors: {}'.format(','.join(failed_tags)))
     exit(1)
 
-  if FLAGS.write_tags_to:
-    eprint('> Writing built{} tags to {}.'.format(
-        ' and tested' if FLAGS.run_tests_path else '',
-        FLAGS.write_tags_to))
-    with open(FLAGS.write_tags_to, 'w') as f:
-      for tag in succeeded_tags:
-        f.write('{}:{}\n'.format(FLAGS.repository, tag))
+  eprint('> Writing built{} tags to standard out.'.format(
+      ' and tested' if FLAGS.run_tests_path else ''))
+  for tag in succeeded_tags:
+    print('{}:{}'.format(FLAGS.repository, tag))
 
 
 if __name__ == '__main__':
