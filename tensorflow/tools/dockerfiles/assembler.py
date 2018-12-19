@@ -49,7 +49,7 @@ flags.DEFINE_string('hub_username', None,
 flags.DEFINE_string(
     'hub_password', None,
     ('Dockerhub password, only used with --upload_to_hub. Use from an env param'
-     'so your password isn\'t in your history.'))
+     ' so your password isn\'t in your history.'))
 
 flags.DEFINE_integer('hub_timeout', 3600,
                      'Abort Hub upload if it takes longer than this.')
@@ -88,6 +88,11 @@ flags.DEFINE_string(
     ('Execute test scripts on generated Dockerfiles before pushing them. '
      'Flag value must be a full path to the "tests" directory, which is usually'
      ' $(realpath ./tests). A failed tests counts the same as a failed build.'))
+
+flags.DEFINE_string(
+    'write_tags_to', None,
+    'Write the list of tagged images to a file. Useful for parallelizing tests.'
+)
 
 flags.DEFINE_boolean(
     'stop_on_failure', False,
@@ -141,6 +146,10 @@ flags.DEFINE_multi_string(
      '(e.g. --arg _TAG_PREFIX=foo) and for using as build arguments (unused '
      'args will print a warning).'),
     short_name='a')
+
+flags.DEFINE_boolean(
+    'nocache', False,
+    'Disable the Docker build cache; identical to "docker build --no-cache"')
 
 flags.DEFINE_string(
     'spec_file',
@@ -513,6 +522,7 @@ def main(argv):
   # Each tag has a name ('tag') and a definition consisting of the contents
   # of its Dockerfile, its build arg list, etc.
   failed_tags = []
+  succeeded_tags = []
   for tag, tag_defs in all_tags.items():
     for tag_def in tag_defs:
       eprint('> Working on {}'.format(tag))
@@ -569,6 +579,7 @@ def main(argv):
           image, logs = dock.images.build(
               timeout=FLAGS.hub_timeout,
               path='.',
+              nocache=FLAGS.nocache,
               dockerfile=dockerfile,
               buildargs=tag_def['cli_args'],
               tag=repo_tag)
@@ -656,11 +667,22 @@ def main(argv):
               args=(FLAGS.hub_repository, dock, image, tag))
           p.start()
 
+      if not tag_failed:
+        succeeded_tags.append(tag)
+
   if failed_tags:
     eprint(
         '> Some tags failed to build or failed testing, check scrollback for '
         'errors: {}'.format(','.join(failed_tags)))
     exit(1)
+
+  if FLAGS.write_tags_to:
+    eprint('> Writing built{} tags to {}.'.format(
+        ' and tested' if FLAGS.run_tests_path else '',
+        FLAGS.write_tags_to))
+    with open(FLAGS.write_tags_to, 'w') as f:
+      for tag in succeeded_tags:
+        f.write('{}:{}\n'.format(FLAGS.repository, tag))
 
 
 if __name__ == '__main__':
