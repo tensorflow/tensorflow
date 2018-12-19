@@ -396,6 +396,7 @@ renames = {
     'tf.nn.relu_layer': 'tf.compat.v1.nn.relu_layer',
     'tf.nn.rnn_cell.BasicLSTMCell': 'tf.compat.v1.nn.rnn_cell.BasicLSTMCell',
     'tf.nn.rnn_cell.BasicRNNCell': 'tf.compat.v1.nn.rnn_cell.BasicRNNCell',
+    'tf.nn.rnn_cell.DropoutWrapper': 'tf.compat.v1.nn.rnn_cell.DropoutWrapper',
     'tf.nn.rnn_cell.GRUCell': 'tf.compat.v1.nn.rnn_cell.GRUCell',
     'tf.nn.rnn_cell.LSTMCell': 'tf.compat.v1.nn.rnn_cell.LSTMCell',
     'tf.nn.rnn_cell.MultiRNNCell': 'tf.compat.v1.nn.rnn_cell.MultiRNNCell',
