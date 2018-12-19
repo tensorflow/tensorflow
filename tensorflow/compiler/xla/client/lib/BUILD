@@ -412,6 +412,7 @@ xla_test(
     srcs = ["triangular_solve_test.cc"],
     tags = ["noasan"],  # sometimes times out, http://b/78650012
     deps = [
+        ":math",
         ":matrix",
         ":triangular_solve",
         "//tensorflow/compiler/xla:array2d",
