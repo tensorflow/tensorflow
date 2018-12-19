@@ -55,13 +55,11 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
     """
-    super(SequenceFileDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.sequence_file_dataset(
+    variant_tensor = gen_dataset_ops.sequence_file_dataset(
         self._filenames, self._element_structure._flat_types)  # pylint: disable=protected-access
+    super(SequenceFileDataset, self).__init__(variant_tensor)
 
   @property
   def _element_structure(self):

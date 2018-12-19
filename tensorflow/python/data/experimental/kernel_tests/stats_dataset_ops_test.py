@@ -197,10 +197,13 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
   def testInterleaveAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
-      dataset = dataset_ops.Dataset.range(10).map(
-          lambda x: array_ops.tile([x], ops.convert_to_tensor([x])))
+
+      def interleave_fn(_):
+        return dataset_ops.Dataset.range(
+            10).map(lambda x: array_ops.tile([x], ops.convert_to_tensor([x])))
+
       dataset = dataset_ops.Dataset.range(1).interleave(
-          lambda _: dataset,
+          interleave_fn,
           cycle_length=1,
           num_parallel_calls=optimization.AUTOTUNE)
       options = dataset_ops.Options()

@@ -270,6 +270,7 @@ cuda_py_test(
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:traverse",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",

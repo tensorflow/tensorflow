@@ -211,16 +211,15 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "v", initializer=0, use_resource=False)
     assign_op = variable.assign_add(1)
 
-    unoptimized_dataset = dataset_fn(variable)
-
-    options = dataset_ops.Options()
-    options.experimental_optimization.noop_elimination = True
-    options.experimental_optimization.map_and_batch_fusion = True
-    optimized_dataset = unoptimized_dataset.with_options(options)
-
     # Check that warning is logged.
     warnings.simplefilter("always")
     with warnings.catch_warnings(record=True) as w:
+      unoptimized_dataset = dataset_fn(variable)
+
+      options = dataset_ops.Options()
+      options.experimental_optimization.noop_elimination = True
+      options.experimental_optimization.map_and_batch_fusion = True
+      optimized_dataset = unoptimized_dataset.with_options(options)
       optimized_it = optimized_dataset.make_initializable_iterator()
 
     self.assertGreaterEqual(len(w), 1)

@@ -119,25 +119,25 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       std::vector<Node*> key_func_other_arguments_node;
       DataTypeVector key_func_other_arguments_types;
       TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          b, captured_key_func_, &key_func_other_arguments_node,
+          ctx, b, captured_key_func_, &key_func_other_arguments_node,
           &key_func_other_arguments_types));
 
       std::vector<Node*> init_func_other_arguments_node;
       DataTypeVector init_func_other_arguments_types;
       TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          b, captured_init_func_, &init_func_other_arguments_node,
+          ctx, b, captured_init_func_, &init_func_other_arguments_node,
           &init_func_other_arguments_types));
 
       std::vector<Node*> reduce_func_other_arguments_node;
       DataTypeVector reduce_func_other_arguments_types;
       TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          b, captured_reduce_func_, &reduce_func_other_arguments_node,
+          ctx, b, captured_reduce_func_, &reduce_func_other_arguments_node,
           &reduce_func_other_arguments_types));
 
       std::vector<Node*> finalize_func_other_arguments_node;
       DataTypeVector finalize_func_other_arguments_types;
       TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          b, captured_finalize_func_, &finalize_func_other_arguments_node,
+          ctx, b, captured_finalize_func_, &finalize_func_other_arguments_node,
           &finalize_func_other_arguments_types));
 
       AttrValue key_func;
@@ -406,7 +406,7 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
     }
 
     Status OtherArgumentsNodeAndType(
-        DatasetGraphDefBuilder* b,
+        SerializationContext* ctx, DatasetGraphDefBuilder* b,
         const std::unique_ptr<CapturedFunction>& captured_func,
         std::vector<Node*>* other_arguments_node,
         DataTypeVector* other_arguments_types) const {
@@ -414,7 +414,13 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
       other_arguments_types->reserve(captured_func->captured_inputs().size());
       for (const Tensor& t : captured_func->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments_node->emplace_back(node);
         other_arguments_types->emplace_back(t.dtype());
       }

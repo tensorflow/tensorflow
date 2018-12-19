@@ -139,8 +139,8 @@ class FileCacheTest(test_base.DatasetTestBase):
       self.evaluate(get_next1())
 
     # Re-initialize
-    get_next1 = self.getNext(cache_dataset1)
-    get_next2 = self.getNext(cache_dataset2)
+    get_next1 = self.getNext(cache_dataset1, requires_initialization=True)
+    get_next2 = self.getNext(cache_dataset2, requires_initialization=True)
 
     # Reading concurrently should succeed.
     elements_itr1 = []

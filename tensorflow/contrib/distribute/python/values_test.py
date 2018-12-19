@@ -472,11 +472,11 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
                 for r in range(len(devices))])
 
   def _test_dataset(self, dataset_fn, worker_devices, devices,
-                    expected_values, auto_shard=True):
+                    expected_values):
     device_map = values.ReplicaDeviceMap(devices)
     input_workers = values.InputWorkers(device_map, worker_devices)
     multi_worker_dataset = values.MultiWorkerDataset(
-        dataset_fn, input_workers, auto_shard=auto_shard)
+        dataset_fn, input_workers)
     multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
     with self.cached_session() as sess:
       sess.run(multi_worker_iterator.initializer)
@@ -518,16 +518,9 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
     worker_devices, devices = self._cpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
-      self._test_dataset(dataset_fn, worker_devices, devices,
-                         [[0, 1], [2, 3], [4, 5], [6, 7]])
-
-  def testDataDistributionNoAutoShard(self):
-    worker_devices, devices = self._cpu_devices()
-    with context.graph_mode():
-      dataset_fn = lambda: dataset_ops.Dataset.range(4)
-      self._test_dataset(dataset_fn, worker_devices, devices,
-                         [[0, 0], [1, 1], [2, 2], [3, 3]],
-                         auto_shard=False)
+      self._test_dataset(
+          dataset_fn, worker_devices, devices,
+          [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]])
 
   def testDataDistributionTwoDevicePerWorker(self):
     if context.num_gpus() < 1:
@@ -535,8 +528,9 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
     worker_devices, devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
-      self._test_dataset(dataset_fn, worker_devices, devices,
-                         [[0, 2, 1, 3], [4, 6, 5, 7]])
+      self._test_dataset(
+          dataset_fn, worker_devices, devices,
+          [[0, 1, 0, 1], [2, 3, 2, 3], [4, 5, 4, 5], [6, 7, 6, 7]])
 
   def testTupleDataset(self):
     worker_devices, devices = self._cpu_devices()
@@ -548,9 +542,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
         dataset2 = dataset_ops.Dataset.range(8).map(lambda x: x**2)
         return dataset_ops.Dataset.zip((dataset1, dataset2))
 
-      expected_values = [
-          [(i, i**2), (i + 1, (i + 1)**2)] for i in range(0, 8, 2)
-      ]
+      expected_values = [[(i, i**2), (i, i**2)] for i in range(8)]
       self._test_dataset(dataset_fn, worker_devices, devices,
                          expected_values)
 
@@ -561,17 +553,19 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
       device_map = values.ReplicaDeviceMap(devices)
       input_workers = values.InputWorkers(device_map, worker_devices)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, input_workers, auto_shard=True)
+          dataset_fn, input_workers)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
 
       sess.run(multi_worker_iterator.initializer)
-      self._test_iterator(sess, multi_worker_iterator, devices,
-                          [[0, 1], [2, 3], [4, 5], [6, 7]])
+      self._test_iterator(
+          sess, multi_worker_iterator, devices,
+          [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]])
 
       # After re-initializing the iterator, should be able to iterate again.
       sess.run(multi_worker_iterator.initializer)
-      self._test_iterator(sess, multi_worker_iterator, devices,
-                          [[0, 1], [2, 3], [4, 5], [6, 7]])
+      self._test_iterator(
+          sess, multi_worker_iterator, devices,
+          [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6], [7, 7]])
 
   def testValueErrorForIterator(self):
     # Incompatiable arguments.
