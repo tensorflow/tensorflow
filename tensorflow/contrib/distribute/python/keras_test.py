@@ -26,6 +26,7 @@ from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import keras as keras_lib
@@ -1304,6 +1305,11 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
   @combinations.generate(strategy_and_input_combinations())
   def test_correctness(self, distribution, use_numpy, use_validation_data):
+
+    # TODO(b/121224478): This test is flaky with default strategy. Remove this
+    # once the issue is fixed.
+    if isinstance(distribution, distribute_lib._DefaultDistributionStrategy):  # pylint: disable=protected-access
+      self.skipTest('Disable the test for default strategy.')
 
     with self.cached_session():
       default_tolerance = 1e-5
