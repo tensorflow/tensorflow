@@ -655,6 +655,26 @@ cc_header_only_library(
     deps = [":image_resizer_state"],
 )
 
+cc_library(
+    name = "sampling_kernels",
+    srcs = ["sampling_kernels.cc"],
+    hdrs = ["sampling_kernels.h"],
+    visibility = ["//visibility:private"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+tf_cc_test(
+    name = "sampling_kernels_test",
+    srcs = ["sampling_kernels_test.cc"],
+    deps = [
+        ":sampling_kernels",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 # OpKernel libraries ----------------------------------------------------------
 
 ARRAY_DEPS = [
@@ -2308,6 +2328,7 @@ cc_library(
         ":resize_bilinear_op",
         ":resize_nearest_neighbor_op",
         ":sample_distorted_bounding_box_op",
+        ":scale_and_translate_op",
     ],
 )
 
@@ -2408,6 +2429,12 @@ tf_kernel_library(
     name = "non_max_suppression_op",
     prefix = "non_max_suppression_op",
     deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "scale_and_translate_op",
+    prefix = "scale_and_translate_op",
+    deps = IMAGE_DEPS + [":sampling_kernels"],
 )
 
 tf_kernel_library(
@@ -2564,6 +2591,7 @@ tf_cc_tests(
         "resize_bicubic_op_test.cc",
         "resize_bilinear_op_test.cc",
         "resize_nearest_neighbor_op_test.cc",
+        "scale_and_translate_op_test.cc",
     ],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
@@ -2573,6 +2601,7 @@ tf_cc_tests(
         ":image",
         ":ops_testutil",
         ":ops_util",
+        ":sampling_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
