@@ -169,13 +169,10 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
                        [[64], [81]]]
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
-# TODO(b/117581999): eager expected not same as actual, debug.
-
   @parameterized.named_parameters(
       ("Normal", False),
       ("NUMA", True),
   )
-  @test_util.run_deprecated_v1
   def testMapAndBatchParallelGetNext(self, numa_aware):
     dataset = dataset_ops.Dataset.range(50000).apply(
         batching.map_and_batch(lambda x: x, batch_size=100))
@@ -427,27 +424,24 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual([element for _ in range(10)],
                           self.evaluate(get_next()))
 
-  # TODO(b/117581999): add eager coverage.
   @parameterized.named_parameters(
       ("Identity", None, lambda x: x, None),
       ("Replicate", None, lambda x: (x, x), None),
       ("Swap", (None, None), lambda x, y: (y, x), None),
       ("Project", (None, None), lambda x, y: x, None),
   )
-  @test_util.run_deprecated_v1
-  def testSkipEagerShortCircuit(self, structure, map_fn, num_parallel_calls):
+  def testShortCircuit(self, structure, map_fn, num_parallel_calls):
     dataset = self.structuredDataset(structure).repeat().apply(
         batching.map_and_batch(map_fn, batch_size=10))
-    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      if isinstance(structure, tuple):
-        expected = map_fn(
-            *sess.run(self.structuredElement(structure, shape=[10])))
-      else:
-        expected = map_fn(
-            sess.run(self.structuredElement(structure, shape=[10])))
-      self.assertAllEqual(expected, self.evaluate(get_next))
+    if isinstance(structure, tuple):
+      expected = map_fn(
+          *self.evaluate(self.structuredElement(structure, shape=[10])))
+    else:
+      expected = map_fn(
+          self.evaluate(self.structuredElement(structure, shape=[10])))
+    self.assertAllEqual(expected, self.evaluate(get_next()))
 
   def testShortCircuitCapturedInput(self):
     captured_t = variables.Variable(42)
