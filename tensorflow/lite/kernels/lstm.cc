@@ -38,9 +38,14 @@ namespace builtin {
 namespace lstm {
 
 struct OpData {
-  // Which kernel type to use. Full kernel (20 inputs) or basic kernel
-  // (5 inputs).
+  // Which kernel type to use. Full kernel (24 inputs) or basic kernel (5
+  // inputs).
+  // Please note the 20-input full kernel is deprecated and only kept
+  // here for backward compatibility.
   TfLiteLSTMKernelType kernel_type;
+
+  // If the lstm is layer norm.
+  bool is_layer_norm_lstm;
 
   // These fields are only used by full kernel.
   int activation_state_tensor_index;
@@ -48,7 +53,9 @@ struct OpData {
   int scratch_tensor_index;
 };
 
-// For full inputs kernel (20-inputs).
+// For full inputs kernel (24-inputs).
+// Please note the 20-input full kernel is deprecated and only kept
+// here for backward compatibility.
 namespace full {
 
 // Input Tensors of size {n_batch, n_input}
@@ -87,6 +94,13 @@ constexpr int kProjectionBiasTensor = 17;  // Optional
 constexpr int kInputActivationStateTensor = 18;
 constexpr int kInputCellStateTensor = 19;
 
+// Layer norm coefficient tensors of size {n_cell}, representing a diagonal
+// matrix.
+constexpr int kInputLayerNormCoefficientsTensor = 20;   // Optional
+constexpr int kForgetLayerNormCoefficientsTensor = 21;  // Optional
+constexpr int kCellLayerNormCoefficientsTensor = 22;    // Optional
+constexpr int kOutputLayerNormCoefficientsTensor = 23;  // Optional
+
 // Output tensors.
 constexpr int kOutputTensor = 0;
 
@@ -101,7 +115,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 // Check that input tensor dimensions matches with each other.
 TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
                                         TfLiteNode* node, int n_input,
-                                        int n_output, int n_cell) {
+                                        int n_output, int n_cell,
+                                        bool is_layer_norm_lstm) {
   const auto* params = reinterpret_cast<TfLiteLSTMParams*>(node->builtin_data);
 
   // Making sure clipping parameters have valid values.
@@ -112,7 +127,8 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* input_to_input_weights =
       GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
-  if (input_to_input_weights != nullptr) {
+  const bool use_cifg = (input_to_input_weights == nullptr);
+  if (!use_cifg) {
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[1], n_input);
@@ -186,7 +202,6 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
   }
 
   // Making sure the peephole weights are there all or none.
-  const bool use_cifg = (input_to_input_weights == nullptr);
   const bool peephole_weights_all_or_none =
       ((cell_to_input_weights != nullptr || use_cifg) &&
        (cell_to_forget_weights != nullptr) &&
@@ -244,6 +259,40 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
       ((projection_weights != nullptr) || (projection_bias == nullptr));
   TF_LITE_ENSURE(context, projection_tensors_consistent == true);
 
+  if (is_layer_norm_lstm) {
+    const TfLiteTensor* input_layer_norm_coefficients = GetOptionalInputTensor(
+        context, node, kInputLayerNormCoefficientsTensor);
+    if (use_cifg) {
+      TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients, nullptr);
+    } else {
+      TF_LITE_ENSURE(context, input_layer_norm_coefficients != nullptr);
+      TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->size, 1);
+      TF_LITE_ENSURE_EQ(context, input_layer_norm_coefficients->dims->data[0],
+                        n_cell);
+    }
+
+    const TfLiteTensor* forget_layer_norm_coefficients =
+        GetInput(context, node, kForgetLayerNormCoefficientsTensor);
+    TF_LITE_ENSURE(context, forget_layer_norm_coefficients != nullptr);
+    TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->size, 1);
+    TF_LITE_ENSURE_EQ(context, forget_layer_norm_coefficients->dims->data[0],
+                      n_cell);
+
+    const TfLiteTensor* cell_layer_norm_coefficients =
+        GetInput(context, node, kCellLayerNormCoefficientsTensor);
+    TF_LITE_ENSURE(context, cell_layer_norm_coefficients != nullptr);
+    TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->size, 1);
+    TF_LITE_ENSURE_EQ(context, cell_layer_norm_coefficients->dims->data[0],
+                      n_cell);
+
+    const TfLiteTensor* output_layer_norm_coefficients =
+        GetInput(context, node, kOutputLayerNormCoefficientsTensor);
+    TF_LITE_ENSURE(context, output_layer_norm_coefficients != nullptr);
+    TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->size, 1);
+    TF_LITE_ENSURE_EQ(context, output_layer_norm_coefficients->dims->data[0],
+                      n_cell);
+  }
+
   return kTfLiteOk;
 }
 
@@ -254,8 +303,32 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 20);
+  // Logic for determining regular lstm and layer norm lstm:
+  // input_size, forget_gate_layer_norm_tensor (20) null? is_layer_norm?
+  // 20,         N/A,                                     No.
+  // 24,         null,                                    No.
+  // 24,         not null,                                Yes.
+  // 20-inputs lstm are deprecated and is only kept here for backward
+  // compatibility.
+  if (node->inputs->size == 24) {
+    const TfLiteTensor* forget_layer_norm_coefficients =
+        GetInput(context, node, kForgetLayerNormCoefficientsTensor);
+    if (forget_layer_norm_coefficients == nullptr) {
+      op_data->is_layer_norm_lstm = false;
+    } else {
+      op_data->is_layer_norm_lstm = true;
+    }
+  } else if (node->inputs->size == 20) {
+    // This is deprecated and is only kept here for backward compatibility.
+    op_data->is_layer_norm_lstm = false;
+  } else {
+    context->ReportError(
+        context, "The LSTM Full kernel expects 20 or 24 inputs. Got %d inputs",
+        node->inputs->size);
+    return kTfLiteError;
+  }
 
+  const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
   op_data->activation_state_tensor_index =
       node->inputs->data[kInputActivationStateTensor];
   op_data->cell_state_tensor_index = node->inputs->data[kInputCellStateTensor];
@@ -282,8 +355,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Check that input tensor dimensions matches with each other.
-  TF_LITE_ENSURE_OK(context, CheckInputTensorDimensions(context, node, n_input,
-                                                        n_output, n_cell));
+  TF_LITE_ENSURE_OK(context,
+                    CheckInputTensorDimensions(context, node, n_input, n_output,
+                                               n_cell, is_layer_norm_lstm));
 
   // Get the pointer to output, activation_state and cell_state tensors.
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -430,6 +504,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = reinterpret_cast<TfLiteLSTMParams*>(node->builtin_data);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  const bool is_layer_norm_lstm = op_data->is_layer_norm_lstm;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
 
@@ -457,6 +532,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetOptionalInputTensor(context, node, kCellToForgetWeightsTensor);
   const TfLiteTensor* cell_to_output_weights =
       GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
+
+  const TfLiteTensor* input_layer_norm_coefficients =
+      is_layer_norm_lstm ? GetOptionalInputTensor(
+                               context, node, kInputLayerNormCoefficientsTensor)
+                         : nullptr;
+  const TfLiteTensor* forget_layer_norm_coefficients =
+      is_layer_norm_lstm
+          ? GetInput(context, node, kForgetLayerNormCoefficientsTensor)
+          : nullptr;
+  const TfLiteTensor* cell_layer_norm_coefficients =
+      is_layer_norm_lstm
+          ? GetInput(context, node, kCellLayerNormCoefficientsTensor)
+          : nullptr;
+  const TfLiteTensor* output_layer_norm_coefficients =
+      is_layer_norm_lstm
+          ? GetInput(context, node, kOutputLayerNormCoefficientsTensor)
+          : nullptr;
 
   const TfLiteTensor* input_gate_bias =
       GetOptionalInputTensor(context, node, kInputGateBiasTensor);
@@ -490,6 +582,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           recurrent_to_input_weights, recurrent_to_forget_weights,
           recurrent_to_cell_weights, recurrent_to_output_weights,
           cell_to_input_weights, cell_to_forget_weights, cell_to_output_weights,
+          input_layer_norm_coefficients, forget_layer_norm_coefficients,
+          cell_layer_norm_coefficients, output_layer_norm_coefficients,
           /*aux_input=*/nullptr,
           /*aux_input_to_input_weights=*/nullptr,
           /*aux_input_to_forget_weights=*/nullptr,
@@ -518,6 +612,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           recurrent_to_input_weights, recurrent_to_forget_weights,
           recurrent_to_cell_weights, recurrent_to_output_weights,
           cell_to_input_weights, cell_to_forget_weights, cell_to_output_weights,
+          input_layer_norm_coefficients, forget_layer_norm_coefficients,
+          cell_layer_norm_coefficients, output_layer_norm_coefficients,
           /*aux_input=*/nullptr,
           /*aux_input_to_input_weights=*/nullptr,
           /*aux_input_to_forget_weights=*/nullptr,
