@@ -363,6 +363,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":nested_structure_coder",
         ":saved_object_graph_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
@@ -375,7 +376,10 @@ py_library(
         "function_deserialization.py",
     ],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python/eager:def_function"],
+    deps = [
+        ":nested_structure_coder",
+        "//tensorflow/python/eager:def_function",
+    ],
 )
 
 tf_proto_library(
@@ -390,7 +394,7 @@ tf_proto_library(
     name = "saved_object_graph",
     srcs = ["saved_object_graph.proto"],
     cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
+    protodeps = tf_additional_all_protos() + [":struct"],
     visibility = ["//tensorflow:internal"],
 )
 

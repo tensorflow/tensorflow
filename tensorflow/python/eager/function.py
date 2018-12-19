@@ -757,8 +757,13 @@ def _encode_arg_for_serialization(arg):
   """A representation for this argument, for serializing signatures."""
   if isinstance(arg, ops.Tensor):
     return tensor_spec.TensorSpec(arg.shape, arg.dtype)
-  else:
-    return UnknownArgument()
+  if isinstance(arg, int):
+    return arg
+  if isinstance(arg, float):
+    return arg
+  if isinstance(arg, bool):
+    return arg
+  return UnknownArgument()
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -771,6 +776,14 @@ def _deterministic_dict_values(dictionary):
 
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
+
+  def as_tuple(self):
+    return (self._fullargspec, self._is_method, self._args_to_prepend,
+            self._kwargs_to_include, self.input_signature)
+
+  @staticmethod
+  def from_tuple(spec_tuple):
+    return FunctionSpec(*spec_tuple)
 
   @staticmethod
   def from_function_and_signature(python_function, input_signature):
@@ -846,7 +859,10 @@ class FunctionSpec(object):
       **kwargs: The keyword args this function was called with.
 
     Returns:
-      A canonicalized ordering of the inputs.
+      A canonicalized ordering of the inputs representened by a tuple in the
+      form (args, kwargs). Here: `args` is a full list of bound arguments, and
+      `kwargs` contains only true keyword arguments, as opposed to named
+      arguments called in a keyword-like fashion.
 
     Raises:
       ValueError: If a keyword in `kwargs` cannot be matched with a positional
@@ -986,6 +1002,10 @@ class PolymorphicFunction(object):
   def python_function(self):
     """Returns the wrapped Python function."""
     return self._python_function  # pylint: disable=protected-access
+
+  @property
+  def function_spec(self):
+    return self._function_spec
 
   @property
   def _input_signature(self):
