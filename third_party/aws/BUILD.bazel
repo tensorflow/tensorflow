@@ -80,6 +80,11 @@ cc_library(
     deps = [
         "@curl",
     ],
+    copts = [
+        "-DAWS_SDK_VERSION_MAJOR=1", 
+        "-DAWS_SDK_VERSION_MINOR=5", 
+        "-DAWS_SDK_VERSION_PATCH=8"
+    ],
 )
 
 template_rule(
