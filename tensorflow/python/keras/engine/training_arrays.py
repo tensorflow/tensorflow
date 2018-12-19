@@ -165,9 +165,11 @@ def model_iteration(model,
       validation_steps: Number of steps to run validation for (only if doing
         validation from data tensors). Ignored with the default value of `None`.
       mode: One of 'train'/'test'/'predict'.
-      validation_in_fit: if true, then this method is invoked from within
-        training iteration (for validation). In this case, do not copy weights
-        when using a tf.distribute.Strategy.
+      validation_in_fit: DEPRECATED: if true, then this method is invoked from
+        within training iteration (for validation). In this case, do not copy
+        weights when using a tf.distribute.Strategy. The input is deprecated as
+        it is not required if the user creates a distributed model under the
+        distribution strategy scope rather than passing it to compile.
       **kwargs: Additional arguments for backwards compatibility.
 
   Returns:
@@ -234,9 +236,9 @@ def model_iteration(model,
     aggregator = training_utils.MetricsAggregator(use_steps,
                                                   num_samples_or_steps)
 
-  if model._distribution_strategy and not validation_in_fit:
+  if model._compile_distribution and not validation_in_fit:
     training_distributed._copy_weights_to_distributed_model(
-        model, model._grouped_model)
+        model, model._distributed_model)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -375,11 +377,10 @@ def model_iteration(model,
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:
-    # TODO(priyag, psv): Copy back metrics to the original model as well?
-    if not validation_in_fit:
+    if model._compile_distribution and not validation_in_fit:
+      # TODO(priyag, psv): Copy back metrics to the original model as well?
       training_distributed._copy_weights_to_original_model(
-          model, model._grouped_model, mode)
-
+          model, model._distributed_model, mode)
     scope.__exit__(None, None, None)
 
   if mode == 'train':

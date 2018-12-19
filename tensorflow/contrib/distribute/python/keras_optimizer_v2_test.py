@@ -148,11 +148,12 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
   def testOptimizerWithKerasModelAndNumpyArrays(self, distribution):
 
     with self.cached_session():
-      model = get_model()
-      optimizer = gradient_descent.SGD(0.001)
-      loss = 'mse'
-      metrics = ['mae']
-      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
+      with distribution.scope():
+        model = get_model()
+        optimizer = gradient_descent.SGD(0.001)
+        loss = 'mse'
+        metrics = ['mae']
+        model.compile(optimizer, loss, metrics=metrics)
 
       inputs = np.zeros((64, 3), dtype=np.float32)
       targets = np.zeros((64, 4), dtype=np.float32)

@@ -584,7 +584,10 @@ cuda_py_test(
 py_library(
     name = "keras_test_lib",
     testonly = 1,
-    srcs = ["keras_test.py"],
+    srcs = [
+        "keras_backward_compat_test.py",
+        "keras_test.py",
+    ],
     deps = [
         ":combinations",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
@@ -602,6 +605,23 @@ py_library(
 cuda_py_test(
     name = "keras_test",
     srcs = ["keras_test.py"],
+    additional_deps = [
+        ":keras_test_lib",
+    ],
+    shard_count = 16,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+)
+
+# TODO(b/121200287): Remove this in 2.0
+cuda_py_test(
+    name = "keras_backward_compat_test",
+    srcs = ["keras_backward_compat_test.py"],
     additional_deps = [
         ":keras_test_lib",
     ],
