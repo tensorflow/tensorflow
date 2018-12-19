@@ -213,16 +213,6 @@ test_word2vec() {
 
 
 # -----------------------------------------------------------
-# Estimator: abalone
-test_estimator_abalone() {
-  LOG_FILE=$1
-
-  run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    "tensorflow/examples/tutorials/estimators/abalone.py"
-}
-
-
-# -----------------------------------------------------------
 # ptb_word_lm
 test_ptb_word_lm() {
   LOG_FILE=$1
