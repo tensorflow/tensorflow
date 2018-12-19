@@ -29,7 +29,6 @@ import re
 
 import six
 
-from tensorflow.python.framework.ops import Tensor
 from tensorflow.python.util import tf_stack
 
 _NAME_REGEX = r"[A-Za-z0-9.][A-Za-z0-9_.\-/]*?"
@@ -270,7 +269,7 @@ def compute_field_dict(op, strip_file_prefix=""):
   return field_dict
 
 
-def _common_prefix(all_ops):
+def traceback_files_common_prefix(all_ops):
   """Determines the common prefix from the paths of the stacktrace of 'all_ops'.
 
   For example, if the paths are '/foo/bar/baz/' and '/foo/car', this would
@@ -315,11 +314,13 @@ def _sources_for_node(name, graph):
     if name.startswith("^"):
       name = name[1:]
     try:
-      op = graph.as_graph_element(name)
-    except KeyError:
-      return
-    if isinstance(op, Tensor):
-      op = op.op
+      tensor = graph.get_tensor_by_name(name)
+      op = tensor.op
+    except (KeyError, ValueError):
+      try:
+        op = graph.get_operation_by_name(name)
+      except KeyError:
+        return
     name = op.name
     if name in seen_names:
       return
@@ -398,7 +399,7 @@ def interpolate(error_message, graph):
     else:
       tagged_ops.append([op] + _sources_for_node(op.name, graph))
 
-  common_prefix = _common_prefix(tagged_ops)
+  common_prefix = traceback_files_common_prefix(tagged_ops)
   for tag, ops in zip(tags, tagged_ops):
     msg = "{{%s %s}}" % (tag.type, tag.name)
     if ops is not None:
