@@ -31,6 +31,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import six
 
 from tensorflow.python.framework import dtypes
@@ -60,10 +61,11 @@ class StructureCoder(object):
   def _get_decoders(cls):
     return [(c.can_decode, c.do_decode) for c in cls._codecs]
 
-  def _map_structure(self, pyobj, coders, recursive_encode_fn):
+  def _map_structure(self, pyobj, coders):
     for can, do in coders:
       if can(pyobj):
-        return do(pyobj, recursive_encode_fn)
+        recursion_fn = functools.partial(self._map_structure, coders=coders)
+        return do(pyobj, recursion_fn)
     raise NotEncodableError(
         "No encoder for object [%s] of type [%s]." % (str(pyobj), type(pyobj)))
 
@@ -79,12 +81,8 @@ class StructureCoder(object):
     Raises:
       NotEncodableError: For values for which there are no encoders.
     """
+    return self._map_structure(nested_structure, self._get_encoders())
 
-    def encode_fn(nested_structure):
-      return self._map_structure(nested_structure, self._get_encoders(),
-                                 encode_fn)
-
-    return encode_fn(nested_structure)
 
   def can_encode(self, nested_structure):
     """Determines whether a nested structure can be encoded into a proto.
@@ -113,11 +111,7 @@ class StructureCoder(object):
     Raises:
       NotEncodableError: For values for which there are no encoders.
     """
-
-    def decode_fn(proto):
-      return self._map_structure(proto, self._get_decoders(), decode_fn)
-
-    return decode_fn(proto)
+    return self._map_structure(proto, self._get_decoders())
 
 
 class _ListCodec(object):
