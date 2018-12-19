@@ -772,20 +772,33 @@ def _deterministic_dict_values(dictionary):
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
-  def __init__(self, python_function, input_signature):
+  @staticmethod
+  def from_function_and_signature(python_function, input_signature):
+    """Create a FunctionSpec instance given a python function and signature."""
     if isinstance(python_function, functools.partial):
       python_function_to_inspect = python_function.func
-      self._args_to_prepend = python_function.args or tuple()
-      self._kwargs_to_include = python_function.keywords or {}
+      args_to_prepend = python_function.args or tuple()
+      kwargs_to_include = python_function.keywords or {}
     else:
       python_function_to_inspect = python_function
-      self._args_to_prepend = tuple()
-      self._kwargs_to_include = {}
+      args_to_prepend = tuple()
+      kwargs_to_include = {}
 
     fullargspec = tf_inspect.getfullargspec(python_function_to_inspect)
+    is_method = tf_inspect.ismethod(python_function_to_inspect)
+
+    return FunctionSpec(fullargspec, is_method, args_to_prepend,
+                        kwargs_to_include, input_signature)
+
+  def __init__(self, fullargspec, is_method, args_to_prepend, kwargs_to_include,
+               input_signature):
+    self._fullargspec = fullargspec
+    self._is_method = is_method
+    self._args_to_prepend = args_to_prepend
+    self._kwargs_to_include = kwargs_to_include
     self._default_values = fullargspec.defaults
 
-    if tf_inspect.ismethod(python_function_to_inspect):
+    if self._is_method:
       # Remove `self`: default arguments shouldn't be matched to it.
       args = fullargspec.args[1:]
     else:
@@ -949,7 +962,8 @@ class PolymorphicFunction(object):
       self._python_function = python_function.func
     else:
       self._python_function = python_function
-    self._function_spec = FunctionSpec(python_function, input_signature)
+    self._function_spec = FunctionSpec.from_function_and_signature(
+        python_function, input_signature)
     self._name = name
     self._autograph = autograph
     self._function_cache = collections.OrderedDict()
