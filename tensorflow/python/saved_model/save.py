@@ -494,7 +494,7 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
 
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
-    for concrete_function in concrete_functions:
+    for _, concrete_function in concrete_functions:
       concrete_function.add_to_graph()
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)

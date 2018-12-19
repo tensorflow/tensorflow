@@ -93,7 +93,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/ops/ragged:ragged_test_util",
-    "//tensorflow/python/saved_model:nested_structure_coder",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
