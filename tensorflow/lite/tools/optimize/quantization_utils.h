@@ -32,7 +32,7 @@ TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements);
 // Nudges min and max so that floating point 0 falls exactly on a quantized
 // value, returning the nudges scale and zero_point.
 void GetAsymmetricQuantizationParams(
-    const float min, const float max, const int quant_min, const int quant_max,
+    float min, float max, const int quant_min, const int quant_max,
     QuantizationParametersT* quantization_params);
 
 }  // namespace utils
