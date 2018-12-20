@@ -75,6 +75,16 @@ py_library(
 )
 
 py_library(
+    name = "keras_lib",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:layers",
+        "//tensorflow/python/feature_column:feature_column_py",
+        "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
     name = "no_contrib",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
@@ -110,8 +120,8 @@ py_library(
         ":image_ops",
         ":initializers_ns",
         ":io_ops",
+        ":keras_lib",
         ":kernels",
-        ":layers",
         ":lib",
         ":list_ops",
         ":manip_ops",
@@ -152,8 +162,6 @@ py_library(
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:remote",
-        "//tensorflow/python/feature_column:feature_column_py",
-        "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/losses",
@@ -1070,6 +1078,7 @@ py_library(
         ":client",
         ":errors",
         ":framework_for_generated_wrappers",
+        ":layers_base",
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
@@ -1084,6 +1093,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/keras:layers",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3552,7 +3562,7 @@ py_library(
         ":gradients",
         ":init_ops",
         ":io_ops",
-        ":layers_base",
+        ":layers_util",
         ":lookup_ops",
         ":math_ops",
         ":platform",
@@ -3573,19 +3583,17 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        # `layers` dependency only exists due to the use of a small utility.
-        "//tensorflow/python/keras:layers",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/training/checkpointable:base",
         "//tensorflow/python/training/checkpointable:util",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -5149,13 +5157,13 @@ py_library(
     srcs = [
         "layers/__init__.py",
         "layers/base.py",
-        "layers/utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
+        ":layers_util",
         ":platform",
         ":smart_cond",
         ":tensor_util",
@@ -5165,6 +5173,20 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "layers_util",
+    srcs = [
+        "layers/utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":smart_cond",
+        ":util",
+        ":variables",
     ],
 )
 
