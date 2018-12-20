@@ -126,3 +126,66 @@ debug logs here, along with the magic string `~~~ALL TESTS PASSED~~~`. This is
 the exact same code as before, just compiled and run on the STM32F103 rather
 than your desktop. We hope that the simplicity of this testing approach will
 help make adding support for new platforms as easy as possible.
+
+## Building for "Hifive1" SiFive FE310 development board
+We've targeted the ["HiFive1" Arduino-compatible development board](https://www.sifive.com/boards/hifive1) as a test platform for RISC-V MCU.
+
+Similar to Blue Pill setup, you will need Docker installed. The binary can be executed on either HiFive1 board or emulated using [Renode project](https://renode.io/) on your desktop machine.
+
+The following instructions builds and transfers the source files to the Docker
+```
+docker build -t riscv_build \
+-f {PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/testing/Dockerfile.riscv \
+{PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/testing/
+```
+
+You should see output that looks something like this:
+
+```
+Sending build context to Docker daemon  28.16kB
+Step 1/4 : FROM antmicro/renode:latest
+ ---> 19c08590e817
+Step 2/4 : LABEL maintainer="Pete Warden <petewarden@google.com>"
+ ---> Using cache
+ ---> 5a7770d3d3f5
+Step 3/4 : RUN apt-get update
+ ---> Using cache
+ ---> b807ab77eeb1
+Step 4/4 : RUN apt-get install -y curl git unzip make g++
+ ---> Using cache
+ ---> 8da1b2aa2438
+Successfully built 8da1b2aa2438
+Successfully tagged riscv_build:latest
+```
+
+Building micro_speech_test binary
+
+ - Lauch the Docker that we just created using: `docker run -it-v /tmp/copybara_out:/workspace riscv_build:latest bash`
+ - Enter the source root directory by running `cd /workspace`
+ - Download the dependencies by running `./tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`. This may take a few minutes.
+ - Set the path to RISC-V tools: `export PATH=${PATH}:/workspace/tensorflow/lite/experimental/micro/tools/make/downloads/riscv_toolchain/bin/`
+ - Build the binary: `make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=riscv32_mcu`
+
+Lauching Renode to test the binary, currently this set up is not automated.
+
+ - Until https://github.com/renode/renode/pull/30 is in the Docker image, patch the change manully: `sed -E -i 's/"rv32g"/"rv32imac"/g' /opt/renode/platforms/cpus/sifive-fe310.repl`
+
+
+ - Execute the binary on Renode: `renode -P 5000 --disable-xwt -e 's @/workspace/tensorflow/lite/experimental/micro/testing/sifive_fe310.resc'`
+
+You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
+
+```
+02:25:22.2059 [DEBUG] uart0: [+17.25s host +80ms virt 80ms virt from start] core freq at 0 Hz
+02:25:22.2065 [DEBUG] uart0: [+0.61ms host +0s virt 80ms virt from start]   Testing TestInvoke
+02:25:22.4243 [DEBUG] uart0: [+0.22s host +0.2s virt 0.28s virt from start]   Ran successfully
+02:25:22.4244 [DEBUG] uart0: [+42µs host +0s virt 0.28s virt from start]
+02:25:22.4245 [DEBUG] uart0: [+0.15ms host +0s virt 0.28s virt from start]   1/1 tests passed
+02:25:22.4247 [DEBUG] uart0: [+62µs host +0s virt 0.28s virt from start]   ~~~ALL TESTS PASSED~~~
+02:25:22.4251 [DEBUG] uart0: [+8µs host +0s virt 0.28s virt from start]
+02:25:22.4252 [DEBUG] uart0: [+0.39ms host +0s virt 0.28s virt from start]
+02:25:22.4253 [DEBUG] uart0: [+0.16ms host +0s virt 0.28s virt from start]   Progam has exited with code:0x00000000
+```
+
+
+
