@@ -5595,6 +5595,7 @@ filegroup(
         "decode_bmp_op.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
+        "fft_ops.cc",
         "in_topk_op.cc",
         "initializable_lookup_table.cc",
         "logging_ops.cc",
