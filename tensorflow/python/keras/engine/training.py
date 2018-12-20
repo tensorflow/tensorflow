@@ -1635,7 +1635,9 @@ class Model(Network):
     InputLayer. If so, this method checks the provided `batch_size` and `x`
     arguments are consistent with this static batch size. Also, if
     `batch_size` is `None`, this method will attempt to infer the batch size
-    from the static batch size of the InputLayer.
+    from the static batch size of the InputLayer. Lastly, ValueError will be
+    raised if `x` is a tf.data.Dataset and `batch_size` is specified as we
+    expect users to provide batched datasets.
 
     Arguments:
       batch_size: The batch_size provided as an argument to
@@ -1647,6 +1649,10 @@ class Model(Network):
       The validated batch_size, auto-inferred from the first layer if not
       provided.
     """
+    if batch_size is not None and isinstance(x, dataset_ops.DatasetV2):
+      raise ValueError('The `batch_size` argument must not be specified when'
+                       ' using dataset as an input.')
+
     layers = super(Model, self).layers  # Avoids the override in Sequential.
     if layers:
       first_layer = layers[0]
