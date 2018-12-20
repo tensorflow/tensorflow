@@ -902,7 +902,8 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
 // static
 Status ConstantFolding::CreateNodeDef(const string& name,
                                       const TensorValue& tensor,
-                                      NodeDef* node) {
+                                      NodeDef* node,
+                                      size_t input_size) {
   node->set_name(name);
   node->set_op("Const");
 
@@ -913,7 +914,6 @@ Status ConstantFolding::CreateNodeDef(const string& name,
   AttrValue attr_tensor;
   TensorProto* t = attr_tensor.mutable_tensor();
   bool optimized = false;
-  const size_t original_size = tensor->TotalBytes();
   size_t encoded_size;
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
@@ -980,8 +980,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
     encoded_size = t->tensor_content().size();
   }
   node->mutable_attr()->insert({"value", attr_tensor});
-
-  if (encoded_size > original_size && encoded_size >= 10 * 1024 * 1024) {
+  if (encoded_size > input_size && encoded_size >= 10 * 1024 * 1024) {
     return errors::InvalidArgument(
         strings::StrCat("Can't fold ", name, ", its size would be too large"));
   }
@@ -1011,6 +1010,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
   });
 
+  size_t input_size = 0;
   for (const auto& input : node.input()) {
     const TensorId input_tensor = ParseTensorName(input);
     if (input_tensor.index() < 0) {
@@ -1025,6 +1025,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
+    input_size += raw_val.tensor_content().size();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     CHECK(value->FromProto(raw_val));
     inputs.emplace_back(value);
@@ -1042,7 +1043,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
       node_name = strings::StrCat(node_name, "-", i);
     }
     if (output_tensors[i].tensor) {
-      Status s = CreateNodeDef(node_name, output_tensors[i], &outputs->at(i));
+      Status s = CreateNodeDef(node_name, output_tensors[i], &outputs->at(i), input_size);
       if (!s.ok()) {
         *result_too_large = true;
         return s;

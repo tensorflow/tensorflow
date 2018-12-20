@@ -36,7 +36,7 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 class ConstantFolding : public GraphOptimizer {
  public:
   static Status CreateNodeDef(const string& name, const TensorValue& tensor,
-                              NodeDef* node);
+                              NodeDef* node, size_t input_size = 0);
   static string AddControlDependency(const string& input_name, GraphDef* graph,
                                      NodeMap* node_map);
 
