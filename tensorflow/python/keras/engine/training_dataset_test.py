@@ -90,13 +90,13 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
                 epochs=1, steps_per_epoch=2, verbose=0)
 
     with self.assertRaisesRegexp(
-        ValueError, 'you should specify the `steps_per_epoch` argument'):
+        ValueError, 'the `steps_per_epoch` argument'):
       model.fit(iterator, epochs=1, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.evaluate(iterator, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.predict(iterator, verbose=0)
 
   @keras_parameterized.run_with_all_model_types
@@ -229,13 +229,13 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
                 epochs=1, steps_per_epoch=2, verbose=0)
 
     with self.assertRaisesRegexp(
-        ValueError, 'you should specify the `steps_per_epoch` argument'):
+        ValueError, 'the `steps_per_epoch` argument'):
       model.fit(dataset, epochs=1, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.evaluate(dataset, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.predict(dataset, verbose=0)
 
   @keras_parameterized.run_with_all_model_types

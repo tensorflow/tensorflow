@@ -25,6 +25,7 @@ import copy
 import numpy as np
 import six
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -861,11 +862,11 @@ def get_loss_function(loss):
   return losses.get(loss)
 
 
-def validate_iterator_input(x, y, sample_weight, validation_split=None):
+def validate_dataset_input(x, y, sample_weight, validation_split=None):
   """Validates user input arguments when a dataset iterator is passed.
 
   Arguments:
-    x: Input data. A `tf.data` dataset iterator.
+    x: Input data. A `tf.data` dataset or iterator.
     y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
         Expected to be `None` when `x` is a dataset iterator.
     sample_weight: An optional sample-weight array passed by the user to
@@ -899,7 +900,9 @@ def validate_iterator_input(x, y, sample_weight, validation_split=None):
         'Received: x=%s, validation_split=%f' % (x, validation_split))
 
 
-def check_generator_arguments(y=None, sample_weight=None):
+def check_generator_arguments(y=None,
+                              sample_weight=None,
+                              validation_split=None):
   """Validates arguments passed when using a generator."""
   if y is not None:
     raise ValueError('`y` argument is not supported when data is'
@@ -909,6 +912,9 @@ def check_generator_arguments(y=None, sample_weight=None):
     raise ValueError('`sample_weight` argument is not supported when data is'
                      'a generator or Sequence instance. Instead pass sample'
                      ' weights as the third element of the generator.')
+  if validation_split:
+    raise ValueError('If your data is in the form of a Python generator, '
+                     'you cannot use `validation_split`.')
 
 
 def check_steps_argument(input_data, steps, steps_name):
@@ -934,15 +940,14 @@ def check_steps_argument(input_data, steps, steps_name):
       ValueError: if `steps` argument is required for given input data type
         but not provided.
   """
-
-  is_x_iterator = (
-      isinstance(input_data, iterator_ops.Iterator) or
-      isinstance(input_data, iterator_ops.EagerIterator))
-
-  if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
+  # TODO(fchollet): allow datasets with steps=None if cardinality is known.
+  is_x_dataset = isinstance(input_data, (iterator_ops.Iterator,
+                                         iterator_ops.EagerIterator,
+                                         dataset_ops.DatasetV2))
+  if (input_data is None or is_x_dataset or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
-      input_type_str = 'iterators' if is_x_iterator else 'data tensors'
+      input_type_str = 'a Dataset' if is_x_dataset else 'data tensors'
       raise ValueError('When using {input_type} as input to a model, you should'
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
@@ -1061,6 +1066,13 @@ def prepare_sample_weights(output_names, sample_weight_mode,
 def is_feature_layer(layer):
   """Returns whether `layer` is a FeatureLayer or not."""
   return getattr(layer, '_is_feature_layer', False)
+
+
+def is_eager_dataset_or_iterator(data):
+  if context.executing_eagerly():
+    if isinstance(data, (dataset_ops.DatasetV2, iterator_ops.EagerIterator)):
+      return True
+  return False
 
 
 class ModelInputs(object):

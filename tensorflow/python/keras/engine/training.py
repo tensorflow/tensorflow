@@ -756,10 +756,42 @@ class Model(Network):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
-    # TODO(fchollet): this method may be creating reference cycles, which would
-    # lead to accumulating garbage in memory when called in a loop. Investigate.
+    # Legacy support
+    if 'nb_epoch' in kwargs:
+      logging.warning(
+          'The `nb_epoch` argument in `fit` '
+          'has been renamed `epochs`.')
+      epochs = kwargs.pop('nb_epoch')
+    if kwargs:
+      raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
+
+    # Case 1: distribution strategy.
+    if self._distribution_strategy:
+      return training_distributed.fit_distributed(
+          self,
+          x=x,
+          y=y,
+          batch_size=batch_size,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          validation_split=validation_split,
+          validation_data=validation_data,
+          shuffle=shuffle,
+          class_weight=class_weight,
+          sample_weight=sample_weight,
+          initial_epoch=initial_epoch,
+          steps_per_epoch=steps_per_epoch,
+          validation_steps=validation_steps)
+
+    batch_size = self._validate_or_infer_batch_size(
+        batch_size, steps_per_epoch, x)
+
+    # Case 2: generator-like. Input is Python generator, or Sequence object,
+    # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(x):
-      training_utils.check_generator_arguments(y, sample_weight)
+      training_utils.check_generator_arguments(
+          y, sample_weight, validation_split=validation_split)
       return self.fit_generator(
           x,
           steps_per_epoch=steps_per_epoch,
@@ -774,33 +806,26 @@ class Model(Network):
           use_multiprocessing=use_multiprocessing,
           shuffle=shuffle,
           initial_epoch=initial_epoch)
+    if training_utils.is_eager_dataset_or_iterator(x):
+      # Make sure that y, sample_weights, validation_split are not passed.
+      training_utils.validate_dataset_input(x, y, sample_weight,
+                                            validation_split)
+      return self.fit_generator(
+          x,
+          steps_per_epoch=steps_per_epoch,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          validation_data=validation_data,
+          validation_steps=validation_steps,
+          class_weight=class_weight,
+          workers=0,
+          shuffle=shuffle,
+          initial_epoch=initial_epoch)
 
-    # Legacy support
-    if 'nb_epoch' in kwargs:
-      logging.warning(
-          'The `nb_epoch` argument in `fit` '
-          'has been renamed `epochs`.')
-      epochs = kwargs.pop('nb_epoch')
-    if kwargs:
-      raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
-
-    # Validate and standardize user data.
-    if self._distribution_strategy:
-      distributed_training_utils.validate_callbacks(callbacks, self.optimizer)
-
-      distributed_training_utils.validate_inputs(
-          x, y, self._distribution_strategy)
-
-      first_x_value = nest.flatten(x)[0]
-      if isinstance(first_x_value, np.ndarray):
-        steps_per_epoch, batch_size = (
-            distributed_training_utils.get_input_params(
-                self._distribution_strategy, first_x_value, steps_per_epoch,
-                batch_size, is_training=True))
-
-    batch_size = self._validate_or_infer_batch_size(batch_size, steps_per_epoch,
-                                                    x)
-
+    # Case 3: Symbolic tensors or Numpy array-like.
+    # This includes Datasets and iterators in graph mode (since they
+    # generate symbolic tensors).
     x, y, sample_weights = self._standardize_user_data(
         x,
         y,
@@ -815,43 +840,15 @@ class Model(Network):
 
     # Prepare validation data.
     if validation_data:
-      if (isinstance(validation_data, iterator_ops.Iterator) or
-          isinstance(validation_data, iterator_ops.EagerIterator) or
-          isinstance(validation_data, dataset_ops.DatasetV2)):
-        val_x = validation_data
-        val_y = None
-        val_sample_weight = None
-      elif len(validation_data) == 2:
-        val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-        val_sample_weight = None
-      elif len(validation_data) == 3:
-        val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
-      else:
-        raise ValueError(
-            'When passing a `validation_data` argument, '
-            'it must contain either 2 items (x_val, y_val), '
-            'or 3 items (x_val, y_val, val_sample_weights), '
-            'or alternatively it could be a dataset or a '
-            'dataset or a dataset iterator. '
-            'However we received `validation_data=%s`' % validation_data)
-
-      # Validate and standardize validation data.
-      if self._distribution_strategy:
-        distributed_training_utils.validate_inputs(
-            val_x, val_y, self._distribution_strategy)
-        first_valx_value = nest.flatten(val_x)[0]
-        if isinstance(first_valx_value, np.ndarray):
-          validation_steps, _ = distributed_training_utils.get_input_params(
-              self._distribution_strategy, first_valx_value, validation_steps,
-              batch_size)
-
+      val_x, val_y, val_sample_weights = self._unpack_validation_data(
+          validation_data)
       val_x, val_y, val_sample_weights = self._standardize_user_data(
           val_x,
           val_y,
-          sample_weight=val_sample_weight,
+          sample_weight=val_sample_weights,
           batch_size=batch_size,
-          steps=validation_steps)
-
+          steps=validation_steps,
+          steps_name='validation_steps')
     elif validation_split and 0. < validation_split < 1.:
       if training_utils.has_symbolic_tensors(x):
         raise ValueError('If your data is in the form of symbolic tensors, '
@@ -873,32 +870,19 @@ class Model(Network):
       val_y = None
       val_sample_weights = None
 
-    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
-                             not self._distribution_strategy)):
+    if self.run_eagerly:
       return training_generator.fit_generator(
           self, (x, y, sample_weights),
           steps_per_epoch=steps_per_epoch,
           batch_size=batch_size,
           epochs=epochs,
-          shuffle=shuffle,
           verbose=verbose,
           callbacks=callbacks,
           validation_data=validation_data,
           validation_steps=validation_steps,
           workers=0,
+          shuffle=shuffle,
           initial_epoch=initial_epoch)
-    elif distributed_training_utils.is_tpu_strategy(
-        self._distribution_strategy):
-      return training_distributed.experimental_fit_loop(
-          self,
-          x,
-          epochs=epochs,
-          verbose=verbose,
-          callbacks=callbacks,
-          val_iterator=val_x,
-          initial_epoch=initial_epoch,
-          steps_per_epoch=steps_per_epoch,
-          validation_steps=validation_steps)
     else:
       return training_arrays.fit_loop(
           self,
@@ -1001,8 +985,25 @@ class Model(Network):
     Raises:
         ValueError: in case of invalid arguments.
     """
+    # Case 1: distribution strategy.
+    if self._distribution_strategy:
+      return training_distributed.evaluate_distributed(
+          self,
+          x=x,
+          y=y,
+          batch_size=batch_size,
+          verbose=verbose,
+          sample_weight=sample_weight,
+          steps=steps,
+          callbacks=callbacks)
+
+    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
+
+    # Case 2: generator-like. Input is Python generator, or Sequence object,
+    # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(x):
       training_utils.check_generator_arguments(y, sample_weight)
+      # TODO(fchollet): why aren't callbacks supported here?
       return self.evaluate_generator(
           x,
           steps=steps,
@@ -1010,17 +1011,20 @@ class Model(Network):
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing)
-    # Validate and standardize user data.
-    if self._distribution_strategy:
-      distributed_training_utils.validate_inputs(
-          x, y, self._distribution_strategy)
-      first_x_value = nest.flatten(x)[0]
-      if isinstance(first_x_value, np.ndarray):
-        steps, batch_size = distributed_training_utils.get_input_params(
-            self._distribution_strategy, first_x_value, steps, batch_size)
+    if training_utils.is_eager_dataset_or_iterator(x):
+      # Make sure that y, sample_weights are not passed.
+      training_utils.validate_dataset_input(x, y, sample_weight)
+      return training_generator.evaluate_generator(
+          self, x,
+          steps=steps,
+          batch_size=batch_size,
+          verbose=verbose,
+          workers=0,
+          callbacks=callbacks)
 
-    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
-
+    # Case 3: Symbolic tensors or Numpy array-like.
+    # This includes Datasets and iterators in graph mode (since they
+    # generate symbolic tensors).
     x, y, sample_weights = self._standardize_user_data(
         x,
         y,
@@ -1030,8 +1034,7 @@ class Model(Network):
         steps_name='steps',
         steps=steps)
 
-    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
-                             not self._distribution_strategy)):
+    if self.run_eagerly:
       return training_generator.evaluate_generator(
           self, (x, y, sample_weights),
           steps=steps,
@@ -1039,10 +1042,6 @@ class Model(Network):
           verbose=verbose,
           workers=0,
           callbacks=callbacks)
-    elif distributed_training_utils.is_tpu_strategy(
-        self._distribution_strategy):
-      return training_distributed.experimental_test_loop(
-          self, iterator=x, verbose=verbose, steps=steps)
     else:
       return training_arrays.test_loop(
           self,
@@ -1113,7 +1112,21 @@ class Model(Network):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
+    # Case 1: distribution strategy.
+    if self._distribution_strategy:
+      return training_distributed.predict_distributed(self,
+                                                      x=x,
+                                                      batch_size=batch_size,
+                                                      verbose=verbose,
+                                                      steps=steps,
+                                                      callbacks=callbacks)
+
+    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
+
+    # Case 2: generator-like. Input is Python generator, or Sequence object,
+    # or a non-distributed Dataset or iterator in eager execution.
     if data_utils.is_generator_or_sequence(x):
+      # TODO(fchollet): why aren't callbacks supported here?
       return self.predict_generator(
           x,
           steps=steps,
@@ -1121,30 +1134,7 @@ class Model(Network):
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing)
-    if self._distribution_strategy:
-      distributed_training_utils.validate_inputs(
-          x, None, self._distribution_strategy)
-      first_x_value = nest.flatten(x)[0]
-      if isinstance(first_x_value, np.ndarray):
-        steps, batch_size = distributed_training_utils.get_input_params(
-            self._distribution_strategy, first_x_value, steps, batch_size)
-
-    batch_size = self._validate_or_infer_batch_size(batch_size, steps, x)
-
-    # Validate and standardize user data.
-    if self._distribution_strategy:
-      x, _, _ = self._standardize_user_data(
-          x, check_steps=True, steps_name='steps', steps=steps,
-          batch_size=batch_size)
-    else:
-      # TODO(anjalisridhar): We don't pass batch_size here for some reason. This
-      # means we need to special case distribution strategy which needs the
-      # batch size.
-      x, _, _ = self._standardize_user_data(
-          x, check_steps=True, steps_name='steps', steps=steps)
-
-    if (self.run_eagerly or (isinstance(x, iterator_ops.EagerIterator) and
-                             not self._distribution_strategy)):
+    if training_utils.is_eager_dataset_or_iterator(x):
       return training_generator.predict_generator(
           self,
           x,
@@ -1153,10 +1143,22 @@ class Model(Network):
           verbose=verbose,
           workers=0,
           callbacks=callbacks)
-    elif distributed_training_utils.is_tpu_strategy(
-        self._distribution_strategy):
-      return training_distributed.experimental_predict_loop(
-          self, x, verbose=verbose, steps=steps)
+
+    # Case 3: Symbolic tensors or Numpy array-like.
+    # This includes Datasets and iterators in graph mode (since they
+    # generate symbolic tensors).
+    x, _, _ = self._standardize_user_data(
+        x, check_steps=True, steps_name='steps', steps=steps)
+
+    if self.run_eagerly:
+      return training_generator.predict_generator(
+          self,
+          x,
+          steps=steps,
+          batch_size=batch_size,
+          verbose=verbose,
+          workers=0,
+          callbacks=callbacks)
     else:
       return training_arrays.predict_loop(
           self,
@@ -1172,7 +1174,7 @@ class Model(Network):
       for m in self.metrics:
         m.reset_states()
       if self._distribution_strategy:
-        training_distributed._reset_metrics(self)  # pylint: disable=protected-access
+        distributed_training_utils._reset_metrics(self)  # pylint: disable=protected-access
 
   def train_on_batch(self,
                      x,
@@ -2191,8 +2193,8 @@ class Model(Network):
       if not context.executing_eagerly():
         K.get_session().run(init_op)
 
-    training_utils.validate_iterator_input(x, y, sample_weight,
-                                           validation_split)
+    training_utils.validate_dataset_input(x, y, sample_weight,
+                                          validation_split)
     return iterator
 
   def _standardize_user_data(self,
@@ -2260,20 +2262,6 @@ class Model(Network):
       ValueError: In case of invalid user-provided data.
       RuntimeError: If the model was never compiled.
     """
-    if self._distribution_strategy:
-      iterator = self._distribution_standardize_user_data(
-          x,
-          y,
-          sample_weight=sample_weight,
-          class_weight=class_weight,
-          batch_size=batch_size,
-          check_steps=check_steps,
-          steps_name=steps_name,
-          steps=steps,
-          validation_split=validation_split,
-          shuffle=shuffle)
-      return iterator, None, None
-
     if isinstance(x, dataset_ops.DatasetV2):
       if context.executing_eagerly():
         x = iter(x)
@@ -2295,8 +2283,8 @@ class Model(Network):
 
     # Validate user inputs when data is given as a dataset or dataset iterator.
     if is_x_iterator or is_x_eager_iterator:
-      training_utils.validate_iterator_input(x, y, sample_weight,
-                                             validation_split)
+      training_utils.validate_dataset_input(x, y, sample_weight,
+                                            validation_split)
 
     # For eager iterators, when we have to process multiple batches of samples,
     # we will standardize the data when we actually loop over iterator and get
@@ -2539,6 +2527,28 @@ class Model(Network):
     if dict_inputs:
       x = dict(zip(feed_input_names, x))
     return x, y, sample_weights
+
+  def _unpack_validation_data(self, validation_data):
+    if (isinstance(validation_data, (iterator_ops.Iterator,
+                                     iterator_ops.EagerIterator,
+                                     dataset_ops.DatasetV2))):
+      val_x = validation_data
+      val_y = None
+      val_sample_weight = None
+    elif len(validation_data) == 2:
+      val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
+      val_sample_weight = None
+    elif len(validation_data) == 3:
+      val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    else:
+      raise ValueError(
+          'When passing a `validation_data` argument, '
+          'it must contain either 2 items (x_val, y_val), '
+          'or 3 items (x_val, y_val, val_sample_weights), '
+          'or alternatively it could be a dataset or a '
+          'dataset or a dataset iterator. '
+          'However we received `validation_data=%s`' % validation_data)
+    return val_x, val_y, val_sample_weight
 
   @checkpointable.no_automatic_dependency_tracking
   def _set_inputs(self, inputs, outputs=None, training=None):

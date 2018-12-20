@@ -1045,14 +1045,12 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
       # Test with not specifying the `steps` argument.
       with self.assertRaisesRegexp(
-          ValueError, 'you should specify the `steps_per_epoch` argument'):
+          ValueError, 'the `steps_per_epoch` argument'):
         model.fit(dataset, epochs=1, verbose=0)
-      with self.assertRaisesRegexp(ValueError,
-                                   'you should specify the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
         model.evaluate(dataset, verbose=0)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'you should specify the `steps` argument'):
+      with self.assertRaisesRegexp(ValueError, 'the `steps` argument'):
         model.predict(dataset, verbose=0)
 
   @combinations.generate(combinations.combine(
