@@ -13,28 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/* This file is a modification of the Tensorflow Micro Lite file preprocessor.cc */
+/* This file is a modification of the Tensorflow Micro Lite file preprocessor.cc
+ */
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/sin_1k.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/sin_1k.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 extern "C" {
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/apollo3_ext/system_apollo3.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/apollo3_ext/apollo3.h"
+#include "apollo3.h"
+#include "system_apollo3.h"
 }
 
 #define output_data_size 43
 int count;
 
 extern TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
-                        const int16_t* input, int input_size, int output_size,
-                        uint8_t* output);
+                               const int16_t* input, int input_size,
+                               int output_size, uint8_t* output);
 
 TF_LITE_MICRO_TESTS_BEGIN
 CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-//DWT->LAR = 0xC5ACCE55; 
+// DWT->LAR = 0xC5ACCE55;
 DWT->CYCCNT = 0;
 DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
@@ -43,12 +44,10 @@ TF_LITE_MICRO_TEST(TestPreprocessor) {
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   uint8_t calculated_data[output_data_size];
-  TfLiteStatus yes_status = Preprocess(
-      error_reporter, g_sin_1k, g_sin_1k_size,
-      output_data_size, calculated_data);
+  TfLiteStatus yes_status = Preprocess(error_reporter, g_sin_1k, g_sin_1k_size,
+                                       output_data_size, calculated_data);
   count = DWT->CYCCNT;
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, yes_status);
-
 }
 
 TF_LITE_MICRO_TESTS_END

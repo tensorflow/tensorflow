@@ -101,48 +101,13 @@ ifeq ($(TARGET), apollo3evb)
   $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_mean_q15.c \
   $(CMSIS_SRC_DIR)/StatisticsFunctions/arm_max_q7.c
 
-  AP3_EXT_MICRO_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/apollo3_ext
+  AP3_EXT_MICRO_DIR := $(MAKEFILE_DIR)/downloads/apollo3_ext
   AP3_MICRO_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
   CMSIS_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS
   CMSIS_EXT_DIR := $(MAKEFILE_DIR)/downloads/CMSIS_ext
 
   MICRO_SPEECH_TEST_SRCS += \
     $(AP3_MICRO_DIR)/_main.c
-
-  PREPROCESSOR_1K_CMSIS_TEST_SRCS := \
-  $(PREPROCESSOR_1K_SRCS) \
-  $(CMSIS_DIR)/preprocessor.cc \
-  $(CMSIS_EXT_DIR)/arm_cmplx_mag_squared_q10p6.c \
-  $(CMSIS_DIR)/hanning.c \
-  $(AP3_EXT_MICRO_DIR)/system_apollo3.c \
-  $(AP3_MICRO_DIR)/_main.c \
-  $(CMSIS_SRCS)
-
-  PREPROCESSOR_1K_MICRO_TEST_SRCS := \
-  $(PREPROCESSOR_1K_SRCS) \
-  $(AP3_MICRO_DIR)/../fixed_point/preprocessor.cc \
-  $(AP3_EXT_MICRO_DIR)/system_apollo3.c \
-  $(AP3_MICRO_DIR)/_main.c
-
-  PUSHBUTTON_MICRO_SPEECH_TEST_SRCS := \
-    $(AP3_MICRO_DIR)/../preprocessor.cc \
-    $(AP3_MICRO_DIR)/pushbutton_main.c \
-    $(AP3_MICRO_DIR)/pushbutton_test.cc \
-    $(AP3_MICRO_DIR)/../tiny_conv_model_data.cc \
-    $(APOLLO3_SDK)/devices/am_devices_led.c
-
-  PUSHBUTTON_CMSIS_SPEECH_TEST_SRCS := \
-    $(AP3_MICRO_DIR)/pushbutton_main.c \
-    $(AP3_MICRO_DIR)/pushbutton_test.cc \
-    $(AP3_MICRO_DIR)/../tiny_conv_model_data.cc \
-    $(CMSIS_DIR)/preprocessor.cc \
-    $(CMSIS_EXT_DIR)/arm_cmplx_mag_squared_q10p6.c \
-    $(CMSIS_DIR)/hanning.c \
-    $(APOLLO3_SDK)/devices/am_devices_led.c \
-    $(CMSIS_SRCS)
-
-  PREPROCESSOR_TEST_SRCS += \
-    $(AP3_MICRO_DIR)/_main.c 
 
   TEST_SCRIPT := tensorflow/lite/experimental/log_test/test_apollo3evb_binary.sh
   # These are tests that don't currently work on the Apollo3 board.
