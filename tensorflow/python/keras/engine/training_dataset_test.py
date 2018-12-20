@@ -223,6 +223,20 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
           sample_weight=sample_weight)
 
     # Test invalid usage
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.fit(dataset, batch_size=10, epochs=1, steps_per_epoch=2,
+                verbose=0)
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.predict(dataset, batch_size=10, steps=2, verbose=0)
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.evaluate(dataset, batch_size=10, steps=2, verbose=0)
+
     with self.assertRaisesRegexp(ValueError,
                                  'you should not specify a target'):
       model.fit(dataset, dataset,
