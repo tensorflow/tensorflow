@@ -41,6 +41,8 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_inter_op_parallelism",
                                      &use_inter_op_parallelism_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
   }
 
  protected:
@@ -49,9 +51,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     int32 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
@@ -61,9 +64,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     std::vector<int> indices;
     OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
 
-    *output = new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
-                          output_shapes_, use_inter_op_parallelism_, sloppy_,
-                          std::move(captured_func), indices);
+    *output =
+        new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
+                    output_shapes_, use_inter_op_parallelism_, sloppy_,
+                    std::move(captured_func), indices, preserve_cardinality_);
   }
 
  private:
@@ -75,7 +79,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
             const std::vector<PartialTensorShape>& output_shapes,
             bool use_inter_op_parallelism, bool sloppy,
             std::unique_ptr<CapturedFunction> captured_func,
-            const std::vector<int> indices)
+            const std::vector<int> indices, bool preserve_cardinality)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
@@ -84,6 +88,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           output_shapes_(output_shapes),
           use_inter_op_parallelism_(use_inter_op_parallelism),
           sloppy_(sloppy),
+          preserve_cardinality_(preserve_cardinality),
           captured_func_(std::move(captured_func)),
           indices_(indices),
           can_move_(indices.empty() ? std::vector<bool>()
@@ -103,7 +108,8 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       }
       return NewParallelMapIterator(
           {this, strings::StrCat(prefix, "::ParallelMap")}, input_,
-          std::move(parallel_map_functor), num_parallel_calls_, sloppy_);
+          std::move(parallel_map_functor), num_parallel_calls_, sloppy_,
+          preserve_cardinality_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -118,8 +124,6 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       return "ParallelMapDatasetOp::Dataset";
     }
 
-    // TODO(b/120482302): Note that this is inaccurate until MapDataset is
-    // modified to preserve cardinality.
     int64 Cardinality() const override { return input_->Cardinality(); }
 
    protected:
@@ -137,7 +141,13 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -165,6 +175,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       AttrValue sloppy_attr;
       b->BuildAttrValue(sloppy_, &sloppy_attr);
 
+      // Attr: preserve_cardinality
+      AttrValue preserve_cardinality_attr;
+      b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
+
       TF_RETURN_IF_ERROR(b->AddDataset(
           this,
           {std::make_pair(0, input_graph_node),
@@ -174,7 +188,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
            std::make_pair("Targuments", other_arguments_types_attr),
            std::make_pair("use_inter_op_parallelism",
                           use_inter_op_parallelism_attr),
-           std::make_pair("sloppy", sloppy_attr)},  // Attrs
+           std::make_pair("sloppy", sloppy_attr),
+           std::make_pair("preserve_cardinality",
+                          preserve_cardinality_attr)},  // Attrs
           output));
       return Status::OK();
     }
@@ -252,6 +268,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> output_shapes_;
     const bool use_inter_op_parallelism_;
     const bool sloppy_;
+    const bool preserve_cardinality_;
     const std::unique_ptr<CapturedFunction> captured_func_;
     const std::vector<int> indices_;
     const std::vector<bool> can_move_;
@@ -261,6 +278,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
   bool use_inter_op_parallelism_;
   bool sloppy_;
+  bool preserve_cardinality_;
   NameAttrList func_;
 };
 

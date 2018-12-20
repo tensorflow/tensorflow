@@ -174,6 +174,7 @@ def _tf_py_func_print(objects, kwargs):
     override_kwargs['flush'] = True
 
   def print_wrapper(*vals):
+    vals = tuple(v.numpy() if tensor_util.is_tensor(v) else v for v in vals)
     if six.PY3:
       # TensorFlow doesn't seem to generate Unicode when passing strings to
       # py_func. This causes the print to add a "b'" wrapper to the output,
@@ -193,6 +194,7 @@ def range_(start_or_stop, stop=UNDEFINED, step=UNDEFINED):
 
 
 def _tf_range(start_or_stop, stop, step):
+  """Overload of range_ that generates a TF range tensor."""
   # Note: for static inputs (e.g. constants), tf.range errors out at graph
   # construction time, instead of returning an empty tensor. Preventing the
   # graph construction error aligns the semantics with Python.

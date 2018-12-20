@@ -28,11 +28,13 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   def setUp(self):
     tf.enable_eager_execution()
 
+  @test_util.run_v1_only("b/120545219")
   def testRenames(self):
     with self.cached_session():
       self.assertAllClose(1.04719755, tf.acos(0.5))
       self.assertAllClose(0.5, tf.rsqrt(4.0))
 
+  @test_util.run_v1_only("b/120545219")
   def testSerializeSparseTensor(self):
     sp_input = tf.SparseTensor(
         indices=tf.constant([[1]], dtype=tf.int64),
@@ -44,6 +46,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertEqual((3,), serialized_sp.shape)
       self.assertTrue(serialized_sp[0].numpy())  # check non-empty
 
+  @test_util.run_v1_only("b/120545219")
   def testSerializeManySparse(self):
     sp_input = tf.SparseTensor(
         indices=tf.constant([[0, 1]], dtype=tf.int64),
@@ -55,6 +58,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           sp_input, 'serialize_name', tf.string)
       self.assertEqual((1, 3), serialized_sp.shape)
 
+  @test_util.run_v1_only("b/120545219")
   def testArgMaxMin(self):
     self.assertAllClose(
         [1],

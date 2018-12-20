@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
@@ -126,7 +127,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCustomCall:
@@ -570,19 +571,42 @@ HloInstruction* InstructionFusion::FuseIntoMultiOutput(
 
 bool InstructionFusion::MultiOutputFusionCreatesCycle(
     HloInstruction* producer, HloInstruction* consumer) {
-  auto is_reachable = [&](const HloInstruction* a, const HloInstruction* b) {
-    // A consumer operand may have been multi-output fused into a parallel
-    // consumer and thus be missing from the original reachability map.
-    if (!reachability_->IsPresent(a) || !reachability_->IsPresent(b)) {
-      reachability_ = HloReachabilityMap::Build(consumer->parent());
+  absl::flat_hash_set<int> operands;
+  for (const HloInstruction* operand : consumer->operands()) {
+    if (operand == producer) {
+      continue;
     }
-    return reachability_->IsReachable(a, b);
-  };
-  return absl::c_any_of(consumer->operands(),
-                        [&](const HloInstruction* consumer_operand) {
-                          return consumer_operand != producer &&
-                                 is_reachable(producer, consumer_operand);
-                        });
+
+    // If the reachability map already contains the producer and the operand of
+    // the consumer, and the producer can reach the operand, then we know for
+    // sure MultiOutputFusion would create a cycle. If not, we need to do a DFS
+    // traversal of the computation to verify that this multioutput fusion would
+    // not create a cycle.
+    if (reachability_->IsPresent(producer) &&
+        reachability_->IsPresent(operand) &&
+        reachability_->IsReachable(producer, operand)) {
+      return true;
+    }
+    operands.insert(operand->unique_id());
+  }
+
+  // Do a DFS on the producer to see if any of the other consumer operands are
+  // reachable in the current state of the graph.
+  std::vector<HloInstruction*> worklist = producer->users();
+  absl::flat_hash_set<int> visits;
+  while (!worklist.empty()) {
+    const HloInstruction* user = worklist.back();
+    worklist.pop_back();
+    if (operands.count(user->unique_id()) != 0) {
+      return true;
+    }
+    if (visits.count(user->unique_id()) == 0) {
+      visits.insert(user->unique_id());
+      worklist.insert(worklist.end(), user->users().begin(),
+                      user->users().end());
+    }
+  }
+  return false;
 }
 
 bool InstructionFusion::ShouldFuse(HloInstruction* consumer,

@@ -33,9 +33,14 @@ GEMMLOWP_URL="https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37
 FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/1f5eae5d6a135ff6811724f6c57f911d1f46bb15.tar.gz"
 CMSIS_URL="https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
 STM32_BARE_LIB_URL="https://github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
+<<<<<<< HEAD
 AP3_URL="https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276c087d95aab7cb234f1d4c9eaaba.zip"
 CUST_CMSIS_URL="https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
 GCC_EMBEDDED_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2"
+=======
+SIFIVE_FE310_LIB_URL="https://github.com/sifive/freedom-e-sdk/archive/baeeb8fd497a99b3c141d7494309ec2e64f19bdf.zip"
+RISCV_TOOLCHAIN_URL="https://static.dev.sifive.com/dev-tools/riscv64-unknown-elf-gcc-20181030-x86_64-linux-ubuntu14.tar.gz"
+>>>>>>> upstream/master
 
 download_and_extract() {
   local usage="Usage: download_and_extract URL DIR"
@@ -96,6 +101,8 @@ download_and_extract "${GEMMLOWP_URL}" "${DOWNLOADS_DIR}/gemmlowp"
 download_and_extract "${FLATBUFFERS_URL}" "${DOWNLOADS_DIR}/flatbuffers"
 download_and_extract "${CMSIS_URL}" "${DOWNLOADS_DIR}/cmsis"
 download_and_extract "${STM32_BARE_LIB_URL}" "${DOWNLOADS_DIR}/stm32_bare_lib"
+download_and_extract "${SIFIVE_FE310_LIB_URL}" "${DOWNLOADS_DIR}/sifive_fe310_lib"
+download_and_extract "${RISCV_TOOLCHAIN_URL}" "${DOWNLOADS_DIR}/riscv_toolchain"
 download_and_extract "${AP3_URL}" "${DOWNLOADS_DIR}/apollo3_ext"
 patch_apollo3_sdk "${DOWNLOADS_DIR}/Apollo3-SDK-2018.08.13"
 download_and_extract "${CUST_CMSIS_URL}" "${DOWNLOADS_DIR}/CMSIS_ext"

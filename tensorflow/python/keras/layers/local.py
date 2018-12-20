@@ -27,10 +27,10 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.LocallyConnected1D')
+@keras_export('keras.layers.LocallyConnected1D')
 class LocallyConnected1D(Layer):
   """Locally-connected layer for 1D inputs.
 
@@ -293,7 +293,7 @@ class LocallyConnected1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.LocallyConnected2D')
+@keras_export('keras.layers.LocallyConnected2D')
 class LocallyConnected2D(Layer):
   """Locally-connected layer for 2D inputs.
 

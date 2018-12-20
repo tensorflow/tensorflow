@@ -171,6 +171,8 @@ class OpKernel {
   // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
   Status MakeShape(const Tensor& shape, TensorShape* out) const;
 
+  static int DeviceNumaNode(const DeviceBase* device);
+
  private:
   const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;
@@ -376,7 +378,9 @@ class OpArgIterator {
   using iterator_category = std::forward_iterator_tag;
   using value_type = ElementType;
   using pointer = ElementType*;
+  using const_pointer = const ElementType*;
   using reference = ElementType&;
+  using const_reference = const ElementType&;
   using difference_type = ptrdiff_t;
 
   OpArgIterator(const ListType* list, int i) : list_(list), i_(i) {}
@@ -404,6 +408,9 @@ class OpArgIterator {
 
   reference operator*() { return (*list_)[i_]; }
   pointer operator->() { return &(*list_)[i_]; }
+
+  const_reference operator*() const { return (*list_)[i_]; }
+  const_pointer operator->() const { return &(*list_)[i_]; }
 
  private:
   const ListType* const list_;
@@ -1527,6 +1534,7 @@ T* OpKernelContext::op_device_context() {
 
 template <typename T>
 T* OpKernelContext::input_device_context(int index) {
+  DCHECK_NE(params_->input_device_contexts, nullptr);
   DCHECK_GE(index, 0);
   DCHECK_LT(index, params_->input_device_contexts->size());
   static_assert(std::is_base_of<DeviceContext, T>::value,
@@ -1535,6 +1543,7 @@ T* OpKernelContext::input_device_context(int index) {
 }
 
 inline DeviceContext* OpKernelContext::input_device_context(int index) {
+  DCHECK_NE(params_->input_device_contexts, nullptr);
   DCHECK_GE(index, 0);
   DCHECK_LT(index, params_->input_device_contexts->size());
   return (*params_->input_device_contexts)[index];

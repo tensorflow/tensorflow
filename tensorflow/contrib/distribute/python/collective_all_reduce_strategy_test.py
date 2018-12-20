@@ -82,7 +82,7 @@ class CollectiveAllReduceStrategyTestBase(
         instance_key_with_id_start=num_gpus * 10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     distribution.extended._collective_keys = collective_keys
-    distribution.extended._inferred_cross_device_ops._collective_keys = (
+    distribution.extended._cross_device_ops._collective_keys = (
         collective_keys)
     if task_type and task_id is not None:
       return distribution, 'grpc://' + self._cluster_spec[task_type][
@@ -128,7 +128,7 @@ class CollectiveAllReduceStrategyTestBase(
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.read_var(v)
+          fetched = d.extended.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
@@ -136,7 +136,7 @@ class CollectiveAllReduceStrategyTestBase(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
-              after_list.append(d.read_var(v))
+              after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
       before_out, after_out = step()
@@ -252,21 +252,22 @@ class CollectiveAllReduceStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run(
-            [values.select_device(d, next_element) for d in devices])
+        computed_value = sess.run([values.select_replica(r, next_element)
+                                   for r in range(len(devices))])
         self.assertEqual(expected_value, computed_value)
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
-        sess.run([values.select_device(d, next_element) for d in devices])
+        sess.run([values.select_replica(r, next_element)
+                  for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
       sess.run(iterator.initialize())
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run(
-            [values.select_device(d, next_element) for d in devices])
+        computed_value = sess.run([values.select_replica(r, next_element)
+                                   for r in range(len(devices))])
         self.assertEqual(expected_value, computed_value)
 
 

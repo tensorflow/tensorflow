@@ -64,7 +64,7 @@ XlaOp GetMatrixDiagonal(XlaOp x) {
   });
 }
 
-XlaOp Triangle(XlaOp x, bool lower) {
+XlaOp TriangleMask(XlaOp x, int diagonal) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
@@ -74,18 +74,17 @@ XlaOp Triangle(XlaOp x, bool lower) {
     const int64 n = shape.dimensions(n_dims - 1);
     absl::Span<const int64> major_dims =
         AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
-    auto a = Iota(builder, U32, n);
-    auto b = Iota(builder, U32, m);
+    auto a = Iota(builder, S32, n);
+    auto b = Iota(builder, S32, m) + ConstantR0<int32>(builder, diagonal);
     XlaOp indicator;
-    if (lower) {
-      indicator = Ge(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
-    } else {
-      indicator = Le(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
-    }
-    auto mask = Broadcast(indicator, major_dims);
-
-    return Select(mask, x, Zeros(builder, shape));
+    indicator = Ge(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
+    return Broadcast(indicator, major_dims);
   });
+}
+
+XlaOp Triangle(XlaOp x, bool lower) {
+  return lower ? Select(TriangleMask(x, 0), x, ZerosLike(x))
+               : Select(TriangleMask(x, -1), ZerosLike(x), x);
 }
 
 XlaOp UpperTriangle(XlaOp x) { return Triangle(x, false); }

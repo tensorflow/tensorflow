@@ -5,15 +5,15 @@ tf_class {
   is_instance: "<type \'object\'>"
   member {
     name: "output_classes"
-    mtype: "<class \'abc.abstractproperty\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "output_shapes"
-    mtype: "<class \'abc.abstractproperty\'>"
+    mtype: "<type \'property\'>"
   }
   member {
     name: "output_types"
-    mtype: "<class \'abc.abstractproperty\'>"
+    mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"

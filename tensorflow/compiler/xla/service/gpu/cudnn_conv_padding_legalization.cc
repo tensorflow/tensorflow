@@ -43,13 +43,14 @@ bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
 // dilation), returns kPad and/or kSlice instructions that explicitly apply the
 // padding; otherwise returns the original input operand. When there is both
 // positive padding (including dilation) and negative padding, we insert both
-// kPad and kSlice.
+// kPad and kSlice. Modifies 'conv_window' accordingly if any padding was moved
+// into a kPad or kSlice op.
 HloInstruction* MaybePaddedAndSlicedInput(
-    const Window& conv_window, const ConvolutionDimensionNumbers& conv_dnums,
+    Window* conv_window, const ConvolutionDimensionNumbers& conv_dnums,
     HloInstruction* input) {
   HloComputation* computation = input->parent();
-  if (!window_util::HasSymmetricPadding(conv_window) ||
-      window_util::HasBaseDilation(conv_window)) {
+  if (!window_util::HasSymmetricPadding(*conv_window) ||
+      window_util::HasBaseDilation(*conv_window)) {
     // If padding is uneven or has dilation, we insert a kPad instruction that
     // applies positive padding and dilation.
     //
@@ -62,12 +63,21 @@ HloInstruction* MaybePaddedAndSlicedInput(
         MakeNoPaddingConfig(input->shape().dimensions_size());
     for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
       int64 dim = conv_dnums.input_spatial_dimensions(i);
-      padding_config.mutable_dimensions(dim)->set_edge_padding_low(
-          std::max<int64>(0LL, conv_window.dimensions(i).padding_low()));
-      padding_config.mutable_dimensions(dim)->set_edge_padding_high(
-          std::max<int64>(0LL, conv_window.dimensions(i).padding_high()));
-      padding_config.mutable_dimensions(dim)->set_interior_padding(
-          conv_window.dimensions(i).base_dilation() - 1);
+      if (conv_window->dimensions(i).padding_low() > 0) {
+        padding_config.mutable_dimensions(dim)->set_edge_padding_low(
+            conv_window->dimensions(i).padding_low());
+        conv_window->mutable_dimensions(i)->set_padding_low(0);
+      }
+      if (conv_window->dimensions(i).padding_high() > 0) {
+        padding_config.mutable_dimensions(dim)->set_edge_padding_high(
+            conv_window->dimensions(i).padding_high());
+        conv_window->mutable_dimensions(i)->set_padding_high(0);
+      }
+      if (conv_window->dimensions(i).base_dilation() != 1) {
+        padding_config.mutable_dimensions(dim)->set_interior_padding(
+            conv_window->dimensions(i).base_dilation() - 1);
+        conv_window->mutable_dimensions(i)->set_base_dilation(1);
+      }
     }
     PrimitiveType element_type = input->shape().element_type();
     HloInstruction* padding = computation->AddInstruction(
@@ -75,7 +85,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
     input = MakePadHlo(input, padding, padding_config).ValueOrDie();
   }
 
-  if (window_util::HasNegativePadding(conv_window)) {
+  if (window_util::HasNegativePadding(*conv_window)) {
     // If the window has negative padding, insert a kSlice that explicitly
     // applies negative padding.
     //
@@ -89,10 +99,14 @@ HloInstruction* MaybePaddedAndSlicedInput(
       int64 dim = conv_dnums.input_spatial_dimensions(i);
       // If dimension "dim" has negative padding, increase the start index or
       // decrement the limit index by the amount of negative padding.
-      start_indices[dim] +=
-          std::max<int64>(0LL, -conv_window.dimensions(i).padding_low());
-      limit_indices[dim] -=
-          std::max<int64>(0LL, -conv_window.dimensions(i).padding_high());
+      if (conv_window->dimensions(i).padding_low() < 0) {
+        start_indices[dim] += -conv_window->dimensions(i).padding_low();
+        conv_window->mutable_dimensions(i)->set_padding_low(0);
+      }
+      if (conv_window->dimensions(i).padding_high() < 0) {
+        limit_indices[dim] -= -conv_window->dimensions(i).padding_high();
+        conv_window->mutable_dimensions(i)->set_padding_high(0);
+      }
     }
 
     input =
@@ -140,25 +154,22 @@ bool CudnnConvPaddingLegalization::CanonicalizeForwardConvolution(
 
   // Insert slices and/or pads between the convolution and its input and/or
   // kernel operand.
+  Window new_conv_window = conv->window();
   HloInstruction* new_input = MaybePaddedAndSlicedInput(
-      conv->window(), conv->convolution_dimension_numbers(),
+      &new_conv_window, conv->convolution_dimension_numbers(),
       conv->mutable_operand(0));
   HloInstruction* new_kernel =
-      MaybePaddedKernel(conv->window(), conv->convolution_dimension_numbers(),
+      MaybePaddedKernel(new_conv_window, conv->convolution_dimension_numbers(),
                         conv->mutable_operand(1));
 
-  // Remove the padding from convolution's window field. These paddings are
-  // made explicit with the inserted pads.
-  Window new_conv_window = conv->window();
+  // Remove the window dilation from convolution's window field. These paddings
+  // are made explicit with the pads inserted by MaybePaddedKernel().
   for (size_t i = 0; i < new_conv_window.dimensions_size(); ++i) {
     WindowDimension* dim = new_conv_window.mutable_dimensions(i);
 
     // The size of the kernel may have changed so update the Window to match.
     dim->set_size(new_kernel->shape().dimensions(
         conv->convolution_dimension_numbers().kernel_spatial_dimensions(i)));
-    dim->set_padding_low(0);
-    dim->set_padding_high(0);
-    dim->set_base_dilation(1);
     dim->set_window_dilation(1);
   }
 

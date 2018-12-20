@@ -44,6 +44,7 @@ einsum = special_math_ops.einsum
 eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
 logm = gen_linalg_ops.matrix_logarithm
+lu = gen_linalg_ops.lu
 tf_export('linalg.logm')(logm)
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm

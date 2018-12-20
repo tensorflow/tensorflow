@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/memory/memory.h"
@@ -74,6 +75,9 @@ ClientLibraryTestBase::ClientLibraryTestBase(
   // default.
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
+
+  execution_options_.mutable_debug_options()
+      ->set_xla_hlo_evaluator_use_fast_path(true);
 }
 
 ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
@@ -88,6 +92,9 @@ ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
 
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
+
+  execution_options_.mutable_debug_options()
+      ->set_xla_hlo_evaluator_use_fast_path(true);
 }
 
 string ClientLibraryTestBase::TestName() const {
@@ -273,9 +280,10 @@ StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      owning_arguments.push_back(
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument))
-              .ValueOrDie());
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<GlobalData> owned_argument,
+          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+      owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
   }
@@ -296,9 +304,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      owning_arguments.push_back(
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument))
-              .ValueOrDie());
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<GlobalData> owned_argument,
+          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+      owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
   }
@@ -356,9 +365,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      owning_arguments.push_back(
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument))
-              .ValueOrDie());
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<GlobalData> owned_argument,
+          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+      owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
   }

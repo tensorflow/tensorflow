@@ -12,10 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Autograph compiles Python code into equivalent TensorFlow code.
+"""Conversion of plain Python into TensorFlow graph code.
 
-Equivalent here means that they have the same effect when executed.
+NOTE: In TensorFlow 2.0, AutoGraph is automatically applied when using
+`tf.function`. This module contains lower-level APIs for advanced use.
+
+For more information, see the
+[AutoGraph guide](https://www.tensorflow.org/guide/autograph).
+
+By equivalent graph code we mean code that generates a TensorFlow graph when
+run. The generated graph has the same effects as the original code when executed
+(for example with `tf.function` or `tf.compat.v1.Session.run`). In other words,
+using AutoGraph can be thought of as running Python in TensorFlow.
 """
+# TODO(b/119833526): Link to the new tf.function + autograph tutorial.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -43,6 +53,7 @@ from tensorflow.python.autograph.lang.special_functions import tensor_list
 from tensorflow.python.autograph.pyct.transformer import AutographParseError
 from tensorflow.python.util.all_util import remove_undocumented
 
+# TODO(mdan): Revisit this list once we finalize the generated code mechanism.
 _allowed_symbols = [
     # Main API
     'ConversionOptions',

@@ -5,10 +5,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.platform.benchmark._BenchmarkRegistrar\'>"
   }
   member {
-    name: "StubOutForTesting"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "TestCase"
     mtype: "<type \'type\'>"
   }

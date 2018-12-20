@@ -125,7 +125,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
 
     save = saver.Saver([matrix])
     with self.cached_session() as sess:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.bundle_file = os.path.join(test.get_temp_dir(), 'bundle_checkpoint')
       save.save(sess, self.bundle_file)
 
@@ -230,6 +230,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
           np.reshape(initializing_values, (num_rows, num_cols)),
           self.evaluate(remapped_matrix))
 
+  @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_remapping(self):
     """Tests that errors are raised when an ID maps to multiple new IDs.
 
@@ -261,6 +262,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     with self.cached_session(), self.assertRaises(errors.UnimplementedError):
       self.evaluate(remapped_matrix)
 
+  @test_util.run_deprecated_v1
   def test_load_and_remap_incorrect_initializing_values(self):
     """Tests that errors are raised with incorrect number of init values."""
     remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
@@ -312,7 +314,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
     with self.cached_session() as sess:
       ckpt_path = os.path.join(test.get_temp_dir(), 'temp_ckpt')
       save = saver.Saver([matrix])
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       save.save(sess, ckpt_path)
       num_rows, num_cols = np_value.shape
 

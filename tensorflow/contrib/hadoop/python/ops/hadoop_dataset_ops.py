@@ -20,15 +20,19 @@ from __future__ import print_function
 from tensorflow.contrib.hadoop.python.ops import gen_dataset_ops
 from tensorflow.contrib.hadoop.python.ops import hadoop_op_loader  # pylint: disable=unused-import
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import deprecation
 
 
 class SequenceFileDataset(dataset_ops.DatasetSource):
   """A Sequence File Dataset that reads the sequence file."""
 
+  @deprecation.deprecated(
+      None,
+      "tf.contrib.hadoop will be removed in 2.0, the support for Apache Hadoop "
+      "will continue to be provided through the tensorflow/io GitHub project.")
   def __init__(self, filenames):
     """Create a `SequenceFileDataset`.
 
@@ -51,22 +55,14 @@ class SequenceFileDataset(dataset_ops.DatasetSource):
     Args:
       filenames: A `tf.string` tensor containing one or more filenames.
     """
-    super(SequenceFileDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.sequence_file_dataset(
-        self._filenames, nest.flatten(self.output_types))
-
-  @property
-  def output_classes(self):
-    return ops.Tensor, ops.Tensor
+    variant_tensor = gen_dataset_ops.sequence_file_dataset(
+        self._filenames, self._element_structure._flat_types)  # pylint: disable=protected-access
+    super(SequenceFileDataset, self).__init__(variant_tensor)
 
   @property
-  def output_shapes(self):
-    return (tensor_shape.TensorShape([]), tensor_shape.TensorShape([]))
-
-  @property
-  def output_types(self):
-    return dtypes.string, dtypes.string
+  def _element_structure(self):
+    return structure.NestedStructure(
+        (structure.TensorStructure(dtypes.string, []),
+         structure.TensorStructure(dtypes.string, [])))

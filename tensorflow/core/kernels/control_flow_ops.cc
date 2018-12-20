@@ -267,6 +267,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GPU_REF_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 REGISTER_GPU_REF_KERNEL(bool);
 REGISTER_GPU_KERNEL(uint64);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
@@ -365,6 +366,7 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 REGISTER_GPU_REF_KERNEL(bool);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
@@ -460,6 +462,7 @@ TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_REF_KERNEL);
 REGISTER_GPU_KERNEL(bool);
 REGISTER_GPU_REF_KERNEL(bool);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 #undef REGISTER_GPU_REF_KERNEL
@@ -514,6 +517,7 @@ REGISTER_SYCL_HOST_KERNEL(string);
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(string);
+REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
@@ -540,6 +544,7 @@ REGISTER_KERNEL_BUILDER(Name("RefNextIteration").Device(DEVICE_CPU),
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 REGISTER_GPU_KERNEL(bool);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 
 #undef REGISTER_GPU_KERNEL
 
@@ -562,6 +567,7 @@ REGISTER_GPU_KERNEL(bool);
 
 REGISTER_GPU_HOST_KERNEL(int32);
 REGISTER_GPU_HOST_KERNEL(string);
+REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
@@ -601,6 +607,13 @@ LoopCondOp::LoopCondOp(OpKernelConstruction* context) : OpKernel(context) {}
 LoopCondOp::~LoopCondOp() = default;
 
 void LoopCondOp::Compute(OpKernelContext* context) {
+  CancellationManager* cm = context->cancellation_manager();
+  if (cm != nullptr) {
+    bool already_cancelled = cm->IsCancelled();
+    OP_REQUIRES(context, !already_cancelled,
+                errors::Cancelled("Loop execution was cancelled."));
+  }
+
   context->set_output(0, context->input(0));
 }
 

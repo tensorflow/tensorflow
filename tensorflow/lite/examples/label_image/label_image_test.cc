@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
 #include "tensorflow/lite/examples/label_image/label_image.h"
 
-using ::testing::ElementsAreArray;
-
 namespace tflite {
 namespace label_image {
 

@@ -100,7 +100,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
           value, update = distribution.call_for_each_replica(
-              metric_fn, args=inputs)
+              metric_fn, args=(inputs,))
           ctx.set_non_tensor_output(name="value", output=value)
           return distribution.group(update)
 
@@ -115,7 +115,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
             distribution.extended.steps_per_run)
       else:
         value, update = distribution.call_for_each_replica(
-            metric_fn, iterator.get_next())
+            metric_fn, args=(iterator.get_next(),))
         update = distribution.group(update)
         # TODO(josh11b): Once we switch to using a global batch size for input,
         # replace "distribution.num_replicas_in_sync" with "1".

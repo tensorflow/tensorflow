@@ -397,6 +397,9 @@ typedef struct TfLiteContext {
   // default: false.
   // WARNING: This is an experimental API and subject to change.
   bool allow_fp32_relax_to_fp16;
+
+  // Pointer to the op-level profiler, if set; nullptr otherwise.
+  void* profiler;
 } TfLiteContext;
 
 typedef struct _TfLiteRegistration {

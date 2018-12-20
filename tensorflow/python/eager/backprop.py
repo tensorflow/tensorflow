@@ -595,7 +595,7 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Helper to return (possibly cached) zero tensors in eager mode."""
-  if dtype == dtypes.variant:
+  if dtype == dtypes.variant or dtype == dtypes.string:
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
@@ -618,6 +618,9 @@ def _zeros(shape, dtype):
 
 
 def _ones(shape, dtype):
+  if dtypes.as_dtype(dtype) == dtypes.string:
+    return None
+
   if not context.context().executing_eagerly():
     return array_ops.ones(shape, dtype)
 
@@ -1104,8 +1107,13 @@ class GradientTape(object):
         dimension of `target` and `source` do not match.
     """
     target_shape = target.shape
-    if not target_shape.with_rank_at_least(2)[0].is_compatible_with(
-        source.shape.with_rank_at_least(2)[0]):
+    if target_shape.rank is None:
+      dim = Dimension(None)
+    else:
+      dim = target_shape.dims[0]
+    if not (target_shape.with_rank_at_least(2) and
+            source.shape.with_rank_at_least(2) and
+            dim.is_compatible_with(source.shape[0])):
       raise ValueError(
           "Need first dimension of target shape (%s) and "
           "source shape (%s) to match." % (target.shape, source.shape))

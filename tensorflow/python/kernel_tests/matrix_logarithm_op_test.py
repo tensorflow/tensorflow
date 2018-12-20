@@ -84,6 +84,7 @@ class LogarithmOpTest(test.TestCase):
     # Complex batch
     self._verifyLogarithmComplex(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_v1_only("b/120545219")
   def testNonSquareMatrix(self):
     # When the logarithm of a non-square matrix is attempted we should return
     # an error
@@ -91,6 +92,7 @@ class LogarithmOpTest(test.TestCase):
       gen_linalg_ops.matrix_logarithm(
           np.array([[1., 2., 3.], [3., 4., 5.]], dtype=np.complex64))
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The input to the logarithm should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.], dtype=dtypes.complex64)
@@ -121,6 +123,7 @@ class LogarithmOpTest(test.TestCase):
             size=np.prod(shape)).reshape(shape).astype(np.complex128)
         self._verifyLogarithmComplex(matrix)
 
+  @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       matrix1 = math_ops.cast(

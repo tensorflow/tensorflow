@@ -27,8 +27,10 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.optimizers.Adagrad', v1=[])
 class Adagrad(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adagrad algorithm.
 
@@ -86,7 +88,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
     if epsilon < 1e-7:
       raise ValueError('epsilon must be larger than 1e-7: %s' % epsilon)
     super(Adagrad, self).__init__(name, **kwargs)
-    self._set_hyper('learning_rate', learning_rate)
+    self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
     self._initial_accumulator_value = initial_accumulator_value
     self._set_hyper('epsilon', epsilon)

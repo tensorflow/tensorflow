@@ -528,7 +528,7 @@ class ScopedMetaGraphTest(test.TestCase):
         actual_grad_value = self.evaluate(grad)
         self.assertEqual(expected_grad_value, actual_grad_value)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testImportWhileLoopInWhileLoop(self):
     # Create a simple while loop.
     with ops.Graph().as_default():

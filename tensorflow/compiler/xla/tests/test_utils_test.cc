@@ -61,11 +61,11 @@ XLA_TEST_F(TestUtilsTest, Token) {
                     R"(HloModule outfeed_module
 
     ENTRY InfeedToOutfeed {
-      token = token[] parameter(0)
-      infeed = ((u32[3]{0}, pred[]), token[]) infeed(token)
+      token0 = token[] parameter(0)
+      infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
       infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
-      outfeed = token[] outfeed(infeed.data, token)
-      ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token)
+      outfeed = token[] outfeed(infeed.data, token0)
+      ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token0)
       infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
       infeed.1.token = token[] get-tuple-element(infeed.1), index=1
       outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)

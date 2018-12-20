@@ -70,7 +70,10 @@ int GPUProcessState::BusIdForGPU(TfGpuId tf_gpu_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
   se::StreamExecutor* se =
       GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id).ValueOrDie();
-  return se->GetDeviceDescription().numa_node();
+  int numa_node = se->GetDeviceDescription().numa_node();
+  // bus_id must be non-negative.  If the numa_node is not known,
+  // use 0.
+  return numa_node >= 0 ? numa_node : 0;
 }
 
 Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
@@ -97,6 +100,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     PlatformGpuId platform_gpu_id;
     TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
     int bus_id = BusIdForGPU(tf_gpu_id);
+    DCHECK_GE(bus_id, 0);
     while (bus_id >= gpu_visitors_.size()) {
       gpu_visitors_.push_back({});
     }
@@ -249,6 +253,7 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
   CHECK(gpu_allocators_.empty())  // Crash OK
       << "AddGPUAllocVisitor must be called before "
          "first call to GetGPUAllocator.";
+  DCHECK_GE(bus_id, 0);
   while (bus_id >= static_cast<int64>(gpu_visitors_.size())) {
     gpu_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }

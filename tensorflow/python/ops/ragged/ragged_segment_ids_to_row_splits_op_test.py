@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the ragged.segment_ids_to_row_splits() op."""
+"""Tests for the segment_id_ops.segment_ids_to_row_splits() op."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,58 +20,52 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_test_util
+from tensorflow.python.ops.ragged import segment_id_ops
 from tensorflow.python.platform import googletest
 
 
-class RaggedSplitsToSegmentIdsOpTest(test_util.TensorFlowTestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedSplitsToSegmentIdsOpTest(ragged_test_util.RaggedTensorTestCase):
 
-  @test_util.run_deprecated_v1
   def testDocStringExample(self):
     segment_ids = [0, 0, 0, 2, 2, 3, 4, 4, 4]
     expected = [0, 3, 3, 5, 6, 9]
-    splits = ragged.segment_ids_to_row_splits(segment_ids)
-    with self.test_session():
-      self.assertEqual(splits.eval().tolist(), expected)
+    splits = segment_id_ops.segment_ids_to_row_splits(segment_ids)
+    self.assertAllEqual(splits, expected)
 
-  @test_util.run_deprecated_v1
   def testEmptySegmentIds(self):
     # Note: the splits for an empty ragged tensor contains a single zero.
-    segment_ids = ragged.segment_ids_to_row_splits([])
-    with self.test_session():
-      self.assertEqual(segment_ids.eval().tolist(), [0])
+    segment_ids = segment_id_ops.segment_ids_to_row_splits([])
+    self.assertAllEqual(segment_ids, [0])
 
   def testErrors(self):
     self.assertRaisesRegexp(TypeError,
                             r'segment_ids must be an integer tensor.*',
-                            ragged.segment_ids_to_row_splits,
+                            segment_id_ops.segment_ids_to_row_splits,
                             constant_op.constant([0.5]))
     self.assertRaisesRegexp(ValueError, r'Shape \(\) must have rank 1',
-                            ragged.segment_ids_to_row_splits, 0)
+                            segment_id_ops.segment_ids_to_row_splits, 0)
     self.assertRaisesRegexp(ValueError, r'Shape \(1, 1\) must have rank 1',
-                            ragged.segment_ids_to_row_splits, [[0]])
+                            segment_id_ops.segment_ids_to_row_splits, [[0]])
 
-  @test_util.run_deprecated_v1
   def testNumSegments(self):
     segment_ids = [0, 0, 0, 2, 2, 3, 4, 4, 4]
     num_segments = 7
     expected = [0, 3, 3, 5, 6, 9, 9, 9]
-    splits = ragged.segment_ids_to_row_splits(segment_ids, num_segments)
-    with self.test_session():
-      self.assertEqual(splits.eval().tolist(), expected)
+    splits = segment_id_ops.segment_ids_to_row_splits(segment_ids, num_segments)
+    self.assertAllEqual(splits, expected)
 
-  @test_util.run_deprecated_v1
   def testUnsortedSegmentIds(self):
     # Segment ids are not required to be sorted.
     segment_ids = [0, 4, 3, 2, 4, 4, 2, 0, 0]
-    splits1 = ragged.segment_ids_to_row_splits(segment_ids)
+    splits1 = segment_id_ops.segment_ids_to_row_splits(segment_ids)
     expected1 = [0, 3, 3, 5, 6, 9]
 
-    splits2 = ragged.segment_ids_to_row_splits(segment_ids, 7)
+    splits2 = segment_id_ops.segment_ids_to_row_splits(segment_ids, 7)
     expected2 = [0, 3, 3, 5, 6, 9, 9, 9]
-    with self.test_session():
-      self.assertEqual(splits1.eval().tolist(), expected1)
-      self.assertEqual(splits2.eval().tolist(), expected2)
+    self.assertAllEqual(splits1, expected1)
+    self.assertAllEqual(splits2, expected2)
 
 
 if __name__ == '__main__':

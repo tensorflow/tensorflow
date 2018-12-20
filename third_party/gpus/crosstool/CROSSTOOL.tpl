@@ -642,6 +642,31 @@ toolchain {
     name: "no_legacy_features"
   }
 
+  # TODO(klimek): Previously we were using a .bat file to start python to run
+  # the python script that can redirect to nvcc - unfortunately .bat files
+  # have a rather short maximum length for command lines (8k). Instead, we
+  # now use the python binary as the compiler and pass the python script to
+  # it at the start of the command line. Investigate different possibilities
+  # to run the nvcc wrapper, either using pyinstaller --onefile, or writing
+  # a small C++ wrapper to redirect.
+  feature {
+    name: "redirector"
+    enabled: true
+    flag_set {
+      action: "c-compile"
+      action: "c++-compile"
+      action: "c++-module-compile"
+      action: "c++-module-codegen"
+      action: "c++-header-parsing"
+      action: "assemble"
+      action: "preprocess-assemble"
+      flag_group {
+        flag: "-B"
+        flag: "external/local_config_cuda/crosstool/windows/msvc_wrapper_for_nvcc.py"
+      }
+    }
+  }
+
   # Suppress startup banner.
   feature {
     name: "nologo"

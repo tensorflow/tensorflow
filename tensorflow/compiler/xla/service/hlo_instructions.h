@@ -242,14 +242,10 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const std::vector<ReplicaGroup>& replica_groups,
       absl::string_view barrier, const absl::optional<int64>& all_reduce_id);
 
-  // Returns the barrier config used for the CrossReplicaSum implementation of
+  // Returns the barrier config used for the AllReduce implementation of
   // each backend.
-  string cross_replica_sum_barrier() const {
-    return cross_replica_sum_barrier_;
-  }
-  void set_cross_replica_sum_barrier(string barrier) {
-    cross_replica_sum_barrier_ = barrier;
-  }
+  string all_reduce_barrier() const { return all_reduce_barrier_; }
+  void set_all_reduce_barrier(string barrier) { all_reduce_barrier_ = barrier; }
 
   absl::optional<int64> all_reduce_id() const { return all_reduce_id_; }
   void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
@@ -270,8 +266,8 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context) const override;
 
-  // The string representation of the barrier config used for CrossReplicaSum.
-  string cross_replica_sum_barrier_;
+  // The string representation of the barrier config used for AllReduce.
+  string all_reduce_barrier_;
 
   // For Allreduce nodes from different modules, if they have the same
   // all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will not be
@@ -933,7 +929,7 @@ class HloConvolutionInstruction : public HloInstruction {
  public:
   explicit HloConvolutionInstruction(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      int64 feature_group_count, const Window& window,
+      int64 feature_group_count, int64 batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
   const Window& window() const override { return window_; }
@@ -948,6 +944,10 @@ class HloConvolutionInstruction : public HloInstruction {
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count() const { return feature_group_count_; }
+
+  // The number of feature groups. Must be a divisor of the input batch
+  // dimension.
+  int64 batch_group_count() const { return batch_group_count_; }
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -977,6 +977,9 @@ class HloConvolutionInstruction : public HloInstruction {
   // The number of feature groups. Must be a divisor of the input feature
   // dimension and output feature dimension.
   int64 feature_group_count_;
+  // The number of feature groups. Must be a divisor of the input batch
+  // dimension.
+  int64 batch_group_count_;
   // Describes the window used for a convolution.
   Window window_;
   // Describes the dimension numbers used for a convolution.
@@ -1099,7 +1102,11 @@ class HloCustomCallInstruction : public HloInstruction {
   void set_feature_group_count(int64 feature_group_count) {
     feature_group_count_ = feature_group_count;
   }
+  void set_batch_group_count(int64 batch_group_count) {
+    batch_group_count_ = batch_group_count;
+  }
   int64 feature_group_count() const { return feature_group_count_; }
+  int64 batch_group_count() const { return batch_group_count_; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1134,6 +1141,7 @@ class HloCustomCallInstruction : public HloInstruction {
   std::unique_ptr<ConvolutionDimensionNumbers> convolution_dimension_numbers_;
   // The number of feature groups. This is used for grouped convolutions.
   int64 feature_group_count_;
+  int64 batch_group_count_;
   // Whether the result and operand layouts are constrained.
   bool layout_constrained_;
   // For layout-constrained custom calls, this vector holds the shape with
@@ -1171,7 +1179,14 @@ class HloPadInstruction : public HloInstruction {
   PaddingConfig padding_config_;
 };
 
-class HloDynamicSliceInstruction : public HloInstruction {
+class HloDynamicIndexInstruction : public HloInstruction {
+ public:
+  explicit HloDynamicIndexInstruction(HloOpcode opcode, const Shape& shape)
+      : HloInstruction(opcode, shape) {}
+  virtual int64 index_operand_number() const = 0;
+};
+
+class HloDynamicSliceInstruction : public HloDynamicIndexInstruction {
  public:
   explicit HloDynamicSliceInstruction(const Shape& shape,
                                       HloInstruction* operand,
@@ -1189,6 +1204,8 @@ class HloDynamicSliceInstruction : public HloInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
+  int64 index_operand_number() const override { return 1; }
+
  private:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
@@ -1204,6 +1221,16 @@ class HloDynamicSliceInstruction : public HloInstruction {
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).
   std::vector<int64> dynamic_slice_sizes_;
+};
+
+class HloDynamicUpdateSliceInstruction : public HloDynamicIndexInstruction {
+ public:
+  explicit HloDynamicUpdateSliceInstruction(const Shape& shape,
+                                            HloInstruction* operand,
+                                            HloInstruction* update,
+                                            HloInstruction* start_indices);
+
+  int64 index_operand_number() const override { return 2; }
 };
 
 class HloGatherInstruction : public HloInstruction {

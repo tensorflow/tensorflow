@@ -241,10 +241,6 @@ class ShapeUtil {
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static string HumanString(const ProgramShape& program_shape);
 
-  // Parses a ShapeUtil::HumanString-format shape string back into a shape
-  // object.
-  static StatusOr<Shape> ParseShapeString(absl::string_view s);
-
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
   // Precondition: IsArray(lhs) && IsArray(rhs)
@@ -266,7 +262,7 @@ class ShapeUtil {
   }
 
   // Returns the higher-precision element type if a and b are both floating
-  // point types; otherwise, checks that that they have the same element type
+  // point types; otherwise, checks that they have the same element type
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
@@ -550,6 +546,9 @@ class ShapeUtil {
   // Returns true if `shape` (which must be an array) with degenerate dimensions
   // (dimensions with bound 1).
   static bool HasDegenerateDimensions(const Shape& shape);
+
+  // Drops any degenerate dimensions (i.e. dimensions of size 1)
+  static Shape DropDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i].

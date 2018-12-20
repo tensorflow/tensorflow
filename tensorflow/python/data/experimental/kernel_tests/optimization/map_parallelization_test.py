@@ -20,7 +20,6 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
@@ -68,7 +67,6 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(5).apply(
         optimization.assert_next(next_nodes)).map(function)
     options = dataset_ops.Options()
-    options.experimental_optimization = OptimizationOptions()
     options.experimental_optimization.map_parallelization = True
     dataset = dataset.with_options(options)
     if should_optimize:

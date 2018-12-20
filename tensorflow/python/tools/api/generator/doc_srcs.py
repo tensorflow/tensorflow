@@ -54,6 +54,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'nn': DocSource(docstring_module_name='ops.nn_ops'),
     'nn.rnn_cell': DocSource(docstring_module_name='ops.rnn_cell'),
     'python_io': DocSource(docstring_module_name='lib.io.python_io'),
+    'ragged': DocSource(docstring_module_name='ops.ragged'),
     'resource_loader': DocSource(
         docstring_module_name='platform.resource_loader'),
     'sets': DocSource(docstring_module_name='ops.sets'),

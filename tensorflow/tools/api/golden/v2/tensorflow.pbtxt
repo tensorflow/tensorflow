@@ -5,27 +5,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "AttrValue"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "ConfigProto"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "DType"
     mtype: "<type \'type\'>"
   }
   member {
     name: "Event"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "FIFOQueue"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "GPUOptions"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
@@ -37,67 +21,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "GraphDef"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "GraphOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "HistogramProto"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "IndexedSlices"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "LogMessage"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "MetaGraphDef"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "NameAttrList"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "NodeDef"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "Operation"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "OptimizerOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    name: "RaggedTensor"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "RegisterGradient"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "RunMetadata"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "RunOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
-    name: "SessionLog"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "SparseTensor"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "SparseTensorValue"
     mtype: "<type \'type\'>"
   }
   member {
@@ -141,6 +81,10 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "autograph"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "bfloat16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -163,6 +107,10 @@ tf_module {
   member {
     name: "complex64"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "config"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "constant_initializer"
@@ -277,10 +225,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "metrics"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "name_scope"
     mtype: "<type \'type\'>"
   }
@@ -313,12 +257,20 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "queue"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "quint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
     name: "quint8"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "ragged"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "random"
@@ -335,6 +287,10 @@ tf_module {
   member {
     name: "resource"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "rnn"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "saved_model"
@@ -993,6 +949,10 @@ tf_module {
     argspec: "args=[\'values\', \'axis\', \'direction\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'ASCENDING\', \'None\'], "
   }
   member_method {
+    name: "space_to_batch"
+    argspec: "args=[\'input\', \'block_shape\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "space_to_batch_nd"
     argspec: "args=[\'input\', \'block_shape\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1027,10 +987,6 @@ tf_module {
   member_method {
     name: "string_split"
     argspec: "args=[\'source\', \'delimiter\', \'skip_empty\'], varargs=None, keywords=None, defaults=[\' \', \'True\'], "
-  }
-  member_method {
-    name: "substr"
-    argspec: "args=[\'input\', \'pos\', \'len\', \'name\', \'unit\'], varargs=None, keywords=None, defaults=[\'None\', \'BYTE\'], "
   }
   member_method {
     name: "subtract"

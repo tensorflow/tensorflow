@@ -105,18 +105,17 @@ class _AssertNextDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, transformations):
     """See `assert_next()` for details."""
-    super(_AssertNextDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     if transformations is None:
       raise ValueError("At least one transformation should be specified")
     self._transformations = ops.convert_to_tensor(
         transformations, dtype=dtypes.string, name="transformations")
-
-  def _as_variant_tensor(self):
-    return gen_experimental_dataset_ops.experimental_assert_next_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._transformations,
-        **dataset_ops.flat_structure(self))
+    variant_tensor = (
+        gen_experimental_dataset_ops.experimental_assert_next_dataset(
+            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+            self._transformations,
+            **dataset_ops.flat_structure(self)))
+    super(_AssertNextDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _NonSerializableDataset(dataset_ops.UnaryUnchangedStructureDataset):
@@ -124,10 +123,9 @@ class _NonSerializableDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset):
     """See `non_serializable()` for details."""
-    super(_NonSerializableDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
-
-  def _as_variant_tensor(self):
-    return gen_experimental_dataset_ops.experimental_non_serializable_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        **dataset_ops.flat_structure(self))
+    variant_tensor = (
+        gen_experimental_dataset_ops.experimental_non_serializable_dataset(
+            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+            **dataset_ops.flat_structure(self)))
+    super(_NonSerializableDataset, self).__init__(input_dataset, variant_tensor)

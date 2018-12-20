@@ -605,6 +605,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       x.op._update_input(1, x)  # pylint: disable=protected-access
 
   @test_util.enable_control_flow_v2
+  @test_util.run_v1_only("b/120545219")
   def testAddWhileInput(self):
     @eager_function.defun
     def test():
@@ -613,6 +614,9 @@ class OperationTest(test_util.TensorFlowTestCase):
       while_op = output.op.inputs[0].op
       self.assertEqual(while_op.type, "While")
       orig_num_inputs = len(while_op.inputs)
+
+      # Make sure we can handle the while op having a control input.
+      while_op._add_control_input(constant_op.constant(0).op)
 
       new_input1 = constant_op.constant(1.0)
       new_input2 = constant_op.constant(True)
@@ -780,7 +784,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(op3.name, "myop_2")
     self.assertEqual(op4.name, "myop_1_1")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testCond(self):
     g = ops.Graph()
     with g.as_default():
@@ -810,7 +814,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
                      "cond/cond_text")
     # pylint: enable=protected-access
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWhileLoop(self):
     g = ops.Graph()
     with g.as_default():
@@ -840,7 +844,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
                      "myloop/while_context")
     # pylint: enable=protected-access
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWhileLoopWithInternalControlDep(self):
     g = ops.Graph()
     with g.as_default():
@@ -864,7 +868,7 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     # Internal control dep is preserved
     self.assertEqual(op.control_inputs, [c])
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testWhileLoopWithExternalControlDep(self):
     g = ops.Graph()
     with g.as_default():
@@ -2283,7 +2287,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
       self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testFallsBackToGlobalGraphWhenAllGraphsAreBuildingFunctions(self):
     with context.graph_mode():
       ops.reset_default_graph()
@@ -2994,7 +2998,7 @@ class TracebackTest(test_util.TensorFlowTestCase):
 
 class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testBadArgumentsToEnableEagerExecution(self):
     with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):
       ops.enable_eager_execution(context.DEVICE_PLACEMENT_SILENT)

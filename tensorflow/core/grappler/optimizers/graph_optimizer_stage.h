@@ -238,10 +238,10 @@ class GraphOptimizerStagePipeline {
         // Each stage must be "error safe" (just like exception safe). In
         // case of any error it must leave optimized graph unmodified.
         if (!stage_status.ok()) {
-          LOG(WARNING) << "Failed to run optimizer " << stage->optimizer_name()
-                       << ", stage " << stage->stage_name() << " node "
-                       << node->name()
-                       << ". Error: " << stage_status.error_message();
+          VLOG(2) << "Failed to run optimizer " << stage->optimizer_name()
+                  << ", stage " << stage->stage_name() << " node "
+                  << node->name()
+                  << ". Error: " << stage_status.error_message();
         }
         if (break_predicate_(*result)) return true;
       }

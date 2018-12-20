@@ -4,6 +4,7 @@ package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
+load("//tensorflow/core:platform/default/build_config.bzl", "pyx_library")
 
 py_library(
     name = "xla_client",
@@ -17,6 +18,12 @@ py_library(
     ],
 )
 
+pyx_library(
+    name = "custom_call_for_test",
+    testonly = True,
+    srcs = ["custom_call_for_test.pyx"],
+)
+
 py_test(
     name = "xla_client_test",
     srcs = ["xla_client_test.py"],
@@ -24,6 +31,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [
+        ":custom_call_for_test",
         ":xla_client",
         "//tensorflow/python:platform_test",
     ],
@@ -66,13 +74,18 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:cholesky",
         "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/lib:qr",
+        "//tensorflow/compiler/xla/client/lib:triangular_solve",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
         "//tensorflow/compiler/xrt:xrt_proto",
         "//tensorflow/compiler/xrt/cc:xrt_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],

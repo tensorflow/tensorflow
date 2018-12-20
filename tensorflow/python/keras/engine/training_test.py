@@ -53,9 +53,8 @@ except ImportError:
 
 class TrainingTest(keras_parameterized.TestCase):
 
-  @keras_parameterized.run_all_keras_modes_with_all_model_types(
-      exclude_models='sequential'
-  )
+  @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
+  @keras_parameterized.run_all_keras_modes
   def test_fit_on_arrays(self):
     input_a = keras.layers.Input(shape=(3,), name='input_a')
     input_b = keras.layers.Input(shape=(3,), name='input_b')
@@ -251,8 +250,10 @@ class TrainingTest(keras_parameterized.TestCase):
                   run_eagerly=testing_utils.should_run_eagerly())
     # This will work
     model.fit([input_a_np], output_d_np, epochs=1)
-    with self.assertRaises(ValueError):
-      model.fit([input_a_np, input_a_np], output_d_np, epochs=1)
+    # TODO(gsundeep) Test only works in eager, file ticket
+    if testing_utils.should_run_eagerly() and context.executing_eagerly():
+      with self.assertRaises(ValueError):
+        model.fit([input_a_np, input_a_np], output_d_np, epochs=1)
 
     # Test model on a list of floats
     input_a_np = np.random.random((10, 3))
@@ -472,7 +473,6 @@ class TrainingTest(keras_parameterized.TestCase):
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
 
-  @tf_test_util.run_deprecated_v1
   def test_that_trainable_disables_updates(self):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
@@ -732,6 +732,71 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllEqual([[6], [8], [10], [12]],
                         model.predict(dataset_two, steps=2))
 
+  def test_training_on_sparse_categorical_crossentropy_loss_with_softmax(self):
+    with context.eager_mode():
+      np.random.seed(1337)
+      train_x = np.ones((100, 4))
+      train_y = np.random.randint(0, 1, size=(100, 1))
+
+      reference_model = testing_utils.get_small_sequential_mlp(16, 2,
+                                                               input_dim=4)
+      reference_model.compile(loss='sparse_categorical_crossentropy',
+                              optimizer=RMSPropOptimizer(learning_rate=0.001),
+                              run_eagerly=True)
+      fixed_weights = reference_model.get_weights()
+      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+
+      test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
+      test_model.compile(loss='sparse_categorical_crossentropy',
+                         optimizer=RMSPropOptimizer(learning_rate=0.001),
+                         run_eagerly=False)
+      test_model.set_weights(fixed_weights)
+      test_model_loss = test_model.train_on_batch(train_x, train_y)
+      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+
+  def test_training_on_categorical_crossentropy_loss_with_softmax(self):
+    with context.eager_mode():
+      np.random.seed(1337)
+      train_x = np.ones((100, 4))
+      train_y = keras.utils.to_categorical(np.random.randint(0, 1,
+                                                             size=(100, 1)), 2)
+
+      reference_model = testing_utils.get_small_sequential_mlp(16, 2,
+                                                               input_dim=4)
+      reference_model.compile(loss='categorical_crossentropy',
+                              optimizer=RMSPropOptimizer(learning_rate=0.001),
+                              run_eagerly=True)
+      fixed_weights = reference_model.get_weights()
+      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+
+      test_model = testing_utils.get_small_sequential_mlp(16, 2, input_dim=4)
+      test_model.compile(loss='categorical_crossentropy',
+                         optimizer=RMSPropOptimizer(learning_rate=0.001),
+                         run_eagerly=False)
+      test_model.set_weights(fixed_weights)
+      test_model_loss = test_model.train_on_batch(train_x, train_y)
+      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+
+  def test_training_on_binary_crossentropy_loss(self):
+    with context.eager_mode():
+      train_x = np.ones((100, 4), dtype=np.float32)
+      train_y = np.ones((100, 1), dtype=np.float32)
+      reference_model = testing_utils.get_small_sequential_mlp(16, 1,
+                                                               input_dim=4)
+      reference_model.compile(loss='binary_crossentropy',
+                              optimizer=RMSPropOptimizer(learning_rate=0.001),
+                              run_eagerly=True)
+      fixed_weights = reference_model.get_weights()
+      reference_model_loss = reference_model.train_on_batch(train_x, train_y)
+
+      test_model = testing_utils.get_small_sequential_mlp(16, 1, input_dim=4)
+      test_model.compile(loss='binary_crossentropy',
+                         optimizer=RMSPropOptimizer(learning_rate=0.001),
+                         run_eagerly=False)
+      test_model.set_weights(fixed_weights)
+      test_model_loss = test_model.train_on_batch(train_x, train_y)
+      self.assertAlmostEqual(test_model_loss, reference_model_loss, places=4)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
@@ -797,8 +862,9 @@ class LossWeightingTest(keras_parameterized.TestCase):
   def test_class_weights(self):
     num_classes = 5
     batch_size = 5
-    epochs = 5
+    epochs = 10
     weighted_class = 3
+    weight = 10.
     train_samples = 1000
     test_samples = 1000
     input_dim = 5
@@ -827,10 +893,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     class_weight = dict([(i, 1.) for i in range(num_classes)])
-    class_weight[weighted_class] = 2.
-
-    sample_weight = np.ones((y_train.shape[0]))
-    sample_weight[int_y_train == weighted_class] = 2.
+    class_weight[weighted_class] = weight
 
     model.fit(
         x_train,
@@ -839,7 +902,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
         epochs=epochs // 3,
         verbose=0,
         class_weight=class_weight,
-        validation_data=(x_train, y_train, sample_weight))
+        validation_data=(x_train, y_train))
     model.fit(
         x_train,
         y_train,
@@ -867,8 +930,9 @@ class LossWeightingTest(keras_parameterized.TestCase):
   def test_sample_weights(self):
     num_classes = 5
     batch_size = 5
-    epochs = 5
+    epochs = 10
     weighted_class = 3
+    weight = 10.
     train_samples = 1000
     test_samples = 1000
     input_dim = 5
@@ -897,7 +961,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
     test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
     sample_weight = np.ones((y_train.shape[0]))
-    sample_weight[int_y_train == weighted_class] = 2.
+    sample_weight[int_y_train == weighted_class] = weight
 
     model.fit(
         x_train,
@@ -964,8 +1028,9 @@ class LossWeightingTest(keras_parameterized.TestCase):
   def test_temporal_sample_weights(self):
     num_classes = 5
     batch_size = 5
-    epochs = 5
+    epochs = 10
     weighted_class = 3
+    weight = 10.
     train_samples = 1000
     test_samples = 1000
     input_dim = 5
@@ -994,7 +1059,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
       test_ids = np.where(int_y_test == np.array(weighted_class))[0]
 
       sample_weight = np.ones((y_train.shape[0]))
-      sample_weight[int_y_train == weighted_class] = 2.
+      sample_weight[int_y_train == weighted_class] = weight
 
       temporal_x_train = np.reshape(x_train, (len(x_train), 1,
                                               x_train.shape[1]))
@@ -1015,7 +1080,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
 
       model.compile(
           RMSPropOptimizer(learning_rate=learning_rate),
-          loss='binary_crossentropy',
+          loss='categorical_crossentropy',
           metrics=['acc', metrics_module.CategoricalAccuracy()],
           weighted_metrics=['mae', metrics_module.CategoricalAccuracy()],
           sample_weight_mode='temporal',
@@ -1282,7 +1347,6 @@ class LossMaskingTest(keras_parameterized.TestCase):
 
 class TestDynamicTrainability(keras_parameterized.TestCase):
 
-  @tf_test_util.run_deprecated_v1
   def test_trainable_warning(self):
     with self.cached_session():
       x = np.random.random((5, 3))
@@ -1296,7 +1360,6 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
       model.train_on_batch(x, y)
       self.assertRaises(Warning)
 
-  @tf_test_util.run_deprecated_v1
   def test_trainable_argument(self):
     with self.cached_session():
       x = np.random.random((5, 3))
