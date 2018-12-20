@@ -43,15 +43,34 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * <pre>{@code
  * Object[] inputs = {input0, input1, ...};
  * Map<Integer, Object> map_of_indices_to_outputs = new HashMap<>();
- * float[][][] ith_output = new float[3][2][4];
+ * ByteBuffer ith_output = ByteBuffer.allocateDirect(3 * 2 * 4 * 4);  // Float tensor, shape 3x2x4.
+ * ith_output.order(ByteOrder.nativeOrder());
  * map_of_indices_to_outputs.put(i, ith_output);
  * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
  * }
  * }</pre>
  *
+ * <p>If a model takes or produces string tensors:
+ *
+ * <pre>{@code
+ * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
+ * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
+ * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ *   interpreter.runForMultipleInputsOutputs(input, output);
+ * }
+ * }</pre>
+ *
  * <p>Orders of inputs and outputs are determined when converting TensorFlow model to TensorFlowLite
- * model with Toco.
+ * model with Toco, as are the default shapes of the inputs.
+ *
+ * <p>When inputs are provided as (multi-dimensional) arrays, the corresponding input tensor(s) will
+ * be implicitly resized according to that array's shape. When inputs are provided as {@link
+ * ByteBuffer} types, no implicit resizing is done; the caller must ensure that the {@link
+ * ByteBuffer} byte size either matches that of the corresponding tensor, or that they first resize
+ * the tensor via {@link #resizeInput()}. Tensor shape and type information can be obtained via the
+ * {@link Tensor} class, available via {@link #getInputTensor(int)} and {@link
+ * #getOutputTensor(int)}.
  *
  * <p><b>WARNING:</b>Instances of a {@code Interpreter} is <b>not</b> thread-safe. A {@code
  * Interpreter} owns resources that <b>must</b> be explicitly freed by invoking {@link #close()}
@@ -97,9 +116,26 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Advanced: Set if buffer handle output is allowed.
+     *
+     * <p>When a {@link Delegate} supports hardware acceleration, the interpreter will make the data
+     * of output tensors available in the CPU-allocated tensor buffers by default. If the client can
+     * consume the buffer handle directly (e.g. reading output from OpenGL texture), it can set this
+     * flag to false, avoiding the copy of data to the CPU buffer. The delegate documentation should
+     * indicate whether this is supported and how it can be used.
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options setAllowBufferHandleOutput(boolean allow) {
+      this.allowBufferHandleOutput = allow;
+      return this;
+    }
+
     int numThreads = -1;
-    boolean useNNAPI = false;
-    boolean allowFp16PrecisionForFp32 = false;
+    Boolean useNNAPI;
+    Boolean allowFp16PrecisionForFp32;
+    Boolean allowBufferHandleOutput;
     final List<Delegate> delegates = new ArrayList<>();
   }
 
@@ -192,12 +228,13 @@ public final class Interpreter implements AutoCloseable {
    * Runs model inference if the model takes only one input, and provides only one output.
    *
    * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please
-   * consider using {@link ByteBuffer} to feed input data for better performance.
+   * consider using {@link ByteBuffer} to feed primitive input data for better performance.
    *
    * @param input an array or multidimensional array, or a {@link ByteBuffer} of primitive types
    *     including int, float, long, and byte. {@link ByteBuffer} is the preferred way to pass large
-   *     input data. When {@link ByteBuffer} is used, its content should remain unchanged until
-   *     model inference is done.
+   *     input data for primitive types, whereas string types require using the (multi-dimensional)
+   *     array input path. When {@link ByteBuffer} is used, its content should remain unchanged
+   *     until model inference is done.
    * @param output a multidimensional array of output data, or a {@link ByteBuffer} of primitive
    *     types including int, float, long, and byte.
    */
@@ -212,13 +249,14 @@ public final class Interpreter implements AutoCloseable {
    * Runs model inference if the model takes multiple inputs, or returns multiple outputs.
    *
    * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please
-   * consider using {@link ByteBuffer} to feed input data for better performance.
+   * consider using {@link ByteBuffer} to feed primitive input data for better performance.
    *
    * @param inputs an array of input data. The inputs should be in the same order as inputs of the
    *     model. Each input can be an array or multidimensional array, or a {@link ByteBuffer} of
    *     primitive types including int, float, long, and byte. {@link ByteBuffer} is the preferred
-   *     way to pass large input data. When {@link ByteBuffer} is used, its content should remain
-   *     unchanged until model inference is done.
+   *     way to pass large input data, whereas string types require using the (multi-dimensional)
+   *     array input path. When {@link ByteBuffer} is used, its content should remain unchanged
+   *     until model inference is done.
    * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
    *     ByteBuffer}s of primitive types including int, float, long, and byte. It only needs to keep
    *     entries for the outputs to be used.
@@ -326,6 +364,20 @@ public final class Interpreter implements AutoCloseable {
   public void setNumThreads(int numThreads) {
     checkNotClosed();
     wrapper.setNumThreads(numThreads);
+  }
+
+  /**
+   * Advanced: Modifies the graph with the provided {@link Delegate}.
+   *
+   * <p>Note: The typical path for providing delegates is via {@link Options#addDelegate}, at
+   * creation time. This path should only be used when a delegate might require coordinated
+   * interaction between Interpeter creation and delegate application.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public void modifyGraphWithDelegate(Delegate delegate) {
+    checkNotClosed();
+    wrapper.modifyGraphWithDelegate(delegate);
   }
 
   /** Release resources associated with the {@code Interpreter}. */

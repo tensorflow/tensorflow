@@ -95,6 +95,9 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
   const string fname = TmpDir("WritableFile");
   TF_EXPECT_OK(hdfs.NewWritableFile(fname, &writer));
   TF_EXPECT_OK(writer->Append("content1,"));
+  int64 pos;
+  TF_EXPECT_OK(writer->Tell(&pos));
+  EXPECT_EQ(pos, 9);
   TF_EXPECT_OK(writer->Append("content2"));
   TF_EXPECT_OK(writer->Flush());
   TF_EXPECT_OK(writer->Sync());

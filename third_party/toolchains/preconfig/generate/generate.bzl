@@ -3,15 +3,15 @@ load(
     "docker_toolchain_autoconfig",
 )
 
-def _tensorflow_rbe_config(name, cuda_version, cudnn_version, python_version, compiler):
+def _tensorflow_rbe_config(name, cuda_version, cudnn_version, python_version, compiler, tensorrt_version):
     docker_toolchain_autoconfig(
         name = name,
         base = "@cuda%s-cudnn%s-ubuntu14.04//image" % (cuda_version, cudnn_version),
-        bazel_version = "0.16.1",
+        bazel_version = "0.19.2",
         config_repos = [
             "local_config_cuda",
             "local_config_python",
-            "local_config_nccl",
+            "local_config_tensorrt",
         ],
         env = {
             "ABI_VERSION": "gcc",
@@ -31,14 +31,12 @@ def _tensorflow_rbe_config(name, cuda_version, cudnn_version, python_version, co
             "TF_ENABLE_XLA": "1",
             "TF_CUDNN_VERSION": cudnn_version,
             "TF_CUDA_VERSION": cuda_version,
-            "NCCL_INSTALL_PATH": "/usr/lib",
-            "NCCL_HDR_PATH": "/usr/include",
-            "TF_NCCL_VERSION": "2",
             "CUDNN_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
+            "TF_NEED_TENSORRT" : "1",
+            "TF_TENSORRT_VERSION": tensorrt_version,
+            "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
         },
-        # TODO(klimek): We should use the sources that we currently work on, not
-        # just the latest snapshot of tensorflow that is checked in.
-        git_repo = "https://github.com/tensorflow/tensorflow",
+        mount_project = "$(mount_project)",
         tags = ["manual"],
         incompatible_changes_off = True,
     )

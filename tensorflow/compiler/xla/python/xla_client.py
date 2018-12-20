@@ -415,7 +415,7 @@ class Shape(object):
       assert mtm is None, self
     if mtm is not None:
       assert self.rank() == len(mtm), self
-      assert sorted(mtm) == range(len(mtm)), self
+      assert sorted(mtm) == list(range(len(mtm))), self
 
   def update_minor_to_major(self, minor_to_major):
     if not self.is_array():
@@ -831,6 +831,33 @@ class ComputationBuilder(object):
     return self.ParameterWithShape(
         Shape.from_pyval(value), name=name, parameter_num=parameter_num)
 
+  def Iota(self, dtype, size):
+    """Enqueues an iota constant onto the computation.
+
+    Args:
+      dtype: expected numpy dtype of the output.
+      size: integer, the number of elements in the array.
+
+    Returns:
+      A LocalOp representing the added iota constant.
+    """
+    element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(np.dtype(dtype))]
+    return self._client.Iota(element_type, size)
+
+  def BroadcastedIota(self, dtype, shape, dimension):
+    """Enqueues a broadcasted iota constant onto the computation.
+
+    Args:
+      dtype: expected numpy dtype of the output.
+      shape: tuple of integers, the expected output shape (dimensions).
+      dimension: positive integer, dimension along which to increment values.
+
+    Returns:
+      A LocalOp representing the added broadcasted iota constant.
+    """
+    xla_shape = Shape.array_shape(dtype, shape)
+    return self._client.BroadcastedIota(xla_shape, dimension)
+
   def Broadcast(self, operand, sizes):
     """Enqueues a broadcast operation onto the computation.
 
@@ -1101,6 +1128,31 @@ class ComputationBuilder(object):
       A LocalOp representing the added call op.
     """
     return self._client.Call(computation_to_apply.computation, operands)
+
+  def CustomCall(self,
+                 call_target_name,
+                 operands,
+                 shape_with_layout,
+                 operand_shapes_with_layout,
+                 opaque=None):
+    """Enqueues a custom call operation onto the computation.
+
+    Args:
+      call_target_name: the name of the function to call.
+      operands: an iterable of LocalOp. The number and types of operands must
+        match the arity of `operand_shapes_with_layout`.
+      shape_with_layout: the shape of the operator's output, with layout.
+      operand_shapes_with_layout: the shapes of `operands`, including the
+        expected layouts.
+      opaque: an opaque string passed to the backend.
+
+    Returns:
+      A LocalOp representing the added custom call op.
+    """
+    opaque = opaque or b''
+    return self._client.CustomCall(call_target_name, operands,
+                                   shape_with_layout,
+                                   operand_shapes_with_layout, opaque)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -1411,6 +1463,20 @@ class ComputationBuilder(object):
     """Enqueues a key-value sort operation onto the computation."""
     return self._client.SortKeyVal(keys, values, dimension)
 
+  def Cholesky(self, a):
+    """Enqueues a Cholesky decomposition onto the computation."""
+    return self._client.Cholesky(a)
+
+  def QR(self, a, full_matrices=True):
+    """Enqueues a QR decomposition onto the computation."""
+    return self._client.QR(a, full_matrices)
+
+  def TriangularSolve(self, a, b, left_side=False, lower=False,
+                      transpose_a=False, conjugate_a=False):
+    """Enqueues a triangular-solve operation onto the computation."""
+    return self._client.TriangularSolve(
+        a, b, left_side, lower, transpose_a, conjugate_a)
+
 
 def _forward_methods_to_local_builder():
   """Forward remaining ComputationBuilder methods to the C API.
@@ -1484,6 +1550,16 @@ def get_replica_count():
   yet or not.
   """
   return c_api.GetReplicaCount()
+
+
+def register_cpu_custom_call_target(name, fn):
+  """Registers a CPU custom call target.
+
+  Args:
+    name: bytes containing the name of the function.
+    fn: a PyCapsule object containing the function pointer.
+  """
+  c_api.RegisterCpuCustomCallTarget(name, fn)
 
 
 def GetPaddingConfigFromTriples(triples):

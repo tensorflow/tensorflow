@@ -262,7 +262,7 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
         name=name)
 
 
-@tf_export("nn.relu_layer")
+@tf_export(v1=["nn.relu_layer"])
 def relu_layer(x, weights, biases, name=None):
   """Computes Relu(x * weight + biases).
 
@@ -398,7 +398,7 @@ def _count_nonzero(input_tensor, dtype=dtypes.int64):
   Returns:
       number of nonzero values with type dtype
   """
-  with ops.name_scope("count_nonzero", [input_tensor]):
+  with ops.name_scope("count_nonzero", values=[input_tensor]):
     zero = array_ops.zeros([], dtype=input_tensor.dtype)
     nonzero_count = math_ops.reduce_sum(
         math_ops.cast(

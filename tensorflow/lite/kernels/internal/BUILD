@@ -313,6 +313,7 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
+        "reference/integer_ops/dequantize.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],

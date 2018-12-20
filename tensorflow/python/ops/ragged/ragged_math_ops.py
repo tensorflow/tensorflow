@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -25,17 +27,18 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 #===============================================================================
 # ragged.range
 #===============================================================================
 # pylint: disable=redefined-builtin
+@tf_export('ragged.range')
 def range(starts, limits=None, deltas=1, dtype=None, name=None):
   """Returns a `RaggedTensor` containing the specified sequences of numbers.
 
@@ -97,8 +100,8 @@ def range(starts, limits=None, deltas=1, dtype=None, name=None):
           [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64])
 
     result = gen_ragged_math_ops.ragged_range(starts, limits, deltas, name=name)
-    return ragged_factory_ops.from_row_splits(result.rt_dense_values,
-                                              result.rt_nested_splits)
+    return ragged_tensor.RaggedTensor.from_row_splits(result.rt_dense_values,
+                                                      result.rt_nested_splits)
 
 
 def _infer_matching_dtype(tensors, dtype_hierarchy):
@@ -184,9 +187,8 @@ def _ragged_segment_aggregate(unsorted_segment_op,
 
   with ops.name_scope(name, 'RaggedSegment',
                       [data, segment_ids, num_segments]) as name:
-    data = ragged_factory_ops.convert_to_tensor_or_ragged_tensor(
-        data, name='data')
-    segment_ids = ragged_factory_ops.convert_to_tensor_or_ragged_tensor(
+    data = ragged_tensor.convert_to_tensor_or_ragged_tensor(data, name='data')
+    segment_ids = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         segment_ids, name='segment_ids')
 
     if ragged_tensor.is_ragged(segment_ids):
@@ -236,7 +238,8 @@ def _ragged_segment_aggregate(unsorted_segment_op,
     output_values = _ragged_segment_aggregate(unsorted_segment_op, data.values,
                                               data_val_to_out_val_index,
                                               output_splits[-1])
-    return ragged_factory_ops.from_row_splits(output_values, output_splits)
+    return ragged_tensor.RaggedTensor.from_row_splits(output_values,
+                                                      output_splits)
 
 
 def segment_sum(data, segment_ids, num_segments, name=None):
@@ -268,28 +271,32 @@ def segment_max(data, segment_ids, num_segments, name=None):
 
 
 def segment_mean(data, segment_ids, num_segments, name=None):
-  # For docs, see: _RAGGED_SEGMENT_DOCSTRING
+  """For docs, see: _RAGGED_SEGMENT_DOCSTRING."""
   with ops.name_scope(name, 'RaggedSegmentMean',
                       [data, segment_ids, num_segments]):
     total = segment_sum(data, segment_ids, num_segments)
-    ones = ragged_factory_ops.from_nested_row_splits(
-        array_ops.ones_like(data.inner_values), data.nested_row_splits)
+    ones = ragged_tensor.RaggedTensor.from_nested_row_splits(
+        array_ops.ones_like(data.flat_values), data.nested_row_splits)
     count = segment_sum(ones, segment_ids, num_segments)
-    return ragged_factory_ops.from_nested_row_splits(
-        total.inner_values / count.inner_values, total.nested_row_splits)
+    if ragged_tensor.is_ragged(total):
+      return total.with_flat_values(total.flat_values / count.flat_values)
+    else:
+      return total / count
 
 
 def segment_sqrt_n(data, segment_ids, num_segments, name=None):
-  # For docs, see: _RAGGED_SEGMENT_DOCSTRING
+  """For docs, see: _RAGGED_SEGMENT_DOCSTRING."""
   with ops.name_scope(name, 'RaggedSegmentSqrtN',
                       [data, segment_ids, num_segments]):
     total = segment_sum(data, segment_ids, num_segments)
-    ones = ragged_factory_ops.from_nested_row_splits(
-        array_ops.ones_like(data.inner_values), data.nested_row_splits)
+    ones = ragged_tensor.RaggedTensor.from_nested_row_splits(
+        array_ops.ones_like(data.flat_values), data.nested_row_splits)
     count = segment_sum(ones, segment_ids, num_segments)
-    return ragged_factory_ops.from_nested_row_splits(
-        total.inner_values / math_ops.sqrt(count.inner_values),
-        total.nested_row_splits)
+    if ragged_tensor.is_ragged(total):
+      return total.with_flat_values(
+          total.flat_values / math_ops.sqrt(count.flat_values))
+    else:
+      return total / math_ops.sqrt(count)
 
 
 def _set_ragged_segment_docstring(func, combination, combined):
@@ -440,10 +447,12 @@ def _ragged_reduce_aggregate(reduce_op,
     axis = tensor_util.constant_value(axis)
     if axis is None:
       raise ValueError('axis must be known at graph construction time.')
+    if isinstance(axis, np.ndarray):
+      axis = axis.tolist()
 
   # When reducing all axes, just ignore splits & reduce the inner values.
   if axis is None:
-    return reduce_op(rt_input.inner_values, None, name=name)
+    return reduce_op(rt_input.flat_values, None, name=name)
 
   with ops.name_scope(name, 'RaggedReduce', [rt_input, axis]):
     if isinstance(axis, (tuple, list)):
@@ -462,10 +471,10 @@ def _ragged_reduce_aggregate(reduce_op,
         return _ragged_reduce_aggregate(reduce_op, unsorted_segment_op,
                                         inner_reduced, axis[:-1], keepdims)
 
-    axis = ragged_util.get_positive_axis(axis, rt_input.shape.ndims)
-
-    rt_input = ragged_factory_ops.convert_to_tensor_or_ragged_tensor(
+    rt_input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         rt_input, name='rt_input')
+
+    axis = ragged_util.get_positive_axis(axis, rt_input.shape.ndims)
 
     if axis == 0:
       # out[i_1, i_2, ..., i_N] = sum_{j} rt_input[j, i_1, i_2, ..., i_N]
@@ -522,22 +531,22 @@ def reduce_mean(input_tensor, axis=None, keepdims=None, name=None):
   with ops.name_scope(name, 'RaggedReduceMean', [input_tensor, axis]):
     total = reduce_sum(input_tensor, axis, keepdims)
     if ragged_tensor.is_ragged(input_tensor):
-      ones = ragged_factory_ops.from_nested_row_splits(
-          array_ops.ones_like(input_tensor.inner_values),
+      ones = ragged_tensor.RaggedTensor.from_nested_row_splits(
+          array_ops.ones_like(input_tensor.flat_values),
           input_tensor.nested_row_splits)
     else:
       ones = array_ops.ones_like(input_tensor)
     count = reduce_sum(ones, axis, keepdims)
     if ragged_tensor.is_ragged(total):
-      return ragged_factory_ops.from_nested_row_splits(
-          total.inner_values / count.inner_values, total.nested_row_splits)
+      return ragged_tensor.RaggedTensor.from_nested_row_splits(
+          total.flat_values / count.flat_values, total.nested_row_splits)
     else:
       return total / count
 
 
 def _cast(input_tensor, dtype):
-  return ragged_functional_ops.map_inner_values(math_ops.cast, input_tensor,
-                                                dtype)
+  return ragged_functional_ops.map_flat_values(math_ops.cast, input_tensor,
+                                               dtype)
 
 
 def reduce_all(input_tensor, axis=None, keepdims=None, name=None):

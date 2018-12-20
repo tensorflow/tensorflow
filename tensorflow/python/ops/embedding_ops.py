@@ -247,7 +247,7 @@ def _embedding_lookup_and_transform(params,
       return ret
 
 
-@tf_export("nn.embedding_lookup")
+@tf_export(v1=["nn.embedding_lookup"])
 def embedding_lookup(
     params,
     ids,
@@ -316,7 +316,66 @@ def embedding_lookup(
       transform_fn=None)
 
 
-@tf_export("nn.embedding_lookup_sparse")
+@tf_export("nn.embedding_lookup", v1=[])
+def embedding_lookup_v2(
+    params,
+    ids,
+    partition_strategy="mod",
+    max_norm=None,
+    name=None):
+  """Looks up `ids` in a list of embedding tensors.
+
+  This function is used to perform parallel lookups on the list of
+  tensors in `params`.  It is a generalization of
+  `tf.gather`, where `params` is
+  interpreted as a partitioning of a large embedding tensor.  `params` may be
+  a `PartitionedVariable` as returned by using `tf.get_variable()` with a
+  partitioner.
+
+  If `len(params) > 1`, each element `id` of `ids` is partitioned between
+  the elements of `params` according to the `partition_strategy`.
+  In all strategies, if the id space does not evenly divide the number of
+  partitions, each of the first `(max_id + 1) % len(params)` partitions will
+  be assigned one more id.
+
+  If `partition_strategy` is `"mod"`, we assign each id to partition
+  `p = id % len(params)`. For instance,
+  13 ids are split across 5 partitions as:
+  `[[0, 5, 10], [1, 6, 11], [2, 7, 12], [3, 8], [4, 9]]`
+
+  If `partition_strategy` is `"div"`, we assign ids to partitions in a
+  contiguous manner. In this case, 13 ids are split across 5 partitions as:
+  `[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]`
+
+  The results of the lookup are concatenated into a dense
+  tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
+
+  Args:
+    params: A single tensor representing the complete embedding tensor,
+      or a list of P tensors all of same shape except for the first dimension,
+      representing sharded embedding tensors.  Alternatively, a
+      `PartitionedVariable`, created by partitioning along dimension 0. Each
+      element must be appropriately sized for the given `partition_strategy`.
+    ids: A `Tensor` with type `int32` or `int64` containing the ids to be looked
+      up in `params`.
+    partition_strategy: A string specifying the partitioning strategy, relevant
+      if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
+      is `"mod"`.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is
+      larger than this value.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as the tensors in `params`.
+
+  Raises:
+    ValueError: If `params` is empty.
+  """
+  return embedding_lookup(params, ids, partition_strategy, name,
+                          max_norm=max_norm)
+
+
+@tf_export(v1=["nn.embedding_lookup_sparse"])
 def embedding_lookup_sparse(params,
                             sp_ids,
                             sp_weights,
@@ -489,6 +548,21 @@ def embedding_lookup_sparse(params,
         assert False, "Unrecognized combiner"
 
     return embeddings
+
+
+@tf_export("nn.embedding_lookup_sparse", v1=[])
+def embedding_lookup_sparse_v2(params,
+                               sp_ids,
+                               sp_weights,
+                               partition_strategy="mod",
+                               combiner=None,
+                               max_norm=None,
+                               name=None):
+  return embedding_lookup_sparse_v2(
+      params, sp_ids, sp_weights, partition_strategy, name, combiner, max_norm)
+
+
+embedding_lookup_sparse_v2.__doc__ = embedding_lookup_sparse.__doc__
 
 
 @tf_export("nn.safe_embedding_lookup_sparse", v1=[])

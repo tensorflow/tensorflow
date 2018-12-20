@@ -18,6 +18,9 @@
 - Builds images (and optionally runs image tests)
 - Pushes images to Docker Hub (provided with credentials)
 
+Logs are written to stderr; the list of successfully built images is
+written to stdout.
+
 Read README.md (in this directory) for instructions!
 """
 
@@ -49,7 +52,7 @@ flags.DEFINE_string('hub_username', None,
 flags.DEFINE_string(
     'hub_password', None,
     ('Dockerhub password, only used with --upload_to_hub. Use from an env param'
-     'so your password isn\'t in your history.'))
+     ' so your password isn\'t in your history.'))
 
 flags.DEFINE_integer('hub_timeout', 3600,
                      'Abort Hub upload if it takes longer than this.')
@@ -142,6 +145,10 @@ flags.DEFINE_multi_string(
      'args will print a warning).'),
     short_name='a')
 
+flags.DEFINE_boolean(
+    'nocache', False,
+    'Disable the Docker build cache; identical to "docker build --no-cache"')
+
 flags.DEFINE_string(
     'spec_file',
     './spec.yml',
@@ -169,6 +176,8 @@ slice_sets:
            add_to_name:
              type: string
            dockerfile_exclusive_name:
+             type: string
+           dockerfile_subdirectory:
              type: string
            partials:
              type: list
@@ -353,8 +362,9 @@ def gather_slice_list_items(slices, key):
 def find_first_slice_value(slices, key):
   """For a list of slices, get the first value for a certain key."""
   for s in slices:
-    if key in s:
+    if key in s and s[key] is not None:
       return s[key]
+  return None
 
 
 def assemble_tags(spec, cli_args, enabled_releases, all_partials):
@@ -389,6 +399,8 @@ def assemble_tags(spec, cli_args, enabled_releases, all_partials):
         used_partials = gather_slice_list_items(slices, 'partials')
         used_tests = gather_slice_list_items(slices, 'tests')
         test_runtime = find_first_slice_value(slices, 'test_runtime')
+        dockerfile_subdirectory = find_first_slice_value(
+            slices, 'dockerfile_subdirectory')
         dockerfile_contents = merge_partials(spec['header'], used_partials,
                                              all_partials)
 
@@ -398,6 +410,7 @@ def assemble_tags(spec, cli_args, enabled_releases, all_partials):
             'is_dockerfiles': release['is_dockerfiles'],
             'upload_images': release['upload_images'],
             'cli_args': tag_args,
+            'dockerfile_subdirectory': dockerfile_subdirectory or '',
             'partials': used_partials,
             'tests': used_tests,
             'test_runtime': test_runtime,
@@ -416,8 +429,7 @@ def merge_partials(header, used_partials, all_partials):
 def upload_in_background(hub_repository, dock, image, tag):
   """Upload a docker image (to be used by multiprocessing)."""
   image.tag(hub_repository, tag=tag)
-  for line in list(dock.images.push(hub_repository, tag=tag, stream=True)):
-    print(line)
+  print(dock.images.push(hub_repository, tag=tag))
 
 
 def mkdir_p(path):
@@ -508,6 +520,7 @@ def main(argv):
   # Each tag has a name ('tag') and a definition consisting of the contents
   # of its Dockerfile, its build arg list, etc.
   failed_tags = []
+  succeeded_tags = []
   for tag, tag_defs in all_tags.items():
     for tag_def in tag_defs:
       eprint('> Working on {}'.format(tag))
@@ -525,13 +538,15 @@ def main(argv):
         continue
 
       # Write releases marked "is_dockerfiles" into the Dockerfile directory
-      if FLAGS.construct_dockerfiles:
-        path = os.path.join(FLAGS.dockerfile_dir, tag + '.Dockerfile')
-        if tag_def['is_dockerfiles']:
-          eprint('>> Writing {}...'.format(path))
-          if not FLAGS.dry_run:
-            with open(path, 'w') as f:
-              f.write(tag_def['dockerfile_contents'])
+      if FLAGS.construct_dockerfiles and tag_def['is_dockerfiles']:
+        path = os.path.join(FLAGS.dockerfile_dir,
+                            tag_def['dockerfile_subdirectory'],
+                            tag + '.Dockerfile')
+        eprint('>> Writing {}...'.format(path))
+        if not FLAGS.dry_run:
+          mkdir_p(os.path.dirname(path))
+          with open(path, 'w') as f:
+            f.write(tag_def['dockerfile_contents'])
 
       # Don't build any images for dockerfile-only releases
       if not FLAGS.build_images:
@@ -562,6 +577,7 @@ def main(argv):
           image, logs = dock.images.build(
               timeout=FLAGS.hub_timeout,
               path='.',
+              nocache=FLAGS.nocache,
               dockerfile=dockerfile,
               buildargs=tag_def['cli_args'],
               tag=repo_tag)
@@ -649,11 +665,19 @@ def main(argv):
               args=(FLAGS.hub_repository, dock, image, tag))
           p.start()
 
+      if not tag_failed:
+        succeeded_tags.append(tag)
+
   if failed_tags:
     eprint(
         '> Some tags failed to build or failed testing, check scrollback for '
         'errors: {}'.format(','.join(failed_tags)))
     exit(1)
+
+  eprint('> Writing built{} tags to standard out.'.format(
+      ' and tested' if FLAGS.run_tests_path else ''))
+  for tag in succeeded_tags:
+    print('{}:{}'.format(FLAGS.repository, tag))
 
 
 if __name__ == '__main__':

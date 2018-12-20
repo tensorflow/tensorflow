@@ -191,6 +191,11 @@ class RetryingWritableFile : public WritableFile {
     return RetryingUtils::CallWithRetries(
         [this]() { return base_file_->Sync(); }, retry_config_);
   }
+  Status Tell(int64* position) override {
+    return RetryingUtils::CallWithRetries(
+        [this, &position]() { return base_file_->Tell(position); },
+        retry_config_);
+  }
 
  private:
   std::unique_ptr<WritableFile> base_file_;

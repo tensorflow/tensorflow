@@ -51,7 +51,6 @@ class GceClusterResolver(ClusterResolver):
                task_type='worker',
                task_index=0,
                rpc_layer='grpc',
-               num_accelerators_per_worker=0,
                credentials='default',
                service=None):
     """Creates a new GceClusterResolver object.
@@ -73,8 +72,6 @@ class GceClusterResolver(ClusterResolver):
         can be distinguished from each other.
       rpc_layer: The RPC layer TensorFlow should use to communicate across
         instances.
-      num_accelerators_per_worker: Number of accelerators (GPUs) present per
-        instance.
       credentials: GCE Credentials. If nothing is specified, this defaults to
         GoogleCredentials.get_application_default().
       service: The GCE API object returned by the googleapiclient.discovery
@@ -200,7 +197,3 @@ class GceClusterResolver(ClusterResolver):
   @rpc_layer.setter
   def rpc_layer(self, rpc_layer):
     self._rpc_layer = rpc_layer
-
-  def num_accelerators_per_worker(self, session_config=None):
-    del session_config  # Unused, since this is set manually in __init__.
-    return self._num_accelerators_per_worker

@@ -38,6 +38,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
 
 
+@test_util.run_deprecated_v1
 class AbsoluteDifferenceLossTest(test.TestCase):
 
   def setUp(self):
@@ -51,26 +52,22 @@ class AbsoluteDifferenceLossTest(test.TestCase):
         losses.absolute_difference(
             self._predictions, self._predictions, weights=None)
 
-  @test_util.run_deprecated_v1
   def testAllCorrectNoLossWeight(self):
     loss = losses.absolute_difference(self._predictions, self._predictions)
     with self.cached_session():
       self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLoss(self):
     loss = losses.absolute_difference(self._labels, self._predictions)
     with self.cached_session():
       self.assertAlmostEqual(5.5, self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     weights = 2.3
     loss = losses.absolute_difference(self._labels, self._predictions, weights)
     with self.cached_session():
       self.assertAlmostEqual(5.5 * weights, self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
     loss = losses.absolute_difference(self._labels, self._predictions,
@@ -654,6 +651,7 @@ class SigmoidCrossEntropyLossTest(test.TestCase):
                              3)
 
 
+@test_util.run_deprecated_v1
 class LogLossTest(test.TestCase):
 
   def setUp(self):
@@ -677,13 +675,11 @@ class LogLossTest(test.TestCase):
       with self.assertRaises(ValueError):
         losses.log_loss(self._labels, self._labels, weights=None)
 
-  @test_util.run_deprecated_v1
   def testAllCorrectNoLossWeight(self):
     loss = losses.log_loss(self._labels, self._labels)
     with self.cached_session():
       self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testAllCorrectNoLossWeightWithPlaceholder(self):
     tf_predictions = array_ops.placeholder(
         dtypes.float32, shape=self._np_labels.shape)
@@ -692,14 +688,12 @@ class LogLossTest(test.TestCase):
       self.assertAlmostEqual(
           0.0, loss.eval(feed_dict={tf_predictions: self._np_labels}), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLoss(self):
     loss = losses.log_loss(self._labels, self._predictions)
     with self.cached_session():
       self.assertAlmostEqual(-np.sum(self._expected_losses) / 6.0,
                              self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     weights = 2.3
     loss = losses.log_loss(self._labels, self._predictions, weights)
@@ -707,7 +701,6 @@ class LogLossTest(test.TestCase):
       self.assertAlmostEqual(weights * -np.sum(self._expected_losses) / 6.0,
                              self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
     loss = losses.log_loss(self._labels, self._predictions,
@@ -716,7 +709,6 @@ class LogLossTest(test.TestCase):
       self.assertAlmostEqual(weights * -np.sum(self._expected_losses) / 6.0,
                              self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeightAndPlaceholder(self):
     tf_predictions = array_ops.placeholder(
         dtypes.float32, shape=self._np_predictions.shape)
@@ -728,7 +720,6 @@ class LogLossTest(test.TestCase):
       self.assertAlmostEqual(weights * -np.sum(self._expected_losses) / 6.0,
                              loss, 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeightAndPlaceholderWithRankOnly(self):
     tf_predictions = array_ops.placeholder(dtypes.float32, shape=[None, None])
     weights = 2.3
@@ -788,7 +779,6 @@ class LogLossTest(test.TestCase):
       self.assertAlmostEqual(-np.sum(expected_losses) / 5.0,
                              self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithMeasurementSpecificWeightsWithPlaceholder(self):
     weights = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3))
     expected_losses = np.multiply(self._expected_losses, weights)
@@ -816,7 +806,6 @@ class LogLossTest(test.TestCase):
     with self.cached_session():
       self.assertAlmostEqual(-np.sum(expected_losses), self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithSampleSpecificWeightsMostZeroWithPlaceholder(self):
     weights = np.array([0, 0, 0, 0, 0, 2]).reshape((2, 3))
     expected_losses = np.multiply(self._expected_losses, weights)
@@ -934,6 +923,7 @@ class HuberLossTest(test.TestCase):
       self.assertAllClose(expected, self.evaluate(loss), atol=1e-5)
 
 
+@test_util.run_deprecated_v1
 class MeanSquaredErrorTest(test.TestCase):
 
   def setUp(self):
@@ -1013,6 +1003,7 @@ class MeanSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(0.0, self.evaluate(loss), 3)
 
 
+@test_util.run_deprecated_v1
 class MeanPairwiseSquaredErrorTest(test.TestCase):
 
   def setUp(self):
@@ -1068,12 +1059,10 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(
           expected_loss, dynamic_inputs_op.eval(feed_dict=feed_dict), places=3)
 
-  @test_util.run_deprecated_v1
   def testAllCorrectNoLossWeight(self):
     self._test_valid_weights(
         self._labels, self._labels, expected_loss=0.0)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLoss(self):
     self._test_valid_weights(
         self._labels, self._predictions,
@@ -1104,7 +1093,6 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
           np_grad = self.evaluate(grad)
           self.assertFalse(np.isnan(np_grad).any())
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithPythonScalarWeight(self):
     weight = 2.3
     self._test_valid_weights(
@@ -1112,7 +1100,6 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         expected_loss=weight * np.sum(self._expected_losses),
         weights=weight)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarTensorWeight(self):
     weights = 2.3
     loss = losses.mean_pairwise_squared_error(
@@ -1123,12 +1110,10 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(weights * np.sum(self._expected_losses),
                              self.evaluate(loss), 3)
 
-  @test_util.run_deprecated_v1
   def testNonZeroLossWithScalarZeroWeight(self):
     self._test_valid_weights(
         self._labels, self._predictions, expected_loss=0.0, weights=0.0)
 
-  @test_util.run_deprecated_v1
   def test3d(self):
     labels = np.array([
         [[1, 9, 2], [12, 11, 10], [9, 8, 7]],
@@ -1140,7 +1125,6 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     self._test_valid_weights(labels, predictions, expected_loss=137.5)
 
-  @test_util.run_deprecated_v1
   def test3dWeightedScalar(self):
     labels = np.array([
         [[1, 9, 2], [12, 11, 10], [9, 8, 7]],
@@ -1179,7 +1163,6 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
             weights_placeholder: weights,
         })
 
-  @test_util.run_deprecated_v1
   def testInvalid3dWeighted2x0(self):
     labels = np.array([
         [[1, 9, 2], [12, 11, 10], [9, 8, 7]],
@@ -1192,7 +1175,6 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     self._test_invalid_weights(
         labels, predictions, weights=np.asarray((1.2, 3.4)))
 
-  @test_util.run_deprecated_v1
   def test3dWeighted2x3x3(self):
     labels = np.array([
         [[1, 9, 2], [12, 11, 10], [9, 8, 7]],
@@ -1209,7 +1191,6 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         expected_loss=9 * 137.5,
         weights=np.ones((2, 3, 3)))
 
-  @test_util.run_deprecated_v1
   def testLossWithAllZeroBatchSpecificWeights(self):
     self._test_valid_weights(
         self._labels, self._predictions, expected_loss=0.0,
@@ -1251,6 +1232,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         self.assertAlmostEqual(loss0 + loss1, loss0_1, 5)
 
 
+@test_util.run_deprecated_v1
 class CosineDistanceLossTest(test.TestCase):
 
   def setUp(self):
@@ -1329,7 +1311,6 @@ class CosineDistanceLossTest(test.TestCase):
     with self.cached_session():
       self.assertEqual(3.0 / 4.0, self.evaluate(loss))
 
-  @test_util.run_deprecated_v1
   def testMeasurementSpecificWeightsWithPlaceholderWithShape(self):
     tf_predictions = array_ops.placeholder(
         dtypes.float32, shape=self._labels.shape)

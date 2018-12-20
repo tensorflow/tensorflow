@@ -247,7 +247,10 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
         TF_LITE_ADD(reference_ops, Add);
       }
     } else {
-      if (need_broadcast) {
+      if (op_params.broadcast_category ==
+          BroadcastableOpCategory::kGenericBroadcast) {
+        TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow);
+      } else if (need_broadcast) {
         TF_LITE_ADD(optimized_ops, BroadcastAddFivefold);
       } else {
         TF_LITE_ADD(optimized_ops, Add);

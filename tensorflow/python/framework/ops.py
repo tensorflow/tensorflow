@@ -2896,6 +2896,9 @@ class Graph(object):
     self._last_loss_reduction = None
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
+    # Set to True if this graph is being built in an
+    # AutomaticControlDependencies context.
+    self._add_control_dependencies = False
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
@@ -5985,7 +5988,7 @@ name_scope_cache = {}
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
-@tf_export("name_scope", "keras.backend.name_scope")
+@tf_export("name_scope")
 class name_scope(object):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 

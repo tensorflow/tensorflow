@@ -23,7 +23,6 @@ import warnings
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -188,34 +187,32 @@ class Iterator(checkpointable.CheckpointableBase):
     if output_classes is None:
       output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
+    output_structure = structure_lib.convert_legacy_structure(
+        output_types, output_shapes, output_classes)
     if shared_name is None:
       shared_name = ""
+    # pylint: disable=protected-access
     if compat.forward_compatible(2018, 8, 3):
       if _device_stack_is_empty():
         with ops.device("/cpu:0"):
           iterator_resource = gen_dataset_ops.iterator_v2(
               container="",
               shared_name=shared_name,
-              output_types=nest.flatten(
-                  sparse.as_dense_types(output_types, output_classes)),
-              output_shapes=nest.flatten(
-                  sparse.as_dense_shapes(output_shapes, output_classes)))
+              output_types=output_structure._flat_types,
+              output_shapes=output_structure._flat_shapes)
       else:
         iterator_resource = gen_dataset_ops.iterator_v2(
             container="",
             shared_name=shared_name,
-            output_types=nest.flatten(
-                sparse.as_dense_types(output_types, output_classes)),
-            output_shapes=nest.flatten(
-                sparse.as_dense_shapes(output_shapes, output_classes)))
+            output_types=output_structure._flat_types,
+            output_shapes=output_structure._flat_shapes)
     else:
       iterator_resource = gen_dataset_ops.iterator(
           container="",
           shared_name=shared_name,
-          output_types=nest.flatten(
-              sparse.as_dense_types(output_types, output_classes)),
-          output_shapes=nest.flatten(
-              sparse.as_dense_shapes(output_shapes, output_classes)))
+          output_types=output_structure._flat_types,
+          output_shapes=output_structure._flat_shapes)
+    # pylint: enable=protected-access
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -278,30 +275,28 @@ class Iterator(checkpointable.CheckpointableBase):
     if output_classes is None:
       output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
+    output_structure = structure_lib.convert_legacy_structure(
+        output_types, output_shapes, output_classes)
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
+    # pylint: disable=protected-access
     if compat.forward_compatible(2018, 8, 3):
       if _device_stack_is_empty():
         with ops.device("/cpu:0"):
           iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
               string_handle,
-              output_types=nest.flatten(
-                  sparse.as_dense_types(output_types, output_classes)),
-              output_shapes=nest.flatten(
-                  sparse.as_dense_shapes(output_shapes, output_classes)))
+              output_types=output_structure._flat_types,
+              output_shapes=output_structure._flat_shapes)
       else:
         iterator_resource = gen_dataset_ops.iterator_from_string_handle_v2(
             string_handle,
-            output_types=nest.flatten(
-                sparse.as_dense_types(output_types, output_classes)),
-            output_shapes=nest.flatten(
-                sparse.as_dense_shapes(output_shapes, output_classes)))
+            output_types=output_structure._flat_types,
+            output_shapes=output_structure._flat_shapes)
     else:
       iterator_resource = gen_dataset_ops.iterator_from_string_handle(
           string_handle,
-          output_types=nest.flatten(
-              sparse.as_dense_types(output_types, output_classes)),
-          output_shapes=nest.flatten(
-              sparse.as_dense_shapes(output_shapes, output_classes)))
+          output_types=output_structure._flat_types,
+          output_shapes=output_structure._flat_shapes)
+    # pylint: enable=protected-access
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -362,7 +357,7 @@ class Iterator(checkpointable.CheckpointableBase):
                           (self.output_shapes, dataset.output_shapes))
     with ops.colocate_with(self._iterator_resource):
       return gen_dataset_ops.make_iterator(
-          dataset._as_variant_tensor(), self._iterator_resource, name=name)  # pylint: disable=protected-access
+          dataset._variant_tensor, self._iterator_resource, name=name)  # pylint: disable=protected-access
 
   def get_next(self, name=None):
     """Returns a nested structure of `tf.Tensor`s representing the next element.
@@ -528,7 +523,8 @@ class EagerIterator(checkpointable.CheckpointableBase):
     self._device = context.context().device_name
     with ops.device("/cpu:0"):
       # pylint: disable=protected-access
-      ds_variant = dataset._as_variant_tensor()
+      dataset = dataset._apply_options()
+      ds_variant = dataset._variant_tensor
       self._structure = structure_lib.convert_legacy_structure(
           dataset.output_types, dataset.output_shapes, dataset.output_classes)
       self._flat_output_types = self._structure._flat_types
@@ -541,6 +537,7 @@ class EagerIterator(checkpointable.CheckpointableBase):
         # Delete the resource when this object is deleted
         self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
             handle=self._resource, handle_device=self._device)
+      # pylint: enable=protected-access
 
   def __iter__(self):
     return self

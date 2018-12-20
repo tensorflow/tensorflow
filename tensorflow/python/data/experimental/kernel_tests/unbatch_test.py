@@ -36,24 +36,14 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def testUnbatchWithUnknownRankInput(self):
-    placeholder = array_ops.placeholder(dtypes.int32)
-    dataset = dataset_ops.Dataset.from_tensors(placeholder).apply(
-        batching.unbatch())
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_elem = iterator.get_next()
+    dataset = dataset_ops.Dataset.from_tensors([0, 1, 2,
+                                                3]).apply(batching.unbatch())
+    self.assertDatasetProduces(dataset, range(4))
 
-    with self.cached_session() as sess:
-      sess.run(iterator.initializer, feed_dict={placeholder: [0, 1, 2, 3]})
-      for i in range(4):
-        self.assertEqual(i, self.evaluate(next_elem))
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(next_elem)
-
-  @test_util.run_deprecated_v1
   def testUnbatchScalarDataset(self):
     data = tuple([math_ops.range(10) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -63,17 +53,8 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = dataset_ops.make_one_shot_iterator(data)
-    op = iterator.get_next()
+    self.assertDatasetProduces(data, [(i,) * 3 for i in range(10)])
 
-    with self.cached_session() as sess:
-      for i in range(10):
-        self.assertEqual((i,) * 3, self.evaluate(op))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(op)
-
-  @test_util.run_deprecated_v1
   def testUnbatchDatasetWithStrings(self):
     data = tuple([math_ops.range(10) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -84,18 +65,12 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = dataset_ops.make_one_shot_iterator(data)
-    op = iterator.get_next()
+    self.assertDatasetProduces(
+        data, [(i, compat.as_bytes(str(i)), i) for i in range(10)])
 
-    with self.cached_session() as sess:
-      for i in range(10):
-        self.assertEqual((i, compat.as_bytes(str(i)), i), self.evaluate(op))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(op)
-
+  # TODO(b/117581999): Add eager coverage.
   @test_util.run_deprecated_v1
-  def testUnbatchDatasetWithSparseTensor(self):
+  def testSkipEagerUnbatchDatasetWithSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
         values=list(range(10)),
@@ -107,17 +82,17 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = dataset_ops.make_one_shot_iterator(data)
     next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
-      for i in range(10):
-        st_row = self.evaluate(next_element)
-        self.assertEqual([i], st_row.indices)
-        self.assertEqual([i], st_row.values)
-        self.assertEqual([10], st_row.dense_shape)
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(next_element)
+    for i in range(10):
+      st_row = self.evaluate(next_element)
+      self.assertEqual([i], st_row.indices)
+      self.assertEqual([i], st_row.values)
+      self.assertEqual([10], st_row.dense_shape)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(next_element)
 
+  # TODO(b/117581999): Add eager coverage.
   @test_util.run_deprecated_v1
-  def testUnbatchDatasetWithDenseAndSparseTensor(self):
+  def testSkipEagerUnbatchDatasetWithDenseAndSparseTensor(self):
     st = sparse_tensor.SparseTensorValue(
         indices=[[i, i] for i in range(10)],
         values=list(range(10)),
@@ -126,20 +101,17 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     data = data.batch(5)
     data = data.apply(batching.unbatch())
-    iterator = dataset_ops.make_one_shot_iterator(data)
-    next_element = iterator.get_next()
+    next_element = self.getNext(data)
 
-    with self.cached_session() as sess:
-      for i in range(10):
-        dense_elem, st_row = self.evaluate(next_element)
-        self.assertEqual(i, dense_elem)
-        self.assertEqual([i], st_row.indices)
-        self.assertEqual([i], st_row.values)
-        self.assertEqual([10], st_row.dense_shape)
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(next_element)
+    for i in range(10):
+      dense_elem, st_row = self.evaluate(next_element())
+      self.assertEqual(i, dense_elem)
+      self.assertEqual([i], st_row.indices)
+      self.assertEqual([i], st_row.values)
+      self.assertEqual([10], st_row.dense_shape)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(next_element())
 
-  @test_util.run_deprecated_v1
   def testUnbatchSingleElementTupleDataset(self):
     data = tuple([(math_ops.range(10),) for _ in range(3)])
     data = dataset_ops.Dataset.from_tensor_slices(data)
@@ -149,17 +121,8 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertEqual(expected_types, data.output_types)
 
-    iterator = dataset_ops.make_one_shot_iterator(data)
-    op = iterator.get_next()
+    self.assertDatasetProduces(data, [((i,),) * 3 for i in range(10)])
 
-    with self.cached_session() as sess:
-      for i in range(10):
-        self.assertEqual(((i,),) * 3, self.evaluate(op))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(op)
-
-  @test_util.run_deprecated_v1
   def testUnbatchMultiElementTupleDataset(self):
     data = tuple([(math_ops.range(10 * i, 10 * i + 10),
                    array_ops.fill([10], "hi")) for i in range(3)])
@@ -170,29 +133,16 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.apply(batching.unbatch())
     self.assertAllEqual(expected_types, data.output_types)
 
-    iterator = dataset_ops.make_one_shot_iterator(data)
-    op = iterator.get_next()
+    self.assertDatasetProduces(
+        data,
+        [((i, b"hi"), (10 + i, b"hi"), (20 + i, b"hi")) for i in range(10)])
 
-    with self.cached_session() as sess:
-      for i in range(10):
-        self.assertEqual(((i, b"hi"), (10 + i, b"hi"), (20 + i, b"hi")),
-                         self.evaluate(op))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(op)
-
-  @test_util.run_deprecated_v1
   def testUnbatchEmpty(self):
     data = dataset_ops.Dataset.from_tensors(
         (constant_op.constant([]), constant_op.constant([], shape=[0, 4]),
          constant_op.constant([], shape=[0, 4, 0])))
     data = data.apply(batching.unbatch())
-    iterator = dataset_ops.make_one_shot_iterator(data)
-    next_element = iterator.get_next()
-
-    with self.cached_session() as sess:
-      with self.assertRaises(errors.OutOfRangeError):
-        self.evaluate(next_element)
+    self.assertDatasetProduces(data, [])
 
   def testUnbatchStaticShapeMismatch(self):
     data = dataset_ops.Dataset.from_tensors((np.arange(7), np.arange(8),
@@ -200,8 +150,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       data.apply(batching.unbatch())
 
+  # TODO(b/117581999): eager mode doesnt capture raised error, debug.
   @test_util.run_deprecated_v1
-  def testUnbatchDynamicShapeMismatch(self):
+  def testSkipEagerUnbatchDynamicShapeMismatch(self):
     ph1 = array_ops.placeholder(dtypes.int32, shape=[None])
     ph2 = array_ops.placeholder(dtypes.int32, shape=None)
     data = dataset_ops.Dataset.from_tensors((ph1, ph2))

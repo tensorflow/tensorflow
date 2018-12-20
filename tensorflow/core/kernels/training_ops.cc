@@ -465,11 +465,12 @@ class ApplyGradientDescentOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -506,11 +507,12 @@ class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<SYCLDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -600,7 +602,8 @@ class ApplyAdadeltaOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Var* resource;
-    mutex* mu = GetTrainingVariableMutex(ctx, 0, &resource);
+    const bool sparse = false;
+    mutex* mu = GetTrainingVariableMutex<Device, T>(ctx, 0, sparse, &resource);
     core::ScopedUnref scoped_unref(resource);
     if (use_exclusive_lock_ && mu != nullptr) {
       mutex_lock l1(*mu);
@@ -624,14 +627,16 @@ class ApplyAdadeltaOp : public OpKernel {
 
   void DoValidate(OpKernelContext* ctx) {
     Tensor var;
+    const bool sparse = false;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, false, &accum_update));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable<Device, T>(ctx, 2, use_exclusive_lock_,
+                                                   sparse, &accum_update));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -678,14 +683,16 @@ class ApplyAdadeltaOp : public OpKernel {
   void DoCompute(OpKernelContext* ctx) {
     const Device& device = ctx->template eigen_device<Device>();
     Tensor var;
+    const bool sparse = false;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, false, &accum_update));
+    OP_REQUIRES_OK(
+        ctx, GetInputTensorFromVariable<Device, T>(ctx, 2, use_exclusive_lock_,
+                                                   sparse, &accum_update));
 
     const Tensor& lr = ctx->input(3);
     const Tensor& rho = ctx->input(4);
@@ -751,7 +758,8 @@ class SparseApplyAdadeltaOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     Var* var;
-    mutex* mu = GetTrainingVariableMutex(ctx, 0, &var);
+    const bool sparse = true;
+    mutex* mu = GetTrainingVariableMutex<CPUDevice, T>(ctx, 0, sparse, &var);
     core::ScopedUnref scoped_unref(var);
     // mu_accum is actually the same mutex as mu_var since currently we use a
     // global mutex.
@@ -767,14 +775,16 @@ class SparseApplyAdadeltaOp : public OpKernel {
 
   void DoCompute(OpKernelContext* ctx) {
     Tensor var;
+    const bool sparse = true;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum_grad;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 1, use_exclusive_lock_, true, &accum_grad));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum_grad));
     Tensor accum_update;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 2, use_exclusive_lock_, true, &accum_update));
+    OP_REQUIRES_OK(ctx,
+                   GetInputTensorFromVariable<CPUDevice, T>(
+                       ctx, 2, use_exclusive_lock_, sparse, &accum_update));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -907,11 +917,12 @@ class ApplyProximalGradientDescentOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -976,11 +987,12 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVectorOrHigher(var.shape()),
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
@@ -1121,14 +1133,15 @@ class ApplyAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1214,14 +1227,15 @@ class ApplyProximalAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1316,14 +1330,15 @@ class SparseApplyAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 1, use_exclusive_lock_, true, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1456,14 +1471,15 @@ class SparseApplyProximalAdagradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 1, use_exclusive_lock_, true, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1628,19 +1644,20 @@ class ApplyAdagradDAOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor gradient_accum;
     OP_REQUIRES_OK(
         ctx, GetInputTensorFromVariable<Device, T>(ctx, 1, use_exclusive_lock_,
-                                                   false, &gradient_accum));
+                                                   sparse, &gradient_accum));
     Tensor gradient_squared_accum;
     OP_REQUIRES_OK(
         ctx, GetInputTensorFromVariable<Device, T>(
-                 ctx, 2, use_exclusive_lock_, false, &gradient_squared_accum));
+                 ctx, 2, use_exclusive_lock_, sparse, &gradient_squared_accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1729,19 +1746,20 @@ class SparseApplyAdagradDAOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor gradient_accum;
     OP_REQUIRES_OK(ctx,
                    GetInputTensorFromVariable<CPUDevice, T>(
-                       ctx, 1, use_exclusive_lock_, true, &gradient_accum));
+                       ctx, 1, use_exclusive_lock_, sparse, &gradient_accum));
     Tensor gradient_squared_accum;
     OP_REQUIRES_OK(
         ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                 ctx, 2, use_exclusive_lock_, true, &gradient_squared_accum));
+                 ctx, 2, use_exclusive_lock_, sparse, &gradient_squared_accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -1927,18 +1945,19 @@ class ApplyFtrlOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     Tensor linear;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, false, &linear));
+                            ctx, 2, use_exclusive_lock_, sparse, &linear));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2079,17 +2098,18 @@ class SparseApplyFtrlOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, true, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     Tensor linear;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, true, &linear));
+                            ctx, 2, use_exclusive_lock_, sparse, &linear));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2353,15 +2373,16 @@ class ApplyMomentumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2454,15 +2475,16 @@ class SparseApplyMomentumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 1, use_exclusive_lock_, true, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2572,15 +2594,16 @@ class ApplyKerasMomentumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2671,15 +2694,16 @@ class SparseApplyKerasMomentumOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 1, use_exclusive_lock_, true, &accum));
+                            ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2783,18 +2807,19 @@ class ApplyAdamOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor m;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &m));
+                            ctx, 1, use_exclusive_lock_, sparse, &m));
     Tensor v;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, false, &v));
+                            ctx, 2, use_exclusive_lock_, sparse, &v));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -2873,18 +2898,19 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<SYCLDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor m;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 1, use_exclusive_lock_, false, &m));
+                            ctx, 1, use_exclusive_lock_, sparse, &m));
     Tensor v;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 2, use_exclusive_lock_, false, &v));
+                            ctx, 2, use_exclusive_lock_, sparse, &v));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -3043,21 +3069,22 @@ class ApplyAdamWithAmsgradOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor m;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &m));
+                            ctx, 1, use_exclusive_lock_, sparse, &m));
     Tensor v;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, false, &v));
+                            ctx, 2, use_exclusive_lock_, sparse, &v));
     Tensor vhat;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 3, use_exclusive_lock_, false, &vhat));
+                            ctx, 3, use_exclusive_lock_, sparse, &vhat));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -3184,18 +3211,19 @@ class ApplyAdaMaxOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor m;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &m));
+                            ctx, 1, use_exclusive_lock_, sparse, &m));
     Tensor v;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, false, &v));
+                            ctx, 2, use_exclusive_lock_, sparse, &v));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -3312,18 +3340,19 @@ class ApplyRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor ms;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &ms));
+                            ctx, 1, use_exclusive_lock_, sparse, &ms));
     Tensor mom;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, false, &mom));
+                            ctx, 2, use_exclusive_lock_, sparse, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -3394,21 +3423,22 @@ class ApplyCenteredRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2, 3});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2, 3});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor mg;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &mg));
+                            ctx, 1, use_exclusive_lock_, sparse, &mg));
     Tensor ms;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 2, use_exclusive_lock_, false, &ms));
+                            ctx, 2, use_exclusive_lock_, sparse, &ms));
     Tensor mom;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 3, use_exclusive_lock_, false, &mom));
+                            ctx, 3, use_exclusive_lock_, sparse, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -3553,18 +3583,19 @@ class SparseApplyRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor ms;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 1, use_exclusive_lock_, true, &ms));
+                            ctx, 1, use_exclusive_lock_, sparse, &ms));
     Tensor mom;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 2, use_exclusive_lock_, true, &mom));
+                            ctx, 2, use_exclusive_lock_, sparse, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -3682,21 +3713,22 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
-    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_,
-                                                      {0, 1, 2, 3});
+    const bool sparse = true;
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2, 3});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 0, use_exclusive_lock_, true, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor mg;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 1, use_exclusive_lock_, true, &mg));
+                            ctx, 1, use_exclusive_lock_, sparse, &mg));
     Tensor ms;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 2, use_exclusive_lock_, true, &ms));
+                            ctx, 2, use_exclusive_lock_, sparse, &ms));
     Tensor mom;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
-                            ctx, 3, use_exclusive_lock_, true, &mom));
+                            ctx, 3, use_exclusive_lock_, sparse, &mom));
 
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -3852,15 +3884,16 @@ class ApplyAddSignOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor m;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &m));
+                            ctx, 1, use_exclusive_lock_, sparse, &m));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -3958,15 +3991,16 @@ class ApplyPowerSignOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks =
-        MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 1});
+    const bool sparse = false;
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1});
 
     Tensor var;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 0, use_exclusive_lock_, false, &var));
+                            ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor m;
     OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
-                            ctx, 1, use_exclusive_lock_, false, &m));
+                            ctx, 1, use_exclusive_lock_, sparse, &m));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(

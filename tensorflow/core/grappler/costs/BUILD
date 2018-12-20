@@ -54,6 +54,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:evaluation_utils",
     ] + tf_protos_grappler(),
 )
 
@@ -132,9 +133,6 @@ tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    cuda_deps = [
-        "@local_config_cuda//cuda:cudnn_header",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/eigen3",

@@ -1,6 +1,13 @@
 # Description:
 #   Base testing infrastructure for XLA.
 
+load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+
 licenses(["notice"])  # Apache 2.0
 
 package(
@@ -21,17 +28,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test_library")
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites")
-load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_test_macros")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 # Generate test_suites for all backends, named "${backend}_tests".
@@ -846,6 +842,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
@@ -1348,6 +1345,7 @@ xla_test(
 xla_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
+    backends = ["cpu"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -1637,8 +1635,8 @@ xla_test(
 )
 
 xla_test(
-    name = "cross_replica_sum_test",
-    srcs = ["cross_replica_sum_test.cc"],
+    name = "all_reduce_test",
+    srcs = ["all_reduce_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

@@ -25,14 +25,20 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@Counter
 @@CheckpointInputPipelineHook
 @@CsvDataset
+@@DatasetStructure
+@@NestedStructure
 @@OptimizationOptions
 @@Optional
+@@OptionalStructure
 @@RandomDataset
 @@Reducer
+@@SparseTensorStructure
 @@SqlDataset
 @@StatsAggregator
 @@StatsOptions
+@@Structure
 @@TFRecordWriter
+@@TensorStructure
 @@ThreadingOptions
 
 @@bucket_by_sequence_length
@@ -112,8 +118,14 @@ from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
 from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
+from tensorflow.python.data.ops.dataset_ops import DatasetStructure
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
+from tensorflow.python.data.ops.optional_ops import OptionalStructure
+from tensorflow.python.data.util.structure import NestedStructure
+from tensorflow.python.data.util.structure import SparseTensorStructure
+from tensorflow.python.data.util.structure import Structure
+from tensorflow.python.data.util.structure import TensorStructure
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

@@ -25,14 +25,16 @@ limitations under the License.
 
 namespace xla {
 
-// Combine an AllReduce and a CrossReplicaSum when they are close to each other
-// in the graph, to use an efficient CrossReplicaSum implementation that
-// fully utilizes the interconnect bandwidth.
+// When the HLO graph contains a cross-module AllReduce, followed by some simple
+// linear operations, followed by a cross-replica AllReduce, we can combine the
+// CMAR and the CRAR, to use an efficient AllReduce implementation that fully
+// utilizes the interconnect bandwidth.
+// Such sequences appear in spatially partitioned models.
+// This pass must run right after spatial partitioning.
 class ArCrsCombiner : public HloModulePass {
  public:
-  ArCrsCombiner(int num_spatial_partitions, int num_replicas)
-      : num_spatial_partitions_(num_spatial_partitions),
-        num_replicas_(num_replicas) {}
+  ArCrsCombiner(int num_spatial_partitions)
+      : num_spatial_partitions_(num_spatial_partitions) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -77,7 +79,6 @@ class ArCrsCombiner : public HloModulePass {
   StatusOr<bool> RewriteGraph();
 
   int num_spatial_partitions_;
-  int num_replicas_;
 
   // Map from all-reduce ids to the all reduce instructions.
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> all_reduce_map_;

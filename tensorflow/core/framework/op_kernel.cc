@@ -122,6 +122,12 @@ const string& OpKernel::type_string() const { return def_->op(); }
 const string& OpKernel::requested_device() const { return def_->device(); }
 const string& OpKernel::requested_input(int i) const { return def_->input(i); }
 
+// This static function exists only because device_attributes.pb.h is
+// already included here, and it can't be introduced elsewhere.
+/*static*/ int OpKernel::DeviceNumaNode(const DeviceBase* device) {
+  return device->attributes().locality().numa_node();
+}
+
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
   const auto result = input_name_map_.find(input_name);

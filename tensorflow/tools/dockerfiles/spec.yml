@@ -33,21 +33,28 @@ header: |
 #   - nightly-py3
 #   - nightly-gpu (similar)
 #   - nightly-gpu-py3
-
+#
+# Releases are all treated differently by TensorFlow's CI systems.
 releases:
+    # Built Nightly and pushed to tensorflow/tensorflow
     nightly:
         tag_specs:
             - "{nightly}{py}{jupyter}"
+            - "{ubuntu-devel}{py}"
 
+    # Built per-release and pushed to tensorflow/tensorflow
+    # --arg _TAG_PREFIX=<val> should be set to "1.11" (for example) or "latest".
     versioned:
         tag_specs:
             - "{_TAG_PREFIX}{ubuntu}{py}{jupyter}"
 
-    ubuntu-dockerfiles:
+    # Dockerfiles stored in the TF repo; not pushed anywhere
+    dockerfiles:
         is_dockerfiles: true
         upload_images: false
         tag_specs:
             - "{ubuntu}{jupyter}"
+            - "{ubuntu-devel}{jupyter}"
 
 slice_sets:
 
@@ -87,27 +94,33 @@ slice_sets:
           tests:
               - import-gpu.sh
           test_runtime: nvidia
-        - add_to_name: "-devel"
-          dockerfile_exclusive_name: "cpu-devel"
+
+    ubuntu-devel:
+        - add_to_name: "devel"
+          dockerfile_exclusive_name: "devel-cpu"
           partials:
               - ubuntu/version
-              - ubuntu/cpu-devel
+              - ubuntu/devel-cpu
               - ubuntu/python
               - ubuntu/bazel
               - shell
           tests:
               - build-cpu.sh
-        - add_to_name: "-gpu-devel"
-          dockerfile_exclusive_name: "gpu-devel"
+          args:
+              - CHECKOUT_TF_SRC=1
+        - add_to_name: "devel-gpu"
+          dockerfile_exclusive_name: "devel-gpu"
           partials:
               - ubuntu/version
-              - ubuntu/nvidia-devel
+              - ubuntu/devel-nvidia
               - ubuntu/python
               - ubuntu/bazel
               - shell
           tests:
               - build-gpu.sh
           test_runtime: nvidia
+          args:
+              - CHECKOUT_TF_SRC=1
 
     nightly:
         - add_to_name: "nightly"

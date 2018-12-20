@@ -294,6 +294,35 @@ class AstUtilTest(test.TestCase):
     nodes = ast_util.find_matching_definitions(node, f)
     self.assertFunctionDefNodes(nodes, ('return 1', 'return 2'))
 
+  def test_find_matching_definitions_decorated_compatible(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      @sneaky_decorator
+      def f(x, *args, **kwargs):
+        return 1
+    """))
+
+    def f(a, b, c, d=1):
+      return a + b + c + d
+
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertFunctionDefNodes(nodes, ('return 1',))
+
+  def test_find_matching_definitions_decorated_incompatible(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      @sneaky_decorator
+      def f(x, y, z):
+        return 1
+    """))
+
+    def f(a, b, c, d, *args):
+      del args
+      return a + b + c + d
+
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertFunctionDefNodes(nodes, ())
+
 
 if __name__ == '__main__':
   test.main()

@@ -485,7 +485,7 @@ class BucketizedColumnTest(test.TestCase):
   def test_invalid_boundaries(self):
     a = fc.numeric_column('aaa')
     with self.assertRaisesRegexp(ValueError,
-                                 'boundaries must be a sorted list'):
+                                 'boundaries must not be empty'):
       fc.bucketized_column(a, boundaries=None)
     with self.assertRaisesRegexp(ValueError,
                                  'boundaries must be a sorted list'):

@@ -35,6 +35,9 @@ extern const char kXlaTokenInputNodesAttrName[];
 // node has side-effect dependency on current graph's token input.
 extern const char kXlaTokenArgNodeName[];
 
+// This node have XlaRecvAtHost/XlaSendFromHost in its associated functions.
+extern const char kXlaHasHostTransferAttrName[];
+
 // Calculates side-effect dependencies for the graph's token output.
 // Returns a set of node names representing these dependencies.
 std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g);

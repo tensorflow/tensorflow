@@ -927,7 +927,10 @@ class NNTest(PForTest):
               outputs[1] = constant_op.constant(0.)
               outputs[2] = constant_op.constant(0.)
             loss = nn.l2_loss(outputs[0])
-          gradients = g.gradient(loss, [x1, scale, offset])
+          if is_training:
+            gradients = g.gradient(loss, [x1, scale, offset])
+          else:
+            gradients = [constant_op.constant(0.)] * 3
           return outputs + gradients
 
         # pylint: enable=cell-var-from-loop

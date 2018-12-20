@@ -324,7 +324,7 @@ class NamedDistribution(object):
 # pylint: disable=g-long-lambda
 default_strategy = NamedDistribution(
     "Default",
-    distribution_strategy_context._get_default_distribution_strategy,  # pylint: disable=protected-access
+    distribution_strategy_context._get_default_strategy,  # pylint: disable=protected-access
     required_gpus=None)
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),

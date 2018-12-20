@@ -175,6 +175,19 @@ REGISTER_OP("ResizeBilinear")
     .SetShapeFn(ResizeShapeFn);
 
 // --------------------------------------------------------------------------
+REGISTER_OP("ScaleAndTranslate")
+    .Input("images: T")
+    .Input("size: int32")
+    .Input("scale: float")
+    .Input("translation: float")
+    .Output("resized_images: float")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, bfloat16, half, "
+        "float, double}")
+    .Attr("kernel_type: string = 'lanczos3'")
+    .SetShapeFn(ResizeShapeFn);
+
+// --------------------------------------------------------------------------
 REGISTER_OP("QuantizedResizeBilinear")
     .Input("images: T")
     .Input("size: int32")
@@ -203,6 +216,20 @@ REGISTER_OP("ResizeBilinearGrad")
     .Output("output: T")
     .Attr("T: {float, bfloat16, half, double}")
     .Attr("align_corners: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->input(1));
+      return Status::OK();
+    });
+
+// --------------------------------------------------------------------------
+REGISTER_OP("ScaleAndTranslateGrad")
+    .Input("grads: T")
+    .Input("original_image: T")
+    .Input("scale: float")
+    .Input("translation: float")
+    .Output("output: T")
+    .Attr("T: {float}")
+    .Attr("kernel_type: string = 'lanczos3'")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();

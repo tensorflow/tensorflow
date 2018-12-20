@@ -34,6 +34,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
@@ -49,7 +50,7 @@ def model_iteration(model,
                     max_queue_size=10,
                     workers=1,
                     use_multiprocessing=False,
-                    shuffle=True,
+                    shuffle=False,
                     initial_epoch=0,
                     mode='train',
                     batch_size=None,
@@ -170,7 +171,8 @@ def model_iteration(model,
     # Setup work for each epoch.
     model.reset_metrics()
     epoch_logs = {}
-    callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
+    if mode == ModeKeys.TRAIN:
+      callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
 
     for step in range(steps_per_epoch):
@@ -198,7 +200,7 @@ def model_iteration(model,
       aggregator.aggregate(batch_outs)
 
       # Callbacks batch end.
-      batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+      batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
       callbacks._call_batch_hook(mode, 'end', step, batch_logs)
       progbar.on_batch_end(step, batch_logs)
 
@@ -207,7 +209,7 @@ def model_iteration(model,
 
     aggregator.finalize()
     results = aggregator.results
-    epoch_logs.update(training_utils.make_logs(model, results, mode))
+    epoch_logs = cbks.make_logs(model, epoch_logs, results, mode)
     if len(results) == 1:
       results = results[0]
 
@@ -222,15 +224,20 @@ def model_iteration(model,
           workers=workers,
           use_multiprocessing=use_multiprocessing,
           max_queue_size=max_queue_size,
+          callbacks=callbacks,
+          verbose=0,
           mode='test')
 
       if not isinstance(val_results, list):
         val_results = [val_results]
-      epoch_logs.update(
-          training_utils.make_logs(model, val_results, mode, prefix='val_'))
+      epoch_logs = cbks.make_logs(
+          model, epoch_logs, val_results, mode, prefix='val_')
 
-    callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
-    progbar.on_epoch_end(epoch, epoch_logs)
+    if mode == 'train':
+      # Epochs only apply to `fit`.
+      callbacks.on_epoch_end(epoch, epoch_logs)
+      progbar.on_epoch_end(epoch, epoch_logs)
+
   callbacks._call_end_hook(mode)
 
   if enqueuer is not None:
@@ -246,8 +253,10 @@ def model_iteration(model,
 
 # Maintain compatibility with the existing names.
 fit_generator = functools.partial(model_iteration, mode='train')
-evaluate_generator = functools.partial(model_iteration, mode='test')
-predict_generator = functools.partial(model_iteration, mode='predict')
+evaluate_generator = functools.partial(
+    model_iteration, mode='test', shuffle=False)
+predict_generator = functools.partial(
+    model_iteration, mode='predict', shuffle=False)
 
 
 def _get_next_batch(output_generator, mode):

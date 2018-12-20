@@ -66,12 +66,6 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
     six.raise_from(core._status_to_exception(e.code, message), None)
   except TypeError as e:
     if any(ops._is_keras_symbolic_tensor(x) for x in inputs):
-      if any(isinstance(x, ops.EagerTensor) for x in inputs):
-        raise TypeError("You are attempting to mix computation of symbolic "
-                        "Tensors (computation rooted at tf.keras.Input()) "
-                        "and concrete values. This is not supported. "
-                        "If you need this support, file an issue on the "
-                        "TensorFlow GitHub repository.")
       raise core._SymbolicException
     raise e
   # pylint: enable=protected-access

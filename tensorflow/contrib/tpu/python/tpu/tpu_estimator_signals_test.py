@@ -21,8 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.tpu.python.tpu import tpu_estimator
-from tensorflow.python import data as dataset_lib
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
@@ -34,10 +34,10 @@ def make_input_fn(num_samples):
 
   def input_fn(params):
     batch_size = params['batch_size']
-    da1 = dataset_lib.Dataset.from_tensor_slices(a)
-    da2 = dataset_lib.Dataset.from_tensor_slices(b)
+    da1 = dataset_ops.Dataset.from_tensor_slices(a)
+    da2 = dataset_ops.Dataset.from_tensor_slices(b)
 
-    dataset = dataset_lib.Dataset.zip((da1, da2))
+    dataset = dataset_ops.Dataset.zip((da1, da2))
     dataset = dataset.map(lambda fa, fb: {'a': fa, 'b': fb})
     dataset = dataset.batch(batch_size)
     return dataset
@@ -50,10 +50,10 @@ def make_input_fn_with_labels(num_samples):
 
   def input_fn(params):
     batch_size = params['batch_size']
-    da1 = dataset_lib.Dataset.from_tensor_slices(a)
-    da2 = dataset_lib.Dataset.from_tensor_slices(b)
+    da1 = dataset_ops.Dataset.from_tensor_slices(a)
+    da2 = dataset_ops.Dataset.from_tensor_slices(b)
 
-    dataset = dataset_lib.Dataset.zip((da1, da2))
+    dataset = dataset_ops.Dataset.zip((da1, da2))
     dataset = dataset.map(lambda fa, fb: ({'a': fa}, fb))
     dataset = dataset.batch(batch_size)
     return dataset
@@ -71,7 +71,7 @@ class TPUEstimatorStoppingSignalsTest(test.TestCase):
 
     with ops.Graph().as_default():
       dataset = input_fn(params)
-      features = dataset_lib.make_one_shot_iterator(dataset).get_next()
+      features = dataset_ops.make_one_shot_iterator(dataset).get_next()
 
       # With tf.data.Dataset.batch, the batch is None, i.e., dynamic shape.
       self.assertIsNone(features['a'].shape.as_list()[0])

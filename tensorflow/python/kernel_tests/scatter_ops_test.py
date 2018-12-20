@@ -192,6 +192,10 @@ class ScatterTest(test.TestCase):
     if tf_scatter != state_ops.scatter_div:
       vtypes.append(np.int32)
 
+    if (tf_scatter == state_ops.scatter_min or
+        tf_scatter == state_ops.scatter_max):
+      vtypes.append(np.float16)
+
     for vtype in vtypes:
       for itype in (np.int32, np.int64):
         self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices,

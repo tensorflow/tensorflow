@@ -34,8 +34,8 @@ class BFloat16ConversionFoldingVisitor : public DfsHloVisitorWithDefault {
 
   Status DefaultAction(HloInstruction* hlo) override;
 
-  // Special handling for cross-replica-sum which can have a tuple output.
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  // Special handling for all-reduce which can have a tuple output.
+  Status HandleAllReduce(HloInstruction* crs) override;
 
   static bool Run(HloComputation* computation,
                   const BFloat16Support* bfloat16_support) {
@@ -176,8 +176,7 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
   return TryFoldBF16Conversions(hlo);
 }
 
-Status BFloat16ConversionFoldingVisitor::HandleCrossReplicaSum(
-    HloInstruction* crs) {
+Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
   if (crs->IsCrossModuleAllReduce()) {
     // Cross-module all-reduce has side effect.
     return Status::OK();

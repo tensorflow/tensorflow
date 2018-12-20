@@ -120,4 +120,9 @@ REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllocationHandle")
                             .HostMemory("handle"),
                         XRTReleaseAllocationOp<XRTGenericDeviceAccessor>);
 
+REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_GPU),
+                        XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllAllocations").Device(DEVICE_XLA_CPU),
+                        XRTReleaseAllAllocationsOp<XRTGenericDeviceAccessor>);
+
 }  // namespace tensorflow

@@ -111,10 +111,9 @@ IrEmitter::IrEmitter(
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, const string& function_name_prefix,
     bool is_top_level_computation,
-    const std::vector<HloInstruction*>* instruction_order) {
+    absl::Span<HloInstruction* const> instruction_order) {
   string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
-  VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix
-          << "]; ordered? " << (instruction_order != nullptr);
+  VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
   num_dynamic_loop_bounds_ = 0;
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
@@ -141,11 +140,7 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   bool use_rdtscp = arch_type_ == llvm::Triple::ArchType::x86 ||
                     arch_type_ == llvm::Triple::ArchType::x86_64;
   profiling_state_ = ProfilingState(use_rdtscp);
-  if (instruction_order == nullptr) {
-    TF_RETURN_IF_ERROR(computation->Accept(this));
-  } else {
-    TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, *instruction_order));
-  }
+  TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
   InsertOrDie(&emitted_functions_, computation, ir_function);
   // Delete 'compute_function', finalizing 'ir_function' and restoring caller
@@ -1338,11 +1333,11 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
+Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() != 1) {
     // TODO(b/33011107): Support nontrivial cross replica sum on CPU.
     return Unimplemented(
-        "CrossReplicaSum with >1 replica is not implemented on CPU.");
+        "AllReduce with >1 replica is not implemented on CPU.");
   }
 
   // When there is a single replica, a cross replica sum is the identity
@@ -1368,7 +1363,7 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
 
     const Shape& operand_shape = crs->operand(i)->shape();
     CHECK(ShapeUtil::IsArray(operand_shape))
-        << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
+        << "Operands to all-reduce must be arrays: " << crs->ToString();
     operand_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
 
     // TODO(b/63762267): Be more aggressive about specifying alignment.
@@ -2271,6 +2266,22 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
               /*isVarArg=*/false)));
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  // Write the tuple table if the output is a tuple.
+  if (ShapeUtil::IsTuple(custom_call->shape())) {
+    std::vector<llvm::Value*> base_ptrs;
+    for (int i = 0; i < ShapeUtil::TupleElementCount(custom_call->shape());
+         ++i) {
+      const Shape& elem_shape =
+          ShapeUtil::GetTupleElementShape(custom_call->shape(), i);
+      TF_RET_CHECK(!ShapeUtil::IsTuple(elem_shape))
+          << "Nested tuples not implemented";
+      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                          assignment_.GetUniqueSlice(custom_call, {i}));
+      llvm::Value* addr = EmitBufferPointer(slice, elem_shape);
+      base_ptrs.push_back(addr);
+    }
+    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_, module_);
+  }
   auto* output_address_arg =
       PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
 
@@ -2851,7 +2862,9 @@ llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
   if (slice.allocation()->is_thread_local()) {
     return EmitThreadLocalBufferPointer(slice, target_shape);
   } else if (slice.allocation()->is_constant()) {
-    return FindOrDie(constant_buffer_to_global_, slice.allocation()->index());
+    return BitCast(
+        FindOrDie(constant_buffer_to_global_, slice.allocation()->index()),
+        IrShapeType(target_shape)->getPointerTo());
   } else {
     return EmitGlobalBufferPointer(slice, target_shape);
   }

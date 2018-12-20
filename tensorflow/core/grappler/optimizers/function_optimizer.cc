@@ -1270,6 +1270,20 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
         SummarizeNodeDef(func_node));
   }
 
+  // TODO(b/120991525, b/120986912): We need to lower `If` and `While` nodes to
+  // `Switch` nodes after function inlining (one more PRE_PLACEMENT pass?), but
+  // because of the reason described above we are not sure that it's safe, for
+  // now just disable inlining functions with functional control flow.
+  const auto is_functional_ctrl_flow_op = [](const NodeDef& node) {
+    return IsIf(node) || IsWhile(node);
+  };
+  if (absl::c_any_of(func.node_def(), is_functional_ctrl_flow_op)) {
+    return errors::FailedPrecondition(
+        "Can't inline function with `If` or `While` nodes in the function "
+        "body: ",
+        SummarizeNodeDef(func_node));
+  }
+
   return Status::OK();
 }
 
@@ -1360,7 +1374,24 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   const string prefix = strings::StrCat(func_node.name(), "/");
 
   // ------------------------------------------------------------------------ //
-  // First we need to assign device placements to all function body nodes.
+  // Before placing the function body nodes we pin input placeholders to the
+  // same device as their corresponding input nodes.
+
+  for (NodeDef& func_body_node : *item.graph.mutable_node()) {
+    if (item.IsInputPlaceholder(func_body_node.name())) {
+      const int input_idx = input_placeholders_idx[func_body_node.name()];
+      const GraphView::OutputPort output_port =
+          ctx->graph_view().GetRegularFanin({&func_node, input_idx});
+
+      VLOG(3) << "Pin inlined function input node '" << func_body_node.name()
+              << "' to the '" << output_port.node->device() << "' device.";
+      func_body_node.set_device(output_port.node->device());
+    }
+  }
+
+  // ------------------------------------------------------------------------ //
+  // After placing nodes corresponding to the function inputs, we need to assign
+  // device placements to all other function body nodes.
 
   GraphDef placed_graph_def;
 
@@ -1418,7 +1449,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
       (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
       func_body_node.mutable_attr()->erase("dtype");
       func_body_node.mutable_attr()->erase("shape");
-      int input_idx = input_placeholders_idx[func_body_node.name()];
+      const int input_idx = input_placeholders_idx[func_body_node.name()];
       func_body_node.add_input(strings::StrCat(inputs[input_idx].ToString()));
 
       // All side effects must happen before inputs can start executing.
@@ -1472,7 +1503,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
       // for the function body, because functions have strict semantics.
 
       if (num_fanouts == 0 && happens_after.empty() &&
-          !ctx->allowed_optimizations().inline_ops_with_side_effects) {
+          ctx->allowed_optimizations().prune_ops_with_side_effects) {
         return errors::Internal(
             "Can't inline a function with a side-effectful op with empty "
             "fanouts and empty output control edge set. Function body node: ",

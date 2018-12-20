@@ -97,6 +97,7 @@ def convert_dtype_to_tflite_type(tf_dtype):
   return result
 
 
+@_tf_export("lite.OpsSet")
 class OpsSet(enum.Enum):
   """Enum class defining the sets of ops available to generate TFLite models.
 

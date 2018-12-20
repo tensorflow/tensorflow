@@ -34,6 +34,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   a unit test if the converter is successful.
   """
 
+  @test_util.run_v1_only("b/120545219")
   def testArgRenames(self):
     with self.cached_session():
 
@@ -97,6 +98,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           tf.expand_dims([[1, 2], [3, 4]], axis=1).eval(),
           [[[1, 2]], [[3, 4]]])
 
+  @test_util.run_v1_only("b/120545219")
   def testArgMinMax(self):
     with self.cached_session():
       self.assertAllEqual(
@@ -112,6 +114,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           tf.argmax([[1, 2, 3], [4, 1, 0]], dimension=0).eval(),
           [1, 0, 0])
 
+  @test_util.run_v1_only("b/120545219")
   def testExpandAndSqueeze(self):
     with self.cached_session():
 
@@ -139,6 +142,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                   [[1, 2, 3]], dim=1), squeeze_dims=[1]).eval(),
           a)
 
+  @test_util.run_v1_only("b/120545219")
   def testArithmeticRenames(self):
     with self.cached_session() as s:
       stuff = tf.split(1, 2, [[1, 2, 3, 4], [4, 5, 6, 7]])
@@ -163,6 +167,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       #     # TODO(aselle): (tf.batch_*)
       # ]
 
+  @test_util.run_v1_only("b/120545219")
   def testBatchAndSvd(self):
     with self.cached_session():
       mat = [[1., 2.], [2., 3.]]
@@ -174,6 +179,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           tf.svd(mat, False, True).eval(),
           tf.svd(mat, compute_uv=False, full_matrices=True).eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testCrossEntropy(self):
     # TODO(aselle): Test sparse_softmax_...
     with self.cached_session():
@@ -190,6 +196,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
           tf.nn.sigmoid_cross_entropy_with_logits(
               labels=labels, logits=logits).eval())
 
+  @test_util.run_v1_only("b/120545219")
   def testVariables(self):
     with self.cached_session() as s:
 
@@ -200,6 +207,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       _ = [v.name for v in tf.all_variables()]
       _ = [v.name for v in tf.local_variables()]
 
+  @test_util.run_v1_only("b/120545219")
   def testSummaries(self):
     with self.cached_session() as s:
       var = tf.Variable([1, 2, 3], dtype=tf.float32)

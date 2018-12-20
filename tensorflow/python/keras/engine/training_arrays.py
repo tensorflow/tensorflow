@@ -32,6 +32,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -138,6 +139,7 @@ def model_iteration(model,
                     steps_per_epoch=None,
                     validation_steps=None,
                     mode='train',
+                    validation_in_fit=False,
                     **kwargs):
   """Loop function for arrays of data with modes 'train'/'test'/'predict'.
 
@@ -164,6 +166,11 @@ def model_iteration(model,
       validation_steps: Number of steps to run validation for (only if doing
         validation from data tensors). Ignored with the default value of `None`.
       mode: One of 'train'/'test'/'predict'.
+      validation_in_fit: DEPRECATED: if true, then this method is invoked from
+        within training iteration (for validation). In this case, do not copy
+        weights when using a tf.distribute.Strategy. The input is deprecated as
+        it is not required if the user creates a distributed model under the
+        distribution strategy scope rather than passing it to compile.
       **kwargs: Additional arguments for backwards compatibility.
 
   Returns:
@@ -230,22 +237,23 @@ def model_iteration(model,
     aggregator = training_utils.MetricsAggregator(use_steps,
                                                   num_samples_or_steps)
 
-  if model._distribution_strategy:
-    training_distributed._copy_weights_to_distributed_model(model)
+  if model._compile_distribution and not validation_in_fit:
+    training_distributed._copy_weights_to_distributed_model(
+        model, model._distributed_model)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
+
   for epoch in range(initial_epoch, epochs):
     if callbacks.model.stop_training:
       break
 
     # Setup work for each epoch
     epoch_logs = {}
-    if hasattr(model, 'metrics'):
-      for m in model.metrics:
-        m.reset_states()
-    callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
+    model.reset_metrics()
+    if mode == ModeKeys.TRAIN:
+      callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
 
     if use_steps:
@@ -281,7 +289,7 @@ def model_iteration(model,
         aggregator.aggregate(batch_outs)
 
         # Callbacks batch end.
-        batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+        batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
         callbacks._call_batch_hook(mode, 'end', step, batch_logs)
         progbar.on_batch_end(step, batch_logs)
 
@@ -332,7 +340,7 @@ def model_iteration(model,
         aggregator.aggregate(batch_outs, batch_start, batch_end)
 
         # Callbacks batch end.
-        batch_logs.update(training_utils.make_logs(model, batch_outs, mode))
+        batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
         callbacks._call_batch_hook(mode, 'end', batch_index, batch_logs)
         progbar.on_batch_end(batch_index, batch_logs)
 
@@ -341,7 +349,7 @@ def model_iteration(model,
 
     aggregator.finalize()
     results = aggregator.results
-    epoch_logs.update(training_utils.make_logs(model, results, mode))
+    epoch_logs = cbks.make_logs(model, epoch_logs, results, mode)
     if len(results) == 1:
       results = results[0]
 
@@ -356,18 +364,25 @@ def model_iteration(model,
           steps_per_epoch=validation_steps,
           callbacks=callbacks,
           verbose=0,
-          mode='test')
+          mode='test',
+          validation_in_fit=True)
       if not isinstance(val_results, list):
         val_results = [val_results]
-      epoch_logs.update(
-          training_utils.make_logs(model, val_results, mode, prefix='val_'))
+      epoch_logs = cbks.make_logs(
+          model, epoch_logs, val_results, mode, prefix='val_')
 
-    callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
-    progbar.on_epoch_end(epoch, epoch_logs)
+    if mode == 'train':
+      # Epochs only apply to `fit`.
+      callbacks.on_epoch_end(epoch, epoch_logs)
+      progbar.on_epoch_end(epoch, epoch_logs)
+
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:
-    training_distributed._copy_weights_to_original_model(model, mode)
+    if model._compile_distribution and not validation_in_fit:
+      # TODO(priyag, psv): Copy back metrics to the original model as well?
+      training_distributed._copy_weights_to_original_model(
+          model, model._distributed_model, mode)
     scope.__exit__(None, None, None)
 
   if mode == 'train':

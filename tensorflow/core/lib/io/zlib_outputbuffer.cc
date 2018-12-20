@@ -225,5 +225,7 @@ Status ZlibOutputBuffer::Deflate(int flush) {
   return errors::DataLoss(error_string);
 }
 
+Status ZlibOutputBuffer::Tell(int64* position) { return file_->Tell(position); }
+
 }  // namespace io
 }  // namespace tensorflow

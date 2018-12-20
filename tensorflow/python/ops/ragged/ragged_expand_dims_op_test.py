@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.expand_dims."""
+"""Tests for ragged_array_ops.expand_dims."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,16 +21,19 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedExpandDimsOpTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedExpandDimsOpTest(ragged_test_util.RaggedTensorTestCase,
                              parameterized.TestCase):
 
   # An example 4-d ragged tensor with shape [3, (D2), (D3), 2], and the
   # expected result calling for expand_dims on each axis.  c.f. the table of
-  # expected result shapes in the ragged.expand_dims docstring.
+  # expected result shapes in the ragged_array_ops.expand_dims docstring.
   EXAMPLE4D = [[[[1, 1], [2, 2]], [[3, 3]]],
                [],
                [[], [[4, 4], [5, 5], [6, 6]]]]  # pyformat: disable
@@ -105,21 +108,19 @@ class RaggedExpandDimsOpTest(test_util.TensorFlowTestCase,
            expected=EXAMPLE4D_EXPAND_AXIS[4],
            expected_shape=[3, None, None, 2, 1]),
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
   def testRaggedExpandDims(self,
                            rt_input,
                            axis,
                            expected,
                            ragged_rank=None,
                            expected_shape=None):
-    rt = ragged.constant(rt_input, ragged_rank=ragged_rank)
-    expanded = ragged.expand_dims(rt, axis=axis)
+    rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
+    expanded = ragged_array_ops.expand_dims(rt, axis=axis)
     self.assertEqual(expanded.shape.ndims, rt.shape.ndims + 1)
     if expected_shape is not None:
       self.assertEqual(expanded.shape.as_list(), expected_shape)
 
-    with self.test_session():
-      self.assertEqual(expanded.eval().tolist(), expected)
+    self.assertRaggedEqual(expanded, expected)
 
 
 if __name__ == '__main__':

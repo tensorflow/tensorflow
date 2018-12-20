@@ -57,6 +57,10 @@ class GPUDeviceContext : public DeviceContext {
                              Device* device, Tensor* cpu_tensor,
                              StatusCallback done) override;
 
+  void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
+                              Tensor* output_tensor,
+                              StatusCallback done) const override;
+
   void MaintainLifetimeOnStream(const Tensor* t,
                                 se::Stream* stream) const override {}
 

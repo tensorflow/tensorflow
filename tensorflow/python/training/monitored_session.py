@@ -1392,9 +1392,11 @@ class _HookedSession(_WrappedSession):
     options.output_partition_graphs = max(
         options.output_partition_graphs,
         incoming_options.output_partition_graphs)
-
     options.debug_options.debug_tensor_watch_opts.extend(
         incoming_options.debug_options.debug_tensor_watch_opts)
     options.debug_options.reset_disk_byte_usage = (
         options.debug_options.reset_disk_byte_usage or
         incoming_options.debug_options.reset_disk_byte_usage)
+    options.report_tensor_allocations_upon_oom = (
+        options.report_tensor_allocations_upon_oom or
+        incoming_options.report_tensor_allocations_upon_oom)

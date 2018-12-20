@@ -216,6 +216,7 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
     os.remove(unrelated_source_path)
 
 
+@test_util.run_v1_only("b/120545219")
 class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def createAndRunGraphWithWhileLoop(self):
