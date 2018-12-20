@@ -1422,7 +1422,7 @@ class TestCTC(test.TestCase):
                 decode_truth[i] == keras.backend.eval(decode_pred_tf[i])))
       self.assertAllClose(log_prob_truth, log_prob_pred)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def test_ctc_batch_cost(self):
     with self.cached_session():
       label_lens = np.expand_dims(np.asarray([5, 4]), 1)
@@ -1694,6 +1694,39 @@ class BackendGraphTests(test.TestCase):
 
       self.assertEqual(callback.times_called, 1)
       self.assertEqual(callback.callback_result, 200)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_dict_outputs(self):
+    x_ph = keras.backend.placeholder(shape=(), name='x')
+    y_ph = keras.backend.placeholder(shape=(), name='y')
+    outputs = {'x*y': y_ph * x_ph, 'x*x': x_ph * x_ph}
+
+    f = keras.backend.function(inputs=[x_ph, y_ph], outputs=outputs)
+    x, y = 2., 5.
+    results = f([x, y])
+
+    self.assertEqual(results['x*y'], 10.)
+    self.assertEqual(results['x*x'], 4)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_dict_inputs(self):
+    placeholders = {
+        'x': keras.backend.placeholder(shape=()),
+        'y': keras.backend.placeholder(shape=())
+    }
+    outputs = [placeholders['x'] * placeholders['y']]
+
+    f = keras.backend.function(inputs=placeholders, outputs=outputs)
+    results = f({'x': 2., 'y': 3.})
+    self.assertEqual(results[0], 6.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_single_input_output(self):
+    x_ph = keras.backend.placeholder(shape=(), name='x')
+    output = x_ph * x_ph
+    f = keras.backend.function(x_ph, output)
+    result = f(2.)
+    self.assertEqual(result, 4.)
 
   def test_placeholder(self):
     x = keras.backend.placeholder(shape=(3, 4))

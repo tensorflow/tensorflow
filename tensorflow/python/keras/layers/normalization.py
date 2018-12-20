@@ -21,6 +21,7 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.python import tf2
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,17 +34,17 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribution_strategy_context
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.BatchNormalization', v1=[])
+@keras_export('keras.layers.BatchNormalization', v1=[])
 class BatchNormalizationV2(Layer):
   """Batch normalization layer (Ioffe and Szegedy, 2014).
 
@@ -414,11 +415,21 @@ class BatchNormalizationV2(Layer):
   def _assign_moving_average(self, variable, value, momentum):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, momentum]) as scope:
+      # TODO(b/120571621): We want to avoid colocating the variables here
+      # since TPUStrategy does not implement replica local variables.
+      # Remove this hack once we support TPULocalVariables.
+      is_tpu_strategy = False
+      if distribution_strategy_context.has_distribution_strategy():
+        distribute = distribution_strategy_context.get_distribution_strategy()
+        if distribute.__class__.__name__ == 'TPUStrategy':
+          is_tpu_strategy = True
+
       # TODO(apassos,srbs,skyewm): the colocation constraints here are disabled
-      # because of a bug which leads cond_v2 to skip rewriting them creating
-      # conflicts.
-      if tf2.enabled():
-        cm = contextlib.contextmanager(lambda: (yield))
+      # because of a bug which leads cond_v2/while_v2 to skip rewriting them
+      # creating conflicts.
+      if (control_flow_util.EnableControlFlowV2(ops.get_default_graph()) or
+          is_tpu_strategy):
+        cm = contextlib.contextmanager(lambda: (yield))()
       else:
         cm = ops.colocate_with(variable)
       with cm:
@@ -655,20 +666,40 @@ class BatchNormalizationV2(Layer):
         d = _broadcast(array_ops.stop_gradient(d, name='renorm_d'))
         scale, offset = _compose_transforms(r, d, scale, offset)
 
-      def _do_update(var, value):
-        if in_eager_mode and not self.trainable:
-          return
-
-        return self._assign_moving_average(var, value, self.momentum)
-
-      mean_update = tf_utils.smart_cond(
-          training,
-          lambda: _do_update(self.moving_mean, new_mean),
-          lambda: self.moving_mean)
-      variance_update = tf_utils.smart_cond(
-          training,
-          lambda: _do_update(self.moving_variance, new_variance),
-          lambda: self.moving_variance)
+      if distribution_strategy_context.in_cross_replica_context():
+        strategy = distribution_strategy_context.get_distribution_strategy()
+        def _do_update(var, value):
+          """Compute the updates for mean and variance."""
+          if in_eager_mode and not self.trainable:
+            return
+          return strategy.extended.update(
+              var, self._assign_moving_average, (value, self.momentum),
+              group=False)
+        # We need to unwrap the moving_mean or moving_variance in the case of
+        # training being false to match the output of true_fn and false_fn
+        # in the smart cond.
+        mean_update = tf_utils.smart_cond(
+            training,
+            lambda: _do_update(self.moving_mean, new_mean),
+            lambda: strategy.unwrap(self.moving_mean))
+        variance_update = tf_utils.smart_cond(
+            training,
+            lambda: _do_update(self.moving_variance, new_variance),
+            lambda: strategy.unwrap(self.moving_variance))
+      else:
+        def _do_update(var, value):
+          """Compute the updates for mean and variance."""
+          if in_eager_mode and not self.trainable:
+            return
+          return self._assign_moving_average(var, value, self.momentum)
+        mean_update = tf_utils.smart_cond(
+            training,
+            lambda: _do_update(self.moving_mean, new_mean),
+            lambda: self.moving_mean)
+        variance_update = tf_utils.smart_cond(
+            training,
+            lambda: _do_update(self.moving_variance, new_variance),
+            lambda: self.moving_variance)
       if not context.executing_eagerly():
         self.add_update(mean_update, inputs=True)
         self.add_update(variance_update, inputs=True)
@@ -740,7 +771,7 @@ def _replace_in_v2_docstring(old, new):
   return string.replace(old, new)
 
 
-@tf_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
+@keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
 class BatchNormalizationV1(BatchNormalizationV2):
 
   __doc__ = _replace_in_v2_docstring(

@@ -804,7 +804,7 @@ TEST_P(HloEvaluatorTest, SimpleConv1D) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -859,7 +859,7 @@ TEST_P(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -943,7 +943,7 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensionsReversed) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1021,7 +1021,7 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensions) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1081,7 +1081,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1145,7 +1145,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1217,7 +1217,7 @@ TEST_P(HloEvaluatorTest,
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();
@@ -1288,7 +1288,8 @@ TEST_P(HloEvaluatorTest, Conv2DGroupedConvolution) {
   Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction,
-      /*feature_group_count=*/2, window, dnums, DefaultPrecisionConfig(2)));
+      /*feature_group_count=*/2, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
   m_->AddEntryComputation(b.Build());
 
   Literal result = Evaluate();

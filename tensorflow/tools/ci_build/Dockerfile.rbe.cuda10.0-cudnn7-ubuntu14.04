@@ -20,6 +20,7 @@ ENV CUDA_VERSION 10.0.130
 ENV CUDA_PKG_VERSION 10-0=$CUDA_VERSION-1
 ENV CUDNN_VERSION 7.3.1.20
 ENV NCCL_VERSION 2.3.5
+ENV TENSORRT_VERSION 5.0.2
 ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
 ENV NVIDIA_REQUIRE_CUDA "cuda>=10.0,driver>=410"
 ENV NVIDIA_VISIBLE_DEVICES all
@@ -48,7 +49,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcudnn7=$CUDNN_VERSION-1+cuda10.0 \
         libcudnn7-dev=$CUDNN_VERSION-1+cuda10.0 \
         libnccl2=$NCCL_VERSION-2+cuda10.0 \
-        libnccl-dev=$NCCL_VERSION-2+cuda10.0 && \
+        libnccl-dev=$NCCL_VERSION-2+cuda10.0 \
+        nvinfer-runtime-trt-repo-ubuntu1604-$TENSORRT_VERSION-ga-cuda10.0 && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        libnvinfer5=$TENSORRT_VERSION-1+cuda10.0 \
+        libnvinfer-dev=$TENSORRT_VERSION-1+cuda10.0 && \
     ln -s cuda-10.0 /usr/local/cuda && \
     apt-mark hold libcudnn7 && \
     apt-mark hold libnccl2 && \

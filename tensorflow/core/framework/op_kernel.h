@@ -171,6 +171,8 @@ class OpKernel {
   // TODO(irving): Move to TensorShapeUtils once !allow_legacy_scalars
   Status MakeShape(const Tensor& shape, TensorShape* out) const;
 
+  static int DeviceNumaNode(const DeviceBase* device);
+
  private:
   const std::unique_ptr<const NodeDef> def_;
   const DataTypeVector input_types_;
@@ -1527,6 +1529,7 @@ T* OpKernelContext::op_device_context() {
 
 template <typename T>
 T* OpKernelContext::input_device_context(int index) {
+  DCHECK_NE(params_->input_device_contexts, nullptr);
   DCHECK_GE(index, 0);
   DCHECK_LT(index, params_->input_device_contexts->size());
   static_assert(std::is_base_of<DeviceContext, T>::value,
@@ -1535,6 +1538,7 @@ T* OpKernelContext::input_device_context(int index) {
 }
 
 inline DeviceContext* OpKernelContext::input_device_context(int index) {
+  DCHECK_NE(params_->input_device_contexts, nullptr);
   DCHECK_GE(index, 0);
   DCHECK_LT(index, params_->input_device_contexts->size());
   return (*params_->input_device_contexts)[index];

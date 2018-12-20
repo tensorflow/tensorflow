@@ -44,6 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
+@test_util.run_v1_only("b/120545219")
 class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
   """Test the debugging of distributed sessions."""
 

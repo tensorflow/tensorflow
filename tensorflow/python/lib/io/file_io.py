@@ -196,8 +196,14 @@ class FileIO(object):
 
   def tell(self):
     """Returns the current position in the file."""
-    self._preread_check()
-    return self._read_buf.Tell()
+    if self._read_check_passed:
+      self._preread_check()
+      return self._read_buf.Tell()
+    else:
+      self._prewrite_check()
+
+      with errors.raise_exception_on_not_ok_status() as status:
+        return pywrap_tensorflow.TellFile(self._writable_file, status)
 
   def __enter__(self):
     """Make usable with "with" statement."""
@@ -671,7 +677,7 @@ def walk(top, in_order=True):
 
 
 @tf_export("io.gfile.walk")
-def walk_v2(top, topdown, onerror=None):
+def walk_v2(top, topdown=True, onerror=None):
   """Recursive directory tree generator for directories.
 
   Args:

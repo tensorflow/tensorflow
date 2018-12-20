@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/lib/util.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -505,9 +505,9 @@ class NonMaxSuppressionOp : public XlaOpKernel {
     init_values.push_back(included_iou);
 
     auto suppress_loop_result =
-        XlaWhileLoop(WhileCondFn(num_boxes, output_size),
-                     SuppressBodyFn(num_boxes), init_values, "suppress_loop",
-                     builder)
+        xla::WhileLoopHelper(WhileCondFn(num_boxes, output_size),
+                             SuppressBodyFn(num_boxes), init_values,
+                             "suppress_loop", builder)
             .ValueOrDie();
 
     xla::XlaOp included_score =

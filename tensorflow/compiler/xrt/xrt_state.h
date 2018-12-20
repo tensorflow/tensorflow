@@ -129,6 +129,10 @@ class XRTTupleAllocation : public ResourceBase {
   // Deletes the reference in the rm to an allocation interned under key.
   static Status DeleteFromResourceManager(ResourceMgr* rm, int64 key);
 
+  // Releases all the device memory allocated by XRT within the resource
+  // manager.
+  static Status ReleaseAllAllocations(ResourceMgr* rm);
+
   // Adds the allocation to a ResourceMgr and returns the key that will be used
   // to retrieve it. Transfers a reference on *this to rm.
   Status Intern(ResourceMgr* rm, int64* key);

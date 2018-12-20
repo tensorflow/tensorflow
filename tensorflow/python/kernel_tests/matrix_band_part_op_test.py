@@ -23,6 +23,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
@@ -44,6 +45,7 @@ class MatrixBandPartTest(test_lib.TestCase):
 
 def _GetMatrixBandPartTest(dtype_, batch_shape_, shape_):
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     mat = np.ones(shape_).astype(dtype_)
     batch_mat = np.tile(mat, batch_shape_ + (1, 1))
@@ -73,6 +75,7 @@ class MatrixBandPartGradTest(test_lib.TestCase):
 
 def _GetMatrixBandPartGradTest(dtype_, batch_shape_, shape_):
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     shape = batch_shape_ + shape_
     x = constant_op.constant(np.random.rand(*shape), dtype=dtype_)

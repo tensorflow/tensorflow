@@ -637,9 +637,9 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return Unimplemented("Hit a case for fft that is not implemented on GPU.");
 }
 
-Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
+Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   // TODO(b/33011107): Support cross replica sum on GPU.
-  return Unimplemented("CrossReplicaSum is not implemented on GPU.");
+  return Unimplemented("AllReduce is not implemented on GPU.");
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {

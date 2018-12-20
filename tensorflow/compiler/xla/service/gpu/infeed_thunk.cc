@@ -36,6 +36,21 @@ Status InfeedThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
   ShapeTree<InfeedBuffer> infeed_buffers =
       GetOrCreateInfeedManager()->BlockingGetNextDestination();
 
+  // infeed_slices_'s shape should be a tuple of shape (buffers, token).
+  const auto& infeed_shape = infeed_slices_.shape();
+  TF_RET_CHECK(ShapeUtil::IsTuple(infeed_shape))
+      << ShapeUtil::HumanStringWithLayout(infeed_shape);
+  TF_RET_CHECK(infeed_shape.tuple_shapes().size() == 2)
+      << ShapeUtil::HumanStringWithLayout(infeed_shape);
+  TF_RET_CHECK(ShapeUtil::IsToken(infeed_shape.tuple_shapes(1)))
+      << ShapeUtil::HumanStringWithLayout(infeed_shape);
+  TF_RET_CHECK(
+      ShapeUtil::Equal(infeed_buffers.shape(), infeed_shape.tuple_shapes(0)))
+      << "Expected infeed of shape "
+      << ShapeUtil::HumanStringWithLayout(infeed_shape.tuple_shapes(0))
+      << " but was "
+      << ShapeUtil::HumanStringWithLayout(infeed_buffers.shape());
+
   {
     // The infeed buffer has an extra outer tuple with a token. Adjust the index
     // accordingly.

@@ -233,13 +233,14 @@ def _get_estimator_spec(
       estimator_spec = _get_eval_estimator_spec(
           gan_model, gan_loss, get_eval_metric_ops_fn)
     else:  # model_fn_lib.ModeKeys.TRAIN:
-      gopt = (generator_optimizer() if callable(generator_optimizer) else
-              generator_optimizer)
-      dopt = (discriminator_optimizer() if callable(discriminator_optimizer)
-              else discriminator_optimizer)
+      if callable(generator_optimizer):
+        generator_optimizer = generator_optimizer()
+      if callable(discriminator_optimizer):
+        discriminator_optimizer = discriminator_optimizer()
       get_hooks_fn = get_hooks_fn or tfgan_train.get_sequential_train_hooks()
       estimator_spec = _get_train_estimator_spec(
-          gan_model, gan_loss, gopt, dopt, get_hooks_fn, is_chief=is_chief)
+          gan_model, gan_loss, generator_optimizer, discriminator_optimizer,
+          get_hooks_fn, is_chief=is_chief)
 
   return estimator_spec
 

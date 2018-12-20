@@ -2169,6 +2169,14 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   # If dim is not the last dimension, we have to do a transpose so that we can
   # still perform softmax on its last dimension.
 
+  # In case dim is negative (and is not last dimension -1), add shape.ndims
+  ndims = array_ops.rank(logits)
+  if not isinstance(dim, ops.Tensor):
+    if dim < 0:
+      dim += ndims
+  else:
+    dim = array_ops.where(math_ops.less(dim, 0), dim + ndims, dim)
+
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
   dim_axis = dim % shape.ndims
@@ -3776,7 +3784,7 @@ def erosion2d_v2(value,
             name=name))
 
 
-@tf_export("math.in_top_k", "nn.in_top_k")
+@tf_export(v1=["math.in_top_k", "nn.in_top_k"])
 def in_top_k(predictions, targets, k, name=None):
   r"""Says whether the targets are in the top `K` predictions.
 
@@ -3808,6 +3816,14 @@ def in_top_k(predictions, targets, k, name=None):
   """
   with ops.name_scope(name, "in_top_k"):
     return gen_nn_ops.in_top_kv2(predictions, targets, k, name=name)
+
+
+@tf_export("math.in_top_k", "nn.in_top_k", v1=[])
+def in_top_k_v2(targets, predictions, k, name=None):
+  return in_top_k(predictions, targets, k, name)
+
+
+in_top_k_v2.__doc__ = in_top_k.__doc__
 
 
 tf_export(v1=["nn.quantized_avg_pool"])(gen_nn_ops.quantized_avg_pool)

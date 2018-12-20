@@ -142,11 +142,22 @@ Status XlaCompileOnDemandOp::Compile(
         TF_RETURN_IF_ERROR(ctx->allocate_temp(
             device_tensor.dtype(), device_tensor.shape(), &host_tensor, attrs));
         Notification n;
+        Status status;
         ctx->op_device_context()->CopyDeviceTensorToCPU(
             &device_tensor, "ConstantArgument",
             reinterpret_cast<Device*>(ctx->device()), &host_tensor,
-            [&](Status status) { n.Notify(); });
+            [&](Status s) {
+              status = s;
+              n.Notify();
+            });
         n.WaitForNotification();
+        if (!status.ok()) {
+          LOG(ERROR) << "Copying tensor of shape "
+                     << device_tensor.shape().DebugString() << " from "
+                     << ctx->device()->name() << "to CPU failed with "
+                     << status.ToString();
+          return status;
+        }
         constant_arguments[i] = host_tensor;
       }
     }
@@ -189,6 +200,7 @@ Status XlaCompileOnDemandOp::Compile(
   std::map<int, OptionalTensor> variable_args = GetVariables(ctx);
 
   std::vector<XlaCompiler::Argument> args;
+
   TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
       constant_arguments, variable_args, ctx, &args));
 

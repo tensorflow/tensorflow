@@ -41,8 +41,7 @@ Status MakeXlaCompilerArgumentsFromInputs(
   *has_uninitialized_vars = false;
   *has_tensor_arrays = false;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
-    VLOG(2) << " Input " << i
-            << " type: " << DataTypeString(ctx->input_type(i))
+    VLOG(2) << " Input " << i << " type: " << DataTypeString(ctx->input_type(i))
             << " shape: " << ctx->InputShape(i).DebugString();
     XlaCompiler::Argument& arg = (*args)[i];
     DataType type = ctx->input_type(i);
@@ -233,13 +232,22 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
           xla::ShapeUtil::HumanString(body_input_shape), " vs. ",
           xla::ShapeUtil::HumanString(body.xla_output_shape)));
 
-  xla::Shape expected_cond_output_shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::PRED, {})});
+  xla::Shape expected_cond_output_shape_without_side_effect =
+      xla::ShapeUtil::MakeTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::PRED, {})});
+  xla::Shape expected_cond_output_shape_with_side_effect =
+      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::PRED, {}),
+                                      xla::ShapeUtil::MakeTokenShape()});
   OP_REQUIRES(ctx,
-              xla::ShapeUtil::Compatible(cond.xla_output_shape,
-                                         expected_cond_output_shape),
+              xla::ShapeUtil::Compatible(
+                  cond.xla_output_shape,
+                  expected_cond_output_shape_without_side_effect) ||
+                  xla::ShapeUtil::Compatible(
+                      cond.xla_output_shape,
+                      expected_cond_output_shape_with_side_effect),
               errors::InvalidArgument(
-                  "Output shape of loop condition should be (pred[]), got: ",
+                  "Output shape of loop condition should be (pred[]) or "
+                  "(pred[], token[]), got: ",
                   xla::ShapeUtil::HumanString(cond.xla_output_shape)));
 
   int num_inputs = body.input_mapping.size();
@@ -282,6 +290,15 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   xla::XlaOp while_result = xla::While(cond_wrapper, *body.computation, init);
+
+  auto while_shape_or = builder->GetShape(while_result);
+  OP_REQUIRES_OK(ctx, while_shape_or.status());
+  auto count = xla::ShapeUtil::TupleElementCount(while_shape_or.ValueOrDie());
+  int max_index = body.outputs.size() + body.resource_updates.size() - 1;
+  OP_REQUIRES(
+      ctx, max_index < count,
+      errors::Internal("Max tuple element requested (", max_index,
+                       ") needs to be less than tuple size (", count, ")"));
 
   // Sets non-variable outputs.
   for (int i = 0; i < ctx->num_outputs(); ++i) {

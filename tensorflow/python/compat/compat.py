@@ -32,7 +32,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 12, 6)
+_FORWARD_COMPATIBILITY_HORIZON = datetime.date(2018, 12, 19)
 
 
 @tf_export("compat.forward_compatible")
@@ -160,7 +160,7 @@ def enable_v2_behavior():
 
 @tf_export(v1=["disable_v2_behavior"])
 def disable_v2_behavior():
-  """Enables TensorFlow 2.x behaviors.
+  """Disables TensorFlow 2.x behaviors.
 
   This function can be called at the beginning of the program (before `Tensors`,
   `Graphs` or other structures have been created, and before devices have been

@@ -247,6 +247,11 @@ bool IsIdentityNSingleInput(const NodeDef& node) {
          node.attr().at("T").list().type_size() == 1;
 }
 
+bool IsIf(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "If" || op == "StatelessIf";
+}
+
 bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }
 
 bool IsIgammac(const NodeDef& node) { return node.op() == "Igammac"; }
@@ -522,6 +527,11 @@ bool IsVariable(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
          op == "VarHandleOp" || op == "ReadVariableOp";
+}
+
+bool IsWhile(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "While" || op == "StatelessWhile";
 }
 
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }

@@ -52,13 +52,6 @@ from tensorflow.python.util import nest
 # to them and then pass those in as data inputs. This should probably be
 # handled in the CapturingGraph itself.
 
-# Op types that output a resource tensor representing a TensorArray handle.
-TENSOR_ARRAY_HANDLE_OPS = (
-    "TensorArrayV3",
-    "TensorArrayGradV3",
-    "TensorArrayGradWithShape",
-)
-
 
 def while_loop(cond,
                body,
@@ -106,7 +99,7 @@ def while_loop(cond,
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
-    add_control_dependencies = util.in_defun()
+    add_control_dependencies = ops.get_default_graph()._add_control_dependencies
 
     # Build a `cond` wrapper that can handle the extra counter loop_var.
     def wrapped_cond(loop_counter, *args):
@@ -249,38 +242,34 @@ def while_loop(cond,
 @ops.RegisterGradient("While")
 def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of a While op produced by while_loop."""
-  cond_graph = _get_graph(op, "cond")
-  body_graph = _get_graph(op, "body")
+  # Note that op is not always the same as while_op because the gradient tape,
+  # for eager mode compatibility, forgets information about the proper op. Since
+  # the loop cannot run in eager mode, however, we can safely introspect into
+  # the graph here.
+  while_op = op.outputs[0].op
+  cond_graph = _get_graph(while_op, "cond")
+  body_graph = _get_graph(while_op, "body")
   orig_num_params = len(body_graph.outputs)
 
   maximum_iterations = op.get_attr(
       "_maximum_iterations") if _is_in_xla_context() else None
   assert not _is_in_xla_context() or maximum_iterations is not None
 
-  # Set the incoming gradient of TensorArray handles to None. The gradient
-  # implementation currently assumes all resource tensors correspond to float32
-  # ResourceVariables, which can lead to runtime shape errors when used with a
-  # TensorArray. This is a workaround until TensorArrays are reimplemented with
-  # TensorLists instead of resources.
-  # Also set the incoming gradient of non-trainable inputs to None. It is
-  # possible that we receive non-None gradients for non-trainable types in
-  # nested while loops because we accumulate outputs of the inner while as
-  # variant tensors which are trainable and hence receive zeros_like tensors in
-  # the gradient pass. The non-trainable tensors then receive the popped zeros
-  # tensor from this zeros variant. The gradient for the loop vars corresponding
-  # to these tensors is None or zeros (this happens only if the loop var is
-  # accumulated as well) in _grad_fn so we reset these.
+  # Set the incoming gradient of non-trainable inputs to None. It is possible
+  # that we receive non-None gradients for non-trainable types in nested while
+  # loops because we accumulate outputs of the inner while as variant tensors
+  # which are trainable and hence receive zeros_like tensors in the gradient
+  # pass. The non-trainable tensors then receive the popped zeros tensor from
+  # this zeros variant. The gradient for the loop vars corresponding to these
+  # tensors is None or zeros (this happens only if the loop var is accumulated
+  # as well) in _grad_fn so we reset these.
   # TODO(b/118712257): Remove the IsTrainable filter once we can handle None
   # output grads in _grad_fn.
   grads = [
-      None if _is_tensor_array_handle(output) or not _is_trainable(output)
-      else grad for grad, output in zip(grads, body_graph.outputs)
+      None if not _is_trainable(output) else grad
+      for grad, output in zip(grads, body_graph.outputs)
   ]
 
-  # Ensure that all non-resource trainable outputs have incoming gradients.
-  assert all(g is not None or o.dtype == dtypes.resource or not _is_trainable(o)
-             for o, g in zip(body_graph.outputs, grads)
-            ), "All trainable loop vars must receive incoming gradients."
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
   # outputs.
@@ -303,16 +292,17 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     new_inputs = body_grad_graph.empty_tensor_lists
     new_outputs = body_graph.outputs[orig_num_params:]
 
-    op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
-    op._set_func_attr("body", util.create_new_tf_function(body_graph))
-    op._set_type_list_attr("T", body_graph.output_types)
-    op._set_shape_list_attr("output_shapes", body_graph.output_shapes)
-    op._add_while_inputs(new_inputs)
-    op._add_outputs([t.dtype for t in new_outputs],
-                    [t.shape for t in new_outputs])
+    while_op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
+    while_op._set_func_attr("body", util.create_new_tf_function(body_graph))
+    while_op._set_type_list_attr("T", body_graph.output_types)
+    while_op._set_shape_list_attr("output_shapes", body_graph.output_shapes)
+    while_op._add_while_inputs(new_inputs)
+    while_op._add_outputs([t.dtype for t in new_outputs],
+                          [t.shape for t in new_outputs])
     _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
 
-  captured_inputs = _resolve_grad_captures(body_graph, body_grad_graph, op)
+  captured_inputs = _resolve_grad_captures(body_graph, body_grad_graph,
+                                           while_op)
   loop_vars = args + captured_inputs
 
   def grad_cond(counter, max_iters, *unused_args):
@@ -330,7 +320,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(cond_grad_graph),
       util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
-      name="%s_grad" % op.name)
+      name="%s_grad" % while_op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
   util.maybe_set_lowering_attr(outputs[0].op)
@@ -339,8 +329,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
 
-  # Set None as the output gradient for tensors with None input gradient
-  # e.g. TensorArray handles.
+  # Set None as the output gradient for tensors with None input gradient.
   # outputs[0] is the loop counter.
   # outputs[1] is the total number of loop iterations.
   index = 2
@@ -851,28 +840,6 @@ def _graph_name(graph):
   if isinstance(graph, func_graph_module.FuncGraph):
     return graph.name
   return "Base"
-
-
-def _is_tensor_array_handle(tensor):
-  """Returns whether tensor is a TensorArray handle."""
-  if tensor.dtype != dtypes.resource:
-    return False
-
-  if tensor.op.type == "While":
-    # We assume that any resource outputs of a While op correspond to a captured
-    # resource input (as opposed to a loop variable specified by the user).
-    # NOTE(skyewm): we could actually check this, but I can't think of when you
-    # would have a resource loop variable.
-    tensor = tensor.op.inputs[tensor.value_index]
-
-  # TODO(b/118452219): add test coverage for this.
-  tensor = func_graph_module.maybe_captured(tensor)
-
-  if isinstance(tensor, ops.EagerTensor):
-    # Eager execution doesn't quite support legacy tensorarray
-    return False
-
-  return tensor.op.type in TENSOR_ARRAY_HANDLE_OPS
 
 
 def _pack_sequence_as(structure_with_tas, loop_vars):

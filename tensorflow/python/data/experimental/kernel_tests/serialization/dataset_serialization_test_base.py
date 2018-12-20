@@ -23,6 +23,7 @@ import os
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
@@ -74,23 +75,39 @@ class DatasetSerializationTestBase(test.TestCase):
     Raises:
       AssertionError if any test fails.
     """
+    # NOTE: We disable all default optimizations in serialization tests in order
+    # to test the actual dataset in question.
+    options = dataset_ops.Options()
+    options.experimental_optimization = OptimizationOptions()
+    options.experimental_optimization.apply_default_optimizations = False
+
+    def ds_fn1_no_opt():
+      return ds_fn1().with_options(options)
+
     self.verify_unused_iterator(
-        ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
+        ds_fn1_no_opt, num_outputs, sparse_tensors=sparse_tensors)
     self.verify_fully_used_iterator(
-        ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
+        ds_fn1_no_opt, num_outputs, sparse_tensors=sparse_tensors)
     self.verify_exhausted_iterator(
-        ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
+        ds_fn1_no_opt, num_outputs, sparse_tensors=sparse_tensors)
     self.verify_init_before_restore(
-        ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
+        ds_fn1_no_opt, num_outputs, sparse_tensors=sparse_tensors)
     self.verify_multiple_breaks(
-        ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
+        ds_fn1_no_opt, num_outputs, sparse_tensors=sparse_tensors)
     self.verify_reset_restored_iterator(
-        ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
+        ds_fn1_no_opt, num_outputs, sparse_tensors=sparse_tensors)
     self.verify_restore_in_empty_graph(
-        ds_fn1, num_outputs, sparse_tensors=sparse_tensors)
+        ds_fn1_no_opt, num_outputs, sparse_tensors=sparse_tensors)
     if ds_fn2:
+
+      def ds_fn2_no_opt():
+        return ds_fn2().with_options(options)
+
       self.verify_restore_in_modified_graph(
-          ds_fn1, ds_fn2, num_outputs, sparse_tensors=sparse_tensors)
+          ds_fn1_no_opt,
+          ds_fn2_no_opt,
+          num_outputs,
+          sparse_tensors=sparse_tensors)
 
   def verify_unused_iterator(self,
                              ds_fn,

@@ -26,6 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -145,6 +146,7 @@ class _OptionalImpl(Optional):
     return self._value_structure
 
 
+@tf_export("data.experimental.OptionalStructure")
 class OptionalStructure(structure.Structure):
   """Represents an optional potentially containing a structured value."""
 
@@ -166,6 +168,10 @@ class OptionalStructure(structure.Structure):
 
   def _to_tensor_list(self, value):
     return [value._variant_tensor]  # pylint: disable=protected-access
+
+  def _to_batched_tensor_list(self, value):
+    raise NotImplementedError(
+        "Unbatching for `tf.data.experimental.Optional` objects.")
 
   def _from_tensor_list(self, flat_value):
     if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant or
@@ -194,6 +200,10 @@ class OptionalStructure(structure.Structure):
   def _batch(self, batch_size):
     raise NotImplementedError(
         "Batching for `tf.data.experimental.Optional` objects.")
+
+  def _unbatch(self):
+    raise NotImplementedError(
+        "Unbatching for `tf.data.experimental.Optional` objects.")
 
 
 # pylint: disable=protected-access

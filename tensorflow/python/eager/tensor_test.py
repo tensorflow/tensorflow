@@ -95,6 +95,18 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     t = _create_tensor(values)
     self.assertAllEqual(values, t)
 
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testNumpyDtypeSurvivesThroughTensorConversion(self):
+    scalar_creators = [np.int32, np.int64, np.float32, np.float64]
+    conversion_functions = [ops.convert_to_tensor, constant_op.constant]
+
+    for scalar_creator in scalar_creators:
+      for conversion_function in conversion_functions:
+        np_val = scalar_creator(3)
+        tensor_val = conversion_function(np_val)
+        self.assertEqual(tensor_val.numpy().dtype, np_val.dtype)
+        self.assertEqual(tensor_val.numpy(), np_val)
+
   def testNumpyValueWithCast(self):
     values = np.array([3.0], dtype=np.float32)
     t = _create_tensor(values, dtype=dtypes.float64)

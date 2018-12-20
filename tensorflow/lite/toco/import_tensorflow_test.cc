@@ -32,6 +32,7 @@ using tensorflow::DT_COMPLEX64;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
+using tensorflow::DT_INVALID;
 using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
 using tensorflow::NodeDef;
@@ -44,6 +45,7 @@ using ConverterType = tensorflow::Status (*)(
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
 
 ConverterMapType GetTensorFlowNodeConverterMap();
+ConverterMapType GetTensorFlowNodeConverterMapForFlex();
 Status ImportTensorFlowNode(const NodeDef&, const TensorFlowImportFlags&,
                             Model*, const ConverterMapType&);
 }  // namespace internal
@@ -154,6 +156,32 @@ void BuildConstNode(std::initializer_list<int64_t> shape,
   (*node->mutable_attr())["value"] = value_attr;
 }
 }  //  namespace
+
+TEST(FlexImportTest, ConditionalConst) {
+  Model model;
+  auto build_and_import_node =
+      [&model](const string& name, std::initializer_list<int64_t> shape,
+               tensorflow::DataType dtype, int64_t num_elements) {
+        NodeDef node;
+        BuildConstNode(shape, dtype, num_elements, &node);
+        node.set_name(name);
+
+        const auto converter = internal::GetTensorFlowNodeConverterMapForFlex();
+        return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
+                                              &model, converter);
+      };
+
+  EXPECT_TRUE(build_and_import_node("Known", {1, 2, 3}, DT_INT32, 6).ok());
+  EXPECT_TRUE(build_and_import_node("BadType", {1, 2, 3}, DT_INVALID, 6).ok());
+  EXPECT_TRUE(build_and_import_node("Unknown", {1, -2, 3}, DT_INT32, 6).ok());
+
+  // We expect the "Known" node to be converted into an array, while the
+  // "Unknown" and "BadType" nodes are kept as operators.
+  EXPECT_EQ(model.operators.size(), 2);
+  EXPECT_TRUE(model.HasArray("Known"));
+  EXPECT_FALSE(model.HasArray("Unknown"));
+  EXPECT_FALSE(model.HasArray("BadType"));
+}
 
 class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
 };

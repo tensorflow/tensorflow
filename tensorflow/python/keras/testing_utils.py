@@ -77,9 +77,13 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   Returns:
     The output data (Numpy array) returned by the layer, for additional
     checks to be done by the calling code.
+
+  Raises:
+    ValueError: if `input_shape is None`.
   """
   if input_data is None:
-    assert input_shape
+    if input_shape is None:
+      raise ValueError('input_shape is None')
     if not input_dtype:
       input_dtype = 'float32'
     input_data_shape = list(input_shape)

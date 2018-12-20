@@ -106,11 +106,13 @@ class ListFilesTest(test_base.DatasetTestBase):
     self.assertEqual(all_actual_filenames[0], all_actual_filenames[1])
     self.assertEqual(all_actual_filenames[0], all_actual_filenames[2])
 
-  # TODO(b/117581999): eager mode assertion fail wrapped, debug.
-  def tesSkipEagerEmptyDirectoryInitializer(self):
-    dataset = dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
+  def tesEmptyDirectoryInitializer(self):
+
+    def dataset_fn():
+      return dataset_ops.Dataset.list_files(path.join(self.tmp_dir, '*'))
+
     self.assertDatasetProduces(
-        dataset,
+        dataset_fn(),
         expected_error=(errors.InvalidArgumentError,
                         'No files matched pattern'),
         requires_initialization=True)

@@ -45,10 +45,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import standard_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.Masking')
+@keras_export('keras.layers.Masking')
 class Masking(Layer):
   """Masks a sequence by using a mask value to skip timesteps.
 
@@ -99,7 +99,7 @@ class Masking(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Dropout')
+@keras_export('keras.layers.Dropout')
 class Dropout(Layer):
   """Applies Dropout to the input.
 
@@ -159,7 +159,7 @@ class Dropout(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.SpatialDropout1D')
+@keras_export('keras.layers.SpatialDropout1D')
 class SpatialDropout1D(Dropout):
   """Spatial 1D version of Dropout.
 
@@ -196,7 +196,7 @@ class SpatialDropout1D(Dropout):
     return noise_shape
 
 
-@tf_export('keras.layers.SpatialDropout2D')
+@keras_export('keras.layers.SpatialDropout2D')
 class SpatialDropout2D(Dropout):
   """Spatial 2D version of Dropout.
 
@@ -250,7 +250,7 @@ class SpatialDropout2D(Dropout):
       return (input_shape[0], 1, 1, input_shape[3])
 
 
-@tf_export('keras.layers.SpatialDropout3D')
+@keras_export('keras.layers.SpatialDropout3D')
 class SpatialDropout3D(Dropout):
   """Spatial 3D version of Dropout.
 
@@ -303,7 +303,7 @@ class SpatialDropout3D(Dropout):
       return (input_shape[0], 1, 1, 1, input_shape[4])
 
 
-@tf_export('keras.layers.Activation')
+@keras_export('keras.layers.Activation')
 class Activation(Layer):
   """Applies an activation function to an output.
 
@@ -337,7 +337,7 @@ class Activation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Reshape')
+@keras_export('keras.layers.Reshape')
 class Reshape(Layer):
   """Reshapes an output to a certain shape.
 
@@ -444,7 +444,7 @@ class Reshape(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Permute')
+@keras_export('keras.layers.Permute')
 class Permute(Layer):
   """Permutes the dimensions of the input according to a given pattern.
 
@@ -502,9 +502,12 @@ class Permute(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Flatten')
+@keras_export('keras.layers.Flatten')
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
+
+  If inputs are shaped `(batch,)` without a channel dimension, then flattening
+  adds an extra channel dimension and output shapes are `(batch, 1)`.
 
   Arguments:
       data_format: A string,
@@ -534,23 +537,28 @@ class Flatten(Layer):
   def __init__(self, data_format=None, **kwargs):
     super(Flatten, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
-    self.input_spec = InputSpec(min_ndim=2)
+    self.input_spec = InputSpec(min_ndim=1)
 
   def call(self, inputs):
-    if self.data_format == 'channels_first':
+    if (self.data_format == 'channels_first'
+        and K.ndim(inputs) is not None and K.ndim(inputs) > 1):
       permutation = [0]
       permutation.extend([i for i in
                           range(2, K.ndim(inputs))])
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
+    outputs = array_ops.reshape(
+        inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
+                 array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    if not input_shape:
+      output_shape = tensor_shape.TensorShape([1])
     output_shape = [input_shape[0]]
     if all(input_shape[1:]):
       output_shape += [np.prod(input_shape[1:])]
@@ -564,7 +572,7 @@ class Flatten(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.RepeatVector')
+@keras_export('keras.layers.RepeatVector')
 class RepeatVector(Layer):
   """Repeats the input n times.
 
@@ -608,7 +616,7 @@ class RepeatVector(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.Lambda')
+@keras_export('keras.layers.Lambda')
 class Lambda(Layer):
   """Wraps arbitrary expression as a `Layer` object.
 
@@ -837,7 +845,7 @@ class Lambda(Layer):
     return cls(**config)
 
 
-@tf_export('keras.layers.Dense')
+@keras_export('keras.layers.Dense')
 class Dense(Layer):
   """Just your regular densely-connected NN layer.
 
@@ -998,7 +1006,7 @@ class Dense(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.ActivityRegularization')
+@keras_export('keras.layers.ActivityRegularization')
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 

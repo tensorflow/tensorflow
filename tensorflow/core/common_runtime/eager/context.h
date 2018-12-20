@@ -32,7 +32,9 @@ limitations under the License.
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #endif
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -147,6 +149,16 @@ class EagerContext {
   bool LogMemory() { return log_memory_; }
 
   Rendezvous* GetRendezvous() { return rendezvous_; }
+  CollectiveExecutorMgrInterface* collective_executor_mgr() {
+    return (collective_executor_mgr_ != nullptr)
+               ? collective_executor_mgr_.get()
+               : unowned_collective_executor_mgr_;
+  }
+  std::unique_ptr<CollectiveExecutor::Handle> GetCollectiveExecutorHandle() {
+    return std::unique_ptr<CollectiveExecutor::Handle>(
+        new CollectiveExecutor::Handle(
+            collective_executor_mgr()->FindOrCreate(0), true /*inherit_ref*/));
+  }
 
   const tensorflow::DeviceMgr* local_device_mgr() const {
     return (local_device_manager_ != nullptr) ? local_device_manager_.get()
@@ -198,6 +210,10 @@ class EagerContext {
     return active_remote_contexts_.find(context_id) !=
            active_remote_contexts_.end();
   }
+
+  Status StoreCollectiveOpsServer(
+      std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
+      CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 #endif
 
   // If true, then tensors should be shipped across processes via the
@@ -272,6 +288,9 @@ class EagerContext {
   const bool log_memory_;
 
   Env* const env_;
+
+  std::unique_ptr<CollectiveExecutorMgrInterface> collective_executor_mgr_;
+  CollectiveExecutorMgrInterface* unowned_collective_executor_mgr_ = nullptr;
 
 #ifndef __ANDROID__
   void CloseRemoteContexts();

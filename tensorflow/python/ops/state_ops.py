@@ -33,6 +33,7 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops.gen_state_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -224,6 +225,7 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
 
 
 @tf_export(v1=["count_up_to"])
+@deprecated(None, "Prefer Dataset.range instead.")
 def count_up_to(ref, limit, name=None):
   r"""Increments 'ref' until it reaches 'limit'.
 

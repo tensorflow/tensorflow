@@ -62,6 +62,10 @@ class ValidateExportTest(test.TestCase):
         del symbol._tf_api_names
       if hasattr(symbol, '_tf_api_names_v1'):
         del symbol._tf_api_names_v1
+      if hasattr(symbol, '_estimator_api_names'):
+        del symbol._estimator_api_names
+      if hasattr(symbol, '_estimator_api_names_v1'):
+        del symbol._estimator_api_names_v1
 
   def _CreateMockModule(self, name):
     mock_module = self.MockModule(name)
@@ -74,6 +78,10 @@ class ValidateExportTest(test.TestCase):
     decorated_function = export_decorator(_test_function)
     self.assertEquals(decorated_function, _test_function)
     self.assertEquals(('nameA', 'nameB'), decorated_function._tf_api_names)
+    self.assertEquals(['nameA', 'nameB'],
+                      tf_export.get_v1_names(decorated_function))
+    self.assertEquals(['nameA', 'nameB'],
+                      tf_export.get_v2_names(decorated_function))
 
   def testExportMultipleFunctions(self):
     export_decorator1 = tf_export.tf_export('nameA', 'nameB')
@@ -95,6 +103,22 @@ class ValidateExportTest(test.TestCase):
     export_decorator_b(TestClassB)
     self.assertEquals(('TestClassA1',), TestClassA._tf_api_names)
     self.assertEquals(('TestClassB1',), TestClassB._tf_api_names)
+    self.assertEquals(['TestClassA1'], tf_export.get_v1_names(TestClassA))
+    self.assertEquals(['TestClassB1'], tf_export.get_v1_names(TestClassB))
+
+  def testExportClassInEstimator(self):
+    export_decorator_a = tf_export.tf_export('TestClassA1')
+    export_decorator_a(TestClassA)
+    self.assertEquals(('TestClassA1',), TestClassA._tf_api_names)
+
+    export_decorator_b = tf_export.estimator_export(
+        'estimator.TestClassB1')
+    export_decorator_b(TestClassB)
+    self.assertTrue('_tf_api_names' not in TestClassB.__dict__)
+    self.assertEquals(('TestClassA1',), TestClassA._tf_api_names)
+    self.assertEquals(['TestClassA1'], tf_export.get_v1_names(TestClassA))
+    self.assertEquals(['estimator.TestClassB1'],
+                      tf_export.get_v1_names(TestClassB))
 
   def testExportSingleConstant(self):
     module1 = self._CreateMockModule('module1')
@@ -103,6 +127,10 @@ class ValidateExportTest(test.TestCase):
     export_decorator.export_constant('module1', 'test_constant')
     self.assertEquals([(('NAME_A', 'NAME_B'), 'test_constant')],
                       module1._tf_api_constants)
+    self.assertEquals([(('NAME_A', 'NAME_B'), 'test_constant')],
+                      tf_export.get_v1_constants(module1))
+    self.assertEquals([(('NAME_A', 'NAME_B'), 'test_constant')],
+                      tf_export.get_v2_constants(module1))
 
   def testExportMultipleConstants(self):
     module1 = self._CreateMockModule('module1')

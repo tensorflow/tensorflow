@@ -18,6 +18,13 @@ load(
     "if_ngraph",
 )
 
+# This flag specifies whether TensorFlow 2.0 API should be built instead
+# of 1.* API. Note that TensorFlow 2.0 API is currently under development.
+config_setting(
+    name = "api_version_2",
+    define_values = {"tf_api_version": "2"},
+)
+
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
 # public headers.  Not all of the headers returned by the filegroup
@@ -59,6 +66,42 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
+    "//tensorflow/examples/tutorials/mnist:package",
+    "//tensorflow/lite/python:interpreter_test_data",
+    "//tensorflow/lite/python:tflite_convert",
+    "//tensorflow/lite/toco/python:toco_from_protos",
+    # "//tensorflow/python/autograph/converters:converters",
+    # "//tensorflow/python/autograph/core:core",
+    "//tensorflow/python/autograph/core:test_lib",
+    # "//tensorflow/python/autograph/impl:impl",
+    # "//tensorflow/python/autograph/lang:lang",
+    # "//tensorflow/python/autograph/operators:operators",
+    # "//tensorflow/python/autograph/pyct:pyct",
+    # "//tensorflow/python/autograph/pyct/testing:testing",
+    # "//tensorflow/python/autograph/pyct/static_analysis:static_analysis",
+    "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
+    "//tensorflow/python:cond_v2",
+    "//tensorflow/python:distributed_framework_test_lib",
+    "//tensorflow/python:meta_graph_testdata",
+    "//tensorflow/python:spectral_ops_test_util",
+    "//tensorflow/python:util_example_parser_configuration",
+    "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
+    "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
+    "//tensorflow/python/data/kernel_tests:test_base",
+    "//tensorflow/python/debug:debug_pip",
+    "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/kernel_tests/signal:test_util",
+    "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
+    "//tensorflow/python/ops/ragged:ragged_test_util",
+    "//tensorflow/python/saved_model:saved_model",
+    "//tensorflow/python/tools:tools_pip",
+    "//tensorflow/python/tools/api/generator:create_python_api",
+    "//tensorflow/python:test_ops",
+    "//tensorflow/python:while_v2",
+    "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
+]
+
+COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
     "//tensorflow/contrib/autograph:autograph",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
@@ -87,38 +130,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
     "//tensorflow/contrib/timeseries:timeseries_pip",
     "//tensorflow/contrib/tpu",
-    "//tensorflow/examples/tutorials/mnist:package",
-    "//tensorflow/lite/python:interpreter_test_data",
-    "//tensorflow/lite/python:tflite_convert",
-    "//tensorflow/lite/toco/python:toco_from_protos",
-    # "//tensorflow/python/autograph/converters:converters",
-    # "//tensorflow/python/autograph/core:core",
-    "//tensorflow/python/autograph/core:test_lib",
-    # "//tensorflow/python/autograph/impl:impl",
-    # "//tensorflow/python/autograph/lang:lang",
-    # "//tensorflow/python/autograph/operators:operators",
-    # "//tensorflow/python/autograph/pyct:pyct",
-    # "//tensorflow/python/autograph/pyct/testing:testing",
-    # "//tensorflow/python/autograph/pyct/static_analysis:static_analysis",
-    "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
-    "//tensorflow/python:cond_v2",
-    "//tensorflow/python:distributed_framework_test_lib",
-    "//tensorflow/python:meta_graph_testdata",
-    "//tensorflow/python:spectral_ops_test_util",
-    "//tensorflow/python:util_example_parser_configuration",
-    "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
-    "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
-    "//tensorflow/python/data/kernel_tests:test_base",
-    "//tensorflow/python/debug:debug_pip",
-    "//tensorflow/python/eager:eager_pip",
-    "//tensorflow/python/kernel_tests/signal:test_util",
-    "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
-    "//tensorflow/python/saved_model:saved_model",
-    "//tensorflow/python/tools:tools_pip",
-    "//tensorflow/python/tools/api/generator:create_python_api",
-    "//tensorflow/python:test_ops",
-    "//tensorflow/python:while_v2",
-    "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -127,7 +138,10 @@ COMMON_PIP_DEPS = [
 py_binary(
     name = "simple_console_for_windows",
     srcs = ["simple_console_for_windows.py"],
-    data = COMMON_PIP_DEPS + ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
+    data = select({
+        "api_version_2": COMMON_PIP_DEPS,
+        "//conditions:default": COMMON_PIP_DEPS_V1,
+    }) + ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -228,13 +242,17 @@ sh_binary(
     name = "build_pip_package",
     srcs = ["build_pip_package.sh"],
     data = select({
-        "//tensorflow:windows": [
-            ":simple_console_for_windows",
-        ],
-        "//conditions:default": COMMON_PIP_DEPS + [
-            ":simple_console",
-        ],
-    }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+               "api_version_2": COMMON_PIP_DEPS,
+               "//conditions:default": COMMON_PIP_DEPS_V1,
+           }) +
+           select({
+               "//tensorflow:windows": [
+                   ":simple_console_for_windows",
+               ],
+               "//conditions:default": [
+                   ":simple_console",
+               ],
+           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

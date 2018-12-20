@@ -18,10 +18,33 @@ limitations under the License.
 #include <numeric>
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+namespace {
+
+Status PopulateInfeedLayoutVector(const xla::Shape& shape,
+                                  std::vector<int>* layouts) {
+  if (xla::ShapeUtil::IsTuple(shape)) {
+    int64 tuple_elements = xla::ShapeUtil::TupleElementCount(shape);
+    for (int64 i = 0; i < tuple_elements; ++i) {
+      const xla::Shape& subshape =
+          xla::ShapeUtil::GetTupleElementShape(shape, i);
+      TF_RETURN_IF_ERROR(PopulateInfeedLayoutVector(subshape, layouts));
+    }
+  } else if (xla::LayoutUtil::HasLayout(shape)) {
+    for (auto dim : xla::LayoutUtil::MinorToMajor(shape)) {
+      layouts->push_back(dim);
+    }
+  } else {
+    layouts->insert(layouts->end(), xla::ShapeUtil::Rank(shape), -1);
+  }
+  return Status::OK();
+}
+
+}  // namespace
 
 // Convert an XLA Shape into the equivalent TensorFlow shape.
 Status XLAShapeToTensorShape(const xla::Shape& shape,
@@ -59,6 +82,12 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
   std::iota(layout.rbegin(), layout.rend(), 0);
 
   return xla::ShapeUtil::MakeShapeWithLayout(type, dimensions, layout);
+}
+
+xla::StatusOr<std::vector<int>> GetInfeedLayoutVector(const xla::Shape& shape) {
+  std::vector<int> layouts;
+  TF_RETURN_IF_ERROR(PopulateInfeedLayoutVector(shape, &layouts));
+  return layouts;
 }
 
 }  // namespace tensorflow

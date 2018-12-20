@@ -100,6 +100,10 @@ class SetVector {
   std::vector<T> vector_;
 };
 
+// Returns formatted string from TensorId specific to grappler. Specifically,
+// for the 0 port (first output), only the node name is returned.
+string TensorIdToString(const TensorId& tensor_id);
+
 // True iff 'name' refers to a control inputs, i.e. a node name prefixed with
 // the ^ character.
 bool IsControlInput(const string& name);

@@ -23,12 +23,17 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 
 
 class KafkaDataset(dataset_ops.DatasetSource):
   """A Kafka Dataset that consumes the message.
   """
 
+  @deprecation.deprecated(
+      None,
+      "tf.contrib.kafka will be removed in 2.0, the support for Apache Kafka "
+      "will continue to be provided through the tensorflow/io GitHub project.")
   def __init__(self,
                topics,
                servers="localhost",

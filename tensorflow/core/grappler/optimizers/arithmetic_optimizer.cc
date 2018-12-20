@@ -2722,6 +2722,9 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
 
   Status TrySimplify(NodeDef* reduction_node,
                      string* simplified_node_name) override {
+    if (IsInPreserveSet(*reduction_node)) {
+      return Status::OK();
+    }
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
     // Optimize only if:

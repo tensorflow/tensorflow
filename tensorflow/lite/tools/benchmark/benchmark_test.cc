@@ -76,10 +76,10 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
   ASSERT_GE(inputs.size(), 1);
   auto input_tensor = interpreter->tensor(inputs[0]);
 
-  std::vector<uint8_t> input_bytes;
+  std::vector<char> input_bytes;
   input_bytes.reserve(input_tensor->bytes);
   for (size_t i = 0; i < input_tensor->bytes; i++) {
-    input_bytes.push_back(input_tensor->data.b[i]);
+    input_bytes.push_back(input_tensor->data.raw_const[i]);
   }
   benchmark.Prepare();
 
@@ -87,7 +87,7 @@ TEST(BenchmarkTest, ParametersArePopulatedWhenInputShapeIsNotSpecified) {
   EXPECT_EQ(input_bytes.size(), input_tensor->bytes);
   bool is_same = true;
   for (size_t i = 0; i < input_tensor->bytes; i++) {
-    if (input_bytes[i] != input_tensor->data.b[i]) {
+    if (input_bytes[i] != input_tensor->data.raw_const[i]) {
       is_same = false;
       break;
     }

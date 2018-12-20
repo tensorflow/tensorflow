@@ -285,6 +285,21 @@ cc_library(
     ],
 )
 
+# The builtin_ops target will resolve to optimized kernels when available. This
+# target uses reference kernels only, and is useful for validation and testing.
+# It should *not* generally be used in production.
+cc_library(
+    name = "reference_ops",
+    srcs = ["register_ref.cc"],
+    hdrs = ["register_ref.h"],
+    deps = [
+        ":builtin_op_kernels",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
 tf_cc_test(
     name = "audio_spectrogram_test",
     size = "small",

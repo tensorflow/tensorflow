@@ -201,6 +201,15 @@ class SoftmaxTest(test.TestCase):
         use_gpu=False)
     self._testOverflow(use_gpu=False)
 
+  def testAlongNegativeDimension(self):
+    self._testSoftmax(
+        np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+                  [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+                  [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(np.float32),
+        dim=-2,
+        use_gpu=False)
+    self._testOverflow(use_gpu=False)
+
   def testShapeInference(self):
     op = nn_ops.softmax([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
                          [[2., 3., 4., 5.], [6., 7., 8., 9.]],

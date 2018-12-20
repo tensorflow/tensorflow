@@ -673,6 +673,7 @@ Status AddDefaultAttrs(const string& op,
 
 }  // end namespace
 
+// TODO(shikharagarwal): Transmit original node names correctly in file.
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {

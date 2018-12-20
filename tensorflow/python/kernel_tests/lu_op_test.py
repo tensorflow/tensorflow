@@ -24,6 +24,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -41,9 +42,9 @@ class LuOpTest(test.TestCase):
   def float_types(self):
     return set((np.float64, np.float32, np.complex64, np.complex128))
 
-  def _verifyLuBase(self, sess, x, lower, upper, perm, verification,
+  def _verifyLuBase(self, x, lower, upper, perm, verification,
                     output_idx_type):
-    lower_np, upper_np, perm_np, verification_np = sess.run(
+    lower_np, upper_np, perm_np, verification_np = self.evaluate(
         [lower, upper, perm, verification])
 
     self.assertAllClose(x, verification_np)
@@ -65,7 +66,7 @@ class LuOpTest(test.TestCase):
 
   def _verifyLu(self, x, output_idx_type=dtypes.int64):
     # Verify that Px = LU.
-    with self.cached_session(use_gpu=True) as sess:
+    with test_util.use_gpu():
 
       lu, perm = linalg_ops.lu(x, output_idx_type=output_idx_type)
 
@@ -121,7 +122,7 @@ class LuOpTest(test.TestCase):
         verification = array_ops.reshape(permuted_verification_reshaped,
                                          lu_shape)
 
-      self._verifyLuBase(sess, x, lower, upper, perm, verification,
+      self._verifyLuBase(x, lower, upper, perm, verification,
                          output_idx_type)
 
   def testBasic(self):
@@ -139,7 +140,7 @@ class LuOpTest(test.TestCase):
         self._verifyLu(complex_data, output_idx_type=output_idx_type)
 
   def testPivoting(self):
-    with self.session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       # This matrix triggers partial pivoting because the first diagonal entry
       # is small.
       data = np.array([[1e-9, 1., 0.], [1., 0., 0], [0., 1., 5]])
@@ -148,7 +149,7 @@ class LuOpTest(test.TestCase):
       for dtype in (np.float32, np.float64):
         self._verifyLu(data.astype(dtype))
         _, p = linalg_ops.lu(data)
-        p_val = sess.run([p])
+        p_val = self.evaluate([p])
         # Make sure p_val is not the identity permutation.
         self.assertNotAllClose(np.arange(3), p_val)
 
@@ -158,7 +159,7 @@ class LuOpTest(test.TestCase):
         complex_data += data
         self._verifyLu(complex_data)
         _, p = linalg_ops.lu(data)
-        p_val = sess.run([p])
+        p_val = self.evaluate([p])
         # Make sure p_val is not the identity permutation.
         self.assertNotAllClose(np.arange(3), p_val)
 
@@ -166,15 +167,15 @@ class LuOpTest(test.TestCase):
     # LU factorization gives an error when the input is singular.
     # Note: A singular matrix may return without error but it won't be a valid
     # factorization.
-    with self.session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       for dtype in self.float_types:
         with self.assertRaises(errors.InvalidArgumentError):
-          sess.run(
+          self.evaluate(
               linalg_ops.lu(
                   np.array([[1., 2., 3.], [2., 4., 6.], [2., 3., 4.]],
                            dtype=dtype)))
         with self.assertRaises(errors.InvalidArgumentError):
-          sess.run(
+          self.evaluate(
               linalg_ops.lu(
                   np.array([[[1., 2., 3.], [2., 4., 6.], [1., 2., 3.]],
                             [[1., 2., 3.], [3., 4., 5.], [5., 6., 7.]]],
@@ -212,17 +213,19 @@ class LuOpTest(test.TestCase):
     data = np.random.rand(n, n) + 1j * np.random.rand(n, n)
     self._verifyLu(data)
 
+  @test_util.run_v1_only("b/120545219")
   def testEmpty(self):
     self._verifyLu(np.empty([0, 2, 2]))
     self._verifyLu(np.empty([2, 0, 0]))
 
+  @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
-    with self.session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       lu1, p1 = linalg_ops.lu(matrix1)
       lu2, p2 = linalg_ops.lu(matrix2)
-      lu1_val, p1_val, lu2_val, p2_val = sess.run([lu1, p1, lu2, p2])
+      lu1_val, p1_val, lu2_val, p2_val = self.evaluate([lu1, p1, lu2, p2])
       self.assertAllEqual(lu1_val, lu2_val)
       self.assertAllEqual(p1_val, p2_val)
 

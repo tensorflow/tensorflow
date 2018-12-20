@@ -94,13 +94,14 @@ config_setting(
 )
 
 config_setting(
-    # Add "--define tensorflow_mkldnn_contraction_kernel=1" to your build command to use mkldnn
+    # Add "--define tensorflow_mkldnn_contraction_kernel=0" to your build command to disable mkldnn
     # sgemm in Eigen tensor contractions (matrix multiplications and convolutions). The mkldnn
     # kernels are generated at runtime and use avx/avx2/fma/avx512 based on cpu status registers
-    # (https://en.wikipedia.org/wiki/CPUID).
-    name = "mkldnn_contraction_kernel",
+    # (https://en.wikipedia.org/wiki/CPUID). Default Eigen contraction kernel is
+    # Eigen::internal::gebp_kernel (general block-panel kernel).
+    name = "no_mkldnn_contraction_kernel",
     values = {
-        "define": "tensorflow_mkldnn_contraction_kernel=1",
+        "define": "tensorflow_mkldnn_contraction_kernel=0",
     },
 )
 
@@ -578,11 +579,12 @@ cc_library(
 # tensor contractions (small matrix multiplication kernel used to multiple together
 # blocks of the original tensors).
 #
-# 0) Default contraction kernel is Eigen::internal::gebp_kernel.
-#
-# 1) --define tensorflow_mkldnn_contraction_kernel=1
+# 1) Default:
 #    Use Mkldnn single threaded sgemm. The mkldnn kernels are generated at runtime and
 #    use avx/avx2/fma/avx512 based on cpu status registers (https://en.wikipedia.org/wiki/CPUID).
+#
+# 2) Eigen: --define tensorflow_mkldnn_contraction_kernel=0 (disable mkldnn)
+#    Use Eigen contraction kernel: Eigen::internal::gebp_kernel.
 #
 # If you use `tensor.contract(other_tensor)` in your code, you must include additional header
 # to get the benefit of custom contraction kernel:
@@ -592,19 +594,28 @@ cc_library(
 #   #endif
 cc_library(
     name = "eigen_contraction_kernel",
+    srcs = ["eigen_contraction_kernel.cc"],
     hdrs = ["eigen_contraction_kernel.h"],
     defines = select({
-        ":mkldnn_contraction_kernel": [
+        "//tensorflow:android": [],
+        "//tensorflow:arm": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_ppc64le": [],
+        ":no_mkldnn_contraction_kernel": [],
+        "//conditions:default": [
             "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
             "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
         ],
-        "//conditions:default": [],
     }),
     deps = [
         "//third_party/eigen3",
     ] + select({
-        ":mkldnn_contraction_kernel": ["@mkl_dnn//:mkldnn_single_threaded"],
-        "//conditions:default": [],
+        "//tensorflow:android": [],
+        "//tensorflow:arm": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_ppc64le": [],
+        ":no_mkldnn_contraction_kernel": [],
+        "//conditions:default": ["@mkl_dnn//:mkldnn_single_threaded"],
     }),
 )
 
@@ -642,6 +653,26 @@ cc_library(
 cc_header_only_library(
     name = "image_resizer_state_lib",
     deps = [":image_resizer_state"],
+)
+
+cc_library(
+    name = "sampling_kernels",
+    srcs = ["sampling_kernels.cc"],
+    hdrs = ["sampling_kernels.h"],
+    visibility = ["//visibility:private"],
+    deps = ["//tensorflow/core:lib"],
+)
+
+tf_cc_test(
+    name = "sampling_kernels_test",
+    srcs = ["sampling_kernels_test.cc"],
+    deps = [
+        ":sampling_kernels",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # OpKernel libraries ----------------------------------------------------------
@@ -1261,7 +1292,7 @@ tf_cc_test(
     }),
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
@@ -1280,6 +1311,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -2196,6 +2228,7 @@ tf_kernel_library(
         ":state",
         ":training_op_helpers",
         ":variable_ops",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -2295,6 +2328,7 @@ cc_library(
         ":resize_bilinear_op",
         ":resize_nearest_neighbor_op",
         ":sample_distorted_bounding_box_op",
+        ":scale_and_translate_op",
     ],
 )
 
@@ -2398,6 +2432,12 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "scale_and_translate_op",
+    prefix = "scale_and_translate_op",
+    deps = IMAGE_DEPS + [":sampling_kernels"],
+)
+
+tf_kernel_library(
     name = "random_crop_op",
     prefix = "random_crop_op",
     deps = IMAGE_DEPS,
@@ -2482,8 +2522,12 @@ tf_cc_test(
     name = "eigen_mkldnn_contraction_kernel_test",
     size = "small",
     srcs = select({
-        ":mkldnn_contraction_kernel": ["eigen_mkldnn_contraction_kernel_test.cc"],
-        "//conditions:default": [],
+        "//tensorflow:android": [],
+        "//tensorflow:arm": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_ppc64le": [],
+        ":no_mkldnn_contraction_kernel": [],
+        "//conditions:default": ["eigen_mkldnn_contraction_kernel_test.cc"],
     }),
     tags = ["mkldnn_contraction_kernel"],
     deps = [
@@ -2547,6 +2591,7 @@ tf_cc_tests(
         "resize_bicubic_op_test.cc",
         "resize_bilinear_op_test.cc",
         "resize_nearest_neighbor_op_test.cc",
+        "scale_and_translate_op_test.cc",
     ],
     linkopts = select({
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
@@ -2556,6 +2601,7 @@ tf_cc_tests(
         ":image",
         ":ops_testutil",
         ":ops_util",
+        ":sampling_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3624,6 +3670,7 @@ tf_kernel_library(
         ":image_resizer_state",
         ":fill_functor",
         ":ops_util",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -3712,7 +3759,6 @@ NN_DEPS = [
     ":bounds_check",
     ":conv_2d",
     ":eigen_contraction_kernel",
-    ":fused_batch_norm_util_gpu",
     ":ops_util",
     ":pooling_ops",
     "//tensorflow/core:framework",
@@ -3969,19 +4015,6 @@ tf_kernel_library(
         "//third_party/eigen3",
     ],
     alwayslink = 1,
-)
-
-tf_kernel_library(
-    name = "fused_batch_norm_util",
-    gpu_srcs = [
-        "fused_batch_norm_op.h",
-        "fused_batch_norm_op.cu.cc",
-    ],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
-    ],
 )
 
 cc_library(
@@ -5562,6 +5595,7 @@ filegroup(
         "decode_bmp_op.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
+        "fft_ops.cc",
         "in_topk_op.cc",
         "initializable_lookup_table.cc",
         "logging_ops.cc",

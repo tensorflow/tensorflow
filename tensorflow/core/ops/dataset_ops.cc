@@ -687,6 +687,16 @@ REGISTER_OP("MapDefun")
       return Status::OK();
     });
 
+REGISTER_OP("WrapDatasetVariant")
+    .Input("input_handle: variant")
+    .Output("output_handle: variant")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("UnwrapDatasetVariant")
+    .Input("input_handle: variant")
+    .Output("output_handle: variant")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("MultiDeviceIterator")
     .Output("handle: resource")
     .Attr("devices: list(string) >= 1")

@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
@@ -147,11 +148,14 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
 
 class TestTrainingWithDataset(keras_parameterized.TestCase):
 
-  # TODO(kaftan) Run w/ all model types.
-  # Seems like subclass models has a bug, file ticket
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_calling_model_on_same_dataset(self):
+    if ((not testing_utils.should_run_eagerly())
+        and testing_utils.get_model_type() == 'subclass'
+        and context.executing_eagerly()):
+      self.skipTest('b/120673224')
+
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
@@ -234,9 +238,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
                                  'you should specify the `steps` argument'):
       model.predict(dataset, verbose=0)
 
-  # TODO(kaftan) Run w/ all model types.
-  # Seems like subclass models has a bug, file ticket
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_dataset_with_sample_weights(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
@@ -308,9 +310,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
 class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):
 
-  # TODO(kaftan) Run w/ all model types.
-  # Seems like subclass models has a bug, file ticket
-  @keras_parameterized.run_with_all_model_types(exclude_models='subclass')
+  @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_metrics_correctness_with_iterator(self):
     layers = [

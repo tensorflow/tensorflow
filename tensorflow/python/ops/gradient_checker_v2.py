@@ -44,32 +44,42 @@ def _product(t):
     return y
 
 
-def _to_numpy(a):
-  """Converts tensors to numpy arrays.
+def _eval_indexed_slices(a):
+  """Converts IndexedSlices to IndexedSlicesValue with numpy indices/values.
 
-  Converts Tensors and EagerTensors to numpy arrays.
   When eager execution is enabled, converts IndexedSlices
-  to IndexedSlicesValue with numpy indices/values
+  to IndexedSlicesValue with numpy indices/values.
+
+  Args:
+    a: any value.
+
+  Returns:
+    If a is IndexedSlices and eager execution is enabled, calls numpy() on a's
+    fields. Otherwise returns a unchanged.
+  """
+  if isinstance(a, ops.IndexedSlices) and context.executing_eagerly():
+    return ops.IndexedSlicesValue(
+        indices=[x.numpy() for x in a.indices],
+        values=[x.numpy() for x in a.values],
+        dense_shape=a.dense_shape)
+  return a
+
+
+def _to_numpy(a):
+  """Converts Tensors and EagerTensors to numpy arrays.
 
   Args:
     a: any value.
 
   Returns:
     If a is EagerTensor or Tensor, returns the evaluation of a by calling
-    numpy() or run().
-    If a is IndexedSlices and eager execution is enabled, calls numpy() on a's
-    fields. Otherwise returns a unchanged.
+    numpy() or run(). Otherwise returns a unchanged.
   """
   if isinstance(a, ops.EagerTensor):
     return a.numpy()
   if isinstance(a, ops.Tensor):
     sess = ops.get_default_session()
     return sess.run(a)
-  if isinstance(a, ops.IndexedSlices) and context.executing_eagerly():
-    return ops.IndexedSlicesValue(
-        indices=[x.numpy() for x in a.indices],
-        values=[x.numpy() for x in a.values],
-        dense_shape=a.dense_shape)
   return a
 
 
@@ -147,6 +157,7 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
   for col in range(y_size):
     dy_data_flat[col] = 1
     grad = _to_numpy(grad_fn(dy_data, *xs)[0])
+    grad = _eval_indexed_slices(grad)
     dy_data_flat[col] = 0
     if isinstance(grad, ops.IndexedSlicesValue):
       for i, v in zip(grad.indices, grad.values):

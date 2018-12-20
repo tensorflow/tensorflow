@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.constant_value."""
+"""Tests for ragged_factory_ops.constant_value."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,11 +22,14 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
-class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedConstantValueOpTest(ragged_test_util.RaggedTensorTestCase,
                                 parameterized.TestCase):
 
   @parameterized.parameters(
@@ -144,8 +147,8 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                        inner_shape=None,
                        expected_shape=None,
                        expected_dtype=None):
-    """Tests that `ragged_value(pylist).tolist() == pylist`."""
-    rt = ragged.constant_value(
+    """Tests that `ragged_value(pylist).to_list() == pylist`."""
+    rt = ragged_factory_ops.constant_value(
         pylist, dtype=dtype, ragged_rank=ragged_rank, inner_shape=inner_shape)
 
     # If dtype was explicitly specified, check it.
@@ -156,15 +159,15 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
 
     # If ragged_rank was explicitly specified, check it.
     if ragged_rank is not None:
-      if isinstance(rt, ragged.RaggedTensorValue):
+      if isinstance(rt, ragged_tensor_value.RaggedTensorValue):
         self.assertEqual(rt.ragged_rank, ragged_rank)
       else:
         self.assertEqual(0, ragged_rank)
 
     # If inner_shape was explicitly specified, check it.
     if inner_shape is not None:
-      if isinstance(rt, ragged.RaggedTensorValue):
-        self.assertEqual(rt.inner_values.shape[1:], inner_shape)
+      if isinstance(rt, ragged_tensor_value.RaggedTensorValue):
+        self.assertEqual(rt.flat_values.shape[1:], inner_shape)
       else:
         self.assertEqual(rt.shape, inner_shape)
 
@@ -172,7 +175,10 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
       self.assertEqual(tuple(rt.shape), expected_shape)
 
     if rt.shape:
-      self.assertEqual(rt.tolist(), pylist)
+      if isinstance(rt, ragged_tensor_value.RaggedTensorValue):
+        self.assertEqual(rt.to_list(), pylist)
+      else:
+        self.assertEqual(rt.tolist(), pylist)
       if expected_shape is not None:
         self.assertEqual(rt.shape, expected_shape)
     else:
@@ -252,11 +258,11 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
                             inner_shape=None,
                             exception=None,
                             message=None):
-    """Tests that `ragged.constant_value()` raises an expected exception."""
+    """Tests that `constant_value()` raises an expected exception."""
     self.assertRaisesRegexp(
         exception,
         message,
-        ragged.constant_value,
+        ragged_factory_ops.constant_value,
         pylist,
         dtype=dtype,
         ragged_rank=ragged_rank,

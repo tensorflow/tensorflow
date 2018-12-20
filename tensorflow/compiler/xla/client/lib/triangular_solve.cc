@@ -62,15 +62,26 @@ XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
                               /*broadcast_sizes=*/{2}),
                     /*permutation=*/{1, 0});
 
+      PaddingConfig padding_config =
+          MakeEdgePaddingConfig({{0, 0}, {ndims - 2, 0}});
+      start_indices =
+          Pad(start_indices, ConstantR0<int32>(builder, 0), padding_config);
+
       // Gather the diagonal blocks
+      std::vector<int64> slice_sizes(ndims);
       GatherDimensionNumbers dim_numbers;
+      for (int i = 0; i < ndims - 2; ++i) {
+        dim_numbers.add_offset_dims(i);
+        dim_numbers.add_start_index_map(i);
+        slice_sizes[i] = ShapeUtil::GetDimension(shape, i);
+      }
+      slice_sizes[ndims - 2] = slice_sizes[ndims - 1] = block_size;
       dim_numbers.add_offset_dims(ndims - 1);
       dim_numbers.add_offset_dims(ndims);
       dim_numbers.add_start_index_map(ndims - 2);
       dim_numbers.add_start_index_map(ndims - 1);
       dim_numbers.set_index_vector_dim(1);
-      diag_blocks = Gather(a, start_indices, dim_numbers,
-                           /*slice_sizes=*/{block_size, block_size});
+      diag_blocks = Gather(a, start_indices, dim_numbers, slice_sizes);
     }
 
     // The last block might be smaller than the block size,
@@ -393,12 +404,23 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
           block_size);
     }
 
+    if (ShapeUtil::IsZeroElementArray(b_shape)) {
+      // The output has the same shape as 'b', and since the output has zero
+      // elements, any such array will do.
+      return b;
+    }
+
     // We find the diagonal blocks of the coefficient matrix
     auto diag_blocks = DiagonalBlocks(a, block_size);
 
     // We invert these blocks in parallel using batched matrix-vector products
     auto inv_diag_blocks = InvertDiagonalBlocks(diag_blocks, lower, transpose_a,
                                                 conjugate_a, precision);
+
+    // Mask off the ignored elements of the triangular matrix a.
+    // TODO(phawkins): it would probably be preferable to perform this masking
+    // block by block inside SolveWithInvertedDiagonalBlocks.
+    a = Triangle(a, lower);
 
     // We now find the solution using GEMMs
     auto x =

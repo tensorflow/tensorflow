@@ -1,0 +1,7 @@
+path: "tensorflow.rnn"
+tf_module {
+  member {
+    name: "DropoutWrapper"
+    mtype: "<type \'type\'>"
+  }
+}
