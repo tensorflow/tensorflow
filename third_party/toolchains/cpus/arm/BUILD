@@ -6,6 +6,10 @@ cc_toolchain_suite(
         "armeabi|compiler": ":cc-compiler-armeabi",
         "local|compiler": ":cc-compiler-local",
         "armeabi": ":cc-compiler-armeabi",
+        "k8": ":cc-compiler-local",
+        "piii": ":cc-compiler-local",
+        "arm": ":cc-compiler-local",
+        "s390x": ":cc-compiler-local",
     },
 )
 
