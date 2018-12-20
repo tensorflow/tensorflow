@@ -41,6 +41,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training.checkpointable import util as checkpointable_util
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
@@ -136,6 +137,16 @@ class Scaffold(object):
         string tensor containing a serialized `Summary` proto.
       saver: Optional `tf.train.Saver` object to use to save and restore
         variables.
+
+        May also be a `tf.train.Checkpoint` object, in which case object-based
+        checkpoints are saved. This will also load some object-based checkpoints
+        saved from elsewhere, but that loading may be fragile since it uses
+        fixed keys rather than performing a full graph-based match. For example
+        if a variable has two paths from the `Checkpoint` object because two
+        `Model` objects share the `Layer` object that owns it, removing one
+        `Model` may change the keys and break checkpoint loading through this
+        API, whereas a graph-based match would match the variable through the
+        other `Model`.
       copy_from_scaffold: Optional scaffold object to copy fields from. Its
         fields will be overwritten by the provided fields in this function.
     """
@@ -216,7 +227,13 @@ class Scaffold(object):
     if self._saver is None:
       self._saver = training_saver._get_saver_or_default()  # pylint: disable=protected-access
     # pylint: enable=g-long-lambda
-    self._saver.build()
+    if isinstance(self._saver, checkpointable_util.Checkpoint):
+      self._saver = training_saver.Saver(
+          var_list=checkpointable_util.CheckpointableSaver(
+              self._saver).gather_objects(),
+          sharded=True)
+    else:
+      self._saver.build()
 
     ops.get_default_graph().finalize()
     logging.info('Graph was finalized.')

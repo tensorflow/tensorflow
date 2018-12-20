@@ -162,8 +162,10 @@ class PythonStringStateSaveable(PythonStateSaveable):
 
   def freeze(self):
     """Create a frozen `SaveableObject` which saves the current state."""
+    def _constant_state():
+      return constant_op.constant(self._state_callback(), dtype=dtypes.string)
     return NoRestoreSaveable(
-        tensor=self._state_callback,
+        tensor=_constant_state,
         dtype=dtypes.string,
         name=self.name)
 
