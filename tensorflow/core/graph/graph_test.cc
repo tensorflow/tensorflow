@@ -661,6 +661,10 @@ TEST_F(GraphTest, BuildNodeNameIndex) {
 }
 
 REGISTER_OP("Input").Output("y: float");
+REGISTER_OP("Output")
+    .Input("x: N * float")
+    .Attr("N: int >= 1")
+    .Output("y: float");
 REGISTER_OP("In2Out1").Input("a: float").Input("b: float").Output("y: float");
 REGISTER_OP("In4Out1")
     .Input("a: float")
@@ -713,7 +717,14 @@ GraphDef CreateGraphDef(int num_nodes, int num_edges_per_node) {
     }
     s += strings::Printf("'in%04d' ] } ", rnd.Uniform(kNumInNodes));
   }
-
+  // Add a single sink node. Otherwise a lot of time is spent in
+  // FixupSourceAndSinkEdges().
+  s += strings::Printf("node { name: 'out' op: 'Output' input: [ ");
+  for (int op = 0; op < num_nodes - 1; op++) {
+    s += strings::Printf("'op%05d', ", op);
+  }
+  s += strings::Printf("'op%05d' ], attr: { key: 'N' value { i: %d } } } ",
+                       num_nodes - 1, num_nodes);
   GraphDef graph_def;
   CHECK(protobuf::TextFormat::ParseFromString(s, &graph_def));
   return graph_def;
@@ -798,6 +809,45 @@ BENCHMARK(BM_GraphCreation)->ArgPair(1 << 6, 16);
 BENCHMARK(BM_GraphCreation)->ArgPair(1 << 9, 16);
 BENCHMARK(BM_GraphCreation)->ArgPair(1 << 12, 16);
 BENCHMARK(BM_GraphCreation)->ArgPair(1 << 15, 16);
+
+static void BM_ToGraphDef(int iters, int num_nodes, int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def = CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  // Warmup step.
+  Graph graph(registry);
+  TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+  int64 sum = 0;
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    GraphDef graph_def;
+    graph.ToGraphDef(&graph_def);
+    sum += graph_def.node_size();
+  }
+  VLOG(1) << sum;
+  testing::StopTiming();
+}
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_ToGraphDef)->ArgPair(10, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_ToGraphDef)->ArgPair(1 << 15, 16);
 
 }  // namespace
 }  // namespace tensorflow

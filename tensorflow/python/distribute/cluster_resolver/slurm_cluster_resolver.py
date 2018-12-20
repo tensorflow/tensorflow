@@ -23,6 +23,7 @@ import os
 import subprocess
 
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
@@ -206,10 +207,13 @@ class SlurmClusterResolver(ClusterResolver):
     """
     task_type = task_type if task_type is not None else self.task_type
     task_index = task_index if task_index is not None else self.task_index
-    rpc_layer = rpc_layer or self.rpc_layer
-    master = self.cluster_spec().task_address(task_type, task_index)
 
-    return '%s://%s' % (rpc_layer, master) if rpc_layer else master
+    if task_type is not None and task_index is not None:
+      return format_master_url(
+          self.cluster_spec().task_address(task_type, task_index),
+          rpc_layer or self.rpc_layer)
+
+    return ''
 
   @property
   def environment(self):
@@ -221,6 +225,11 @@ class SlurmClusterResolver(ClusterResolver):
     """
     return ''
 
-  def num_accelerators_per_worker(self, session_config=None):
-    del session_config  # Unused, since this is set in __init__ manually.
+  def num_accelerators(self,
+                       task_type=None,
+                       task_index=None,
+                       accelerator_type='GPU',
+                       config_proto=None):
+    # Unused, since this is set in __init__ manually.
+    del task_type, task_index, accelerator_type, config_proto
     return self._gpus_per_node

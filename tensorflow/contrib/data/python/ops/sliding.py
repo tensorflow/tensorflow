@@ -30,7 +30,6 @@ class _SlideDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, window_size, window_shift, window_stride):
     """See `sliding_window_batch` for details."""
-    super(_SlideDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._window_size = ops.convert_to_tensor(
         window_size, dtype=dtypes.int64, name="window_stride")
@@ -39,31 +38,21 @@ class _SlideDataset(dataset_ops.UnaryDataset):
     self._window_shift = ops.convert_to_tensor(
         window_shift, dtype=dtypes.int64, name="window_shift")
 
-    # pylint: disable=protected-access
-    input_structure = structure.Structure._from_legacy_structure(
+    input_structure = structure.convert_legacy_structure(
         input_dataset.output_types, input_dataset.output_shapes,
         input_dataset.output_classes)
-    self._output_structure = input_structure._batch(None)
-
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_sliding_window_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    self._structure = input_structure._batch(None)  # pylint: disable=protected-access
+    variant_tensor = ged_ops.experimental_sliding_window_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         window_size=self._window_size,
         window_shift=self._window_shift,
         window_stride=self._window_stride,
-        **dataset_ops.flat_structure(structure=self._output_structure))
+        **dataset_ops.flat_structure(self))
+    super(_SlideDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
-  def output_classes(self):
-    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
-
-  @property
-  def output_shapes(self):
-    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
-
-  @property
-  def output_types(self):
-    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
+  def _element_structure(self):
+    return self._structure
 
 
 @deprecation.deprecated_args(

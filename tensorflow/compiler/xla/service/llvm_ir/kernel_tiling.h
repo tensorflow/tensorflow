@@ -90,15 +90,16 @@ class KernelMappingScheme {
   enum { DimZ = 0, DimY, DimX, DimTot };
 
  public:
+  KernelMappingScheme() {}
   // dims_in_elems: the normalized tensor dimensions.
   // req_block_sizes: the requested block size in number of tiles for each
   //   dimension. The actual block size is set to min(req_block_size,
   //   dims_in_number_of_blocks).
-  explicit KernelMappingScheme(absl::Span<const int64> dims_in_elems,
-                               int64 tile_size_y, int64 tile_size_x,
-                               absl::Span<const int64> req_block_sizes,
-                               int64 num_threads_y, int64 num_threads_x,
-                               llvm::IRBuilder<>* b);
+  KernelMappingScheme(absl::Span<const int64> dims_in_elems, int64 tile_size_y,
+                      int64 tile_size_x,
+                      absl::Span<const int64> req_block_sizes,
+                      int64 num_threads_y, int64 num_threads_x,
+                      llvm::IRBuilder<>* b);
 
   absl::Span<const int64> GetDimensionsInElements() const {
     return dims_in_elems_;
@@ -133,11 +134,15 @@ class KernelMappingScheme {
   }
 
   absl::Span<const int64> GetBlockSizes() const { return block_sizes_; }
+  int64 GetTileBlockSizeForDimension(int d) const {
+    DCHECK(d >= DimZ && d <= DimX);
+    return dims_in_blocks_[d];
+  }
 
   int64 GetNumberOfThreadsForDimensionX() const { return num_threads_x_; }
   int64 GetNumberOfThreadsForDimensionY() const { return num_threads_y_; }
 
-  int64 GetThreadsPerTile() const {
+  int64 GetThreadsPerBlock() const {
     return GetNumberOfThreadsForDimensionX() *
            GetNumberOfThreadsForDimensionY();
   }
@@ -163,7 +168,7 @@ class KernelMappingScheme {
  private:
   llvm::IRBuilder<>* b_;
   // The number of elements in each dimension.
-  absl::Span<const int64> dims_in_elems_;
+  std::vector<int64> dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
   std::vector<int64> tile_sizes_;

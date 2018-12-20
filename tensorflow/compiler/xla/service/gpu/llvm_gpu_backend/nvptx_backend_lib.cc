@@ -199,8 +199,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
   return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx60", target_options,
-      Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
-      codegen_opt_level));
+      getRelocModel(), getCodeModel(), codegen_opt_level));
 }
 
 // Adds the standard LLVM optimization passes, based on the speed optimization

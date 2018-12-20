@@ -106,6 +106,15 @@ Java_org_tensorflow_lite_Tensor_writeMultiDimensionalArray(JNIEnv* env,
                                                            jlong handle,
                                                            jobject src);
 
+/*
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    index
+ *  Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
+                                                             jclass clazz,
+                                                             jlong handle);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

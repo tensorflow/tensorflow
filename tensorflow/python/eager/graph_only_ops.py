@@ -44,7 +44,6 @@ def graph_placeholder(dtype, shape, name=None):
   dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
   if isinstance(shape, (list, tuple)):
     shape = tensor_shape.TensorShape(shape)
-  assert isinstance(shape, tensor_shape.TensorShape)
   shape = attr_value_pb2.AttrValue(shape=shape.as_proto())
   g = ops.get_default_graph()
   with ops.name_scope(name, "placeholder", []) as name:

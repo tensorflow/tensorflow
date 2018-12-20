@@ -16,7 +16,10 @@ limitations under the License.
 // Registers the XLA_GPU device, which is an XlaDevice instantiation that runs
 // operators using XLA via the XLA "CUDA" (GPU) backend.
 
+#include <set>
 #include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -25,6 +28,30 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+// Returns a set containing the device ids contained in visible_device_list or
+// nullopt if it is empty. It returns error in case of malformed configuration
+// string.
+static xla::StatusOr<absl::optional<std::set<int>>> ParseVisibleDeviceList(
+    const string& visible_device_list) {
+  std::set<int> gpu_ids;
+  if (visible_device_list.empty()) {
+    return {{absl::nullopt}};
+  }
+  const std::vector<string> visible_devices =
+      absl::StrSplit(visible_device_list, ',');
+  for (const string& platform_gpu_id_str : visible_devices) {
+    int32 platform_gpu_id;
+    if (!absl::SimpleAtoi(platform_gpu_id_str, &platform_gpu_id)) {
+      return errors::InvalidArgument(
+          "Could not parse entry in 'visible_device_list': '",
+          platform_gpu_id_str,
+          "'. visible_device_list = ", visible_device_list);
+    }
+    gpu_ids.insert(platform_gpu_id);
+  }
+  return {{gpu_ids}};
+}
 
 class XlaGpuDeviceFactory : public DeviceFactory {
  public:
@@ -52,8 +79,18 @@ Status XlaGpuDeviceFactory::CreateDevices(
     VLOG(1) << "Failed to create XLA_GPU device: " << platform.status();
     return Status::OK();
   }
-
-  for (int i = 0; i < platform.ValueOrDie()->VisibleDeviceCount(); ++i) {
+  string allowed_gpus =
+      session_options.config.gpu_options().visible_device_list();
+  absl::optional<std::set<int>> gpu_ids =
+      ParseVisibleDeviceList(allowed_gpus).ValueOrDie();
+  if (!gpu_ids) {
+    gpu_ids.emplace();
+    // Fill the gpu_ids set with all devices if config string is empty.
+    for (int i = 0; i < platform.ValueOrDie()->VisibleDeviceCount(); ++i) {
+      gpu_ids->insert(i);
+    }
+  }
+  for (int i : *gpu_ids) {
     XlaDevice::Options options;
     options.platform = platform.ValueOrDie();
     options.device_name_prefix = name_prefix;
@@ -61,6 +98,7 @@ Status XlaGpuDeviceFactory::CreateDevices(
     options.device_ordinal = i;
     options.compilation_device_name = DEVICE_GPU_XLA_JIT;
     options.use_multiple_streams = true;
+    options.allowed_devices = gpu_ids;
     auto device = absl::make_unique<XlaDevice>(session_options, options);
 
     Status status = device->UseGpuDeviceInfo();

@@ -1028,20 +1028,21 @@ string ShapeToString(bool print_layout, const Shape& shape) {
 }
 
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
-                    bool print_layout, std::vector<string>* pieces);
+                    bool print_shape, bool print_layout,
+                    std::vector<string>* pieces);
 
 void TupleToStringHelper(const LiteralBase& literal,
-                         const ShapeIndex& shape_index, bool print_layout,
-                         std::vector<string>* pieces) {
+                         const ShapeIndex& shape_index, bool print_shape,
+                         bool print_layout, std::vector<string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
-  pieces->push_back(ShapeToString(print_layout, subshape));
-  pieces->push_back(" (\n");
+  pieces->push_back("(\n");
   std::vector<string> tuple_pieces;
   for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
     ShapeIndex element_index = shape_index;
     element_index.push_back(i);
     std::vector<string> element_pieces;
-    ToStringHelper(literal, element_index, print_layout, &element_pieces);
+    ToStringHelper(literal, element_index, print_shape, print_layout,
+                   &element_pieces);
     tuple_pieces.push_back(absl::StrJoin(element_pieces, ""));
   }
   pieces->push_back(absl::StrJoin(tuple_pieces, ",\n"));
@@ -1049,9 +1050,11 @@ void TupleToStringHelper(const LiteralBase& literal,
 }
 
 void SparseArrayToStringHelper(const LiteralBase& literal,
-                               const Shape& subshape, bool print_layout,
-                               std::vector<string>* pieces) {
-  pieces->push_back(ShapeToString(print_layout, subshape));
+                               const Shape& subshape, bool print_shape,
+                               bool print_layout, std::vector<string>* pieces) {
+  if (print_shape) {
+    pieces->push_back(ShapeToString(print_layout, subshape));
+  }
   pieces->push_back("{");
   int64 rank = ShapeUtil::Rank(subshape);
   int64 num_elements = literal.sparse_element_count();
@@ -1073,8 +1076,8 @@ void SparseArrayToStringHelper(const LiteralBase& literal,
 }
 
 void DenseArrayToStringHelper(const LiteralBase& literal,
-                              const ShapeIndex& shape_index, bool print_layout,
-                              std::vector<string>* pieces) {
+                              const ShapeIndex& shape_index, bool print_shape,
+                              bool print_layout, std::vector<string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   int64 rank = ShapeUtil::Rank(subshape);
 
@@ -1135,7 +1138,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
         }
       };
 
-  if (rank > 1) {
+  if (print_shape) {
     pieces->push_back(ShapeToString(print_layout, subshape));
     pieces->push_back(" ");
   }
@@ -1146,19 +1149,23 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
 }
 
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
-                    bool print_layout, std::vector<string>* pieces) {
+                    bool print_shape, bool print_layout,
+                    std::vector<string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   CHECK(LayoutUtil::HasLayout(literal.shape()));
   CHECK(LayoutUtil::HasLayout(subshape));
   if (ShapeUtil::IsTuple(subshape)) {
-    TupleToStringHelper(literal, shape_index, print_layout, pieces);
+    TupleToStringHelper(literal, shape_index, print_shape, print_layout,
+                        pieces);
   } else if (ShapeUtil::IsToken(subshape)) {
     pieces->push_back("token");
   } else if (LayoutUtil::IsSparseArray(subshape)) {
-    SparseArrayToStringHelper(literal, subshape, print_layout, pieces);
+    SparseArrayToStringHelper(literal, subshape, print_shape, print_layout,
+                              pieces);
   } else {
     CHECK(LayoutUtil::IsDenseArray(subshape));
-    DenseArrayToStringHelper(literal, shape_index, print_layout, pieces);
+    DenseArrayToStringHelper(literal, shape_index, print_shape, print_layout,
+                             pieces);
   }
 }
 
@@ -1169,10 +1176,27 @@ int64 LiteralBase::sparse_element_count() const {
   return sparse_indices()->index_count();
 }
 
-string LiteralBase::ToString(bool print_layout) const {
+string LiteralBase::ToString() const {
   std::vector<string> pieces;
   CHECK(LayoutUtil::HasLayout(this->shape()));
-  ToStringHelper(*this, {}, print_layout, &pieces);
+  ToStringHelper(*this, {}, /*print_shape=*/true,
+                 /*print_layout=*/false, &pieces);
+  return absl::StrJoin(pieces, "");
+}
+
+string LiteralBase::ToStringWithoutShape() const {
+  std::vector<string> pieces;
+  CHECK(LayoutUtil::HasLayout(this->shape()));
+  ToStringHelper(*this, {}, /*print_shape=*/false,
+                 /*print_layout=*/false, &pieces);
+  return absl::StrJoin(pieces, "");
+}
+
+string LiteralBase::ToStringWithLayout() const {
+  std::vector<string> pieces;
+  CHECK(LayoutUtil::HasLayout(this->shape()));
+  ToStringHelper(*this, {}, /*print_shape=*/true,
+                 /*print_layout=*/true, &pieces);
   return absl::StrJoin(pieces, "");
 }
 

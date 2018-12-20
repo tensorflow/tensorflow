@@ -122,6 +122,12 @@ const string& OpKernel::type_string() const { return def_->op(); }
 const string& OpKernel::requested_device() const { return def_->device(); }
 const string& OpKernel::requested_input(int i) const { return def_->input(i); }
 
+// This static function exists only because device_attributes.pb.h is
+// already included here, and it can't be introduced elsewhere.
+/*static*/ int OpKernel::DeviceNumaNode(const DeviceBase* device) {
+  return device->attributes().locality().numa_node();
+}
+
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
   const auto result = input_name_map_.find(input_name);
@@ -401,7 +407,7 @@ Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
     record_tensor_reference(tensor);
     return tensor;
   } else {
-    mutex_lock l(*input_ref_mutex(index));
+    tf_shared_lock l(*input_ref_mutex(index));
     Tensor& tensor = *((*params_->inputs)[index].tensor);
     record_tensor_reference(tensor);
     return tensor;
@@ -593,7 +599,7 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
   if (lock_held) {
     *tensor = *(*params_->inputs)[start].tensor;
   } else {
-    mutex_lock l(*input_ref_mutex(start));
+    tf_shared_lock l(*input_ref_mutex(start));
     *tensor = *(*params_->inputs)[start].tensor;
   }
   record_tensor_reference(*tensor);

@@ -52,6 +52,7 @@ LIBS := \
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
 CXXFLAGS := -O3 -DNDEBUG
+CXXFLAGS += $(EXTRA_CXXFLAGS)
 CCFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
 CFLAGS :=
@@ -116,8 +117,8 @@ tensorflow/lite/mmap_allocation.cc \
 tensorflow/lite/nnapi_delegate.cc
 else
 CORE_CC_EXCLUDE_SRCS += \
-tensorflow/contrib/lite/mmap_allocation_disabled.cc \
-tensorflow/contrib/lite/nnapi_delegate_disabled.cc
+tensorflow/lite/mmap_allocation_disabled.cc \
+tensorflow/lite/nnapi_delegate_disabled.cc
 endif
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))

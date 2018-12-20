@@ -304,6 +304,13 @@ one of the following primitive types:
 *   `long`
 *   `byte`
 
+`String` types are also supported, but they are encoded differently than the
+primitive types. In particular, the shape of a string Tensor dictates the number
+and arrangement of strings in the Tensor, with each element itself being a
+variable length string. In this sense, the (byte) size of the Tensor cannot be
+computed from the shape and type alone, and consequently strings cannot be
+provided as a single, flat `ByteBuffer` argument.
+
 If other data types, including boxed types like `Integer` and `Float`, are used,
 an `IllegalArgumentException` will be thrown.
 
@@ -345,12 +352,11 @@ interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
 ```
 
 where each entry in `inputs` corresponds to an input tensor and
-`map_of_indices_to_outputs` maps indices of output tensors to the
-corresponding output data. In both cases the tensor indices should correspond to
-the values given to the [TensorFlow Lite Optimized Converter](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/toco/g3doc/cmdline_examples.md)
+`map_of_indices_to_outputs` maps indices of output tensors to the corresponding
+output data. In both cases the tensor indices should correspond to the values
+given to the [TensorFlow Lite Optimized Converter](convert/cmdline_examples.md)
 when the model was created. Be aware that the order of tensors in `input` must
 match the order given to the `TensorFlow Lite Optimized Converter`.
-
 
 The Java API also provides convenient functions for app developers to get the
 index of any model input or output using a tensor name:

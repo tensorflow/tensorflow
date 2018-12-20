@@ -205,7 +205,7 @@ class XlaTensorBuffer : public TensorBuffer {
         allocator_(allocator) {}
 
   ~XlaTensorBuffer() override {
-    if (data_) {
+    if (data()) {
       allocator_->DeallocateRaw(data());
     }
   }
@@ -229,7 +229,6 @@ class XlaTensorBuffer : public TensorBuffer {
   }
 
  private:
-  void* data_;
   size_t expected_size_;
   size_t actual_size_;
   Allocator* allocator_;

@@ -76,9 +76,12 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
   // need to compile anything
 
   // Create executable from only the Hlo module.
+  auto evaluator = absl::make_unique<HloEvaluator>();
+  evaluator->set_use_fast_path(
+      hlo_module->config().debug_options().xla_hlo_evaluator_use_fast_path());
   std::unique_ptr<Executable> executable =
-      absl::make_unique<InterpreterExecutable>(
-          std::move(hlo_module), absl::make_unique<HloEvaluator>());
+      absl::make_unique<InterpreterExecutable>(std::move(hlo_module),
+                                               std::move(evaluator));
 
   return std::move(executable);
 }

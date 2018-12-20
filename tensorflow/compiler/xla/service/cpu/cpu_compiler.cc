@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
-#include "tensorflow/compiler/xla/service/convolution_feature_group_converter.h"
+#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
@@ -257,7 +257,16 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
-  pipeline.AddPass<ConvolutionFeatureGroupConverter>();
+  auto cost_model = [](HloInstruction* conv) {
+    // We need a cost model for CPUs. Currently, do nothing.
+    return false;
+  };
+  pipeline.AddPass<ConvolutionGroupConverter>(
+      cost_model,
+      /*convert_batch_groups_only=*/true);
+  pipeline.AddPass<ConvolutionGroupConverter>(
+      cost_model,
+      /*convert_batch_groups_only=*/false);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {
     auto& pass =
@@ -635,18 +644,17 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
             .EmitComputation(
                 embedded_computation, embedded_computation->name(),
                 /*is_top_level_computation=*/false,
-                &schedule.sequence(embedded_computation).instructions())
+                schedule.sequence(embedded_computation).instructions())
             .status());
   }
   string function_name_prefix = entry_computation->name().empty()
                                     ? "__compute"
                                     : entry_computation->name();
-  TF_ASSIGN_OR_RETURN(
-      llvm::Function * entry_function,
-      ir_emitter.EmitComputation(
-          entry_computation, function_name_prefix,
-          /*is_top_level_computation=*/true,
-          &schedule.sequence(entry_computation).instructions()));
+  TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
+                      ir_emitter.EmitComputation(
+                          entry_computation, function_name_prefix,
+                          /*is_top_level_computation=*/true,
+                          schedule.sequence(entry_computation).instructions()));
 
   string function_name = [&]() {
     llvm::SmallVector<char, 40> function_name_vector;
@@ -835,7 +843,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
               .EmitComputation(
                   embedded_computation, embedded_computation->name(),
                   /*is_top_level_computation=*/false,
-                  &schedule.sequence(embedded_computation).instructions())
+                  schedule.sequence(embedded_computation).instructions())
               .status());
     }
     const string& entry_point_name = options.entry_point_name();
@@ -843,7 +851,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                         ir_emitter.EmitComputation(
                             computation, entry_point_name,
                             /*is_top_level_computation=*/true,
-                            &schedule.sequence(computation).instructions()));
+                            schedule.sequence(computation).instructions()));
 
     CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
 

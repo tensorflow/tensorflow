@@ -134,19 +134,18 @@ class TemplatesTest(test.TestCase):
 
   def test_replace_expression_context(self):
     template = """
-      def test_fn(foo):
+      def test_fn():
         foo
     """
 
     node = templates.replace(
         template, foo=parser.parse_expression('a + 2 * b / -c'))[0]
-    self.assertIsInstance(node.body[0].ctx, gast.Load)
     self.assertIsInstance(node.body[0].left.ctx, gast.Load)
     self.assertIsInstance(node.body[0].right.left.right.ctx, gast.Load)
 
   def test_replace_complex_context(self):
     template = """
-      def test_fn(foo):
+      def test_fn():
         foo = 0
     """
 
@@ -160,7 +159,7 @@ class TemplatesTest(test.TestCase):
 
   def test_replace_index(self):
     template = """
-      def test_fn(foo):
+      def test_fn():
         foo = 0
     """
 

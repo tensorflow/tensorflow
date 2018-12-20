@@ -58,7 +58,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
       return CallContext::kSequential;
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:

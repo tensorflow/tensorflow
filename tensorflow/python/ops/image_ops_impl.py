@@ -2046,9 +2046,8 @@ def sample_distorted_bounding_box_v2(image_size,
       3-D with shape `[batch, N, 4]` describing the N bounding boxes
       associated with the image.
     seed: An optional `int`. Defaults to `0`.
-      If either `seed` or `seed2` are set to non-zero, the random number
-      generator is seeded by the given `seed`.  Otherwise, it is seeded by a
-      random seed.
+      If `seed` is set to non-zero, the random number generator is seeded by
+      the given `seed`.  Otherwise, it is seeded by a random seed.
     min_object_covered: A Tensor of type `float32`. Defaults to `0.1`.
       The cropped area of the image must contain at least this
       fraction of any bounding box supplied. The value of this parameter should

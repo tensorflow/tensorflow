@@ -26,7 +26,6 @@ tf_cc_test(
     size = "small",
     srcs = ["optional_tensor_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -124,7 +123,6 @@ tf_cc_test(
     size = "small",
     srcs = ["kernel_util_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -139,7 +137,6 @@ tf_cc_test(
     size = "small",
     srcs = ["test_util_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
     deps = [
@@ -288,12 +285,26 @@ cc_library(
     ],
 )
 
+# The builtin_ops target will resolve to optimized kernels when available. This
+# target uses reference kernels only, and is useful for validation and testing.
+# It should *not* generally be used in production.
+cc_library(
+    name = "reference_ops",
+    srcs = ["register_ref.cc"],
+    hdrs = ["register_ref.h"],
+    deps = [
+        ":builtin_op_kernels",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
 tf_cc_test(
     name = "audio_spectrogram_test",
     size = "small",
     srcs = ["audio_spectrogram_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -310,7 +321,6 @@ tf_cc_test(
     size = "small",
     srcs = ["mfcc_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -327,7 +337,6 @@ tf_cc_test(
     size = "small",
     srcs = ["detection_postprocess_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -344,7 +353,6 @@ tf_cc_test(
     size = "small",
     srcs = ["relu1_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -361,7 +369,6 @@ tf_cc_test(
     size = "small",
     srcs = ["sparse_output_fully_connected_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -404,7 +411,6 @@ tf_cc_test(
     size = "small",
     srcs = ["arg_min_max_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -420,7 +426,6 @@ tf_cc_test(
     size = "small",
     srcs = ["div_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -436,7 +441,6 @@ tf_cc_test(
     size = "small",
     srcs = ["sub_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -452,7 +456,6 @@ tf_cc_test(
     size = "small",
     srcs = ["transpose_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -470,7 +473,6 @@ tf_cc_test(
     size = "small",
     srcs = ["space_to_batch_nd_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -486,7 +488,6 @@ tf_cc_test(
     size = "small",
     srcs = ["batch_to_space_nd_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -502,7 +503,6 @@ tf_cc_test(
     size = "small",
     srcs = ["cast_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -559,7 +559,6 @@ tf_cc_test(
     size = "small",
     srcs = ["dequantize_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -589,7 +588,6 @@ tf_cc_test(
     size = "small",
     srcs = ["bidirectional_sequence_lstm_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -606,7 +604,6 @@ tf_cc_test(
     size = "small",
     srcs = ["floor_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -622,7 +619,6 @@ tf_cc_test(
     size = "small",
     srcs = ["elementwise_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -638,7 +634,6 @@ tf_cc_test(
     size = "small",
     srcs = ["unidirectional_sequence_lstm_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -654,7 +649,6 @@ tf_cc_test(
     size = "small",
     srcs = ["bidirectional_sequence_rnn_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -670,7 +664,6 @@ tf_cc_test(
     size = "small",
     srcs = ["unidirectional_sequence_rnn_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -699,7 +692,6 @@ tf_cc_test(
     size = "small",
     srcs = ["exp_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -715,7 +707,6 @@ tf_cc_test(
     size = "small",
     srcs = ["fake_quant_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -731,7 +722,6 @@ tf_cc_test(
     size = "small",
     srcs = ["maximum_minimum_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -747,7 +737,6 @@ tf_cc_test(
     size = "small",
     srcs = ["reduce_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -776,7 +765,6 @@ tf_cc_test(
     size = "small",
     srcs = ["pad_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -805,7 +793,6 @@ tf_cc_test(
     size = "small",
     srcs = ["gather_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -822,7 +809,6 @@ tf_cc_test(
     size = "small",
     srcs = ["topk_v2_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -959,7 +945,6 @@ tf_cc_test(
     size = "small",
     srcs = ["log_softmax_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1057,7 +1042,6 @@ tf_cc_test(
     size = "small",
     srcs = ["split_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1073,7 +1057,6 @@ tf_cc_test(
     size = "small",
     srcs = ["split_v_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1089,7 +1072,6 @@ tf_cc_test(
     size = "small",
     srcs = ["squeeze_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1105,7 +1087,6 @@ tf_cc_test(
     size = "small",
     srcs = ["strided_slice_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1121,7 +1102,6 @@ tf_cc_test(
     size = "small",
     srcs = ["tile_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1140,7 +1120,6 @@ tf_cc_test(
         "comparisons_test.cc",
     ],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1156,7 +1135,6 @@ tf_cc_test(
     size = "small",
     srcs = ["neg_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1174,7 +1152,6 @@ tf_cc_test(
         "select_test.cc",
     ],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1192,7 +1169,6 @@ tf_cc_test(
         "slice_test.cc",
     ],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1208,7 +1184,6 @@ tf_cc_test(
     size = "small",
     srcs = ["transpose_conv_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1225,7 +1200,6 @@ tf_cc_test(
     size = "small",
     srcs = ["expand_dims_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1242,7 +1216,6 @@ tf_cc_test(
     size = "small",
     srcs = ["sparse_to_dense_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1259,7 +1232,6 @@ tf_cc_test(
     size = "small",
     srcs = ["shape_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -1276,7 +1248,6 @@ tf_cc_test(
     size = "small",
     srcs = ["pow_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [

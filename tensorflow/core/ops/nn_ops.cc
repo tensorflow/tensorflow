@@ -326,6 +326,7 @@ REGISTER_OP("_FusedConv2D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
@@ -1609,6 +1610,55 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("__MklDummyPadWithConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("paddings: Tpaddings")
+    .Output("output: T")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::Conv2DShape)
+    .Doc(R"doc(
+Dummy node that enables fusing Pad and Conv2D operator for MKL. This node
+does not perform anything. It is just created as an intermediate output of
+merging Pad and Conv2D.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklPadWithConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("paddings: Tpaddings")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_paddings: uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {half, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("Tpaddings: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::Conv2DShape)
+    .Doc(R"doc(
+MKL version of Pad and Conv2D operator. Uses MKL DNN APIs to perform
+Pad and 2D convolution to the output of convolution.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
 REGISTER_OP("_MklConv2DBackpropFilter")
     .Input("input: T")
     .Input("filter_sizes: int32")
@@ -1910,6 +1960,40 @@ REGISTER_OP("_MklRelu6Grad")
     .Doc(R"doc(
 MKL version of Relu6Grad operator. Uses MKL DNN APIs to compute rectified
 linear gradients for Relu6 operation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklLeakyRelu")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("alpha: float = 0.2")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of LeakyRelu operator. Uses MKL DNN APIs to implement
+LeakyRelu operator.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklLeakyReluGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("alpha: float = 0.2")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of LeakyReluGrad operator. Uses MKL DNN APIs to compute rectified
+linear gradients for LeakyReluGrad operation.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.

@@ -1556,7 +1556,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
     const Shape& lhs, const Shape& rhs, int64 feature_group_count,
-    const Window& window, const ConvolutionDimensionNumbers& dnums) {
+    int64 batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dnums) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -1565,6 +1566,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "feature_group_count must be a positive number, got %d",
         feature_group_count);
   }
+
+  if (batch_group_count <= 0) {
+    return InvalidArgument(
+        "batch_group_count must be a positive number, got %d",
+        batch_group_count);
+  }
+
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
         "Convolution with different element types: %s and %s.",
@@ -1700,6 +1708,17 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
+
+  if (input_batch % batch_group_count > 0) {
+    return InvalidArgument(
+        "Expected input batch dimension (value %d) to be divisible by "
+        "batch_group_count (value %d); "
+        "got <conv>(%s, %s)\n"
+        "Dimension numbers: {%s}.",
+        input_batch, batch_group_count, ShapeUtil::HumanString(lhs),
+        ShapeUtil::HumanString(rhs), dnums.DebugString());
+  }
+
   std::vector<int64> window_dims(num_spatial_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
     window_dims[i] = window.dimensions(i).size();
@@ -1722,7 +1741,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                              /*allow_negative_padding=*/true));
 
   std::vector<int64> dimensions(num_dims);
-  dimensions[dnums.output_batch_dimension()] = input_batch;
+  dimensions[dnums.output_batch_dimension()] = input_batch / batch_group_count;
   dimensions[dnums.output_feature_dimension()] = kernel_output_features;
   for (int i = 0; i < num_spatial_dims; ++i) {
     dimensions[dnums.output_spatial_dimensions(i)] =
@@ -1814,7 +1833,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 #undef RET_CHECK_RANK
 }
 
-/* static */ StatusOr<Shape> ShapeInference::InferCrossReplicaSumShape(
+/* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
     absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
     TF_RETURN_IF_ERROR(

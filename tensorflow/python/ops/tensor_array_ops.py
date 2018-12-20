@@ -20,10 +20,8 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import os
 import weakref
 
-from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,16 +30,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.tf_export import tf_export
-
-
-ENABLE_TENSOR_ARRAY_V2 = (
-    tf2.enabled() or os.getenv("TF_ENABLE_TENSOR_ARRAY_V2") is not None)
 
 
 # _GraphTensorArray accesses many of the hidden generated ops, but is in
@@ -1013,7 +1008,7 @@ class TensorArray(object):
     if context.executing_eagerly():
       implementation = _EagerTensorArray
     else:
-      if ENABLE_TENSOR_ARRAY_V2:
+      if control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
         implementation = _GraphTensorArrayV2
       else:
         implementation = _GraphTensorArray

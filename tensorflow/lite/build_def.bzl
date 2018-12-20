@@ -112,7 +112,8 @@ def tflite_jni_binary(
         linkshared = 1,
         linkstatic = 1,
         testonly = 0,
-        deps = []):
+        deps = [],
+        srcs = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + [
         "-Wl,--version-script",  # Export only jni functions & classes.
@@ -124,6 +125,7 @@ def tflite_jni_binary(
         linkshared = linkshared,
         linkstatic = linkstatic,
         deps = deps + [linkscript],
+        srcs = srcs,
         linkopts = linkopts,
         testonly = testonly,
     )

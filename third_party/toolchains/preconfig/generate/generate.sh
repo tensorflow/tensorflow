@@ -33,7 +33,9 @@ PY_VERSION="${PLATFORM[1]}"
 COMPILER="${PLATFORM[2]}"
 CUDA_VERSION="${PLATFORM[3]}"
 CUDNN_VERSION="${PLATFORM[4]}"
-NCCL_VERSION="${PLATFORM[5]}"
+TENSORRT_VERSION="${PLATFORM[5]}"
+
+# TODO(klimek): Put this into the name.
 
 if [[ "${COMPILER}" == "gcc" ]]; then
   COMPILER="gcc-nvcc-${CUDA_VERSION}"
@@ -44,11 +46,16 @@ echo "Python: ${PY_VERSION}"
 echo "Compiler: ${COMPILER}"
 echo "CUDA: ${CUDA_VERSION}"
 echo "CUDNN: ${CUDNN_VERSION}"
-echo "NCCL: ${NCCL_VERSION}"
+echo "TensorRT: ${TENSORRT_VERSION}"
 
-bazel build "${PKG}/generate:${TARGET}"
+bazel build --define=mount_project="${PWD}" "${PKG}/generate:${TARGET}"
 cd "${TEMPDIR}"
 tar xvf "${ROOT}/bazel-bin/${PKG}/generate/${TARGET}_outputs.tar"
+
+# Other than in @local_config_tensorrt, the header files in the remote config
+# repo are not relative to the repository root. Add a dummy include_prefix to
+# make them available as virtual includes.
+buildozer 'set include_prefix ""' //local_config_tensorrt:%cc_library
 
 # Delete all empty files: configurations leave empty files around when they are
 # unnecessary.
@@ -58,8 +65,8 @@ find . -empty -delete
 # <OS>/
 #   <CUDA>-<CUDNN>/
 #   <COMPILER>/
-#   <NCCL>/
 #   <PYTHON>/
+#   <TENSORRT>/
 
 # Create our toplevel output directory for the OS.
 mkdir "${OS}"
@@ -67,14 +74,14 @@ mkdir "${OS}"
 # Python:
 mv local_config_python "${OS}/${PY_VERSION}"
 
-# NCCL:
-mv local_config_nccl "${OS}/${NCCL_VERSION}"
-
 # Compiler:
 mv local_config_cuda/crosstool "${OS}/${COMPILER}"
 
 # CUDA:
 mv local_config_cuda "${OS}/${CUDA_VERSION}-${CUDNN_VERSION}"
+
+# TensorRT:
+mv local_config_tensorrt "${OS}/${TENSORRT_VERSION}"
 
 # Cleanup for copybara.
 find "${OS}" -name 'BUILD' -o -name '*.bzl' |xargs buildifier

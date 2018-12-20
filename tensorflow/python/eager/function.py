@@ -50,6 +50,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -149,10 +150,9 @@ class _EagerDefinedFunction(object):
       outputs: the tensors in the graph which will be outputs to the function
       attrs: dict mapping names of attributes to their AttrValue values
     """
-    operations = [
-        op for op in graph.get_operations()
-        if op not in set(arg.op for arg in inputs)
-    ]
+    input_ops = set(arg.op for arg in inputs)
+    operations = [op for op in graph.get_operations() if op not in input_ops]
+
     fn = pywrap_tensorflow.TF_GraphToFunction_wrapper(
         graph._c_graph,  # pylint: disable=protected-access
         compat.as_str(name),
@@ -340,7 +340,7 @@ class Function(object):
       TypeError: For invalid positional/keyword argument combinations.
     """
     if self._arg_keywords is None or self._num_positional_args is None:
-      if self._signature:
+      if self._signature is not None:
         if kwargs:
           raise NotImplementedError(
               "Keyword arguments not supported when calling a "
@@ -748,12 +748,194 @@ class Function(object):
     return ret
 
 
+class UnknownArgument(object):
+  """Signifies an argument which is not currently handled."""
+  pass
+
+
+def _encode_arg_for_serialization(arg):
+  """A representation for this argument, for serializing signatures."""
+  if isinstance(arg, ops.Tensor):
+    return tensor_spec.TensorSpec(arg.shape, arg.dtype)
+  if isinstance(arg, int):
+    return arg
+  if isinstance(arg, float):
+    return arg
+  if isinstance(arg, bool):
+    return arg
+  return UnknownArgument()
+
+
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
 pywrap_tensorflow.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
 def _deterministic_dict_values(dictionary):
   return tuple(dictionary[key] for key in sorted(dictionary))
+
+
+class FunctionSpec(object):
+  """Specification of how to bind arguments to a function."""
+
+  def as_tuple(self):
+    return (self._fullargspec, self._is_method, self._args_to_prepend,
+            self._kwargs_to_include, self.input_signature)
+
+  @staticmethod
+  def from_tuple(spec_tuple):
+    return FunctionSpec(*spec_tuple)
+
+  @staticmethod
+  def from_function_and_signature(python_function, input_signature):
+    """Create a FunctionSpec instance given a python function and signature."""
+    if isinstance(python_function, functools.partial):
+      python_function_to_inspect = python_function.func
+      args_to_prepend = python_function.args or tuple()
+      kwargs_to_include = python_function.keywords or {}
+    else:
+      python_function_to_inspect = python_function
+      args_to_prepend = tuple()
+      kwargs_to_include = {}
+
+    fullargspec = tf_inspect.getfullargspec(python_function_to_inspect)
+    is_method = tf_inspect.ismethod(python_function_to_inspect)
+
+    return FunctionSpec(fullargspec, is_method, args_to_prepend,
+                        kwargs_to_include, input_signature)
+
+  def __init__(self, fullargspec, is_method, args_to_prepend, kwargs_to_include,
+               input_signature):
+    self._fullargspec = fullargspec
+    self._is_method = is_method
+    self._args_to_prepend = args_to_prepend
+    self._kwargs_to_include = kwargs_to_include
+    self._default_values = fullargspec.defaults
+
+    if self._is_method:
+      # Remove `self`: default arguments shouldn't be matched to it.
+      args = fullargspec.args[1:]
+    else:
+      args = fullargspec.args
+
+    # A cache mapping from argument name to index, for canonicalizing
+    # arguments that are called in a keyword-like fashion.
+    self._args_to_indices = {arg: i for i, arg in enumerate(args)}
+    self.arg_names = args
+    self.vararg_name = fullargspec.varargs
+
+    # A cache mapping from arg index to default value, for canonicalization.
+    offset = len(args) - len(fullargspec.defaults or [])
+    self._arg_indices_to_default_values = {
+        offset + index: default
+        for index, default in enumerate(fullargspec.defaults or [])
+    }
+    self._default_values_start_index = offset
+    if input_signature is None:
+      self.input_signature = None
+    else:
+      if fullargspec.varkw is not None or fullargspec.kwonlyargs:
+        raise ValueError("Cannot define a TensorFlow function from a Python "
+                         "function with keyword arguments when "
+                         "input_signature is provided.")
+
+      if not isinstance(input_signature, (tuple, list)):
+        raise TypeError("input_signature must be either a tuple or a "
+                        "list, received " + str(type(input_signature)))
+
+      self.input_signature = tuple(input_signature)
+      self.flat_input_signature = tuple(nest.flatten(input_signature))
+
+  def canonicalize_function_inputs(self, *args, **kwargs):
+    """Canonicalizes `args` and `kwargs`.
+
+    Canonicalize the inputs to the Python function using a `FunctionSpec`
+    instance. In particular, we parse the varags and kwargs that the
+    original function was called with into a tuple corresponding to the
+    Python function's positional (named) arguments and a dictionary
+    corresponding to its kwargs.
+
+    Args:
+      *args: The varargs this object was called with.
+      **kwargs: The keyword args this function was called with.
+
+    Returns:
+      A canonicalized ordering of the inputs representened by a tuple in the
+      form (args, kwargs). Here: `args` is a full list of bound arguments, and
+      `kwargs` contains only true keyword arguments, as opposed to named
+      arguments called in a keyword-like fashion.
+
+    Raises:
+      ValueError: If a keyword in `kwargs` cannot be matched with a positional
+        argument when an input signature is specified, or when the inputs
+        do not conform to the input signature.
+    """
+    args = self._args_to_prepend + args
+    kwargs = dict(kwargs, **self._kwargs_to_include)
+    if not kwargs:
+      if self._default_values:
+        inputs = args + self._default_values[
+            len(args) - self._default_values_start_index:]
+      else:
+        inputs = args
+    else:
+      # Maps from index of arg to its corresponding value, according to `args`
+      # and `kwargs`; seeded with the default values for the named args that
+      # aren't in `args`.
+      arg_indices_to_values = {
+          index: default for index, default in six.iteritems(
+              self._arg_indices_to_default_values) if index >= len(args)
+      }
+      consumed_args = []
+      for arg, value in six.iteritems(kwargs):
+        index = self._args_to_indices.get(arg, None)
+        if index is not None:
+          arg_indices_to_values[index] = value
+          consumed_args.append(arg)
+        elif self.input_signature is not None:
+          raise ValueError("Cannot define a TensorFlow function from a Python "
+                           "function with keyword arguments when "
+                           "input_signature is provided.")
+      for arg in consumed_args:
+        # After this loop, `kwargs` will only contain true keyword arguments, as
+        # opposed to named arguments called in a keyword-like fashion.
+        kwargs.pop(arg)
+      inputs = args + _deterministic_dict_values(arg_indices_to_values)
+    flat_inputs = nest.flatten(inputs)
+
+    # Check for NumPy arrays in arguments and convert them to Tensors.
+    # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
+    # finding a way to store them directly in the cache key (currently not
+    # possible since ndarrays are not hashable).
+    need_packing = False
+    for index, value in enumerate(flat_inputs):
+      if type(value) == np.ndarray:
+        flat_inputs[index] = constant_op.constant(value)
+        need_packing = True
+    if need_packing:
+      inputs = nest.pack_sequence_as(
+          structure=inputs, flat_sequence=flat_inputs)
+    if self.input_signature is None:
+      return inputs, kwargs
+    else:
+      assert not kwargs
+      signature_relevant_inputs = inputs[:len(self.input_signature)]
+      try:
+        nest.assert_same_structure(self.input_signature,
+                                   signature_relevant_inputs)
+      except (ValueError, TypeError):
+        raise ValueError("Structure of Python function inputs does not match "
+                         "input_signature.")
+      signature_inputs_flat = nest.flatten(signature_relevant_inputs)
+      if any(
+          not pywrap_tensorflow.IsTensor(arg) for arg in signature_inputs_flat):
+        raise ValueError("When input_signature is provided, all inputs to "
+                         "the Python function must be Tensors.")
+      if any(not spec.is_compatible_with(other) for spec, other in zip(
+          self.flat_input_signature, signature_inputs_flat)):
+        raise ValueError("Python inputs incompatible with input_signature: "
+                         "inputs (%s), input_signature (%s)" %
+                         (str(inputs), str(self.input_signature)))
+      return inputs, {}
 
 
 class PolymorphicFunction(object):
@@ -792,18 +974,17 @@ class PolymorphicFunction(object):
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
     """
-
     if isinstance(python_function, functools.partial):
       self._python_function = python_function.func
-      self._args_to_prepend = python_function.args or tuple()
-      self._kwargs_to_include = python_function.keywords or {}
     else:
       self._python_function = python_function
-      self._args_to_prepend = tuple()
-      self._kwargs_to_include = {}
+    self._function_spec = FunctionSpec.from_function_and_signature(
+        python_function, input_signature)
     self._name = name
     self._autograph = autograph
     self._function_cache = collections.OrderedDict()
+    self._garbage_collector = _PolymorphicFunctionGarbageCollector(
+        self._function_cache)
     self._function_attributes = attributes or {}
 
     self._lock = threading.Lock()
@@ -811,41 +992,6 @@ class PolymorphicFunction(object):
     # PolymorphicFunction, used to make sure defun-decorated methods create
     # different functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
-
-    fullargspec = tf_inspect.getfullargspec(self._python_function)
-    if tf_inspect.ismethod(self._python_function):
-      # Remove `self`: default arguments shouldn't be matched to it.
-      args = fullargspec.args[1:]
-    else:
-      args = fullargspec.args
-
-    # A cache mapping from argument name to index, for canonicalizing
-    # arguments that are called in a keyword-like fashion.
-    self._args_to_indices = {arg: i for i, arg in enumerate(args)}
-    self._arg_names = args
-    self._vararg_name = fullargspec.varargs
-    # A cache mapping from arg index to default value, for canonicalization.
-    offset = len(args) - len(fullargspec.defaults or [])
-    self._arg_indices_to_default_values = {
-        offset + index: default
-        for index, default in enumerate(fullargspec.defaults or [])
-    }
-    self._default_values = fullargspec.defaults
-    self._default_values_start_index = offset
-    if input_signature is None:
-      self._input_signature = None
-    else:
-      if fullargspec.varkw is not None or fullargspec.kwonlyargs:
-        raise ValueError("Cannot define a TensorFlow function from a Python "
-                         "function with keyword arguments when "
-                         "input_signature is provided.")
-
-      if not isinstance(input_signature, (tuple, list)):
-        raise TypeError("input_signature must be either a tuple or a "
-                        "list, received " + str(type(input_signature)))
-
-      self._input_signature = tuple(input_signature)
-      self._flat_input_signature = tuple(nest.flatten(input_signature))
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
@@ -855,13 +1001,38 @@ class PolymorphicFunction(object):
   @property
   def python_function(self):
     """Returns the wrapped Python function."""
-    return self._python_function
+    return self._python_function  # pylint: disable=protected-access
 
-  def _get_concrete_function_internal(self, *args, **kwargs):
-    """Bypasses error checking when getting a graph function."""
+  @property
+  def function_spec(self):
+    return self._function_spec
+
+  @property
+  def _input_signature(self):
+    """Returns the wrapped Python function."""
+    return self._function_spec.input_signature  # pylint: disable=protected-access
+
+  @property
+  def _flat_input_signature(self):
+    """Returns the wrapped Python function."""
+    return self._function_spec.flat_input_signature  # pylint: disable=protected-access
+
+  def _get_concrete_function_internal_garbage_collected(self, *args, **kwargs):
+    """Returns a concrete function which cleans up its graph function."""
     if self._input_signature:
       args, kwargs = None, None
     graph_function, _, _ = self._maybe_define_function(args, kwargs)
+    return graph_function
+
+  def _get_concrete_function_internal(self, *args, **kwargs):
+    """Bypasses error checking when getting a graph function."""
+    graph_function = self._get_concrete_function_internal_garbage_collected(
+        *args, **kwargs)
+    # We're returning this concrete function to someone, and they may keep a
+    # reference to the FuncGraph without keeping a reference to the Function
+    # object. So we won't clean up the reference cycles manually and instead
+    # will leave them to Python's garbage collector.
+    graph_function._garbage_collector.release()  # pylint: disable=protected-access
     return graph_function
 
   def get_concrete_function(self, *args, **kwargs):
@@ -1024,96 +1195,6 @@ class PolymorphicFunction(object):
     return CacheKey(input_signature, parent_graph, device_functions,
                     colocation_stack, uses_xla)
 
-  def _canonicalize_function_inputs(self, *args, **kwargs):
-    """Canonicalizes `args` and `kwargs`.
-
-    Canonicalize the inputs to the Python function using its fullargspec. In
-    particular, we parse the varags and kwargs that this
-    `PolymorphicFunction` was called with into a tuple corresponding to the
-    Python function's positional (named) arguments and a dictionary
-    corresponding to its kwargs.
-
-    Args:
-      *args: The varargs this object was called with.
-      **kwargs: The keyword args this function was called with.
-
-    Returns:
-      A canonicalized ordering of the inputs.
-
-    Raises:
-      ValueError: If a keyword in `kwargs` cannot be matched with a positional
-        argument when an input signature is specified, or when the inputs
-        do not conform to the input signature.
-    """
-    args = self._args_to_prepend + args
-    kwargs = dict(kwargs, **self._kwargs_to_include)
-    if not kwargs:
-      if self._default_values:
-        inputs = args + self._default_values[len(args) -
-                                             self._default_values_start_index:]
-      else:
-        inputs = args
-    else:
-      # Maps from index of arg to its corresponding value, according to `args`
-      # and `kwargs`; seeded with the default values for the named args that
-      # aren't in `args`.
-      arg_indices_to_values = {
-          index: default for index, default in six.iteritems(
-              self._arg_indices_to_default_values) if index >= len(args)
-      }
-      consumed_args = []
-      for arg, value in six.iteritems(kwargs):
-        index = self._args_to_indices.get(arg, None)
-        if index is not None:
-          arg_indices_to_values[index] = value
-          consumed_args.append(arg)
-        elif self._input_signature is not None:
-          raise ValueError("Cannot define a TensorFlow function from a Python "
-                           "function with keyword arguments when "
-                           "input_signature is provided.")
-      for arg in consumed_args:
-        # After this loop, `kwargs` will only contain true keyword arguments, as
-        # opposed to named arguments called in a keyword-like fashion.
-        kwargs.pop(arg)
-      inputs = args + _deterministic_dict_values(arg_indices_to_values)
-    flat_inputs = nest.flatten(inputs)
-
-    # Check for NumPy arrays in arguments and convert them to Tensors.
-    # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
-    # finding a way to store them directly in the cache key (currently not
-    # possible since ndarrays are not hashable).
-    need_packing = False
-    for index, value in enumerate(flat_inputs):
-      if type(value) == np.ndarray:
-        flat_inputs[index] = constant_op.constant(value)
-        need_packing = True
-    if need_packing:
-      inputs = nest.pack_sequence_as(structure=inputs,
-                                     flat_sequence=flat_inputs)
-    if self._input_signature is None:
-      return inputs, kwargs
-    else:
-      assert not kwargs
-      signature_relevant_inputs = inputs[:len(self._input_signature)]
-      try:
-        nest.assert_same_structure(self._input_signature,
-                                   signature_relevant_inputs)
-      except (ValueError, TypeError):
-        raise ValueError("Structure of Python function inputs does not match "
-                         "input_signature.")
-      signature_inputs_flat = nest.flatten(signature_relevant_inputs)
-      if any(not pywrap_tensorflow.IsTensor(arg)
-             for arg in signature_inputs_flat):
-        raise ValueError("When input_signature is provided, all inputs to "
-                         "the Python function must be Tensors.")
-      if any(not spec.is_compatible_with(other)
-             for spec, other in zip(self._flat_input_signature,
-                                    signature_inputs_flat)):
-        raise ValueError("Python inputs incompatible with input_signature: "
-                         "inputs (%s), input_signature (%s)" %
-                         (str(inputs), str(self._input_signature)))
-      return inputs, {}
-
   def _maybe_define_function(self, args, kwargs):
     """Gets a function for these inputs, defining it if necessary.
 
@@ -1133,7 +1214,8 @@ class PolymorphicFunction(object):
       TypeError: If the function inputs include non-hashable objects
     """
     if self._input_signature is None or args is not None or kwargs is not None:
-      args, kwargs = self._canonicalize_function_inputs(*args, **kwargs)
+      args, kwargs = self._function_spec.canonicalize_function_inputs(
+          *args, **kwargs)
     cache_key = self._cache_key(args, kwargs)
     with self._lock:
       try:
@@ -1151,8 +1233,9 @@ class PolymorphicFunction(object):
         else:
           arglen = len(self._input_signature)
         arg_names = (
-            self._arg_names[:arglen]
-            + [self._vararg_name] * (arglen - len(self._arg_names)))
+            self._function_spec.arg_names[:arglen]
+            + [self._function_spec.vararg_name] *
+            (arglen - len(self._function_spec.arg_names)))
         graph_function = Function(
             func_graph_module.func_graph_from_py_func(
                 self._name,
@@ -1163,6 +1246,22 @@ class PolymorphicFunction(object):
                 autograph=self._autograph,
                 arg_names=arg_names),
             self._function_attributes)
+        if self._input_signature:
+          python_call_signature = self._input_signature
+        else:
+          python_call_signature = tuple(
+              _encode_arg_for_serialization(arg) for arg in args)
+        # pylint: disable=protected-access
+        # Save information about non-Tensor arguments with the concrete
+        # function. Used to serialize PolymorphicFunctions.
+        graph_function._python_call_signature = python_call_signature
+        # Tell the Function to clean up its graph once it goes out of
+        # scope. Function does not do this in its constructor since it gets used
+        # in some places (like Keras) where the FuncGraph lives longer than the
+        # Function.
+        graph_function._garbage_collector = _FunctionGarbageCollector(
+            graph_function.graph)
+        # pylint: enable=protected-access
         self._function_cache[cache_key] = graph_function
       return graph_function, args, kwargs
 
@@ -1203,19 +1302,18 @@ def validate_signature(signature):
 def defun(func=None, input_signature=None, autograph=True):
   """Compiles a Python function into a callable TensorFlow graph.
 
-  `defun` (short for "define function") trace-compiles a Python function
+  `defun` (short for "define function") compiles a Python function
   composed of TensorFlow operations into a callable that executes a `tf.Graph`
   containing those operations. The callable produced by `defun` contains only
   the subgraph of TensorFlow operations that were executed when the Python
   function was called with a particular input signature, defined as a list
   of the shapes and dtypes of the Python function's Tensor-valued arguments and
-  the values of its non-Tensor Python objects. In particular, `defun` is _not_ a
-  compiler for arbitrary Python code.
+  the values of its non-Tensor Python objects.
 
   When eager execution is enabled, the ability to create graphs from Python
   functions makes it possible to incrementally trade off debugability and
   interactivity for performance.  Functions compiled with `defun` cannot be
-  inspected with `pdb` and `print` statements; however, executing a graph
+  inspected with `pdb`; however, executing a graph
   generated by `defun` sometimes takes less time and memory than eagerly
   executing the corresponding Python function, since specifying computations as
   graphs allows for optimizations like automatic buffer reuse and
@@ -1306,6 +1404,7 @@ def defun(func=None, input_signature=None, autograph=True):
   outer graph otherwise.
 
   _Input Signatures_
+
   By default, `F = tf.contrib.eager.defun(f)` instantiates a separate graph
   for every unique sequence of the shapes and dtypes of Tensor arguments and
   the values of Python objects it is invoked with. For example, calling
@@ -1364,6 +1463,7 @@ def defun(func=None, input_signature=None, autograph=True):
   Tensors as arguments and must not take unnamed keyword arguments (**kwargs).
 
   _Tracing_
+
   Be aware that because `F` only logs TensorFlow operations, all the other
   Python code that `f` executes will only shape the _construction_ of the graphs
   that `F` executes: the Python code won't be executed when the graphs
@@ -1389,6 +1489,7 @@ def defun(func=None, input_signature=None, autograph=True):
   replace the call to `np.random.randn` with `tf.random_normal((5, 5))`.
 
   _Python Side-Effects_
+
   A corollary of the previous discussion on tracing is the following: If a
   Python function `f` has Python side-effects, then executing `f` multiple times
   will not necessarily be semantically equivalent to executing `F =
@@ -1396,7 +1497,8 @@ def defun(func=None, input_signature=None, autograph=True):
   that `defun` only captures the subgraph of TensorFlow operations that is
   constructed when `f` is called in a graph-building context.
 
-  _Python Control Flow_.
+  _Python Control Flow_
+
   The structure of many machine learning computations depend upon whether one is
   training or validating, and it is common to nest specialized logic under `if
   training:` blocks. By mapping each input signature to a unique graph, `defun`
@@ -1425,27 +1527,26 @@ def defun(func=None, input_signature=None, autograph=True):
   exact_outputs = lossy_matmul(W, x, training=False)
   ```
 
-  On the other hand, because `defun` generates graphs by tracing and not by
-  source code analysis, it fully unrolls Python `for` and `while` loops,
-  potentially creating large graphs. If your Python function has native loops
-  that run for many iterations, consider replacing them with `tf.while_loop`
-  operations.
+  _TensorFlow Control Flow_
 
-  When constructing graphs, `tf.Tensor` objects cannot be used as Python
-  `bool` objects. This means, for example, that you should replace code in `f`
-  resembling
+  When `autograph` is `True`, data-dependent control flow is allowed as well.
+  Control flow statements that depend on `Tensor` values are staged into
+  corresponding TensorFlow ops. For example, the following code will work as
+  expected:
 
   ```python
-
-  if tensor < 10:
-    true_fn()
-  else:
-    false_fn()
+  @tf.contrib.eager.defun
+  def dynamic_rnn_loop(cell, seq):
+    state, output = cell.zero_state()
+    for input in seq:
+      state, output = cell(input, state)
+    return output
   ```
 
-  with `tf.cond(tensor < 10, true_fn, false_fn)`.
+  For more information see `tf.autograph`.
 
   _Variables_
+
   TensorFlow operations related to variable creation and initialization are
   automatically lifted out of the graphs generated by `defun`. In practice, this
   implies that variable creation and initialization only happen the first time
@@ -1617,14 +1718,24 @@ def class_method_to_instance_method(original_function, instance):
   assert hasattr(original_function, "_input_signature")
   assert hasattr(original_function, "python_function")
 
+  weak_bound_method_wrapper = None
   def bound_method_wrapper(*args, **kwargs):
+    """Wraps either a dummy MethodType or a converted AutoGraph function."""
     # __wrapped__ allows AutoGraph to swap in a converted function.
-    wrapped_fn = bound_method_wrapper.__wrapped__
-    # If __wrapped__ was not replaced, then call original_function.
-    # TODO(b/119246461): This needs to be simplified.
-    if tf_inspect.ismethod(wrapped_fn):
+    strong_bound_method_wrapper = weak_bound_method_wrapper()
+    wrapped_fn = strong_bound_method_wrapper.__wrapped__
+
+    if wrapped_fn is strong_bound_method_wrapper.__original_wrapped__:
+      # If __wrapped__ was not replaced, then call original_function.
       wrapped_fn = original_function.python_function
+      if tf_inspect.ismethod(wrapped_fn):
+        wrapped_fn = six.get_unbound_function(wrapped_fn)
+      return wrapped_fn(weak_instance(), *args, **kwargs)
+
+    # If __wrapped__ was replaced, then it is always an unbound function
+    # that takes self as first argument.
     return wrapped_fn(weak_instance(), *args, **kwargs)
+  weak_bound_method_wrapper = weakref.ref(bound_method_wrapper)
 
   # pylint: disable=protected-access
   # We make a dummy MethodType object to generate the correct bound method
@@ -1641,3 +1752,39 @@ def class_method_to_instance_method(original_function, instance):
   wrapped_instance_func = tf_decorator.make_decorator(
       original_function.python_function, instance_func)
   return wrapped_instance_func
+
+
+class _PolymorphicFunctionGarbageCollector(object):
+  """Cleans up cycles when a defun goes out of scope."""
+
+  def __init__(self, cache):
+    self._cache = cache
+
+  def __del__(self):
+    if func_graph_module is None or memory is None:
+      return
+    try:
+      while self._cache:
+        self._cache.popitem()
+      memory.dismantle_ordered_dict(self._cache)
+    except:  # pylint: disable=bare-except
+      pass
+
+
+class _FunctionGarbageCollector(object):
+  """Cleans up reference cycles when a Function goes out of scope."""
+
+  def __init__(self, func_graph):
+    self._func_graph = func_graph
+
+  def release(self):
+    """Call off the FuncGraph deletion."""
+    self._func_graph = None
+
+  def __del__(self):
+    if func_graph_module is None or memory is None or self._func_graph is None:
+      return
+    try:
+      func_graph_module.dismantle_func_graph(self._func_graph)
+    except:  # pylint: disable=bare-except
+      pass

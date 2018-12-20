@@ -1155,7 +1155,22 @@ TEST_F(TestDelegate, BasicDelegate) {
   EXPECT_EQ(params->output_tensors->data[1], 4);
 }
 
-TEST_F(TestDelegate, ComplexDeligate) {
+TEST_F(TestDelegate, StaticDelegateMakesGraphImmutable) {
+  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+
+  // As the delegate doesn't support dynamic resizing, further graph mutation is
+  // prohibited.
+  ASSERT_NE(interpreter_->ResizeInputTensor(0, {0}), kTfLiteOk);
+  ASSERT_NE(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+}
+
+TEST_F(TestDelegate, ComplexDelegate) {
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({1, 2}));
   interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
 
@@ -1314,6 +1329,19 @@ TEST_F(TestDelegateWithDynamicTensors, AllowDynamicTensors) {
   // The node should be replaced because dynamic tensors are allowed. Therefore
   // only node ID in the execution plan is changed from 0 to 1.
   ASSERT_EQ(interpreter_->execution_plan()[0], 1);
+}
+
+TEST_F(TestDelegateWithDynamicTensors, ModifyGraphAfterAllocate) {
+  // Trigger allocation *before* delegate application.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&delegate_), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+  ASSERT_EQ(interpreter_->execution_plan()[0], 1);
+
+  // Allocation should still succeed.
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
 }
 
 TEST(TestDelegateOwnership, ProperlyDisposed) {

@@ -154,7 +154,13 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }

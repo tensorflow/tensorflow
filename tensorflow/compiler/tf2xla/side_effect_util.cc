@@ -24,6 +24,8 @@ const char kXlaTokenInputNodesAttrName[] = "_xla_token_input_nodes";
 
 const char kXlaTokenArgNodeName[] = "_xla_token_arg_node";
 
+const char kXlaHasHostTransferAttrName[] = "_xla_has_host_transfer";
+
 std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g) {
   std::set<std::string> results;
   Node* first_side_effecting_node_on_path = nullptr;

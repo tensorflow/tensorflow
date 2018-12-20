@@ -78,7 +78,7 @@ class XlaConvOp : public XlaOpKernel {
     xla::XlaOp output = xla::ConvGeneralDilated(
         context->Input(0), context->Input(1), window_strides, padding,
         lhs_dilation, rhs_dilation, dnums_, feature_group_count,
-        &precision_config_);
+        /*batch_group_count=*/1, &precision_config_);
     context->SetOutput(0, output);
   }
 

@@ -136,7 +136,9 @@ class HloModule {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO modules,
   // with respect to HloInstruction::Identical() method.
-  uint64 Hash() const { return entry_computation()->Hash(); }
+  uint64 Hash() const {
+    return entry_computation()->root_instruction()->Hash();
+  }
 
   // Gets the computations in this module.
   //

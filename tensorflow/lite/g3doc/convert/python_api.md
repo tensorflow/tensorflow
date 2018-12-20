@@ -19,9 +19,9 @@ be targeted to devices with mobile.
 
 ## API
 
-The API for converting TensorFlow models to TensorFlow Lite as of TensorFlow 1.9
-is `tf.lite.TFLiteConverter`. The API for calling the Python intepreter
-is `tf.lite.Interpreter`.
+The API for converting TensorFlow models to TensorFlow Lite is
+`tf.lite.TFLiteConverter`. The API for calling the Python interpreter is
+`tf.lite.Interpreter`.
 
 `TFLiteConverter` provides class methods based on the original format of the
 model. `TFLiteConverter.from_session()` is available for GraphDefs.

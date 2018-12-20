@@ -297,8 +297,12 @@ def _DefaultGradYs(grad_ys,
   return new_grad_ys
 
 
-def IsTrainable(tensor):
-  dtype = dtypes.as_dtype(tensor.dtype)
+def IsTrainable(tensor_or_dtype):
+  if isinstance(tensor_or_dtype, ops.Tensor):
+    dtype = tensor_or_dtype.dtype
+  else:
+    dtype = tensor_or_dtype
+  dtype = dtypes.as_dtype(dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
                               dtypes.complex64, dtypes.complex128,
                               dtypes.resource, dtypes.variant)
@@ -322,6 +326,10 @@ def _VerifyGeneratedGradients(grads, op):
     ValueError: if sizes of gradients and inputs don't match.
     TypeError: if type of any gradient is not valid for its input.
   """
+  # While ops have inputs added to them during the gradient computation, so we
+  # skip the below check. See while_v2 for details.
+  if op.type == "While": return
+
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))

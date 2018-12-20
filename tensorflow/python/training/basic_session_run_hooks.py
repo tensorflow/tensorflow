@@ -163,7 +163,7 @@ class NeverTriggerTimer(_HookTimer):
     return None
 
 
-@tf_export("train.LoggingTensorHook")
+@tf_export(v1=["train.LoggingTensorHook"])
 class LoggingTensorHook(session_run_hook.SessionRunHook):
   """Prints the given tensors every N local steps, every N seconds, or at end.
 
@@ -373,7 +373,7 @@ class _MultiStepStopAtStepHook(session_run_hook.SessionRunHook):
       self._update_steps_per_run_variable(global_step, run_context.session)
 
 
-@tf_export("train.StopAtStepHook")
+@tf_export(v1=["train.StopAtStepHook"])
 class StopAtStepHook(session_run_hook.SessionRunHook):
   """Hook that requests stop at a specified step."""
 
@@ -495,7 +495,7 @@ class CheckpointSaverListener(object):
     pass
 
 
-@tf_export("train.CheckpointSaverHook")
+@tf_export(v1=["train.CheckpointSaverHook"])
 class CheckpointSaverHook(session_run_hook.SessionRunHook):
   """Saves checkpoints every N steps or seconds."""
 
@@ -634,7 +634,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     return savers[0]
 
 
-@tf_export("train.StepCounterHook")
+@tf_export(v1=["train.StepCounterHook"])
 class StepCounterHook(session_run_hook.SessionRunHook):
   """Hook that counts steps per second."""
 
@@ -725,7 +725,7 @@ class NanLossDuringTrainingError(RuntimeError):
     return "NaN loss during training."
 
 
-@tf_export("train.NanTensorHook")
+@tf_export(v1=["train.NanTensorHook"])
 class NanTensorHook(session_run_hook.SessionRunHook):
   """Monitors the loss tensor and stops training if loss is NaN.
 
@@ -757,7 +757,7 @@ class NanTensorHook(session_run_hook.SessionRunHook):
         run_context.request_stop()
 
 
-@tf_export("train.SummarySaverHook")
+@tf_export(v1=["train.SummarySaverHook"])
 class SummarySaverHook(session_run_hook.SessionRunHook):
   """Saves summaries every N steps."""
 
@@ -866,7 +866,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     return summary_op
 
 
-@tf_export("train.GlobalStepWaiterHook")
+@tf_export(v1=["train.GlobalStepWaiterHook"])
 class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
   """Delays execution until global step reaches `wait_until_step`.
 
@@ -914,7 +914,7 @@ class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
       time.sleep(0.5)
 
 
-@tf_export("train.FinalOpsHook")
+@tf_export(v1=["train.FinalOpsHook"])
 class FinalOpsHook(session_run_hook.SessionRunHook):
   """A hook which evaluates `Tensors` at the end of a session."""
 
@@ -958,7 +958,7 @@ class FinalOpsHook(session_run_hook.SessionRunHook):
         raise e
 
 
-@tf_export("train.FeedFnHook")
+@tf_export(v1=["train.FeedFnHook"])
 class FeedFnHook(session_run_hook.SessionRunHook):
   """Runs `feed_fn` and sets the `feed_dict` accordingly."""
 

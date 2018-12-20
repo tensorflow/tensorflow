@@ -25,9 +25,9 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:platform",
-        "//tensorflow/python:saveable_object",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/saving:saveable_object",
     ],
 )
 
@@ -114,7 +114,6 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:saveable_object",
         "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:tensor_shape",
@@ -123,6 +122,9 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/training/saving:functional_saver",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
     ],
 )
 
@@ -157,6 +159,43 @@ py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "util_with_v1_optimizers_test",
+    srcs = ["util_with_v1_optimizers_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/74395663
+    deps = [
+        ":base",
+        ":tracking",
+        ":util",
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:session",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:training",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

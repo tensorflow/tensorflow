@@ -65,6 +65,7 @@ CreateResourceOpInfoMap() {
   add("ResourceApplyFtrlV2"                  , kReadWrite, kVariable);
   add("ResourceApplyGradientDescent"         , kReadWrite, kVariable);
   add("ResourceApplyMomentum"                , kReadWrite, kVariable);
+  add("ResourceApplyKerasMomentum"           , kReadWrite, kVariable);
   add("ResourceApplyPowerSign"               , kReadWrite, kVariable);
   add("ResourceApplyProximalAdagrad"         , kReadWrite, kVariable);
   add("ResourceApplyProximalGradientDescent" , kReadWrite, kVariable);

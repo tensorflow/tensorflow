@@ -21,12 +21,12 @@ from tensorflow.python.data.experimental.ops import unique
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class UniqueTest(test_base.DatasetTestBase):
 
   def _testSimpleHelper(self, dtype, test_cases):
@@ -44,19 +44,13 @@ class UniqueTest(test_base.DatasetTestBase):
     current_test_case = []
     dataset = dataset_ops.Dataset.from_generator(lambda: current_test_case,
                                                  dtype).apply(unique.unique())
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
 
-    with self.cached_session() as sess:
-      for test_case, expected in test_cases:
-        current_test_case = test_case
-        self.evaluate(iterator.initializer)
-        for element in expected:
-          if dtype == dtypes.string:
-            element = compat.as_bytes(element)
-          self.assertAllEqual(element, self.evaluate(next_element))
-        with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(next_element)
+    for test_case, expected in test_cases:
+      current_test_case = test_case
+      self.assertDatasetProduces(dataset, [
+          compat.as_bytes(element) if dtype == dtypes.string else element
+          for element in expected
+      ])
 
   @test_util.run_deprecated_v1
   def testSimpleInt(self):

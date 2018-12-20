@@ -31,3 +31,5 @@ upper_tabs:
       - title: XLA compile API
         path: /xla/tutorials/xla_compile
         status: experimental
+
+- include: /_upper_tabs_right.yaml

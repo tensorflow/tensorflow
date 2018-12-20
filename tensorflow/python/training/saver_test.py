@@ -124,8 +124,8 @@ class SaverTest(test.TestCase):
       if not context.executing_eagerly():
         self.assertEqual(
             len(variables.report_uninitialized_variables().eval()), 2)
-        self.assertEqual(0, len(v2.keys().eval()))
-        self.assertEqual(0, len(v2.values().eval()))
+        self.assertEqual(0, len(self.evaluate(v2.keys())))
+        self.assertEqual(0, len(self.evaluate(v2.values())))
       # Restore the saved values in the parameter nodes.
       save = saver_module.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
       save.restore(sess, save_path)
@@ -331,10 +331,10 @@ class SaverTest(test.TestCase):
       self.evaluate(init_all_op)
 
       # Check that the parameter nodes have been initialized.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
-      self.assertEqual(b"k1", v2.keys().eval())
-      self.assertEqual(30.0, v2.values().eval())
+      self.assertEqual(10.0, self.evaluate(v0))
+      self.assertEqual(20.0, self.evaluate(v1))
+      self.assertEqual(b"k1", self.evaluate(v2.keys()))
+      self.assertEqual(30.0, self.evaluate(v2.values()))
 
       # Save the initialized values in the file at "save_path"
       val = save.save(sess, save_path1)
@@ -360,16 +360,16 @@ class SaverTest(test.TestCase):
       # Assert that the variables are not initialized.
       self.assertEqual(
           len(variables.report_uninitialized_variables().eval()), 2)
-      self.assertEqual(0, len(v2.keys().eval()))
-      self.assertEqual(0, len(v2.values().eval()))
+      self.assertEqual(0, len(self.evaluate(v2.keys())))
+      self.assertEqual(0, len(self.evaluate(v2.values())))
 
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path2)
       # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
-      self.assertEqual(b"k1", v2.keys().eval())
-      self.assertEqual(30.0, v2.values().eval())
+      self.assertEqual(10.0, self.evaluate(v0))
+      self.assertEqual(20.0, self.evaluate(v1))
+      self.assertEqual(b"k1", self.evaluate(v2.keys()))
+      self.assertEqual(30.0, self.evaluate(v2.values()))
 
   @test_util.run_deprecated_v1
   def testFilenameTensor(self):
@@ -390,7 +390,7 @@ class SaverTest(test.TestCase):
             ValueError, "The passed save_path is not a valid checkpoint:"):
           save.restore(sess, "invalid path")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInt64(self):
     save_path = os.path.join(self.get_temp_dir(), "int64")
 
@@ -398,7 +398,7 @@ class SaverTest(test.TestCase):
       # Build a graph with 1 node, and save and restore for them.
       v = variables.VariableV1(np.int64(15), name="v")
       save = saver_module.Saver({"v": v}, restore_sequentially=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Save the initialized values in the file at "save_path"
       val = save.save(sess, save_path)
@@ -416,7 +416,7 @@ class SaverTest(test.TestCase):
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path)
       # Check that the parameter nodes have been restored.
-      self.assertEqual(np.int64(15), v.eval())
+      self.assertEqual(np.int64(15), self.evaluate(v))
 
   def testSomeErrors(self):
     with ops_lib.Graph().as_default():
@@ -466,7 +466,7 @@ class SaverTest(test.TestCase):
       # Verify non-duplicate names work.
       saver_module.Saver({"v0": v0, "v2": v2.saveable})
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testBasicsWithListOfVariables(self):
     save_path = os.path.join(self.get_temp_dir(), "basics_with_list")
 
@@ -478,14 +478,14 @@ class SaverTest(test.TestCase):
       v2 = saver_test_utils.CheckpointedOp(name="v2")
       v2_init = v2.insert("k1", 30.0)
       save = saver_module.Saver([v0, v1, v2.saveable])
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       v2_init.run()
 
       # Check that the parameter nodes have been initialized.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
-      self.assertEqual(b"k1", v2.keys().eval())
-      self.assertEqual(30.0, v2.values().eval())
+      self.assertEqual(10.0, self.evaluate(v0))
+      self.assertEqual(20.0, self.evaluate(v1))
+      self.assertEqual(b"k1", self.evaluate(v2.keys()))
+      self.assertEqual(30.0, self.evaluate(v2.values()))
 
       # Save the initialized values in the file at "save_path"
       val = save.save(sess, save_path)
@@ -506,16 +506,16 @@ class SaverTest(test.TestCase):
       with self.assertRaisesWithPredicateMatch(
           errors_impl.OpError, lambda e: "uninitialized value v1" in e.message):
         self.evaluate(v1)
-      self.assertEqual(0, len(v2.keys().eval()))
-      self.assertEqual(0, len(v2.values().eval()))
+      self.assertEqual(0, len(self.evaluate(v2.keys())))
+      self.assertEqual(0, len(self.evaluate(v2.values())))
 
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path)
       # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
-      self.assertEqual(b"k1", v2.keys().eval())
-      self.assertEqual(30.0, v2.values().eval())
+      self.assertEqual(10.0, self.evaluate(v0))
+      self.assertEqual(20.0, self.evaluate(v1))
+      self.assertEqual(b"k1", self.evaluate(v2.keys()))
+      self.assertEqual(30.0, self.evaluate(v2.values()))
 
     # Build another graph with 2 nodes, initialized
     # differently, and a Restore node for them.
@@ -525,20 +525,20 @@ class SaverTest(test.TestCase):
       v2_2 = saver_test_utils.CheckpointedOp(name="v2")
       save2 = saver_module.Saver([v0_2, v1_2, v2_2.saveable])
       v2_2.insert("k1000", 3000.0).run()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Check that the parameter nodes have been initialized.
-      self.assertEqual(1000.0, v0_2.eval())
-      self.assertEqual(2000.0, v1_2.eval())
-      self.assertEqual(b"k1000", v2_2.keys().eval())
-      self.assertEqual(3000.0, v2_2.values().eval())
+      self.assertEqual(1000.0, self.evaluate(v0_2))
+      self.assertEqual(2000.0, self.evaluate(v1_2))
+      self.assertEqual(b"k1000", self.evaluate(v2_2.keys()))
+      self.assertEqual(3000.0, self.evaluate(v2_2.values()))
       # Restore the values saved earlier in the parameter nodes.
       save2.restore(sess, save_path)
       # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, v0_2.eval())
-      self.assertEqual(20.0, v1_2.eval())
-      self.assertEqual(b"k1", v2_2.keys().eval())
-      self.assertEqual(30.0, v2_2.values().eval())
+      self.assertEqual(10.0, self.evaluate(v0_2))
+      self.assertEqual(20.0, self.evaluate(v1_2))
+      self.assertEqual(b"k1", self.evaluate(v2_2.keys()))
+      self.assertEqual(30.0, self.evaluate(v2_2.values()))
 
   def _SaveAndLoad(self, var_name, var_value, other_value, save_path):
     with self.session(graph=ops_lib.Graph()) as sess:
@@ -582,14 +582,14 @@ class SaverTest(test.TestCase):
       with sess.graph.device(test.gpu_device_name()):
         v0_1 = variables.VariableV1(123.45)
       save = saver_module.Saver({"v0": v0_1})
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       save.save(sess, save_path)
 
     with session.Session("", graph=ops_lib.Graph()) as sess:
       with sess.graph.device(test.gpu_device_name()):
         v0_2 = variables.VariableV1(543.21)
       save = saver_module.Saver({"v0": v0_2})
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
   def testSharedServerOnGPU(self):
     if not test.is_gpu_available():
@@ -599,14 +599,14 @@ class SaverTest(test.TestCase):
       with sess.graph.device(test.gpu_device_name()):
         v0_1 = variables.VariableV1(123.45)
       save = saver_module.Saver({"v0": v0_1}, sharded=True, allow_empty=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       save.save(sess, save_path)
 
     with session.Session("", graph=ops_lib.Graph()) as sess:
       with sess.graph.device(test.gpu_device_name()):
         v0_2 = variables.VariableV1(543.21)
       save = saver_module.Saver({"v0": v0_2}, sharded=True, allow_empty=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
   def testVariables(self):
     save_path = os.path.join(self.get_temp_dir(), "variables")
@@ -627,10 +627,10 @@ class SaverTest(test.TestCase):
       # Saver with no arg, defaults to 'all variables'.
       save = saver_module.Saver()
       save.restore(sess, save_path)
-      self.assertAllClose(1.0, one.eval())
-      self.assertAllClose([2.0, 2.0, 2.0], twos.eval())
-      self.assertEqual(b"k1", v2.keys().eval())
-      self.assertEqual(3.0, v2.values().eval())
+      self.assertAllClose(1.0, self.evaluate(one))
+      self.assertAllClose([2.0, 2.0, 2.0], self.evaluate(twos))
+      self.assertEqual(b"k1", self.evaluate(v2.keys()))
+      self.assertEqual(3.0, self.evaluate(v2.values()))
 
   def testVarListShouldBeEmptyInDeferredBuild(self):
     with ops_lib.Graph().as_default():
@@ -664,10 +664,10 @@ class SaverTest(test.TestCase):
       # Saver with no arg, defaults to 'all variables'.
       save = saver_module.Saver()
       save.restore(sess, save_path)
-      self.assertAllClose(1.0, one.eval())
-      self.assertAllClose([2.0, 2.0, 2.0], twos.eval())
+      self.assertAllClose(1.0, self.evaluate(one))
+      self.assertAllClose([2.0, 2.0, 2.0], self.evaluate(twos))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testReshape(self):
     save_path = os.path.join(self.get_temp_dir(), "variables_reshape")
     with session.Session("", graph=ops_lib.Graph()) as sess:
@@ -691,7 +691,8 @@ class SaverTest(test.TestCase):
       var = variables.VariableV1([[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]])
       save = saver_module.Saver(reshape=True)
       save.restore(sess, save_path)
-      self.assertAllClose([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], var.eval())
+      self.assertAllClose([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                          self.evaluate(var))
 
   @test_util.run_in_graph_and_eager_modes
   def testSaveWithGlobalStep(self, pad_step_number=False):
@@ -726,7 +727,6 @@ class SaverTest(test.TestCase):
   def testSaveWithGlobalStepWithPadding(self):
     self.testSaveWithGlobalStep(pad_step_number=True)
 
-  @test_util.run_deprecated_v1
   def testSaveToNonexistingPath(self):
     file_io.write_string_to_file(
         os.path.join(self.get_temp_dir(), "actually_a_file"), "")
@@ -753,8 +753,8 @@ class SaverTest(test.TestCase):
           self.evaluate(init_all_op)
 
           # Check that the parameter nodes have been initialized.
-          self.assertEqual(10.0, v0.eval())
-          self.assertEqual(20.0, v1.eval())
+          self.assertEqual(10.0, self.evaluate(v0))
+          self.assertEqual(20.0, self.evaluate(v1))
 
           # Save the graph.
           save.save(sess, save_path)
@@ -763,13 +763,12 @@ class SaverTest(test.TestCase):
           # Restore the saved values in the parameter nodes.
           save.restore(sess, save_path)
           # Check that the parameter nodes have been restored.
-          self.assertEqual(10.0, v0.eval())
-          self.assertEqual(20.0, v1.eval())
+          self.assertEqual(10.0, self.evaluate(v0))
+          self.assertEqual(20.0, self.evaluate(v1))
       except ValueError as exc:
         error_msg_template = "Parent directory of {} doesn't exist, can't save."
         self.assertEqual(error_msg_template.format(save_path), str(exc))
 
-  @test_util.run_deprecated_v1
   def testSaveToURI(self):
     # ParseURI functions don't work on Windows yet.
     # TODO(jhseu): Remove this check when it works.
@@ -789,8 +788,8 @@ class SaverTest(test.TestCase):
       self.evaluate(init_all_op)
 
       # Check that the parameter nodes have been initialized.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
+      self.assertEqual(10.0, self.evaluate(v0))
+      self.assertEqual(20.0, self.evaluate(v1))
       save.save(sess, save_path)
 
   def testSaveRestoreAndValidateVariableDtype(self):
@@ -835,7 +834,7 @@ class SaverTest(test.TestCase):
       orig_vars = _model()
       self.evaluate(variables.global_variables_initializer())
       save = saver_module.Saver(max_to_keep=1)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       save.save(sess, save_dir)
       orig_vals = self.evaluate(orig_vars)
 
@@ -882,7 +881,7 @@ class SaveRestoreShardedTest(test.TestCase):
           },
           write_version=self._WRITE_VERSION,
           sharded=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       t0.insert("k1", 30.0).run()
       t1.insert("k2", 40.0).run()
       val = save.save(sess, save_path)
@@ -908,15 +907,15 @@ class SaveRestoreShardedTest(test.TestCase):
             },
             write_version=self._WRITE_VERSION,
             sharded=True)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         t0.insert("k11", 33.0).run()
-        self.assertEqual(111, v0.eval())
-        self.assertEqual(b"k11", t0.keys().eval())
-        self.assertEqual(33.0, t0.values().eval())
+        self.assertEqual(111, self.evaluate(v0))
+        self.assertEqual(b"k11", self.evaluate(t0.keys()))
+        self.assertEqual(33.0, self.evaluate(t0.values()))
         save.restore(sess, save_path + "-00000-of-00002")
-        self.assertEqual(10, v0.eval())
-        self.assertEqual(b"k1", t0.keys().eval())
-        self.assertEqual(30.0, t0.values().eval())
+        self.assertEqual(10, self.evaluate(v0))
+        self.assertEqual(b"k1", self.evaluate(t0.keys()))
+        self.assertEqual(30.0, self.evaluate(t0.values()))
 
       # Restore different ops from shard 1 of the saved files.
       with session.Session(
@@ -932,15 +931,15 @@ class SaveRestoreShardedTest(test.TestCase):
             },
             write_version=self._WRITE_VERSION,
             sharded=True)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         t1.insert("k22", 44.0).run()
-        self.assertEqual(222, v1.eval())
-        self.assertEqual(b"k22", t1.keys().eval())
-        self.assertEqual(44.0, t1.values().eval())
+        self.assertEqual(222, self.evaluate(v1))
+        self.assertEqual(b"k22", self.evaluate(t1.keys()))
+        self.assertEqual(44.0, self.evaluate(t1.values()))
         save.restore(sess, save_path + "-00001-of-00002")
-        self.assertEqual(20, v1.eval())
-        self.assertEqual(b"k2", t1.keys().eval())
-        self.assertEqual(40.0, t1.values().eval())
+        self.assertEqual(20, self.evaluate(v1))
+        self.assertEqual(b"k2", self.evaluate(t1.keys()))
+        self.assertEqual(40.0, self.evaluate(t1.values()))
 
     # Now try a restore with the sharded filename.
     with session.Session(
@@ -961,26 +960,26 @@ class SaveRestoreShardedTest(test.TestCase):
           },
           write_version=self._WRITE_VERSION,
           sharded=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       t0.insert("k11", 33.0).run()
       t1.insert("k22", 44.0).run()
-      self.assertEqual(111, v0.eval())
-      self.assertEqual(222, v1.eval())
-      self.assertEqual(b"k11", t0.keys().eval())
-      self.assertEqual(33.0, t0.values().eval())
-      self.assertEqual(b"k22", t1.keys().eval())
-      self.assertEqual(44.0, t1.values().eval())
+      self.assertEqual(111, self.evaluate(v0))
+      self.assertEqual(222, self.evaluate(v1))
+      self.assertEqual(b"k11", self.evaluate(t0.keys()))
+      self.assertEqual(33.0, self.evaluate(t0.values()))
+      self.assertEqual(b"k22", self.evaluate(t1.keys()))
+      self.assertEqual(44.0, self.evaluate(t1.values()))
       save_path = os.path.join(self.get_temp_dir(), "sharded_basics")
       if save._write_version is saver_pb2.SaverDef.V1:
         save.restore(sess, save_path + "-?????-of-?????")
       else:
         save.restore(sess, save_path)
-      self.assertEqual(10, v0.eval())
-      self.assertEqual(20, v1.eval())
-      self.assertEqual(b"k1", t0.keys().eval())
-      self.assertEqual(30.0, t0.values().eval())
-      self.assertEqual(b"k2", t1.keys().eval())
-      self.assertEqual(40.0, t1.values().eval())
+      self.assertEqual(10, self.evaluate(v0))
+      self.assertEqual(20, self.evaluate(v1))
+      self.assertEqual(b"k1", self.evaluate(t0.keys()))
+      self.assertEqual(30.0, self.evaluate(t0.values()))
+      self.assertEqual(b"k2", self.evaluate(t1.keys()))
+      self.assertEqual(40.0, self.evaluate(t1.values()))
 
     if save._write_version is saver_pb2.SaverDef.V1:
       self.assertEqual(
@@ -1028,7 +1027,7 @@ class SaveRestoreShardedTest(test.TestCase):
           else:
             vs = [variables.VariableV1(rnd, name=var_name)]
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         if call_saver_with_dict:
           saver = saver_module.Saver({var_name: vs[0]})
         else:
@@ -1056,7 +1055,7 @@ class SaveRestoreShardedTest(test.TestCase):
                   name=var_name)
           ]
 
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         if call_saver_with_dict:
           saver = saver_module.Saver({
               var_name: new_vs[0]
@@ -1203,7 +1202,7 @@ class MaxToKeepTest(test.TestCase):
     with self.cached_session() as sess:
       v = variables.VariableV1(10.0, name="v")
       save = saver_module.Saver({"v": v}, max_to_keep=2)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertEqual([], save.last_checkpoints)
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
@@ -1388,7 +1387,7 @@ class MaxToKeepTest(test.TestCase):
               "v0": v0,
               "v1": v1
           }, sharded=True, max_to_keep=2)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertEqual([], save.last_checkpoints)
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"))
@@ -1434,14 +1433,13 @@ class MaxToKeepTest(test.TestCase):
       self.assertTrue(
           gfile.Exists(checkpoint_management.meta_graph_filename(s3)))
 
-  @test_util.run_deprecated_v1
   def testNoMaxToKeep(self):
     save_dir = self._get_test_dir("no_max_to_keep")
     save_dir2 = self._get_test_dir("max_to_keep_0")
 
     with self.cached_session() as sess:
       v = variables.VariableV1(10.0, name="v")
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Test max_to_keep being None.
       save = saver_module.Saver({"v": v}, max_to_keep=None)
@@ -1463,14 +1461,13 @@ class MaxToKeepTest(test.TestCase):
       self.assertEqual([], save2.last_checkpoints)
       self.assertTrue(checkpoint_management.checkpoint_exists(s2))
 
-  @test_util.run_deprecated_v1
   def testNoMetaGraph(self):
     save_dir = self._get_test_dir("no_meta_graph")
 
     with self.cached_session() as sess:
       v = variables.VariableV1(10.0, name="v")
       save = saver_module.Saver({"v": v})
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       s1 = save.save(sess, os.path.join(save_dir, "s1"), write_meta_graph=False)
       self.assertTrue(checkpoint_management.checkpoint_exists(s1))
@@ -1487,7 +1484,6 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   @test.mock.patch.object(saver_module, "time")
-  @test_util.run_deprecated_v1
   def testNonSharded(self, mock_time):
     save_dir = self._get_test_dir("keep_checkpoint_every_n_hours")
 
@@ -1607,7 +1603,6 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
       self.assertEqual(20.0, self.evaluate(v1))
 
   @test_util.run_in_graph_and_eager_modes
-  @test_util.run_deprecated_v1
   def testNonReshapeResourceVariable(self):
     self._testNonReshape(resource_variable_ops.ResourceVariable)
 
@@ -1622,7 +1617,7 @@ class MetaGraphTest(test.TestCase):
     gfile.MakeDirs(test_dir)
     return test_dir
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testAddCollectionDef(self):
     test_dir = self._get_test_dir("good_collection")
     filename = os.path.join(test_dir, "metafile")
@@ -1714,7 +1709,7 @@ class MetaGraphTest(test.TestCase):
       saver1 = saver_module.Saver({"v1": v1}, name="saver1")
       ops_lib.add_to_collection("savers", saver0)
       ops_lib.add_to_collection("savers", saver1)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       # Saves to different checkpoints.
       saver0.save(sess, saver0_ckpt)
       saver1.save(sess, saver1_ckpt)
@@ -1760,7 +1755,8 @@ class MetaGraphTest(test.TestCase):
       new_saver0.restore(sess, saver0_ckpt)
       v0 = sess.graph.get_tensor_by_name("v0:0")
       v1 = sess.graph.get_tensor_by_name("v1:0")
-      self.assertAllEqual([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], v0.eval())
+      self.assertAllEqual([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                          self.evaluate(v0))
       self.assertEqual([3, 2], v0.get_shape())
       self.assertEqual([], v1.get_shape())
       with self.assertRaisesWithPredicateMatch(
@@ -1770,15 +1766,15 @@ class MetaGraphTest(test.TestCase):
       new_saver1 = savers[1]
       new_saver1.restore(sess, saver1_ckpt)
       v1 = sess.graph.get_tensor_by_name("v1:0")
-      self.assertEqual(11.0, v1.eval())
+      self.assertEqual(11.0, self.evaluate(v1))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testMultiSaverCollection(self):
     test_dir = self._get_test_dir("saver_collection")
     self._testMultiSaverCollectionSave(test_dir)
     self._testMultiSaverCollectionRestore(test_dir)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testClearExtraneousSavers(self):
     test_dir = self._get_test_dir("clear_extraneous_savers")
     filename = os.path.join(test_dir, "metafile")
@@ -1794,7 +1790,7 @@ class MetaGraphTest(test.TestCase):
       saver1 = saver_module.Saver({"v1": v1}, name="saver1")
       ops_lib.add_to_collection("savers", saver0)
       ops_lib.add_to_collection("savers", saver1)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Saves to different checkpoints.
       saver0.save(sess, saver0_ckpt)
@@ -1866,7 +1862,7 @@ class MetaGraphTest(test.TestCase):
                                                lambda e: "does not exist"):
         saver_module.import_meta_graph(filename)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSliceVariable(self):
     test_dir = self._get_test_dir("slice_saver")
     filename = os.path.join(test_dir, "metafile")
@@ -1878,7 +1874,7 @@ class MetaGraphTest(test.TestCase):
 
       # The names are different and will work.
       slice_saver = saver_module.Saver({"first": v1, "second": v2})
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       # Exports to meta_graph
       meta_graph_def = slice_saver.export_meta_graph(filename)
 
@@ -2093,7 +2089,6 @@ class MetaGraphTest(test.TestCase):
       return i + 1, x + r
     self._testWhileLoopAndGradientSerDes(body)
 
-  @test_util.run_deprecated_v1
   def testNestedControlFlowSerDes(self):
     # Test while loop in a cond in a while loop.
     # pylint: disable=g-long-lambda
@@ -2122,7 +2117,7 @@ class MetaGraphTest(test.TestCase):
                                       lambda: math_ops.multiply(x, -1.0))))
     # pylint: enable=g-long-lambda
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testStrippedOpListDef(self):
     with self.cached_session():
       # Creates a graph.
@@ -2745,7 +2740,7 @@ class ScopedGraphTest(test.TestCase):
       graph.add_to_collection(ops_lib.GraphKeys.SAVERS, saver2)
 
     with self.session(graph=graph) as sess:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       saver1.save(sess, saver1_ckpt, write_state=False)
       saver2.save(sess, saver2_ckpt, write_state=False)
 
@@ -2762,7 +2757,7 @@ class ScopedGraphTest(test.TestCase):
 
     with self.session(graph=graph1) as sess:
       saver_list1[0].restore(sess, saver1_ckpt)
-      self.assertEqual(1.0, var_dict1["variable1:0"].eval())
+      self.assertEqual(1.0, self.evaluate(var_dict1["variable1:0"]))
 
     graph2 = ops_lib.Graph()
     var_dict2 = meta_graph.copy_scoped_meta_graph(
@@ -2777,7 +2772,7 @@ class ScopedGraphTest(test.TestCase):
 
     with self.session(graph=graph2) as sess:
       saver_list2[0].restore(sess, saver2_ckpt)
-      self.assertEqual(2.0, var_dict2["variable2:0"].eval())
+      self.assertEqual(2.0, self.evaluate(var_dict2["variable2:0"]))
 
 
 class _OwnsAVariableSimple(checkpointable_base.CheckpointableBase):
@@ -2988,7 +2983,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
       # exception" block in Python 3.
       self.assertNotIn("NewCheckpointReader", cs.exception.message)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testGraphChangedForRestoreErrorRaised(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -3010,7 +3005,6 @@ class CheckpointableCompatibilityTests(test.TestCase):
             "a mismatch between the current graph and the graph"):
           a_saver.restore(sess=sess, save_path=save_path)
 
-  @test_util.run_deprecated_v1
   def testLoadFromObjectBasedGraph(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")

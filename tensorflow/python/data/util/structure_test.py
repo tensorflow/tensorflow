@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
@@ -34,7 +35,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class StructureTest(test.TestCase, parameterized.TestCase):
+class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   # NOTE(mrry): The arguments must be lifted into lambdas because otherwise they
   # will be executed before the (eager- or graph-mode) test environment has been
@@ -352,9 +353,9 @@ class StructureTest(test.TestCase, parameterized.TestCase):
            "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
                  structure.TensorStructure(dtypes.string, []))})),
   )
-  def testFromLegacyStructure(self, output_types, output_shapes, output_classes,
-                              expected_structure):
-    actual_structure = structure.Structure._from_legacy_structure(
+  def testConvertLegacyStructure(self, output_types, output_shapes,
+                                 output_classes, expected_structure):
+    actual_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     self.assertTrue(expected_structure.is_compatible_with(actual_structure))
     self.assertTrue(actual_structure.is_compatible_with(expected_structure))
@@ -418,6 +419,75 @@ class StructureTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(
         expected_batched_structure.is_compatible_with(batched_structure))
 
+  @parameterized.named_parameters(
+      ("Tensor", structure.TensorStructure(dtypes.float32, [32]),
+       structure.TensorStructure(dtypes.float32, [])),
+      ("TensorUnknown", structure.TensorStructure(dtypes.float32, [None]),
+       structure.TensorStructure(dtypes.float32, [])),
+      ("SparseTensor",
+       structure.SparseTensorStructure(dtypes.float32, [32, None]),
+       structure.SparseTensorStructure(dtypes.float32, [None])),
+      ("SparseTensorUnknown",
+       structure.SparseTensorStructure(dtypes.float32, [None, 4]),
+       structure.SparseTensorStructure(dtypes.float32, [4])),
+      ("Nest", structure.NestedStructure({
+          "a": structure.TensorStructure(dtypes.float32, [128]),
+          "b": (structure.SparseTensorStructure(dtypes.int32, [128, 2, 2]),
+                structure.TensorStructure(dtypes.string, [None]))}),
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, []),
+           "b": (structure.SparseTensorStructure(dtypes.int32, [2, 2]),
+                 structure.TensorStructure(dtypes.string, []))})),
+  )
+  def testUnbatch(self, element_structure, expected_unbatched_structure):
+    unbatched_structure = element_structure._unbatch()
+    self.assertTrue(
+        unbatched_structure.is_compatible_with(expected_unbatched_structure))
+    self.assertTrue(
+        expected_unbatched_structure.is_compatible_with(unbatched_structure))
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters(
+      ("Tensor", lambda: constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
+       lambda: constant_op.constant([1.0, 2.0])),
+      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 1]], values=[13, 27], dense_shape=[2, 2]),
+       lambda: sparse_tensor.SparseTensor(
+           indices=[[0]], values=[13], dense_shape=[2])),
+      ("Nest", lambda: (
+          constant_op.constant([[1.0, 2.0], [3.0, 4.0]]),
+          sparse_tensor.SparseTensor(
+              indices=[[0, 0], [1, 1]], values=[13, 27], dense_shape=[2, 2])),
+       lambda: (constant_op.constant([1.0, 2.0]), sparse_tensor.SparseTensor(
+           indices=[[0]], values=[13], dense_shape=[2]))),
+  )
+  def testToBatchedTensorList(self, value_fn, element_0_fn):
+    batched_value = value_fn()
+    s = structure.Structure.from_value(batched_value)
+    batched_tensor_list = s._to_batched_tensor_list(batched_value)
+
+    # The batch dimension is 2 for all of the test cases.
+    # NOTE(mrry): `tf.shape()` does not currently work for the DT_VARIANT
+    # tensors in which we store sparse tensors.
+    for t in batched_tensor_list:
+      if t.dtype != dtypes.variant:
+        self.assertEqual(2, self.evaluate(array_ops.shape(t)[0]))
+
+    # Test that the 0th element from the unbatched tensor is equal to the
+    # expected value.
+    expected_element_0 = self.evaluate(element_0_fn())
+    unbatched_s = s._unbatch()
+    actual_element_0 = unbatched_s._from_tensor_list(
+        [t[0] for t in batched_tensor_list])
+
+    for expected, actual in zip(
+        nest.flatten(expected_element_0), nest.flatten(actual_element_0)):
+      if sparse_tensor.is_sparse(expected):
+        self.assertSparseValuesEqual(expected, actual)
+      else:
+        self.assertAllEqual(expected, actual)
+
+  # pylint: enable=g-long-lambda
 
 if __name__ == "__main__":
   test.main()

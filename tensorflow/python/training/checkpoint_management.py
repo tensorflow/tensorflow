@@ -56,10 +56,6 @@ def _GetCheckpointFilename(save_dir, latest_filename):
   return os.path.join(save_dir, latest_filename)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions=("Use tf.train.CheckpointManager to manage checkpoints rather "
-                  "than editing the Checkpoint proto manually."))
 @tf_export(v1=["train.generate_checkpoint_state_proto"])
 def generate_checkpoint_state_proto(save_dir,
                                     model_checkpoint_path,

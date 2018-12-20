@@ -187,7 +187,7 @@ def _cast_to_type_if_compatible(name, param_type, value):
   return param_type(value)
 
 
-def parse_values(values, type_map):
+def parse_values(values, type_map, ignore_unknown=False):
   """Parses hyperparameter values from a string into a python map.
 
   `values` is a string containing comma-separated `name=value` pairs.
@@ -233,6 +233,9 @@ def parse_values(values, type_map):
       type T if either V has type T, or V is a list of elements of type T.
       Hence, for a multidimensional parameter 'x' taking float values,
       'x=[0.1,0.2]' will parse successfully if type_map['x'] = float.
+    ignore_unknown: Bool. Whether values that are missing a type in type_map
+      should be ignored. If set to True, a ValueError will not be raised for
+      unknown hyperparameter type.
 
   Returns:
     A python map mapping each name to either:
@@ -260,6 +263,8 @@ def parse_values(values, type_map):
     m_dict = m.groupdict()
     name = m_dict['name']
     if name not in type_map:
+      if ignore_unknown:
+        continue
       raise ValueError('Unknown hyperparameter type for %s' % name)
     type_ = type_map[name]
 

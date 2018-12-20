@@ -421,7 +421,7 @@ class SupervisorTest(test.TestCase):
       with self.assertRaisesRegexp(RuntimeError, "requires a summary writer"):
         sv.summary_computed(sess, sess.run(summ))
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testLogdirButExplicitlyNoSummaryWriter(self):
     logdir = self._test_dir("explicit_no_summary_writer")
     with ops.Graph().as_default():
@@ -507,7 +507,7 @@ class SupervisorTest(test.TestCase):
       sv = supervisor.Supervisor(logdir="", session_manager=sm)
       sv.prepare_or_wait_for_session("")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInitOp(self):
     logdir = self._test_dir("default_init_op")
     with ops.Graph().as_default():
@@ -517,7 +517,7 @@ class SupervisorTest(test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInitFn(self):
     logdir = self._test_dir("default_init_op")
     with ops.Graph().as_default():
@@ -531,7 +531,7 @@ class SupervisorTest(test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testInitOpWithFeedDict(self):
     logdir = self._test_dir("feed_dict_init_op")
     with ops.Graph().as_default():
@@ -545,7 +545,7 @@ class SupervisorTest(test.TestCase):
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
       sv.stop()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testReadyForLocalInitOp(self):
     server = server_lib.Server.create_local_server()
     logdir = self._test_dir("default_ready_for_local_init_op")
@@ -588,7 +588,7 @@ class SupervisorTest(test.TestCase):
     sv0.stop()
     sv1.stop()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testReadyForLocalInitOpRestoreFromCheckpoint(self):
     server = server_lib.Server.create_local_server()
     logdir = self._test_dir("ready_for_local_init_op_restore")
@@ -720,7 +720,7 @@ class SupervisorTest(test.TestCase):
                                    "Variables not initialized: w"):
         sv.prepare_or_wait_for_session(server.target)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testSetupFail(self):
     logdir = self._test_dir("setup_fail")
     with ops.Graph().as_default():
@@ -731,7 +731,7 @@ class SupervisorTest(test.TestCase):
       variables.VariableV1([1.0, 2.0, 3.0], name="v")
       supervisor.Supervisor(logdir=logdir, is_chief=False)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testDefaultGlobalStep(self):
     logdir = self._test_dir("default_global_step")
     with ops.Graph().as_default():
@@ -741,7 +741,7 @@ class SupervisorTest(test.TestCase):
       self.assertEquals(287, sess.run(sv.global_step))
       sv.stop()
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testRestoreFromMetaGraph(self):
     logdir = self._test_dir("restore_from_meta_graph")
     with ops.Graph().as_default():
@@ -763,7 +763,7 @@ class SupervisorTest(test.TestCase):
   # This test is based on the fact that the standard services start
   # right away and get to run once before sv.stop() returns.
   # We still sleep a bit to make the test robust.
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testStandardServicesWithoutGlobalStep(self):
     logdir = self._test_dir("standard_services_without_global_step")
     # Create a checkpoint.
@@ -814,7 +814,7 @@ class SupervisorTest(test.TestCase):
 
   # Same as testStandardServicesNoGlobalStep but with a global step.
   # We should get a summary about the step time.
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("b/120545219")
   def testStandardServicesWithGlobalStep(self):
     logdir = self._test_dir("standard_services_with_global_step")
     # Create a checkpoint.
