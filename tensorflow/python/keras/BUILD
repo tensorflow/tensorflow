@@ -122,9 +122,6 @@ py_library(
 py_library(
     name = "engine",
     srcs = [
-        "activations.py",
-        "callbacks.py",
-        "constraints.py",
         "engine/__init__.py",
         "engine/base_layer.py",
         "engine/base_layer_utils.py",
@@ -140,26 +137,124 @@ py_library(
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
-        "initializers.py",
-        "losses.py",
-        "metrics.py",
+        "metrics.py",  # Need base_layer
         "models.py",
-        "optimizers.py",
-        "regularizers.py",
-        "utils/data_utils.py",
-        "utils/io_utils.py",
-        "utils/losses_utils.py",
         "utils/metrics_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":activations",
         ":backend",
+        ":callbacks",
+        ":constraints",
+        ":engine_utils",
+        ":initializers",
+        ":losses",
+        ":optimizers",
+        ":regularizers",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/training/checkpointable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "activations",
+    srcs = [
+        "activations.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+    ],
+)
+
+py_library(
+    name = "callbacks",
+    srcs = [
+        "callbacks.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+    ],
+)
+
+py_library(
+    name = "constraints",
+    srcs = [
+        "constraints.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+    ],
+)
+
+py_library(
+    name = "initializers",
+    srcs = [
+        "initializers.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+    ],
+)
+
+py_library(
+    name = "losses",
+    srcs = [
+        "losses.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+    ],
+)
+
+py_library(
+    name = "optimizers",
+    srcs = [
+        "optimizers.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+        "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
+
+py_library(
+    name = "regularizers",
+    srcs = [
+        "regularizers.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
+        ":engine_utils",
+    ],
+)
+
+py_library(
+    name = "engine_utils",
+    srcs = [
+        "utils/data_utils.py",
+        "utils/io_utils.py",
+        "utils/losses_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backend",
     ],
 )
 
