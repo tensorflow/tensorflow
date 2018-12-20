@@ -1025,7 +1025,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             e->dst_input() == kPermTensorIndex) {
           // we find the "perm" node, now try to retrieve its value.
           const TensorProto* proto = nullptr;
-          DCHECK(GetNodeAttr(perm_node->def(), "value", &proto).ok());
+          TF_CHECK_OK(GetNodeAttr(perm_node->def(), "value", &proto));
 
           DataType type;
           GetNodeAttr(perm_node->def(), "dtype", &type);
@@ -3110,8 +3110,9 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   for (const Edge* e : transpose_to_nchw->out_edges()) {
     if (!e->IsControlEdge()) {
       const int kTransposeWithMklOpOutputSlot = 0;
-      DCHECK((*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
 
@@ -3312,7 +3313,6 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
   DumpGraph("After running MklLayoutRewritePass(NodeMerge)", &**g);
 
-#ifdef ENABLE_TRANSPOSE_OPTIMIZATION
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.
   for (Node* n : order) {
@@ -3334,7 +3334,6 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
     }
   }
   DumpGraph("After running MklLayoutRewritePass(NodeFusion)", &**g);
-#endif  // ENABLE_TRANSPOSE_OPTIMIZATION
 
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.
