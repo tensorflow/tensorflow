@@ -38,6 +38,44 @@ _RANDOM_SEED = 1337
 # keras_backward_compat_test for features that are supported with both APIs.
 
 
+class MaybeDistributionScope(object):
+  """Provides a context allowing no distribution strategy."""
+
+  def __init__(self, distribution):
+    self._distribution = distribution
+    self._scope = None
+
+  def __enter__(self):
+    if self._distribution:
+      self._scope = self._distribution.scope()
+      self._scope.__enter__()
+
+  def __exit__(self, exc_type, value, traceback):
+    if self._distribution:
+      self._scope.__exit__(exc_type, value, traceback)
+      self._scope = None
+
+
+def _create_dnn_model(weights=None, distribution=None, compile_model=True):
+  with MaybeDistributionScope(distribution):
+    # We add few non-linear layers to make it non-trivial.
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(10, activation='relu', input_shape=(1,)))
+    model.add(keras.layers.Dense(10, activation='relu'))
+    model.add(keras.layers.Dense(10, activation='relu'))
+    model.add(keras.layers.Dense(1))
+
+    if weights:
+      model.set_weights(weights)
+
+    if compile_model:
+      model.compile(
+          loss=keras.losses.mean_squared_error,
+          optimizer=gradient_descent_keras.SGD(0.5),
+          metrics=['mse'])
+    return model
+
+
 def batch_wrapper(dataset, batch_size, distribution, repeat=None):
   if repeat:
     dataset = dataset.repeat(repeat)
@@ -49,20 +87,24 @@ def batch_wrapper(dataset, batch_size, distribution, repeat=None):
     return dataset.batch(batch_size)
 
 
+def get_batch_size(global_batch_size, distribution):
+  batch_size = global_batch_size
+  # TODO(b/118776054): Use global batch size for Keras/DS support.
+  use_per_core_batch_size = (
+      distribution and
+      not distributed_training_utils.global_batch_size_supported(distribution))
+  if use_per_core_batch_size:
+    batch_size //= distribution.num_replicas_in_sync
+  return batch_size
+
+
 def get_correctness_test_inputs(use_numpy, use_validation_data,
                                 with_distribution,
                                 x_train, y_train, x_predict):
   """Generates the inputs for correctness check when enable Keras with DS."""
   training_epochs = 2
   global_batch_size = 64
-  batch_size = global_batch_size
-  # TODO(b/118776054): Use global batch size for Keras/DS support.
-  use_per_core_batch_size = (
-      with_distribution and
-      not distributed_training_utils.global_batch_size_supported(
-          with_distribution))
-  if use_per_core_batch_size:
-    batch_size //= with_distribution.num_replicas_in_sync
+  batch_size = get_batch_size(global_batch_size, with_distribution)
 
   if use_numpy:
     training_inputs = {
@@ -116,9 +158,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
           'steps': 20,
       }
 
-    predict_batch_size = len(x_predict)
-    if use_per_core_batch_size:
-      predict_batch_size //= with_distribution.num_replicas_in_sync
+    predict_batch_size = get_batch_size(len(x_predict), with_distribution)
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
     predict_dataset = batch_wrapper(predict_dataset,
                                     predict_batch_size, with_distribution)
@@ -159,6 +199,12 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
+def all_strategy_combinations_with_graph_mode():
+  return combinations.combine(
+      distribution=strategies_minus_tpu,
+      mode=['graph']) + tpu_strategy_combinations()
+
+
 def strategy_and_input_combinations():
   return (
       combinations.times(
@@ -174,6 +220,83 @@ def strategy_and_input_combinations():
           combinations.combine(mode=['graph'],
                                use_numpy=[True, False],
                                use_validation_data=[True, False])))
+
+
+def fit_eval_and_predict(
+    initial_weights, input_fn, distribution=None):
+  model = _create_dnn_model(initial_weights, distribution)
+  training_inputs, eval_inputs, predict_inputs = input_fn(distribution)
+
+  result = {}
+  result['training_history_1'] = model.fit(**training_inputs).history
+
+  if eval_inputs is not None:
+    result['eval_result_1'] = model.evaluate(**eval_inputs)
+
+  result['weights_1'] = model.get_weights()
+
+  if predict_inputs is not None:
+    result['predict_result_1'] = model.predict(**predict_inputs)
+
+  # Train and eval again to mimic user's flow.
+
+  result['training_history_2'] = model.fit(**training_inputs).history
+
+  if eval_inputs is not None:
+    result['eval_result_2'] = model.evaluate(**eval_inputs)
+
+  result['weights_2'] = model.get_weights()
+
+  return result
+
+
+def compare_results(results_with_ds, results_without_ds, distribution,
+                    testcase):
+  default_tolerance = 1e-5
+  tol_table = {}
+
+  if isinstance(distribution, (
+      mirrored_strategy.MirroredStrategy,
+      mirrored_strategy.CoreMirroredStrategy,
+      distribute_lib._DefaultDistributionStrategy)):  # pylint: disable=protected-access
+    # TODO(b/119257215): Weights are not exactly the same, so use larger
+    # tolerance for now. Predict should be related to weights.
+    tol_table = {
+        'weights_1': 1e-4,
+        'weights_2': 1e-4,
+        'predict_result_1': 1e-4,
+    }
+
+  for key in results_with_ds:
+    if (key.startswith('training_history') and
+        isinstance(distribution, tpu_strategy.TPUStrategy) and
+        distribution.extended.steps_per_run > 1):
+      # TODO(b/119894254): Enable this test for all cases once the
+      # underlying bug is fixed.
+      continue
+
+    tolerance = tol_table.get(key, default_tolerance)
+
+    testcase.assertAllClose(
+        results_with_ds[key],
+        results_without_ds[key],
+        atol=tolerance,
+        rtol=tolerance,
+        msg='Fail to assert {}.'.format(key))
+
+
+class LearningRateBatchScheduler(keras.callbacks.Callback):
+
+  def __init__(self, update_freq=None):
+    self._update_freq = update_freq
+
+  def on_batch_begin(self, batch, logs=None):
+    if self._update_freq and batch % self._update_freq != 0:
+      return
+
+    # To avoid divergence, limit the value range.
+    lr = 0.001 * (batch % 10)
+    keras.backend.set_value(self.model.optimizer.lr, lr)
 
 
 class TestDistributionStrategyCorrectness(test.TestCase,
@@ -246,20 +369,6 @@ class TestDistributionStrategyCorrectness(test.TestCase,
   @combinations.generate(strategy_and_input_combinations())
   def test_correctness(self, distribution, use_numpy, use_validation_data):
     with self.cached_session():
-      default_tolerance = 1e-5
-      tol_table = {}
-
-      if isinstance(distribution, (
-          mirrored_strategy.MirroredStrategy,
-          mirrored_strategy.CoreMirroredStrategy,
-          distribute_lib._DefaultDistributionStrategy)):  # pylint: disable=protected-access
-        # TODO(b/119257215): Weights are not exactly the same, so use larger
-        # tolerance for now. Predict should be related to weights.
-        tol_table = {
-            'weights_1': 1e-4,
-            'weights_2': 1e-4,
-            'predict_result_1': 1e-4,
-        }
 
       keras.backend.set_image_data_format('channels_last')
       np.random.seed(_RANDOM_SEED)
@@ -278,84 +387,70 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
       # The model is built once and the initial weights are saved.
       # This is used to initialize the model for both the distribution and
-      # non-distribution run. In addition, we add few non-linear layers to make
-      # it non-trivial.
-      def _create_model():
-        model = keras.Sequential()
-        model.add(keras.layers.Dense(10, activation='relu', input_shape=(1,)))
-        model.add(keras.layers.Dense(10, activation='relu'))
-        model.add(keras.layers.Dense(10, activation='relu'))
-        model.add(keras.layers.Dense(1))
-        return model
-
-      model = _create_model()
+      # non-distribution run.
+      model = _create_dnn_model(compile_model=False)
       initial_weights = model.get_weights()
-      del model  # avoid accident usage.
 
-      def _build_and_compile_model():
-        # We have initialized the model to the same weight for the distribution
-        # and non-distribution run.
-        model = _create_model()
-        model.set_weights(initial_weights)
-        model.compile(
-            loss=keras.losses.mean_squared_error,
-            optimizer=gradient_descent_keras.SGD(0.5),
-            metrics=['mse'])
-        return model
+      def input_fn(dist):
+        return get_correctness_test_inputs(
+            use_numpy, use_validation_data, dist, x_train, y_train, x_predict)
 
-      def fit_eval_and_predict(with_distribution=None):
-        if with_distribution:
-          with with_distribution.scope():
-            model = _build_and_compile_model()
-        else:
-          model = _build_and_compile_model()
+      results_with_ds = fit_eval_and_predict(
+          initial_weights, input_fn=input_fn, distribution=distribution)
+      results_without_ds = fit_eval_and_predict(
+          initial_weights, input_fn=input_fn, distribution=None)
+      compare_results(results_with_ds, results_without_ds, distribution,
+                      testcase=self)
 
-        training_inputs, eval_inputs, predict_inputs = (
-            get_correctness_test_inputs(use_numpy, use_validation_data,
-                                        with_distribution,
-                                        x_train, y_train, x_predict))
+  @combinations.generate(all_strategy_combinations_with_graph_mode())
+  def test_dynamic_lr(self, distribution):
+    with self.cached_session():
 
-        result = {}
-        result['training_history_1'] = model.fit(**training_inputs).history
+      keras.backend.set_image_data_format('channels_last')
+      np.random.seed(_RANDOM_SEED)
+      random_seed.set_random_seed(_RANDOM_SEED)
 
-        if eval_inputs is not None:
-          result['eval_result_1'] = model.evaluate(**eval_inputs)
+      # TODO(xiejw): Change this back to 10000, once we support final partial
+      # batch.
+      num_samples = 9984
+      x_train = np.random.rand(num_samples, 1).astype('float32')
+      y_train = 3 * x_train
 
-        result['weights_1'] = model.get_weights()
-        result['predict_result_1'] = model.predict(**predict_inputs)
+      model = _create_dnn_model(compile_model=False)
+      initial_weights = model.get_weights()
 
-        # Train and eval again to mimic user's flow.
+      update_freq = None
+      if (isinstance(distribution, tpu_strategy.TPUStrategy) and
+          distribution.extended.steps_per_run > 1):
+        # For TPUStrategy with steps_per_run > 1, the callback is not invoked
+        # every step. So, to compare the CPU/TPU, we let the CPU to behave the
+        # same as TPU.
+        update_freq = distribution.extended.steps_per_run
 
-        result['training_history_2'] = model.fit(**training_inputs).history
+      def input_fn(dist):
+        training_epochs = 2
+        global_batch_size = 64
+        batch_size = get_batch_size(global_batch_size, dist)
 
-        if eval_inputs is not None:
-          result['eval_result_2'] = model.evaluate(**eval_inputs)
+        training_inputs = {
+            'batch_size': batch_size,
+            'x': x_train,
+            'y': y_train,
+            'epochs': training_epochs,
+            'shuffle': False,
+            'callbacks': [LearningRateBatchScheduler(update_freq)],
+            'validation_data': (x_train, y_train)
+        }
+        # In this test case, we do not care eval and predict.
+        eval_inputs, predict_inputs = None, None
+        return training_inputs, eval_inputs, predict_inputs
 
-        result['weights_2'] = model.get_weights()
-
-        return result
-
-      results_with_ds = fit_eval_and_predict(with_distribution=distribution)
-      results_without_ds = fit_eval_and_predict(with_distribution=None)
-
-      # Verify that the weights, training history, eval results, predict outputs
-      # are the same within some limits of tolerance.
-      for key in results_with_ds:
-        if (key.startswith('training_history') and
-            isinstance(distribution, tpu_strategy.TPUStrategy) and
-            distribution.extended.steps_per_run > 1):
-          # TODO(b/119894254): Enable this test for all cases once the
-          # underlying bug is fixed.
-          continue
-
-        tolerance = tol_table.get(key, default_tolerance)
-
-        self.assertAllClose(
-            results_with_ds[key],
-            results_without_ds[key],
-            atol=tolerance,
-            rtol=tolerance,
-            msg='Fail to assert {}.'.format(key))
+      results_with_ds = fit_eval_and_predict(
+          initial_weights, input_fn=input_fn, distribution=distribution)
+      results_without_ds = fit_eval_and_predict(
+          initial_weights, input_fn=input_fn, distribution=None)
+      compare_results(results_with_ds, results_without_ds, distribution,
+                      testcase=self)
 
 
 if __name__ == '__main__':
