@@ -120,7 +120,8 @@ void TensorDataSet::set_input_tensors(const Tensor& dense,
 
 void TensorDataSet::RandomSample(int example,
                                  decision_trees::FeatureId* feature_id,
-                                 float* bias, int* type) const {
+                                 float* bias, int* type,
+                                 int rand_feature) const {
   int32 num_total_features = input_spec_.dense_features_size();
   int64 sparse_input_start;
   if (sparse_indices_ != nullptr) {
@@ -130,8 +131,7 @@ void TensorDataSet::RandomSample(int example,
       num_total_features += num_sparse;
     }
   }
-  int rand_feature = 0;
-  {
+  if (rand_feature == NULL) {
     mutex_lock lock(mu_);
     rand_feature = rng_->Uniform(num_total_features);
   }

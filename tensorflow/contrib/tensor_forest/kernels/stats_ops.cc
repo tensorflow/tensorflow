@@ -27,6 +27,8 @@
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -201,6 +203,8 @@ void UpdateStatsCollated(
     const std::unique_ptr<TensorDataSet>& data, const TensorInputTarget& target,
     int num_targets,
     const std::unordered_map<int32, std::vector<int>>& leaf_examples,
+    const std::unordered_map<int32, std::vector<int>>&
+        leaf_feature_to_use_per_split,
     mutex* set_lock, int32 start, int32 end,
     std::unordered_set<int32>* ready_to_split) {
   auto it = leaf_examples.begin();
@@ -209,9 +213,10 @@ void UpdateStatsCollated(
   std::advance(end_it, end);
   while (it != end_it) {
     int32 leaf_id = it->first;
+    const auto& random_features = leaf_feature_to_use_per_split.at(leaf_id);
     bool is_finished;
     fertile_stats_resource->AddExampleToStatsAndInitialize(
-        data, &target, it->second, leaf_id, &is_finished);
+        data, &target, it->second, leaf_id, &is_finished, random_features);
     if (is_finished) {
       set_lock->lock();
       ready_to_split->insert(leaf_id);
@@ -235,6 +240,18 @@ class ProcessInputOp : public OpKernel {
     string serialized_proto;
     OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
     input_spec_.ParseFromString(serialized_proto);
+
+    // Set up the random number generator.
+    if (random_seed_ == 0) {
+      single_rand_ = std::unique_ptr<random::PhiloxRandom>(
+          new random::PhiloxRandom(random::New64()));
+    } else {
+      single_rand_ = std::unique_ptr<random::PhiloxRandom>(
+          new random::PhiloxRandom(random_seed_));
+    }
+
+    rng_ = std::unique_ptr<random::SimplePhilox>(
+        new random::SimplePhilox(single_rand_.get()));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -275,9 +292,25 @@ class ProcessInputOp : public OpKernel {
     // with mutexes.
     std::unordered_map<int, std::unique_ptr<mutex>> locks;
     std::unordered_map<int32, std::vector<int>> leaf_examples;
+    // keep a id of subsampled feature which this leaf will use.
+    std::unordered_map<int32, std::vector<int>> leaf_feature_to_use_per_split;
+    const int32 num_total_features = input_spec_.dense_features_size();
+    // Since num_splits_to_consider is a constant here, we set the depth as 0.
+    const int32 num_splits_to_consider =
+        param_proto_.num_splits_to_consider().constant_value();
+
     if (param_proto_.collate_examples()) {
       for (int i = 0; i < num_data; ++i) {
+        // assign an instance to a leaf.
         leaf_examples[leaf_ids(i)].push_back(i);
+      }
+      for (const auto& leaf : leaf_examples) {
+        // choose a feature to be used for each split.
+        for (int i = 0; i < num_splits_to_consider; ++i) {
+          int rand_feature = rng_->Uniform(num_total_features);
+          const int leaf_id = leaf.first;
+          leaf_feature_to_use_per_split[leaf_id].push_back(rand_feature);
+        }
       }
     } else {
       for (int i = 0; i < num_data; ++i) {
@@ -317,16 +350,17 @@ class ProcessInputOp : public OpKernel {
                   static_cast<int32>(end), &ready_to_split);
     };
 
-    auto update_collated = [&target, &num_targets, fertile_stats_resource,
-                            tree_resource, &leaf_examples, &set_lock,
+    auto update_collated = [this, &target, &num_targets, fertile_stats_resource,
+                            tree_resource, &leaf_examples,
+                            &leaf_feature_to_use_per_split, &set_lock,
                             &ready_to_split, &data_set,
                             num_leaves](int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_leaves);
-      UpdateStatsCollated(fertile_stats_resource, tree_resource, data_set,
-                          target, num_targets, leaf_examples, &set_lock,
-                          static_cast<int32>(start), static_cast<int32>(end),
-                          &ready_to_split);
+      UpdateStatsCollated(
+          fertile_stats_resource, tree_resource, data_set, target, num_targets,
+          leaf_examples, leaf_feature_to_use_per_split, &set_lock,
+          static_cast<int32>(start), static_cast<int32>(end), &ready_to_split);
     };
 
     if (param_proto_.collate_examples()) {
@@ -350,6 +384,8 @@ class ProcessInputOp : public OpKernel {
   int32 random_seed_;
   tensorforest::TensorForestDataSpec input_spec_;
   TensorForestParams param_proto_;
+  std::unique_ptr<random::PhiloxRandom> single_rand_;
+  std::unique_ptr<random::SimplePhilox> rng_;
 };
 
 // Op for growing finished nodes.

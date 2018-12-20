@@ -64,10 +64,13 @@ class FertileStatsResource : public ResourceBase {
   // node's fertile slot's statistics if or initializes a split candidate,
   // where applicable.  Returns if the node is finished or if it's ready to
   // allocate to a fertile slot.
+  // With pre-generated feature_per_split, so it's
+  // thread safe.
   void AddExampleToStatsAndInitialize(
       const std::unique_ptr<TensorDataSet>& input_data,
       const InputTarget* target, const std::vector<int>& examples,
-      int32 node_id, bool* is_finished);
+      int32 node_id, bool* is_finished,
+      const std::vector<int>& feature_per_split = NULL);
 
   // Allocate a fertile slot for each ready node, then new children up to
   // max_fertile_nodes_.

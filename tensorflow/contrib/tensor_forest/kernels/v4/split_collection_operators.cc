@@ -110,13 +110,13 @@ bool SplitCollectionOperator::IsInitialized(int32 node_id) const {
 
 void SplitCollectionOperator::CreateAndInitializeCandidateWithExample(
     const std::unique_ptr<TensorDataSet>& input_data, const InputTarget* target,
-    int example, int32 node_id) const {
-  // Assumes split_initializations_per_input == 1.
+    const int example, const int32 node_id, int feature_id_for_split) const {
   decision_trees::BinaryNode split;
   float bias;
   int type;
   decision_trees::FeatureId feature_id;
-  input_data->RandomSample(example, &feature_id, &bias, &type);
+  input_data->RandomSample(example, &feature_id, &bias, &type,
+                           feature_id_for_split);
 
   if (type == kDataFloat) {
     decision_trees::InequalityTest* test =

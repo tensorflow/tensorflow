@@ -45,6 +45,23 @@ def _get_classification_input_fns():
   return train_input_fn, predict_input_fn
 
 
+def _get_classification_big_input_fns():
+  from sklearn.datasets import load_digits
+  from sklearn.model_selection import train_test_split
+
+  x, y = load_digits(return_X_y=True)
+  x = x.astype(np.float32)
+  y = y.astype(np.int32)
+  x_train, x_test, y_train, y_test = train_test_split(
+    x, y, test_size=0.33, random_state=42)
+  train_input_fn = numpy_io.numpy_input_fn(
+    x=x_train, y=y_train, batch_size=150, num_epochs=None, shuffle=False)
+
+  predict_input_fn = numpy_io.numpy_input_fn(
+    x=x_test, y=None, batch_size=1, num_epochs=1, shuffle=False)
+  return train_input_fn, predict_input_fn
+
+
 def _get_regression_input_fns():
   boston = base.load_boston()
   data = boston.data.astype(np.float32)
@@ -81,6 +98,27 @@ class TensorForestTrainerTests(test.TestCase):
     predictions = list(classifier.predict(input_fn=predict_input_fn))
     self.assertAllClose([[0.576117, 0.211942, 0.211942]],
                         [pred['probabilities'] for pred in predictions])
+
+  def testClassificationDeterministic(self):
+    """Test multi-class classification is deterministic"""
+    hparams = tensor_forest.ForestHParams(
+        num_trees=3,
+        max_nodes=1000,
+        num_classes=3,
+        num_features=4,
+        split_after_samples=20,
+        inference_tree_paths=True)
+    input_fn, predict_input_fn = _get_classification_big_input_fns()
+
+    classifier_first = random_forest.TensorForestEstimator(hparams.fill())
+    classifier_first.fit(input_fn=input_fn, steps=100)
+    predictions_first = classifier_first.predict(input_fn=predict_input_fn)
+
+    classifier_second = random_forest.TensorForestEstimator(hparams.fill())
+    classifier_second.fit(input_fn=input_fn, steps=100)
+    predictions_second = classifier_second.predict(input_fn=predict_input_fn)
+    self.assertAllClose([pred['probabilities'] for pred in predictions_first],
+                        [pred['probabilities'] for pred in predictions_second])
 
   def testRegression(self):
     """Tests regression using matrix data as input."""

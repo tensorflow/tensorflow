@@ -54,10 +54,12 @@ class SplitCollectionOperator {
                           const std::vector<int>& examples,
                           int32 node_id) const;
 
-  // Create a new candidate and initialize it with the given example.
+  // Create a new candidate and initialize it with the given example and
+  // rand_feature.
   virtual void CreateAndInitializeCandidateWithExample(
       const std::unique_ptr<TensorDataSet>& input_data,
-      const InputTarget* target, int example, int32 node_id) const;
+      const InputTarget* target, const int example, const int32 node_id,
+      int rand_feature = NULL) const;
 
   // Create a new GrowStats for the given node id and initialize it.
   virtual void InitializeSlot(int32 node_id, int32 depth);
