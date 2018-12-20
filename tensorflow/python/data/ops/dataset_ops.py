@@ -3017,7 +3017,6 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
   def __init__(self, input_dataset):
-    """See `optimize()` for details."""
     self._input_dataset = input_dataset
     variant_tensor = gen_dataset_ops.model_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -3029,7 +3028,6 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
   def __init__(self, input_dataset, optimizations):
-    """See `optimize()` for details."""
     self._input_dataset = input_dataset
     if optimizations is None:
       optimizations = []
