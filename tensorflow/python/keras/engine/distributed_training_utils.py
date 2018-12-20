@@ -646,7 +646,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     inputs: List or dict of model inputs.
     targets: Optional list of model targets.
     sample_weights: Optional list of sample weight arrays.
-    mode: One of 'train'/'test'/'predict'.
+    mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
 
   Returns:
     Feed values for the model in the given mode.
@@ -655,7 +655,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
   inputs = flatten_perdevice_values(strategy, inputs)
   targets = flatten_perdevice_values(strategy, targets)
-  if mode == 'predict':
+  if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
   else:
@@ -663,7 +663,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
         None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
     ]
   ins = inputs + targets + sample_weights
-  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
+  if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
+                                               int):
     ins += [True]
   return ins
 
@@ -831,7 +832,7 @@ def _make_execution_function(model, mode):
   if not model._distributed_model:
     if model._compile_distribution:
       clone_model_on_replicas(
-          model, strategy, make_callback_model=(mode == 'train'))
+          model, strategy, make_callback_model=(mode == ModeKeys.TRAIN))
     else:
       _build_distributed_network(model, strategy)
 
@@ -846,7 +847,7 @@ def _make_execution_function(model, mode):
      grouped_session_args) = strategy.extended.call_for_each_replica(
          _per_device_function, args=(model._distributed_model,))
 
-    if mode == 'train':
+    if mode == ModeKeys.TRAIN:
       # Initialize the variables in the replicated model. This is necessary for
       # multi-worker training because on some workers, initialization is not
       # needed. This method does initialization or waiting for initialization
@@ -857,14 +858,13 @@ def _make_execution_function(model, mode):
     # Unwrapping per device values gives you a list of values that can be
     # used to construct a new train function that is composed of update ops on
     # all the devices over which the model is distributed.
-    (all_inputs, all_outputs, all_updates,
-     all_session_args) = unwrap_values(
-         strategy,
-         grouped_inputs,
-         grouped_outputs,
-         grouped_updates,
-         grouped_session_args,
-         with_loss_tensor=(mode != 'predict'))
+    (all_inputs, all_outputs, all_updates, all_session_args) = unwrap_values(
+        strategy,
+        grouped_inputs,
+        grouped_outputs,
+        grouped_updates,
+        grouped_session_args,
+        with_loss_tensor=(mode != ModeKeys.PREDICT))
 
     return K.function(
         all_inputs,
@@ -880,7 +880,7 @@ def _make_eager_execution_function(model, mode):
   if not model._distributed_model:
     if model._compile_distribution:
       clone_model_on_replicas(
-          model, strategy, make_callback_model=(mode == 'train'))
+          model, strategy, make_callback_model=(mode == ModeKeys.TRAIN))
     else:
       _build_distributed_network(model, strategy)
 
@@ -904,7 +904,7 @@ def _make_eager_execution_function(model, mode):
         strategy,
         grouped_inputs,
         grouped_outputs,
-        with_loss_tensor=(mode != 'predict'))
+        with_loss_tensor=(mode != ModeKeys.PREDICT))
 
     return K.function(
         all_inputs,
@@ -925,7 +925,7 @@ def _copy_weights_to_distributed_model(original_model, grouped_model):
 
 def _copy_weights_to_original_model(model, grouped_model, mode):
   """Copies weights from first distributed model back to original model."""
-  if model._distribution_strategy and mode == 'train':
+  if model._distribution_strategy and mode == ModeKeys.TRAIN:
     updated_weights = model._distribution_strategy.unwrap(
         grouped_model)[0].get_weights()
     model.set_weights(updated_weights)
@@ -933,7 +933,7 @@ def _copy_weights_to_original_model(model, grouped_model, mode):
 
 def _per_device_aggregate_batch(batch_outs, model, mode):
   """Aggregates the per-device batch-level outputs from a distributed step."""
-  if model._distribution_strategy is not None and mode == 'predict':
+  if model._distribution_strategy is not None and mode == ModeKeys.PREDICT:
     total_batch_outs = []
     for i in range(len(model.outputs)):
       num_replicas = model._distribution_strategy.num_replicas_in_sync
@@ -949,4 +949,3 @@ def _reset_metrics(model, distributed_model=None):
         distributed_model or
         model._distribution_strategy.unwrap(model._distributed_model)[0])
     distributed_model.reset_metrics()
-
