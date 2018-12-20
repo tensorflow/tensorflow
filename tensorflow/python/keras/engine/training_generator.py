@@ -34,6 +34,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
@@ -170,7 +171,8 @@ def model_iteration(model,
     # Setup work for each epoch.
     model.reset_metrics()
     epoch_logs = {}
-    callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
+    if mode == ModeKeys.TRAIN:
+      callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
 
     for step in range(steps_per_epoch):
@@ -233,7 +235,7 @@ def model_iteration(model,
 
     if mode == 'train':
       # Epochs only apply to `fit`.
-      callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
+      callbacks.on_epoch_end(epoch, epoch_logs)
       progbar.on_epoch_end(epoch, epoch_logs)
 
   callbacks._call_end_hook(mode)

@@ -32,6 +32,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -251,7 +252,8 @@ def model_iteration(model,
     # Setup work for each epoch
     epoch_logs = {}
     model.reset_metrics()
-    callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
+    if mode == ModeKeys.TRAIN:
+      callbacks.on_epoch_begin(epoch, epoch_logs)
     progbar.on_epoch_begin(epoch, epoch_logs)
 
     if use_steps:
@@ -371,7 +373,7 @@ def model_iteration(model,
 
     if mode == 'train':
       # Epochs only apply to `fit`.
-      callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
+      callbacks.on_epoch_end(epoch, epoch_logs)
       progbar.on_epoch_end(epoch, epoch_logs)
 
   callbacks._call_end_hook(mode)
