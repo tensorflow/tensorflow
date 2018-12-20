@@ -242,35 +242,35 @@ class CallbackList(object):
   def on_batch_end(self, batch, logs=None):
     self._call_batch_hook(_TRAIN, 'end', batch, logs=logs)
 
-  def on_epoch_begin(self, epoch, logs=None, mode='train'):
+  def on_epoch_begin(self, epoch, logs=None):
     """Calls the `on_epoch_begin` methods of its callbacks.
+
+    This function should only be called during TRAIN mode.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dict. Currently no data is passed to this argument for this method
           but that may change in the future.
-        mode: One of 'train'/'test'/'predict'
     """
-    if mode == _TRAIN:
-      logs = logs or {}
-      for callback in self.callbacks:
-        callback.on_epoch_begin(epoch, logs)
+    logs = logs or {}
+    for callback in self.callbacks:
+      callback.on_epoch_begin(epoch, logs)
     self._reset_batch_timing()
 
-  def on_epoch_end(self, epoch, logs=None, mode='train'):
+  def on_epoch_end(self, epoch, logs=None):
     """Calls the `on_epoch_end` methods of its callbacks.
+
+    This function should only be called during TRAIN mode.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
-        mode: One of 'train'/'test'/'predict'
     """
-    if mode == _TRAIN:
-      logs = logs or {}
-      for callback in self.callbacks:
-        callback.on_epoch_end(epoch, logs)
+    logs = logs or {}
+    for callback in self.callbacks:
+      callback.on_epoch_end(epoch, logs)
 
   def on_train_batch_begin(self, batch, logs=None):
     """Calls the `on_train_batch_begin` methods of its callbacks.
@@ -437,29 +437,29 @@ class Callback(object):
   def on_batch_end(self, batch, logs=None):
     """A backwards compatibility alias for `on_train_batch_end`."""
 
-  def on_epoch_begin(self, epoch, logs=None, mode='train'):
+  def on_epoch_begin(self, epoch, logs=None):
     """Called at the start of an epoch.
 
-    Subclasses should override for any actions to run.
+    Subclasses should override for any actions to run. This function should only
+    be called during TRAIN mode.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dict. Currently no data is passed to this argument for this method
           but that may change in the future.
-        mode: One of 'train'/'test'/'predict'
     """
 
-  def on_epoch_end(self, epoch, logs=None, mode='train'):
+  def on_epoch_end(self, epoch, logs=None):
     """Called at the end of an epoch.
 
-    Subclasses should override for any actions to run.
+    Subclasses should override for any actions to run. This function should only
+    be called during TRAIN mode.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
-        mode: One of 'train'/'test'/'predict'
     """
 
   def on_train_batch_begin(self, batch, logs=None):
