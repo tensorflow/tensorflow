@@ -296,6 +296,260 @@ class UnifiedLSTMTest(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([main_inputs] + initial_state, targets)
 
+  def test_unified_lstm_feature_parity_with_canonical_lstm(self):
+    with context.eager_mode():
+      # Run this test under eager only due to b/120160788 for model.set_weights.
+      input_shape = 10
+      rnn_state_size = 8
+      timestep = 4
+      batch = 20
+
+      (x_train, y_train), _ = testing_utils.get_test_data(
+          train_samples=batch,
+          test_samples=0,
+          input_shape=(timestep, input_shape),
+          num_classes=rnn_state_size)
+      y_train = keras.utils.to_categorical(y_train, rnn_state_size)
+
+      inputs = keras.layers.Input(
+          shape=[timestep, input_shape], dtype=dtypes.float32)
+      lstm_layer = keras.layers.LSTM(rnn_state_size,
+                                     recurrent_activation='sigmoid')
+      output = lstm_layer(inputs)
+      lstm_model = keras.models.Model(inputs, output)
+      weights = lstm_model.get_weights()
+      y_1 = lstm_model.predict(x_train)
+      lstm_model.compile('rmsprop', 'mse')
+      lstm_model.fit(x_train, y_train)
+      y_2 = lstm_model.predict(x_train)
+
+      with test_util.device(use_gpu=True):
+        cudnn_layer = keras.layers.UnifiedLSTM(rnn_state_size)
+        cudnn_model = keras.models.Model(inputs, cudnn_layer(inputs))
+      cudnn_model.set_weights(weights)
+      y_3 = cudnn_model.predict(x_train)
+      cudnn_model.compile('rmsprop', 'mse')
+      cudnn_model.fit(x_train, y_train)
+      y_4 = cudnn_model.predict(x_train)
+
+      self.assertAllClose(y_1, y_3)
+      self.assertAllClose(y_2, y_4)
+
+  @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
+  def test_implementation_mode_LSTM(self, implementation_mode):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        keras.layers.UnifiedLSTM,
+        kwargs={
+            'units': units,
+            'implementation': implementation_mode
+        },
+        input_shape=(num_samples, timesteps, embedding_dim))
+
+    layer_class = keras.layers.UnifiedLSTM
+    k_constraint = keras.constraints.max_norm(0.01)
+    r_constraint = keras.constraints.max_norm(0.01)
+    b_constraint = keras.constraints.max_norm(0.01)
+    layer = layer_class(
+        5,
+        return_sequences=False,
+        weights=None,
+        input_shape=(None, embedding_dim),
+        kernel_constraint=k_constraint,
+        recurrent_constraint=r_constraint,
+        bias_constraint=b_constraint)
+    layer.build((None, None, embedding_dim))
+    self.assertEqual(layer.cell.kernel.constraint, k_constraint)
+    self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
+    self.assertEqual(layer.cell.bias.constraint, b_constraint)
+
+    layer_class = keras.layers.UnifiedLSTM
+    inputs = np.random.random((2, 3, 4))
+    targets = np.abs(np.random.random((2, 3, 5)))
+    targets /= targets.sum(axis=-1, keepdims=True)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Masking(input_shape=(3, 4)))
+    model.add(layer_class(units=5, return_sequences=True, unroll=False))
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
+
+  def test_masking_with_stacking_LSTM(self):
+    inputs = np.random.random((2, 3, 4))
+    targets = np.abs(np.random.random((2, 3, 5)))
+    targets /= targets.sum(axis=-1, keepdims=True)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Masking(input_shape=(3, 4)))
+    model.add(keras.layers.UnifiedLSTM(10, return_sequences=True, unroll=False))
+    model.add(keras.layers.UnifiedLSTM(5, return_sequences=True, unroll=False))
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
+
+  @parameterized.named_parameters(
+      # test_name, time_major, go_backwards
+      ('normal', False, False),
+      ('time_major', True, False),
+      ('go_backwards', False, True),
+      ('both', True, True),
+  )
+  def test_time_major_and_go_backward(self, time_major, go_backwards):
+    input_shape = 10
+    rnn_state_size = 8
+    timestep = 4
+    batch = 100
+
+    x_train = np.random.random((batch, timestep, input_shape))
+
+    def build_model(layer_cls):
+      inputs = keras.layers.Input(
+          shape=[timestep, input_shape], dtype=dtypes.float32)
+      layer = layer_cls(rnn_state_size,
+                        recurrent_activation='sigmoid',
+                        time_major=time_major,
+                        return_sequences=True,
+                        go_backwards=go_backwards)
+      if time_major:
+        converted_input = keras.layers.Lambda(
+            lambda t: array_ops.transpose(t, [1, 0, 2]))(inputs)
+        outputs = layer(converted_input)
+        outputs = keras.layers.Lambda(
+            lambda t: array_ops.transpose(t, [1, 0, 2]))(outputs)
+      else:
+        outputs = layer(inputs)
+      return keras.models.Model(inputs, outputs)
+
+    lstm_model = build_model(keras.layers.LSTM)
+    y_ref = lstm_model.predict(x_train)
+    weights = lstm_model.get_weights()
+
+    unified_lstm_model = build_model(keras.layers.UnifiedLSTM)
+    unified_lstm_model.set_weights(weights)
+    y = unified_lstm_model.predict(x_train)
+
+    self.assertAllClose(y, y_ref)
+
+    input_shape = 10
+    rnn_state_size = 8
+    output_shape = 8
+    timestep = 4
+    batch = 100
+    epoch = 10
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=batch,
+        test_samples=0,
+        input_shape=(timestep, input_shape),
+        num_classes=output_shape)
+    y_train = keras.utils.to_categorical(y_train, output_shape)
+
+    layer = keras.layers.UnifiedLSTM(rnn_state_size)
+
+    inputs = keras.layers.Input(
+        shape=[timestep, input_shape], dtype=dtypes.float32)
+
+    outputs = layer(inputs)
+    model = keras.models.Model(inputs, outputs)
+    model.compile('rmsprop', loss='mse')
+    model.fit(x_train, y_train, epochs=epoch)
+    model.evaluate(x_train, y_train)
+    model.predict(x_train)
+
+  @parameterized.named_parameters(
+      # test_name, use_bias, bias_initializer, activation
+      ('normal', True, 'zeros'),
+      ('no_bias', False, 'zeros'),
+      ('random_bias', True, 'random_uniform'),
+  )
+  def test_unified_lstm_model_save_load(self, use_bias, bias_initializer):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    h5_path = os.path.join(temp_dir, 'test.h5')
+
+    batch = 10
+    timestep = 3
+    input_dim = 5
+    units = 2
+
+    x = np.random.random((batch, timestep, input_dim))
+
+    def build_model():
+      inputs = keras.layers.Input(
+          shape=[timestep, input_dim], dtype=dtypes.float32)
+      layer = keras.layers.UnifiedLSTM(
+          units,
+          use_bias=use_bias,
+          bias_initializer=bias_initializer)
+      output = layer(inputs)
+      return keras.models.Model(inputs, output), layer
+
+    model, layer = build_model()
+    y_ref = model.predict(x)
+    model.save_weights(h5_path)
+
+    cloned_model, new_layer = build_model()
+    cloned_model.load_weights(h5_path)
+    y = cloned_model.predict(x)
+
+    self.assertAllClose(y, y_ref)
+    self.assertAllClose(layer.get_weights(), new_layer.get_weights())
+
+  def test_unified_lstm_output_on_multiple_kernel(self):
+    input_shape = 10
+    rnn_state_size = 8
+    timestep = 4
+    batch = 100
+
+    x_train = np.random.random((batch, timestep, input_shape))
+
+    inputs = keras.layers.Input(
+        shape=[timestep, input_shape], dtype=dtypes.float32)
+    with test_util.device(use_gpu=False):
+      layer = keras.layers.UnifiedLSTM(rnn_state_size)
+      output = layer(inputs)
+      cpu_model = keras.models.Model(inputs, output)
+      weights = cpu_model.get_weights()
+    y_1 = cpu_model.predict(x_train)
+
+    with test_util.device(use_gpu=True):
+      layer = keras.layers.UnifiedLSTM(rnn_state_size)
+      output = layer(inputs)
+      gpu_model = keras.models.Model(inputs, output)
+      gpu_model.set_weights(weights)
+    y_2 = gpu_model.predict(x_train)
+
+    # Note that CuDNN uses 'sigmoid' as activation, so the unified LSTM uses
+    # 'sigmoid' as default. Construct the canonical LSTM with sigmoid to achieve
+    # the same output.
+    with test_util.device(use_gpu=True):
+      layer = keras.layers.LSTM(rnn_state_size, recurrent_activation='sigmoid')
+      output = layer(inputs)
+      canonical_model = keras.models.Model(inputs, output)
+      # Remove the extra cudnn bias since canonical lstm will not use it.
+      canonical_model.set_weights(weights[:3])
+    y_3 = canonical_model.predict(x_train)
+
+    self.assertAllClose(y_1, y_2)
+    self.assertAllClose(y_2, y_3)
+
+  def test_return_sequences_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        keras.layers.UnifiedLSTM,
+        kwargs={
+            'units': units,
+            'return_sequences': True
+        },
+        input_shape=(num_samples, timesteps, embedding_dim))
+
 
 class LSTMLayerGraphOnlyTest(test.TestCase):
 
@@ -427,6 +681,7 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
 
 class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.run_v1_only('b/121278392')
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_dropout_LSTM(self):
     num_samples = 2
@@ -442,268 +697,7 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  def test_unified_lstm_feature_parity_with_canonical_lstm(self):
-    with context.eager_mode():
-      # Run this test under eager only due to b/120160788 for model.set_weights.
-      input_shape = 10
-      rnn_state_size = 8
-      timestep = 4
-      batch = 20
-
-      (x_train, y_train), _ = testing_utils.get_test_data(
-          train_samples=batch,
-          test_samples=0,
-          input_shape=(timestep, input_shape),
-          num_classes=rnn_state_size)
-      y_train = keras.utils.to_categorical(y_train, rnn_state_size)
-
-      inputs = keras.layers.Input(
-          shape=[timestep, input_shape], dtype=dtypes.float32)
-      lstm_layer = keras.layers.LSTM(rnn_state_size,
-                                     recurrent_activation='sigmoid')
-      output = lstm_layer(inputs)
-      lstm_model = keras.models.Model(inputs, output)
-      weights = lstm_model.get_weights()
-      y_1 = lstm_model.predict(x_train)
-      lstm_model.compile('rmsprop', 'mse')
-      lstm_model.fit(x_train, y_train)
-      y_2 = lstm_model.predict(x_train)
-
-      with test_util.device(use_gpu=True):
-        cudnn_layer = keras.layers.UnifiedLSTM(rnn_state_size)
-        cudnn_model = keras.models.Model(inputs, cudnn_layer(inputs))
-      cudnn_model.set_weights(weights)
-      y_3 = cudnn_model.predict(x_train)
-      cudnn_model.compile('rmsprop', 'mse')
-      cudnn_model.fit(x_train, y_train)
-      y_4 = cudnn_model.predict(x_train)
-
-      self.assertAllClose(y_1, y_3)
-      self.assertAllClose(y_2, y_4)
-
-  @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_implementation_mode_LSTM(self, implementation_mode):
-    num_samples = 2
-    timesteps = 3
-    embedding_dim = 4
-    units = 2
-    testing_utils.layer_test(
-        keras.layers.UnifiedLSTM,
-        kwargs={
-            'units': units,
-            'implementation': implementation_mode
-        },
-        input_shape=(num_samples, timesteps, embedding_dim))
-
-    layer_class = keras.layers.UnifiedLSTM
-    k_constraint = keras.constraints.max_norm(0.01)
-    r_constraint = keras.constraints.max_norm(0.01)
-    b_constraint = keras.constraints.max_norm(0.01)
-    layer = layer_class(
-        5,
-        return_sequences=False,
-        weights=None,
-        input_shape=(None, embedding_dim),
-        kernel_constraint=k_constraint,
-        recurrent_constraint=r_constraint,
-        bias_constraint=b_constraint)
-    layer.build((None, None, embedding_dim))
-    self.assertEqual(layer.cell.kernel.constraint, k_constraint)
-    self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
-    self.assertEqual(layer.cell.bias.constraint, b_constraint)
-
-    layer_class = keras.layers.UnifiedLSTM
-    inputs = np.random.random((2, 3, 4))
-    targets = np.abs(np.random.random((2, 3, 5)))
-    targets /= targets.sum(axis=-1, keepdims=True)
-    model = keras.models.Sequential()
-    model.add(keras.layers.Masking(input_shape=(3, 4)))
-    model.add(layer_class(units=5, return_sequences=True, unroll=False))
-    model.compile(
-        loss='categorical_crossentropy',
-        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
-    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
-
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_masking_with_stacking_LSTM(self):
-    inputs = np.random.random((2, 3, 4))
-    targets = np.abs(np.random.random((2, 3, 5)))
-    targets /= targets.sum(axis=-1, keepdims=True)
-    model = keras.models.Sequential()
-    model.add(keras.layers.Masking(input_shape=(3, 4)))
-    model.add(keras.layers.UnifiedLSTM(10, return_sequences=True, unroll=False))
-    model.add(keras.layers.UnifiedLSTM(5, return_sequences=True, unroll=False))
-    model.compile(
-        loss='categorical_crossentropy',
-        optimizer=gradient_descent.GradientDescentOptimizer(0.01))
-    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
-
-  @parameterized.named_parameters(
-      # test_name, time_major, go_backwards
-      ('normal', False, False),
-      ('time_major', True, False),
-      ('go_backwards', False, True),
-      ('both', True, True),
-  )
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_time_major_and_go_backward(self, time_major, go_backwards):
-    input_shape = 10
-    rnn_state_size = 8
-    timestep = 4
-    batch = 100
-
-    x_train = np.random.random((batch, timestep, input_shape))
-
-    def build_model(layer_cls):
-      inputs = keras.layers.Input(
-          shape=[timestep, input_shape], dtype=dtypes.float32)
-      layer = layer_cls(rnn_state_size,
-                        recurrent_activation='sigmoid',
-                        time_major=time_major,
-                        return_sequences=True,
-                        go_backwards=go_backwards)
-      if time_major:
-        converted_input = keras.layers.Lambda(
-            lambda t: array_ops.transpose(t, [1, 0, 2]))(inputs)
-        outputs = layer(converted_input)
-        outputs = keras.layers.Lambda(
-            lambda t: array_ops.transpose(t, [1, 0, 2]))(outputs)
-      else:
-        outputs = layer(inputs)
-      return keras.models.Model(inputs, outputs)
-
-    lstm_model = build_model(keras.layers.LSTM)
-    y_ref = lstm_model.predict(x_train)
-    weights = lstm_model.get_weights()
-
-    unified_lstm_model = build_model(keras.layers.UnifiedLSTM)
-    unified_lstm_model.set_weights(weights)
-    y = unified_lstm_model.predict(x_train)
-
-    self.assertAllClose(y, y_ref)
-
-    input_shape = 10
-    rnn_state_size = 8
-    output_shape = 8
-    timestep = 4
-    batch = 100
-    epoch = 10
-
-    (x_train, y_train), _ = testing_utils.get_test_data(
-        train_samples=batch,
-        test_samples=0,
-        input_shape=(timestep, input_shape),
-        num_classes=output_shape)
-    y_train = keras.utils.to_categorical(y_train, output_shape)
-
-    layer = keras.layers.UnifiedLSTM(rnn_state_size)
-
-    inputs = keras.layers.Input(
-        shape=[timestep, input_shape], dtype=dtypes.float32)
-
-    outputs = layer(inputs)
-    model = keras.models.Model(inputs, outputs)
-    model.compile('rmsprop', loss='mse')
-    model.fit(x_train, y_train, epochs=epoch)
-    model.evaluate(x_train, y_train)
-    model.predict(x_train)
-
-  @parameterized.named_parameters(
-      # test_name, use_bias, bias_initializer, activation
-      ('normal', True, 'zeros'),
-      ('no_bias', False, 'zeros'),
-      ('random_bias', True, 'random_uniform'),
-  )
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_unified_lstm_model_save_load(self, use_bias, bias_initializer):
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    h5_path = os.path.join(temp_dir, 'test.h5')
-
-    batch = 10
-    timestep = 3
-    input_dim = 5
-    units = 2
-
-    x = np.random.random((batch, timestep, input_dim))
-
-    def build_model():
-      inputs = keras.layers.Input(
-          shape=[timestep, input_dim], dtype=dtypes.float32)
-      layer = keras.layers.UnifiedLSTM(
-          units,
-          use_bias=use_bias,
-          bias_initializer=bias_initializer)
-      output = layer(inputs)
-      return keras.models.Model(inputs, output), layer
-
-    model, layer = build_model()
-    y_ref = model.predict(x)
-    model.save_weights(h5_path)
-
-    cloned_model, new_layer = build_model()
-    cloned_model.load_weights(h5_path)
-    y = cloned_model.predict(x)
-
-    self.assertAllClose(y, y_ref)
-    self.assertAllClose(layer.get_weights(), new_layer.get_weights())
-
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_unified_lstm_output_on_multiple_kernel(self):
-    input_shape = 10
-    rnn_state_size = 8
-    timestep = 4
-    batch = 100
-
-    x_train = np.random.random((batch, timestep, input_shape))
-
-    inputs = keras.layers.Input(
-        shape=[timestep, input_shape], dtype=dtypes.float32)
-    with test_util.device(use_gpu=False):
-      layer = keras.layers.UnifiedLSTM(rnn_state_size)
-      output = layer(inputs)
-      cpu_model = keras.models.Model(inputs, output)
-      weights = cpu_model.get_weights()
-    y_1 = cpu_model.predict(x_train)
-
-    with test_util.device(use_gpu=True):
-      layer = keras.layers.UnifiedLSTM(rnn_state_size)
-      output = layer(inputs)
-      gpu_model = keras.models.Model(inputs, output)
-      gpu_model.set_weights(weights)
-    y_2 = gpu_model.predict(x_train)
-
-    # Note that CuDNN uses 'sigmoid' as activation, so the unified LSTM uses
-    # 'sigmoid' as default. Construct the canonical LSTM with sigmoid to achieve
-    # the same output.
-    with test_util.device(use_gpu=True):
-      layer = keras.layers.LSTM(rnn_state_size, recurrent_activation='sigmoid')
-      output = layer(inputs)
-      canonical_model = keras.models.Model(inputs, output)
-      # Remove the extra cudnn bias since canonical lstm will not use it.
-      canonical_model.set_weights(weights[:3])
-    y_3 = canonical_model.predict(x_train)
-
-    self.assertAllClose(y_1, y_2)
-    self.assertAllClose(y_2, y_3)
-
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_return_sequences_LSTM(self):
-    num_samples = 2
-    timesteps = 3
-    embedding_dim = 4
-    units = 2
-    testing_utils.layer_test(
-        keras.layers.UnifiedLSTM,
-        kwargs={
-            'units': units,
-            'return_sequences': True
-        },
-        input_shape=(num_samples, timesteps, embedding_dim))
-
-
-  @test_util.run_v1_only("b/120941292")
+  @test_util.run_v1_only('b/120941292')
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_statefulness_LSTM(self):
     num_samples = 2
