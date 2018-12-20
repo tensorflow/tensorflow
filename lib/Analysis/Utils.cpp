@@ -380,7 +380,7 @@ static Statement *getStmtAtPosition(ArrayRef<unsigned> positions,
 ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
                                               MemRefAccess *dstAccess) {
   FlatAffineConstraints dependenceConstraints;
-  if (!checkMemrefAccessDependence(*srcAccess, *dstAccess, /*loopDepth=*/0,
+  if (!checkMemrefAccessDependence(*srcAccess, *dstAccess, /*loopDepth=*/1,
                                    &dependenceConstraints,
                                    /*dependenceComponents=*/nullptr)) {
     return nullptr;
