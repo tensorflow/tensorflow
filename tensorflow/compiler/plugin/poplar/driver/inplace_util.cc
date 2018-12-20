@@ -156,6 +156,7 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
 
     // Inplace on all operands.
     case HloOpcode::kConcatenate:
+    case HloOpcode::kConditional:
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
     case HloOpcode::kTuple:
@@ -226,7 +227,6 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kTupleSelect:
     case HloOpcode::kRng:
     case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kConditional:
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:

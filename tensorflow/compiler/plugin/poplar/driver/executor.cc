@@ -488,6 +488,10 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       conv_options_.set(opt.option(), opt.value());
     }
 
+    for (const auto& opt : current_config_.pooling_options()) {
+      pooling_options_.set(opt.option(), opt.value());
+    }
+
     report_options_.set("includeVarStorageReport", "true");
     report_options_.set("doLayerWiseBreakdown", "true");
     if (!CompilerReportingTextFormat()) {
@@ -510,6 +514,10 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
     for (auto opt : conv_options_) {
       VLOG(1) << "Convolution option: " << opt.first << " = " << opt.second;
+    }
+
+    for (auto opt : pooling_options_) {
+      VLOG(1) << "Pooling option: " << opt.first << " = " << opt.second;
     }
 
     for (auto opt : report_options_) {

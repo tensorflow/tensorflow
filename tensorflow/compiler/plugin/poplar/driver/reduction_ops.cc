@@ -3,6 +3,7 @@
 
 #include "absl/strings/str_cat.h"
 
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
@@ -239,19 +240,34 @@ static std::vector<unsigned int> GetShuffleOutputDimensionsForPoplar(
   return shuffle_out;
 }
 
-static void SetPoolingParameters(const Window& window,
-                                 const std::set<unsigned int> reduction_dims,
-                                 std::vector<std::size_t>& kernel_shape,
-                                 std::vector<unsigned>& stride,
-                                 std::vector<int>& padding_lower,
-                                 std::vector<int>& padding_upper) {
-  for (auto i = reduction_dims.begin(); i != reduction_dims.end(); i++) {
-    auto& d = window.dimensions(*i);
+static popnn::pooling::PoolParams GetPoplibsPoolParams(
+    const popnn::PoolingType& pooling_type, const Window& window,
+    const std::vector<std::size_t>& input_shape,
+    const std::set<unsigned int>& reduction_dims,
+    const poplar::Type& data_type) {
+  // TODO assume here that batch dimension and the channel dimension order
+  // doesn't actually matter - it's just the non field dimensions.
+  const auto batch_size = input_shape.front();
+  const auto num_channels = input_shape[1];
+  std::vector<std::size_t> input_field_shape(std::next(input_shape.begin(), 2),
+                                             input_shape.end());
+
+  std::vector<std::size_t> kernel_shape;
+  std::vector<unsigned> stride;
+  std::vector<int> padding_lower;
+  std::vector<int> padding_upper;
+
+  for (auto reduction_dim : reduction_dims) {
+    auto& d = window.dimensions(reduction_dim);
     kernel_shape.push_back((std::size_t)d.size());
     stride.push_back((unsigned)d.stride());
     padding_lower.push_back((int)d.padding_low());
     padding_upper.push_back((int)d.padding_high());
   }
+
+  return {pooling_type, input_field_shape, kernel_shape,
+          stride,       padding_lower,     padding_upper,
+          num_channels, batch_size,        data_type};
 }
 
 StatusOr<poplar::program::Program> CreateSimpleReduction(
@@ -485,16 +501,12 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
         GetShuffleInputDimensionsForPoplar(window, reduction_dims);
     to_reduce = to_reduce.dimShuffle(shuffle_in);
 
-    std::vector<std::size_t> kernel_shape;
-    std::vector<unsigned> stride;
-    std::vector<int> padding_lower;
-    std::vector<int> padding_upper;
-    SetPoolingParameters(window, reduction_dims, kernel_shape, stride,
-                         padding_lower, padding_upper);
+    auto pool_params =
+        GetPoplibsPoolParams(reduction_type, window, to_reduce.shape(),
+                             reduction_dims, to_reduce.elementType());
 
-    out = popnn::pooling::pool(graph, reduction_type, kernel_shape, stride,
-                               padding_lower, padding_upper, to_reduce, prog,
-                               GetDebugName(inst));
+    out = popnn::pooling::pool(graph, pool_params, to_reduce, prog,
+                               GetDebugName(inst), res.default_pooling_options);
 
     // We now apply the initial_value of the reduction in the non-default base
     // case. This needs to be after poplibs pool, which does not support the
@@ -723,13 +735,8 @@ StatusOr<poplar::program::Program> CreateBwdMaxPool(
   HloInstruction* reduce_window = inst->to_apply()->root_instruction();
   const Window& window(reduce_window->window());
   if (window.dimensions().size() != 4) {
-    return xla::FailedPrecondition("poplar pooling only supports 2D pooling");
+    return xla::FailedPrecondition("Poplar pooling only supports 2D pooling");
   }
-
-  std::vector<std::size_t> kernel_shape;
-  std::vector<unsigned> stride;
-  std::vector<int> padding_lower;
-  std::vector<int> padding_upper;
 
   const auto reduction_dims = GetReductionDims(window);
   const auto shuffle_in =
@@ -739,12 +746,13 @@ StatusOr<poplar::program::Program> CreateBwdMaxPool(
   in1 = in1.dimShuffle(shuffle_in);
   fwd_max_pool_output = fwd_max_pool_output.dimShuffle(shuffle_in);
 
-  SetPoolingParameters(window, reduction_dims, kernel_shape, stride,
-                       padding_lower, padding_upper);
+  auto pool_params =
+      GetPoplibsPoolParams(popnn::PoolingType::MAX, window, in0.shape(),
+                           reduction_dims, in0.elementType());
 
   out = popnn::pooling::poolInputGradient(
-      graph, popnn::PoolingType::MAX, kernel_shape, stride, padding_lower,
-      padding_upper, in0, in1, fwd_max_pool_output, seq);
+      graph, pool_params, in0, in1, fwd_max_pool_output, seq,
+      GetDebugName(inst), res.default_pooling_options);
   // Shuffle back
   const auto shuffle_out =
       GetShuffleOutputDimensionsForPoplar(window, shuffle_in);

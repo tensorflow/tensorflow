@@ -436,15 +436,17 @@ StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
 
   poplar::program::Sequence seq;
 
-  poplar::Tensor pred;
-  TF_ASSIGN_OR_RETURN(pred,
-                      FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
+  CHECK_EQ(inputs.size(), inst->operand_count());
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor pred = inputs[0][0];
 
-  ArgVectors true_inputs;
-  true_inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 1, seq));
+  CHECK_EQ(inputs[1].size(), CountShapes(inst->operand(1)->shape()));
+  ArgVectors true_inputs({inputs[1]});
 
-  ArgVectors false_inputs;
-  false_inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 2, seq));
+  CHECK_EQ(inputs[2].size(), CountShapes(inst->operand(2)->shape()));
+  ArgVectors false_inputs({inputs[2]});
 
   ComputationMap::iterator true_body;
   TF_ASSIGN_OR_RETURN(

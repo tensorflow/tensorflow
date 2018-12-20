@@ -75,7 +75,6 @@ def create_ipu_config(profiling=False, use_poplar_text_report=False,
   opts.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
 
   opts.disable_graph_convolution_caching = disable_graph_convolution_caching
-  
   return opts
 
 def set_compilation_options(opts, compilation_options=None):
@@ -117,7 +116,7 @@ def set_convolution_options(opts, convolution_options=None):
   """Set the IPU convolution compilation options for the session.
   *** This is an experimental function which might be removed in the future. ***
     ```python
-    # Create a device "tempMemoryBudget" flag set to "1000000"
+    # Set "tempMemoryBudget" flag to "1000000"
     opts = create_ipu_config()
     opts = set_convolution_options(opts,
         convolution_options={"tempMemoryBudget": "1000000"})
@@ -142,6 +141,40 @@ def set_convolution_options(opts, convolution_options=None):
   if (convolution_options is not None):
     for (option_name, value) in convolution_options.items():
       opt = opts.convolution_options.add()
+      opt.option = option_name
+      opt.value = value
+
+  return opts
+
+def set_pooling_options(opts, pooling_options=None):
+  """Set the IPU pooling compilation options for the session.
+  *** This is an experimental function which might be removed in the future. ***
+    ```python
+    # Set "poolUseIntrospectiveMapping" flag to "false"
+    opts = create_ipu_config()
+    opts = set_pooling_options(opts,
+        pooling_options={"poolUseIntrospectiveMapping": "false"})
+
+    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+      ...
+    ```
+
+  Args:
+    :param opts: An IPUOptions session control protobuf.
+    :param pooling_options: A dictionary of poplar option flags for the
+                            pooling operation.
+  Returns:
+
+    :return: The IPUOptions configuration protobuf, with pooling options
+             set.
+  """
+  if not(isinstance(pooling_options, dict)):
+    raise Exception(
+      "`pooling_options` must be a dictionary")
+
+  if (pooling_options is not None):
+    for (option_name, value) in pooling_options.items():
+      opt = opts.pooling_options.add()
       opt.option = option_name
       opt.value = value
 

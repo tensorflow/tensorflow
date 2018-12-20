@@ -263,6 +263,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   CompilerResources resources(dev, seed + 1, poplarExecutor->GetRandomGenMode(),
                               poplarExecutor->GetConvolutionOptions(),
+                              poplarExecutor->GetPoolingOptions(),
                               poplarExecutor->DisableGraphConvCaching(),
                               module.get());
 

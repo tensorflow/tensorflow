@@ -268,6 +268,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   poplar::OptionFlags GetConvolutionOptions() const { return conv_options_; }
 
+  poplar::OptionFlags GetPoolingOptions() const { return pooling_options_; }
+
   void AddCompileBeginEventRecord(const std::string& module_name,
                                   const std::string& xla_graph);
 
@@ -465,6 +467,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   poplar::OptionFlags option_flags_;
 
   poplar::OptionFlags conv_options_;
+
+  poplar::OptionFlags pooling_options_;
 
   poplar::OptionFlags report_options_;
 
