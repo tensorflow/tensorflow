@@ -716,6 +716,7 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                              id(get_step), get_step.__class__.__name__)))
       self.assertIs(values.AggregatingVariable, type(created_step))
       self.assertIs(values.AggregatingVariable, type(get_step))
+      self.assertIs(distribution, created_step.distribute_strategy)
 
   def testValueContainer(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(

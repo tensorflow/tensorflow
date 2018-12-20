@@ -191,7 +191,7 @@ def _make_mirrored():
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
   device_map = values.ReplicaDeviceMap(devices)
-  mirrored = values.MirroredVariable(device_map, v,
+  mirrored = values.MirroredVariable(None, device_map, v,
                                      variable_scope.VariableAggregation.SUM)
   return v, device_map, mirrored
 
@@ -314,7 +314,7 @@ class RegroupAndSelectDeviceTest(test.TestCase):
       v = variable_scope.get_variable(
           name="v", initializer=1., use_resource=True)
       device_map = values.ReplicaDeviceMap((d,))
-    mirrored = values.MirroredVariable(device_map, (v,),
+    mirrored = values.MirroredVariable(None, device_map, (v,),
                                        variable_scope.VariableAggregation.SUM)
     result = values.regroup(device_map, (v,))
     self.assertIs(mirrored, result)
@@ -813,7 +813,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
     device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
-    mirrored = values.MirroredVariable(device_map, (v,),
+    mirrored = values.MirroredVariable(None, device_map, (v,),
                                        variable_scope.VariableAggregation.MEAN)
 
     self.assertEqual(v.name, mirrored.name)
@@ -952,7 +952,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
         v = variable_scope.get_variable(
             name="v", initializer=1., use_resource=True)
       mirrored = values.MirroredVariable(
-          values.ReplicaDeviceMap(("/device:GPU:0",)), (v,),
+          distribution, values.ReplicaDeviceMap(("/device:GPU:0",)), (v,),
           variable_scope.VariableAggregation.MEAN)
       sess.run(variables_lib.global_variables_initializer())
       sess.run({"complicated": mirrored})
@@ -961,14 +961,14 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
 _devices = ("/device:GPU:0", "/device:CPU:0")
 
 
-def _make_replica_local(method):
+def _make_replica_local(method, strategy=None):
   device_map = values.ReplicaDeviceMap(_devices)
   v = []
   for d, n, init in zip(_devices, ["v", "v/replica"], [1., 2.]):
     with ops.device(d):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
-  replica_local = values.ReplicaLocalVariable(device_map, v, method)
+  replica_local = values.ReplicaLocalVariable(strategy, device_map, v, method)
   return v, replica_local
 
 
@@ -996,7 +996,7 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
         name="v", initializer=[1.], use_resource=True)
     device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
     replica_local = values.ReplicaLocalVariable(
-        device_map, (v,), variable_scope.VariableAggregation.MEAN)
+        None, device_map, (v,), variable_scope.VariableAggregation.MEAN)
 
     self.assertEqual(v.name, replica_local.name)
     self.assertEqual(v.dtype, replica_local.dtype)
@@ -1043,7 +1043,7 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
   def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):
     with self.cached_session() as sess:
       v, replica_local = _make_replica_local(
-          variable_scope.VariableAggregation.SUM)
+          variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [3., 4.])
@@ -1066,7 +1066,7 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       v, replica_local = _make_replica_local(
-          variable_scope.VariableAggregation.MEAN)
+          variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [3., 4.])
@@ -1086,7 +1086,7 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
       v, replica_local = _make_replica_local(
-          variable_scope.VariableAggregation.MEAN)
+          variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [3., 4.])
@@ -1102,7 +1102,7 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
   def _save_replica_local_sum(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
-      v, replica_local = _make_replica_local("sum")
+      v, replica_local = _make_replica_local("sum", distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [1.5, 2.])
@@ -1149,7 +1149,7 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
     """Restore to variables with mirroring in a fresh graph."""
     with self.session(graph=ops.Graph()) as sess:
       v, replica_local = _make_replica_local(
-          variable_scope.VariableAggregation.MEAN)
+          variable_scope.VariableAggregation.MEAN, distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [7., 8.])
@@ -1164,7 +1164,7 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
     """Restore to variables with mirroring in a fresh graph."""
     with self.session(graph=ops.Graph()) as sess:
       v, replica_local = _make_replica_local(
-          variable_scope.VariableAggregation.SUM)
+          variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [7., 8.])

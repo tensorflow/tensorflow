@@ -693,6 +693,15 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
           distribution.extended.worker_devices[0]).read_value()))
       self.assertEqual(10.0, self.evaluate(ret_v_sum))
 
+  def testVarDistributeStrategy(self, distribution):
+    with distribution.scope():
+      mirrored = variable_scope.variable(1.0)
+      replica_local = variable_scope.variable(
+          1.0,
+          synchronization=variable_scope.VariableSynchronization.ON_READ)
+      self.assertIs(distribution, mirrored.distribute_strategy)
+      self.assertIs(distribution, replica_local.distribute_strategy)
+
 
 @combinations.generate(combinations.combine(
     distribution=[

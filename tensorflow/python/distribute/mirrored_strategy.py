@@ -193,8 +193,8 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
   return values.regroup(device_map, tuple(t.main_result for t in threads))
 
 
-def _create_mirrored_variable(device_map, logical_device, real_mirrored_creator,
-                              *args, **kwargs):  # pylint: disable=g-missing-docstring
+def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: disable=missing-docstring
+                              real_mirrored_creator, *args, **kwargs):
   # Figure out what collections this variable should be added to.
   # We'll add the MirroredVariable to those collections instead.
   collections = kwargs.pop("collections", None)
@@ -245,11 +245,13 @@ def _create_mirrored_variable(device_map, logical_device, real_mirrored_creator,
     value_list = real_mirrored_creator(devices, *args, **kwargs)
 
     if is_replica_local:
-      result = values.ReplicaLocalVariable(device_map, value_list, aggregation,
-                                           logical_device=logical_device)
+      result = values.ReplicaLocalVariable(
+          strategy, device_map, value_list, aggregation,
+          logical_device=logical_device)
     else:
-      result = values.MirroredVariable(device_map, value_list, aggregation,
-                                       logical_device=logical_device)
+      result = values.MirroredVariable(
+          strategy, device_map, value_list, aggregation,
+          logical_device=logical_device)
 
   # Add the wrapped variable to the requested collections.
   # The handling of eager mode and the global step matches
@@ -531,8 +533,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
           value_list.append(v)
       return value_list
 
-    return _create_mirrored_variable(device_map, logical_device,
-                                     _real_mirrored_creator, *args, **kwargs)
+    return _create_mirrored_variable(
+        self._container_strategy(), device_map, logical_device,
+        _real_mirrored_creator, *args, **kwargs)
 
   def _distribute_dataset(self, dataset_fn):
     if self._local_mode:

@@ -303,7 +303,8 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
         # Create and wrap the variable.
         v = next_creator(*args, **kwargs)
-        wrapped = values.AggregatingVariable(v, aggregation)
+        wrapped = values.AggregatingVariable(
+            self._container_strategy(), v, aggregation)
 
         # Add the wrapped variable to the requested collections.
         # The handling of eager mode and the global step matches
