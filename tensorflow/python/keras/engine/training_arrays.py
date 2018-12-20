@@ -27,7 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras.engine import training_distributed
+from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
@@ -92,7 +92,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   """
   if model._distribution_strategy:
     def get_distributed_inputs():
-      return training_distributed._prepare_feed_values(
+      return distributed_training_utils._prepare_feed_values(
           model, inputs, targets, sample_weights, mode)
 
     # In the eager case, we want to call the input method per step, so return
@@ -120,7 +120,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 def _make_execution_function(model, mode):
   """Makes function to run one step of model execution."""
   if model._distribution_strategy:
-    return training_distributed._make_execution_function(model, mode)
+    return distributed_training_utils._make_execution_function(model, mode)
   return model._make_execution_function(mode)
 
 
@@ -239,7 +239,7 @@ def model_iteration(model,
                                                   num_samples_or_steps)
 
   if model._compile_distribution and not validation_in_fit:
-    training_distributed._copy_weights_to_distributed_model(
+    distributed_training_utils._copy_weights_to_distributed_model(
         model, model._distributed_model)
 
   callbacks.model.stop_training = False
@@ -281,7 +281,7 @@ def model_iteration(model,
           batch_outs = [batch_outs]
 
         if model._distribution_strategy:
-          batch_outs = training_distributed._per_device_aggregate_batch(
+          batch_outs = distributed_training_utils._per_device_aggregate_batch(
               batch_outs, model, mode)
 
         # Aggregate results.
@@ -382,7 +382,7 @@ def model_iteration(model,
   if model._distribution_strategy:
     if model._compile_distribution and not validation_in_fit:
       # TODO(priyag, psv): Copy back metrics to the original model as well?
-      training_distributed._copy_weights_to_original_model(
+      distributed_training_utils._copy_weights_to_original_model(
           model, model._distributed_model, mode)
     scope.__exit__(None, None, None)
 
