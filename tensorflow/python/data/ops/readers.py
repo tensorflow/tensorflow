@@ -20,6 +20,7 @@ from __future__ import print_function
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -48,7 +49,6 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
         to buffer. A value of 0 results in the default buffering values chosen
         based on the compression type.
     """
-    super(TextLineDatasetV2, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     self._compression_type = convert.optional_param_to_tensor(
@@ -58,22 +58,13 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
         argument_dtype=dtypes.string)
     self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.text_line_dataset(
+    variant_tensor = gen_dataset_ops.text_line_dataset(
         self._filenames, self._compression_type, self._buffer_size)
+    super(TextLineDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])
 
 
 @tf_export(v1=["data.TextLineDataset"])
@@ -107,7 +98,6 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
         bytes in the read buffer. 0 means no buffering.
     """
-    super(_TFRecordDataset, self).__init__()
     # Force the type to string even if filenames is an empty list.
     self._filenames = ops.convert_to_tensor(
         filenames, dtypes.string, name="filenames")
@@ -120,32 +110,32 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
         "buffer_size",
         buffer_size,
         argument_default=_DEFAULT_READER_BUFFER_SIZE_BYTES)
-
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.tf_record_dataset(
+    variant_tensor = gen_dataset_ops.tf_record_dataset(
         self._filenames, self._compression_type, self._buffer_size)
+    super(_TFRecordDataset, self).__init__(variant_tensor)
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.TensorShape([])
-
-  @property
-  def output_types(self):
-    return dtypes.string
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])
 
 
-class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
+class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over its input and flattens the result."""
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length,
                sloppy, buffer_output_elements, prefetch_input_elements):
     """See `tf.data.experimental.parallel_interleave()` for details."""
-    super(ParallelInterleaveDataset, self).__init__(input_dataset, map_func,
-                                                    cycle_length, block_length)
+    self._input_dataset = input_dataset
+    self._map_func = dataset_ops.StructuredFunctionWrapper(
+        map_func, self._transformation_name(), dataset=input_dataset)
+    if not isinstance(self._map_func.output_structure,
+                      dataset_ops.DatasetStructure):
+      raise TypeError("`map_func` must return a `Dataset` object.")
+    self._structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
+    self._cycle_length = ops.convert_to_tensor(
+        cycle_length, dtype=dtypes.int64, name="cycle_length")
+    self._block_length = ops.convert_to_tensor(
+        block_length, dtype=dtypes.int64, name="block_length")
     self._sloppy = ops.convert_to_tensor(
         sloppy, dtype=dtypes.bool, name="sloppy")
     self._buffer_output_elements = convert.optional_param_to_tensor(
@@ -156,11 +146,8 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
         "prefetch_input_elements",
         prefetch_input_elements,
         argument_default=2 * cycle_length)
-
-  def _as_variant_tensor(self):
-    # pylint: disable=protected-access
-    return ged_ops.experimental_parallel_interleave_dataset(
-        self._input_dataset._as_variant_tensor(),
+    variant_tensor = ged_ops.experimental_parallel_interleave_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
         self._cycle_length,
         self._block_length,
@@ -168,7 +155,16 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
         self._buffer_output_elements,
         self._prefetch_input_elements,
         f=self._map_func.function,
-        **dataset_ops.flat_structure(structure=self._output_structure))
+        **dataset_ops.flat_structure(self))
+    super(ParallelInterleaveDataset, self).__init__(input_dataset,
+                                                    variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
+
+  @property
+  def _element_structure(self):
+    return self._structure
 
   def _transformation_name(self):
     return "tf.data.experimental.parallel_interleave()"
@@ -200,7 +196,6 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
       TypeError: If any argument does not have the expected type.
       ValueError: If any argument does not have the expected shape.
     """
-    super(TFRecordDatasetV2, self).__init__()
     if isinstance(filenames, dataset_ops.DatasetV2):
       if filenames.output_types != dtypes.string:
         raise TypeError(
@@ -229,6 +224,8 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
           filenames, read_one_file, cycle_length=num_parallel_reads,
           block_length=1, sloppy=False, buffer_output_elements=None,
           prefetch_input_elements=None)
+    variant_tensor = self._impl._variant_tensor  # pylint: disable=protected-access
+    super(TFRecordDatasetV2, self).__init__(variant_tensor)
 
   def _clone(self,
              filenames=None,
@@ -240,23 +237,12 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
                              buffer_size or self._buffer_size,
                              num_parallel_reads or self._num_parallel_reads)
 
-  def _as_variant_tensor(self):
-    return self._impl._as_variant_tensor()  # pylint: disable=protected-access
-
   def _inputs(self):
     return self._impl._inputs()  # pylint: disable=protected-access
 
   @property
-  def output_classes(self):
-    return self._impl.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._impl.output_shapes
-
-  @property
-  def output_types(self):
-    return self._impl.output_types
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])
 
 
 @tf_export(v1=["data.TFRecordDataset"])
@@ -317,7 +303,6 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
     """
-    super(FixedLengthRecordDatasetV2, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     self._record_bytes = ops.convert_to_tensor(
@@ -334,29 +319,20 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
         compression_type,
         argument_default="",
         argument_dtype=dtypes.string)
-
-  def _as_variant_tensor(self):
     if (self._compression_type is not None or
         compat.forward_compatible(2018, 11, 30)):
-      return gen_dataset_ops.fixed_length_record_dataset_v2(
+      variant_tensor = gen_dataset_ops.fixed_length_record_dataset_v2(
           self._filenames, self._header_bytes, self._record_bytes,
           self._footer_bytes, self._buffer_size, self._compression_type)
     else:
-      return gen_dataset_ops.fixed_length_record_dataset(
+      variant_tensor = gen_dataset_ops.fixed_length_record_dataset(
           self._filenames, self._header_bytes, self._record_bytes,
           self._footer_bytes, self._buffer_size)
+    super(FixedLengthRecordDatasetV2, self).__init__(variant_tensor)
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])
 
 
 @tf_export(v1=["data.FixedLengthRecordDataset"])

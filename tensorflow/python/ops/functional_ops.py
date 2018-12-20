@@ -143,7 +143,8 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         lambda i, a: i < n, compute, [i, a],
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
-        swap_memory=swap_memory)
+        swap_memory=swap_memory,
+        maximum_iterations=n)
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -253,7 +254,8 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         compute, [i, a],
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
-        swap_memory=swap_memory)
+        swap_memory=swap_memory,
+        maximum_iterations=n)
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager

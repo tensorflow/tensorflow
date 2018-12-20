@@ -55,6 +55,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -84,6 +85,47 @@ ReadVariableOp::ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {
   OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
 }
 
+namespace {
+Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
+  Tensor* output;
+  Notification n;
+  Status status;
+  AllocatorAttributes attr;
+  if (t->dtype() == DT_VARIANT) {
+    attr.set_on_host(true);
+  }
+  TF_RETURN_IF_ERROR(
+      ctx->allocate_output(output_idx, t->shape(), &output, attr));
+  if (t->dtype() == DT_VARIANT) {
+    output->flat<Variant>() = t->flat<Variant>();
+  } else if (ctx->op_device_context() != nullptr) {
+    // TODO(apassos): remove the down_cast by just returning Device* from
+    // OpKernelContext
+    Device* device = static_cast<Device*>(ctx->device());
+    ctx->op_device_context()->CopyTensorInSameDevice(
+        t, device, output, [&n, &status](const Status& s) {
+          status = s;
+          n.Notify();
+        });
+    n.WaitForNotification();
+    return status;
+  } else {
+    switch (t->dtype()) {
+#define HANDLER(type)                       \
+  case DataTypeToEnum<type>::value:         \
+    output->flat<type>() = t->flat<type>(); \
+    break;
+      TF_CALL_ALL_TYPES(HANDLER);
+#undef HANDLER
+      default:
+        return errors::Internal("Unsupported dtype", t->dtype());
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 void ReadVariableOp::Compute(OpKernelContext* ctx) {
   Var* variable = nullptr;
   const ResourceHandle& handle = HandleFromInput(ctx, 0);
@@ -100,12 +142,16 @@ void ReadVariableOp::Compute(OpKernelContext* ctx) {
   // holding a shared lock to guarantee ordering of reads and
   // writes.
   tf_shared_lock ml(*variable->mu());
-  const Tensor& t = *variable->tensor();
-  OP_REQUIRES(ctx, dtype_ == t.dtype(),
+  const Tensor* t = variable->tensor();
+  OP_REQUIRES(ctx, dtype_ == t->dtype(),
               errors::InvalidArgument(
                   "Trying to read variable with wrong dtype. Expected ",
-                  DataTypeString(dtype_), " got ", DataTypeString(t.dtype())));
-  ctx->set_output(0, t);
+                  DataTypeString(dtype_), " got ", DataTypeString(t->dtype())));
+  if (variable->copy_on_read_mode.load()) {
+    OP_REQUIRES_OK(ctx, CopyVariable(0, ctx, t));
+  } else {
+    ctx->set_output(0, *t);
+  }
 }
 
 ReadVariablesOp::ReadVariablesOp(OpKernelConstruction* c) : OpKernel(c) {
@@ -146,14 +192,18 @@ void ReadVariablesOp::Compute(OpKernelContext* ctx) {
     // holding a shared lock to guarantee ordering of reads and
     // writes.
     tf_shared_lock ml(*variables[i]->mu());
-    const Tensor& t = *variables[i]->tensor();
-    OP_REQUIRES(ctx, dtypes_[i] == t.dtype(),
+    OP_REQUIRES(ctx, dtypes_[i] == variables[i]->tensor()->dtype(),
                 errors::InvalidArgument(
                     "Trying to read variable ", handles[i]->name(),
                     " from Container: ", handles[i]->container(),
                     " with wrong dtype. Expected ", DataTypeString(dtypes_[i]),
-                    " got ", DataTypeString(t.dtype())));
-    ctx->set_output(i, t);
+                    " got ", DataTypeString(variables[i]->tensor()->dtype())));
+    if (variables[i]->copy_on_read_mode.load()) {
+      OP_REQUIRES_OK(ctx, CopyVariable(i, ctx, variables[i]->tensor()));
+    } else {
+      const Tensor& t = *variables[i]->tensor();
+      ctx->set_output(i, t);
+    }
   }
 }
 
@@ -308,8 +358,23 @@ class AssignVariableOp : public OpKernel {
                     "Trying to assign variable with wrong dtype. Expected ",
                     DataTypeString(variable->tensor()->dtype()), " got ",
                     DataTypeString(dtype_)));
+    if (variable->copy_on_read_mode.load()) {
+      PersistentTensor unused;
+      Tensor* tmp;
+      AllocatorAttributes attr;
+      attr.set_gpu_compatible(true);
+      attr.set_nic_compatible(true);
+      OP_REQUIRES_OK(context,
+                     context->allocate_persistent(value.dtype(), value.shape(),
+                                                  &unused, &tmp, attr));
+      functor::DenseUpdate<Device, T, ASSIGN> copy_functor;
+      copy_functor(context->eigen_device<Device>(), tmp->flat<T>(),
+                   value.flat<T>());
+      *variable->tensor() = *tmp;
+    } else {
+      *variable->tensor() = value;
+    }
     variable->is_initialized = true;
-    *variable->tensor() = value;
   }
 
  private:
@@ -442,8 +507,9 @@ class AssignUpdateVariableOp : public OpKernel {
                                         " using a Tensor with shape ",
                                         value.shape().DebugString(),
                                         ", shapes must be equal."));
-    OP_REQUIRES_OK(context,
-                   PrepareToUpdateVariable<Device, T>(context, var_tensor));
+    OP_REQUIRES_OK(
+        context, PrepareToUpdateVariable<Device, T>(
+                     context, var_tensor, variable->copy_on_read_mode.load()));
     functor::DenseUpdate<Device, T, Op> update_functor;
     update_functor(context->eigen_device<Device>(), var_tensor->flat<T>(),
                    value.flat<T>());
@@ -524,6 +590,7 @@ class ResourceGatherOp : public OpKernel {
     Var* v = nullptr;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
     core::ScopedUnref su(v);
+    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
     // NOTE: We hold the lock for the whole gather operation instead
     // of increasing the reference count of v->tensor() to avoid a
     // situation where a write to the same variable will see a
@@ -639,9 +706,9 @@ class ResourceScatterUpdateOp : public OpKernel {
     Var* v = nullptr;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
     core::ScopedUnref unref_v(v);
-    mutex_lock ml(*v->mu());
+    OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
+    tf_shared_lock ml(*v->mu());
     Tensor* params = v->tensor();
-    OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, params));
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
 

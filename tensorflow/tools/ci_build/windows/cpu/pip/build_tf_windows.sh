@@ -67,7 +67,6 @@ EXTRA_BUILD_FLAGS=""
 #                        ensure performance
 # --test_core_only       Use tensorflow/python/... as test target
 # --test_contrib_only    Use tensorflow/contrib/... as test target
-#for ARG in "$@"; do
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tf_nightly) TF_NIGHTLY=1 ;;
@@ -109,7 +108,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
   if [ -z ${PROJECT_NAME} ]; then
     EXTRA_PIP_FLAGS="--nightly_flag"
   else
-    EXTRA_PIP_FLAGS="--project_name=${PROJECT_NAME} --nightly_flag"
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
   fi
 fi
 
@@ -123,7 +122,8 @@ fi
 run_configure_for_cpu_build
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
-  tensorflow/tools/pip_package:build_pip_package || exit $?
+  tensorflow/tools/pip_package:build_pip_package \
+  --incompatible_remove_native_http_archive=false || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
@@ -132,7 +132,7 @@ fi
 # Create a python test directory to avoid package name conflict
 create_python_test_dir "${PY_TEST_DIR}"
 
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" "${EXTRA_PIP_FLAGS}"
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$PWD/${PY_TEST_DIR}" ${EXTRA_PIP_FLAGS}
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0

@@ -1,8 +1,16 @@
 path: "tensorflow.random"
 tf_module {
   member_method {
+    name: "all_candidate_sampler"
+    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "categorical"
     argspec: "args=[\'logits\', \'num_samples\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "fixed_unigram_candidate_sampler"
+    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'vocab_file\', \'distortion\', \'num_reserved_ids\', \'num_shards\', \'shard\', \'unigrams\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'1.0\', \'0\', \'1\', \'0\', \'()\', \'None\', \'None\'], "
   }
   member_method {
     name: "gamma"
@@ -11,6 +19,10 @@ tf_module {
   member_method {
     name: "get_seed"
     argspec: "args=[\'op_seed\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "learned_unigram_candidate_sampler"
+    argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'range_max\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "log_uniform_candidate_sampler"

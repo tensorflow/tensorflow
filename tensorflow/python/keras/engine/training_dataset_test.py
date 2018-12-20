@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
@@ -37,7 +38,8 @@ from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
 
-  @keras_parameterized.run_all_keras_modes_with_all_model_types
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_iterators_single_io(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -88,16 +90,17 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
                 epochs=1, steps_per_epoch=2, verbose=0)
 
     with self.assertRaisesRegexp(
-        ValueError, 'you should specify the `steps_per_epoch` argument'):
+        ValueError, 'the `steps_per_epoch` argument'):
       model.fit(iterator, epochs=1, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.evaluate(iterator, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.predict(iterator, verbose=0)
 
-  @keras_parameterized.run_all_keras_modes_with_all_model_types
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_get_next_op_created_once(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -119,7 +122,8 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
     ops.get_default_graph().finalize()
     model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
 
-  @keras_parameterized.run_all_keras_modes_with_all_model_types
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_iterators_running_out_of_data(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -144,12 +148,14 @@ class TestTrainingWithDatasetIterators(keras_parameterized.TestCase):
 
 class TestTrainingWithDataset(keras_parameterized.TestCase):
 
-  # TODO(kaftan) Run w/ all model types.
-  # Seems like subclass models has a bug, file ticket
-  @keras_parameterized.run_all_keras_modes_with_all_model_types(
-      exclude_models='subclass'
-  )
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_calling_model_on_same_dataset(self):
+    if ((not testing_utils.should_run_eagerly())
+        and testing_utils.get_model_type() == 'subclass'
+        and context.executing_eagerly()):
+      self.skipTest('b/120673224')
+
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
@@ -172,7 +178,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
               validation_data=dataset, validation_steps=2)
 
-  @keras_parameterized.run_all_keras_modes_with_all_model_types
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_training_and_eval_methods_on_dataset(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -216,26 +223,37 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
           sample_weight=sample_weight)
 
     # Test invalid usage
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.fit(dataset, batch_size=10, epochs=1, steps_per_epoch=2,
+                verbose=0)
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.predict(dataset, batch_size=10, steps=2, verbose=0)
+    with self.assertRaisesRegexp(ValueError, 'The `batch_size` argument'
+                                 ' must not be specified when using dataset'
+                                 ' as an input.'):
+      model.evaluate(dataset, batch_size=10, steps=2, verbose=0)
+
     with self.assertRaisesRegexp(ValueError,
                                  'you should not specify a target'):
       model.fit(dataset, dataset,
                 epochs=1, steps_per_epoch=2, verbose=0)
 
     with self.assertRaisesRegexp(
-        ValueError, 'you should specify the `steps_per_epoch` argument'):
+        ValueError, 'the `steps_per_epoch` argument'):
       model.fit(dataset, epochs=1, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.evaluate(dataset, verbose=0)
     with self.assertRaisesRegexp(ValueError,
-                                 'you should specify the `steps` argument'):
+                                 'the `steps` argument'):
       model.predict(dataset, verbose=0)
 
-  # TODO(kaftan) Run w/ all model types.
-  # Seems like subclass models has a bug, file ticket
-  @keras_parameterized.run_all_keras_modes_with_all_model_types(
-      exclude_models='subclass'
-  )
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_dataset_with_sample_weights(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -256,7 +274,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.evaluate(dataset, steps=2, verbose=1)
     model.predict(dataset, steps=2)
 
-  @keras_parameterized.run_all_keras_modes_with_all_model_types
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_dataset_with_sparse_labels(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
@@ -305,11 +324,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
 class TestMetricsWithDatasetIterators(keras_parameterized.TestCase):
 
-  # TODO(kaftan) Run w/ all model types.
-  # Seems like subclass models has a bug, file ticket
-  @keras_parameterized.run_all_keras_modes_with_all_model_types(
-      exclude_models='subclass'
-  )
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
   def test_metrics_correctness_with_iterator(self):
     layers = [
         keras.layers.Dense(8, activation='relu', input_dim=4,

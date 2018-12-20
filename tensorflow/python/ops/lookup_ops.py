@@ -948,7 +948,7 @@ def index_table_from_file(vocabulary_file=None,
   `[vocabulary size, vocabulary size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `tf.tables_initializer.run()` or `table.init.run()` once.
+  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
 
   To specify multi-column vocabulary files, use key_column_index and
   value_column_index and delimiter.
@@ -1077,7 +1077,7 @@ def index_table_from_tensor(vocabulary_list,
   `[vocabulary list size, vocabulary list size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `tf.tables_initializer.run()` or `table.init.run()` once.
+  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
 
   Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
   the table initializer op, it will throw a `FailedPreconditionError`.
@@ -1179,7 +1179,7 @@ def index_to_string_table_from_file(vocabulary_file,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `tf.tables_initializer.run()` or `table.init.run()` once.
+  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
 
   To specify multi-column vocabulary files, use key_column_index and
   value_column_index and delimiter.
@@ -1276,7 +1276,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `tf.tables_initializer.run()` or `table.init.run()` once.
+  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
 
   Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
   the table initializer op, it will throw a `FailedPreconditionError`.

@@ -35,6 +35,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import saver
 
 
+@test_util.run_deprecated_v1
 class QuantileOpsTest(test_util.TensorFlowTestCase):
 
   def create_resource(self, name, eps, max_elements, num_streams=1):
@@ -82,7 +83,6 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
     self.max_elements = 1 << 16
     self.num_quantiles = constant_op.constant(3, dtype=dtypes.int64)
 
-  @test_util.run_deprecated_v1
   def testBasicQuantileBucketsSingleResource(self):
     with self.cached_session() as sess:
       quantile_accumulator_handle = self.create_resource("floats", self.eps,
@@ -107,7 +107,6 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self._feature_0_quantiles, quantiles[0].eval())
       self.assertAllClose(self._feature_1_quantiles, quantiles[1].eval())
 
-  @test_util.run_deprecated_v1
   def testBasicQuantileBucketsMultipleResources(self):
     with self.cached_session() as sess:
       quantile_accumulator_handle_0 = self.create_resource("float_0", self.eps,
@@ -142,7 +141,6 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self._feature_0_quantiles, quantiles[0].eval())
       self.assertAllClose(self._feature_1_quantiles, quantiles[1].eval())
 
-  @test_util.run_deprecated_v1
   def testSaveRestoreAfterFlush(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
@@ -175,7 +173,6 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
 
-  @test_util.run_deprecated_v1
   def testSaveRestoreBeforeFlush(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")

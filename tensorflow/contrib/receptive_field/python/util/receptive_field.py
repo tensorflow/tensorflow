@@ -12,12 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functions to compute receptive field of a fully-convolutional network.
-
-Please refer to the following g3doc for detailed explanation on how this
-computation is performed, and why it is important:
-g3doc/photos/vision/features/delf/g3doc/rf_computation.md
-"""
+"""Functions to compute receptive field of a fully-convolutional network."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -96,8 +91,8 @@ class ReceptiveField(object):
     Args:
       y: An array of feature coordinates with shape `(..., d)`, where `d` is the
         number of dimensions of the coordinates.
-      axis: The dimensions for which to compute the input center coordinates.
-        If `None` (the default), compute the input center coordinates for all
+      axis: The dimensions for which to compute the input center coordinates. If
+        `None` (the default), compute the input center coordinates for all
         dimensions.
 
     Returns:
@@ -127,8 +122,8 @@ class ReceptiveField(object):
     Args:
       x: An array of input center coordinates with shape `(..., d)`, where `d`
         is the number of dimensions of the coordinates.
-      axis: The dimensions for which to compute the feature coordinates.
-        If `None` (the default), compute the feature coordinates for all
+      axis: The dimensions for which to compute the feature coordinates. If
+        `None` (the default), compute the feature coordinates for all
         dimensions.
 
     Returns:
@@ -274,14 +269,15 @@ def compute_receptive_field_from_graph_def(graph_def,
         continue
 
       # Get params for this layer.
-      (kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x,
-       padding_y, _, _) = parse_layer_parameters.get_layer_params(
+      (kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x, padding_y,
+       _, _) = parse_layer_parameters.get_layer_params(
            node, name_to_node, node_info[node.name].input_size)
-      logging.vlog(3, "kernel_size_x = %s, kernel_size_y = %s, "
-                   "stride_x = %s, stride_y = %s, "
-                   "padding_x = %s, padding_y = %s, input size = %s" %
-                   (kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x,
-                    padding_y, node_info[node.name].input_size))
+      logging.vlog(
+          3, "kernel_size_x = %s, kernel_size_y = %s, "
+          "stride_x = %s, stride_y = %s, "
+          "padding_x = %s, padding_y = %s, input size = %s" %
+          (kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x,
+           padding_y, node_info[node.name].input_size))
       if padding_x is None or padding_y is None:
         undefined_padding = True
 
@@ -352,15 +348,15 @@ def compute_receptive_field_from_graph_def(graph_def,
               raise ValueError(
                   "Graph is not aligned since effective stride from different "
                   "paths is different in vertical direction")
-            if (rf_sizes_x[inp_name] - 1
-               ) / 2 - effective_paddings_x[inp_name] != (
-                   rf_size_input_x - 1) / 2 - effective_padding_input_x:
+            if (rf_sizes_x[inp_name] -
+                1) / 2 - effective_paddings_x[inp_name] != (
+                    rf_size_input_x - 1) / 2 - effective_padding_input_x:
               raise ValueError(
                   "Graph is not aligned since center shift from different "
                   "paths is different in horizontal direction")
-            if (rf_sizes_y[inp_name] - 1
-               ) / 2 - effective_paddings_y[inp_name] != (
-                   rf_size_input_y - 1) / 2 - effective_padding_input_y:
+            if (rf_sizes_y[inp_name] -
+                1) / 2 - effective_paddings_y[inp_name] != (
+                    rf_size_input_y - 1) / 2 - effective_padding_input_y:
               raise ValueError(
                   "Graph is not aligned since center shift from different "
                   "paths is different in vertical direction")

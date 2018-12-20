@@ -263,7 +263,8 @@ Status EagerLocalExecute(EagerOperation* op,
     // Note that it is not ideal, but currently ok, to set this
     // attribute after computing the kernel cache key above.
     if (op->is_function() && device != nullptr &&
-        device->device_type() == "TPU") {
+        (device->device_type() == "TPU" || device->device_type() == "XLA_GPU" ||
+         device->device_type() == "XLA_CPU")) {
       op->MutableAttrs()->Set(kXlaCompileAttr, true);
     }
 
@@ -284,7 +285,8 @@ Status EagerLocalExecute(EagerOperation* op,
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }
-    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
+    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory(),
+                                 ctx->GetCollectiveExecutorHandle());
     status = KernelAndDevice::Init(ndef, flr, ctx->runner(), kernel);
     if (!status.ok()) {
       delete kernel;

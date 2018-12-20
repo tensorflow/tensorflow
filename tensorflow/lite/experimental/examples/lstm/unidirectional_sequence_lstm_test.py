@@ -111,7 +111,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
     # Initialize variables
     init = tf.global_variables_initializer()
-    self.evaluate(init)
+    sess.run(init)
     for _ in range(TRAIN_STEPS):
       batch_x, batch_y = self.mnist.train.next_batch(
           batch_size=self.batch_size, shuffle=False)

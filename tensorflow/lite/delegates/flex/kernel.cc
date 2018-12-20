@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
@@ -131,6 +132,8 @@ tensorflow::Status ExecuteFlexOp(tensorflow::EagerContext* eager_context,
 struct OpNode {
   // The name of the TensorFlow op to execute.
   string name;
+  // Index of this node into TF Lite's operator list.
+  int index;
   // The corresponding NodeDef, containing the attributes for the op.
   tensorflow::NodeDef nodedef;
   // List of inputs, as TF Lite tensor indices.
@@ -181,6 +184,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     op_data->nodes.push_back(OpNode());
     OpNode& node_data = op_data->nodes.back();
 
+    node_data.index = node_index;
     node_data.name = "";
     if (node->custom_initial_data) {
       // The flexbuffer contains a vector where the first elements is the
@@ -270,6 +274,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Execute the TensorFlow Ops sequentially.
   for (const auto& node_data : op_data->nodes) {
+    SCOPED_TAGGED_OPERATOR_PROFILE(
+        reinterpret_cast<profiling::Profiler*>(context->profiler),
+        node_data.name.c_str(), node_data.index);
     if (node_data.nodedef.op().empty()) {
       context->ReportError(context, "Invalid NodeDef in Flex op '%s'",
                            node_data.name.c_str());

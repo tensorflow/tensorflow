@@ -230,7 +230,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
       with ops.device("/job:worker/task:0"):
         result = math_ops.add_n(xs)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       result_value = sess.run(result)
     self.assertEqual(result_value, expected)
     if result_value == expected:
@@ -278,7 +278,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
       train_op = control_flow_ops.group([x_add, y_sub])
 
       if context.is_chief:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       # Synchronize workers after initializaton.
       if context.has_barrier:
@@ -427,6 +427,7 @@ class DistributeCoordinatorTestStandaloneMode(DistributeCoordinatorTestBase):
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
+  @test_util.run_v1_only("MonitoredSession removed from v2")
   def testBetweenGraphWithMonitoredSession(self):
     """Test monitored session in standalone client mode."""
     distribute_coordinator.run_distribute_coordinator(
@@ -600,6 +601,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
+  @test_util.run_v1_only("MonitoredSession removed from v2")
   def testBetweenGraphWithMonitoredSession(self):
     cluster_spec = self._create_cluster_spec(
         num_workers=NUM_WORKERS, num_ps=NUM_PS)

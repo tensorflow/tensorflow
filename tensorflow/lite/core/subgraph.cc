@@ -126,6 +126,7 @@ Subgraph::Subgraph(ErrorReporter* error_reporter,
   context_->recommended_num_threads = -1;
   context_->GetExternalContext = GetExternalContext;
   context_->SetExternalContext = SetExternalContext;
+  context_->profiler = nullptr;
 
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kTensorsReservedCapacity);
@@ -931,6 +932,12 @@ void Subgraph::SwitchToKernelContext() {
 }
 
 TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
+  if (state_ == kStateInvokableAndImmutable) {
+    ReportError(
+        "ModifyGraphWithDelegate is disallowed when graph is immutable.");
+    return kTfLiteError;
+  }
+
   if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
     int last_execution_plan_index_prepared;
     TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
@@ -943,6 +950,8 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     }
   }
 
+  const bool was_invokable_before_delegate = state_ == kStateInvokable;
+
   // TODO(aselle): Consider if it is worth storing pointers to delegates.
   // Setup additional context interface.
   SwitchToDelegateContext();
@@ -954,6 +963,13 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 
   TF_LITE_ENSURE_OK(context_, status);
 
+  // If the memory planner has already been created, we need to execute
+  // planning again to account for the updated graph topology.
+  if (memory_planner_) {
+    state_ = kStateUninvokable;
+    TF_LITE_ENSURE_OK(context_, memory_planner_->PlanAllocations());
+  }
+
   if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
     // Reset the state to force tensor/op reallocation.
     state_ = kStateUninvokable;
@@ -962,6 +978,11 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     // After using a delegate which doesn't support dynamic tensors, make the
     // entire graph immutable.
     state_ = kStateInvokableAndImmutable;
+  } else if (was_invokable_before_delegate) {
+    // If the graph was invokable prior to delegate application, flush
+    // allocation now to leave it in a consistent state.
+    TF_LITE_ENSURE_OK(context_, AllocateTensors());
+    TF_LITE_ENSURE_EQ(context_, state_, kStateInvokable);
   }
 
   return status;

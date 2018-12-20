@@ -84,6 +84,7 @@ class _RNNCellForTest(rnn_cell_impl.RNNCell):
     return (math_ops.multiply(self._w, input_), state)
 
 
+@test_util.run_v1_only("b/120545219")
 class SessionDebugTestBase(test_util.TensorFlowTestCase):
   """Base class for unit tests of tfdbg running with tf.Session."""
 

@@ -31,10 +31,12 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numerics
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("clip_by_value")
+@dispatch.add_dispatch_support
 def clip_by_value(t, clip_value_min, clip_value_max,
                   name=None):
   """Clips tensor values to a specified min and max.

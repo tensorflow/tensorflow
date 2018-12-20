@@ -77,15 +77,22 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
     new_node.add_input(tmp->name());
   }
 
-  // Set `f` and `Targuments` attributes.
+  // Required attributes.
   for (auto key : {"f", "Targuments"}) {
     graph_utils::CopyAttribute(key, map_node, &new_node);
   }
-
-  // Set `output_types` and `output_shapes` attributes.
   for (auto key : {"output_shapes", "output_types"}) {
     graph_utils::CopyAttribute(key, batch_node, &new_node);
   }
+
+  // Optional attributes.
+  // TODO(jsimsa): Support `use_inter_op_parallelism` and `sloppy`.
+  for (auto key : {"preserve_cardinality"}) {
+    if (gtl::FindOrNull(map_node.attr(), key)) {
+      graph_utils::CopyAttribute(key, map_node, &new_node);
+    }
+  }
+
   return new_node;
 }
 

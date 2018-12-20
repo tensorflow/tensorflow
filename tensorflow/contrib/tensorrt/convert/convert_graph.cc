@@ -89,49 +89,52 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
   static const std::set<string> candidate_ops = {
-      "Identity",
-      "Snapshot",
+      "Abs",
+      "Add",
+      "AvgPool",
+      "BatchMatMul",
+      "BiasAdd",
+      "ConcatV2",
       "Const",
       "Conv2D",
-      "MaxPool",
-      "BiasAdd",
-      "Relu",
-      "Sigmoid",
-      "Tanh",
-      "Add",
-      "Mul",
-      "Sub",
-      "Rsqrt",
-      "Pad",
-      "Mean",
-      "AvgPool",
-      "ConcatV2",
       "DepthwiseConv2dNative",
+      "Div",
+      "Exp",
+      "ExpandDims",
       "FusedBatchNorm",
       "FusedBatchNormV2",
-      "Div",
-      "RealDiv",
-      "Rsqrt",
-      "Reciprocal",
-      "Exp",
+      "Identity",
       "Log",
-      "Sqrt",
-      "Abs",
-      "Neg",
-      "Transpose",
-      "Reshape",
       "MatMul",
-      "BatchMatMul",
-      "Softmax",
-      "Minimum",
-      "Maximum",
-      "TopKV2",
-      "Sum",
-      "Prod",
       "Max",
+      "MaxPool",
+      "Maximum",
+      "Mean",
       "Min",
+      "Minimum",
+      "Mul",
+      "Neg",
+      "Pad",
+      "Prod",
+      "RealDiv",
+      "Reciprocal",
+      "Relu",
       "Relu6",
+      "Reshape",
+      "Rsqrt",
+      "Rsqrt",
+      "Sigmoid",
+      "Snapshot",
+      "Softmax",
+      "Sqrt",
       "Square",
+      "Squeeze",
+      "StridedSlice",
+      "Sub",
+      "Sum",
+      "Tanh",
+      "TopKV2",
+      "Transpose",
   };
   bool is_supported_op_type =
       (candidate_ops.count(node->type_string()) ||
@@ -320,6 +323,13 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   return Status::OK();
 }
 
+struct EdgePtrCompare {
+  bool operator()(const tensorflow::Edge* lhs,
+                  const tensorflow::Edge* rhs) const {
+    return lhs->id() < rhs->id();
+  }
+};
+
 // Function to get subsegment information structure.
 tensorflow::Status GetEngineInfo(
     const tensorflow::Graph* g,
@@ -358,8 +368,12 @@ tensorflow::Status GetEngineInfo(
     }
     const int node_id = node->id();
     subgraph_node_ids.push_back(node_id);
-    // Create input connections.
-    for (const auto edge : node->in_edges()) {
+    // Create input connections. Sort edges first to make determnistic since
+    // in_edges is a set of pointers.
+    std::vector<const tensorflow::Edge*> in_edges(node->in_edges().begin(),
+                                                  node->in_edges().end());
+    std::sort(in_edges.begin(), in_edges.end(), EdgePtrCompare());
+    for (const auto edge : in_edges) {
       auto input_node = edge->src();
       if (input_node->IsSource() || segment_nodes.count(input_node->name())) {
         continue;
@@ -407,8 +421,12 @@ tensorflow::Status GetEngineInfo(
             node_id, edge->dst_input(), /*input_edge=*/true, port);
       }
     }
-    // Create output connections.
-    for (const auto edge : node->out_edges()) {
+    // Create output connections. Sort edges first to make determnistic since
+    // out_edges is a set of pointers.
+    std::vector<const tensorflow::Edge*> out_edges(node->out_edges().begin(),
+                                                   node->out_edges().end());
+    std::sort(out_edges.begin(), out_edges.end(), EdgePtrCompare());
+    for (const auto edge : out_edges) {
       auto output_node = edge->dst();
       if (output_node->IsSink() || segment_nodes.count(output_node->name())) {
         continue;
@@ -564,6 +582,18 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
         }
         input_shape_protos.at(conn.port_number) = in_shape;
         input_shapes.at(conn.port_number) = conn.outside_shape;
+        // Shape must be fully defined (excluding batch dimension) for static
+        // mode.
+        if (info.engine_type == EngineInfo::EngineType::TRTStatic) {
+          for (int i = 1; i < conn.outside_shape.dims(); i++) {
+            if (conn.outside_shape.dim_size(i) <= 0) {
+              return tensorflow::errors::Internal(
+                  "Input shapes must be fully defined when in static mode. "
+                  "Please try is_dynamic_op=True (shape was ",
+                  conn.outside_shape.DebugString(), ")");
+            }
+          }
+        }
 
         // Rewrire data input if it's not found in original graph.
         tensorflow::Node* input_node = graph->FindNodeId(conn.outside_id);
@@ -584,6 +614,14 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
         }
       }
     }
+  }
+  // We don't support segments with no inputs. Fall back to native TF here to
+  // avoid crash later. Constant folding should've folded the ops that make up
+  // these segments.
+  if (inputs.empty()) {
+    return tensorflow::errors::Internal(
+        "Segment has no inputs (possible "
+        "constfold failure)");
   }
 
   const bool calibrate_int8 =

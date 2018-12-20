@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -76,21 +77,10 @@ class Shape {
   std::vector<Shape>* mutable_tuple_shapes() { return &tuple_shapes_; }
 
   // Methods for accessing the layout field.
-  bool has_layout() const { return layout_.has_value(); }
-  const Layout& layout() const {
-    if (layout_.has_value()) {
-      return *layout_;
-    } else {
-      return Layout::default_instance();
-    }
-  }
-  Layout* mutable_layout() {
-    if (!layout_.has_value()) {
-      layout_ = Layout();
-    }
-    return &layout_.value();
-  }
-  void clear_layout() { layout_.reset(); }
+  bool has_layout() const { return layout_.format() != INVALID_FORMAT; }
+  const Layout& layout() const { return layout_; }
+  Layout* mutable_layout() { return &layout_; }
+  void clear_layout() { layout_.Clear(); }
 
   void Swap(Shape* other) {
     using std::swap;
@@ -101,7 +91,7 @@ class Shape {
     element_type_ = PRIMITIVE_TYPE_INVALID;
     dimensions_.clear();
     tuple_shapes_.clear();
-    layout_.reset();
+    clear_layout();
   }
 
   string SerializeAsString() const { return ToProto().SerializeAsString(); }
@@ -118,8 +108,8 @@ class Shape {
   // The tuple element subshapes. This is nonempty only for tuple shapes.
   std::vector<Shape> tuple_shapes_;
 
-  // The array layout of the shape. This is present only for array shapes.
-  absl::optional<Layout> layout_;
+  // The layout of the shape. Only relevant for arrays.
+  Layout layout_;
 };
 
 // Shape of the parameters and output of an XLA computation. This is analogous

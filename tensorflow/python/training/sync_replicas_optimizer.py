@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -259,7 +260,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     # local_anchor op will be placed on this worker task by default.
     local_anchor = control_flow_ops.no_op()
     # Colocating local_step variable prevents it being placed on the PS.
-    with ops.colocate_with(local_anchor):
+    distribution_strategy = (
+        distribution_strategy_context.get_distribution_strategy())
+    with distribution_strategy.colocate_vars_with(local_anchor):
       self._local_step = variable_scope.variable(
           initial_value=0,
           trainable=False,

@@ -28,6 +28,7 @@ from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -42,6 +43,7 @@ class EvaluateFrozenGraph(test.TestCase):
     write_graph(sess.graph_def, '', graph_def_file, False)
     return graph_def_file
 
+  @test_util.run_v1_only('b/120545219')
   def testFloat(self):
     with session.Session().as_default() as sess:
       in_tensor = array_ops.placeholder(
@@ -51,6 +53,7 @@ class EvaluateFrozenGraph(test.TestCase):
 
     model_coverage.test_frozen_graph(filename, ['Placeholder'], ['add'])
 
+  @test_util.run_v1_only('b/120545219')
   def testMultipleOutputs(self):
     with session.Session().as_default() as sess:
       in_tensor_1 = array_ops.placeholder(
@@ -84,15 +87,18 @@ class EvaluateFrozenGraph(test.TestCase):
     filename = self._saveFrozenGraph(sess)
     return filename
 
+  @test_util.run_v1_only('b/120545219')
   def testQuantized(self):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(filename, ['inputA'], ['output'])
 
+  @test_util.run_v1_only('b/120545219')
   def testQuantizedInputShapes(self):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(
         filename, ['inputA'], ['output'], input_shapes={'inputA': [33, 33]})
 
+  @test_util.run_v1_only('b/120545219')
   def testQuantizedFlexAll(self):
     filename = self._getQuantizedModel()
     model_coverage.test_frozen_graph_quant(
@@ -102,6 +108,7 @@ class EvaluateFrozenGraph(test.TestCase):
 
 class EvaluateSavedModel(test.TestCase):
 
+  @test_util.run_v1_only('b/120545219')
   def testFloat(self):
     saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
     with session.Session().as_default() as sess:
@@ -139,18 +146,21 @@ class EvaluateKerasModel(test.TestCase):
       os.close(fd)
     return keras_file
 
+  @test_util.run_v1_only('b/120545219')
   def testFloat(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file)
 
+  @test_util.run_v1_only('b/120545219')
   def testPostTrainingQuantize(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)
 
     model_coverage.test_keras_model(keras_file, post_training_quantize=True)
 
+  @test_util.run_v1_only('b/120545219')
   def testTargetOps(self):
     model = self._getSingleInputKerasModel()
     keras_file = self._saveKerasModel(model)

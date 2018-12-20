@@ -80,7 +80,7 @@ TEST_P(IotaR2Test, DoIt) {
 }
 
 INSTANTIATE_TEST_CASE_P(IotaR2TestInstantiation, IotaR2Test,
-                        ::testing::Combine(::testing::Values(F32, S32),
+                        ::testing::Combine(::testing::Values(F32, S32, BF16),
                                            ::testing::Range(/*start=*/10,
                                                             /*end=*/1001,
                                                             /*step=*/10),

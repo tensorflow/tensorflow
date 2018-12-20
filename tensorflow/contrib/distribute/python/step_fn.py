@@ -100,7 +100,7 @@ class StandardSingleLossStep(StandardInputStep):
         gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
 
         grads_and_vars = self.distribution.call_for_each_replica(
-            gradients_fn, args=(ctx,) + inputs)
+            gradients_fn, args=(ctx, inputs))
         # If threads use layers, then we need to run the first step
         # sequentially, so that layers.build() is not executed in parallel.
         # Otherwise, multiple sets of mirrored variables are going to be

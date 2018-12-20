@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Atanh"
+  endpoint {
+    name: "math.Atanh"
+  }
+}

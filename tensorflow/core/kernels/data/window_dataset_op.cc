@@ -164,6 +164,7 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
               Status status =
                   input_impl_->GetNext(ctx, &element, end_of_sequence);
               if (!*end_of_sequence) {
+                RecordBufferEnqueue(ctx, element);
                 buffer_.emplace_back(std::move(element), status);
               } else {
                 input_impl_.reset();
@@ -201,8 +202,14 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
                 input_impl_.reset();
               }
             }
+            for (size_t i = 0; i < buffer_.size(); ++i) {
+              RecordBufferDequeue(ctx, buffer_.at(i).result);
+            }
             buffer_.clear();
           } else {
+            for (size_t i = 0; i < window_shift; ++i) {
+              RecordBufferDequeue(ctx, buffer_.at(i).result);
+            }
             buffer_.erase(buffer_.begin(), buffer_.begin() + window_shift);
           }
         }

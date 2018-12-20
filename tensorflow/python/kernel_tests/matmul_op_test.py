@@ -21,6 +21,7 @@ from __future__ import print_function
 import operator
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -224,7 +225,8 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
 if __name__ == "__main__":
   sizes = [1, 3, 5]
   trans_options = [[False, False], [True, False], [False, True]]
-  for use_static_shape in [False, True]:
+  # TF2 does not support placeholders under eager so we skip it
+  for use_static_shape in set([True, tf2.enabled()]):
     for dtype in (np.int32, np.int64, np.float16, np.float32, np.float64,
                   np.complex64, np.complex128):
       if not use_static_shape and (dtype == np.int32 or dtype == np.int64):

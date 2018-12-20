@@ -98,42 +98,42 @@ class LiteralUtilTest : public ::testing::Test {
 
 TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto true_lit = LiteralUtil::CreateR0<bool>(true);
-  EXPECT_EQ("true", true_lit.ToString());
+  EXPECT_EQ("pred[] true", true_lit.ToString());
 
   auto false_lit = LiteralUtil::CreateR0<bool>(false);
-  EXPECT_EQ("false", false_lit.ToString());
+  EXPECT_EQ("pred[] false", false_lit.ToString());
 
   auto u32_lit = LiteralUtil::CreateR0<uint32>(42);
-  EXPECT_EQ("42", u32_lit.ToString());
+  EXPECT_EQ("u32[] 42", u32_lit.ToString());
 
   auto s32_lit = LiteralUtil::CreateR0<int32>(-999);
-  EXPECT_EQ("-999", s32_lit.ToString());
+  EXPECT_EQ("s32[] -999", s32_lit.ToString());
 
   auto f32_lit = LiteralUtil::CreateR0<float>(3.14f);
-  EXPECT_EQ("3.14", f32_lit.ToString());
+  EXPECT_EQ("f32[] 3.14", f32_lit.ToString());
 
   auto f16_lit = LiteralUtil::CreateR0<half>(static_cast<half>(0.5f));
-  EXPECT_EQ("0.5", f16_lit.ToString());
+  EXPECT_EQ("f16[] 0.5", f16_lit.ToString());
 
   auto c64_lit = LiteralUtil::CreateR0<complex64>({3.14f, 2.78f});
-  EXPECT_EQ("(3.14, 2.78)", c64_lit.ToString());
+  EXPECT_EQ("c64[] (3.14, 2.78)", c64_lit.ToString());
 
   auto bf16_lit = LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(0.5f));
-  EXPECT_EQ("0.5", bf16_lit.ToString());
+  EXPECT_EQ("bf16[] 0.5", bf16_lit.ToString());
 
   // 3.14 will be rounded to 3.14062 in bfloat16 format.
   auto bf16_lit_truncated =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(3.14f));
-  ASSERT_EQ("3.14062", bf16_lit_truncated.ToString());
+  ASSERT_EQ("bf16[] 3.14062", bf16_lit_truncated.ToString());
 
   auto bf16_lit_truncated2 =
       LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(9.001f));
-  EXPECT_EQ("9", bf16_lit_truncated2.ToString());
+  EXPECT_EQ("bf16[] 9", bf16_lit_truncated2.ToString());
 }
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
   auto pred_vec = LiteralUtil::CreateR1<bool>({true, false, true});
-  EXPECT_EQ("{1, 0, 1}", pred_vec.ToString());
+  EXPECT_EQ("pred[3] {1, 0, 1}", pred_vec.ToString());
 }
 
 TEST_F(LiteralUtilTest, R2ToString) {
@@ -210,8 +210,8 @@ TEST_F(LiteralUtilTest, TupleToString) {
   auto scalar = LiteralUtil::CreateR0<float>(1.0);
   auto matrix = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = LiteralUtil::MakeTuple({&scalar, &matrix});
-  const string expected = R"((f32[], f32[2,2]) (
-1,
+  const string expected = R"((
+f32[] 1,
 f32[2,2] {
   { 1, 2 },
   { 3, 4 }
@@ -1890,7 +1890,7 @@ TEST_F(LiteralUtilTest, SortSparseElements) {
   literal.AppendSparseElement<float>({3, 4, 5}, 3.0);
   literal.AppendSparseElement<float>({1, 2, 3}, 1.0);
   literal.SortSparseElements();
-  EXPECT_EQ(literal.ToString(false),
+  EXPECT_EQ(literal.ToString(),
             "f32[10,10,10]{[1, 2, 3]: 1, [2, 3, 4]: 2, [3, 4, 5]: 3}");
 }
 

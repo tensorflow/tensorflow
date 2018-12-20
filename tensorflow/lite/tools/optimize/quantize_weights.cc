@@ -21,11 +21,12 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
 namespace tflite {
 namespace optimize {
@@ -45,44 +46,6 @@ typedef struct {
 // The default minimum number of elements a weights array must have to be
 // quantized by this transformation.
 const int kWeightsMinNumElementsDefault = 1024;
-
-// Nudge min and max so that floating point 0 falls exactly on a quantized
-// value, returning the nudges scale and zero_point.
-//
-// Although this code originates from FakeQuantization in quantized training,
-// we may deviate from that implementation as we please since we do not fine
-// tune the weights with quantized training.
-void GetAsymmetricQuantizationParams(
-    const float min, const float max, const int quant_min, const int quant_max,
-    QuantizationParametersT* quantization_params) {
-  // Adjust the boundaries to guarantee 0 is included.
-  const float quant_min_float = std::min(static_cast<float>(quant_min), 0.0f);
-  const float quant_max_float = std::max(static_cast<float>(quant_max), 0.0f);
-  const float scale = (max - min) / (quant_max_float - quant_min_float);
-  const float zero_point_from_min = quant_min_float - min / scale;
-  int64_t zero_point;
-  if (zero_point_from_min < quant_min_float) {
-    zero_point = static_cast<int64_t>(quant_min);
-  } else if (zero_point_from_min > quant_max_float) {
-    zero_point = static_cast<int64_t>(quant_max);
-  } else {
-    zero_point = static_cast<int64_t>(std::round(zero_point_from_min));
-  }
-  quantization_params->scale = std::vector<float>(1, scale);
-  quantization_params->zero_point = std::vector<int64_t>(1, zero_point);
-}
-
-// Returns the number of elements in tensor.
-uint64_t NumElements(const TensorT* tensor) {
-  if (tensor->shape.empty()) {
-    LOG(FATAL) << "Tensor has no shape information.";
-  }
-  uint64_t num_elements = 1;
-  for (const uint64_t dim : tensor->shape) {
-    num_elements *= dim;
-  }
-  return num_elements;
-}
 
 uint64_t CountTensorConsumers(const ModelT* model, const SubGraphT* subgraph,
                               int32_t tensor_idx) {
@@ -156,16 +119,16 @@ bool IsHybridEvaluationOp(const OperatorT* op, const BuiltinOperator& op_code) {
   return eval_hybrid;
 }
 
-// Returns a vector of TensorInfos for each input tensor of op that should be
+// Populates a vector of TensorInfos for each input tensor of op that should be
 // quantized.
-std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
+TfLiteStatus GetQuantizableTensorsFromOperator(
     const ModelT* model, const OperatorT* op, uint64_t weights_min_num_elements,
-    bool use_hybrid_evaluation) {
+    bool use_hybrid_evaluation, std::vector<TensorInfo>* tensor_infos) {
   SubGraphT* subgraph = model->subgraphs.at(0).get();
   const BuiltinOperator op_code =
       model->operator_codes[op->opcode_index]->builtin_code;
 
-  std::vector<TensorInfo> tensor_infos;
+  tensor_infos->clear();
 
   bool eval_hybrid = use_hybrid_evaluation && IsHybridEvaluationOp(op, op_code);
 
@@ -194,7 +157,8 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
       continue;
     }
 
-    const uint64_t num_elements = NumElements(tensor);
+    uint64_t num_elements;
+    TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
     if (num_elements < weights_min_num_elements) {
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " because it has fewer than " << weights_min_num_elements
@@ -219,10 +183,10 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
     tensor_info.tensor_idx = tensor_idx;
     tensor_info.tensor = tensor;
 
-    tensor_infos.push_back(tensor_info);
+    tensor_infos->push_back(tensor_info);
   }
 
-  return tensor_infos;
+  return kTfLiteOk;
 }
 
 // Quantizes tensor using asymmetric quantization with the min and max elements
@@ -230,7 +194,8 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
 TfLiteStatus AsymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
-  const uint64_t num_elements = NumElements(tensor);
+  uint64_t num_elements;
+  TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
   LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
             << " elements for float evaluation.";
 
@@ -241,8 +206,8 @@ TfLiteStatus AsymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   if (tensor->quantization == nullptr) {
     tensor->quantization = absl::make_unique<QuantizationParametersT>();
   }
-  GetAsymmetricQuantizationParams(min_value, max_value, 0, 255,
-                                  tensor->quantization.get());
+  utils::GetAsymmetricQuantizationParams(min_value, max_value, 0, 255,
+                                         tensor->quantization.get());
 
   // Quantize the buffer.
   std::vector<uint8_t> quantized_buffer;
@@ -274,7 +239,8 @@ TfLiteStatus AsymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
 TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
   BufferT* buffer = model->buffers[tensor->buffer].get();
   float* float_data = reinterpret_cast<float*>(buffer->data.data());
-  const uint64_t num_elements = NumElements(tensor);
+  uint64_t num_elements;
+  TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
   LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
             << " elements for hybrid evaluation.";
 
@@ -360,8 +326,10 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
   for (int i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
 
-    std::vector<TensorInfo> tensor_infos = GetQuantizableTensorsFromOperator(
-        model.get(), op, weights_min_num_elements, use_hybrid_evaluation);
+    std::vector<TensorInfo> tensor_infos;
+    TF_LITE_ENSURE_STATUS(GetQuantizableTensorsFromOperator(
+        model.get(), op, weights_min_num_elements, use_hybrid_evaluation,
+        &tensor_infos));
 
     for (const TensorInfo& tensor_info : tensor_infos) {
       if (tensor_info.eval_hybrid) {

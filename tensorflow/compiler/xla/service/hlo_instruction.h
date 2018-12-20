@@ -426,7 +426,7 @@ class HloInstruction {
   // and window describes how the filter is applied to lhs.
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      int64 feature_group_count, const Window& window,
+      int64 feature_group_count, int64 batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 
@@ -462,9 +462,7 @@ class HloInstruction {
   // `all_reduce_id`: for Allreduce nodes from different modules, if they have
   // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
-  //
-  // TODO(b/117564385): Rename this to AllReduce.
-  static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
+  static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
@@ -909,6 +907,14 @@ class HloInstruction {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO instructions,
   // with respect to HloInstruction::Identical() method.
+  //
+  // Uses hash_operand function to compute hash values of its operands.
+  // At the very top level, hash_operand should be non-recursive to prevent
+  // non-termination.
+  uint64 Hash(
+      const std::function<uint64(const HloInstruction*)>& hash_operand) const;
+
+  // Calls the above method with non-recursive hash_operand function.
   uint64 Hash() const;
 
   // Returns whether the instruction has a constant operand.
@@ -1174,8 +1180,11 @@ class HloInstruction {
   // Returns true if this instruction is elementwise on all its operands.
   bool IsElementwise() const;
 
-  // Returns true if this is an cross module all-reduce instrucion.
+  // Returns true if this is a cross module all-reduce instruction.
   bool IsCrossModuleAllReduce() const;
+
+  // Returns true if this is a cross-replica all-reduce instruction.
+  bool IsCrossReplicaAllReduce() const;
 
   // Returns true if this elementwise instruction implicitly broadcasts operand
   // `operand_idx`.
@@ -1448,9 +1457,9 @@ class HloInstruction {
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
 
-  // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
-  string cross_replica_sum_barrier() const;
-  void set_cross_replica_sum_barrier(const string& barrier);
+  // Delegates to HloAllReduceInstruction::all_reduce_barrier.
+  string all_reduce_barrier() const;
+  void set_all_reduce_barrier(const string& barrier);
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;
@@ -1483,6 +1492,11 @@ class HloInstruction {
   int64 feature_group_count() const;
 
   void set_feature_group_count(int64 feature_group_count);
+
+  // The number of batch groups. Must be a divisor of the input batch dimension
+  int64 batch_group_count() const;
+
+  void set_batch_group_count(int64 batch_group_count);
 
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;

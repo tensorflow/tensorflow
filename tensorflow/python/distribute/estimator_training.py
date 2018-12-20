@@ -354,7 +354,7 @@ def estimator_evaluate(estimator, evaluate_distributed_fn, hooks):
   if (estimator._config._distribute_coordinator_mode !=
       dc.CoordinatorMode.STANDALONE_CLIENT):
     raise ValueError('Only `STANDALONE_CLIENT` mode is supported when you call '
-                     '`Estimator.train`')
+                     '`Estimator.evaluate`')
 
   if estimator._config._eval_distribute.extended.experimental_between_graph:
     # TODO(yuefengz): remove this limitation once we figure out how to merge

@@ -1132,4 +1132,7 @@ sh_test(
         ":debug_tflearn_iris",
         ":offline_analyzer",
     ],
+    tags = [
+        "no_windows",
+    ],
 )

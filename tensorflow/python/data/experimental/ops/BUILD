@@ -70,8 +70,7 @@ py_library(
         "//tensorflow/python:random_seed",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -230,6 +229,8 @@ py_library(
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -268,7 +269,7 @@ py_library(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -303,6 +304,7 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
