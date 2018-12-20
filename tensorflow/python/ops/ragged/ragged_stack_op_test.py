@@ -34,6 +34,52 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
 
   @parameterized.parameters(
       dict(
+          descr='One rank-2 input (ragged_rank=1), axis=0',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21']],),   # shape=(3, None)
+          axis=0,
+          expected=[[[b'a00', b'a01'], [], [b'a20', b'a21']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=1',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21', 'a22']],),   # shape=(3, None)
+          axis=1,
+          expected=[
+              [[b'a00', b'a01']],
+              [[]],
+              [[b'a20', b'a21', b'a22']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=2',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21', 'a22']],),   # shape=(3, None)
+          axis=2,
+          expected=[
+              [[b'a00'], [b'a01']], [],
+              [[b'a20'], [b'a21'], [b'a22']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=-3',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21']],),   # shape=(3, None)
+          axis=-3,
+          expected=[[[b'a00', b'a01'], [], [b'a20', b'a21']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=-2',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21', 'a22']],),   # shape=(3, None)
+          axis=-2,
+          expected=[
+              [[b'a00', b'a01']],
+              [[]],
+              [[b'a20', b'a21', b'a22']]]),
+      dict(
+          descr='One rank-2 input (ragged_rank=1), axis=-1',
+          rt_inputs=(
+              [['a00', 'a01'], [], ['a20', 'a21', 'a22']],),  # shape=(3, None)
+          axis=-1,
+          expected=[
+              [[b'a00'], [b'a01']], [],
+              [[b'a20'], [b'a21'], [b'a22']]]),
+      dict(
           descr='Two rank-2 inputs (ragged_rank=1), axis=0',
           rt_inputs=(
               [['a00', 'a01'], [], ['a20', 'a21']],   # shape=(3, None)
