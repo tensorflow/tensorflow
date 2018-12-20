@@ -49,6 +49,19 @@ typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
 
+// Returns true if the three tensors have valid number of elements
+// If shape_input has 0 elements, then we need to have indices and updates with
+// exactly 0 elements too, otherwise we should error. If indices has 0 elements
+// then updates should also have 0 elements, otherwise we should error.
+bool ValidEmptyOutputShape(int64 num_inputs, int64 num_indices,
+                           int64 num_updates) {
+  if (num_indices == 0 && num_updates == 0) {
+    return true;  // regardless of num_inputs ?= 0, covers both cases
+  }
+  // now we want all 3 tensors to have values
+  return (num_inputs != 0 && num_indices != 0 && num_updates != 0);
+}
+
 template <typename Device, typename T, typename Index>
 class ScatterNdOp : public OpKernel {
  public:
@@ -77,12 +90,12 @@ class ScatterNdOp : public OpKernel {
     OP_REQUIRES_OK(c,
                    TensorShapeUtils::MakeShape(vec.data(), vec.size(), &shape));
 
-    OP_REQUIRES(
-        c,
-        (shape.num_elements() > 0 || (indices.shape().num_elements() == 0 &&
-                                      updates.shape().num_elements() == 0)),
-        errors::InvalidArgument(
-            "Indices and updates specified for empty output shape"));
+    OP_REQUIRES(c,
+                ValidEmptyOutputShape(shape_input.NumElements(),
+                                      indices.shape().num_elements(),
+                                      updates.shape().num_elements()),
+                errors::InvalidArgument(
+                    "Indices and updates specified for empty output shape"));
 
     const int64 outer_dims = indices.shape().dims() - 1;
 
@@ -148,12 +161,12 @@ class TensorScatterOp : public OpKernel {
 
     TensorShape shape = input.shape();
 
-    OP_REQUIRES(
-        c,
-        (shape.num_elements() > 0 || (indices.shape().num_elements() == 0 &&
-                                      updates.shape().num_elements() == 0)),
-        errors::InvalidArgument(
-            "Indices and updates specified for empty output shape"));
+    OP_REQUIRES(c,
+                ValidEmptyOutputShape(shape.num_elements(),
+                                      indices.shape().num_elements(),
+                                      updates.shape().num_elements()),
+                errors::InvalidArgument(
+                    "Indices and updates specified for empty output shape"));
 
     const int64 outer_dims = indices.shape().dims() - 1;
 
@@ -546,8 +559,9 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
                                    "got shape: ", params_shape.DebugString());
   }
 
-  if (!(params_shape.num_elements() > 0 ||
-        (indices.NumElements() == 0 && updates.NumElements() == 0))) {
+  if (!ValidEmptyOutputShape(params_shape.num_elements(),
+                             indices_shape.num_elements(),
+                             updates_shape.num_elements())) {
     return errors::InvalidArgument(
         "Indices and updates specified for empty output.  indices shape: ",
         indices.shape().DebugString());
