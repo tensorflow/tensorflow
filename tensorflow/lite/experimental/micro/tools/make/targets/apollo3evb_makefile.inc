@@ -1,5 +1,6 @@
 # Settings for apollo3 evb platforms.
 ifeq ($(TARGET), apollo3evb)
+  export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m4
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
   # Download the Ambiq Apollo3 SDK and set this variable to find the header
@@ -7,7 +8,7 @@ ifeq ($(TARGET), apollo3evb)
   APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/Apollo3-SDK-2018.08.13
   # Need a pointer to the GNU ARM toolchain for crtbegin.o for the fp functions
   # with the softfp interfaces.
-  GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc-arm-none-eabi-7-2018-q2-update/
+  GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
   PLATFORM_FLAGS = \
     -DPART_apollo3 \
@@ -54,7 +55,7 @@ ifeq ($(TARGET), apollo3evb)
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
     -fno-exceptions \
     -nostdlib --specs=nano.specs -t -lstdc++ -lc -lnosys -lm \
-    -Wl,-T,$(MAKEFILE_DIR)/targets/apollo3evb/apollo3evb.ld \
+    -Wl,-T,$(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/apollo3evb.ld \
     -Wl,-Map=$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref
   BUILD_TYPE := micro
   MICROLITE_LIBS := \
@@ -65,6 +66,7 @@ ifeq ($(TARGET), apollo3evb)
   INCLUDES += \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Include/ \
+    -I$(MAKEFILE_DIR)/downloads/CMSIS_ext/ \
     -I$(GCC_ARM)/arm-none-eabi/ \
     -I$(APOLLO3_SDK)/mcu/apollo3/ \
     -I$(APOLLO3_SDK)/CMSIS/AmbiqMicro/Include/ \
@@ -81,7 +83,7 @@ ifeq ($(TARGET), apollo3evb)
   # setting clock speed, default uart setups, etc. and an implementation
   # of the DebugLog interfaces.
   MICROLITE_CC_SRCS += \
-    $(MAKEFILE_DIR)/targets/apollo3evb/startup_gcc.c \
+    $(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/startup_gcc.c \
     $(APOLLO3_SDK)/utils/am_util_delay.c \
     $(APOLLO3_SDK)/utils/am_util_faultisr.c \
     $(APOLLO3_SDK)/utils/am_util_id.c \
@@ -102,7 +104,7 @@ ifeq ($(TARGET), apollo3evb)
   AP3_EXT_MICRO_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/apollo3_ext
   AP3_MICRO_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
   CMSIS_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS
-  CMSIS_EXT_DIR := tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS_ext
+  CMSIS_EXT_DIR := $(MAKEFILE_DIR)/downloads/CMSIS_ext
 
   MICRO_SPEECH_TEST_SRCS += \
     $(AP3_MICRO_DIR)/_main.c
@@ -143,11 +145,10 @@ ifeq ($(TARGET), apollo3evb)
     $(AP3_MICRO_DIR)/_main.c 
 
   TEST_SCRIPT := tensorflow/lite/experimental/log_test/test_apollo3evb_binary.sh
-  # These are tests that don't currently work on the blue pill.
+  # These are tests that don't currently work on the Apollo3 board.
   EXCLUDED_TESTS := \
     tensorflow/lite/experimental/micro/micro_interpreter_test.cc \
     tensorflow/lite/experimental/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
-
 
 endif
