@@ -151,7 +151,7 @@ def evaluate_distributed(model,
       steps=steps)
 
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
-  # TODO(fchollet): why aren't callbacks supported here?
+    # TODO(fchollet): why aren't callbacks supported here?
     return experimental_tpu_test_loop(
         model, iterator=iterator, verbose=verbose, steps=steps)
   else:
@@ -391,7 +391,7 @@ def experimental_tpu_fit_loop(model,
     # Copy the weights back from the replicated model to the original model.
     with current_strategy.scope():
       distributed_training_utils._copy_weights_to_original_model(
-          model, model._distributed_model_train, 'train')
+          model, model._distributed_model_train, ModeKeys.TRAIN)
   scope.__exit__(None, None, None)
   return model.history
 
@@ -632,5 +632,3 @@ def experimental_tpu_predict_loop(model, iterator, verbose=0, steps=None):
       np.concatenate(unconcatenated_outs[i], axis=0)
       for i in range(len(unconcatenated_outs))
   ]
-
-
