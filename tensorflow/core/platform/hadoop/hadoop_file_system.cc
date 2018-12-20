@@ -155,7 +155,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     StringPiece defaultScheme, defaultCluster, defaultPath;
     io::ParseURI(defaultFS, &defaultScheme, &defaultCluster, &defaultPath);
 
-    if (scheme != defaultScheme || namenode != defaultCluster) {
+    if (scheme != defaultScheme || (namenode != "" && namenode != defaultCluster)) {
       return errors::Unimplemented(
           "viewfs is only supported as a fs.defaultFS.");
     }
@@ -164,7 +164,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
     hdfs_->hdfsBuilderSetNameNode(builder, "default");
   } else {
-    hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
+    hdfs_->hdfsBuilderSetNameNode(builder, nn == "" ? "default" : nn.c_str());
   }
   // KERB_TICKET_CACHE_PATH will be deleted in the future, Because KRB5CCNAME is
   // the build in environment variable of Kerberos, so KERB_TICKET_CACHE_PATH
