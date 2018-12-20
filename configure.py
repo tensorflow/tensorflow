@@ -480,7 +480,9 @@ def check_bazel_version(min_version, max_version):
   if (curr_version_int > max_version_int and
       'TF_IGNORE_MAX_BAZEL_VERSION' not in os.environ):
     print('Please downgrade your bazel installation to version %s or lower to '
-          'build TensorFlow!' % max_version)
+          'build TensorFlow! To downgrade: download the installer for the old '
+          'version (from https://github.com/bazelbuild/bazel/releases) then '
+          'run the installer.' % max_version)
     sys.exit(1)
   return curr_version
 
