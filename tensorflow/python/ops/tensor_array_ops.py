@@ -1008,7 +1008,7 @@ class TensorArray(object):
     if context.executing_eagerly():
       implementation = _EagerTensorArray
     else:
-      if control_flow_util.ENABLE_CONTROL_FLOW_V2:
+      if control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
         implementation = _GraphTensorArrayV2
       else:
         implementation = _GraphTensorArray

@@ -378,6 +378,7 @@ class MemoryTests(test.TestCase):
 
   @test_util.assert_no_garbage_created
   def test_no_reference_cycles(self):
+    self.skipTest("b/121159261")
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
     self._model.call(x, y)
