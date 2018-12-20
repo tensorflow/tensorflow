@@ -903,7 +903,7 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
 Status ConstantFolding::CreateNodeDef(const string& name,
                                       const TensorValue& tensor,
                                       NodeDef* node,
-                                      size_t input_size) {
+                                      size_t original_size) {
   node->set_name(name);
   node->set_op("Const");
 
@@ -980,7 +980,8 @@ Status ConstantFolding::CreateNodeDef(const string& name,
     encoded_size = t->tensor_content().size();
   }
   node->mutable_attr()->insert({"value", attr_tensor});
-  if (encoded_size > input_size && encoded_size >= 10 * 1024 * 1024) {
+
+  if (encoded_size > original_size && encoded_size >= 10 * 1024 * 1024) {
     return errors::InvalidArgument(
         strings::StrCat("Can't fold ", name, ", its size would be too large"));
   }
