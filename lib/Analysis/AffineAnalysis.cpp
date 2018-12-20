@@ -789,7 +789,10 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   assert(srcMap.getNumResults() == dstMap.getNumResults());
   unsigned numResults = srcMap.getNumResults();
 
+  unsigned srcNumIds = srcMap.getNumDims() + srcMap.getNumSymbols();
   ArrayRef<MLValue *> srcOperands = srcAccessMap.getOperands();
+
+  unsigned dstNumIds = dstMap.getNumDims() + dstMap.getNumSymbols();
   ArrayRef<MLValue *> dstOperands = dstAccessMap.getOperands();
 
   std::vector<SmallVector<int64_t, 8>> srcFlatExprs;
@@ -800,8 +803,9 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       !getFlattenedAffineExprs(dstMap, &destFlatExprs, &destLocalVarCst))
     return false;
 
-  unsigned numLocalIdsToAdd =
-      srcLocalVarCst.getNumLocalIds() + destLocalVarCst.getNumLocalIds();
+  unsigned srcNumLocalIds = srcLocalVarCst.getNumLocalIds();
+  unsigned dstNumLocalIds = destLocalVarCst.getNumLocalIds();
+  unsigned numLocalIdsToAdd = srcNumLocalIds + dstNumLocalIds;
   for (unsigned i = 0; i < numLocalIdsToAdd; i++) {
     dependenceDomain->addLocalId(dependenceDomain->getNumLocalIds());
   }
@@ -819,13 +823,11 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
     // Flattened AffineExpr for src result 'i'.
     const auto &srcFlatExpr = srcFlatExprs[i];
     // Set identifier coefficients from src access function.
-    unsigned j, e;
-    for (j = 0, e = srcOperands.size(); j < e; ++j)
+    for (unsigned j = 0, e = srcOperands.size(); j < e; ++j)
       eq[valuePosMap.getSrcDimOrSymPos(srcOperands[j])] = srcFlatExpr[j];
     // Local terms.
-    for (e = srcFlatExpr.size() - 1; j < e; j++) {
-      eq[numDims + numSymbols + j] = srcFlatExpr[j];
-    }
+    for (unsigned j = 0, e = srcNumLocalIds; j < e; j++)
+      eq[numDims + numSymbols + j] = srcFlatExpr[srcNumIds + j];
     // Set constant term.
     eq[eq.size() - 1] = srcFlatExpr[srcFlatExpr.size() - 1];
 
@@ -835,9 +837,9 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
     for (unsigned j = 0, e = dstOperands.size(); j < e; ++j)
       eq[valuePosMap.getDstDimOrSymPos(dstOperands[j])] -= destFlatExpr[j];
     // Local terms.
-    for (e = destFlatExpr.size() - 1; j < e; j++) {
-      eq[numDims + numSymbols + numSrcLocalIds + j] = destFlatExpr[j];
-    }
+    for (unsigned j = 0, e = dstNumLocalIds; j < e; j++)
+      eq[numDims + numSymbols + numSrcLocalIds + j] =
+          destFlatExpr[dstNumIds + j];
     // Set constant term.
     eq[eq.size() - 1] -= destFlatExpr[destFlatExpr.size() - 1];
 

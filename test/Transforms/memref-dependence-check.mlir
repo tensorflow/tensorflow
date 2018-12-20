@@ -642,3 +642,37 @@ mlfunc @mod_deps() {
   }
   return
 }
+
+// -----
+// CHECK-LABEL: mlfunc @loop_nest_depth() {
+mlfunc @loop_nest_depth() {
+  %0 = alloc() : memref<100x100xf32>
+  %c7 = constant 7.0 : f32
+
+  for %i0 = 0 to 128 {
+    for %i1 = 0 to 8 {
+      store %c7, %0[%i0, %i1] : memref<100x100xf32>
+      // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-note@-3 {{dependence from 0 to 0 at depth 3 = false}}
+      // expected-note@-4 {{dependence from 0 to 1 at depth 1 = true}}
+    }
+  }
+  for %i2 = 0 to 8 {
+    for %i3 = 0 to 8 {
+      for %i4 = 0 to 8 {
+        for %i5 = 0 to 16 {
+          %8 = affine_apply (d0, d1) -> (d0 * 16 + d1)(%i4, %i5)
+          %9 = load %0[%8, %i3] : memref<100x100xf32>
+          // expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
+          // expected-note@-2 {{dependence from 1 to 1 at depth 1 = false}}
+          // expected-note@-3 {{dependence from 1 to 1 at depth 2 = false}}
+          // expected-note@-4 {{dependence from 1 to 1 at depth 3 = false}}
+          // expected-note@-5 {{dependence from 1 to 1 at depth 4 = false}}
+          // expected-note@-6 {{dependence from 1 to 1 at depth 5 = false}}
+        }
+      }
+    }
+  }
+  return
+}
