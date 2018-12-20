@@ -414,8 +414,6 @@ class GRULayerV1OnlyTest(test.TestCase, parameterized.TestCase):
   @test_util.run_v1_only('b/120941292')
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_statefulness_GRU(self):
-    self.skipTest('b/121275483')
-
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
