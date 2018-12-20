@@ -407,7 +407,7 @@ Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
     record_tensor_reference(tensor);
     return tensor;
   } else {
-    mutex_lock l(*input_ref_mutex(index));
+    tf_shared_lock l(*input_ref_mutex(index));
     Tensor& tensor = *((*params_->inputs)[index].tensor);
     record_tensor_reference(tensor);
     return tensor;
@@ -599,7 +599,7 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
   if (lock_held) {
     *tensor = *(*params_->inputs)[start].tensor;
   } else {
-    mutex_lock l(*input_ref_mutex(start));
+    tf_shared_lock l(*input_ref_mutex(start));
     *tensor = *(*params_->inputs)[start].tensor;
   }
   record_tensor_reference(*tensor);
