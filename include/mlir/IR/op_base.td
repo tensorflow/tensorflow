@@ -70,27 +70,32 @@ class Attr<Type t> {
   // type. For example, an enum can be stored as an int but returned as an
   // enum class.
   //
-  // Format: {0} will be expanded to the attribute's value. So
-  // '{0}.convertToFloat()' for 'FloatAttr val' will expand to
+  // Format: {0} will be expanded to the attribute. So
+  // '{0}.getValue().convertToFloat()' for 'FloatAttr val' will expand to
   // 'getAttrOfType<FloatAttr>("val").getValue().convertToFloat()'.
-  code convertFromStorage = "{0}";
+  code convertFromStorage = "{0}.getValue()";
 }
 
-class BoolAttr : Attr<I1> {
+def BoolAttr : Attr<I1> {
   let storageType = [{ BoolAttr }];
   let returnType = [{ bool }];
 }
-class F32Attr : Attr<F32> {
+def ElementsAttr : Attr<?> {
+  let storageType = [{ ElementsAttr }];
+  let returnType = [{ ElementsAttr }];
+  code convertFromStorage = "{0}";
+}
+def F32Attr : Attr<F32> {
   let storageType = [{ FloatAttr }];
   let returnType = [{ float }];
-  let convertFromStorage = [{ {0}.convertToFloat() }];
+  let convertFromStorage = [{ {0}.getValue().convertToFloat() }];
 }
-class I32Attr : Attr<I32> {
+def I32Attr : Attr<I32> {
   let storageType = [{ IntegerAttr }];
   let returnType = [{ int }];
-  let convertFromStorage = [{ {0}.getSExtValue() }];
+  let convertFromStorage = [{ {0}.getValue().getSExtValue() }];
 }
-class StrAttr : Attr<String> {
+def StrAttr : Attr<String> {
   let storageType = [{ StringAttr }];
   let returnType = [{ StringRef }];
 }
@@ -119,7 +124,7 @@ def NoSideEffect  : OpProperty;   // op has no side effect
 // Ops
 //===----------------------------------------------------------------------===//
 
-// Marker used to identify the operand list for an op.
+// Marker used to identify the argument list for an op.
 def ins;
 
 // Base class for all ops.
@@ -133,8 +138,8 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // Additional, longer human-readable description of what the op does.
   string description = ?;
 
-  // Dag containting the operands of the op. Default 0 operands.
-  dag operands = (ins);
+  // Dag containting the arguments of the op. Default 0 arguments.
+  dag arguments = (ins);
 
   // The list of return types of the op. Default no return type set.
   list<Type> returnTypes = [];
@@ -182,10 +187,9 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   list<OpProperty> properties = props;
 }
 
-// The operand types of an op.
-class Operands<list<Type> types> {
-  // TODO(jpienaar): Switch operands to use named operand instead of using list.
-  dag operands = !dag(ins, types, ?);
+// The arguments of an op.
+class Arguments<dag types> {
+  dag arguments = types;
 }
 
 // The result types of an op.
@@ -201,10 +205,11 @@ class Traits<list<string> Traits> {
 }
 
 class UnaryOp<string mnemonic, list<OpProperty> props> :
-    Op<mnemonic, props>, Operands<[Tensor]>, Results<[Tensor]>;
+    Op<mnemonic, props>, Arguments<(ins Tensor:$arg)>, Results<[Tensor]>;
 
 class BinaryOp<string mnemonic, list<OpProperty> props> :
-    Op<mnemonic, props>, Operands<[Tensor, Tensor]>, Results<[Tensor]>;
+    Op<mnemonic, props>, Arguments<(ins Tensor:$lhs, Tensor:$rhs)>,
+                                    Results<[Tensor]>;
 
 class TernaryOp<string mnemonic, list<OpProperty> props> :
-    Op<mnemonic, props>, Operands<[Tensor, Tensor, Tensor]>;
+    Op<mnemonic, props>, Arguments<(ins Tensor, Tensor, Tensor)>;

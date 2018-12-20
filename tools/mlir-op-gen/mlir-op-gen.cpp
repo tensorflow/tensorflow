@@ -44,10 +44,9 @@ static cl::opt<ActionType> action(
 static cl::opt<std::string> opcodeClass("opcode-enum",
                                         cl::desc("The opcode enum to use"));
 
-// TODO(jpienaar): The builder body should probably be separate from the header.
+static const char *const generatedArgName = "_arg";
 
-using AttrPair = std::pair<const RecordVal *, const Record *>;
-using AttrVector = SmallVectorImpl<AttrPair>;
+// TODO(jpienaar): The builder body should probably be separate from the header.
 
 // Variation of method in FormatVariadic.h which takes a StringRef as input
 // instead.
@@ -105,6 +104,9 @@ public:
   // Emit getters for the attributes of the operation.
   void emitAttrGetters();
 
+  // Emit query methods for the named operands.
+  void emitNamedOperands();
+
   // Emit builder method for the operation.
   void emitBuilder();
 
@@ -123,38 +125,127 @@ public:
   // Emit the traits used by the object.
   void emitTraits();
 
-  // Populate the attributes of the op from its definition.
-  void getAttributes();
-
 private:
-  OpEmitter(const Record &def, raw_ostream &os) : def(def), os(os){};
+  OpEmitter(const Record &def, raw_ostream &os);
 
-  SmallVector<AttrPair, 4> attrs;
+  // Populates the operands and attributes.
+  void getOperandsAndAttributes();
+
+  // Returns the class name of the op.
+  StringRef cppClassName() const;
+
+  // Invokes the given function over all the namespaces of the class.
+  void mapOverClassNamespaces(function_ref<void(StringRef)> fn) const;
+
+  // Returns the operation name.
+  StringRef getOperationName() const;
+
+  // The record corresponding to the op.
   const Record &def;
+
+  const RecordKeeper &recordKeeper;
+
+  // Record of Attr class.
+  Record *attrClass;
+
+  // Type of DerivedAttr.
+  const RecordRecTy *derivedAttrType;
+
+  // The name of the op split around '_'.
+  SmallVector<StringRef, 2> splittedDefName;
+
+  // The operands of the op.
+  SmallVector<std::pair<std::string, const DefInit *>, 4> operands;
+
+  // The attributes of the op.
+  SmallVector<std::pair<std::string, const DefInit *>, 4> attrs;
+  SmallVector<std::pair<const RecordVal *, const Record *>, 4> derivedAttrs;
+
   raw_ostream &os;
 };
 } // end anonymous namespace
 
+OpEmitter::OpEmitter(const Record &def, raw_ostream &os)
+    : def(def), recordKeeper(def.getRecords()),
+      attrClass(recordKeeper.getClass("Attr")),
+      derivedAttrType(recordKeeper.getClass("DerivedAttr")->getType()), os(os) {
+  SplitString(def.getName(), splittedDefName, "_");
+  getOperandsAndAttributes();
+}
+
+StringRef OpEmitter::cppClassName() const { return splittedDefName.back(); }
+
+StringRef OpEmitter::getOperationName() const {
+  return def.getValueAsString("opName");
+}
+
+void OpEmitter::mapOverClassNamespaces(function_ref<void(StringRef)> fn) const {
+  for (auto it = splittedDefName.begin(), e = std::prev(splittedDefName.end());
+       it != e; ++it)
+    fn(*it);
+}
+
+void OpEmitter::getOperandsAndAttributes() {
+  DagInit *argumentValues = def.getValueAsDag("arguments");
+  for (unsigned i = 0, e = argumentValues->getNumArgs(); i != e; ++i) {
+    auto arg = argumentValues->getArg(i);
+    auto givenName = argumentValues->getArgName(i);
+    DefInit *argDef = dyn_cast<DefInit>(arg);
+    if (!argDef)
+      PrintFatalError(def.getLoc(),
+                      "unexpected type for " + Twine(i) + "th argument");
+
+    // Handle attribute.
+    if (argDef->getDef()->isSubClassOf(attrClass)) {
+      if (!givenName)
+        PrintFatalError(argDef->getDef()->getLoc(), "attributes must be named");
+      attrs.emplace_back(givenName->getValue(), argDef);
+      continue;
+    }
+
+    // Handle operands.
+    std::string name;
+    if (givenName)
+      name = givenName->getValue();
+    else
+      name = formatv("{0}_{1}", generatedArgName, i);
+    operands.emplace_back(name, argDef);
+  }
+
+  // Derived attributes.
+  for (const auto &val : def.getValues()) {
+    if (auto *record = dyn_cast<RecordRecTy>(val.getType())) {
+      if (record->typeIsA(derivedAttrType)) {
+        if (record->getClasses().size() != 1) {
+          PrintFatalError(
+              def.getLoc(),
+              "unsupported attribute modelling, only single class expected");
+        }
+        derivedAttrs.emplace_back(&val, *record->getClasses().begin());
+        continue;
+      }
+      if (record->isSubClassOf(attrClass))
+        PrintFatalError(def.getLoc(),
+                        "unexpected Attr where only DerivedAttr is allowed");
+    }
+  }
+}
+
 void OpEmitter::emit(const Record &def, raw_ostream &os) {
   OpEmitter emitter(def, os);
 
-  // Query the returned type and operands types of the op.
-  emitter.getAttributes();
-
-  SmallVector<StringRef, 2> split;
-  SplitString(def.getName(), split, "_");
-  for (auto it = split.begin(), e = std::prev(split.end()); it != e; ++it) {
-    os << "\nnamespace " << *it << "{\n";
-  }
-  StringRef className = split.back();
-  os << "class " << className << " : public Op<" << className;
+  emitter.mapOverClassNamespaces(
+      [&os](StringRef ns) { os << "\nnamespace " << ns << "{\n"; });
+  os << "class " << emitter.cppClassName() << " : public Op<"
+     << emitter.cppClassName();
   emitter.emitTraits();
   os << "> {\npublic:\n";
 
   // Build operation name.
   os << "  static StringRef getOperationName() { return \""
-     << def.getValueAsString("opName") << "\"; };\n";
+     << emitter.getOperationName() << "\"; };\n";
 
+  emitter.emitNamedOperands();
   emitter.emitBuilder();
   emitter.emitParser();
   emitter.emitPrinter();
@@ -163,37 +254,16 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   emitter.emitCanonicalizationPatterns();
 
   os << "private:\n  friend class ::mlir::Operation;\n";
-  os << "  explicit " << className
+  os << "  explicit " << emitter.cppClassName()
      << "(const Operation* state) : Op(state) {}\n";
   os << "};\n";
-  for (auto it = split.begin(), e = std::prev(split.end()); it != e; ++it) {
-    os << "} // end namespace " << *it << "\n";
-  }
-}
-
-void OpEmitter::getAttributes() {
-  const auto &recordKeeper = def.getRecords();
-  const auto attrType = recordKeeper.getClass("Attr");
-  for (const auto &val : def.getValues()) {
-    if (auto *record = dyn_cast<RecordRecTy>(val.getType())) {
-      if (record->isSubClassOf(attrType)) {
-        if (record->getClasses().size() != 1) {
-          PrintFatalError(
-              def.getLoc(),
-              "unsupported attribute modelling, only single class expected");
-        }
-        attrs.emplace_back(&val, *record->getClasses().begin());
-      }
-    }
-  }
+  emitter.mapOverClassNamespaces(
+      [&os](StringRef ns) { os << "} // end namespace " << ns << "\n"; });
 }
 
 void OpEmitter::emitAttrGetters() {
-  const auto &recordKeeper = def.getRecords();
-  const auto *derivedAttrType = recordKeeper.getClass("DerivedAttr")->getType();
-  for (const auto &pair : attrs) {
+  for (const auto &pair : derivedAttrs) {
     auto &val = *pair.first;
-    auto &attr = *pair.second;
 
     // Emit the derived attribute body.
     if (auto defInit = dyn_cast<DefInit>(val.getValue())) {
@@ -205,26 +275,44 @@ void OpEmitter::emitAttrGetters() {
         continue;
       }
     }
+  }
 
+  for (const auto &pair : attrs) {
+    auto &name = pair.first;
+    auto &attr = *pair.second->getDef();
     // Emit normal emitter.
     if (!hasStringAttribute(attr, "storageType")) {
       // Handle the base case where there is no storage type specified.
-      os << "  Attribute " << val.getName()
-         << "() const {\n    return getAttr(\"" << val.getName()
-         << "\");\n  }\n";
+      os << "  Attribute " << name << "() const {\n    return getAttr(\""
+         << name << "\");\n  }\n";
       continue;
     }
 
-    os << "  " << attr.getValueAsString("returnType").trim() << ' '
-       << val.getName() << "() const {\n";
+    os << "  " << attr.getValueAsString("returnType").trim() << ' ' << name
+       << "() const {\n";
 
     // Return the queried attribute with the correct return type.
     std::string attrVal =
-        formatv("this->getAttrOfType<{0}>(\"{1}\").getValue()",
-                attr.getValueAsString("storageType").trim(), val.getName());
+        formatv("this->getAttrOfType<{0}>(\"{1}\")",
+                attr.getValueAsString("storageType").trim(), name);
     os << "    return "
        << formatv(attr.getValueAsString("convertFromStorage"), attrVal)
        << ";\n  }\n";
+  }
+}
+
+void OpEmitter::emitNamedOperands() {
+  const auto operandMethods = R"(  SSAValue *{0}() {
+    return this->getOperation()->getOperand({1});
+  }
+  const SSAValue *{0}() const {
+    return this->getOperation()->getOperand({1});
+  }
+)";
+  for (int i = 0, e = operands.size(); i != e; ++i) {
+    const auto &op = operands[i];
+    if (!StringRef(op.first).startswith(generatedArgName))
+      os << formatv(operandMethods, op.first, i);
   }
 }
 
@@ -247,8 +335,6 @@ void OpEmitter::emitBuilder() {
   // 1. Stand-alone parameters
 
   std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
-  DagInit *operands = def.getValueAsDag("operands");
-
   os << "  static void build(Builder* builder, OperationState* result";
 
   // Emit parameters for all return types
@@ -256,15 +342,15 @@ void OpEmitter::emitBuilder() {
     os << ", Type returnType" << i;
 
   // Emit parameters for all operands
-  for (unsigned i = 0, e = operands->getNumArgs(); i != e; ++i)
-    os << ", SSAValue* arg" << i;
+  for (const auto &pair : operands)
+    os << ", SSAValue* " << pair.first;
 
   // Emit parameters for all attributes
   // TODO(antiagainst): Support default initializer for attributes
   for (const auto &pair : attrs) {
-    const Record &attr = *pair.second;
+    const Record &attr = *pair.second->getDef();
     os << ", " << getAsStringOrDefault(attr, "storageType", "Attribute").trim()
-       << ' ' << pair.first->getName();
+       << ' ' << pair.first;
   }
 
   os << ") {\n";
@@ -278,16 +364,16 @@ void OpEmitter::emitBuilder() {
   }
 
   // Push all operands to the result
-  if (operands->getNumArgs() != 0) {
-    os << "    result->addOperands({arg0";
-    for (unsigned i = 1, e = operands->getNumArgs(); i != e; ++i)
-      os << ", arg" << i;
+  if (!operands.empty()) {
+    os << "    result->addOperands({" << operands.front().first;
+    for (auto it = operands.begin() + 1, e = operands.end(); it != e; ++it)
+      os << ", " << it->first;
     os << "});\n";
   }
 
   // Push all attributes to the result
   for (const auto &pair : attrs) {
-    StringRef name = pair.first->getName();
+    StringRef name = pair.first;
     os << "    result->addAttribute(\"" << name << "\", " << name << ");\n";
   }
 
@@ -306,16 +392,20 @@ void OpEmitter::emitBuilder() {
      << "    result->addTypes(resultTypes);\n";
 
   // Operands
-  os << "    assert(args.size() == " << operands->getNumArgs()
+  os << "    assert(args.size() == " << operands.size()
      << "u && \"mismatched number of parameters\");\n"
      << "    result->addOperands(args);\n\n";
 
   // Attributes
-  os << "    assert(attributes.size() >= " << attrs.size()
-     << "u && \"not enough attributes\");\n"
-     << "    for (const auto& pair : attributes)\n"
-     << "      result->addAttribute(pair.first, pair.second);\n"
-     << "  }\n";
+  if (attrs.empty()) {
+    os << "    assert(!attributes.size() && \"no attributes expected\");\n}\n";
+  } else {
+    os << "    assert(attributes.size() >= " << attrs.size()
+       << "u && \"not enough attributes\");\n"
+       << "    for (const auto& pair : attributes)\n"
+       << "      result->addAttribute(pair.first, pair.second);\n"
+       << "  }\n";
+  }
 }
 
 void OpEmitter::emitCanonicalizationPatterns() {
@@ -350,19 +440,11 @@ void OpEmitter::emitVerifier() {
   if (!hasCustomVerify && attrs.empty())
     return;
 
-  const auto &recordKeeper = def.getRecords();
-  const auto *derivedAttrType = recordKeeper.getClass("DerivedAttr")->getType();
-
   os << "  bool verify() const {\n";
   // Verify the attributes have the correct type.
   for (const auto attr : attrs) {
-    // Skip verification for derived attributes.
-    if (auto defInit = dyn_cast<DefInit>(attr.first->getValue()))
-      if (defInit->getType()->typeIsA(derivedAttrType))
-        continue;
-
-    auto name = attr.first->getName();
-    if (!hasStringAttribute(*attr.second, "storageType")) {
+    auto name = attr.first;
+    if (!hasStringAttribute(*attr.second->getDef(), "storageType")) {
       os << "    if (!this->getAttr(\"" << name
          << "\")) return emitOpError(\"requires attribute '" << name
          << "'\");\n";
@@ -370,10 +452,10 @@ void OpEmitter::emitVerifier() {
     }
 
     os << "    if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
-       << attr.second->getValueAsString("storageType").trim()
+       << attr.second->getDef()->getValueAsString("storageType").trim()
        << ">()) return emitOpError(\"requires "
-       << attr.second->getValueAsString("returnType").trim() << " attribute '"
-       << name << "'\");\n";
+       << attr.second->getDef()->getValueAsString("returnType").trim()
+       << " attribute '" << name << "'\");\n";
   }
 
   if (hasCustomVerify)
@@ -385,7 +467,6 @@ void OpEmitter::emitVerifier() {
 
 void OpEmitter::emitTraits() {
   std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
-  auto operands = def.getValueAsDag("operands");
 
   // Add return size trait.
   switch (returnTypes.size()) {
@@ -418,14 +499,13 @@ void OpEmitter::emitTraits() {
     }
   }
 
-  if ((hasVariadicOperands || hasAtLeastNOperands) &&
-      operands->getNumArgs() != 0) {
+  if ((hasVariadicOperands || hasAtLeastNOperands) && !operands.empty()) {
     PrintFatalError(def.getLoc(),
                     "Operands number definition is not consistent.");
   }
 
   // Add operand size trait if defined explicitly.
-  switch (operands->getNumArgs()) {
+  switch (operands.size()) {
   case 0:
     if (!hasVariadicOperands && !hasAtLeastNOperands)
       os << ", OpTrait::ZeroOperands";
@@ -434,7 +514,7 @@ void OpEmitter::emitTraits() {
     os << ", OpTrait::OneOperand";
     break;
   default:
-    os << ", OpTrait::NOperands<" << operands->getNumArgs() << ">::Impl";
+    os << ", OpTrait::NOperands<" << operands.size() << ">::Impl";
     break;
   }
 
@@ -475,9 +555,9 @@ static void emitOpList(const std::vector<Record *> &defs, raw_ostream &os) {
     if (!first)
       os << ",";
 
-    SmallVector<StringRef, 2> split;
-    SplitString(def->getName(), split, "_");
-    os << join(split, "::");
+    SmallVector<StringRef, 2> splittedDefName;
+    SplitString(def->getName(), splittedDefName, "_");
+    os << join(splittedDefName, "::");
     first = false;
   }
 }
