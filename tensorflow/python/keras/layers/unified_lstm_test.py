@@ -332,8 +332,8 @@ class UnifiedLSTMTest(keras_parameterized.TestCase):
       cudnn_model.fit(x_train, y_train)
       y_4 = cudnn_model.predict(x_train)
 
-      self.assertAllClose(y_1, y_3)
-      self.assertAllClose(y_2, y_4)
+      self.assertAllClose(y_1, y_3, rtol=1e-5, atol=1e-5)
+      self.assertAllClose(y_2, y_4, rtol=1e-5, atol=1e-5)
 
   @parameterized.named_parameters(('v0', 0), ('v1', 1), ('v2', 2))
   def test_implementation_mode_LSTM(self, implementation_mode):
