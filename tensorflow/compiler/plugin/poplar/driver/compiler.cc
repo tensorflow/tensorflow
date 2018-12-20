@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/sharding_pass.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_condition_simplify.h"
@@ -320,6 +321,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<WhileLoopToRepeatSimplify>(resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<InplaceFinder>(resources.annotations);
+    pipeline.AddPass<ShardingPass>();
     pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);

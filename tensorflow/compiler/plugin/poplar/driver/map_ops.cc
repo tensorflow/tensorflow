@@ -247,6 +247,8 @@ StatusOr<poplar::program::Program> CreateCustomCallOp(
   if (IPUCustomKernelsUtil::IsPoplibsOp(inst)) {
     VLOG(1) << "Processing " << inst->name() << " as Poplibs call";
     return CreatePoplibsOp(graph, res, inst, output, tensor_map);
+  } else if (inst->custom_call_target() == "inter_ipu_copy") {
+    return CreateInterIpuCopy(res, inst, output, tensor_map);
   } else {
     LOG(FATAL) << "Unrecognised kCustomCall " << inst->ToString();
   }

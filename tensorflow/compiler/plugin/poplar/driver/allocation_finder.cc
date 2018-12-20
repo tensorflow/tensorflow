@@ -204,7 +204,10 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
               tensor_allocation_map.insert(std::make_pair(src, t));
             }
           } else {
-            LOG(FATAL) << "Unsupported custom call " << user->name();
+            auto shapes = FlattenedXlaShape(src.first->shape());
+            if (ShapeUtil::Equal(shapes[src.second], user->shape())) {
+              FindConsumers(src, user, index);
+            }
           }
           break;
         }

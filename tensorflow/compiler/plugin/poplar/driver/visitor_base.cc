@@ -48,12 +48,10 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-typedef StatusOr<poplar::program::Program> (*FusedCallFn)(CompilerResources&,
-                                                          const HloInstruction*,
-                                                          const xla::Shape&,
-                                                          TensorMap&);
+typedef StatusOr<poplar::program::Program> (*CustomCallFn)(
+    CompilerResources&, const HloInstruction*, const xla::Shape&, TensorMap&);
 
-static std::map<std::string, FusedCallFn> fused_call_map = {
+static std::map<std::string, CustomCallFn> custom_call_map = {
     {"const_slice_update", CreateSliceUpdateOp},
     {"const_slice", CreateSliceOp},
     {"relu", CreateReluOp},
@@ -291,11 +289,11 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
     auto end = comp->name().find('.');
     std::string name = comp->name().substr(8, end - 8);
 
-    if (fused_call_map.count(name) == 1) {
+    if (custom_call_map.count(name) == 1) {
       poplar::program::Program prog;
       TF_ASSIGN_OR_RETURN(
-          prog, fused_call_map.at(name)(resources_, inst, GetOutputShape(inst),
-                                        tensor_map));
+          prog, custom_call_map.at(name)(resources_, inst, GetOutputShape(inst),
+                                         tensor_map));
       sequence.add(prog);
       return Status::OK();
     } else {

@@ -74,6 +74,7 @@ cc_library(
         "driver/computation_flattener.cc",
         "driver/convolution_classifier.cc",
         "driver/expression_outliner.cc",
+        "driver/find_all_users.cc",
         "driver/fuse_max_pool.cc",
         "driver/fuse_ops_early.cc",
         "driver/fuse_ops_late.cc",
@@ -85,6 +86,7 @@ cc_library(
         "driver/input_output_aliasing_map.cc",
         "driver/matcher_predicates.cc",
         "driver/scheduler.cc",
+        "driver/sharding_pass.cc",
         "driver/single_hlo_matcher.cc",
         "driver/util.cc",
         "driver/while_loop_condition_simplify.cc",
@@ -102,6 +104,7 @@ cc_library(
         "driver/computation_flattener.h",
         "driver/convolution_classifier.h",
         "driver/expression_outliner.h",
+        "driver/find_all_users.h",
         "driver/fuse_max_pool.h",
         "driver/fuse_ops_early.h",
         "driver/fuse_ops_late.h",
@@ -114,6 +117,7 @@ cc_library(
         "driver/matcher_predicates.h",
         "driver/meta_graph.h",
         "driver/scheduler.h",
+        "driver/sharding_pass.h",
         "driver/single_hlo_matcher.h",
         "driver/util.h",
         "driver/while_loop_condition_simplify.h",
@@ -581,6 +585,30 @@ xla_test(
     ],
 )
 
+tf_cc_test(
+    name = "sharding_pass_test",
+    srcs = ["tests/sharding_pass_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "find_all_users_test",
+    srcs = ["tests/find_all_users_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_test(
     name = "device_test",
     size = "small",
@@ -986,12 +1014,14 @@ test_suite(
         "batch_norm_graph_caching_test",
         "conv_graph_caching_test",
         "scheduler_test",
+        "sharding_pass_test",
         "dynamic_slice_layout_test",
         "sort_op_test",
         "while_loop_to_repeat_simplify_test",
         "lstm_test",
         "wide_const_expansion_test",
         "fused_batch_norm_test",
+        "find_all_users_test",
     ],
 )
 

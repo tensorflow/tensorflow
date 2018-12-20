@@ -67,16 +67,6 @@ bool InstructionSharded(const HloInstruction* a) {
   return false;
 }
 
-uint64 GetShard(const HloInstruction* inst) {
-  if (inst->has_sharding()) {
-    const auto& sharding = inst->sharding();
-    if (sharding.HasUniqueDevice()) {
-      return sharding.GetUniqueDevice();
-    }
-  }
-  return 0;
-}
-
 TensorVector GetAllTensorsInMap(const TensorMap& map,
                                 const HloInstruction* inst) {
   auto lower = std::make_pair(inst->name(), 0);
@@ -1092,26 +1082,14 @@ StatusOr<poplar::Tensor> FindInstructionInput(TensorMap& map,
         StrCat("[Poplar] Couldn't find input ", input, " for ", inst->name()));
   }
 
-  poplar::Tensor out = inputs[0];
-  if (InstructionSharded(inst)) {
-    out = poputil::copyToIpu(res.main_graph, out, seq, GetShard(inst));
-  }
-  return out;
+  return inputs[0];
 }
 
 ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
                                 const HloInstruction* inst, int64 input,
                                 poplar::program::Sequence& seq) {
   const HloInstruction* operand = inst->operand(input);
-  ArgVector inputs = GetExpandedTensors(map, res, operand, seq);
-
-  if (InstructionSharded(inst)) {
-    for (unsigned int i = 0; i < inputs.size(); i++) {
-      inputs[i] =
-          poputil::copyToIpu(res.main_graph, inputs[i], seq, GetShard(inst));
-    }
-  }
-  return inputs;
+  return GetExpandedTensors(map, res, operand, seq);
 }
 
 OutVector FindInstructionOutputs(const TensorMap& map,
