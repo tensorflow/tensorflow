@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
@@ -76,6 +75,13 @@ Status TensorHandle::Tensor(const tensorflow::Tensor** t) {
   TF_RETURN_IF_ERROR(WaitReady());
   DCHECK(IsReady());
   *t = &tensor_;
+  return Status::OK();
+}
+
+Status TensorHandle::TensorValue(tensorflow::TensorValue* t) {
+  TF_RETURN_IF_ERROR(WaitReady());
+  DCHECK(IsReady());
+  *t = tensorflow::TensorValue(&tensor_);
   return Status::OK();
 }
 
