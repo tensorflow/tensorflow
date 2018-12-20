@@ -35,6 +35,8 @@ const char kConstantFoldingCtrl[] = "ConstantFoldingCtrl";
 // Constant folding optimization for a graph.
 class ConstantFolding : public GraphOptimizer {
  public:
+  // The size limit will only be considered if the newly created node is greater
+  // than input_size (optional).
   static Status CreateNodeDef(const string& name, const TensorValue& tensor,
                               NodeDef* node, size_t input_size = 0);
   static string AddControlDependency(const string& input_name, GraphDef* graph,
