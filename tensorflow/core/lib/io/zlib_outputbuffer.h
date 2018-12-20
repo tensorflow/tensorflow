@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -76,6 +77,9 @@ class ZlibOutputBuffer : public WritableFile {
   // After calling this, any further calls to `Write()`, `Flush()` or `Close()`
   // will fail.
   Status Close() override;
+
+  // Returns the name of the underlying file.
+  Status Name(StringPiece* result) const override;
 
   // Deflates any cached input, writes all output to file and syncs it.
   Status Sync() override;
