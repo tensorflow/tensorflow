@@ -205,7 +205,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   }
   if (!added) {
     string message = "Test had no examples: " + original_file;
-    return tensorflow::Status(tensorflow::error::UNKNOWN, message.c_str());
+    return tensorflow::Status(tensorflow::error::UNKNOWN, message);
   }
   return tensorflow::Status::OK();
 }

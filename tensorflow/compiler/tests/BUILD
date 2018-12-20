@@ -408,13 +408,6 @@ tf_xla_py_test(
     name = "eager_test",
     size = "large",
     srcs = ["eager_test.py"],
-    disabled_backends = [
-        # TODO(b/78199195) Support XLA CPU devices in eager runtime
-        "cpu",
-        "cpu_ondemand",
-        # TODO(b/78468222) Enable GPU backend
-        "gpu",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1195,11 +1188,18 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "quantized_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["quantized_ops_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
     deps = [
         ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",

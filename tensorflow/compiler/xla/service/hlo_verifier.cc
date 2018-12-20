@@ -44,7 +44,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kWhile:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kMap:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
@@ -153,8 +153,8 @@ Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
       const Shape expected,
       ShapeInference::InferConvolveShape(
           convolution->operand(0)->shape(), convolution->operand(1)->shape(),
-          convolution->feature_group_count(), convolution->window(),
-          convolution->convolution_dimension_numbers()));
+          convolution->feature_group_count(), convolution->batch_group_count(),
+          convolution->window(), convolution->convolution_dimension_numbers()));
   return CheckShape(convolution, expected);
 }
 
@@ -167,13 +167,12 @@ Status ShapeVerifier::HandleFft(HloInstruction* fft) {
   return CheckShape(fft, expected);
 }
 
-Status ShapeVerifier::HandleCrossReplicaSum(HloInstruction* crs) {
+Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : crs->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(crs,
-                    ShapeInference::InferCrossReplicaSumShape(operand_shapes));
+  return CheckShape(crs, ShapeInference::InferAllReduceShape(operand_shapes));
 }
 
 Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
@@ -481,7 +480,9 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
       const Shape& operand_shape_with_layout =
           custom_call->operand_shapes_with_layout()[i];
       TF_RET_CHECK(ShapeUtil::Compatible(custom_call->operand(i)->shape(),
-                                         operand_shape_with_layout));
+                                         operand_shape_with_layout))
+          << custom_call->operand(i)->shape().ToString() << " operand "
+          << operand_shape_with_layout.ToString();
       TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
     }
   }
@@ -683,7 +684,7 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConstant:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
@@ -1344,7 +1345,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleCrossReplicaSum(HloInstruction* crs) override {
+  Status HandleAllReduce(HloInstruction* crs) override {
     if (crs->all_reduce_id().has_value()) {
       TF_RET_CHECK(crs->all_reduce_id().value() > 0)
           << "All reduce id must be greater than 0 for "

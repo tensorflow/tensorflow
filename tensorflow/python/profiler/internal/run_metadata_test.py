@@ -169,7 +169,7 @@ class RunMetadataTest(test.TestCase):
     ret = _extract_node(run_meta, 'MatMul:MatMul')
     self.assertEqual(len(ret), 0)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only('b/120545219')
   def testLoopCPU(self):
     ops.reset_default_graph()
     with ops.device('/cpu:0'):

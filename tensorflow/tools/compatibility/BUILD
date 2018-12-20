@@ -52,13 +52,20 @@ py_library(
 )
 
 py_library(
-    name = "tf_upgrade_v2_lib",
-    srcs = [
-        "renames_v2.py",
-        "tf_upgrade_v2.py",
-    ],
+    name = "reorders_v2",
+    srcs = ["reorders_v2.py"],
     srcs_version = "PY2AND3",
-    deps = [":ast_edits"],
+)
+
+py_library(
+    name = "tf_upgrade_v2_lib",
+    srcs = ["tf_upgrade_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ast_edits",
+        ":renames_v2",
+        ":reorders_v2",
+    ],
 )
 
 py_binary(

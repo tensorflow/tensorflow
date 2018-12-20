@@ -35,6 +35,7 @@ py_library(
         "//tensorflow/python/data/util:random_seed",
         "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/data/util:traverse",
         "//third_party/py/numpy",
     ],
 )
@@ -52,6 +53,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/compat",
         "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -86,6 +88,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/util:structure",
     ],
 )

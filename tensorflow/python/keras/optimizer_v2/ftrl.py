@@ -21,8 +21,10 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.optimizers.Ftrl', v1=[])
 class Ftrl(optimizer_v2.OptimizerV2):
   """Optimizer that implements the FTRL algorithm.
 

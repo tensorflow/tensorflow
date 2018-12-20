@@ -110,7 +110,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* input_to_input_weights =
       GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
-  if (input_to_input_weights) {
+  if (input_to_input_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[1], n_input);
@@ -130,7 +130,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kRecurrentToInputWeightsTensor);
-  if (recurrent_to_input_weights) {
+  if (recurrent_to_input_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->data[0],
                       n_cell);
@@ -164,21 +164,21 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* cell_to_input_weights =
       GetOptionalInputTensor(context, node, kCellToInputWeightsTensor);
-  if (cell_to_input_weights) {
+  if (cell_to_input_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->data[0], n_cell);
   }
 
   const TfLiteTensor* cell_to_forget_weights =
       GetOptionalInputTensor(context, node, kCellToForgetWeightsTensor);
-  if (cell_to_forget_weights) {
+  if (cell_to_forget_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->data[0], n_cell);
   }
 
   const TfLiteTensor* cell_to_output_weights =
       GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
-  if (cell_to_output_weights) {
+  if (cell_to_output_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->data[0], n_cell);
   }
@@ -220,7 +220,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* projection_weights =
       GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
-  if (projection_weights) {
+  if (projection_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[0], n_output);
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[1], n_cell);
@@ -228,7 +228,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* projection_bias =
       GetOptionalInputTensor(context, node, kProjectionBiasTensor);
-  if (projection_bias) {
+  if (projection_bias != nullptr) {
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->data[0], n_output);
   }
@@ -502,6 +502,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           recurrent_to_input_weights, recurrent_to_forget_weights,
           recurrent_to_cell_weights, recurrent_to_output_weights,
           cell_to_input_weights, cell_to_forget_weights, cell_to_output_weights,
+          /*input_layer_norm_coefficients=*/nullptr,
+          /*forget_layer_norm_coefficients=*/nullptr,
+          /*cell_layer_norm_coefficients=*/nullptr,
+          /*output_layer_norm_coefficients=*/nullptr,
           /*aux_input=*/nullptr,
           /*aux_input_to_input_weights=*/nullptr,
           /*aux_input_to_forget_weights=*/nullptr,
@@ -529,6 +533,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           recurrent_to_input_weights, recurrent_to_forget_weights,
           recurrent_to_cell_weights, recurrent_to_output_weights,
           cell_to_input_weights, cell_to_forget_weights, cell_to_output_weights,
+          /*input_layer_norm_coefficients=*/nullptr,
+          /*forget_layer_norm_coefficients=*/nullptr,
+          /*cell_layer_norm_coefficients=*/nullptr,
+          /*output_layer_norm_coefficients=*/nullptr,
           /*aux_input=*/nullptr,
           /*aux_input_to_input_weights=*/nullptr,
           /*aux_input_to_forget_weights=*/nullptr,

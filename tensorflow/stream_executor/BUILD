@@ -23,6 +23,14 @@ tf_proto_library(
     protodeps = tf_additional_all_protos(),
 )
 
+tf_proto_library(
+    name = "logging_proto",
+    srcs = ["logging.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    protodeps = tf_additional_all_protos(),
+)
+
 cc_library(
     name = "stream_executor_impl",
     srcs = glob(

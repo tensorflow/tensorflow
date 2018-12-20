@@ -231,6 +231,7 @@ class ScatterNdUpdateOp : public OpKernel {
       Var* v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
       core::ScopedUnref scoped_unref(v);
+      OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
       mutex_lock m(*v->mu());
       DoCompute(c);
     } else if (use_exclusive_lock_) {
@@ -258,7 +259,6 @@ class ScatterNdUpdateOp : public OpKernel {
       Var* v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
       Tensor* t = v->tensor();
-      OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
       params = *t;
       params_shape = params.shape();
     } else if (IsRefType(c->input_dtype(0))) {

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -33,13 +34,18 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
 namespace grappler {
+using TensorVector = gtl::InlinedVector<TensorValue, 4>;
+
 namespace {
 
 using shape_inference::DimensionHandle;
@@ -446,6 +452,54 @@ class TopoQueue {
   std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
+bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
+  static const gtl::FlatSet<string>* const kOpTpeWhitelist =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          // Unary arithmetic ops
+          "Floor",
+          "Round",
+          "Sqrt",
+          "Square",
+          "Sign",
+          // Binary arithmetic ops
+          "Add",
+          "Div",
+          "FloorDiv",
+          "FloorMod",
+          "Greater",
+          "GreaterEqual",
+          "Less",
+          "LessEqual",
+          "LogicalAnd",
+          "LogicalNot",
+          "LogicalOr",
+          "Maximum",
+          "Minimum",
+          "Mod",
+          "Mul",
+          "NotEqual",
+          "QuantizedAdd",
+          "QuantizedMul",
+          "SquareDifference",
+          "Sub",
+          "TruncateDiv",
+          "TruncateMod",
+          "RealDiv",
+          // N-ary arithemtic ops
+          "AddN",
+          // Others
+          "StridedSlice",
+          "OnesLike",
+          "ZerosLike",
+          "Concat",
+          "ConcatV2",
+          "Split",
+          "Range",
+          "Fill",
+      }));
+  return kOpTpeWhitelist->find(op_type) != kOpTpeWhitelist->end();
+}
+
 // Processes symbolic shapes.
 // Each symbolic shape or dimension is represented by a handle. Unlike the TF
 // shape refiner which creates new handles every time it processes an unknown
@@ -455,10 +509,12 @@ class SymbolicShapeRefiner {
  public:
   explicit SymbolicShapeRefiner(
       const GraphView& graph,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports)
+      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+      const bool aggressive_shape_inference)
       : graph_(graph),
         function_library_(OpRegistry::Global(), graph.graph()->library()),
-        fed_ports_(fed_ports) {
+        fed_ports_(fed_ports),
+        aggressive_shape_inference_(aggressive_shape_inference) {
     graph_def_version_ = graph.graph()->versions().producer();
     node_to_context_.reserve(graph.graph()->node_size());
   }
@@ -1011,6 +1067,193 @@ class SymbolicShapeRefiner {
     return dim;
   }
 
+  // Returns true if all the output tensors have known values.
+  bool AllOutputValuesKnown(NodeContext* c) {
+    InferenceContext* ic = c->inference_context.get();
+    if (c->output_tensors_as_shapes.size() < ic->num_outputs() &&
+        c->output_tensor_protos.size() < ic->num_outputs()) {
+      return false;
+    } else {
+      for (int i = 0; i < ic->num_outputs(); i++) {
+        if (c->output_tensor_protos.size() <= i ||
+            c->output_tensor_protos[i] == nullptr) {
+          return false;
+        }
+        if (c->output_tensors_as_shapes.size() <= i ||
+            !ic->FullyDefined(c->output_tensors_as_shapes[i])) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // Returns true if we can infer output tensors' values -- we know values of
+  // all the input tensors.
+  bool AllInputValuesKnown(NodeContext* c) {
+    InferenceContext* ic = c->inference_context.get();
+
+    // Check inputs are fully defined and values are known.
+    for (int i = 0; i < ic->num_inputs(); i++) {
+      const Tensor* tensor = ic->input_tensor(i);
+      // Note that we don't check c->input_tensor_protos[i], as UpdateNode()
+      // already converted it to ic->input_tensor(i);
+      const ShapeHandle& input_tensors_as_shape =
+          ic->input_tensors_as_shapes()[i];
+      // Either input_tensor is valid or input_tensors_as_shape, which has
+      // value of input tensors as shape format, should be fully defined.
+      if (tensor == nullptr && !ic->FullyDefined(input_tensors_as_shape)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Returns true if we want to update output values with running EvaluateNode()
+  // for this op, based on op type, data type, and size.
+  bool ShouldUpdateOutputValues(NodeContext* c, int64 max_size) {
+    InferenceContext* ic = c->inference_context.get();
+
+    // Due to the cost of running EvaluateNode(), we limit only to white listed
+    // op types.
+    if (!IsWhiteListedOpTypeForEvaluateNode(c->op_data->op_def.name())) {
+      return false;
+    }
+
+    // Check input dtypes are integer.
+    for (const auto& input_type : c->input_types) {
+      if (input_type != DT_INT32 && input_type != DT_INT64) {
+        return false;
+      }
+    }
+
+    // Check output dtypes are integer.
+    for (const auto& output_type : c->output_types) {
+      if (output_type != DT_INT32 && output_type != DT_INT64) {
+        return false;
+      }
+    }
+
+    // Check if the number of elements of each of input tensor is no larger than
+    // the given max size.
+    for (int i = 0; i < ic->num_inputs(); i++) {
+      const Tensor* tensor = ic->input_tensor(i);
+      const ShapeHandle& input_shape_handle = ic->input(i);
+      if (tensor != nullptr) {
+        if (tensor->NumElements() > max_size) {
+          return false;
+        }
+      } else if (ic->Value(ic->NumElements(input_shape_handle)) > max_size) {
+        return false;
+      }
+    }
+
+    // Check if we know the shape of each output tensor, and the number of
+    // elements is larger than the given max size.
+    for (int i = 0; i < ic->num_outputs(); i++) {
+      const ShapeHandle& shape_handle = ic->output(i);
+      if (!ic->FullyDefined(shape_handle) &&
+          ic->Value(ic->NumElements(shape_handle)) > max_size) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Create input tensors from the NodeConext.
+  void CreateInputTensors(NodeContext* c,
+                          std::vector<Tensor>* input_tensor_vector,
+                          TensorVector* inputs) {
+    InferenceContext* ic = c->inference_context.get();
+    for (int i = 0; i < ic->num_inputs(); i++) {
+      if (ic->input_tensor(i)) {
+        input_tensor_vector->at(i) = *ic->input_tensor(i);
+        inputs->emplace_back(&input_tensor_vector->at(i));
+        // Note that we don't check c->input_tensor_protos[i], as UpdateNode()
+        // already converted it to ic->input_tensor(i);
+      } else {
+        // Create Tensor from input_tensors_as_shapes, and then emplace it
+        // back to inputs.
+        // Note that input_tensors_as_shapes is scalar or vector.
+        const ShapeHandle& shape_handle = ic->input_tensors_as_shapes()[i];
+        const DataType& data_type = c->input_types[i];
+        int32 rank = ic->Rank(shape_handle);
+        if (rank < 1) {
+          input_tensor_vector->emplace_back(Tensor(data_type, {}));
+        } else {
+          input_tensor_vector->emplace_back(Tensor(data_type, {rank}));
+        }
+        auto* tensor = &input_tensor_vector->back();
+        if (data_type == DT_INT32) {
+          auto flat = tensor->flat<int32>();
+          for (int j = 0; j < rank; j++) {
+            int32 dim = ic->Value(ic->Dim(shape_handle, j));
+            flat(j) = dim;
+          }
+        } else {
+          auto flat = tensor->flat<int64>();
+          for (int j = 0; j < rank; j++) {
+            int64 dim = ic->Value(ic->Dim(shape_handle, j));
+            flat(j) = dim;
+          }
+        }
+        inputs->emplace_back(tensor);
+      }
+    }
+  }
+
+  // Run a node to infer output values, and add it to the NodeContext.
+  Status UpdateOutputValues(const NodeDef& node, NodeContext* c) {
+    InferenceContext* ic = c->inference_context.get();
+
+    // Input to EvaluateNode()
+    TensorVector inputs;
+    // Container for temporaily created tensor object.
+    std::vector<Tensor> input_tensor_vector(ic->num_inputs());
+    CreateInputTensors(c, &input_tensor_vector, &inputs);
+
+    // Output for EvaluateNode() and output tensor clean up object.
+    TensorVector outputs;
+    auto outputs_cleanup = gtl::MakeCleanup([&outputs] {
+      for (const auto& output : outputs) {
+        if (output.tensor) {
+          delete output.tensor;
+        }
+      }
+    });
+
+    TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, /*cpu_device=*/nullptr,
+                                    &resource_mgr_, &outputs));
+    c->output_tensors_as_shapes.resize(outputs.size());
+    c->output_tensor_protos.resize(outputs.size(), nullptr);
+    for (int k = 0; k < outputs.size(); k++) {
+      const auto& t = outputs[k];
+      // Override output shape.
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(
+          ic->MakeShapeFromTensorShape(t->shape(), &output_shape));
+      if (ic->FullyDefined(ic->output(k)) &&
+          !EquivalentShapes(ic->output(k), output_shape)) {
+        LOG(WARNING) << "UpdateOutputValues() -- node: " << node.name()
+                     << ", inferred output shape "
+                     << "doesn't match for k=" << k << ": "
+                     << "ic->output(k): " << ic->DebugString(ic->output(k))
+                     << ", output_shape: " << ic->DebugString(output_shape)
+                     << " -- " << node.DebugString();
+      }
+      ic->set_output(k, output_shape);
+      // Set output_tensors_as_shape.
+      MaybeTensorValueToShape(ic, *t.tensor, &c->output_tensors_as_shapes[k]);
+
+      // Set output_tensor_protos.
+      TensorProto tensor_proto;
+      t->AsProtoTensorContent(&tensor_proto);
+      const_tensors_to_propagate_.push_back(tensor_proto);
+      c->output_tensor_protos[k] = &const_tensors_to_propagate_.back();
+    }
+    return Status::OK();
+  }
+
   Status MaybeUpdateNodeContextOutput(const NodeDef& node, const bool is_fed,
                                       NodeContext* c) {
     // Propagate tensors and shape tensors unless the node is fed.
@@ -1041,7 +1284,7 @@ class SymbolicShapeRefiner {
           // Propagate size value.
           int64 sz = ic->Value(size);
           bool valid = false;
-          if (node.attr().at("T").type() == DT_INT32) {
+          if (node.attr().at("out_type").type() == DT_INT32) {
             if (sz < std::numeric_limits<int32>::max()) {
               const_tensors_to_propagate_.push_back(
                   MakeIntegerScalarTensorProto(DT_INT32, sz));
@@ -1201,6 +1444,19 @@ class SymbolicShapeRefiner {
         }
       }
     }
+
+    if (aggressive_shape_inference_) {
+      // Update output tensor values using EvaluateNode() if we can.
+      // Due to the cost of EvaluateNode(), we run it only for certain op types
+      // (white listed) and small integer tensors.
+
+      const int max_elelment_size = 17;  // Max up to 4x4 matrix or similar.
+      if (AllOutputValuesKnown(c) || !AllInputValuesKnown(c) ||
+          !ShouldUpdateOutputValues(c, max_elelment_size)) {
+        return Status::OK();
+      }
+      UpdateOutputValues(node, c).IgnoreError();  // This is optional.
+    }
     return Status::OK();
   }
 
@@ -1327,6 +1583,10 @@ class SymbolicShapeRefiner {
   // may resize and copy the objects into a new buffer, then the existing
   // pointers become dangling pointers.
   std::list<TensorProto> const_tensors_to_propagate_;
+
+  // For more aggressive shape and value inference.
+  bool aggressive_shape_inference_;
+  ResourceMgr resource_mgr_;
 };
 
 // Keep track of shapes and dimensions in a graph.
@@ -1650,7 +1910,8 @@ Status GraphProperties::UpdateEnqueue(
   return Status::OK();
 }
 
-Status GraphProperties::InferStatically(bool assume_valid_feeds) {
+Status GraphProperties::InferStatically(bool assume_valid_feeds,
+                                        bool aggressive_shape_inference) {
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item_.graph.library());
   std::unordered_map<string, std::unordered_set<int>> fed_ports;
@@ -1736,7 +1997,8 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
     }
   }
 
-  SymbolicShapeRefiner refiner(graph_view, fed_ports);
+  SymbolicShapeRefiner refiner(graph_view, fed_ports,
+                               aggressive_shape_inference);
 
   TopoQueue new_shapes(topo_order);
   // Also seed the propagation of shapes in the fanout of primary inputs.

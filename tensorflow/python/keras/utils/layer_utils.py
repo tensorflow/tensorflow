@@ -23,10 +23,10 @@ import numpy as np
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.conv_utils import convert_kernel
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.utils.get_source_inputs')
+@keras_export('keras.utils.get_source_inputs')
 def get_source_inputs(tensor, layer=None, node_index=None):
   """Returns the list of input tensors necessary to compute `tensor`.
 
@@ -298,7 +298,7 @@ def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
   return weights + non_trainable_extra_variables
 
 
-@tf_export('keras.utils.convert_all_kernels_in_model')
+@keras_export('keras.utils.convert_all_kernels_in_model')
 def convert_all_kernels_in_model(model):
   """Converts all convolution kernels in a model from Theano to TensorFlow.
 

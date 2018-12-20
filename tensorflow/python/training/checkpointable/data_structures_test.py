@@ -73,6 +73,7 @@ class HasList(training.Model):
 class ListTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testTracking(self):
     model = HasList()
     output = model(array_ops.ones([32, 2]))
@@ -105,6 +106,7 @@ class ListTests(test.TestCase):
     self.assertIn(v, model.trainable_variables)
     self.assertNotIn(v, model.non_trainable_variables)
 
+  @test_util.run_v1_only("b/120545219")
   def testUpdatesForwarded(self):
     with context.graph_mode():
       model = HasList()
@@ -121,6 +123,7 @@ class ListTests(test.TestCase):
       self.assertEqual(0, len(model.updates))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testLossesForwarded(self):
     model = HasList()
     model_input = array_ops.ones([32, 2])
@@ -295,6 +298,7 @@ class HasMapping(training.Model):
 class MappingTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testTracking(self):
     model = HasMapping()
     output = model(array_ops.ones([32, 2]))

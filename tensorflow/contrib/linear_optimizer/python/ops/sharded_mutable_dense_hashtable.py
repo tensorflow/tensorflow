@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Sharded mutable dense hash table."""
+"""Sharded mutable dense hash table (deprecated).
+
+This module and all its submodules are deprecated. To UPDATE or USE linear
+optimizers, please check its latest version in core:
+tensorflow_estimator/python/estimator/canned/linear_optimizer/.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,6 +33,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 
 
 # TODO(rohanj): This should subclass Checkpointable and implement
@@ -45,6 +51,10 @@ class ShardedMutableDenseHashTable(object):
 
   # TODO(andreasst): consider moving this to lookup module
 
+  @deprecation.deprecated(
+      None, 'This class is deprecated. To UPDATE or USE linear optimizers, '
+      'please check its latest version in core: '
+      'tensorflow_estimator/python/estimator/canned/linear_optimizer/.')
   def __init__(self,
                key_dtype,
                value_dtype,

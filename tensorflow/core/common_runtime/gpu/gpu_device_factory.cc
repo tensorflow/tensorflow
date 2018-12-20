@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
+#include "tensorflow/core/platform/numa.h"
 
 namespace tensorflow {
 
@@ -81,7 +82,8 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   GPUCompatibleCPUDevice(const SessionOptions& options, const string& name,
                          Bytes memory_limit, const DeviceLocality& locality,
                          Allocator* allocator)
-      : ThreadPoolDevice(options, name, memory_limit, locality, allocator) {
+      : ThreadPoolDevice(options, name, memory_limit, locality, allocator),
+        numa_node_(locality.numa_node()) {
     if (options.config.has_gpu_options()) {
       force_gpu_compatible_ =
           options.config.gpu_options().force_gpu_compatible();
@@ -92,7 +94,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     GPUProcessState* ps = GPUProcessState::singleton();
     if (attr.gpu_compatible() || force_gpu_compatible_) {
-      return ps->GetCUDAHostAllocator(0);
+      return ps->GetCUDAHostAllocator(numa_node_);
     } else {
       // Call the parent's implementation.
       return ThreadPoolDevice::GetAllocator(attr);
@@ -101,6 +103,7 @@ class GPUCompatibleCPUDevice : public ThreadPoolDevice {
 
  private:
   bool force_gpu_compatible_ = false;
+  int numa_node_ = port::kNUMANoAffinity;
 };
 
 // The associated factory.
@@ -113,10 +116,17 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
     if (iter != options.config.device_count().end()) {
       n = iter->second;
     }
+    int num_numa_nodes = options.config.experimental().use_numa_affinity()
+                             ? port::NUMANumNodes()
+                             : 1;
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:CPU:", i);
+      int numa_node = i % num_numa_nodes;
+      DeviceLocality locality;
+      locality.set_numa_node(numa_node);
       devices->push_back(absl::make_unique<GPUCompatibleCPUDevice>(
-          options, name, Bytes(256 << 20), DeviceLocality(), cpu_allocator()));
+          options, name, Bytes(256 << 20), DeviceLocality(),
+          ProcessState::singleton()->GetCPUAllocator(numa_node)));
     }
 
     return Status::OK();

@@ -46,6 +46,6 @@ tf_module {
   }
   member_method {
     name: "walk"
-    argspec: "args=[\'top\', \'topdown\', \'onerror\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'top\', \'topdown\', \'onerror\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
 }

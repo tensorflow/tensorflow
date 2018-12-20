@@ -76,9 +76,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     int64 num_parallel_calls;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "num_parallel_calls",
                                             &num_parallel_calls));
-    OP_REQUIRES(ctx, num_parallel_calls > 0 || num_parallel_calls == kAutoTune,
-                errors::InvalidArgument(
-                    "num_parallel_calls must be greater than zero."));
+    OP_REQUIRES(
+        ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutoTune,
+        errors::InvalidArgument(
+            "num_parallel_calls must be greater than zero."));
     OP_REQUIRES(
         ctx, num_parallel_calls <= cycle_length,
         errors::InvalidArgument(
@@ -159,7 +160,13 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -220,9 +227,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
-        if (num_parallel_calls_->value == kAutoTune) {
+        if (num_parallel_calls_->value == model::kAutoTune) {
           num_parallel_calls_->value = dataset()->cycle_length_;
-          num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -256,6 +262,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
         if (result->status.ok()) {
           *out_tensors = std::move(result->return_values);
+          RecordBufferDequeue(ctx, *out_tensors);
         }
         *end_of_sequence = false;
         return result->status;
@@ -394,6 +401,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           if (end_of_input) {
             result->skip = true;
           }
+          RecordBufferEnqueue(ctx.get(), result->return_values);
           {
             mutex_lock l(*mu_);
             result->notification.Notify();

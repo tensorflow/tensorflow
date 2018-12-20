@@ -288,6 +288,12 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {"Atan", EIGEN_COST(scalar_atan_op<float>)},
       {"Atan2", EIGEN_COST(scalar_quotient_op<float>) +
                     EIGEN_COST(scalar_atan_op<float>)},
+      // For now, we use Eigen cost model for float to int16 cast as an example
+      // case; Eigen cost model is zero when src and dst types are identical,
+      // and it uses AddCost (1) when different. We may implement a separate
+      // cost functions for cast ops, using the actual input and output types.
+      {"Cast", Eigen::internal::functor_traits<
+                   Eigen::internal::scalar_cast_op<float, int16>>::Cost},
       {"Ceil", EIGEN_COST(scalar_ceil_op<float>)},
       {"Cos", EIGEN_COST(scalar_cos_op<float>)},
       {"Dequantize", EIGEN_COST(scalar_product_op<float>)},

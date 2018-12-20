@@ -265,6 +265,7 @@ class Context(object):
       execution_mode = SYNC
     self._execution_mode = execution_mode
     self._server_def = server_def
+    self._collective_ops_server_def = None
 
   # pylint: enable=redefined-outer-name
 
@@ -325,9 +326,16 @@ class Context(object):
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
+      assert not (self._server_def and self._collective_ops_server_def), (
+          "Cannot enable remote execution as well as collective ops at the "
+          "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
         pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
+                                                  server_def_str)
+      elif self._collective_ops_server_def is not None:
+        server_def_str = self._collective_ops_server_def.SerializeToString()
+        pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
                                                   server_def_str)
 
       self._initialize_devices()
@@ -368,6 +376,30 @@ class Context(object):
       # Clear all the caches in case there are remote tensors in them.
       self._clear_caches()
 
+      self._initialize_devices()
+
+  def enable_collective_ops(self, server_def):
+    """Enable collective ops with an appropriate server_def.
+
+    If previously enabled, this cannot be re-enabled.
+
+    Args:
+      server_def: A tensorflow::ServerDef proto. Enables execution on remote
+        devices.
+
+    Raises:
+      ValueError: if server_def is None.
+    """
+    if not server_def:
+      raise ValueError("server_def is None.")
+    if not self._context_handle:
+      self._collective_ops_server_def = server_def
+    else:
+      server_def_str = server_def.SerializeToString()
+      pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
+                                                server_def_str)
+
+      self._clear_caches()
       self._initialize_devices()
 
   @property
@@ -478,10 +510,6 @@ class Context(object):
     Raises:
       ValueError: If name is not a string or is an invalid device name.
     """
-    devices = self._context_devices
-    if devices is None:
-      self._initialize_handle_and_devices()
-      devices = self._context_devices
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
@@ -502,7 +530,9 @@ class Context(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          new_device_spec = pydev.DeviceSpec.from_string(devices[0])
+          self._initialize_handle_and_devices()
+          new_device_spec = pydev.DeviceSpec.from_string(
+              self._context_devices[0])
         new_device_spec.merge_from(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
@@ -925,6 +955,10 @@ def add_function(fdef):
 # but they do all import this file.  Note that IS_IN_GRAPH_MODE and
 # in_graph_mode are both parameterless functions.
 def _tmp_in_graph_mode():
+  if context_safe() is None:
+    # Context not yet initialized. Assume graph mode following the
+    # default implementation in `is_in_graph_mode`.
+    return True
   return not executing_eagerly()
 
 

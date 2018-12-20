@@ -112,7 +112,7 @@ class DistributionTestBase(test.TestCase):
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.read_var(v)
+          fetched = d.extended.read_var(v)
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
@@ -120,7 +120,7 @@ class DistributionTestBase(test.TestCase):
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
-              after_list.append(d.read_var(v))
+              after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
       for i in range(10):
@@ -168,14 +168,14 @@ class DistributionTestBase(test.TestCase):
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.read_var(v)
+          fetched = d.extended.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             g = d.extended.reduce_to(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
-              after_list.append(d.read_var(v))
+              after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
       before_out, after_out = step()
@@ -254,12 +254,13 @@ class DistributionTestBase(test.TestCase):
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
-          [values.select_device(d, next_element) for d in devices])
+          [values.select_replica(r, next_element) for r in range(len(devices))])
       self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
-      evaluate([values.select_device(d, next_element) for d in devices])
+      evaluate(
+          [values.select_replica(r, next_element) for r in range(len(devices))])
 
     # After re-initializing the iterator, should be able to iterate again.
     evaluate(iterator.initialize())
@@ -267,7 +268,7 @@ class DistributionTestBase(test.TestCase):
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
-          [values.select_device(d, next_element) for d in devices])
+          [values.select_replica(r, next_element) for r in range(len(devices))])
       self.assertEqual(expected_value, computed_value)
 
   def _test_global_step_update(self, strategy):
@@ -290,4 +291,4 @@ class DistributionTestBase(test.TestCase):
       self.evaluate(strategy.group(train_ops))
       global_step_tensors = strategy.unwrap(value)
       global_step_values = self.evaluate(global_step_tensors)
-      self.assertEqual([1] * len(global_step_tensors), global_step_values)
+      self.assertEqual((1,) * len(global_step_tensors), global_step_values)

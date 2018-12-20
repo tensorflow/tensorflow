@@ -33,6 +33,8 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
+RAISE = execution_callbacks.ExecutionCallback.RAISE
+
 
 class SquaredDifferenceOpTest(test.TestCase):
 
@@ -385,7 +387,7 @@ class PowGradTest(test.TestCase):
     self.assertAllClose([-2., 0., 2.], g)
 
   def test_zero_grad_tape(self):
-    with execution_callbacks.errstate(inf_or_nan=execution_callbacks.RAISE):
+    with execution_callbacks.errstate(inf_or_nan=RAISE):
       x = constant_op.constant([-1, 0., 1.])
       with backprop.GradientTape() as tape:
         tape.watch(x)

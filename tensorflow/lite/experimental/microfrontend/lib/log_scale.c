@@ -63,7 +63,8 @@ uint16_t* LogScaleApply(struct LogScaleState* state, uint32_t* signal,
   const int scale_shift = state->scale_shift;
   uint16_t* output = (uint16_t*) signal;
   uint16_t* ret = output;
-  for (int i = 0; i < signal_size; ++i) {
+  int i;
+  for (i = 0; i < signal_size; ++i) {
     uint32_t value = *signal++;
     if (state->enable_log) {
       if (correction_bits < 0) {

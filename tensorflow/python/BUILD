@@ -6,6 +6,7 @@
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
+    "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     "//tensorflow:internal",
     "//tensorflow/lite/toco/python:__pkg__",
     "//tensorflow_models:__subpackages__",
@@ -74,12 +75,23 @@ py_library(
 )
 
 py_library(
+    name = "keras_lib",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:layers",
+        "//tensorflow/python/feature_column:feature_column_py",
+        "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
     name = "no_contrib",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/estimator:__subpackages__",
+        "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
@@ -108,13 +120,14 @@ py_library(
         ":image_ops",
         ":initializers_ns",
         ":io_ops",
+        ":keras_lib",
         ":kernels",
-        ":layers",
         ":lib",
         ":list_ops",
         ":manip_ops",
         ":math_ops",
         ":metrics",
+        ":mode_keys",
         ":nccl_ops",
         ":nn",
         ":ops",
@@ -148,8 +161,7 @@ py_library(
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/feature_column:feature_column_py",
-        "//tensorflow/python/keras",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/losses",
@@ -731,6 +743,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":c_api_util",
+        ":error_interpolation",
         ":util",
     ],
 )
@@ -1065,6 +1078,7 @@ py_library(
         ":client",
         ":errors",
         ":framework_for_generated_wrappers",
+        ":layers_base",
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
@@ -1079,6 +1093,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/keras:layers",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3032,6 +3047,7 @@ py_library(
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/ragged",
     ],
 )
 
@@ -3236,6 +3252,7 @@ cuda_py_test(
     srcs = ["ops/control_flow_ops_test.py"],
     additional_deps = [
         ":array_ops",
+        ":cond_v2",
         ":control_flow_ops",
         ":embedding_ops",
         ":framework_for_generated_wrappers",
@@ -3251,6 +3268,8 @@ cuda_py_test(
         ":util",
         ":variable_scope",
         ":variables",
+        ":while_v2",
+        "//tensorflow/python/eager:def_function",
     ],
 )
 
@@ -3512,13 +3531,13 @@ py_library(
         exclude = [
             "**/*test*",
             "training/checkpointable/**/*.py",
+            "training/saving/**/*.py",
             # The following targets have their own build rules (same name as the
             # file):
             "training/basic_session_run_hooks.py",
             "training/checkpoint_management.py",
             "training/distribute.py",
             "training/distribution_strategy_context.py",
-            "training/saveable_object.py",
             "training/saver.py",
             "training/session_run_hook.py",
             "training/training_util.py",
@@ -3543,7 +3562,7 @@ py_library(
         ":gradients",
         ":init_ops",
         ":io_ops",
-        ":layers_base",
+        ":layers_util",
         ":lookup_ops",
         ":math_ops",
         ":platform",
@@ -3564,19 +3583,17 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        # `layers` dependency only exists due to the use of a small utility.
-        "//tensorflow/python/keras:layers",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/training/checkpointable:base",
         "//tensorflow/python/training/checkpointable:util",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -3591,12 +3608,6 @@ py_library(
         ":util",
         "//tensorflow/core:protos_all_py",
     ],
-)
-
-py_library(
-    name = "saveable_object",
-    srcs = ["training/saveable_object.py"],
-    srcs_version = "PY2AND3",
 )
 
 py_library(
@@ -3652,7 +3663,6 @@ py_library(
         ":platform",
         ":pywrap_tensorflow",
         ":resource_variable_ops",
-        ":saveable_object",
         ":session",
         ":state_ops",
         ":string_ops",
@@ -3662,6 +3672,8 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/saving:saveable_object",
+        "//tensorflow/python/training/saving:saveable_object_util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3835,6 +3847,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":util",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -4110,6 +4123,7 @@ tf_py_wrap_cc(
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:python_api",
         "//tensorflow/c:tf_status_helper",
@@ -5143,13 +5157,13 @@ py_library(
     srcs = [
         "layers/__init__.py",
         "layers/base.py",
-        "layers/utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
         ":control_flow_ops",
         ":framework_for_generated_wrappers",
+        ":layers_util",
         ":platform",
         ":smart_cond",
         ":tensor_util",
@@ -5159,6 +5173,20 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "layers_util",
+    srcs = [
+        "layers/utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":smart_cond",
+        ":util",
+        ":variables",
     ],
 )
 
@@ -5310,6 +5338,20 @@ py_test(
     name = "dequantize_op_test",
     size = "small",
     srcs = ["ops/dequantize_op_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "quantized_ops_test",
+    size = "small",
+    srcs = ["ops/quantized_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
     deps = [
@@ -5898,6 +5940,30 @@ py_binary(
     deps = [
         ":framework_for_generated_wrappers",
         ":pywrap_tensorflow_internal",
+    ],
+)
+
+py_library(
+    name = "mode_keys",
+    srcs = [
+        "training/mode_keys.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":util",
+    ],
+)
+
+py_test(
+    name = "mode_keys_test",
+    size = "small",
+    srcs = [
+        "training/mode_keys_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":client_testlib",
+        ":mode_keys",
     ],
 )
 

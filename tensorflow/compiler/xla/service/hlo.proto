@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 58
+// Next ID: 59
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -81,6 +81,8 @@ message HloInstructionProto {
   // the input feature dimension and output feature dimension. If not specified,
   // it will use a default value of 1.
   int64 feature_group_count = 50;
+
+  int64 batch_group_count = 58;
 
   // Describes the [begin, end) index range and stride for slices.
   message SliceDimensions {
@@ -166,7 +168,7 @@ message HloInstructionProto {
   // Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49;
   int64 all_reduce_id = 45;
-  string cross_replica_sum_barrier = 46;
+  string all_reduce_barrier = 46;
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone

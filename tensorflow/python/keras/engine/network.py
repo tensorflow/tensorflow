@@ -43,7 +43,6 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -143,7 +142,6 @@ class Network(base_layer.Layer):
     self._metrics_tensors = {}
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
-    self._call_is_graph_friendly = True
     if context.executing_eagerly():
       self._graph = None
     else:
@@ -186,6 +184,7 @@ class Network(base_layer.Layer):
     self.built = True
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
+    self._dynamic = False
 
     self._input_layers = []
     self._output_layers = []
@@ -224,6 +223,9 @@ class Network(base_layer.Layer):
     self._nodes_by_depth = nodes_by_depth
     self._layers = layers
     self._layers_by_depth = layers_by_depth
+    self._layer_call_argspecs = {}
+    for layer in self._layers:
+      self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
     self._track_layers(layers)
 
@@ -252,9 +254,10 @@ class Network(base_layer.Layer):
       self.output_names.append(layer.name)
 
   @checkpointable.no_automatic_dependency_tracking
-  def _init_subclassed_network(self, name=None):
+  def _init_subclassed_network(self, name=None, dynamic=False):
     self._base_init(name=name)
     self._is_graph_network = False
+    self._dynamic = dynamic
     call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
@@ -266,10 +269,10 @@ class Network(base_layer.Layer):
     self.built = False
 
   @property
-  def _static_graph_friendly(self):
+  def dynamic(self):
     if self._is_graph_network:
-      return all(layer._static_graph_friendly for layer in self.layers)
-    return self._call_is_graph_friendly
+      return any(layer.dynamic for layer in self.layers)
+    return self._dynamic or any(layer.dynamic for layer in self.layers)
 
   def _determine_call_convention(self, call_argspec):
     """Decides how `self.call()` is invoked. See `CallConvention`."""
@@ -327,71 +330,31 @@ class Network(base_layer.Layer):
       self._track_checkpointable(
           layer, name='layer-%d' % layer_index, overwrite=True)
 
-  def _no_dependency(self, value):
-    """Override to allow `Layer` to disable dependency tracking.
-
-    `CheckpointableBase` defines this method, whose semantics are "if a subclass
-    does dependency tracking, this method exempts `value`." Layer uses
-    `_no_dependency` to exempt some of its attribute assignments (conditional on
-    attribute assignment causing tracking in the subclass).
-
-    Args:
-      value: An object which will be assigned to an object attribute, whose
-        value should not be tracked.
-
-    Returns:
-      A wrapped object which, when assigned to an attribute, will not be
-      tracked (`value` will be stored in the attribute).
-    """
-    return data_structures.NoDependency(value)
-
   def __setattr__(self, name, value):
     if not getattr(self, '_setattr_tracking', True):
       super(Network, self).__setattr__(name, value)
       return
-    no_dependency = isinstance(value, data_structures.NoDependency)
-    value = data_structures.sticky_attribute_assignment(
-        checkpointable=self, value=value, name=name)
     if (isinstance(value, (base_layer.Layer,
-                           Network,
                            data_structures.CheckpointableDataStructure))
         or checkpointable_layer_utils.has_weights(value)):
       try:
-        is_graph_network = self._is_graph_network
+        self._is_graph_network
       except AttributeError:
         raise RuntimeError('It looks like you are subclassing `Model` and you '
                            'forgot to call `super(YourClass, self).__init__()`.'
                            ' Always start with this line.')
-      if not is_graph_network:
-        # We need to check object identity to avoid de-duplicating empty
-        # container types which compare equal.
-        if not any((layer is value for layer in self._layers)):
-          self._layers.append(value)
-          if hasattr(value, '_use_resource_variables'):
-            # In subclassed models, legacy layers (tf.layers) must always use
-            # resource variables.
-            value._use_resource_variables = True
-    if (not no_dependency
-        and isinstance(value, checkpointable.CheckpointableBase)):
-      if (  # For subclassed models only, users may add extra weights/variables
-            # simply by assigning them to attributes.
-          not self._is_graph_network
-          and isinstance(value, variables.Variable)):
-        if value.trainable:
-          # Could already be added via `add_weight`.
-          if value not in self._trainable_weights:
-            self._trainable_weights.append(value)
-        else:
-          if value not in self._non_trainable_weights:
-            self._non_trainable_weights.append(value)
+    # Keep track of checkpointable objects,
+    # for the needs of `self.save/save_weights`.
+    value = data_structures.sticky_attribute_assignment(
+        checkpointable=self, value=value, name=name)
+    super(Network, self).__setattr__(name, value)
 
-    # Keeping track of metric instance created in subclassed model/layer.
+    # Keep track of metric instance created in subclassed model/layer.
     # We do this so that we can maintain the correct order of metrics by adding
     # the instance to the `metrics` list as soon as it is created.
     from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
     if isinstance(value, metrics_module.Metric):
       self._metrics.append(value)
-    super(Network, self).__setattr__(name, value)
 
   @property
   def stateful(self):
@@ -1022,13 +985,14 @@ class Network(base_layer.Layer):
             else:
               kwargs = {}
             # Ensure `training` arg propagation if applicable.
-            if 'training' in tf_inspect.getfullargspec(layer.call).args:
+            argspec = self._layer_call_argspecs[layer].args
+            if 'training' in argspec:
               kwargs.setdefault('training', training)
 
             if len(computed_data) == 1:
               computed_tensor, computed_mask = computed_data[0]
               # Ensure mask propagation if applicable.
-              if 'mask' in tf_inspect.getfullargspec(layer.call).args:
+              if 'mask' in argspec:
                 kwargs.setdefault('mask', computed_mask)
 
               # Compute outputs and masks.
@@ -1039,6 +1003,8 @@ class Network(base_layer.Layer):
               else:
                 if context.executing_eagerly():
                   output_tensors = layer(computed_tensor, **kwargs)
+                elif layer.dynamic:
+                  output_tensors = layer._symbolic_call(computed_tensor)  # pylint: disable=protected-call
                 else:
                   output_tensors = layer.call(computed_tensor, **kwargs)
                 if hasattr(layer, 'compute_mask'):
@@ -1052,7 +1018,7 @@ class Network(base_layer.Layer):
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
               # Ensure mask propagation if applicable.
-              if 'mask' in tf_inspect.getfullargspec(layer.call).args:
+              if 'mask' in argspec:
                 kwargs.setdefault('mask', computed_masks)
 
               # Compute outputs and masks.
@@ -1063,6 +1029,8 @@ class Network(base_layer.Layer):
               else:
                 if context.executing_eagerly():
                   output_tensors = layer(computed_tensors, **kwargs)
+                elif layer.dynamic:
+                  output_tensors = layer._symbolic_call(computed_tensors)  # pylint: disable=protected-call
                 else:
                   output_tensors = layer.call(computed_tensors, **kwargs)
                 if hasattr(layer, 'compute_mask'):

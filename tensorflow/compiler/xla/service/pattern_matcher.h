@@ -1737,7 +1737,8 @@ class HloConstantScalarImpl {
               literal_r0_as_val_ty_or.ValueOrDie() == val_literal &&
               literal_r0 == val_as_literal_ty;
     if (!rv) {
-      EXPLAIN << "HloInstruction's constant value " << literal_r0.ToString()
+      EXPLAIN << "HloInstruction's constant value "
+              << literal_r0.ToStringWithoutShape()
               << " did not match expected value " << *val_;
     }
     return rv;
@@ -2035,7 +2036,7 @@ XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)
-XLA_UNOP_PATTERN(CrossReplicaSum)
+XLA_UNOP_PATTERN(AllReduce)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)

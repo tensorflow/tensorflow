@@ -488,6 +488,7 @@ static TF_Tensor* EmptyTensor(TF_DataType dtype, const TensorShape& shape) {
 // Non-static for testing.
 TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
                                TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
   if (!src.IsInitialized()) {
     status->status = FailedPrecondition(
         "attempt to use a tensor with an uninitialized value");

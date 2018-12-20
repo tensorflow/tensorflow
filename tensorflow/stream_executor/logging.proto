@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package stream_executor;
+
+message CudnnVersion {
+  int32 major = 1;
+  int32 minor = 2;
+  int32 patch = 3;
+};
+
+message ComputeCapability {
+  int32 major = 1;
+  int32 minor = 2;
+}
+
+message CudaInfo {
+  CudnnVersion cudnn_version = 1;
+  ComputeCapability compute_capability = 2;
+}

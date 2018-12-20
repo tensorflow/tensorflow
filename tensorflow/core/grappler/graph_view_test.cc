@@ -230,6 +230,40 @@ TEST_F(GraphViewTest, ControlDependencies) {
   EXPECT_EQ(0, (*fanin.begin()).port_id);
 }
 
+TEST_F(GraphViewTest, HasNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphView graph(&item.graph);
+
+  EXPECT_EQ(true, graph.HasNode("a"));
+  EXPECT_EQ(false, graph.HasNode("b"));
+}
+
+TEST_F(GraphViewTest, HasFanin) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  Output b = ops::Square(s.WithOpName("b"), {a});
+  Output c = ops::Sqrt(s.WithOpName("c"), {b});
+  Output d = ops::AddN(s.WithOpName("d").WithControlDependencies(a), {b, c});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphView graph(&item.graph);
+
+  const NodeDef* d_node = graph.GetNode("d");
+  EXPECT_NE(nullptr, d_node);
+
+  EXPECT_EQ(true, graph.HasFanin(*d_node, {"a", Graph::kControlSlot}));
+  EXPECT_EQ(false, graph.HasFanin(*d_node, {"a", 0}));
+  EXPECT_EQ(true, graph.HasFanin(*d_node, {"b", 0}));
+  EXPECT_EQ(false, graph.HasFanin(*d_node, {"b", Graph::kControlSlot}));
+  EXPECT_EQ(true, graph.HasFanin(*d_node, {"c", 0}));
+  EXPECT_EQ(false, graph.HasFanin(*d_node, {"c", Graph::kControlSlot}));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

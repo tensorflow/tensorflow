@@ -11,6 +11,11 @@ The instructions below are for running the binary on Desktop and Android,
 for iOS please use the
 [iOS benchmark app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/ios).
 
+An experimental Android APK wrapper for the benchmark model utility offers more
+faithful execution behavior on Android (via a foreground Activity). It is
+located
+[here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/android).
+
 ## Parameters
 
 The binary takes the following required parameters:

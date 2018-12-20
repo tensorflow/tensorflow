@@ -37,11 +37,14 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 # Lazy load since some of the performance benchmark skylark rules
 # break dependencies.
-_toco_python = LazyLoader(
-    "tensorflow_wrap_toco", globals(),
-    "tensorflow.lite.toco.python."
-    "tensorflow_wrap_toco")
-del LazyLoader
+if lite_constants.EXPERIMENTAL_USE_TOCO_API_DIRECTLY:
+  _toco_python = LazyLoader(
+      "tensorflow_wrap_toco", globals(),
+      "tensorflow.lite.toco.python."
+      "tensorflow_wrap_toco")
+  del LazyLoader
+else:
+  _toco_python = None
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has
@@ -97,6 +100,7 @@ def convert_dtype_to_tflite_type(tf_dtype):
   return result
 
 
+@_tf_export("lite.OpsSet")
 class OpsSet(enum.Enum):
   """Enum class defining the sets of ops available to generate TFLite models.
 
