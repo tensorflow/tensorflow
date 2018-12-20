@@ -59,8 +59,9 @@ TEST(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {
 }
 
 TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithAllPositiveRange) {
+  // The min should get nudged to include 0, so the effective range is [0, 6].
   const float float_min = 1.0;
-  const float float_max = 5.0;
+  const float float_max = 6.0;
   const int quant_min = -128;
   const int quant_max = 127;
   QuantizationParametersT params;
@@ -71,16 +72,17 @@ TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithAllPositiveRange) {
   ASSERT_EQ(params.scale.size(), 1);
   ASSERT_EQ(params.zero_point.size(), 1);
   EXPECT_EQ(params.max[0], float_max);
-  EXPECT_EQ(params.min[0], float_min);
+  EXPECT_EQ(params.min[0], 0.0);
   int64_t zero_point = params.zero_point[0];
   float scale = params.scale[0];
   const float eps = 1e-7f;
   EXPECT_EQ(zero_point, -128);
-  EXPECT_NEAR(scale, 4 / 255.0f, eps);
+  EXPECT_NEAR(scale, 6 / 255.0f, eps);
 }
 
 TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithAllNegativeRange) {
-  const float float_min = -5.0;
+  // The min should get nudged to include 0, so the effective range is [-6, 0].
+  const float float_min = -6.0;
   const float float_max = -1.0;
   const int quant_min = -128;
   const int quant_max = 127;
@@ -91,13 +93,13 @@ TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithAllNegativeRange) {
   ASSERT_EQ(params.min.size(), 1);
   ASSERT_EQ(params.scale.size(), 1);
   ASSERT_EQ(params.zero_point.size(), 1);
-  EXPECT_EQ(params.max[0], float_max);
+  EXPECT_EQ(params.max[0], 0.0);
   EXPECT_EQ(params.min[0], float_min);
   int64_t zero_point = params.zero_point[0];
   float scale = params.scale[0];
   const float eps = 1e-7f;
   EXPECT_EQ(zero_point, 127);
-  EXPECT_NEAR(scale, 4 / 255.0f, eps);
+  EXPECT_NEAR(scale, 6 / 255.0f, eps);
 }
 
 TEST(QuantizationUtilsTest, AsymmetricQuantizationParamsWithZeroInRange) {

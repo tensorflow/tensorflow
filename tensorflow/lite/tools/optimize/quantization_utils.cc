@@ -39,11 +39,13 @@ TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
 // we may deviate from that implementation as we please since we do not fine
 // tune the weights with quantized training.
 void GetAsymmetricQuantizationParams(
-    const float min, const float max, const int quant_min, const int quant_max,
+    float min, float max, const int quant_min, const int quant_max,
     QuantizationParametersT* quantization_params) {
+  const float quant_min_float = static_cast<float>(quant_min);
+  const float quant_max_float = static_cast<float>(quant_max);
   // Adjust the boundaries to guarantee 0 is included.
-  const float quant_min_float = std::min(static_cast<float>(quant_min), 0.0f);
-  const float quant_max_float = std::max(static_cast<float>(quant_max), 0.0f);
+  min = std::min(static_cast<float>(min), 0.0f);
+  max = std::max(static_cast<float>(max), 0.0f);
   const float scale = (max - min) / (quant_max_float - quant_min_float);
   const float zero_point_from_min = quant_min_float - min / scale;
   int64_t zero_point;
