@@ -235,6 +235,131 @@ tensorflow::Status ImportShape(
   return NumElements(input_dims_only_sizes, input_flat_size);
 }
 
+// Define ways to retrieve data from tensors of different types.
+// TODO(b/80208043): simply use tensorflow::Tensor::FromProto() instead.
+template <typename T>
+struct TensorTraits;
+
+template <>
+struct TensorTraits<float> {
+  static int size(const TensorProto& p) { return p.float_val_size(); }
+  static float get(const TensorProto& p, int i) { return p.float_val(i); }
+  static string accessor_name() { return "float_val"; }
+  static string type_name() { return "float"; }
+  static void CopyFromContent(const TensorProto& p, std::vector<float>* data) {
+    toco::port::CopyToBuffer(p.tensor_content(),
+                             reinterpret_cast<char*>(data->data()));
+  }
+};
+
+template <>
+struct TensorTraits<uint8_t> {
+  static int size(const TensorProto& p) { return p.int_val_size(); }
+  static uint8_t get(const TensorProto& p, int i) { return p.int_val(i); }
+  static string accessor_name() { return "int_val"; }
+  static string type_name() { return "uint8"; }
+  static void CopyFromContent(const TensorProto& p,
+                              std::vector<uint8_t>* data) {
+    toco::port::CopyToBuffer(p.tensor_content(),
+                             reinterpret_cast<char*>(data->data()));
+  }
+};
+
+template <>
+struct TensorTraits<std::complex<float>> {
+  static int size(const TensorProto& p) { return p.scomplex_val_size() / 2; }
+  static std::complex<float> get(const TensorProto& p, int i) {
+    return std::complex<float>(p.scomplex_val(2 * i),
+                               p.scomplex_val(2 * i + 1));
+  }
+  static string accessor_name() { return "scomplex_val"; }
+  static string type_name() { return "complex64"; }
+  static void CopyFromContent(const TensorProto& p,
+                              std::vector<std::complex<float>>* data) {
+    toco::port::CopyToBuffer(p.tensor_content(),
+                             reinterpret_cast<char*>(data->data()));
+  }
+};
+
+template <>
+struct TensorTraits<int32> {
+  static int size(const TensorProto& p) { return p.int_val_size(); }
+  static int32 get(const TensorProto& p, int i) { return p.int_val(i); }
+  static string accessor_name() { return "int_val"; }
+  static string type_name() { return "int32"; }
+  static void CopyFromContent(const TensorProto& p, std::vector<int32>* data) {
+    toco::port::CopyToBuffer(p.tensor_content(),
+                             reinterpret_cast<char*>(data->data()));
+  }
+};
+
+template <>
+struct TensorTraits<int64> {
+  static int size(const TensorProto& p) { return p.int64_val_size(); }
+  static int64 get(const TensorProto& p, int i) { return p.int64_val(i); }
+  static string accessor_name() { return "int64_val"; }
+  static string type_name() { return "int64"; }
+  static void CopyFromContent(const TensorProto& p, std::vector<int64>* data) {
+    toco::port::CopyToBuffer(p.tensor_content(),
+                             reinterpret_cast<char*>(data->data()));
+  }
+};
+
+template <>
+struct TensorTraits<bool> {
+  static int size(const TensorProto& p) { return p.bool_val_size(); }
+  static bool get(const TensorProto& p, int i) { return p.bool_val(i); }
+  static string accessor_name() { return "bool_val"; }
+  static string type_name() { return "bool"; }
+  static void CopyFromContent(const TensorProto& p, std::vector<bool>* data) {
+    std::vector<char> buf(p.tensor_content().size());
+    toco::port::CopyToBuffer(p.tensor_content(), buf.data());
+    for (int i = 0; i < p.tensor_content().size(); i++) {
+      (*data)[i] = static_cast<bool>(buf[i]);
+    }
+  }
+};
+
+template <typename T>
+tensorflow::Status ImportTensorData(const TensorProto& input_tensor,
+                                    int input_flat_size,
+                                    std::vector<T>* output_data) {
+  CHECK_GE(output_data->size(), input_flat_size);
+  int num_elements_in_tensor = TensorTraits<T>::size(input_tensor);
+  if (num_elements_in_tensor == input_flat_size) {
+    for (int i = 0; i < num_elements_in_tensor; i++) {
+      (*output_data)[i] = TensorTraits<T>::get(input_tensor, i);
+    }
+  } else if (input_tensor.tensor_content().size() ==
+             input_flat_size * sizeof(T)) {
+    TensorTraits<T>::CopyFromContent(input_tensor, output_data);
+  } else if (num_elements_in_tensor > 0 &&
+             num_elements_in_tensor < input_flat_size) {
+    // TODO(b/80208043): use tensorflow::Tensor::FromProto() which is the
+    // official way to import tensor data. This particular else-if handles a
+    // grappler optimization where the last few elements in a tensor are
+    // omitted if they are repeated.
+    int i = 0;
+    for (; i < num_elements_in_tensor; ++i) {
+      (*output_data)[i] = TensorTraits<T>::get(input_tensor, i);
+    }
+    auto last = (*output_data)[i - 1];
+    for (; i < input_flat_size; ++i) {
+      (*output_data)[i] = last;
+    }
+  } else {
+    string accessor_name = TensorTraits<T>::accessor_name();
+    string type_name = TensorTraits<T>::type_name();
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("Neither input_content (",
+                     input_tensor.tensor_content().size() / sizeof(T), ") nor ",
+                     accessor_name, " (", num_elements_in_tensor,
+                     ") have the right dimensions (", input_flat_size,
+                     ") for this ", type_name, " tensor"));
+  }
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
                                     Array* output_array) {
   CHECK_EQ(input_tensor.dtype(), DT_FLOAT);
@@ -249,28 +374,8 @@ tensorflow::Status ImportFloatArray(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kFloat>().data;
   output_float_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                            0.f);
-  CHECK_GE(output_float_data.size(), input_flat_size);
-  if (input_tensor.float_val_size() == 1) {
-    for (int i = 0; i < input_flat_size; i++) {
-      output_float_data[i] = input_tensor.float_val(0);
-    }
-  } else if (input_tensor.float_val_size() == input_flat_size) {
-    for (int i = 0; i < input_tensor.float_val_size(); i++) {
-      output_float_data[i] = input_tensor.float_val(i);
-    }
-  } else if (input_tensor.tensor_content().size() ==
-             input_flat_size * sizeof(float)) {
-    toco::port::CopyToBuffer(input_tensor.tensor_content(),
-                             reinterpret_cast<char*>(output_float_data.data()));
-  } else {
-    return tensorflow::errors::InvalidArgument(
-        absl::StrCat("Neither input_content (",
-                     input_tensor.tensor_content().size() / sizeof(float),
-                     ") nor float_val (", input_tensor.float_val_size(),
-                     ") have the right dimensions (", input_flat_size,
-                     ") for this float tensor"));
-  }
-  return tensorflow::Status::OK();
+  return ImportTensorData<float>(input_tensor, input_flat_size,
+                                 &output_float_data);
 }
 
 tensorflow::Status ImportComplex64Array(const TensorProto& input_tensor,
@@ -287,32 +392,8 @@ tensorflow::Status ImportComplex64Array(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kComplex64>().data;
   output_complex_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                              std::complex<float>(0.f, 0.f));
-  CHECK_GE(output_complex_data.size(), input_flat_size);
-  if (input_tensor.scomplex_val_size() == 2) {
-    for (int i = 0; i < input_flat_size; i++) {
-      output_complex_data[i] = std::complex<float>(
-          input_tensor.scomplex_val(0), input_tensor.scomplex_val(1));
-    }
-  } else if (input_tensor.scomplex_val_size() == 2 * input_flat_size) {
-    for (int i = 0; i < input_flat_size; ++i) {
-      output_complex_data[i] =
-          std::complex<float>(input_tensor.scomplex_val(2 * i),
-                              input_tensor.scomplex_val(2 * i + 1));
-    }
-  } else if (input_tensor.tensor_content().size() ==
-             input_flat_size * sizeof(std::complex<float>)) {
-    toco::port::CopyToBuffer(
-        input_tensor.tensor_content(),
-        reinterpret_cast<char*>(output_complex_data.data()));
-  } else {
-    return tensorflow::errors::InvalidArgument(absl::StrCat(
-        "Neither input_content (",
-        input_tensor.tensor_content().size() / sizeof(std::complex<float>),
-        ") nor scomplex_val (", input_tensor.scomplex_val_size(),
-        ") have the right dimensions (", input_flat_size,
-        ") for this complex64 tensor"));
-  }
-  return tensorflow::Status::OK();
+  return ImportTensorData<std::complex<float>>(input_tensor, input_flat_size,
+                                               &output_complex_data);
 }
 
 tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
@@ -328,28 +409,8 @@ tensorflow::Status ImportQuint8Array(const TensorProto& input_tensor,
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kUint8>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
-  CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int_val_size() == 1) {
-    for (int i = 0; i < input_flat_size; i++) {
-      output_int_data[i] = input_tensor.int_val(0);
-    }
-  } else if (input_tensor.int_val_size() == input_flat_size) {
-    for (int i = 0; i < input_tensor.int_val_size(); i++) {
-      output_int_data[i] = input_tensor.int_val(i);
-    }
-  } else if (input_tensor.tensor_content().size() ==
-             input_flat_size * sizeof(uint8_t)) {
-    toco::port::CopyToBuffer(input_tensor.tensor_content(),
-                             reinterpret_cast<char*>(output_int_data.data()));
-  } else {
-    return tensorflow::errors::InvalidArgument(
-        absl::StrCat("Neither input_content (",
-                     input_tensor.tensor_content().size() / sizeof(uint8_t),
-                     ") nor int_val (", input_tensor.int_val_size(),
-                     ") have the right dimensions (", input_flat_size,
-                     ") for this uint8 tensor"));
-  }
-  return tensorflow::Status::OK();
+  return ImportTensorData<uint8_t>(input_tensor, input_flat_size,
+                                   &output_int_data);
 }
 
 tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
@@ -365,27 +426,8 @@ tensorflow::Status ImportInt32Array(const TensorProto& input_tensor,
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt32>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
-  CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int_val_size() == 1) {
-    for (int i = 0; i < input_flat_size; i++) {
-      output_int_data[i] = input_tensor.int_val(0);
-    }
-  } else if (input_tensor.int_val_size() == input_flat_size) {
-    for (int i = 0; i < input_tensor.int_val_size(); i++) {
-      output_int_data[i] = input_tensor.int_val(i);
-    }
-  } else if (input_tensor.tensor_content().size() ==
-             input_flat_size * sizeof(int32)) {
-    toco::port::CopyToBuffer(input_tensor.tensor_content(),
-                             reinterpret_cast<char*>(output_int_data.data()));
-  } else {
-    return tensorflow::errors::InvalidArgument(absl::StrCat(
-        "Neither input_content (",
-        input_tensor.tensor_content().size() / sizeof(int32), ") nor int_val (",
-        input_tensor.int_val_size(), ") have the right dimensions (",
-        input_flat_size, ") for this int32 tensor"));
-  }
-  return tensorflow::Status::OK();
+  return ImportTensorData<int32>(input_tensor, input_flat_size,
+                                 &output_int_data);
 }
 
 tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
@@ -401,28 +443,8 @@ tensorflow::Status ImportInt64Array(const TensorProto& input_tensor,
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt64>().data;
   output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
-  CHECK_GE(output_int_data.size(), input_flat_size);
-  if (input_tensor.int64_val_size() == 1) {
-    for (int i = 0; i < input_flat_size; i++) {
-      output_int_data[i] = input_tensor.int64_val(0);
-    }
-  } else if (input_tensor.int64_val_size() == input_flat_size) {
-    for (int i = 0; i < input_tensor.float_val_size(); i++) {
-      output_int_data[i] = input_tensor.int64_val(i);
-    }
-  } else if (input_tensor.tensor_content().size() ==
-             input_flat_size * sizeof(int64)) {
-    toco::port::CopyToBuffer(input_tensor.tensor_content(),
-                             reinterpret_cast<char*>(output_int_data.data()));
-  } else {
-    return tensorflow::errors::InvalidArgument(
-        absl::StrCat("Neither input_content (",
-                     input_tensor.tensor_content().size() / sizeof(int64),
-                     ") nor int64_val (", input_tensor.int64_val_size(),
-                     ") have the right dimensions (", input_flat_size,
-                     ") for this int64 tensor"));
-  }
-  return tensorflow::Status::OK();
+  return ImportTensorData<int64>(input_tensor, input_flat_size,
+                                 &output_int_data);
 }
 
 tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
@@ -439,36 +461,17 @@ tensorflow::Status ImportBoolArray(const TensorProto& input_tensor,
       output_array->GetMutableBuffer<ArrayDataType::kBool>().data;
   output_bool_data.resize(RequiredBufferSizeForShape(output_array->shape()),
                           false);
-  CHECK_GE(output_bool_data.size(), input_flat_size);
-  if (input_tensor.bool_val_size() == 1) {
-    for (int i = 0; i < input_flat_size; i++) {
-      output_bool_data[i] = input_tensor.bool_val(0);
-    }
-  } else if (input_tensor.bool_val_size() == input_flat_size) {
-    for (int i = 0; i < input_tensor.bool_val_size(); i++) {
-      output_bool_data[i] = input_tensor.bool_val(i);
-    }
-  } else if (input_tensor.tensor_content().size() == input_flat_size) {
-    std::vector<char> buf(input_tensor.tensor_content().size());
-    toco::port::CopyToBuffer(input_tensor.tensor_content(), buf.data());
-    for (int i = 0; i < input_tensor.tensor_content().size(); i++) {
-      output_bool_data[i] = static_cast<bool>(buf[i]);
-    }
-  } else {
+  status =
+      ImportTensorData<bool>(input_tensor, input_flat_size, &output_bool_data);
+  if (!status.ok() && output_bool_data.size() == 1) {
     // Some graphs have bool const nodes without actual value...
     // assuming that 'false' is implied.
     // So far only encountered that in an array with 1 entry, let's
     // require that until we encounter a graph where that's not the case.
-    if (output_bool_data.size() != 1) {
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
-          "Neither input_content (", input_tensor.tensor_content().size(),
-          ") nor bool_val (", input_tensor.bool_val_size(),
-          ") have the right dimensions (", input_flat_size,
-          ") for this bool tensor"));
-    }
     output_bool_data[0] = false;
+    return tensorflow::Status::OK();
   }
-  return tensorflow::Status::OK();
+  return status;
 }
 
 tensorflow::Status ImportStringArray(const TensorProto& input_tensor,

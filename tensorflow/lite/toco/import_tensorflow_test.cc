@@ -37,6 +37,7 @@ using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
 using tensorflow::NodeDef;
 using tensorflow::Status;
+using ::testing::ElementsAre;
 
 namespace internal {
 using ConverterType = tensorflow::Status (*)(
@@ -116,35 +117,35 @@ void BuildConstNode(std::initializer_list<int64_t> shape,
   switch (dtype) {
     case DT_FLOAT:
       for (int64_t i = 0; i < num_elements; ++i) {
-        t.add_float_val(i / 10000.0);
+        t.add_float_val(i / 10000.0 + 1);
       }
       break;
     case DT_INT32:
       for (int64_t i = 0; i < num_elements; ++i) {
-        t.add_int_val(i % std::numeric_limits<int>::max());
+        t.add_int_val(i % std::numeric_limits<int>::max() + 1);
       }
       break;
     case DT_QUINT8:
       for (int64_t i = 0; i < num_elements; ++i) {
-        t.add_int_val(i % std::numeric_limits<uint8_t>::max());
+        t.add_int_val(i % std::numeric_limits<uint8_t>::max() + 1);
       }
       break;
     case DT_INT64:
       for (int64_t i = 0; i < num_elements; ++i) {
-        t.add_int64_val(i);
+        t.add_int64_val(i + 1);
       }
       break;
     case DT_STRING:
       break;
     case DT_BOOL:
       for (int64_t i = 0; i < num_elements; ++i) {
-        t.add_bool_val(i % 2);
+        t.add_bool_val((i % 2) == 0);
       }
       break;
     case DT_COMPLEX64:
       for (int64_t i = 0; i < num_elements; ++i) {
-        t.add_scomplex_val(i / 10000.0);
-        t.add_scomplex_val(-i / 10000.0);
+        t.add_scomplex_val(i / 10000.0 + 1);
+        t.add_scomplex_val(-i / 10000.0 - 1);
       }
       break;
     default:
@@ -257,20 +258,123 @@ std::vector<tensorflow::DataType> TestTypes() {
 INSTANTIATE_TEST_CASE_P(ShapeImportTest, ShapeImportTest,
                         ::testing::ValuesIn(TestTypes()));
 
-TEST(ImportTest, Complex64ConstNode) {
+class ContentImportTest : public ::testing::Test {
+ public:
+  template <ArrayDataType T>
+  std::vector<DataType<T>> ImportAndGetData(const NodeDef& node) {
+    Model model;
+    auto status = ImportNode(node, &model);
+    CHECK(status.ok()) << status.error_message();
+    const auto& array = model.GetArray("Node1");
+    return array.GetBuffer<T>().data;
+  }
+  void RemoveTrailingElements(NodeDef* node, int num) {
+    tensorflow::TensorProto* p =
+        node->mutable_attr()->at("value").mutable_tensor();
+    for (int i = 0; i < num; ++i) {
+      if (p->int_val_size() > 0) p->mutable_int_val()->RemoveLast();
+      if (p->int64_val_size() > 0) p->mutable_int64_val()->RemoveLast();
+      if (p->float_val_size() > 0) p->mutable_float_val()->RemoveLast();
+      if (p->bool_val_size() > 0) p->mutable_bool_val()->RemoveLast();
+      if (p->scomplex_val_size() > 0) p->mutable_scomplex_val()->RemoveLast();
+      if (p->scomplex_val_size() > 0) p->mutable_scomplex_val()->RemoveLast();
+    }
+  }
+};
+
+TEST_F(ContentImportTest, Int32) {
+  constexpr ArrayDataType kType = ArrayDataType::kInt32;
+
+  NodeDef node;
+  BuildConstNode({1, 2, 3}, DT_INT32, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 5));
+  RemoveTrailingElements(&node, 4);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 1, 1, 1, 1, 1));
+}
+
+TEST_F(ContentImportTest, Int64) {
+  constexpr ArrayDataType kType = ArrayDataType::kInt64;
+
+  NodeDef node;
+  BuildConstNode({1, 2, 3}, DT_INT64, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 5));
+  RemoveTrailingElements(&node, 4);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 1, 1, 1, 1, 1));
+}
+
+TEST_F(ContentImportTest, Quint8) {
+  constexpr ArrayDataType kType = ArrayDataType::kUint8;
+
+  NodeDef node;
+  BuildConstNode({1, 2, 3}, DT_QUINT8, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 5));
+  RemoveTrailingElements(&node, 4);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 1, 1, 1, 1, 1));
+}
+
+TEST_F(ContentImportTest, Bool) {
+  constexpr ArrayDataType kType = ArrayDataType::kBool;
+
+  NodeDef node;
+  BuildConstNode({1, 2, 3}, DT_BOOL, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 0, 1, 0, 1, 0));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 0, 1, 0, 1, 1));
+  RemoveTrailingElements(&node, 4);
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 1, 1, 1, 1, 1));
+}
+
+TEST_F(ContentImportTest, Float) {
+  constexpr ArrayDataType kType = ArrayDataType::kFloat;
+
+  NodeDef node;
+  BuildConstNode({1, 2, 3}, DT_FLOAT, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node),
+              ElementsAre(1.0000, 1.0001, 1.0002, 1.0003, 1.0004, 1.0005));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(ImportAndGetData<kType>(node),
+              ElementsAre(1.0000, 1.0001, 1.0002, 1.0003, 1.0004, 1.0004));
+  RemoveTrailingElements(&node, 4);
+  EXPECT_THAT(ImportAndGetData<kType>(node),
+              ElementsAre(1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000));
+}
+
+TEST_F(ContentImportTest, Complex64) {
+  constexpr ArrayDataType kType = ArrayDataType::kComplex64;
+
   NodeDef node;
   BuildConstNode({1, 2, 3}, DT_COMPLEX64, 6, &node);
-  Model model;
-  EXPECT_TRUE(ImportNode(node, &model).ok());
-  const auto& array = model.GetArray("Node1");
-  EXPECT_EQ(ArrayDataType::kComplex64, array.data_type);
-  EXPECT_EQ(6, array.GetBuffer<ArrayDataType::kComplex64>().Length());
-  int64_t i = 0;
-  for (const auto& datum : array.GetBuffer<ArrayDataType::kComplex64>().data) {
-    EXPECT_EQ(i / 10000.0f, std::real(datum));
-    EXPECT_EQ(-i / 10000.0f, std::imag(datum));
-    i++;
-  }
+
+  using cplx = std::complex<float>;
+  EXPECT_THAT(
+      ImportAndGetData<kType>(node),
+      ElementsAre(std::complex<float>(1.0000, -1.0000), cplx(1.0001, -1.0001),
+                  cplx(1.0002, -1.0002), cplx(1.0003, -1.0003),
+                  cplx(1.0004, -1.0004), cplx(1.0005, -1.0005)));
+  RemoveTrailingElements(&node, 1);
+  EXPECT_THAT(
+      ImportAndGetData<kType>(node),
+      ElementsAre(std::complex<float>(1.0000, -1.0000), cplx(1.0001, -1.0001),
+                  cplx(1.0002, -1.0002), cplx(1.0003, -1.0003),
+                  cplx(1.0004, -1.0004), cplx(1.0004, -1.0004)));
+
+  RemoveTrailingElements(&node, 4);
+  EXPECT_THAT(
+      ImportAndGetData<kType>(node),
+      ElementsAre(std::complex<float>(1.0000, -1.0000), cplx(1.0000, -1.0000),
+                  cplx(1.0000, -1.0000), cplx(1.0000, -1.0000),
+                  cplx(1.0000, -1.0000), cplx(1.0000, -1.0000)));
 }
 
 std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
