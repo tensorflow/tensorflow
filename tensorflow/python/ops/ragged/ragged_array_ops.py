@@ -655,7 +655,7 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
   # Special case: if there's only one input, then return it as-is.
   if len(rt_inputs) == 1:
     if stack_values:
-      return expand_dims(rt_inputs[0], axis=0)
+      return expand_dims(rt_inputs[0], axis=axis)
     else:
       return rt_inputs[0]
 
