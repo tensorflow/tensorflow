@@ -104,8 +104,9 @@ Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
   // Instantiate all variables for function library runtime creation.
   std::vector<std::unique_ptr<Device>> devices;
   // Only CPU device is used so instead of calling DeviceFactory::AddDevices()
-  // with dummy session config, which will conflict with user defined options and
-  // create unwanted devices, call cpu_factory->CreateDevices() to get CPU only devices.
+  // with dummy session config, which will conflict with user defined options
+  // and create unwanted devices, call cpu_factory->CreateDevices() to get CPU
+  // only devices.
   DeviceFactory* cpu_factory = DeviceFactory::GetFactory("CPU");
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
