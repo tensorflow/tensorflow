@@ -1010,7 +1010,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
   });
 
-  size_t input_size = 0;
+  size_t total_inputs_size = 0;
   for (const auto& input : node.input()) {
     const TensorId input_tensor = ParseTensorName(input);
     if (input_tensor.index() < 0) {
@@ -1025,10 +1025,10 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     }
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
-    input_size += raw_val.tensor_content().size();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
     CHECK(value->FromProto(raw_val));
     inputs.emplace_back(value);
+    total_inputs_size += value->TotalBytes();
   }
 
   TF_RETURN_IF_ERROR(EvaluateNode(node, inputs, &output_tensors));
@@ -1043,7 +1043,8 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
       node_name = strings::StrCat(node_name, "-", i);
     }
     if (output_tensors[i].tensor) {
-      Status s = CreateNodeDef(node_name, output_tensors[i], &outputs->at(i), input_size);
+      Status s = CreateNodeDef(node_name, output_tensors[i], &outputs->at(i),
+                               total_inputs_size);
       if (!s.ok()) {
         *result_too_large = true;
         return s;
