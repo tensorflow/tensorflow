@@ -157,7 +157,7 @@ suitable interface for project configuration and dependency setting.
     press `Finish`. Wait for a moment, the default project dependecy would
     automatically generate.
 6.  There are a few options that you can customize your own build. **The setting
-    here is crucial for a sucessful build, please check all items carefully.**
+    here is crucial for a successful build, please check all items carefully.**
 
     *   `tensorflow_BUILD_ALL_KERNELS` should alway be `on`
     *   `tensorflow_BUILD_CC_EXAMPLE` is default to be `on`. This can help you
