@@ -76,7 +76,14 @@ Status SessionMgr::CreateSession(const string& session,
 
   std::shared_ptr<WorkerSession> worker_session;
 
-  if (isolate_session_state) {
+  if (isolate_session_state || server_def.cluster().job_size()) {
+    if (server_def.cluster().job_size()) {
+      LOG(INFO) << "ClusterSpec propagation is enabled.";
+    }
+    if (!isolate_session_state) {
+      LOG(INFO) << "Session state isolation is disabled.";
+    }
+
     // Create a private copy of the DeviceMgr for the WorkerSession.
     std::vector<Device*> renamed_devices;
     for (Device* d : worker_env_->local_devices) {

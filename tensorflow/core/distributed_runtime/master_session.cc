@@ -1269,21 +1269,20 @@ Status MasterSession::CreateWorkerSessions(
       return status;
     }
 
+    // If the cluster_def is set in master, the worker will reuse it.
+    // Otherwise, the worker will use its local configuration.
     if (options.cluster_def) {
       *workers[i].request.mutable_server_def()->mutable_cluster() =
           *options.cluster_def;
       workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
       workers[i].request.mutable_server_def()->set_job_name(name.job);
       workers[i].request.mutable_server_def()->set_task_index(name.task);
-      // Session state is always isolated when ClusterSpec propagation
-      // is in use.
-      workers[i].request.set_isolate_session_state(true);
-    } else {
-      // NOTE(mrry): Do not set any component of the ServerDef,
-      // because the worker will use its local configuration.
-      workers[i].request.set_isolate_session_state(
-          session_opts_.config.isolate_session_state());
     }
+    // Let users to turn on/off isolate_session_state even if ClusterSpec
+    // propagation is in use. Then in async distributed training, it is possible
+    // for workers to update the same variables in PS servers.
+    workers[i].request.set_isolate_session_state(
+      session_opts_.config.isolate_session_state());
   }
 
   for (size_t i = 0; i < worker_names.size(); ++i) {
