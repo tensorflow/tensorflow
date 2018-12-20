@@ -2057,7 +2057,7 @@ class Model(Network):
       # Gets network outputs. Does not update weights.
       # Does update the network states.
       kwargs = getattr(self, '_function_kwargs', {})
-      with K.name_scope('predict'):
+      with K.name_scope(ModeKeys.PREDICT):
         self.predict_function = K.function(
             inputs,
             self.outputs,

@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import enum  # pylint: disable=g-bad-import-order
 import numpy as np
 
 from tensorflow.python.distribute import distribute_lib
@@ -38,13 +37,10 @@ from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
-class _Mode(enum.Enum):
-  TRAIN = 'train'
-  TEST = 'test'
-  PREDICT = 'predict'
 # TODO(priyag, sourabhbajaj): Refactor this file to address code duplication.
 
 
@@ -100,10 +96,10 @@ def experimental_fit_loop(model,
     if model._compile_distribution:
       clone_model_on_replicas(model, current_strategy,
                               make_callback_model=True, inputs=inputs,
-                              targets=targets, mode=_Mode.TRAIN)
+                              targets=targets, mode=ModeKeys.TRAIN)
     else:
       _build_distributed_network(model, current_strategy, inputs,
-                                 targets, mode=_Mode.TRAIN)
+                                 targets, mode=ModeKeys.TRAIN)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
@@ -215,7 +211,7 @@ def experimental_fit_loop(model,
         # the weights back to the original model before we can run validation.
         with current_strategy.scope():
           _copy_weights_to_original_model(
-              model, model._distributed_model_train, 'train')
+              model, model._distributed_model_train, ModeKeys.TRAIN)
 
       val_outs = experimental_test_loop(  # pylint: disable=undefined-variable
           model,
@@ -237,7 +233,7 @@ def experimental_fit_loop(model,
     # Copy the weights back from the replicated model to the original model.
     with current_strategy.scope():
       _copy_weights_to_original_model(model, model._distributed_model_train,
-                                      'train')
+                                      ModeKeys.TRAIN)
   scope.__exit__(None, None, None)
   return model.history
 
@@ -281,10 +277,10 @@ def experimental_test_loop(model,
     if model._compile_distribution:
       clone_model_on_replicas(model, current_strategy,
                               make_callback_model=False, inputs=inputs,
-                              targets=targets, mode=_Mode.TEST)
+                              targets=targets, mode=ModeKeys.TEST)
     else:
       _build_distributed_network(model, current_strategy, inputs,
-                                 targets, mode=_Mode.TEST)
+                                 targets, mode=ModeKeys.TEST)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
@@ -397,10 +393,10 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
     if model._compile_distribution:
       clone_model_on_replicas(model, current_strategy,
                               make_callback_model=False, inputs=inputs,
-                              mode=_Mode.PREDICT)
+                              mode=ModeKeys.PREDICT)
     else:
       _build_distributed_network(model, current_strategy, inputs,
-                                 mode=_Mode.PREDICT)
+                                 mode=ModeKeys.PREDICT)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
@@ -535,7 +531,7 @@ def _build_network_on_replica(model, inputs=None, targets=None, mode=None):
   if isinstance(targets, tuple):
     targets = nest.flatten(targets)
 
-  if mode == _Mode.PREDICT:
+  if mode == ModeKeys.PREDICT:
     _custom_compile_for_predict(updated_model)
   else:
     updated_model.compile(
@@ -557,11 +553,11 @@ def _build_distributed_network(model, strategy, inputs=None, targets=None,
     distributed_model = strategy.extended.call_for_each_replica(
         _build_network_on_replica,
         args=(model, inputs, targets, mode))
-    if mode is _Mode.TRAIN:
+    if mode is ModeKeys.TRAIN:
       model._distributed_model_train = distributed_model
-    elif mode is _Mode.TEST:
+    elif mode is ModeKeys.TEST:
       model._distributed_model_test = distributed_model
-    elif mode is _Mode.PREDICT:
+    elif mode is ModeKeys.PREDICT:
       model._distributed_model_predict = distributed_model
     else:
       model._distributed_model = distributed_model
@@ -594,7 +590,7 @@ def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
 
   if isinstance(targets, tuple):
     targets = nest.flatten(targets)
-  if mode == _Mode.PREDICT:
+  if mode == ModeKeys.PREDICT:
     _custom_compile_for_predict(cloned_model)
   else:
     cloned_model.compile(
@@ -615,11 +611,11 @@ def clone_model_on_replicas(model, strategy, make_callback_model=False,
   with K.get_graph().as_default(), strategy.scope():
     distributed_model = strategy.extended.call_for_each_replica(
         _clone_and_build_model, args=(model, inputs, targets, mode))
-    if mode is _Mode.TRAIN:
+    if mode is ModeKeys.TRAIN:
       model._distributed_model_train = distributed_model
-    elif mode is _Mode.TEST:
+    elif mode is ModeKeys.TEST:
       model._distributed_model_test = distributed_model
-    elif mode is _Mode.PREDICT:
+    elif mode is ModeKeys.PREDICT:
       model._distributed_model_predict = distributed_model
     else:
       model._distributed_model = distributed_model
@@ -659,7 +655,7 @@ def _make_execution_function(model, mode):
   if not model._distributed_model:
     if model._compile_distribution:
       clone_model_on_replicas(
-          model, strategy, make_callback_model=(mode == 'train'))
+          model, strategy, make_callback_model=(mode == ModeKeys.TRAIN))
     else:
       _build_distributed_network(model, strategy)
 
@@ -674,7 +670,7 @@ def _make_execution_function(model, mode):
      grouped_session_args) = strategy.extended.call_for_each_replica(
          _per_device_function, args=(model._distributed_model,))
 
-    if mode == 'train':
+    if mode == ModeKeys.TRAIN:
       # Initialize the variables in the replicated model. This is necessary for
       # multi-worker training because on some workers, initialization is not
       # needed. This method does initialization or waiting for initialization
@@ -692,7 +688,7 @@ def _make_execution_function(model, mode):
          grouped_outputs,
          grouped_updates,
          grouped_session_args,
-         with_loss_tensor=(mode != 'predict'))
+         with_loss_tensor=(mode != ModeKeys.PREDICT))
 
     return K.function(
         all_inputs,
@@ -708,7 +704,7 @@ def _make_eager_execution_function(model, mode):
   if not model._distributed_model:
     if model._compile_distribution:
       clone_model_on_replicas(
-          model, strategy, make_callback_model=(mode == 'train'))
+          model, strategy, make_callback_model=(mode == ModeKeys.TRAIN))
     else:
       _build_distributed_network(model, strategy)
 
@@ -732,7 +728,7 @@ def _make_eager_execution_function(model, mode):
         strategy,
         grouped_inputs,
         grouped_outputs,
-        with_loss_tensor=(mode != 'predict'))
+        with_loss_tensor=(mode != ModeKeys.PREDICT))
 
     return K.function(
         all_inputs,
@@ -748,7 +744,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     inputs: List or dict of model inputs.
     targets: Optional list of model targets.
     sample_weights: Optional list of sample weight arrays.
-    mode: One of 'train'/'test'/'predict'.
+    mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
 
   Returns:
     Feed values for the model in the given mode.
@@ -758,7 +754,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   inputs = distributed_training_utils.flatten_perdevice_values(strategy, inputs)
   targets = distributed_training_utils.flatten_perdevice_values(
       strategy, targets)
-  if mode == 'predict':
+  if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
   else:
@@ -766,7 +762,8 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
         None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
     ]
   ins = inputs + targets + sample_weights
-  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
+  if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
+                                               int):
     ins += [True]
   return ins
 
@@ -785,7 +782,7 @@ def _copy_weights_to_distributed_model(original_model, grouped_model):
 
 def _copy_weights_to_original_model(model, grouped_model, mode):
   """Copies weights from first distributed model back to original model."""
-  if model._distribution_strategy and mode == 'train':
+  if model._distribution_strategy and mode == ModeKeys.TRAIN:
     updated_weights = model._distribution_strategy.unwrap(
         grouped_model)[0].get_weights()
     model.set_weights(updated_weights)
@@ -793,7 +790,7 @@ def _copy_weights_to_original_model(model, grouped_model, mode):
 
 def _per_device_aggregate_batch(batch_outs, model, mode):
   """Aggregates the per-device batch-level outputs from a distributed step."""
-  if model._distribution_strategy is not None and mode == 'predict':
+  if model._distribution_strategy is not None and mode == ModeKeys.PREDICT:
     total_batch_outs = []
     for i in range(len(model.outputs)):
       num_replicas = model._distribution_strategy.num_replicas_in_sync
