@@ -84,6 +84,42 @@ TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   EXPECT_EQ(b_md2.data.format, mkldnn_blocked);
 }
 
+TEST(MklUtilTest, LRUCacheTest) {
+  // The cached objects are of type int*
+  size_t capacity = 100;
+  size_t num_objects = capacity + 10;
+  LRUCache<int> lru_cache(capacity);
+
+  // Test SetOp: be able to set more ops than the capacity
+  for (int k = 0; k < num_objects; k++) {
+    lru_cache.SetOp(std::to_string(k), new int(k));
+  }
+
+  // Test GetOp and capacity:
+  //   -- Less recently accessed objects should not be
+  //      in cache any more.
+  for (int k = 0; k < num_objects - capacity; k++) {
+    EXPECT_EQ(nullptr, lru_cache.GetOp(std::to_string(k)));
+  }
+
+  // Test GetOp and capacity:
+  //   -- most recently accessed objects should still
+  //      be in cache.
+  for (int k = num_objects - capacity; k < num_objects; k++) {
+    int* pint = lru_cache.GetOp(std::to_string(k));
+    EXPECT_NE(nullptr, pint);
+    EXPECT_EQ(*pint, k);
+  }
+
+  // Clean up the cache
+  lru_cache.Clear();
+
+  // After clean up, there should be no cached object.
+  for (int k = 0; k < num_objects; k++) {
+    EXPECT_EQ(nullptr, lru_cache.GetOp(std::to_string(k)));
+  }
+}
+
 #endif  // INTEL_MKL_ML_ONLY
 }  // namespace
 }  // namespace tensorflow
