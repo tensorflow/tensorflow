@@ -154,6 +154,19 @@ class LoadTest(test.TestCase):
     imported = self.cycle(root)
     self.assertEqual(4., imported.f(constant_op.constant(2.0)).numpy())
 
+  def test_nested_func(self):
+    f = def_function.function(
+        lambda x: x*2.0,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    g = def_function.function(
+        lambda x: f(x) + 1.0,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+
+    root = tracking.Checkpointable()
+    root.g = g
+    imported = self.cycle(root)
+    imported.g(constant_op.constant([1.0]))
+
   def test_function_with_default_bool_input(self):
 
     def func(x, training=False):
