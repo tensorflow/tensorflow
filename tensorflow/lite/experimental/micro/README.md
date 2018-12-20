@@ -132,16 +132,13 @@ help make adding support for new platforms as easy as possible.
 Follow these steps to get the pushbutton yes/no example working on Apollo 3:
 
 1. Make sure to run the "Getting Started" section before performing the following steps
-2. Download Apollo3-SDK-2018.08.13 and place in tensorflow/lite/experimental/micro/tools/make/downloads 
-3. Copy and prepare files by running tensorflow/lite/experimental/micro/tools/make/targets/apollo3evb/prep_apollo3_files.sh from the toplevel of git
+2. Download Apollo3-SDK-2018.08.13 and place in `tensorflow/lite/experimental/micro/tools/make/downloads`. This is not yet publicly released, but you can contact ashah@ambiqmicro.com to request a copy.
+3. Compile the project with the following command: make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb pushbutton_cmsis_speech_test_bin
 4. Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
-5. Make sure the [GNU Arm Embedded Toolchain (gcc-arm-none-eabi-7-2018-q2-update)](https://developer.arm.com/open-source/gnu-toolchain/gnu-rm/downloads) is installed to tensorflow/lite/experimental/micro/tools/make/downloads
-    1. Confirm directory is in $PATH
-6. Compile the project with the following command: make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb pushbutton_cmsis_speech_test_bin
-7. Connect the Apollo3 EVB (with mic shield) to the computer and power it on
-8. Start the GDB server in a new terminal with the following command: JLinkGDBServer -select USB -device AMA3B1KK-KBR -endian little -if SWD -speed 1000 -noir -noLocalhostOnly
+5. Connect the Apollo3 EVB (with mic shield) to the computer and power it on
+6. Start the GDB server in a new terminal with the following command: JLinkGDBServer -select USB -device AMA3B1KK-KBR -endian little -if SWD -speed 1000 -noir -noLocalhostOnly
     1. The command has run successfully if you see the message "Waiting for GDB connection"
-9. Back in the original terminal, run the program via the debugger 
+7. Back in the original terminal, run the program via the debugger 
     1. Navigate to tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
     2. Start gdb by entering the following command: arm-none-eabi-gdb
     3. Run the command script by entering the following command: source pushbutton_cmsis_scores.cmd. This script does the following:
