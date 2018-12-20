@@ -222,7 +222,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     # pylint: disable=protected-access
     return mirrored_strategy._create_mirrored_variable(
-        device_map, logical_device, _real_mirrored_creator, *args, **kwargs)
+        self._container_strategy(), device_map, logical_device,
+        _real_mirrored_creator, *args, **kwargs)
 
   def _distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""

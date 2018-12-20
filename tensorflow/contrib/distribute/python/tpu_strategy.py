@@ -68,7 +68,8 @@ def get_tpu_system_metadata(tpu_cluster_resolver):
 
 # TODO(jhseu): Deduplicate with MirroredStrategy?
 def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
-    device_map, logical_device, real_mirrored_creator, *args, **kwargs):
+    strategy, device_map, logical_device, real_mirrored_creator,
+    *args, **kwargs):
   # Figure out what collections this variable should be added to.
   # We'll add the TPUMirroredVariable to those collections instead.
   collections = kwargs.pop("collections", None)
@@ -101,7 +102,8 @@ def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
     devices = device_map.logical_to_actual_devices(logical_device)
     value_list = real_mirrored_creator(devices, *args, **kwargs)
     result = values.TPUMirroredVariable(
-        device_map, value_list, aggregation, logical_device=logical_device)
+        strategy, device_map, value_list, aggregation,
+        logical_device=logical_device)
 
   if not context.executing_eagerly():
     g = ops.get_default_graph()
@@ -475,7 +477,8 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       return value_list
 
     return _create_tpu_mirrored_variable(
-        device_map, logical_device, _real_mirrored_creator, *args, **kwargs)
+        self._container_strategy(), device_map, logical_device,
+        _real_mirrored_creator, *args, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
