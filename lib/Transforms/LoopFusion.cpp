@@ -130,24 +130,270 @@ public:
   }
 };
 
-// GreedyFusionPolicy greedily fuses loop nests which have a producer/consumer
+// MemRefDependenceGraph is a graph data structure where graph nodes are
+// top-level statements in an MLFunction which contain load/store ops, and edges
+// are memref dependences between the nodes.
+// TODO(andydavis) Add a depth parameter to dependence graph construction.
+struct MemRefDependenceGraph {
+public:
+  // Node represents a node in the graph. A Node is either an entire loop nest
+  // rooted at the top level which contains loads/stores, or a top level
+  // load/store.
+  struct Node {
+    // The unique identifier of this node in the graph.
+    unsigned id;
+    // The top-level statment which is (or contains) loads/stores.
+    Statement *stmt;
+    // List of load op stmts.
+    SmallVector<OperationStmt *, 4> loads;
+    // List of store op stmts.
+    SmallVector<OperationStmt *, 4> stores;
+    Node(unsigned id, Statement *stmt) : id(id), stmt(stmt) {}
+
+    // Returns the load op count for 'memref'.
+    unsigned getLoadOpCount(MLValue *memref) {
+      unsigned loadOpCount = 0;
+      for (auto *loadOpStmt : loads) {
+        if (memref == cast<MLValue>(loadOpStmt->cast<LoadOp>()->getMemRef()))
+          ++loadOpCount;
+      }
+      return loadOpCount;
+    }
+
+    // Returns the store op count for 'memref'.
+    unsigned getStoreOpCount(MLValue *memref) {
+      unsigned storeOpCount = 0;
+      for (auto *storeOpStmt : stores) {
+        if (memref == cast<MLValue>(storeOpStmt->cast<StoreOp>()->getMemRef()))
+          ++storeOpCount;
+      }
+      return storeOpCount;
+    }
+  };
+
+  // Edge represents a memref data dependece between nodes in the graph.
+  struct Edge {
+    // The id of the node at the other end of the edge.
+    unsigned id;
+    // The memref on which this edge represents a dependence.
+    MLValue *memref;
+  };
+
+  // Map from node id to Node.
+  DenseMap<unsigned, Node> nodes;
+  // Map from node id to list of input edges.
+  DenseMap<unsigned, SmallVector<Edge, 2>> inEdges;
+  // Map from node id to list of output edges.
+  DenseMap<unsigned, SmallVector<Edge, 2>> outEdges;
+
+  MemRefDependenceGraph() {}
+
+  // Initializes the dependence graph based on operations in 'f'.
+  // Returns true on success, false otherwise.
+  bool init(MLFunction *f);
+
+  // Returns the graph node for 'id'.
+  Node *getNode(unsigned id) {
+    auto it = nodes.find(id);
+    assert(it != nodes.end());
+    return &it->second;
+  }
+
+  // Adds an edge from node 'srcId' to node 'dstId' for 'memref'.
+  void addEdge(unsigned srcId, unsigned dstId, MLValue *memref) {
+    outEdges[srcId].push_back({dstId, memref});
+    inEdges[dstId].push_back({srcId, memref});
+  }
+
+  // Removes an edge from node 'srcId' to node 'dstId' for 'memref'.
+  void removeEdge(unsigned srcId, unsigned dstId, MLValue *memref) {
+    assert(inEdges.count(dstId) > 0);
+    assert(outEdges.count(srcId) > 0);
+    // Remove 'srcId' from 'inEdges[dstId]'.
+    for (auto it = inEdges[dstId].begin(); it != inEdges[dstId].end(); ++it) {
+      if ((*it).id == srcId && (*it).memref == memref) {
+        inEdges[dstId].erase(it);
+        break;
+      }
+    }
+    // Remove 'dstId' from 'outEdges[srcId]'.
+    for (auto it = outEdges[srcId].begin(); it != outEdges[srcId].end(); ++it) {
+      if ((*it).id == dstId && (*it).memref == memref) {
+        outEdges[srcId].erase(it);
+        break;
+      }
+    }
+  }
+
+  // Returns the input edge count for node 'id' and 'memref'.
+  unsigned getInEdgeCount(unsigned id, MLValue *memref) {
+    unsigned inEdgeCount = 0;
+    if (inEdges.count(id) > 0)
+      for (auto &inEdge : inEdges[id])
+        if (inEdge.memref == memref)
+          ++inEdgeCount;
+    return inEdgeCount;
+  }
+
+  // Returns the output edge count for node 'id' and 'memref'.
+  unsigned getOutEdgeCount(unsigned id, MLValue *memref) {
+    unsigned outEdgeCount = 0;
+    if (outEdges.count(id) > 0)
+      for (auto &outEdge : outEdges[id])
+        if (outEdge.memref == memref)
+          ++outEdgeCount;
+    return outEdgeCount;
+  }
+
+  // Returns the min node id of all output edges from node 'id'.
+  unsigned getMinOutEdgeNodeId(unsigned id) {
+    unsigned minId = std::numeric_limits<unsigned>::max();
+    if (outEdges.count(id) > 0)
+      for (auto &outEdge : outEdges[id])
+        minId = std::min(minId, outEdge.id);
+    return minId;
+  }
+
+  // Updates edge mappings from node 'srcId' to node 'dstId' and removes
+  // state associated with node 'srcId'.
+  void updateEdgesAndRemoveSrcNode(unsigned srcId, unsigned dstId) {
+    // For each edge in 'inEdges[srcId]': add new edge remaping to 'dstId'.
+    if (inEdges.count(srcId) > 0) {
+      SmallVector<Edge, 2> oldInEdges = inEdges[srcId];
+      for (auto &inEdge : oldInEdges) {
+        // Remove edge from 'inEdge.id' to 'srcId'.
+        removeEdge(inEdge.id, srcId, inEdge.memref);
+        // Add edge from 'inEdge.id' to 'dstId'.
+        addEdge(inEdge.id, dstId, inEdge.memref);
+      }
+    }
+    // For each edge in 'outEdges[srcId]': add new edge remaping to 'dstId'.
+    if (outEdges.count(srcId) > 0) {
+      SmallVector<Edge, 2> oldOutEdges = outEdges[srcId];
+      for (auto &outEdge : oldOutEdges) {
+        // Remove edge from 'srcId' to 'outEdge.id'.
+        removeEdge(srcId, outEdge.id, outEdge.memref);
+        // Add edge from 'dstId' to 'outEdge.id' (if 'outEdge.id' != 'dstId').
+        if (outEdge.id != dstId)
+          addEdge(dstId, outEdge.id, outEdge.memref);
+      }
+    }
+    // Remove 'srcId' from graph state.
+    inEdges.erase(srcId);
+    outEdges.erase(srcId);
+    nodes.erase(srcId);
+  }
+
+  // Adds ops in 'loads' and 'stores' to node at 'id'.
+  void addToNode(unsigned id, const SmallVectorImpl<OperationStmt *> &loads,
+                 const SmallVectorImpl<OperationStmt *> &stores) {
+    Node *node = getNode(id);
+    for (auto *loadOpStmt : loads)
+      node->loads.push_back(loadOpStmt);
+    for (auto *storeOpStmt : stores)
+      node->stores.push_back(storeOpStmt);
+  }
+
+  void print(raw_ostream &os) const {
+    os << "\nMemRefDependenceGraph\n";
+    os << "\nNodes:\n";
+    for (auto &idAndNode : nodes) {
+      os << "Node: " << idAndNode.first << "\n";
+      auto it = inEdges.find(idAndNode.first);
+      if (it != inEdges.end()) {
+        for (const auto &e : it->second)
+          os << "  InEdge: " << e.id << " " << e.memref << "\n";
+      }
+      it = outEdges.find(idAndNode.first);
+      if (it != outEdges.end()) {
+        for (const auto &e : it->second)
+          os << "  OutEdge: " << e.id << " " << e.memref << "\n";
+      }
+    }
+  }
+  void dump() const { print(llvm::errs()); }
+};
+
+// Intializes the data dependence graph by walking statements in 'f'.
+// Assigns each node in the graph a node id based on program order in 'f'.
+// TODO(andydavis) Add support for taking a StmtBlock arg to construct the
+// dependence graph at a different depth.
+bool MemRefDependenceGraph::init(MLFunction *f) {
+  unsigned id = 0;
+  DenseMap<MLValue *, SetVector<unsigned>> memrefAccesses;
+  for (auto &stmt : *f) {
+    if (auto *forStmt = dyn_cast<ForStmt>(&stmt)) {
+      // Create graph node 'id' to represent top-level 'forStmt' and record
+      // all loads and store accesses it contains.
+      LoopNestStateCollector collector;
+      collector.walkForStmt(forStmt);
+      // Return false if IfStmts are found (not currently supported).
+      if (collector.hasIfStmt)
+        return false;
+      Node node(id++, &stmt);
+      for (auto *opStmt : collector.loadOpStmts) {
+        node.loads.push_back(opStmt);
+        auto *memref = cast<MLValue>(opStmt->cast<LoadOp>()->getMemRef());
+        memrefAccesses[memref].insert(node.id);
+      }
+      for (auto *opStmt : collector.storeOpStmts) {
+        node.stores.push_back(opStmt);
+        auto *memref = cast<MLValue>(opStmt->cast<StoreOp>()->getMemRef());
+        memrefAccesses[memref].insert(node.id);
+      }
+      nodes.insert({node.id, node});
+    }
+    if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
+      if (auto loadOp = opStmt->dyn_cast<LoadOp>()) {
+        // Create graph node for top-level load op.
+        Node node(id++, &stmt);
+        node.loads.push_back(opStmt);
+        auto *memref = cast<MLValue>(opStmt->cast<LoadOp>()->getMemRef());
+        memrefAccesses[memref].insert(node.id);
+        nodes.insert({node.id, node});
+      }
+      if (auto storeOp = opStmt->dyn_cast<StoreOp>()) {
+        // Create graph node for top-level store op.
+        Node node(id++, &stmt);
+        node.stores.push_back(opStmt);
+        auto *memref = cast<MLValue>(opStmt->cast<StoreOp>()->getMemRef());
+        memrefAccesses[memref].insert(node.id);
+        nodes.insert({node.id, node});
+      }
+    }
+    // Return false if IfStmts are found (not currently supported).
+    if (isa<IfStmt>(&stmt))
+      return false;
+  }
+
+  // Walk memref access lists and add graph edges between dependent nodes.
+  for (auto &memrefAndList : memrefAccesses) {
+    unsigned n = memrefAndList.second.size();
+    for (unsigned i = 0; i < n; ++i) {
+      unsigned srcId = memrefAndList.second[i];
+      bool srcHasStore =
+          getNode(srcId)->getStoreOpCount(memrefAndList.first) > 0;
+      for (unsigned j = i + 1; j < n; ++j) {
+        unsigned dstId = memrefAndList.second[j];
+        bool dstHasStore =
+            getNode(dstId)->getStoreOpCount(memrefAndList.first) > 0;
+        if (srcHasStore || dstHasStore)
+          addEdge(srcId, dstId, memrefAndList.first);
+      }
+    }
+  }
+  return true;
+}
+
+// GreedyFusion greedily fuses loop nests which have a producer/consumer
 // relationship on a memref, with the goal of improving locality. Currently,
 // this the producer/consumer relationship is required to be unique in the
 // MLFunction (there are TODOs to relax this constraint in the future).
 //
 // The steps of the algorithm are as follows:
 //
-// *) Initialize. While visiting each statement in the MLFunction do:
-//   *) Assign each top-level ForStmt a 'position' which is its initial
-//      position in the MLFunction's StmtBlock at the start of the pass.
-//   *) Gather memref load/store state aggregated by top-level statement. For
-//      example, all loads and stores contained in a loop nest are aggregated
-//      under the loop nest's top-level ForStmt.
-//   *) Add each top-level ForStmt to a worklist.
-//
-// *) Run. The algorithm processes the worklist with the following steps:
-//   *) The worklist is processed in reverse order (starting from the last
-//      top-level ForStmt in the MLFunction).
+// *) A worklist is initialized with node ids from the dependence graph.
+// *) For each node id in the worklist:
 //   *) Pop a ForStmt of the worklist. This 'dstForStmt' will be a candidate
 //      destination ForStmt into which fusion will be attempted.
 //   *) Add each LoadOp currently in 'dstForStmt' into list 'dstLoadOps'.
@@ -157,7 +403,7 @@ public:
 //      *) Check if dependences would be violated by the fusion. For example,
 //         the src loop nest may load from memrefs which are different than
 //         the producer-consumer memref between src and dest loop nests.
-//      *) Get a computation slice of 'srcLoopNest', which adjust its loop
+//      *) Get a computation slice of 'srcLoopNest', which adjusts its loop
 //         bounds to be functions of 'dstLoopNest' IVs and symbols.
 //      *) Fuse the 'srcLoopNest' computation slice into the 'dstLoopNest',
 //         just before the dst load op user.
@@ -168,268 +414,112 @@ public:
 //
 // Given a graph where top-level statements are vertices in the set 'V' and
 // edges in the set 'E' are dependences between vertices, this algorithm
-// takes O(V) time for initialization, and has runtime O(V * E).
-// TODO(andydavis) Reduce this time complexity to O(V + E).
+// takes O(V) time for initialization, and has runtime O(V + E).
 //
-// This greedy algorithm is not 'maximally' but there is a TODO to fix this.
+// This greedy algorithm is not 'maximal' due to the current restriction of
+// fusing along single producer consumer edges, but there is a TODO to fix this.
 //
 // TODO(andydavis) Experiment with other fusion policies.
-struct GreedyFusionPolicy {
-  // Convenience wrapper with information about 'stmt' ready to access.
-  struct StmtInfo {
-    Statement *stmt;
-    bool isOrContainsIfStmt = false;
-  };
-  // The worklist of top-level loop nest positions.
+// TODO(andydavis) Add support for fusing for input reuse (perhaps by
+// constructing a graph with edges which represent loads from the same memref
+// in two different loop nestst.
+struct GreedyFusion {
+public:
+  MemRefDependenceGraph *mdg;
   SmallVector<unsigned, 4> worklist;
-  // Mapping from top-level position to StmtInfo.
-  DenseMap<unsigned, StmtInfo> posToStmtInfo;
-  // Mapping from memref MLValue to set of top-level positions of loop nests
-  // which contain load ops on that memref.
-  DenseMap<MLValue *, DenseSet<unsigned>> memrefToLoadPosSet;
-  // Mapping from memref MLValue to set of top-level positions of loop nests
-  // which contain store ops on that memref.
-  DenseMap<MLValue *, DenseSet<unsigned>> memrefToStorePosSet;
-  // Mapping from top-level loop nest to the set of load ops it contains.
-  DenseMap<ForStmt *, SetVector<OperationStmt *>> forStmtToLoadOps;
-  // Mapping from top-level loop nest to the set of store ops it contains.
-  DenseMap<ForStmt *, SetVector<OperationStmt *>> forStmtToStoreOps;
 
-  GreedyFusionPolicy(MLFunction *f) { init(f); }
+  GreedyFusion(MemRefDependenceGraph *mdg) : mdg(mdg) {
+    // Initialize worklist with nodes from 'mdg'.
+    worklist.resize(mdg->nodes.size());
+    std::iota(worklist.begin(), worklist.end(), 0);
+  }
 
   void run() {
-    if (hasIfStmts())
-      return;
-
     while (!worklist.empty()) {
-      // Pop the position of a loop nest into which fusion will be attempted.
-      unsigned dstPos = worklist.back();
+      unsigned dstId = worklist.back();
       worklist.pop_back();
-      // Skip if 'dstPos' is not tracked (was fused into another loop nest).
-      if (posToStmtInfo.count(dstPos) == 0)
+      // Skip if this node was removed (fused into another node).
+      if (mdg->nodes.count(dstId) == 0)
         continue;
-      // Get the top-level ForStmt at 'dstPos'.
-      auto *dstForStmt = getForStmtAtPos(dstPos);
-      // Skip if this ForStmt contains no load ops.
-      if (forStmtToLoadOps.count(dstForStmt) == 0)
+      // Get 'dstNode' into which to attempt fusion.
+      auto *dstNode = mdg->getNode(dstId);
+      // Skip if 'dstNode' is not a loop nest.
+      if (!isa<ForStmt>(dstNode->stmt))
         continue;
 
-      // Greedy Policy: iterate through load ops in 'dstForStmt', greedily
-      // fusing in src loop nests which have a single store op on the same
-      // memref, until a fixed point is reached where there is nothing left to
-      // fuse.
-      SetVector<OperationStmt *> dstLoadOps = forStmtToLoadOps[dstForStmt];
-      while (!dstLoadOps.empty()) {
-        auto *dstLoadOpStmt = dstLoadOps.pop_back_val();
-
-        auto dstLoadOp = dstLoadOpStmt->cast<LoadOp>();
-        auto *memref = cast<MLValue>(dstLoadOp->getMemRef());
-        // Skip if not single src store / dst load pair on 'memref'.
-        if (memrefToLoadPosSet[memref].size() != 1 ||
-            memrefToStorePosSet[memref].size() != 1)
+      SmallVector<OperationStmt *, 4> loads = dstNode->loads;
+      while (!loads.empty()) {
+        auto *dstLoadOpStmt = loads.pop_back_val();
+        auto *memref =
+            cast<MLValue>(dstLoadOpStmt->cast<LoadOp>()->getMemRef());
+        // Skip 'dstLoadOpStmt' if multiple loads to 'memref' in 'dstNode'.
+        if (dstNode->getLoadOpCount(memref) != 1)
           continue;
-        unsigned srcPos = *memrefToStorePosSet[memref].begin();
-        if (srcPos >= dstPos)
+        // Skip if no input edges along which to fuse.
+        if (mdg->inEdges.count(dstId) == 0)
           continue;
-        auto *srcForStmt = getForStmtAtPos(srcPos);
-        // Skip if 'srcForStmt' has more than one store op.
-        if (forStmtToStoreOps[srcForStmt].size() > 1)
-          continue;
-        // Skip if fusion would violated dependences between 'memref' access
-        // for loop nests between 'srcPos' and 'dstPos':
-        //  For each src load op: check for store ops in range (srcPos, dstPos).
-        //  For each src store op: check for load ops in range (srcPos, dstPos).
-        if (moveWouldViolateDependences(srcPos, dstPos))
-          continue;
-        auto *srcStoreOpStmt = forStmtToStoreOps[srcForStmt].front();
-        // Build fusion candidate out of 'srcStoreOpStmt' and 'dstLoadOpStmt'.
-        FusionCandidate candidate =
-            buildFusionCandidate(srcStoreOpStmt, dstLoadOpStmt);
-        // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
-        auto *sliceLoopNest = mlir::insertBackwardComputationSlice(
-            &candidate.srcAccess, &candidate.dstAccess);
-        if (sliceLoopNest != nullptr) {
-          // Remove 'srcPos' mappings from 'state'.
-          moveAccessesAndRemovePos(srcPos, dstPos);
-          // Record all load/store accesses in 'sliceLoopNest' at 'dstPos'.
-          LoopNestStateCollector collector;
-          collector.walkForStmt(sliceLoopNest);
-          // Record mappings for loads and stores from 'collector'.
-          for (auto *opStmt : collector.loadOpStmts) {
-            addLoadOpStmtAt(dstPos, opStmt, dstForStmt);
-            // Add newly fused load ops to 'dstLoadOps' to be considered for
-            // fusion on subsequent iterations.
-            dstLoadOps.insert(opStmt);
+        // Iterate through in edges for 'dstId'.
+        for (auto &srcEdge : mdg->inEdges[dstId]) {
+          // Skip 'srcEdge' if not for 'memref'.
+          if (srcEdge.memref != memref)
+            continue;
+          auto *srcNode = mdg->getNode(srcEdge.id);
+          // Skip if 'srcNode' is not a loop nest.
+          if (!isa<ForStmt>(srcNode->stmt))
+            continue;
+          // Skip if 'srcNode' has more than one store to 'memref'.
+          if (srcNode->getStoreOpCount(memref) != 1)
+            continue;
+          // Skip 'srcNode' if it has out edges on 'memref' other than 'dstId'.
+          if (mdg->getOutEdgeCount(srcNode->id, memref) != 1)
+            continue;
+          // Skip 'srcNode' if it has in dependence edges. NOTE: This is overly
+          // TODO(andydavis) Track dependence type with edges, and just check
+          // for WAW dependence edge here.
+          if (mdg->getInEdgeCount(srcNode->id, memref) != 0)
+            continue;
+          // Skip if 'srcNode' has out edges to other memrefs after 'dstId'.
+          if (mdg->getMinOutEdgeNodeId(srcNode->id) != dstId)
+            continue;
+          // Get unique 'srcNode' store op.
+          auto *srcStoreOpStmt = srcNode->stores.front();
+          // Build fusion candidate out of 'srcStoreOpStmt' and 'dstLoadOpStmt'.
+          FusionCandidate candidate =
+              buildFusionCandidate(srcStoreOpStmt, dstLoadOpStmt);
+          // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
+          auto *sliceLoopNest = mlir::insertBackwardComputationSlice(
+              &candidate.srcAccess, &candidate.dstAccess);
+          if (sliceLoopNest != nullptr) {
+            // Remove edges between 'srcNode' and 'dstNode' and remove 'srcNode'
+            mdg->updateEdgesAndRemoveSrcNode(srcNode->id, dstNode->id);
+            // Record all load/store accesses in 'sliceLoopNest' at 'dstPos'.
+            LoopNestStateCollector collector;
+            collector.walkForStmt(sliceLoopNest);
+            mdg->addToNode(dstId, collector.loadOpStmts,
+                           collector.storeOpStmts);
+            // Add new load ops to current Node load op list 'loads' to
+            // continue fusing based on new operands.
+            for (auto *loadOpStmt : collector.loadOpStmts)
+              loads.push_back(loadOpStmt);
+            // Promote single iteration loops to single IV value.
+            for (auto *forStmt : collector.forStmts) {
+              promoteIfSingleIteration(forStmt);
+            }
+            // Remove old src loop nest.
+            cast<ForStmt>(srcNode->stmt)->erase();
           }
-          for (auto *opStmt : collector.storeOpStmts) {
-            addStoreOpStmtAt(dstPos, opStmt, dstForStmt);
-          }
-          for (auto *forStmt : collector.forStmts) {
-            promoteIfSingleIteration(forStmt);
-          }
-          // Remove old src loop nest.
-          srcForStmt->erase();
         }
       }
     }
-  }
-
-  // Walk MLFunction 'f' assigning each top-level statement a position, and
-  // gathering state on load and store ops.
-  void init(MLFunction *f) {
-    unsigned pos = 0;
-    for (auto &stmt : *f) {
-      if (auto *forStmt = dyn_cast<ForStmt>(&stmt)) {
-        // Record all loads and store accesses in 'forStmt' at 'pos'.
-        LoopNestStateCollector collector;
-        collector.walkForStmt(forStmt);
-        // Create StmtInfo for 'forStmt' for top-level loop nests.
-        addStmtInfoAt(pos, forStmt, collector.hasIfStmt);
-        // Record mappings for loads and stores from 'collector'.
-        for (auto *opStmt : collector.loadOpStmts) {
-          addLoadOpStmtAt(pos, opStmt, forStmt);
-        }
-        for (auto *opStmt : collector.storeOpStmts) {
-          addStoreOpStmtAt(pos, opStmt, forStmt);
-        }
-        // Add 'pos' associated with 'forStmt' to worklist.
-        worklist.push_back(pos);
-      }
-      if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
-        if (auto loadOp = opStmt->dyn_cast<LoadOp>()) {
-          // Create StmtInfo for top-level load op.
-          addStmtInfoAt(pos, &stmt, /*hasIfStmt=*/false);
-          addLoadOpStmtAt(pos, opStmt, /*containingForStmt=*/nullptr);
-        }
-        if (auto storeOp = opStmt->dyn_cast<StoreOp>()) {
-          // Create StmtInfo for top-level store op.
-          addStmtInfoAt(pos, &stmt, /*hasIfStmt=*/false);
-          addStoreOpStmtAt(pos, opStmt, /*containingForStmt=*/nullptr);
-        }
-      }
-      if (auto *ifStmt = dyn_cast<IfStmt>(&stmt)) {
-        addStmtInfoAt(pos, &stmt, /*hasIfStmt=*/true);
-      }
-      ++pos;
-    }
-  }
-
-  // Check if fusing loop nest at 'srcPos' into the loop nest at 'dstPos'
-  // would violated any dependences w.r.t other loop nests in that range.
-  bool moveWouldViolateDependences(unsigned srcPos, unsigned dstPos) {
-    // Lookup src ForStmt at 'srcPos'.
-    auto *srcForStmt = getForStmtAtPos(srcPos);
-    // For each src load op: check for store ops in range (srcPos, dstPos).
-    if (forStmtToLoadOps.count(srcForStmt) > 0) {
-      for (auto *opStmt : forStmtToLoadOps[srcForStmt]) {
-        auto loadOp = opStmt->cast<LoadOp>();
-        auto *memref = cast<MLValue>(loadOp->getMemRef());
-        for (unsigned pos = srcPos + 1; pos < dstPos; ++pos) {
-          if (memrefToStorePosSet.count(memref) > 0 &&
-              memrefToStorePosSet[memref].count(pos) > 0)
-            return true;
-        }
-      }
-    }
-    // For each src store op: check for load ops in range (srcPos, dstPos).
-    if (forStmtToStoreOps.count(srcForStmt) > 0) {
-      for (auto *opStmt : forStmtToStoreOps[srcForStmt]) {
-        auto storeOp = opStmt->cast<StoreOp>();
-        auto *memref = cast<MLValue>(storeOp->getMemRef());
-        for (unsigned pos = srcPos + 1; pos < dstPos; ++pos) {
-          if (memrefToLoadPosSet.count(memref) > 0 &&
-              memrefToLoadPosSet[memref].count(pos) > 0)
-            return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  // Update mappings of memref loads and stores at 'srcPos' to 'dstPos'.
-  void moveAccessesAndRemovePos(unsigned srcPos, unsigned dstPos) {
-    // Lookup ForStmt at 'srcPos'.
-    auto *srcForStmt = getForStmtAtPos(srcPos);
-    // Move load op accesses from src to dst.
-    if (forStmtToLoadOps.count(srcForStmt) > 0) {
-      for (auto *opStmt : forStmtToLoadOps[srcForStmt]) {
-        auto loadOp = opStmt->cast<LoadOp>();
-        auto *memref = cast<MLValue>(loadOp->getMemRef());
-        // Remove 'memref' to 'srcPos' mapping.
-        memrefToLoadPosSet[memref].erase(srcPos);
-      }
-    }
-    // Move store op accesses from src to dst.
-    if (forStmtToStoreOps.count(srcForStmt) > 0) {
-      for (auto *opStmt : forStmtToStoreOps[srcForStmt]) {
-        auto storeOp = opStmt->cast<StoreOp>();
-        auto *memref = cast<MLValue>(storeOp->getMemRef());
-        // Remove 'memref' to 'srcPos' mapping.
-        memrefToStorePosSet[memref].erase(srcPos);
-      }
-    }
-    // Remove old state.
-    forStmtToLoadOps.erase(srcForStmt);
-    forStmtToStoreOps.erase(srcForStmt);
-    posToStmtInfo.erase(srcPos);
-  }
-
-  ForStmt *getForStmtAtPos(unsigned pos) {
-    assert(posToStmtInfo.count(pos) > 0);
-    assert(isa<ForStmt>(posToStmtInfo[pos].stmt));
-    return cast<ForStmt>(posToStmtInfo[pos].stmt);
-  }
-
-  void addStmtInfoAt(unsigned pos, Statement *stmt, bool hasIfStmt) {
-    StmtInfo stmtInfo;
-    stmtInfo.stmt = stmt;
-    stmtInfo.isOrContainsIfStmt = hasIfStmt;
-    // Add mapping from 'pos' to StmtInfo for 'forStmt'.
-    posToStmtInfo[pos] = stmtInfo;
-  }
-
-  // Adds the following mappings:
-  // *) 'containingForStmt' to load 'opStmt'
-  // *) 'memref' of load 'opStmt' to 'topLevelPos'.
-  void addLoadOpStmtAt(unsigned topLevelPos, OperationStmt *opStmt,
-                       ForStmt *containingForStmt) {
-    if (containingForStmt != nullptr) {
-      // Add mapping from 'containingForStmt' to 'opStmt' for load op.
-      forStmtToLoadOps[containingForStmt].insert(opStmt);
-    }
-    auto loadOp = opStmt->cast<LoadOp>();
-    auto *memref = cast<MLValue>(loadOp->getMemRef());
-    // Add mapping from 'memref' to 'topLevelPos' for load.
-    memrefToLoadPosSet[memref].insert(topLevelPos);
-  }
-
-  // Adds the following mappings:
-  // *) 'containingForStmt' to store 'opStmt'
-  // *) 'memref' of store 'opStmt' to 'topLevelPos'.
-  void addStoreOpStmtAt(unsigned topLevelPos, OperationStmt *opStmt,
-                        ForStmt *containingForStmt) {
-    if (containingForStmt != nullptr) {
-      // Add mapping from 'forStmt' to 'opStmt' for store op.
-      forStmtToStoreOps[containingForStmt].insert(opStmt);
-    }
-    auto storeOp = opStmt->cast<StoreOp>();
-    auto *memref = cast<MLValue>(storeOp->getMemRef());
-    // Add mapping from 'memref' to 'topLevelPos' for store.
-    memrefToStorePosSet[memref].insert(topLevelPos);
-  }
-
-  bool hasIfStmts() {
-    for (auto &pair : posToStmtInfo)
-      if (pair.second.isOrContainsIfStmt)
-        return true;
-    return false;
   }
 };
 
 } // end anonymous namespace
 
 PassResult LoopFusion::runOnMLFunction(MLFunction *f) {
-  GreedyFusionPolicy(f).run();
+  MemRefDependenceGraph g;
+  if (g.init(f))
+    GreedyFusion(&g).run();
   return success();
 }
 

@@ -35,20 +35,17 @@ mlfunc @should_fuse_raw_dep_for_locality() {
 
 // CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
 
-// TODO(andydavis) Turn this into a proper reduction when constraints on
-// the current greedy fusion policy are relaxed.
 // CHECK-LABEL: mlfunc @should_fuse_reduction_to_pointwise() {
 mlfunc @should_fuse_reduction_to_pointwise() {
   %a = alloc() : memref<10x10xf32>
   %b = alloc() : memref<10xf32>
   %c = alloc() : memref<10xf32>
-  %d = alloc() : memref<10xf32>
 
   %cf7 = constant 7.0 : f32
 
   for %i0 = 0 to 10 {
     for %i1 = 0 to 10 {
-      %v0 = load %d[%i0] : memref<10xf32>
+      %v0 = load %b[%i0] : memref<10xf32>
       %v1 = load %a[%i0, %i1] : memref<10x10xf32>
       %v3 = addf %v0, %v1 : f32
       store %v3, %b[%i0] : memref<10xf32>
@@ -62,15 +59,15 @@ mlfunc @should_fuse_reduction_to_pointwise() {
   // Should fuse in entire inner loop on %i1 from source loop nest, as %i1
   // is not used in the access function of the store/load on %b.
   // CHECK:       for %i0 = 0 to 10 {
-  // CHECK-NEXT:    %4 = affine_apply [[MAP0]](%i0)
+  // CHECK-NEXT:    %3 = affine_apply [[MAP0]](%i0)
   // CHECK-NEXT:    for %i1 = 0 to 10 {
-  // CHECK-NEXT:      %5 = load %3[%4] : memref<10xf32>
-  // CHECK-NEXT:      %6 = load %0[%4, %i1] : memref<10x10xf32>
-  // CHECK-NEXT:      %7 = addf %5, %6 : f32
-  // CHECK-NEXT:      store %7, %1[%4] : memref<10xf32>
-  // CHECK-NEXT:    }  
-  // CHECK-NEXT:    %8 = load %1[%i0] : memref<10xf32>
-  // CHECK-NEXT:    store %8, %2[%i0] : memref<10xf32>
+  // CHECK-NEXT:      %4 = load %1[%3] : memref<10xf32>
+  // CHECK-NEXT:      %5 = load %0[%3, %i1] : memref<10x10xf32>
+  // CHECK-NEXT:      %6 = addf %4, %5 : f32
+  // CHECK-NEXT:      store %6, %1[%3] : memref<10xf32>
+  // CHECK-NEXT:    }
+  // CHECK-NEXT:    %7 = load %1[%i0] : memref<10xf32>
+  // CHECK-NEXT:    store %7, %2[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
   return
