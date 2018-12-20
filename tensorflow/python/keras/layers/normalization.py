@@ -34,6 +34,7 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -424,9 +425,10 @@ class BatchNormalizationV2(Layer):
           is_tpu_strategy = True
 
       # TODO(apassos,srbs,skyewm): the colocation constraints here are disabled
-      # because of a bug which leads cond_v2 to skip rewriting them creating
-      # conflicts.
-      if tf2.enabled() or is_tpu_strategy:
+      # because of a bug which leads cond_v2/while_v2 to skip rewriting them
+      # creating conflicts.
+      if (control_flow_util.EnableControlFlowV2(ops.get_default_graph()) or
+          is_tpu_strategy):
         cm = contextlib.contextmanager(lambda: (yield))()
       else:
         cm = ops.colocate_with(variable)
