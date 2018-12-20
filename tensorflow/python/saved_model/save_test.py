@@ -23,6 +23,7 @@ import sys
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import function
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -371,14 +372,35 @@ class AssetTests(test.TestCase):
         save.save(root, export_dir)
 
 
+class _ModelWithOptimizerUsingDefun(util.Checkpoint):
+
+  def __init__(self):
+    self.dense = core.Dense(1)
+    self.optimizer = adam.AdamOptimizer(0.01)
+
+  # Using defun due to control flow v2 cycles, b/121159261. def_function uses
+  # conds to gate variable initialization and so triggers cond reference cycles,
+  # but the thing being wrapped here does not use cond itself.
+  @function.defun(
+      input_signature=(tensor_spec.TensorSpec([None, 2], dtypes.float32),
+                       tensor_spec.TensorSpec([None], dtypes.float32)),
+  )
+  def call(self, x, y):
+    with backprop.GradientTape() as tape:
+      loss = math_ops.reduce_mean((self.dense(x) - y) ** 2.)
+    trainable_variables = self.dense.trainable_variables
+    gradients = tape.gradient(loss, trainable_variables)
+    self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+    return {"loss": loss}
+
+
 class MemoryTests(test.TestCase):
 
   def setUp(self):
-    self._model = _ModelWithOptimizer()
+    self._model = _ModelWithOptimizerUsingDefun()
 
   @test_util.assert_no_garbage_created
   def test_no_reference_cycles(self):
-    self.skipTest("b/121159261")
     x = constant_op.constant([[3., 4.]])
     y = constant_op.constant([2.])
     self._model.call(x, y)
