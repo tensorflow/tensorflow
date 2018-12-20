@@ -706,6 +706,11 @@ class Softmax
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1556,10 +1561,6 @@ class TensorFlowUnsupported : public BaseOperator {
     return std::unique_ptr<flexbuffers::Builder>(fbb.release());
   }
 
-// TODO(wvo): hack to make this code compile with 2 different API versions.
-// Please remove once OS/internal versions are in sync.
-// See hardcoded values in the switch below.
-
   void ReadOptions(const flexbuffers::Map& m,
                    TensorFlowUnsupportedOperator* op) const {
     ::tensorflow::NodeDef node_def;
@@ -1569,6 +1570,10 @@ class TensorFlowUnsupported : public BaseOperator {
     for (size_t i = 0; i < keys.size(); ++i) {
       const auto key = keys[i].AsKey();
       const auto& value = m[key];
+      // TODO(wvo): hack to make this code compile with 2 different API
+      // versions.
+      // Please remove once OS/internal versions are in sync.
+      // See hardcoded values in the switch below.
       switch (value.GetType()) {
         case 5:  // flexbuffers::FBT_STRING:
           (*attr)[key].set_s(value.AsString().c_str());

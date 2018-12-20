@@ -1,11 +1,11 @@
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+
 package(default_visibility = [
     "//visibility:public",
 ])
 
 licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 tflite_deps_intel = [
     "@arm_neon_2_x86_sse",
@@ -314,6 +314,7 @@ cc_library(
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
         "reference/integer_ops/dequantize.h",
+        "reference/integer_ops/softmax.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],

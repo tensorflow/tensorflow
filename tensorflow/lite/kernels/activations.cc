@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -49,6 +50,20 @@ struct PreluOpData : public OpData {
   int32_t output_multiplier = 0;
   int output_shift = 0;
 };
+
+namespace {
+TfLiteStatus CheckInputQuantParams(TfLiteContext* context,
+                                   const TfLiteTensor* input,
+                                   const TfLiteTensor* output) {
+  if (input->type == kTfLiteUInt8) {
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+    TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
+  } else {
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, -128);
+  }
+  return kTfLiteOk;
+}
+}  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
@@ -215,12 +230,12 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   const int num_dims = NumDimensions(input);
   TF_LITE_ENSURE(context, num_dims >= 1 && num_dims <= 4);
 
-  if (input->type == kTfLiteUInt8) {
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-    TF_LITE_ENSURE(context, output->params.scale == 1. / 256);
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+    if (CheckInputQuantParams(context, input, output) == kTfLiteError) {
+      return kTfLiteError;
+    }
 
     static const int kScaledDiffIntegerBits = 5;
-
     tflite::PreprocessSoftmaxScaling(
         params->beta, input->params.scale, kScaledDiffIntegerBits,
         &data->input_multiplier, &data->input_left_shift);
@@ -505,8 +520,8 @@ void Softmax3DFloat(const TfLiteTensor* input, TfLiteTensor* output,
       GetTensorData<float>(output));
 }
 
-void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                        TfLiteSoftmaxParams* params, OpData* data) {
+void Softmax1DQuantizedUint8(const TfLiteTensor* input, TfLiteTensor* output,
+                             TfLiteSoftmaxParams* params, OpData* data) {
   // TODO(ahentz): this is arguably a dirty trick. Since the implementation
   // always traverses the last dimension of a 4D tensor, we will pretend our 1D
   // tensor is 4D in a special way. We will convert a (Y) shape into a (1,
@@ -521,8 +536,8 @@ void Softmax1DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                          GetTensorShape({1, 1, 1, input_size}),
                          GetTensorData<uint8_t>(output));
 }
-void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                        TfLiteSoftmaxParams* params, OpData* data) {
+void Softmax2DQuantizedUint8(const TfLiteTensor* input, TfLiteTensor* output,
+                             TfLiteSoftmaxParams* params, OpData* data) {
   // TODO(ahentz): this is arguably a dirty trick. Since the implementation
   // always traverses the last dimension of a 4D tensor, we will pretend our 2D
   // tensor is 4D in a special way. We will convert a (X, Y) shape into a (X,
@@ -540,8 +555,8 @@ void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                          GetTensorData<uint8_t>(output));
 }
 
-void Softmax3DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                        TfLiteSoftmaxParams* params, OpData* data) {
+void Softmax3DQuantizedUint8(const TfLiteTensor* input, TfLiteTensor* output,
+                             TfLiteSoftmaxParams* params, OpData* data) {
   const int batch_size = input->dims->data[0];
   const int intermediate_size = input->dims->data[1];
   const int input_size = input->dims->data[2];
@@ -566,8 +581,8 @@ void Softmax4DFloat(const TfLiteTensor* input, TfLiteTensor* output,
                          GetTensorData<float>(output));
 }
 
-void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                        TfLiteSoftmaxParams* params, OpData* data) {
+void Softmax4DQuantizedUint8(const TfLiteTensor* input, TfLiteTensor* output,
+                             TfLiteSoftmaxParams* params, OpData* data) {
   SoftmaxParams op_params;
   op_params.input_multiplier = data->input_multiplier;
   op_params.input_left_shift = data->input_left_shift;
@@ -575,6 +590,63 @@ void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
   optimized_ops::Softmax(op_params, GetTensorShape(input),
                          GetTensorData<uint8_t>(input), GetTensorShape(output),
                          GetTensorData<uint8_t>(output));
+}
+
+// TODO(jianlijianli): Try merging Softmax<n>DQuantizedInt8 with
+// Softmax<n>DQuantized, which needs a larger refactor.
+void Softmax1DQuantizedInt8(const TfLiteTensor* input, TfLiteTensor* output,
+                            TfLiteSoftmaxParams* params, OpData* data) {
+  const int input_size = input->dims->data[0];
+  SoftmaxParams op_params;
+  op_params.input_multiplier = data->input_multiplier;
+  op_params.input_left_shift = data->input_left_shift;
+  op_params.diff_min = data->diff_min;
+  reference_integer_ops::Softmax(
+      op_params, GetTensorShape({1, 1, 1, input_size}),
+      GetTensorData<int8_t>(input), GetTensorShape({1, 1, 1, input_size}),
+      GetTensorData<int8_t>(output));
+}
+
+void Softmax2DQuantizedInt8(const TfLiteTensor* input, TfLiteTensor* output,
+                            TfLiteSoftmaxParams* params, OpData* data) {
+  const int batch_size = input->dims->data[0];
+  const int input_size = input->dims->data[1];
+  SoftmaxParams op_params;
+  op_params.input_multiplier = data->input_multiplier;
+  op_params.input_left_shift = data->input_left_shift;
+  op_params.diff_min = data->diff_min;
+  reference_integer_ops::Softmax(op_params,
+                                 GetTensorShape({batch_size, 1, 1, input_size}),
+                                 GetTensorData<int8_t>(input),
+                                 GetTensorShape({batch_size, 1, 1, input_size}),
+                                 GetTensorData<int8_t>(output));
+}
+
+void Softmax3DQuantizedInt8(const TfLiteTensor* input, TfLiteTensor* output,
+                            TfLiteSoftmaxParams* params, OpData* data) {
+  const int batch_size = input->dims->data[0];
+  const int intermediate_size = input->dims->data[1];
+  const int input_size = input->dims->data[2];
+  SoftmaxParams op_params;
+  op_params.input_multiplier = data->input_multiplier;
+  op_params.input_left_shift = data->input_left_shift;
+  op_params.diff_min = data->diff_min;
+  reference_integer_ops::Softmax(
+      op_params, GetTensorShape({batch_size, intermediate_size, 1, input_size}),
+      GetTensorData<int8_t>(input),
+      GetTensorShape({batch_size, intermediate_size, 1, input_size}),
+      GetTensorData<int8_t>(output));
+}
+
+void Softmax4DQuantizedInt8(const TfLiteTensor* input, TfLiteTensor* output,
+                            TfLiteSoftmaxParams* params, OpData* data) {
+  SoftmaxParams op_params;
+  op_params.input_multiplier = data->input_multiplier;
+  op_params.input_left_shift = data->input_left_shift;
+  op_params.diff_min = data->diff_min;
+  reference_integer_ops::Softmax(
+      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(output), GetTensorData<int8_t>(output));
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
@@ -611,19 +683,19 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteUInt8: {
       if (NumDimensions(input) == 1) {
-        Softmax1DQuantized(input, output, params, data);
+        Softmax1DQuantizedUint8(input, output, params, data);
         return kTfLiteOk;
       }
       if (NumDimensions(input) == 2) {
-        Softmax2DQuantized(input, output, params, data);
+        Softmax2DQuantizedUint8(input, output, params, data);
         return kTfLiteOk;
       }
       if (NumDimensions(input) == 3) {
-        Softmax3DQuantized(input, output, params, data);
+        Softmax3DQuantizedUint8(input, output, params, data);
         return kTfLiteOk;
       }
       if (NumDimensions(input) == 4) {
-        Softmax4DQuantized(input, output, params, data);
+        Softmax4DQuantizedUint8(input, output, params, data);
         return kTfLiteOk;
       }
       context->ReportError(
@@ -631,6 +703,30 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
           NumDimensions(input));
       return kTfLiteError;
     }
+    case kTfLiteInt8: {
+      if (NumDimensions(input) == 1) {
+        Softmax1DQuantizedInt8(input, output, params, data);
+        return kTfLiteOk;
+      }
+      if (NumDimensions(input) == 2) {
+        Softmax2DQuantizedInt8(input, output, params, data);
+        return kTfLiteOk;
+      }
+      if (NumDimensions(input) == 3) {
+        Softmax3DQuantizedInt8(input, output, params, data);
+        return kTfLiteOk;
+      }
+      if (NumDimensions(input) == 4) {
+        Softmax4DQuantizedInt8(input, output, params, data);
+        return kTfLiteOk;
+      }
+      context->ReportError(
+          context,
+          "Only 4D tensors supported currently for Int8 kernels, got %dD.",
+          NumDimensions(input));
+      return kTfLiteError;
+    }
+
     default:
       context->ReportError(
           context, "Only float32 and uint8_t supported currently, got %s.",
