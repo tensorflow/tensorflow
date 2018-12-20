@@ -1,6 +1,58 @@
 // RUN: mlir-opt %s -memref-dependence-check  -split-input-file -verify | FileCheck %s
 
 // -----
+
+#set0 = (d0) : (1 == 0)
+
+// CHECK-LABEL: mlfunc @store_may_execute_before_load() {
+mlfunc @store_may_execute_before_load() {
+  %m = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+  %c0 = constant 4 : index
+  // There is a dependence from store 0 to load 1 at depth 1 because the
+  // ancestor IfStmt of the store, dominates the ancestor ForSmt of the load,
+  // and thus the store "may" conditionally execute before the load.
+  if #set0(%c0) {
+    for %i0 = 0 to 10 {
+      store %cf7, %m[%i0] : memref<10xf32>
+      // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
+      // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
+      // expected-note@-3 {{dependence from 0 to 1 at depth 1 = true}}
+    }
+  }
+  for %i1 = 0 to 10 {
+    %v0 = load %m[%i1] : memref<10xf32>
+    // expected-note@-1 {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 1 to 0 at depth 1 = false}}
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: mlfunc @dependent_loops() {
+mlfunc @dependent_loops() {
+  %0 = alloc() : memref<10xf32>
+  %cst = constant 7.000000e+00 : f32
+  // There is a dependence from 0 to 1 at depth 1 (common surrounding loops 0)
+  // because the first loop with the store dominates the second loop.
+  for %i0 = 0 to 10 {
+    store %cst, %0[%i0] : memref<10xf32>
+    // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 0 to 1 at depth 1 = true}}
+  }
+  for %i1 = 0 to 10 {
+    %1 = load %0[%i1] : memref<10xf32>
+    // expected-note@-1 {{dependence from 1 to 1 at depth 1 = false}}
+    // expected-note@-2 {{dependence from 1 to 1 at depth 2 = false}}
+    // expected-note@-3 {{dependence from 1 to 0 at depth 1 = false}}
+  }
+  return
+}
+
+// -----
 // CHECK-LABEL: mlfunc @different_memrefs() {
 mlfunc @different_memrefs() {
   %m.a = alloc() : memref<100xf32>

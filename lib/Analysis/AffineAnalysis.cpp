@@ -889,25 +889,42 @@ static unsigned getNumCommonLoops(const FlatAffineConstraints &srcDomain,
   return numCommonLoops;
 }
 
-// Returns true if the operation statement in 'srcAccess' properly dominates
-// the operation statement in 'dstAccess'. Returns false otherwise.
-// Note that 'numCommonLoops' is the number of contiguous surrounding outer
-// loops.
-static bool srcHappensBeforeDst(const MemRefAccess &srcAccess,
-                                const MemRefAccess &dstAccess,
-                                const FlatAffineConstraints &srcDomain,
-                                unsigned numCommonLoops) {
+// Returns StmtBlock common to 'srcAccess.opStmt' and 'dstAccess.opStmt'.
+static StmtBlock *getCommonStmtBlock(const MemRefAccess &srcAccess,
+                                     const MemRefAccess &dstAccess,
+                                     const FlatAffineConstraints &srcDomain,
+                                     unsigned numCommonLoops) {
   if (numCommonLoops == 0) {
-    return mlir::properlyDominates(*srcAccess.opStmt, *dstAccess.opStmt);
+    auto *block = srcAccess.opStmt->getBlock();
+    while (block->getContainingStmt()) {
+      block = block->getContainingStmt()->getBlock();
+    }
+    return block;
   }
   auto *commonForValue = srcDomain.getIdValue(numCommonLoops - 1);
   assert(isa<ForStmt>(commonForValue));
-  auto *commonForStmt = dyn_cast<ForStmt>(commonForValue);
+  return dyn_cast<ForStmt>(commonForValue);
+}
+
+// Returns true if the ancestor operation statement of 'srcAccess' properly
+// dominates the ancestor operation statement of 'dstAccess' in the same
+// statement block. Returns false otherwise.
+// Note that because 'srcAccess' or 'dstAccess' may be nested in conditionals,
+// the function is named 'srcMayExecuteBeforeDst'.
+// Note that 'numCommonLoops' is the number of contiguous surrounding outer
+// loops.
+static bool srcMayExecuteBeforeDst(const MemRefAccess &srcAccess,
+                                   const MemRefAccess &dstAccess,
+                                   const FlatAffineConstraints &srcDomain,
+                                   unsigned numCommonLoops) {
+  // Get StmtBlock common to 'srcAccess.opStmt' and 'dstAccess.opStmt'.
+  auto *commonBlock =
+      getCommonStmtBlock(srcAccess, dstAccess, srcDomain, numCommonLoops);
   // Check the dominance relationship between the respective ancestors of the
   // src and dst in the StmtBlock of the innermost among the common loops.
-  auto *srcStmt = commonForStmt->findAncestorStmtInBlock(*srcAccess.opStmt);
+  auto *srcStmt = commonBlock->findAncestorStmtInBlock(*srcAccess.opStmt);
   assert(srcStmt != nullptr);
-  auto *dstStmt = commonForStmt->findAncestorStmtInBlock(*dstAccess.opStmt);
+  auto *dstStmt = commonBlock->findAncestorStmtInBlock(*dstAccess.opStmt);
   assert(dstStmt != nullptr);
   return mlir::properlyDominates(*srcStmt, *dstStmt);
 }
@@ -1172,12 +1189,14 @@ bool mlir::checkMemrefAccessDependence(
   if (!getStmtIndexSet(dstAccess.opStmt, &dstDomain))
     return false;
 
-  // Return if loopDepth > numCommonLoops and 'srcAccess' does not properly
-  // dominate 'dstAccess' (i.e. no execution path from src to dst access).
+  // Return 'false' if loopDepth > numCommonLoops and if the ancestor operation
+  // statement of 'srcAccess' does not properly dominate the ancestor operation
+  // statement of 'dstAccess' in the same common statement block.
   unsigned numCommonLoops = getNumCommonLoops(srcDomain, dstDomain);
   assert(loopDepth <= numCommonLoops + 1);
   if (loopDepth > numCommonLoops &&
-      !srcHappensBeforeDst(srcAccess, dstAccess, srcDomain, numCommonLoops)) {
+      !srcMayExecuteBeforeDst(srcAccess, dstAccess, srcDomain,
+                              numCommonLoops)) {
     return false;
   }
   // Build dim and symbol position maps for each access from access operand
