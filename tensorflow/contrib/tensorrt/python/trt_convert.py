@@ -46,11 +46,13 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 
 if _six.PY2:
-  _to_bytes = lambda s: s
-  _to_string = lambda s: s
+  _to_bytes = lambda s: s.encode("utf-8", errors="surrogateescape") \
+    if isinstance(s, unicode) else s
+  _to_string = lambda s: s.decode("utf-8") if isinstance(s, str) else s
 else:
-  _to_bytes = lambda s: s.encode("utf-8", errors="surrogateescape")
-  _to_string = lambda s: s.decode("utf-8")
+  _to_bytes = lambda s: s.encode("utf-8", errors="surrogateescape") \
+    if isinstance(s, str) else s
+  _to_string = lambda s: s.decode("utf-8") if isinstance(s, bytes) else s
 
 
 class TrtPrecisionMode(object):
