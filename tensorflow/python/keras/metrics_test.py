@@ -279,12 +279,6 @@ class KerasAccuracyTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
-  def test_assert_thresholds_range(self):
-    with self.assertRaisesRegexp(
-        ValueError,
-        r'Threshold values must be in \[0, 1\]. Invalid values: \[None\]'):
-      metrics._assert_thresholds_range([None, 0.5])
-
 
 @test_util.run_all_in_graph_and_eager_modes
 class FalsePositivesTest(test.TestCase):
@@ -353,6 +347,11 @@ class FalsePositivesTest(test.TestCase):
         ValueError,
         r'Threshold values must be in \[0, 1\]. Invalid values: \[-1, 2\]'):
       metrics.FalsePositives(thresholds=[-1, 0.5, 2])
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'Threshold values must be in \[0, 1\]. Invalid values: \[None\]'):
+      metrics.FalsePositives(thresholds=[None])
 
 
 @test_util.run_all_in_graph_and_eager_modes

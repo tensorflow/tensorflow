@@ -30,7 +30,7 @@ from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.metrics import Metric
 from tensorflow.python.keras.models import model_from_json
-from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -331,7 +331,7 @@ def _create_signature_def_map(model, mode):
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}
-  metrics = metrics_utils.extract_model_metrics_as_v1_metrics(model)
+  metrics = saving_utils.extract_model_metrics(model)
 
   # Add metric variables to the `LOCAL_VARIABLES` collection. Metric variables
   # are by default not added to any collections. We are doing this here, so
