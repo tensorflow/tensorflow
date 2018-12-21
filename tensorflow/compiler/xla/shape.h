@@ -58,6 +58,26 @@ class Shape {
   bool IsToken() const { return element_type() == TOKEN; }
   bool IsOpaque() const { return element_type() == OPAQUE; }
 
+  // Returns true if no array dimension in the shape is dynamically sized. Tuple
+  // shapes are traversed recursively.
+  bool is_static() const;
+
+  // Returns true if the given dimension is dynamically-sized.
+  bool is_dynamic_dimension(int dimension) const {
+    return dynamic_dimensions_.at(dimension);
+  }
+
+  // Sets whether or not the given dimension is dynamically-sized.
+  void set_dynamic_dimension(int dimension, bool is_dynamic) {
+    dynamic_dimensions_[dimension] = is_dynamic;
+  }
+
+  // Add dimension_upper_bound().
+
+  // Removes the given dimension form the shape. Layout, if it exists, is
+  // adjusted to match the modified shape.
+  void DeleteDimension(int64 dim_to_delete);
+
   // The following methods mirror the protobuf generated code interface for the
   // message ShapeProto. This enabled easy migration of this data structure
   // from a proto to a proper C++ class.
@@ -72,10 +92,16 @@ class Shape {
   int dimensions_size() const { return dimensions_.size(); }
   int64 dimensions(int index) const { return dimensions_.at(index); }
   void set_dimensions(int index, int64 value) { dimensions_.at(index) = value; }
-  void add_dimensions(int64 value) { dimensions_.push_back(value); }
-  void clear_dimensions() { dimensions_.clear(); }
+  void add_dimensions(int64 value) {
+    dimensions_.push_back(value);
+    dynamic_dimensions_.push_back(false);
+  }
+  void clear_dimensions() {
+    dimensions_.clear();
+    dynamic_dimensions_.clear();
+  }
   const std::vector<int64>& dimensions() const { return dimensions_; }
-  std::vector<int64>* mutable_dimensions() { return &dimensions_; }
+  absl::Span<int64> mutable_dimensions() { return absl::MakeSpan(dimensions_); }
 
   // Methods for accessing the tuple subshapes. This field only non-empty for
   // tuple shapes.
@@ -116,8 +142,14 @@ class Shape {
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
 
-  // The array bounds of the dimensions. This is nonempty only for array shapes.
+  // The array bounds of the dimensions. This is nonempty only for array
+  // shapes. For a dynamically-sized dimension, the respective value in this
+  // vector is an inclusive upper limit of the array bound.
   std::vector<int64> dimensions_;
+
+  // This vector is the same size as 'dimensions_' and indicates whether the
+  // respective dimension is dynamically sized.
+  std::vector<bool> dynamic_dimensions_;
 
   // The tuple element subshapes. This is nonempty only for tuple shapes.
   std::vector<Shape> tuple_shapes_;

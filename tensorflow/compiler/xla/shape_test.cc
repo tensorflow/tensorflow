@@ -74,6 +74,47 @@ TEST_F(ShapeTest, ShapeToString) {
       nested_tuple_.ToString(/*print_layout=*/true));
 }
 
+TEST_F(ShapeTest, DynamicShapeToString) {
+  Shape array_shape =
+      ShapeUtil::MakeShape(F32, {23, 44, 55}, {true, false, true});
+  EXPECT_EQ("f32[<=23,44,<=55]", array_shape.ToString());
+
+  array_shape.set_dynamic_dimension(2, false);
+  EXPECT_EQ("f32[<=23,44,55]", array_shape.ToString());
+}
+
+TEST_F(ShapeTest, IsStatic) {
+  EXPECT_TRUE(opaque_.is_static());
+  EXPECT_TRUE(token_.is_static());
+  EXPECT_TRUE(matrix_.is_static());
+  EXPECT_TRUE(tuple_.is_static());
+  EXPECT_TRUE(nested_tuple_.is_static());
+
+  Shape dynamic_matrix = matrix_;
+  EXPECT_TRUE(dynamic_matrix.is_static());
+  dynamic_matrix.set_dynamic_dimension(1, true);
+  EXPECT_FALSE(dynamic_matrix.is_static());
+
+  Shape dynamic_tuple = tuple_;
+  EXPECT_TRUE(dynamic_tuple.is_static());
+  ShapeUtil::GetMutableSubshape(&dynamic_tuple, {2})
+      ->set_dynamic_dimension(1, true);
+  EXPECT_FALSE(dynamic_tuple.is_static());
+}
+
+TEST_F(ShapeTest, IsDynamicDimension) {
+  Shape dynamic_matrix = matrix_;
+  dynamic_matrix.set_dynamic_dimension(1, true);
+  EXPECT_FALSE(dynamic_matrix.is_dynamic_dimension(0));
+  EXPECT_TRUE(dynamic_matrix.is_dynamic_dimension(1));
+
+  Shape dynamic_tuple = tuple_;
+  EXPECT_TRUE(dynamic_tuple.is_static());
+  ShapeUtil::GetMutableSubshape(&dynamic_tuple, {2})
+      ->set_dynamic_dimension(1, true);
+  EXPECT_FALSE(dynamic_tuple.is_static());
+}
+
 TEST_F(ShapeTest, ProgramShapeToFromProto) {
   ProgramShape program_shape;
   *program_shape.add_parameters() = ShapeUtil::MakeShape(F32, {1, 2, 3});
