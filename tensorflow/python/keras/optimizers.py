@@ -661,9 +661,10 @@ class Nadam(Optimizer):
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
-    self.updates = [state_ops.assign_add(self.iterations, 1)]
+    self.updates = []
 
-    t = math_ops.cast(self.iterations, K.floatx()) + 1
+    with ops.control_dependencies([state_ops.assign_add(self.iterations, 1)]):
+      t = math_ops.cast(self.iterations, K.floatx())
 
     # Due to the recommendations in [2], i.e. warming momentum schedule
     momentum_cache_t = self.beta_1 * (
@@ -680,7 +681,7 @@ class Nadam(Optimizer):
     ms = [K.zeros(shape) for shape in shapes]
     vs = [K.zeros(shape) for shape in shapes]
 
-    self.weights = [self.iterations] + ms + vs
+    self.weights = [self.iterations, self.m_schedule] + ms + vs
 
     for p, g, m, v in zip(params, grads, ms, vs):
       # the following equations given in [1]
