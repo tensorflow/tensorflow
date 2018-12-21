@@ -1117,12 +1117,15 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
 class TestDistributionStrategyWithNormalizationLayer(
     test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(all_strategy_combinations())
-  def test_batchnorm_correctness(self, distribution):
+  @combinations.generate(combinations.times(
+      all_strategy_combinations(),
+      combinations.combine(fused=[True, False])))
+  def test_batchnorm_correctness(self, distribution, fused):
     with self.cached_session():
       with distribution.scope():
         model = keras.models.Sequential()
-        norm = keras.layers.BatchNormalization(input_shape=(10,), momentum=0.8)
+        norm = keras.layers.BatchNormalization(
+            input_shape=(10,), momentum=0.8, fused=fused)
         model.add(norm)
         model.compile(loss='mse',
                       optimizer=gradient_descent.GradientDescentOptimizer(0.01))
