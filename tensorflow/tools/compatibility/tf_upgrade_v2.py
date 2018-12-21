@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
 from tensorflow.tools.compatibility import reorders_v2
@@ -356,6 +358,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.manual_symbol_renames = {
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
+        "tf.batch_gather":
+            "tf.gather",
         "tf.space_to_batch_nd":
             "tf.space_to_batch",
         "tf.nn.space_to_batch":
@@ -578,6 +582,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.io.serialize_many_sparse",
         "tf.argmax",
         "tf.argmin",
+        "tf.batch_gather",
         "tf.batch_to_space",
         "tf.nn.space_to_batch",
         "tf.boolean_mask",
@@ -657,6 +662,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Specially handled functions.
     self.function_handle = {
+        "tf.batch_gather": self._batch_gather_handler,
         "tf.nn.dropout": self._dropout_handler,
         "tf.gradients": self._colocate_handler("tf.gradients"),
         "*.minimize": self._colocate_handler("Optimizer.minimize"),
@@ -891,7 +897,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
 
   @staticmethod
-  def _dropout_handler(file_edit_recorder, node):
+  def _dropout_handler(file_edit_recorder, node, lines):
+    del lines
     if len(node.args) < 2:
       comment = ("ERROR: tf.nn.dropout did not take arguments, so automatic "
                  "transformation was disabled. tf.nn.dropout has changed "
@@ -915,7 +922,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
   @staticmethod
   def _colocate_handler(name):
-    def _helper(file_edit_recorder, node):
+    def _helper(file_edit_recorder, node, lines):
+      """Handler for updating colocate arguments."""
+      del lines
       for keyword in node.keywords:
         if keyword.arg == "colocate_gradients_with_ops":
           # TODO(jhseu): Since ast_edit.py does string replacement, there's no
@@ -932,3 +941,24 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
               "",
               error="{} requires manual check.".format(name))
     return _helper
+
+  @staticmethod
+  def _batch_gather_handler(file_edit_recorder, node, lines):
+    lineno = node.lineno
+    column = node.col_offset
+
+    # Find the position to add the batch_dims argument.  We add it as the
+    # first argument, since that's easiest.  This is safe because we included
+    # batch_gather in self.reordered_function_names, so it will have all
+    # of its arguments changed to keyword arguments.
+    m = re.match(r"tf\s*\.\s*batch_gather\s*\(", lines[lineno - 1][column:])
+    if m is not None:
+      file_edit_recorder.add(
+          "Added keyword argument 'batch_dims=-1' to 'tf.batch_gather'",
+          lineno, column + m.end(), "", "batch_dims=-1, ")
+    else:
+      file_edit_recorder.add(
+          "Unable to add keyword argument 'batch_dims=-1' to 'tf.batch_gather'",
+          lineno, column, "", "",
+          error="Unable to add keyword argument batch_dims=-1 to "
+          "tf.batch_gather; please add it manually.")
