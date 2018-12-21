@@ -560,6 +560,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         # changed significantly.
         "tf.nn.ctc_loss":
             "tf.compat.v1.nn.ctc_loss",
+        "tf.zeros_initializer":
+            "tf.compat.v1.initializers.zeros",
+        "tf.ones_initializer":
+            "tf.compat.v1.initializers.ones",
+        "tf.constant_initializer":
+            "tf.compat.v1.initializers.constant",
+        "tf.random_uniform_initializer":
+            "tf.compat.v1.initializers.random_uniform",
+        "tf.random_normal_initializer":
+            "tf.compat.v1.initializers.random_normal",
+        "tf.truncated_normal_initializer":
+            "tf.compat.v1.initializers.truncated_normal",
     }
     # pylint: enable=line-too-long
 
@@ -711,6 +723,19 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "WARNING: `partition_strategy` has been removed from `%s` "
         " The 'div' strategy is used by default.")
 
+    initializers_no_dtype_comment = (
+        "WARNING: tf.initializers and tf.keras.initializers no longer have the "
+        "dtype argument in the constructor or partition_info argument in the "
+        "call method in TF 2.0 and after. The only API symbols are now "
+        "tf.keras.initializers.* or tf.initializers.*."
+        "\nThe calls have been converted to compat.v1 for safety (even though "
+        "they may already have been correct).")
+
+    uniform_unit_scaling_initializer_comment = (
+        "WARNING: uniform_unit_scaling_initializer has been removed. Please use"
+        " tf.initializers.variance_scaling instead with distribution=uniform "
+        "to get equivalent behaviour.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
@@ -852,6 +877,78 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.test.assert_equal_graph_def":
             "tf.assert_equal_graph_def no longer takes 'checkpoint_v2' "
             "argument. 'checkpoint_v2' now defaults to True.",
+        "tf.keras.initializers.Zeros":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.zeros":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.Ones":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.ones":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.Constant":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.constant":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.VarianceScaling":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.Orthogonal":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.orthogonal":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.Identity":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.identity":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.glorot_uniform":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.glorot_normal":
+            initializers_no_dtype_comment,
+        "tf.initializers.zeros":
+            initializers_no_dtype_comment,
+        "tf.zeros_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.ones":
+            initializers_no_dtype_comment,
+        "tf.ones_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.constant":
+            initializers_no_dtype_comment,
+        "tf.constant_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.random_uniform":
+            initializers_no_dtype_comment,
+        "tf.random_uniform_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.random_normal":
+            initializers_no_dtype_comment,
+        "tf.random_normal_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.truncated_normal":
+            initializers_no_dtype_comment,
+        "tf.truncated_normal_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.variance_scaling":
+            initializers_no_dtype_comment,
+        "tf.variance_scaling_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.orthogonal":
+            initializers_no_dtype_comment,
+        "tf.orthogonal_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.identity":
+            initializers_no_dtype_comment,
+        "tf.glorot_uniform_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.glorot_uniform":
+            initializers_no_dtype_comment,
+        "tf.glorot_normal_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.glorot_normal":
+            initializers_no_dtype_comment,
+        "tf.initializers.uniform_unit_scaling":
+            uniform_unit_scaling_initializer_comment,
+        "tf.uniform_unit_scaling_initializer":
+            uniform_unit_scaling_initializer_comment,
     }
 
     self.symbol_renames = {

@@ -2429,6 +2429,23 @@ py_library(
 )
 
 py_library(
+    name = "init_ops_v2",
+    srcs = ["ops/init_ops_v2.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":constant_op",
+        ":dtypes",
+        ":linalg_ops_gen",
+        ":linalg_ops_impl",
+        ":math_ops",
+        ":random_ops",
+        ":util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "initializers_ns",
     srcs = ["ops/initializers_ns.py"],
     srcs_version = "PY2AND3",
@@ -3399,6 +3416,21 @@ cuda_py_test(
         ":init_ops",
         ":framework_ops",
         ":resource_variable_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+cuda_py_test(
+    name = "init_ops_v2_test",
+    size = "medium",
+    srcs = ["ops/init_ops_v2_test.py"],
+    additional_deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":init_ops_v2",
+        ":random_ops",
+        ":framework_ops",
         "//third_party/py/numpy",
         "//tensorflow/python/eager:context",
     ],
