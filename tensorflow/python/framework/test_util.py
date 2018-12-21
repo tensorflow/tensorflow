@@ -906,6 +906,10 @@ def run_in_graph_and_eager_modes(func=None,
   eager execution enabled as it does when constructing a TensorFlow graph and
   executing the `z` tensor in a session.
 
+  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
+  `run_in_graph_and_eager_modes` are available decorators for different
+  v1/v2/eager/graph combinations.
+
 
   Args:
     func: function to be annotated. If `func` is None, this method returns a
@@ -1042,6 +1046,10 @@ def deprecated_graph_mode_only(func=None):
   be run in an environment where API calls construct graphs instead of executing
   eagerly.
 
+  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
+  `run_in_graph_and_eager_modes` are available decorators for different
+  v1/v2/eager/graph combinations.
+
   Args:
     func: function to be annotated. If `func` is None, this method returns a
       decorator the can be applied to a function. If `func` is not None this
@@ -1087,6 +1095,10 @@ def run_v1_only(reason, func=None):
   This function is intended to be applied to tests that exercise v1 only
   functionality. If the test is run in v2 mode it will simply be skipped.
 
+  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
+  `run_in_graph_and_eager_modes` are available decorators for different
+  v1/v2/eager/graph combinations.
+
   Args:
     reason: string giving a reason for limiting the test to v1 only.
     func: function to be annotated. If `func` is None, this method returns a
@@ -1129,6 +1141,10 @@ def run_v2_only(func=None):
 
   This function is intended to be applied to tests that exercise v2 only
   functionality. If the test is run in v1 mode it will simply be skipped.
+
+  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
+  `run_in_graph_and_eager_modes` are available decorators for different
+  v1/v2/eager/graph combinations.
 
   Args:
     func: function to be annotated. If `func` is None, this method returns a
