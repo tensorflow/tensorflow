@@ -188,7 +188,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
         self.evaluate(elem_on_2)
 
   @test_util.run_v1_only
-  def testMultipleInitializations(self):
+  def testMultipleInitializationsGraph(self):
     if context.executing_eagerly():
       return
 
@@ -208,6 +208,22 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase):
         sess.run(init_op, feed_dict={epoch: i})
         self.assertEqual([(i, 0), (i, 1)], self.evaluate([elem_on_1,
                                                           elem_on_2]))
+
+  @test_util.run_v1_only
+  def testMultipleInitializationsEager(self):
+    if not context.executing_eagerly():
+      return
+
+    with ops.device("/cpu:0"):
+      dataset1 = dataset_ops.Dataset.range(1000)
+      dataset2 = dataset_ops.Dataset.range(1000)
+      dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
+
+    for _ in range(1000):
+      multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+          dataset, ["/cpu:1", "/cpu:2"], prefetch_buffer_size=4)
+      elem_on_1, elem_on_2 = multi_device_iterator.get_next()
+      self.assertEqual([(0, 0), (1, 1)], self.evaluate([elem_on_1, elem_on_2]))
 
   @test_util.run_v1_only
   def testBasicGpu(self):
