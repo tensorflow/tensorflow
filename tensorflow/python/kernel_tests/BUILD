@@ -1841,6 +1841,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
