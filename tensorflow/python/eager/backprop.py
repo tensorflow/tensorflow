@@ -595,7 +595,9 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Helper to return (possibly cached) zero tensors in eager mode."""
-  if dtype == dtypes.variant or dtype == dtypes.string:
+  if (dtype == dtypes.variant
+      or dtype == dtypes.string
+      or dtype == dtypes.resource):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
