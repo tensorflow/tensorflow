@@ -40,8 +40,43 @@ const float kLayerNormEpsilon = 1e-8;
 //  - n_batch: size of batch,
 //  - n_cell: number of cells (or units),
 //  - n_input: the input size,
+//  - n_aux_input: the auxilary input size.
 //  - n_output: the output size.
 //  - output_batch_leading_dim: the leading dimension of the output buffer.
+//
+// LSTM weights:
+// Input weights of size 'n_cell * n_input':
+//   input_to_input_weights            - optional (can be nullptr)
+//   input_to_forget_weights
+//   input_to_cell_weights
+//   input_to_output_weights
+// Auxilary input weights of size 'n_cell * n_aux_input':
+//   aux_input_to_input_weights        - optional
+//   aux_input_to_forget_weights       - optional
+//   aux_input_to_cell_weights         - optional
+//   aux_input_to_output_weights       - optional
+// Recurrent weights of size 'n_cell * n_output':
+//   recurrent_to_input_weights        - optional
+//   recurrent_to_forget_weights
+//   recurrent_to_cell_weights
+//   recurrent_to_input_weights
+// Peephole weights of size 'n_cell', representing diagonal matrices.
+//   cell_to_input_weights             - optional
+//   cell_to_cell_weights              - optional
+//   cell_to_output_weights            - optional
+// Projection weights of size 'n_output * n_cell'
+//   projection_weights_ptr            - optional
+// Gate biases of size 'n_cell':
+//   input_gate_bias_ptr               - optional
+//   forget_gate_bias_ptr
+//   cell_gate_bias_ptr
+//   output_gate_bias_ptr
+//
+// Layer norm coefficients of size 'n_cell', representing diagonal matrices.
+//   input_layer_norm_coefficients_ptr  - optional
+//   forget_layer_norm_coefficients_ptr - optional
+//   cell_layer_norm_coefficients_ptr   - optional
+//   output_layer_norm_coefficients_ptr - optional
 //
 // The pointers to the cell and output state and the output are updated.
 //
@@ -336,6 +371,11 @@ inline void LstmStepWithAuxInput(
 //   input_to_forget_weights
 //   input_to_cell_weights
 //   input_to_input_weights
+// Quantized auxilary input weights of size 'n_cell * n_aux_input':
+//   aux_input_to_input_weights        - optional
+//   aux_input_to_forget_weights       - optional
+//   aux_input_to_cell_weights         - optional
+//   aux_input_to_output_weights       - optional
 // Quantized recurrent weights of size 'n_cell * n_output':
 //   recurrent_to_input_weights        - optional
 //   recurrent_to_forget_weights
@@ -352,6 +392,10 @@ inline void LstmStepWithAuxInput(
 //   input_to_forget_weights_scale
 //   input_to_cell_weights_scale
 //   input_to_output_weights_scale
+//   aux_input_to_input_weights_scale  - optional
+//   aux_input_to_forget_weights_scale - optional
+//   aux_input_to_cell_weights_scale   - optional
+//   aux_input_to_output_weights_scale - optional
 //   recurrent_to_input_weights_scale  - optional
 //   recurrent_to_forget_weights_scale
 //   recurrent_to_cell_weights_scale
@@ -365,6 +409,12 @@ inline void LstmStepWithAuxInput(
 //   forget_gate_bias_ptr
 //   cell_gate_bias_ptr
 //   output_gate_bias_ptr
+//
+// Layer norm coefficients of size 'n_cell', representing diagonal matrices.
+//   input_layer_norm_coefficients_ptr  - optional
+//   forget_layer_norm_coefficients_ptr - optional
+//   cell_layer_norm_coefficients_ptr   - optional
+//   output_layer_norm_coefficients_ptr - optional
 //
 // Temporary pre-allocated storage for quantized values:
 //   quantized_input_ptr_batch (same size as input_ptr_batch)
