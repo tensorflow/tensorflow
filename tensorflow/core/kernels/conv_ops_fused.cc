@@ -59,11 +59,11 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
 namespace {
-
-using CPUDevice = ::Eigen::ThreadPoolDevice;
-using GPUDevice = ::Eigen::GpuDevice;
-
 // Supported Conv2D fusions. Not all of them supported on all type of devices.
 enum class FusedComputationType {
   // NOTE(ezhulenev): CuDNN `cudnnConvolutionBiasActivationForward` supports
