@@ -248,6 +248,22 @@ Status TransferManager::WriteTupleIndexTablesAsync(
       });
 }
 
+Status TransferManager::WriteRootTupleIndexTable(
+    se::Stream* stream, const ShapedBuffer& device_buffer) {
+  TF_RET_CHECK(ShapeUtil::IsTuple(device_buffer.on_device_shape()));
+  se::DeviceMemoryBase device_memory = device_buffer.buffer({});
+  TF_RET_CHECK(GetByteSizeRequirement(device_buffer.on_device_shape()) ==
+               device_memory.size());
+
+  std::vector<se::DeviceMemoryBase> elements;
+  for (int64 i = 0;
+       i < ShapeUtil::TupleElementCount(device_buffer.on_device_shape()); ++i) {
+    elements.push_back(device_buffer.buffer({i}));
+  }
+  return WriteSingleTupleIndexTable(
+      stream, elements, device_buffer.on_device_shape(), &device_memory);
+}
+
 Status TransferManager::TransferBufferFromDevice(
     se::Stream* stream, const se::DeviceMemoryBase& source, int64 size,
     void* destination) {
