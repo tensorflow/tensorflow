@@ -213,3 +213,18 @@ class BinaryOp<string mnemonic, list<OpProperty> props> :
 
 class TernaryOp<string mnemonic, list<OpProperty> props> :
     Op<mnemonic, props>, Arguments<(ins Tensor, Tensor, Tensor)>;
+
+//===----------------------------------------------------------------------===//
+// Patterns
+//===----------------------------------------------------------------------===//
+// Base class for op+ -> op+ rewrite patterns. These allow declaratively
+// specifying rewrite patterns.
+// TODO(jpienaar): Add the constraint list along with the Pattern.
+class Pattern<dag patternToMatch, list<dag> resultOps> {
+  dag PatternToMatch = patternToMatch;
+  list<dag> ResultOps = resultOps;
+}
+
+// Form of a pattern which produces a single result.
+class Pat<dag pattern, dag result> : Pattern<pattern, [result]>;
+
