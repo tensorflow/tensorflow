@@ -1519,6 +1519,137 @@ class CosineProximity(MeanMetricWrapper):
     return super(CosineProximity, cls).from_config(config)
 
 
+class MeanAbsoluteError(MeanMetricWrapper):
+  """Computes the mean absolute error between the labels and predictions.
+
+  For example, if `y_true` is [0., 0., 1., 1.], and `y_pred` is [1., 1., 1., 0.]
+  the mean absolute error is 3/4 (0.75).
+
+  Usage:
+  ```python
+  mae = tf.metrics.MeanAbsoluteError()
+  mae.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Final result: ', m.result().numpy())  # Final result: 0.75
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.MeanAbsoluteError())
+  ```
+  """
+
+  def __init__(self, name='mean_absolute_error', dtype=None):
+    super(MeanAbsoluteError, self).__init__(
+        mean_absolute_error, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(MeanAbsoluteError, cls).from_config(config)
+
+
+class MeanAbsolutePercentageError(MeanMetricWrapper):
+  """Computes the mean absolute percentage error between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 0., 1., 1.], and `y_pred` is [1., 1., 1., 0.]
+  the mean absolute percentage error is 5e+08.
+
+  Usage:
+
+  ```python
+  mape = tf.keras.losses.MeanAbsolutePercentageError()
+  mape.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Final result: ', m.result().numpy())  # Final result: 5e+08
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.MeanAbsolutePercentageError())
+  ```
+  """
+
+  def __init__(self, name='mean_absolute_percentage_error', dtype=None):
+    super(MeanAbsolutePercentageError, self).__init__(
+        mean_absolute_percentage_error, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(MeanAbsolutePercentageError, cls).from_config(config)
+
+
+class MeanSquaredError(MeanMetricWrapper):
+  """Computes the mean squared error between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 0., 1., 1.], and `y_pred` is [1., 1., 1., 0.]
+  the mean squared error is 3/4 (0.75).
+
+  Usage:
+
+  ```python
+  mape = tf.keras.losses.MeanSquaredError()
+  mape.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Final result: ', m.result().numpy())  # Final result: 0.75
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.MeanSquaredError())
+  ```
+  """
+
+  def __init__(self, name='mean_squared_error', dtype=None):
+    super(MeanSquaredError, self).__init__(
+        mean_squared_error, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(MeanSquaredError, cls).from_config(config)
+
+
+class MeanSquaredLogarithmicError(MeanMetricWrapper):
+  """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 0., 1., 1.], and `y_pred` is [1., 1., 1., 0.]
+  the mean squared logarithmic error is 0.36034.
+
+  Usage:
+
+  ```python
+  msle = tf.keras.losses.MeanSquaredLogarithmicError()
+  msle.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  print('Final result: ', m.result().numpy())  # Final result: 0.36034
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.losses.MeanSquaredLogarithmicError())
+  ```
+  """
+
+  def __init__(self, name='mean_squared_logarithmic_error', dtype=None):
+    super(MeanSquaredLogarithmicError, self).__init__(
+        mean_squared_logarithmic_error, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(MeanSquaredLogarithmicError, cls).from_config(config)
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:

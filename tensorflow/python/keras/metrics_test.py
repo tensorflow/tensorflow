@@ -975,6 +975,140 @@ class CosineProximityTest(test.TestCase):
     self.assertAllClose(-0.59916, self.evaluate(result), atol=1e-5)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class MeanAbsoluteErrorTest(test.TestCase):
+
+  def test_config(self):
+    mae_obj = metrics.MeanAbsoluteError(name='my_mae', dtype=dtypes.int32)
+    self.assertEqual(mae_obj.name, 'my_mae')
+    self.assertEqual(mae_obj._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    mae_obj = metrics.MeanAbsoluteError()
+    self.evaluate(variables.variables_initializer(mae_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = mae_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = mae_obj.result()
+    self.assertAllClose(0.5, result, atol=1e-5)
+
+  def test_weighted(self):
+    mae_obj = metrics.MeanAbsoluteError()
+    self.evaluate(variables.variables_initializer(mae_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = mae_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(0.54285, self.evaluate(result), atol=1e-5)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MeanAbsolutePercentageErrorTest(test.TestCase):
+
+  def test_config(self):
+    mape_obj = metrics.MeanAbsolutePercentageError(
+        name='my_mape', dtype=dtypes.int32)
+    self.assertEqual(mape_obj.name, 'my_mape')
+    self.assertEqual(mape_obj._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    mape_obj = metrics.MeanAbsolutePercentageError()
+    self.evaluate(variables.variables_initializer(mape_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = mape_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = mape_obj.result()
+    self.assertAllClose(35e7, result, atol=1e-5)
+
+  def test_weighted(self):
+    mape_obj = metrics.MeanAbsolutePercentageError()
+    self.evaluate(variables.variables_initializer(mape_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = mape_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(40e7, self.evaluate(result), atol=1e-5)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MeanSquaredErrorTest(test.TestCase):
+
+  def test_config(self):
+    mse_obj = metrics.MeanSquaredError(name='my_mse', dtype=dtypes.int32)
+    self.assertEqual(mse_obj.name, 'my_mse')
+    self.assertEqual(mse_obj._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    mse_obj = metrics.MeanSquaredError()
+    self.evaluate(variables.variables_initializer(mse_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = mse_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = mse_obj.result()
+    self.assertAllClose(0.5, result, atol=1e-5)
+
+  def test_weighted(self):
+    mse_obj = metrics.MeanSquaredError()
+    self.evaluate(variables.variables_initializer(mse_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = mse_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(0.54285, self.evaluate(result), atol=1e-5)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class MeanSquaredLogarithmicErrorTest(test.TestCase):
+
+  def test_config(self):
+    msle_obj = metrics.MeanSquaredLogarithmicError(
+        name='my_msle', dtype=dtypes.int32)
+    self.assertEqual(msle_obj.name, 'my_msle')
+    self.assertEqual(msle_obj._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    msle_obj = metrics.MeanSquaredLogarithmicError()
+    self.evaluate(variables.variables_initializer(msle_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = msle_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = msle_obj.result()
+    self.assertAllClose(0.24022, result, atol=1e-5)
+
+  def test_weighted(self):
+    msle_obj = metrics.MeanSquaredLogarithmicError()
+    self.evaluate(variables.variables_initializer(msle_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = msle_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(0.26082, self.evaluate(result), atol=1e-5)
+
+
 def _get_model(compile_metrics):
   model_layers = [
       layers.Dense(3, activation='relu', kernel_initializer='ones'),
