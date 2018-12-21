@@ -23,6 +23,7 @@ exports_files(["LICENSE"])
 
 exports_files(["platform/base.i"])
 
+load("//tensorflow:tensorflow.bzl", "if_not_v2")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -69,9 +70,8 @@ py_library(
     ],
     deps = [
         ":no_contrib",
-        "//tensorflow/contrib:contrib_py",
         "//tensorflow/python/estimator:estimator_py",
-    ],
+    ] + if_not_v2(["//tensorflow/contrib:contrib_py"]),
 )
 
 py_library(

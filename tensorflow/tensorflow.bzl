@@ -47,6 +47,18 @@ load(
 def register_extension_info(**kwargs):
     pass
 
+def if_v2(a):
+    return select({
+        clean_dep("//tensorflow:api_version_2"): a,
+        "//conditions:default": [],
+    })
+
+def if_not_v2(a):
+    return select({
+        clean_dep("//tensorflow:api_version_2"): [],
+        "//conditions:default": a,
+    })
+
 # if_cuda_is_configured def placeholder
 
 def if_cuda_is_configured_compat(x):
