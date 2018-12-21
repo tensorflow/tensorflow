@@ -483,10 +483,19 @@ class BatchNormalizationV2(Layer):
     else:
       momentum = ops.convert_to_tensor(self.momentum)
     if training_value or training_value is None:
-      mean_update = self._assign_moving_average(self.moving_mean, mean,
-                                                momentum)
-      variance_update = self._assign_moving_average(self.moving_variance,
-                                                    variance, momentum)
+      if distribution_strategy_context.in_cross_replica_context():
+        strategy = distribution_strategy_context.get_distribution_strategy()
+        mean_update = strategy.extended.update(
+            self.moving_mean, self._assign_moving_average,
+            (mean, self.momentum))
+        variance_update = strategy.extended.update(
+            self.moving_variance, self._assign_moving_average,
+            (variance, self.momentum))
+      else:
+        mean_update = self._assign_moving_average(self.moving_mean, mean,
+                                                  momentum)
+        variance_update = self._assign_moving_average(self.moving_variance,
+                                                      variance, momentum)
       self.add_update(mean_update, inputs=True)
       self.add_update(variance_update, inputs=True)
 
