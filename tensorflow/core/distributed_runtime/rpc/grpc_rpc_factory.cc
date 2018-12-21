@@ -159,7 +159,7 @@ GrpcRPCFactory::ChannelPtr GrpcRPCFactory::CreateChannelForAddress(
 
   // Set a standard backoff timeout of 1s instead of the
   // (sometimes default) 20s.
-  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
   return ::grpc::CreateCustomChannel(
       /*target=*/address, ::grpc::InsecureChannelCredentials(), args);
 }
