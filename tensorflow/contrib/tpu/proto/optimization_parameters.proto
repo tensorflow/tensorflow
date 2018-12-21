@@ -9,9 +9,38 @@ message ClippingLimits {
   google.protobuf.FloatValue upper = 2;  // +inf if not set
 }
 
-// Get the learning rate from the parameters of the SendTPUEmbeddingGradients
-// op.
+// Dynamic learning rate specification in the TPUEmbeddingConfiguration. The
+// actual learning rates are provided as a scalar input list to the
+// SendTPUEmbeddingGradients Op indexed by their tag specified through the
+// following proto.
 message DynamicLearningRate {
+  // For tables where learning rates are dynamically computed and communicated
+  // to the TPU embedding program, a tag must be specified for the learning
+  // rate.
+  //
+  // The tag must be a non-negative  integer. The total number of unique tags
+  // must be less than or equal to the number of tables in the TPU embedding
+  // configuration (a table does not specify any tag if it uses a constant
+  // learning rate, and specifies exactly one tag if it uses dynamic learning
+  // rates).
+  //
+  // All tags in the range [0, number_of_unique_tags) must be present in the TPU
+  // embedding configuration, i.e. a tag cannot be skipped if a different tag
+  // numerically greater than it is used in the configuration.
+  //
+  // If multiple tables specify the same tag, they *MUST* have
+  // the same dynamic learning rate, for example, their dynamic learning rate
+  // could be computed by the same TensorFlow sub-graph. The partitioning of the
+  // embedding layer would be more optimal if the number_of_unique_tags is as
+  // *LOW* as possible, i.e., if many tables share the same tag.
+  //
+  // The learning_rate input of the SendTPUEmbeddingGradients op is used to
+  // communicate dynamic learning rates to the TPU embedding program.
+  // The learning_rate input is a list of scalars where the size of the list is
+  // equal to the number of unique tags. The learning rate associated with a
+  // particular tag is specified by populating its corresponding index in the
+  // list of learning_rate scalars.
+  int32 tag = 1;
 }
 
 // Source of learning rate to use.
