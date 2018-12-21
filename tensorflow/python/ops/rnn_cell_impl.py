@@ -63,6 +63,15 @@ _WEIGHTS_VARIABLE_NAME = "kernel"
 ASSERT_LIKE_RNNCELL_ERROR_REGEXP = "is not an RNNCell"
 
 
+def _hasattr(obj, attr_name):
+  try:
+    getattr(obj, attr_name)
+  except AttributeError:
+    return False
+  else:
+    return True
+
+
 def assert_like_rnncell(cell_name, cell):
   """Raises a TypeError if cell is not like an RNNCell.
 
@@ -79,9 +88,9 @@ def assert_like_rnncell(cell_name, cell):
     TypeError: A human-friendly exception.
   """
   conditions = [
-      hasattr(cell, "output_size"),
-      hasattr(cell, "state_size"),
-      hasattr(cell, "get_initial_state") or hasattr(cell, "zero_state"),
+      _hasattr(cell, "output_size"),
+      _hasattr(cell, "state_size"),
+      _hasattr(cell, "get_initial_state") or _hasattr(cell, "zero_state"),
       callable(cell),
   ]
   errors = [
@@ -316,7 +325,7 @@ class RNNCell(base_layer.Layer):
     # zeros, especially when eager execution is enabled.
     state_size = self.state_size
     is_eager = context.executing_eagerly()
-    if is_eager and hasattr(self, "_last_zero_state"):
+    if is_eager and _hasattr(self, "_last_zero_state"):
       (last_state_size, last_batch_size, last_dtype,
        last_output) = getattr(self, "_last_zero_state")
       if (last_batch_size == batch_size and
