@@ -6196,6 +6196,25 @@ func Stage(scope *Scope, values []tf.Output, optional ...StageAttr) (o *tf.Opera
 	return scope.AddOperation(opspec)
 }
 
+// Delete the tensor specified by its handle in the session.
+//
+// Arguments:
+//	handle: The handle for a tensor stored in the session state.
+//
+// Returns the created operation.
+func DeleteSessionTensor(scope *Scope, handle tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DeleteSessionTensor",
+		Input: []tf.Input{
+			handle,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 //
 // The regularized incomplete beta integral is defined as:
@@ -22442,25 +22461,6 @@ func MatrixBandPart(scope *Scope, input tf.Output, num_lower tf.Output, num_uppe
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Delete the tensor specified by its handle in the session.
-//
-// Arguments:
-//	handle: The handle for a tensor stored in the session state.
-//
-// Returns the created operation.
-func DeleteSessionTensor(scope *Scope, handle tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DeleteSessionTensor",
-		Input: []tf.Input{
-			handle,
-		},
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Subtracts a value from the current value of a variable.
