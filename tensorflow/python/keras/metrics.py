@@ -1386,6 +1386,38 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
     return super(MeanSquaredLogarithmicError, cls).from_config(config)
 
 
+class Hinge(MeanMetricWrapper):
+  """Computes the hinge metric between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 1., 1.], and `y_pred` is [1., 0., 1.]
+  the hinge metric value is 0.66.
+
+  Usage:
+
+  ```python
+  h = tf.keras.metrics.Hinge()
+  h.update_state([0., 1., 1.], [1., 0., 1.])
+  print('Final result: ', m.result().numpy())  # Final result: 0.66
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.metrics.Hinge())
+  ```
+  """
+
+  def __init__(self, name='hinge', dtype=None):
+    super(Hinge, self).__init__(hinge, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(Hinge, cls).from_config(config)
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
