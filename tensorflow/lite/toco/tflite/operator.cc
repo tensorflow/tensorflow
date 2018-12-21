@@ -472,6 +472,20 @@ class Svdf : public BuiltinOperator<SvdfOperator, ::tflite::SVDFOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const string& weights_feature_name = op_signature.op->inputs[1];
+    const string& output_name = op_signature.op->outputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    const Array& weights_feature_array =
+        op_signature.model->GetArray(weights_feature_name);
+    const Array& output_array = op_signature.model->GetArray(output_name);
+    // If the op is a signed int8 hybrid operation, we need to return
+    // version 2.
+    if (input_array.data_type == ArrayDataType::kFloat &&
+        weights_feature_array.data_type == ArrayDataType::kInt8 &&
+        output_array.data_type == ArrayDataType::kFloat) {
+      return 2;
+    }
     return 1;
   }
 };

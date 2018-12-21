@@ -173,7 +173,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D(),
              /* min_version */ 1,
              /* max_version */ 3);
-  AddBuiltin(BuiltinOperator_SVDF, Register_SVDF());
+  AddBuiltin(BuiltinOperator_SVDF, Register_SVDF(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_RNN, Register_RNN(),
              /* min_version */ 1,
              /* max_version */ 2);
