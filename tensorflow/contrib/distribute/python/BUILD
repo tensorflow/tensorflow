@@ -2,6 +2,7 @@
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
     default_visibility = [
@@ -730,5 +731,26 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
+    ],
+)
+
+tf_xla_py_test(
+    name = "checkpointing_test",
+    srcs = ["checkpointing_test.py"],
+    disabled_backends = [
+        # Only makes sense on TPUs
+        "cpu",
+        "gpu",
+        "cpu_ondemand",
+    ],
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/checkpointable:util",
     ],
 )
