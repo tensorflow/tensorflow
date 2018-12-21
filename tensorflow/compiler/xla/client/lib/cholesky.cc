@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -155,6 +156,12 @@ XlaOp Cholesky(XlaOp a, int64 block_size,
     if (n != ShapeUtil::GetDimension(a_shape, -2)) {
       return InvalidArgument(
           "Argument to Cholesky must be batched square matrices; got shape %s",
+          ShapeUtil::HumanString(a_shape));
+    }
+
+    if (primitive_util::IsComplexType(a_shape.element_type())) {
+      return Unimplemented(
+          "Complex types are not implemented in Cholesky; got shape %s",
           ShapeUtil::HumanString(a_shape));
     }
 
