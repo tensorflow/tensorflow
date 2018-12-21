@@ -45,6 +45,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -704,7 +705,7 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
     self._run_between_graph_clients(self._test_minimize_loss_graph,
                                     self._cluster_spec, num_gpus)
 
-  def testGlobalStepIsWrapped(self):
+  def testGlobalStepIsWrappedOnTwoGPUs(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     with ops.Graph().as_default(), distribution.scope():
@@ -716,6 +717,20 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                              id(get_step), get_step.__class__.__name__)))
       self.assertIs(values.AggregatingVariable, type(created_step))
       self.assertIs(values.AggregatingVariable, type(get_step))
+      self.assertIs(distribution, created_step.distribute_strategy)
+
+  def testGlobalStepIsNotWrappedOnOneGPU(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=1)
+    with ops.Graph().as_default(), distribution.scope():
+      created_step = training_util.create_global_step()
+      get_step = training_util.get_global_step()
+      self.assertEqual(created_step, get_step,
+                       msg=('created_step %s type %s vs. get_step %s type %s' %
+                            (id(created_step), created_step.__class__.__name__,
+                             id(get_step), get_step.__class__.__name__)))
+      self.assertIs(resource_variable_ops.ResourceVariable, type(created_step))
+      self.assertIs(resource_variable_ops.ResourceVariable, type(get_step))
       self.assertIs(distribution, created_step.distribute_strategy)
 
   def testValueContainer(self):

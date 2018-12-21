@@ -971,6 +971,7 @@ class DistributionStrategyExtended(object):
     def creator_with_resource_vars(*args, **kwargs):
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
+      kwargs["distribute_strategy"] = strategy
       return self._create_variable(*args, **kwargs)
 
     def distributed_getter(getter, *args, **kwargs):

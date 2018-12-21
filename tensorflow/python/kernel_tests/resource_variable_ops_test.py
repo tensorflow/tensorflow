@@ -1068,6 +1068,11 @@ class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):
     self.assertEqual(NotImplemented,
                      v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=True))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testDistributeStrategy(self):
+    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int32)
+    self.assertIsNone(v.distribute_strategy)
+
 
 if __name__ == "__main__":
   test.main()
