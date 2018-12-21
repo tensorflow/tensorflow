@@ -640,18 +640,6 @@ class ConcatOpTest(test.TestCase):
         output = self.evaluate(c)
         self.assertAllEqual([[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], output)
 
-  def testConcatQint8GPU(self):
-    with self.test_session(use_gpu=True):
-      p1 = np.random.rand(2, 3, 2, 3, 4).astype("i")
-      p2 = np.random.rand(2, 3, 2, 3, 4).astype("i")
-      x1 = constant_op.constant(p1, dtypes.qint8)
-      x2 = constant_op.constant(p2, dtypes.qint8)
-      c = gen_array_ops.concat_v2([x1, x2], 1)
-      result = self.evaluate(c)
-    self.assertAllEqual(result[:, :3, :], p1)
-    self.assertAllEqual(result[:, 3:, :], p2)
-
-
 class ConcatOffsetTest(test.TestCase):
 
   def testBasic(self):
