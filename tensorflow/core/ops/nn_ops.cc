@@ -1540,6 +1540,22 @@ REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
     });
 
 #ifdef INTEL_MKL
+REGISTER_OP("_MklDepthwiseConv2dNative")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
 REGISTER_OP("_MklConv2D")
     .Input("input: T")
     .Input("filter: T")
