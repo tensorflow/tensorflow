@@ -18,14 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import saved_object_graph_pb2
 
 
-def _serialize_polymorphic_function(polymorphic_function, node_ids):
+def serialize_polymorphic_function(polymorphic_function, node_ids):
   """Build a SavedPolymorphicProto."""
   coder = nested_structure_coder.StructureCoder()
   proto = saved_object_graph_pb2.SavedPolymorphicFunction()
@@ -73,37 +72,3 @@ def list_all_concrete_functions(polymorphic_function):
     concrete_function = polymorphic_function.get_concrete_function(*signature)
     concrete_functions.append((signature, concrete_function))
   return concrete_functions
-
-
-def list_all_polymorphic_functions(checkpointable_object):
-  """Given a checkpointable object, returns all of its polymorphic functions."""
-  polymorphic_functions = dict()
-  for attribute_name in dir(checkpointable_object):
-    try:
-      attribute_value = getattr(checkpointable_object, attribute_name, None)
-    except:  # pylint: disable=bare-except
-      # We really don't want to throw an exception just because some object's
-      # attribute accessor is broken.
-      attribute_value = None
-    # TODO(allenl): Consider de-duplicating functions which are referenced
-    # from multiple attributes.
-    if isinstance(attribute_value, def_function.PolymorphicFunction):
-      polymorphic_functions[attribute_name] = attribute_value
-  return polymorphic_functions
-
-
-def add_polymorphic_functions_to_object_graph_proto(checkpointable_objects,
-                                                    saved_object_graph,
-                                                    node_ids):
-  """Finds PolymorphicFunctions attached to objects and saves them."""
-  existing_objects = list(zip(checkpointable_objects, saved_object_graph.nodes))
-  for obj, obj_proto in existing_objects:
-    for name, polymorphic_function in list_all_polymorphic_functions(
-        obj).items():
-      function_node_id = len(saved_object_graph.nodes)
-      function_node = saved_object_graph.nodes.add()
-      function_node.function.CopyFrom(
-          _serialize_polymorphic_function(polymorphic_function, node_ids))
-      reference = obj_proto.children.add()
-      reference.node_id = function_node_id
-      reference.local_name = name
