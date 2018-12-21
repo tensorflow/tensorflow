@@ -363,6 +363,12 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
   return kTfLiteOk;
 }
 
+void Subgraph::SetCancellationFunction(void* data,
+                                       bool (*check_cancelled_func)(void*)) {
+  cancellation_data_ = data;
+  check_cancelled_func_ = check_cancelled_func;
+}
+
 TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
                                           int length) {
   // Making sure kOptionalTensor is not re-defined to something other than -1.
@@ -666,6 +672,12 @@ TfLiteStatus Subgraph::Invoke() {
           tensor->data_is_stale) {
         EnsureTensorDataIsReadable(tensor_index);
       }
+    }
+
+    if (check_cancelled_func_ != nullptr &&
+        check_cancelled_func_(cancellation_data_)) {
+      ReportError("Client requested cancel during Invoke()");
+      return kTfLiteError;
     }
 
     EnsureTensorsVectorCapacity();

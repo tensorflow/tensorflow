@@ -208,6 +208,15 @@ class Subgraph {
     return context_->allow_fp32_relax_to_fp16;
   }
 
+  // Sets the cancellation function pointer in order to cancel a request in the
+  // middle of a call to Invoke(). The interpreter queries this function during
+  // inference, between op invocations; when it returns true, the interpreter
+  // will abort execution and return `kTfLiteError`. The `data` parameter
+  // contains any data used by the cancellation function, and if non-null,
+  // remains owned by the caller.
+  // WARNING: This is an experimental API and subject to change.
+  void SetCancellationFunction(void* data, bool (*check_cancelled_func)(void*));
+
   // Ensure the data in `tensor.data` is readable. In case delegate is used,
   // it might require to copy the data from delegate buffer to raw memory.
   // WARNING: This is an experimental API and subject to change.
@@ -502,6 +511,15 @@ class Subgraph {
   // public function).
   // The value is invalid before `PrepareOpStartingAt` is called.
   bool has_dynamic_tensors_ = true;
+
+  // Reference to cancellation function that can cancel a request in the middle
+  // of a call to Invoke(). When this function returns True, a kTfLiteError is
+  // thrown by Invoke().
+  bool (*check_cancelled_func_)(void*) = nullptr;
+
+  // Reference to data used by the cancellation function in
+  // `check_cancelled_func_`.
+  void* cancellation_data_ = nullptr;
 };
 
 }  // namespace tflite
