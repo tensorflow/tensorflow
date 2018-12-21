@@ -482,7 +482,7 @@ py_test(
 
 cuda_py_test(
     name = "cudnn_recurrent_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/cudnn_recurrent_test.py"],
     additional_deps = [
         ":keras",
@@ -490,7 +490,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 4,
     tags = ["no_windows_gpu"],
 )
 
