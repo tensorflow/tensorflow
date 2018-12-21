@@ -1095,7 +1095,7 @@ When `Op` is `Rem`, the sign of the result is taken from the dividend, and the
 absolute value of the result is always less than the divisor's absolute value.
 
 Integer division overflow (signed/unsigned division/remainder by zero or signed
-divison/remainder of `INT_SMIN` with `-1`) produces an implementation defined
+division/remainder of `INT_SMIN` with `-1`) produces an implementation defined
 value.
 
 An alternative variant with different-rank broadcasting support exists for these
