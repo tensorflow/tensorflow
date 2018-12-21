@@ -40,33 +40,35 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     """Testing conversion of BiasAdd MatMul in TF-TRT conversion."""
     # Note that tf.nn.bias_add supports up to 5 dimensions.
     input_dims = [100, 4]
-    output_name = "output"
     g = ops.Graph()
     with g.as_default():
+      # float part
       input1 = array_ops.placeholder(
           dtype=dtypes.float32, shape=input_dims, name='input_float32')
-
       b1 = self._ConstOp((4, 10), dtypes.float32)
       x1 = math_ops.matmul(input1, b)
       b1 = self._ConstOp((1, 10), dtypes.float32)
       x1 = x1 + b1
 
+      # int part
       input2 = array_ops.placeholder(
           dtype=dtypes.int32, shape=input_dims, name='input_int32')
-
-      b2 = self._ConstOp((4, 10), dtypes.float32)
+      b2 = self._ConstOp((4, 10), dtypes.int32)
       x2 = math_ops.matmul(input2, b)
-      b2 = self._ConstOp((1, 10), dtypes.float32)
+      b2 = self._ConstOp((1, 10), dtypes.int32)
       x2 = x2 + b2
-      out = array_ops.concat([x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11],
-                             axis=-1)
-      out = array_ops.squeeze(out, name=output_name)
+
+      # combine
+      #y = x1 * x2
+
+      out1 = array_ops.identity(x1, name='output_float32')
+      out2 = array_ops.identity(x2, name='output_int32')
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[input_dims],
-        output_names=[output_name],
-        expected_output_dims=[(4, 6680)])
+        input_names=['input_float32', 'input_int32'],
+        input_dims=[[100, 4], [100, 4]],
+        output_names=['output_int32', 'output_float32'],
+        expected_output_dims=[(100, 10), (100, 10)])
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
