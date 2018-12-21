@@ -74,12 +74,13 @@ def _get_record_shape(sparse):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class BucketBySequenceLengthTest(test_base.DatasetTestBase, parameterized.TestCase):
+class BucketBySequenceLengthTest(test_base.DatasetTestBase,
+                                 parameterized.TestCase):
 
   # TODO(b/117581999): add eager coverage.
   @parameterized.named_parameters(
-    ("WithoutPadding", True),
-    ("WithPadding", False),
+      ("WithoutPadding", True),
+      ("WithPadding", False),
   )
   def testSkipEagerBucketDropReminder(self, param_no_padding):
 
