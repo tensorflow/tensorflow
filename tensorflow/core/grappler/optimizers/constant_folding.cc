@@ -901,8 +901,7 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
 
 // static
 Status ConstantFolding::CreateNodeDef(const string& name,
-                                      const TensorValue& tensor,
-                                      NodeDef* node,
+                                      const TensorValue& tensor, NodeDef* node,
                                       size_t original_size) {
   node->set_name(name);
   node->set_op("Const");
