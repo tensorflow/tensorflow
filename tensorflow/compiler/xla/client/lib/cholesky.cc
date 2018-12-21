@@ -54,7 +54,7 @@ XlaOp CholeskyUnblocked(XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int n_dims = ShapeUtil::Rank(a_shape);
+    const int n_dims = a_shape.rank();
     const int64 n = ShapeUtil::GetDimension(a_shape, -1);
     auto major_dims = AsInt64Slice(a_shape.dimensions())
                           .subspan(
@@ -144,7 +144,7 @@ XlaOp Cholesky(XlaOp a, int64 block_size,
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int ndims = ShapeUtil::Rank(a_shape);
+    const int ndims = a_shape.rank();
     if (ndims < 2) {
       return InvalidArgument(
           "Argument to Cholesky must have rank >= 2; shape was %s",

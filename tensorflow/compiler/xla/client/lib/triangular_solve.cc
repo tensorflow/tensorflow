@@ -38,7 +38,7 @@ XlaOp DiagonalBlocks(XlaOp a, int64 block_size) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(a));
-    int ndims = ShapeUtil::Rank(shape);
+    int ndims = shape.rank();
     int64 n = ShapeUtil::GetDimension(shape, -1);
     int64 num_blocks = n / block_size;
 
@@ -262,7 +262,7 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
     int64 block_size = ShapeUtil::GetDimension(blocks_shape, -1);
 
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    int64 ndims = ShapeUtil::Rank(a_shape);
+    int64 ndims = a_shape.rank();
     int64 n = ShapeUtil::GetDimension(a_shape, -1);
     int64 num_blocks = n / block_size + (n % block_size != 0);
     int64 m_dim = (left_side) ? -1 : -2;
@@ -356,13 +356,13 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     TF_ASSIGN_OR_RETURN(Shape b_shape, builder->GetShape(b));
-    if (ShapeUtil::Rank(a_shape) != ShapeUtil::Rank(b_shape)) {
+    if (a_shape.rank() != b_shape.rank()) {
       return InvalidArgument(
           "Arguments to TriangularSolve have shapes with different ranks: "
           "%s vs. %s",
           ShapeUtil::HumanString(a_shape), ShapeUtil::HumanString(b_shape));
     }
-    const int64 ndims = ShapeUtil::Rank(a_shape);
+    const int64 ndims = a_shape.rank();
     if (ndims < 2) {
       return InvalidArgument(
           "Arguments to TriangularSolve was rank %d but must have rank >= 2.",

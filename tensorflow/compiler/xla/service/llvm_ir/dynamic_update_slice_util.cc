@@ -44,7 +44,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
   const Shape& output_shape = output_array.GetShape();
 
   // Read start indices from start_indices_generator.
-  const int64 rank = ShapeUtil::Rank(output_shape);
+  const int64 rank = output_shape.rank();
   IrArray::Index start_index(b->getInt64Ty(), rank);
   for (int64 i = 0; i < rank; ++i) {
     IrArray::Index dim_index({b->getInt64(i)});

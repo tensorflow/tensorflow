@@ -110,8 +110,8 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
       auto shape_status = b.GetShape(arg);
       OP_REQUIRES_OK(ctx, shape_status.status());
       xla::Shape arg_shape = shape_status.ConsumeValueOrDie();
-      *arg_shape.mutable_layout() = xla::LayoutUtil::MakeDescendingLayout(
-          xla::ShapeUtil::Rank(arg_shape));
+      *arg_shape.mutable_layout() =
+          xla::LayoutUtil::MakeDescendingLayout(arg_shape.rank());
       arg_shapes.push_back(std::move(arg_shape));
     }
 

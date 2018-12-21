@@ -96,7 +96,7 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
   }
 
   for (const Shape* element_shape : accumulator_subshapes) {
-    if (ShapeUtil::Rank(*element_shape) != 0) {
+    if (element_shape->rank() != 0) {
       return InvalidArgument(
           "Reduction function must return a scalar or tuple of scalars but "
           "returns shape: %s",
@@ -160,10 +160,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                                        const Window& window,
                                        PrimitiveType element_type,
                                        bool allow_negative_padding) {
-  if (window.dimensions_size() != ShapeUtil::Rank(base_shape)) {
+  if (window.dimensions_size() != base_shape.rank()) {
     return InvalidArgument(
         "Window has dimension %d but base shape has dimension %d.",
-        window.dimensions_size(), ShapeUtil::Rank(base_shape));
+        window.dimensions_size(), base_shape.rank());
   }
 
   std::vector<int64> output_dimensions(window.dimensions_size());
@@ -338,7 +338,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   if (arg_shapes.empty()) {
     return InvalidArgument("Concatenate expects at least one argument.");
   }
-  if (dimension < 0 || dimension >= ShapeUtil::Rank(*arg_shapes[0])) {
+  if (dimension < 0 || dimension >= arg_shapes[0]->rank()) {
     return InvalidArgument("Concatenate dimension out of bounds: %d.",
                            dimension);
   }
@@ -351,12 +351,12 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
       element_type = arg_shape->element_type();
       continue;
     }
-    if (ShapeUtil::Rank(*arg_shape) != ShapeUtil::Rank(*shape)) {
+    if (arg_shape->rank() != shape->rank()) {
       return InvalidArgument(
           "Cannot concatenate arrays with different ranks: %d (%s) vs %d "
           "(%s).",
-          ShapeUtil::Rank(*arg_shape), ShapeUtil::HumanString(*arg_shape),
-          ShapeUtil::Rank(*shape), ShapeUtil::HumanString(*shape));
+          arg_shape->rank(), ShapeUtil::HumanString(*arg_shape), shape->rank(),
+          ShapeUtil::HumanString(*shape));
     }
     if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(*arg_shape, *shape)) {
       return InvalidArgument(
@@ -364,8 +364,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
           PrimitiveType_Name(arg_shape->element_type()),
           PrimitiveType_Name(shape->element_type()));
     }
-    for (int64 dimension_number = 0;
-         dimension_number < ShapeUtil::Rank(*arg_shape); ++dimension_number) {
+    for (int64 dimension_number = 0; dimension_number < arg_shape->rank();
+         ++dimension_number) {
       if (arg_shape->dimensions(dimension_number) !=
           shape->dimensions(dimension_number)) {
         if (dimension_number == dimension) {
@@ -480,7 +480,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return InvalidArgument(
         "Pad operation does not support non-scalar padding values.");
   }
-  if (ShapeUtil::Rank(operand_shape) != padding_config.dimensions_size()) {
+  if (operand_shape.rank() != padding_config.dimensions_size()) {
     return InvalidArgument(
         "The rank of the operand and the padding configuration do not match: "
         "%s vs %s.",
@@ -500,7 +500,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                            padding_config.ShortDebugString());
   }
 
-  std::vector<int64> dimensions(ShapeUtil::Rank(operand_shape));
+  std::vector<int64> dimensions(operand_shape.rank());
   for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
     const auto& p = padding_config.dimensions(i);
     dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
@@ -555,9 +555,9 @@ Status ValidateDotDimensionNumbers(
   absl::Span<const int64> rhs_batch_dimensions =
       AsInt64Slice(dimension_numbers.rhs_batch_dimensions());
 
-  if (!dims_in_range(ShapeUtil::Rank(lhs), lhs_contracting_dimensions,
+  if (!dims_in_range(lhs.rank(), lhs_contracting_dimensions,
                      lhs_batch_dimensions) ||
-      !dims_in_range(ShapeUtil::Rank(rhs), rhs_contracting_dimensions,
+      !dims_in_range(rhs.rank(), rhs_contracting_dimensions,
                      rhs_batch_dimensions)) {
     return InvalidArgument("A dimension number is out of range in Dot: %s.",
                            dimension_numbers.DebugString());
@@ -583,12 +583,10 @@ Status ValidateDotDimensionNumbers(
 
   // Check that the count of non-contracting-non-batch dimensions is in {0, 1}.
   const int64 lhs_non_contracting_non_batch_dims =
-      ShapeUtil::Rank(lhs) -
-      dimension_numbers.lhs_contracting_dimensions_size() -
+      lhs.rank() - dimension_numbers.lhs_contracting_dimensions_size() -
       dimension_numbers.lhs_batch_dimensions_size();
   const int64 rhs_non_contracting_non_batch_dims =
-      ShapeUtil::Rank(rhs) -
-      dimension_numbers.rhs_contracting_dimensions_size() -
+      rhs.rank() - dimension_numbers.rhs_contracting_dimensions_size() -
       dimension_numbers.rhs_batch_dimensions_size();
   if (lhs_non_contracting_non_batch_dims < 0 ||
       lhs_non_contracting_non_batch_dims > 1 ||
@@ -637,7 +635,7 @@ Status ValidateDotDimensionNumbers(
     return fail("Element types do not match.");
   }
 
-  if ((ShapeUtil::Rank(lhs) < 1) || (ShapeUtil::Rank(rhs) < 1)) {
+  if ((lhs.rank() < 1) || (rhs.rank() < 1)) {
     return fail("Dot only supports rank 1 or above.");
   }
 
@@ -686,12 +684,12 @@ Status ValidateDotDimensionNumbers(
   std::unordered_set<int64> rhs_batch_dims(
       dimension_numbers.rhs_batch_dimensions().begin(),
       dimension_numbers.rhs_batch_dimensions().end());
-  for (int64 i = 0; i < ShapeUtil::Rank(lhs); i++) {
+  for (int64 i = 0; i < lhs.rank(); i++) {
     if (i != lhs_contracting_dimension) {
       dimensions.push_back(lhs.dimensions(i));
     }
   }
-  for (int64 i = 0; i < ShapeUtil::Rank(rhs); i++) {
+  for (int64 i = 0; i < rhs.rank(); i++) {
     if (i != rhs_contracting_dimension && rhs_batch_dims.count(i) == 0) {
       dimensions.push_back(rhs.dimensions(i));
     }
@@ -708,14 +706,14 @@ Status ValidateDotDimensionNumbers(
 ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                                                        const Shape& lhs,
                                                        const Shape& rhs) {
-  TF_RET_CHECK(ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs));
+  TF_RET_CHECK(lhs.rank() == rhs.rank());
 
   // The shapes have to be compatible. That is, if some dimension d has a
   // different size in the two shapes, one of them has to be 1 (a "degenerate"
   // dimension). In that case, the output shape has the non-1 dimension size
   // from the lhs/rhs pair in every index.
-  std::vector<int64> output_dimensions(ShapeUtil::Rank(lhs));
-  for (int64 i = 0; i < ShapeUtil::Rank(lhs); ++i) {
+  std::vector<int64> output_dimensions(lhs.rank());
+  for (int64 i = 0; i < lhs.rank(); ++i) {
     if (lhs.dimensions(i) == rhs.dimensions(i)) {
       output_dimensions[i] = lhs.dimensions(i);
     } else if (lhs.dimensions(i) == 1) {
@@ -743,13 +741,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return InvalidArgument("Automatic shape inference not supported: %s and %s",
                            ShapeUtil::HumanString(smaller_shape),
                            ShapeUtil::HumanString(larger_shape));
-  } else if (broadcast_dimensions.size() != ShapeUtil::Rank(smaller_shape)) {
+  } else if (broadcast_dimensions.size() != smaller_shape.rank()) {
     return InvalidArgument(
         "Size of broadcast_dimensions has to match lower-rank operand's "
         "rank; "
         " lower-rank operand's rank is %d, size of broadcast_dimensions is "
         "%u.",
-        ShapeUtil::Rank(smaller_shape), broadcast_dimensions.size());
+        smaller_shape.rank(), broadcast_dimensions.size());
   }
 
   // broadcast_dimensions is a sequence of dimensions; its length is equal to
@@ -847,8 +845,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(rhs));
   }
 
-  if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs)) {
-    std::vector<int64> identity_dims(ShapeUtil::Rank(lhs));
+  if (lhs.rank() == rhs.rank()) {
+    std::vector<int64> identity_dims(lhs.rank());
     std::iota(identity_dims.begin(), identity_dims.end(), 0);
     if (!broadcast_dimensions.empty() &&
         broadcast_dimensions != identity_dims) {
@@ -865,15 +863,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         lhs, ShapeUtil::HigherPrecisionElementType(lhs, rhs));
   }
 
-  if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs)) {
+  if (lhs.rank() == rhs.rank()) {
     return InferDegenerateDimensionBroadcastShape(operation, lhs, rhs);
   } else {
     // Ranks do not match, so perform InDim broadcasting using
     // broadcast_dimensions. Scalar broadcasting is a special case of this.
-    const Shape& larger_shape =
-        ShapeUtil::Rank(lhs) > ShapeUtil::Rank(rhs) ? lhs : rhs;
-    const Shape& smaller_shape =
-        ShapeUtil::Rank(lhs) > ShapeUtil::Rank(rhs) ? rhs : lhs;
+    const Shape& larger_shape = lhs.rank() > rhs.rank() ? lhs : rhs;
+    const Shape& smaller_shape = lhs.rank() > rhs.rank() ? rhs : lhs;
 
     // After InDim broadcasting, perform degenerate dimensions broadcasting.
     TF_ASSIGN_OR_RETURN(Shape indim_broadcast_shape,
@@ -1162,12 +1158,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape) ==
                Status::OK());
 
-  if (feature_index >= ShapeUtil::Rank(operand_shape)) {
+  if (feature_index >= operand_shape.rank()) {
     return InvalidArgument(
         "Expected feature_index of batch-norm-training to be "
         "smaller than the rank of operand_shape; "
         "got feature_index %d, and rank %d.",
-        feature_index, ShapeUtil::Rank(operand_shape));
+        feature_index, operand_shape.rank());
   }
 
   if (feature_index < 0) {
@@ -1177,25 +1173,25 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         feature_index);
   }
 
-  if (ShapeUtil::Rank(operand_shape) < 1) {
+  if (operand_shape.rank() < 1) {
     return InvalidArgument(
         "Expected the rank of operand to "
         "batch-norm-training to be at least 1; got %d.",
-        ShapeUtil::Rank(operand_shape));
+        operand_shape.rank());
   }
 
-  if (ShapeUtil::Rank(offset_shape) != 1) {
+  if (offset_shape.rank() != 1) {
     return InvalidArgument(
         "Offset input of batch-norm-training must have"
         " rank 1, but has rank %d.",
-        ShapeUtil::Rank(offset_shape));
+        offset_shape.rank());
   }
 
-  if (ShapeUtil::Rank(scale_shape) != 1) {
+  if (scale_shape.rank() != 1) {
     return InvalidArgument(
         "Scale input of batch-norm-training must have"
         " rank 1, but has rank %d.",
-        ShapeUtil::Rank(scale_shape));
+        scale_shape.rank());
   }
 
   if (!ShapeUtil::ElementIsFloating(operand_shape)) {
@@ -1272,12 +1268,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(variance_shape) ==
                Status::OK());
 
-  if (feature_index >= ShapeUtil::Rank(operand_shape)) {
+  if (feature_index >= operand_shape.rank()) {
     return InvalidArgument(
         "Expected feature_index of batch-norm-inference to be "
         "smaller than the rank of operand_shape; "
         "got feature_index %d, and rank %d.",
-        feature_index, ShapeUtil::Rank(operand_shape));
+        feature_index, operand_shape.rank());
   }
 
   if (feature_index < 0) {
@@ -1287,25 +1283,25 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         feature_index);
   }
 
-  if (ShapeUtil::Rank(operand_shape) < 1) {
+  if (operand_shape.rank() < 1) {
     return InvalidArgument(
         "Expected the rank of operand to "
         "batch-norm-inference to be at least 1; got %d.",
-        ShapeUtil::Rank(operand_shape));
+        operand_shape.rank());
   }
 
-  if (ShapeUtil::Rank(offset_shape) != 1) {
+  if (offset_shape.rank() != 1) {
     return InvalidArgument(
         "Offset input of batch-norm-inference must have"
         " rank 1, but has rank %d.",
-        ShapeUtil::Rank(offset_shape));
+        offset_shape.rank());
   }
 
-  if (ShapeUtil::Rank(scale_shape) != 1) {
+  if (scale_shape.rank() != 1) {
     return InvalidArgument(
         "Scale input of batch-norm-inference must have"
         " rank 1, but has rank %d.",
-        ShapeUtil::Rank(scale_shape));
+        scale_shape.rank());
   }
 
   if (!ShapeUtil::ElementIsFloating(operand_shape)) {
@@ -1417,41 +1413,41 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(
       ShapeUtil::ValidateShapeWithOptionalLayout(output_grad_shape));
 
-  if (feature_index >= ShapeUtil::Rank(operand_shape)) {
+  if (feature_index >= operand_shape.rank()) {
     return InvalidArgument(
         "Expected feature_index of batch-norm-grad to be "
         "smaller than the rank of operand_shape; "
         "got feature_index %d, and rank %d.",
-        feature_index, ShapeUtil::Rank(operand_shape));
+        feature_index, operand_shape.rank());
   }
 
-  if (ShapeUtil::Rank(operand_shape) != ShapeUtil::Rank(output_grad_shape)) {
+  if (operand_shape.rank() != output_grad_shape.rank()) {
     return InvalidArgument(
         "Expected operand_shape of batch-norm-grad to have the same rank as"
         " output_grad_shape; got rank(oprand_shape) %d, and"
         " rank(output_grad_shape) %d.",
-        ShapeUtil::Rank(operand_shape), ShapeUtil::Rank(output_grad_shape));
+        operand_shape.rank(), output_grad_shape.rank());
   }
 
-  if (ShapeUtil::Rank(mean_shape) != 1) {
+  if (mean_shape.rank() != 1) {
     return InvalidArgument(
         "Mean input of batch-norm-grad must have"
         " rank 1, but has rank %d.",
-        ShapeUtil::Rank(mean_shape));
+        mean_shape.rank());
   }
 
-  if (ShapeUtil::Rank(scale_shape) != 1) {
+  if (scale_shape.rank() != 1) {
     return InvalidArgument(
         "Scale input of batch-norm-grad must have"
         " rank 1, but has rank %d.",
-        ShapeUtil::Rank(scale_shape));
+        scale_shape.rank());
   }
 
-  if (ShapeUtil::Rank(var_shape) != 1) {
+  if (var_shape.rank() != 1) {
     return InvalidArgument(
         "Var input of batch-norm-grad must have"
         " rank 1, but has rank %d.",
-        ShapeUtil::Rank(var_shape));
+        var_shape.rank());
   }
 
   if (!ShapeUtil::ElementIsFloating(operand_shape)) {
@@ -1538,7 +1534,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   // Verify operand_shape and output_grad_shape have same bounds.
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (ShapeUtil::GetDimension(operand_shape, i) !=
         ShapeUtil::GetDimension(output_grad_shape, i)) {
       return InvalidArgument(
@@ -1603,12 +1599,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   const int num_dims = num_spatial_dims + 2;
-  if (ShapeUtil::Rank(lhs) != num_dims) {
+  if (lhs.rank() != num_dims) {
     return InvalidArgument(
         "The LHS argument to a convolution should have rank %d; lhs: %s.",
         num_dims, ShapeUtil::HumanString(lhs));
   }
-  if (ShapeUtil::Rank(rhs) != num_dims) {
+  if (rhs.rank() != num_dims) {
     return InvalidArgument(
         "The RHS argument to a convolution should have rank %d; rhs: %s.",
         num_dims, ShapeUtil::HumanString(rhs));
@@ -1853,12 +1849,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& shape, int64 split_dimension, int64 concat_dimension,
     int64 split_count) {
   TF_RET_CHECK(split_count > 0);
-  if (split_dimension >= ShapeUtil::Rank(shape) || split_dimension < 0) {
+  if (split_dimension >= shape.rank() || split_dimension < 0) {
     return InvalidArgument(
         "AllToAll split_dimension %d is out-of-bounds in shape %s.",
         split_dimension, ShapeUtil::HumanString(shape));
   }
-  if (concat_dimension >= ShapeUtil::Rank(shape) || concat_dimension < 0) {
+  if (concat_dimension >= shape.rank() || concat_dimension < 0) {
     return InvalidArgument(
         "AllToAll concat_dimension %d is out-of-bounds in shape %s.",
         concat_dimension, ShapeUtil::HumanString(shape));
@@ -1932,7 +1928,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   // doesn't matter which one we choose.
   const Shape& arg = *reduced_args[0];
   for (int64 dimension : dimensions_to_reduce) {
-    if (dimension >= ShapeUtil::Rank(arg) || dimension < 0) {
+    if (dimension >= arg.rank() || dimension < 0) {
       return InvalidArgument("Reducing out-of-bounds dimension %d in shape %s.",
                              dimension, ShapeUtil::HumanString(arg));
     }
@@ -1949,7 +1945,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   std::set<int64> dimensions_to_reduce_set(dimensions_to_reduce.begin(),
                                            dimensions_to_reduce.end());
   std::vector<int64> new_dimensions;
-  for (int i = 0; i < ShapeUtil::Rank(arg); ++i) {
+  for (int i = 0; i < arg.rank(); ++i) {
     if (dimensions_to_reduce_set.find(i) == dimensions_to_reduce_set.end()) {
       new_dimensions.push_back(arg.dimensions(i));
     }
@@ -2041,7 +2037,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferGetDimensionSizeShape(
     const Shape& shape, int64 dimension) {
-  if (dimension < 0 || dimension >= ShapeUtil::Rank(shape)) {
+  if (dimension < 0 || dimension >= shape.rank()) {
     return InvalidArgument("GetDimensionSize dimension out of bounds: %d.",
                            dimension);
   }
@@ -2083,10 +2079,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                            starts.size(), strides.size()));
   }
 
-  if (starts.size() != ShapeUtil::Rank(arg)) {
+  if (starts.size() != arg.rank()) {
     return InvalidArgument(
         "Slice index count does not match argument rank: %u vs %d.",
-        starts.size(), ShapeUtil::Rank(arg));
+        starts.size(), arg.rank());
   }
 
   std::vector<int64> sizes;
@@ -2132,10 +2128,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       ShapeUtil::HumanString(operand_shape),
       ShapeUtil::HumanString(start_indices_shape), StrJoin(slice_sizes, ", "));
 
-  if (ShapeUtil::Rank(start_indices_shape) != 1) {
+  if (start_indices_shape.rank() != 1) {
     return InvalidArgument(
         "Dynamic slice start indices of rank %d must be rank1.",
-        ShapeUtil::Rank(start_indices_shape));
+        start_indices_shape.rank());
   }
 
   if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
@@ -2144,18 +2140,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   const int64 start_num_dims = start_indices_shape.dimensions(0);
-  if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
+  if (operand_shape.rank() != start_num_dims) {
     return InvalidArgument(
         "Dynamic slice start number of dimensions %d (%s) must match rank "
         "%d of slice input (%s).",
         start_num_dims, ShapeUtil::HumanString(start_indices_shape),
-        ShapeUtil::Rank(operand_shape), ShapeUtil::HumanString(operand_shape));
+        operand_shape.rank(), ShapeUtil::HumanString(operand_shape));
   }
 
-  if (slice_sizes.size() != ShapeUtil::Rank(operand_shape)) {
+  if (slice_sizes.size() != operand_shape.rank()) {
     return InvalidArgument(
         "Dynamic slice index count does not match argument rank: %u vs %d.",
-        slice_sizes.size(), ShapeUtil::Rank(operand_shape));
+        slice_sizes.size(), operand_shape.rank());
   }
 
   for (int64 dim = 0; dim < slice_sizes.size(); ++dim) {
@@ -2193,10 +2189,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       ShapeUtil::HumanString(start_indices_shape),
       ShapeUtil::HumanString(update_shape));
 
-  if (ShapeUtil::Rank(start_indices_shape) != 1) {
+  if (start_indices_shape.rank() != 1) {
     return InvalidArgument(
         "Dynamic update slice start indices of rank %d must be rank1.",
-        ShapeUtil::Rank(start_indices_shape));
+        start_indices_shape.rank());
   }
 
   if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
@@ -2205,19 +2201,19 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   const int64 start_num_dims = start_indices_shape.dimensions(0);
-  if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
+  if (operand_shape.rank() != start_num_dims) {
     return InvalidArgument(
         "Dynamic update slice start number of dimensions %d (%s) must match "
         "rank %d of slice input (%s).",
         start_num_dims, ShapeUtil::HumanString(start_indices_shape),
-        ShapeUtil::Rank(operand_shape), ShapeUtil::HumanString(operand_shape));
+        operand_shape.rank(), ShapeUtil::HumanString(operand_shape));
   }
 
-  if (ShapeUtil::Rank(update_shape) != ShapeUtil::Rank(operand_shape)) {
+  if (update_shape.rank() != operand_shape.rank()) {
     return InvalidArgument(
         "Dynamic update slice update rank does not match argument rank: "
         "%d vs %d.",
-        ShapeUtil::Rank(update_shape), ShapeUtil::Rank(operand_shape));
+        update_shape.rank(), operand_shape.rank());
   }
 
   if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(operand_shape,
@@ -2229,7 +2225,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         PrimitiveType_Name(update_shape.element_type()));
   }
 
-  for (int64 dim = 0; dim < ShapeUtil::Rank(operand_shape); ++dim) {
+  for (int64 dim = 0; dim < operand_shape.rank(); ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 update_dim_size = update_shape.dimensions(dim);
     if (update_dim_size < 0) {
@@ -2255,7 +2251,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     return InvalidArgument("a dimension number is duplicated in reverse");
   }
   for (int64 dimension : dimensions) {
-    if (dimension >= ShapeUtil::Rank(operand_shape) || dimension < 0) {
+    if (dimension >= operand_shape.rank() || dimension < 0) {
       return InvalidArgument(
           "One of the reverse dimensions (%d) is out-of-bounds in shape %s.",
           dimension, ShapeUtil::HumanString(operand_shape));
@@ -2397,8 +2393,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64> broadcast_dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of broadcast"));
   TF_RETURN_IF_ERROR(ExpectArray(output_shape, "operand of broadcast"));
-  const int64 operand_rank = ShapeUtil::Rank(operand_shape);
-  const int64 output_rank = ShapeUtil::Rank(output_shape);
+  const int64 operand_rank = operand_shape.rank();
+  const int64 output_rank = output_shape.rank();
   if (operand_rank > output_rank) {
     return InvalidArgument(
         "InDim style broadcast must be to an equal or higher ranked shape; "
@@ -2457,9 +2453,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(inferred_shape));
   }
 
-  std::vector<int64> indices(ShapeUtil::Rank(operand));
+  std::vector<int64> indices(operand.rank());
   std::iota(indices.begin(), indices.end(), 0);
-  if (dimensions.size() != ShapeUtil::Rank(operand) ||
+  if (dimensions.size() != operand.rank() ||
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
@@ -2475,9 +2471,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& operand, absl::Span<const int64> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
-  std::vector<int64> indices(ShapeUtil::Rank(operand));
+  std::vector<int64> indices(operand.rank());
   std::iota(indices.begin(), indices.end(), 0);
-  if (dimensions.size() != ShapeUtil::Rank(operand) ||
+  if (dimensions.size() != operand.rank() ||
       !std::is_permutation(dimensions.begin(), dimensions.end(),
                            indices.begin())) {
     return InvalidArgument(
@@ -2829,7 +2825,7 @@ Status ValidateScatterDimensionNumbers(
         "update_window_dims in scatter op must not repeat; got: %s.",
         StrJoin(dim_numbers.update_window_dims(), ", "));
   }
-  const int64 updates_rank = ShapeUtil::Rank(updates_shape);
+  const int64 updates_rank = updates_shape.rank();
   for (int64 window_dim : dim_numbers.update_window_dims()) {
     if (window_dim < 0 || window_dim >= updates_rank) {
       return InvalidArgument(
@@ -2863,10 +2859,10 @@ Status ValidateScatterDimensionNumbers(
   // Validate window size.
   auto window_size = dim_numbers.update_window_dims_size() +
                      dim_numbers.inserted_window_dims_size();
-  if (window_size != ShapeUtil::Rank(operand_shape)) {
+  if (window_size != operand_shape.rank()) {
     return InvalidArgument(
         "Scatter op has window of size %d; doesn't match operand of rank %d.",
-        window_size, ShapeUtil::Rank(operand_shape));
+        window_size, operand_shape.rank());
   }
 
   // Validate scatter_dims_to_operand_dims in ScatterDimensionNumbers.
@@ -2951,10 +2947,9 @@ Status ValidateScatterDimensionNumbers(
 
   int64 expected_updates_rank = expanded_scatter_indices_shape.size() - 1 +
                                 scatter_dim_numbers.update_window_dims_size();
-  if (ShapeUtil::Rank(updates_shape) != expected_updates_rank) {
+  if (updates_shape.rank() != expected_updates_rank) {
     return InvalidArgument("Updates tensor must be of rank %d; got %d.",
-                           expected_updates_rank,
-                           ShapeUtil::Rank(updates_shape));
+                           expected_updates_rank, updates_shape.rank());
   }
 
   TF_RETURN_IF_ERROR(ValidateScatterDimensionNumbers(
@@ -2985,7 +2980,7 @@ Status ValidateScatterDimensionNumbers(
   }
 
   int64 scatter_dims_seen = 0;
-  for (int64 i = 0; i < ShapeUtil::Rank(updates_shape); ++i) {
+  for (int64 i = 0; i < updates_shape.rank(); ++i) {
     bool is_update_window_dim =
         absl::c_binary_search(scatter_dim_numbers.update_window_dims(), i);
     if (is_update_window_dim) {

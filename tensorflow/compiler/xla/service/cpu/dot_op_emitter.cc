@@ -1550,7 +1550,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 }
 
 // Return whether the given shape is rank 2.
-static bool IsRank2(const Shape& shape) { return ShapeUtil::Rank(shape) == 2; }
+static bool IsRank2(const Shape& shape) { return shape.rank() == 2; }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
 // are valid for the operation.
