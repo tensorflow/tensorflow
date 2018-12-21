@@ -505,7 +505,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     context->ResizeTensor(context, fw_output, fw_output_size));
 
   // The weights are of consistent type, so it suffices to check one.
-  const bool is_hybrid_op = (fw_input_to_output_weights->type == kTfLiteUInt8);
+  const bool is_hybrid_op = (fw_input_to_output_weights->type == kTfLiteUInt8 ||
+                             fw_input_to_output_weights->type == kTfLiteInt8);
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
@@ -603,7 +604,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kInputQuantized;
     TfLiteTensor* input_quantized =
         GetTemporary(context, node, kInputQuantized);
-    input_quantized->type = kTfLiteUInt8;
+    input_quantized->type = fw_input_to_output_weights->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
       TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
@@ -615,7 +616,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kFwActivationStateQuantized;
     TfLiteTensor* fw_activation_state_quantized =
         GetTemporary(context, node, kFwActivationStateQuantized);
-    fw_activation_state_quantized->type = kTfLiteUInt8;
+    fw_activation_state_quantized->type = fw_input_to_output_weights->type;
     fw_activation_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(fw_activation_state_quantized->dims,
                              fw_activation_state->dims)) {
@@ -629,7 +630,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kBwActivationStateQuantized;
     TfLiteTensor* bw_activation_state_quantized =
         GetTemporary(context, node, kBwActivationStateQuantized);
-    bw_activation_state_quantized->type = kTfLiteUInt8;
+    bw_activation_state_quantized->type = fw_input_to_output_weights->type;
     bw_activation_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(bw_activation_state_quantized->dims,
                              bw_activation_state->dims)) {
@@ -643,7 +644,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kFwCellStateQuantized;
     TfLiteTensor* fw_cell_state_quantized =
         GetTemporary(context, node, kFwCellStateQuantized);
-    fw_cell_state_quantized->type = kTfLiteUInt8;
+    fw_cell_state_quantized->type = fw_input_to_output_weights->type;
     fw_cell_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(fw_cell_state_quantized->dims,
                              fw_cell_state->dims)) {
@@ -657,7 +658,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kBwCellStateQuantized;
     TfLiteTensor* bw_cell_state_quantized =
         GetTemporary(context, node, kBwCellStateQuantized);
-    bw_cell_state_quantized->type = kTfLiteUInt8;
+    bw_cell_state_quantized->type = fw_input_to_output_weights->type;
     bw_cell_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(bw_cell_state_quantized->dims,
                              bw_cell_state->dims)) {
@@ -726,7 +727,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           *scratch_tensor_index + kAuxInputQuantized;
       TfLiteTensor* aux_input_quantized =
           GetTemporary(context, node, kAuxInputQuantized);
-      aux_input_quantized->type = kTfLiteUInt8;
+      aux_input_quantized->type = fw_input_to_output_weights->type;
       aux_input_quantized->allocation_type = kTfLiteArenaRw;
       if (!TfLiteIntArrayEqual(aux_input_quantized->dims, aux_input->dims)) {
         TfLiteIntArray* aux_input_quantized_size =
@@ -922,7 +923,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, bw_pass_status);
       return kTfLiteOk;
     }
-    case kTfLiteUInt8: {
+    case kTfLiteUInt8:
+    case kTfLiteInt8: {
       TfLiteTensor* input_quantized =
           GetTemporary(context, node, kInputQuantized);
       TfLiteTensor* fw_activation_state_quantized =
