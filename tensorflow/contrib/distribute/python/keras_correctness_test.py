@@ -26,6 +26,7 @@ from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras.engine import distributed_training_utils
@@ -170,54 +171,32 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
   return training_inputs, eval_inputs, predict_inputs
 
 
-strategies_minus_tpu = [
+all_strategies = [
     combinations.default_strategy,
     combinations.one_device_strategy,
     combinations.mirrored_strategy_with_gpu_and_cpu,
     combinations.mirrored_strategy_with_two_gpus,
     combinations.core_mirrored_strategy_with_gpu_and_cpu,
-    combinations.core_mirrored_strategy_with_two_gpus]
-
-tpu_strategies = [
+    combinations.core_mirrored_strategy_with_two_gpus,
     combinations.tpu_strategy,  # steps_per_run=2
-    combinations.tpu_strategy_one_step]
+    combinations.tpu_strategy_one_step,
+]
 
 
-def strategy_minus_tpu_combinations():
-  return combinations.combine(
-      distribution=strategies_minus_tpu,
-      mode=['graph', 'eager'])
-
-
-def tpu_strategy_combinations():
-  return combinations.combine(
-      distribution=tpu_strategies,
-      mode=['graph'])
-
-
-def all_strategy_combinations():
-  return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
+def all_strategy_combinations_with_eager_and_graph_modes():
+  return combinations.combine(distribution=all_strategies,
+                              mode=['graph', 'eager'])
 
 
 def all_strategy_combinations_with_graph_mode():
-  return combinations.combine(
-      distribution=strategies_minus_tpu,
-      mode=['graph']) + tpu_strategy_combinations()
+  return combinations.combine(distribution=all_strategies, mode=['graph'])
 
 
 def strategy_and_input_combinations():
   return (
       combinations.times(
-          combinations.combine(distribution=strategies_minus_tpu),
-          combinations.combine(mode=['graph'],
-                               use_numpy=[True, False],
-                               use_validation_data=[True, False])
-          + combinations.combine(mode=['eager'],
-                                 use_numpy=[False],
-                                 use_validation_data=[False])) +
-      combinations.times(
-          combinations.combine(distribution=tpu_strategies),
-          combinations.combine(mode=['graph'],
+          combinations.combine(distribution=all_strategies),
+          combinations.combine(mode=['graph', 'eager'],
                                use_numpy=[True, False],
                                use_validation_data=[True, False])))
 
@@ -302,8 +281,15 @@ class LearningRateBatchScheduler(keras.callbacks.Callback):
 class TestDistributionStrategyCorrectness(test.TestCase,
                                           parameterized.TestCase):
 
-  @combinations.generate(all_strategy_combinations())
+  def _should_skip_tpu_with_eager(self, distribution):
+    return (context.executing_eagerly() and
+            isinstance(distribution, tpu_strategy.TPUStrategy))
+
+  @combinations.generate(all_strategy_combinations_with_eager_and_graph_modes())
   def test_metric_correctness(self, distribution):
+    if self._should_skip_tpu_with_eager(distribution):
+      self.skipTest('TPUStrategy does not support eager mode now.')
+
     with self.cached_session():
       keras.backend.set_image_data_format('channels_last')
       num_samples = 10000
@@ -334,8 +320,11 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       history = model.fit(x=train_dataset, epochs=2, steps_per_epoch=10)
       self.assertEqual(history.history['binary_accuracy'], [1.0, 1.0])
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(all_strategy_combinations_with_eager_and_graph_modes())
   def test_eval_metrics_correctness(self, distribution):
+    if self._should_skip_tpu_with_eager(distribution):
+      self.skipTest('TPUStrategy does not support eager mode now.')
+
     with self.cached_session():
       with distribution.scope():
         model = keras.Sequential()
@@ -368,6 +357,15 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
   @combinations.generate(strategy_and_input_combinations())
   def test_correctness(self, distribution, use_numpy, use_validation_data):
+    if self._should_skip_tpu_with_eager(distribution):
+      self.skipTest('TPUStrategy does not support eager mode now.')
+
+    if context.executing_eagerly() and use_numpy:
+      self.skipTest('Numpy as inputs is not supported with strategy in eager.')
+
+    if context.executing_eagerly() and use_validation_data:
+      self.skipTest('TODO')
+
     with self.cached_session():
 
       keras.backend.set_image_data_format('channels_last')
@@ -404,6 +402,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
 
   @combinations.generate(all_strategy_combinations_with_graph_mode())
   def test_dynamic_lr(self, distribution):
+
     with self.cached_session():
 
       keras.backend.set_image_data_format('channels_last')
