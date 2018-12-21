@@ -356,10 +356,18 @@ tensorflow::Status GetEngineInfo(
     if (segment_nodes.count(node_name) == 0) continue;
     auto node = *it;
     auto node_device = node->requested_device();
+    LOG(INFO) << "requested: " << node_device;
+    DeviceNameUtils::ParsedName parsed_name;
+    if (DeviceNameUtils::ParseFullName(node_device, &parsed_name) && parsed_name.type == "CPU") {
+      LOG(INFO) << "type: " << parsed_name.type;
+      LOG(INFO) << "clear!";
+      node_device.clear();
+    }
     if (!node_device.empty()) {
       segment_devices.insert(node_device);
     } else {
       if (node->has_assigned_device_name()) {
+        LOG(INFO) << "assigned: " << node->assigned_device_name();
         segment_devices.insert(node->assigned_device_name());
       } else {
         VLOG(2) << "Node " << node->name()
@@ -897,6 +905,8 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
       StrAppend(&msg, ". Will get the allocator from first one.");
       LOG(WARNING) << msg;
     }
+    LOG(INFO) << "here12";
+    LOG(INFO) << devices[0]->name();
     tensorflow::AllocatorAttributes alloc_attr;
     cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
     dev_allocator = devices[0]->GetAllocator(alloc_attr);
@@ -1008,8 +1018,11 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   VLOG(1) << "Current cuda device is " << old_cuda_device;
   std::vector<Node*> engine_nodes;
   engine_nodes.resize(engine_segments.size());
+  LOG(INFO) << "here " << engine_segments.size();
   for (int i = 0; i < engine_segments.size(); ++i) {
     auto& engine = engine_segments.at(i);
+
+    LOG(INFO) << "here4 ";
     // Partition the workspace size by the average of node ratio and segment
     // graphdef size
     engine.max_workspace_size_bytes =
