@@ -44,6 +44,9 @@ class FuzzScatterNd : public FuzzSession {
     // indices_tensor. Rather than using random values for the
     // updates_tensor.shape and getting most of the fuzz runs stopped in the
     // check, it's better to just create a proper update_tensor.
+    if (size < 1) {
+      return;
+    }
 
     // First element of the data buffer gives the number of dimensions of the
     // shape tensor.
