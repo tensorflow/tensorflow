@@ -236,6 +236,24 @@ class LoadTest(test.TestCase):
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(27, imported.f(constant_op.constant(2)).numpy())
 
+  def test_side_effect_listing(self):
+    class M(tracking.Checkpointable):
+
+      def __init__(self):
+        super(M, self).__init__()
+        self.var = None
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+      def f(self, x):
+        if self.var is None:
+          self.var = variables.Variable(2.)
+        return x * self.var
+
+    m = M()
+    self.cycle(m)
+    self.assertEquals(4.0, m.f(constant_op.constant(2.0)).numpy())
+
 
 if __name__ == "__main__":
   test.main()
