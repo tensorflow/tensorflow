@@ -734,7 +734,7 @@ HloMapInstruction::HloMapInstruction(const Shape& shape,
   AppendComputation(map_computation);
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
-  dimensions_.resize(ShapeUtil::Rank(shape));
+  dimensions_.resize(shape.rank());
   std::iota(dimensions_.begin(), dimensions_.end(), 0);
 }
 

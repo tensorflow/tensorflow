@@ -349,7 +349,7 @@ Status ShapeVerifier::HandleConstant(HloInstruction* constant) {
 Status ShapeVerifier::HandleIota(HloInstruction* instruction) {
   TF_RETURN_IF_ERROR(CheckOperandCount(instruction, 0));
   auto* iota = Cast<HloIotaInstruction>(instruction);
-  const int64 rank = ShapeUtil::Rank(iota->shape());
+  const int64 rank = iota->shape().rank();
   if (rank == 0) {
     return InternalError("Iota does not support scalars.");
   }
@@ -397,13 +397,11 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   const Shape& operand_shape = broadcast->operand(0)->shape();
   // Check for mixed precision.
   TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape));
-  TF_RET_CHECK(ShapeUtil::Rank(operand_shape) ==
-               broadcast->dimensions().size());
-  for (int64 operand_dimension = 0;
-       operand_dimension < ShapeUtil::Rank(operand_shape);
+  TF_RET_CHECK(operand_shape.rank() == broadcast->dimensions().size());
+  for (int64 operand_dimension = 0; operand_dimension < operand_shape.rank();
        ++operand_dimension) {
     int64 output_dimension = broadcast->dimensions()[operand_dimension];
-    TF_RET_CHECK((output_dimension < ShapeUtil::Rank(broadcast->shape())) &&
+    TF_RET_CHECK((output_dimension < broadcast->shape().rank()) &&
                  output_dimension >= 0 &&
                  (broadcast->shape().dimensions(output_dimension) ==
                   operand_shape.dimensions(operand_dimension)))
@@ -524,8 +522,7 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
   int64 max_operand_rank = 0;
   for (const HloInstruction* operand : map->operands()) {
     operand_shapes.push_back(&operand->shape());
-    max_operand_rank =
-        std::max(max_operand_rank, ShapeUtil::Rank(operand->shape()));
+    max_operand_rank = std::max(max_operand_rank, operand->shape().rank());
   }
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
@@ -1271,11 +1268,11 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     // op. See https://groups.google.com/forum/#!topic/xla-dev/9LqijHmTt_I
     // or ComputationLowerer::Visit()
     TF_RET_CHECK(broadcast->dimensions().size() ==
-                 ShapeUtil::Rank(broadcast->operand(0)->shape()))
+                 broadcast->operand(0)->shape().rank())
         << "Broadcast HLO (" << broadcast->ToShortString()
         << ") has invalid number of dimensions: "
         << broadcast->dimensions().size()
-        << " != " << ShapeUtil::Rank(broadcast->operand(0)->shape());
+        << " != " << broadcast->operand(0)->shape().rank();
     return Status::OK();
   }
 
@@ -1376,7 +1373,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
         if (LayoutUtil::IsDenseArray(operand_shape) &&
-            ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(result_shape)) {
+            operand_shape.rank() == result_shape.rank()) {
           const Layout& operand_layout = operand_shape.layout();
           TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "

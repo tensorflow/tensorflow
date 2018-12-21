@@ -178,7 +178,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
 // Converts an int32 or int64 scalar literal to an int64.
 static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
                                    int64* out) {
-  if (xla::ShapeUtil::Rank(literal.shape()) != 0) {
+  if (literal.shape().rank() != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::S32) {
@@ -194,7 +194,7 @@ static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
 // Converts an float32 or float64 scalar literal to a float64.
 static Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
                                      double* out) {
-  if (xla::ShapeUtil::Rank(literal.shape()) != 0) {
+  if (literal.shape().rank() != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::F32) {
@@ -228,7 +228,7 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(int index, double* out) {
 // Converts an int32 or int64 1D literal to an int64 vector.
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                    std::vector<int64>* out) {
-  if (xla::ShapeUtil::Rank(literal.shape()) != 1) {
+  if (literal.shape().rank() != 1) {
     return errors::InvalidArgument("value is not 1D");
   }
   int64 size = xla::ShapeUtil::ElementsIn(literal.shape());

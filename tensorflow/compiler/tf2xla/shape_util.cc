@@ -39,7 +39,7 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
       layouts->push_back(dim);
     }
   } else {
-    layouts->insert(layouts->end(), xla::ShapeUtil::Rank(shape), -1);
+    layouts->insert(layouts->end(), shape.rank(), -1);
   }
   return Status::OK();
 }
@@ -55,7 +55,7 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
                                    " cannot be converted to a TensorShape");
   }
   *tensor_shape = TensorShape();
-  for (int i = 0; i < xla::ShapeUtil::Rank(shape); ++i) {
+  for (int i = 0; i < shape.rank(); ++i) {
     tensor_shape->AddDim(shape.dimensions(i));
   }
   return Status::OK();

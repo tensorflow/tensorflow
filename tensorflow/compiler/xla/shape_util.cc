@@ -679,8 +679,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 /* static */ int64 ShapeUtil::ByteSizeOfSparseIndices(const Shape& shape) {
   TF_DCHECK_OK(ValidateShape(shape));
   CHECK(LayoutUtil::IsSparseArray(shape));
-  return LayoutUtil::MaxSparseElements(shape.layout()) *
-         ShapeUtil::Rank(shape) * sizeof(int64);
+  return LayoutUtil::MaxSparseElements(shape.layout()) * shape.rank() *
+         sizeof(int64);
 }
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
@@ -763,7 +763,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
         return sparse_elements_size;
       }
       int64 sparse_indices_size =
-          MultiplyWithoutOverflow(max_sparse_elements, ShapeUtil::Rank(shape));
+          MultiplyWithoutOverflow(max_sparse_elements, shape.rank());
       if (sparse_indices_size < 0) {
         return sparse_indices_size;
       }

@@ -348,7 +348,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         const Shape& slice_shape = use->opcode() == HloOpcode::kDynamicSlice
                                        ? use->shape()
                                        : use->operand(1)->shape();
-        const int64 rank = ShapeUtil::Rank(indexed_shape);
+        const int64 rank = indexed_shape.rank();
         if (!index_space.empty()) {
           TF_RET_CHECK(rank == index_space.size());
           for (int64 i = 0; i < rank; ++i) {
@@ -459,8 +459,8 @@ Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
 std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs) {
-  CHECK_EQ(ShapeUtil::Rank(lhs->shape()), 2);
-  CHECK_EQ(ShapeUtil::Rank(rhs->shape()), 2);
+  CHECK_EQ(lhs->shape().rank(), 2);
+  CHECK_EQ(rhs->shape().rank(), 2);
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
       2, PrecisionConfig::DEFAULT);

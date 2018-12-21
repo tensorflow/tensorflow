@@ -44,6 +44,10 @@ class Shape {
   // without layout. e.g. "F32[42,12] {0, 1}" or "F32[64]".
   string ToString(bool print_layout = false) const;
 
+  // Returns the rank (number of dimensions) of the given shape. Shape must be
+  // an array.
+  int64 rank() const;
+
   // The following methods mirror the protobuf generated code interface for the
   // message ShapeProto. This enabled easy migration of this data structure
   // from a proto to a proper C++ class.

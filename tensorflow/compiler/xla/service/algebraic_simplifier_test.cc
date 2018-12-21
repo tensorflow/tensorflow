@@ -3498,7 +3498,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 
   // Create the reduce-window.
   Window window;
-  for (int64 i = 0; i < ShapeUtil::Rank(pad->shape()); ++i) {
+  for (int64 i = 0; i < pad->shape().rank(); ++i) {
     auto* dim = window.add_dimensions();
     dim->set_size(1);
     dim->set_padding_low(10);
@@ -3584,7 +3584,7 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
 
   // Create the reduce-window.
   Window window;
-  for (int64 i = 0; i < ShapeUtil::Rank(pad->shape()); ++i) {
+  for (int64 i = 0; i < pad->shape().rank(); ++i) {
     auto* dim = window.add_dimensions();
     dim->set_size(1);
     dim->set_padding_low(10);

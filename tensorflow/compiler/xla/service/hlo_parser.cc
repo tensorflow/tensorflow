@@ -1980,7 +1980,7 @@ bool HloParser::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
 }
 
 bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
-  const tensorflow::int64 rank = ShapeUtil::Rank(shape);
+  const tensorflow::int64 rank = shape.rank();
   // Create a literal with the given shape in default layout.
   *literal = LiteralUtil::CreateFromDimensions(
       shape.element_type(), AsInt64Slice(shape.dimensions()));
@@ -2145,7 +2145,7 @@ template <typename LiteralNativeT>
 bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
   std::vector<tensorflow::int64> index;
 
-  tensorflow::int64 rank = ShapeUtil::Rank(shape);
+  tensorflow::int64 rank = shape.rank();
 
   *literal = Literal(shape);
 

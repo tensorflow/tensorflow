@@ -129,7 +129,7 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
             new char[max_sparse_elements *
                      ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type())]);
         piece->set_sparse_indices(
-            new SparseIndexArray(max_sparse_elements, ShapeUtil::Rank(shape)));
+            new SparseIndexArray(max_sparse_elements, shape.rank()));
       } else {
         piece->set_buffer(new char[piece->size_bytes()]);
       }
@@ -208,16 +208,15 @@ template <typename NativeT>
 Status MutableLiteralBase::CopySliceFromInternal(
     const LiteralBase& src_literal, absl::Span<const int64> src_base,
     absl::Span<const int64> dest_base, absl::Span<const int64> copy_size) {
-  TF_RET_CHECK(ShapeUtil::Rank(src_literal.shape()) == src_base.size());
-  TF_RET_CHECK(ShapeUtil::Rank(shape()) == dest_base.size());
+  TF_RET_CHECK(src_literal.shape().rank() == src_base.size());
+  TF_RET_CHECK(shape().rank() == dest_base.size());
 
   auto linear_index = [](const Shape& shape,
                          absl::Span<const int64> multi_index) {
     return IndexUtil::MultidimensionalIndexToLinearIndex(shape, multi_index);
   };
 
-  if (ShapeUtil::Rank(src_literal.shape()) == 0 ||
-      ShapeUtil::Rank(shape()) == 0) {
+  if (src_literal.shape().rank() == 0 || shape().rank() == 0) {
     // If any of the two shapes are scalars, we can just call the StridedCopy()
     // directly, and we know we will be copying only one value.
     TF_RET_CHECK(copy_size.empty());
@@ -375,7 +374,7 @@ void CopyElementsBetween(absl::Span<NativeT> dest,
   if (ShapeUtil::IsZeroElementArray(dest_shape)) {
     return;
   }
-  std::vector<int64> index(ShapeUtil::Rank(dest_shape));
+  std::vector<int64> index(dest_shape.rank());
   do {
     dest[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape, index)] =
         src[IndexUtil::MultidimensionalIndexToLinearIndex(src_shape, index)];
@@ -392,7 +391,7 @@ Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src) {
     memcpy(buffer(), src.buffer(), src.size_bytes());
   } else {
     TF_RET_CHECK(ShapeUtil::Compatible(src.subshape(), subshape()));
-    std::vector<int64> origin(ShapeUtil::Rank(subshape()), 0);
+    std::vector<int64> origin(subshape().rank(), 0);
     switch (subshape().element_type()) {
 #define COPY_ELEMENTS(XLA_T, NATIVE_T)                                    \
   case (XLA_T):                                                           \
@@ -563,7 +562,7 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
 
 void MutableLiteralBase::PopulateR1(const tensorflow::core::Bitmap& values) {
   CHECK(ShapeUtil::IsArray(shape()));
-  CHECK_EQ(ShapeUtil::Rank(shape()), 1);
+  CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(element_count(), values.bits());
   CHECK_EQ(shape().element_type(), PRED);
   for (int64 i = 0; i < static_cast<int64>(values.bits()); ++i) {
@@ -648,8 +647,7 @@ StatusOr<Literal> LiteralBase::Reshape(
   }
   Literal output;
   if (!LayoutUtil::IsMonotonicWithDim0Major(shape().layout())) {
-    output =
-        Relayout(LayoutUtil::GetDefaultLayoutForRank(ShapeUtil::Rank(shape())));
+    output = Relayout(LayoutUtil::GetDefaultLayoutForRank(shape().rank()));
   } else {
     output = Clone();
   }
@@ -672,7 +670,7 @@ StatusOr<Literal> LiteralBase::Reshape(
 
 Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
   CHECK(ShapeUtil::IsArray(shape())) << "Tuple is not supported for transpose";
-  CHECK(IsPermutation(permutation, ShapeUtil::Rank(shape())))
+  CHECK(IsPermutation(permutation, shape().rank()))
       << "Given permutation is not a permutation of dimension numbers";
   // To transpose the array, we just permute the dimensions and layout, and
   // do a straight memory copy of the raw data set.
@@ -711,10 +709,10 @@ template <typename NativeT>
 Literal LiteralBase::SliceInternal(
     const Shape& result_shape, absl::Span<const int64> start_indices) const {
   Literal result_literal(result_shape);
-  DimensionVector new_indices(ShapeUtil::Rank(result_shape));
+  DimensionVector new_indices(result_shape.rank());
   result_literal.EachCell<NativeT>(
       [&](absl::Span<const int64> indices, NativeT /*value*/) {
-        for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
+        for (int64 i = 0; i < result_shape.rank(); ++i) {
           new_indices[i] = indices[i] + start_indices[i];
         }
         NativeT value = Get<NativeT>(new_indices);
@@ -728,7 +726,7 @@ Literal LiteralBase::Slice(absl::Span<const int64> start_indices,
   CHECK(ShapeUtil::IsArray(shape())) << "tuple is not supported for slice";
 
   DimensionVector result_dimensions;
-  for (int64 dnum = 0; dnum < ShapeUtil::Rank(shape()); ++dnum) {
+  for (int64 dnum = 0; dnum < shape().rank(); ++dnum) {
     CHECK_GE(start_indices[dnum], 0);
     CHECK_LE(limit_indices[dnum], shape().dimensions(dnum))
         << "dnum = " << dnum;
@@ -1056,7 +1054,7 @@ void SparseArrayToStringHelper(const LiteralBase& literal,
     pieces->push_back(ShapeToString(print_layout, subshape));
   }
   pieces->push_back("{");
-  int64 rank = ShapeUtil::Rank(subshape);
+  int64 rank = subshape.rank();
   int64 num_elements = literal.sparse_element_count();
   for (int64 i = 0; i < num_elements; ++i) {
     if (i > 0) {
@@ -1079,7 +1077,7 @@ void DenseArrayToStringHelper(const LiteralBase& literal,
                               const ShapeIndex& shape_index, bool print_shape,
                               bool print_layout, std::vector<string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
-  int64 rank = ShapeUtil::Rank(subshape);
+  int64 rank = subshape.rank();
 
   std::function<void(absl::Span<const int64> dimensions, std::vector<int64>*)>
       to_string_recursive = [&](absl::Span<const int64> dimensions,
@@ -1433,7 +1431,7 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
 template <typename NativeT>
 bool LiteralBase::Piece::EqualElementsInternal(
     const LiteralBase::Piece& other, std::vector<int64>* multi_index) const {
-  if (multi_index->size() == ShapeUtil::Rank(subshape())) {
+  if (multi_index->size() == subshape().rank()) {
     return (Get<NativeT>(*multi_index) == other.Get<NativeT>(*multi_index));
   }
   for (int64 i = 0; i < subshape().dimensions(multi_index->size()); ++i) {
@@ -1722,7 +1720,7 @@ bool LiteralBase::IsR1Iota() const {
     return false;
   }
 
-  if (ShapeUtil::Rank(shape()) != 1) {
+  if (shape().rank() != 1) {
     return false;
   }
 
@@ -1932,14 +1930,12 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   if (LayoutUtil::IsSparseArray(subshape())) {
     // Compute the number of elements (indices) in the sparse shape and reserve
     // the necessary space in spare_indices.
-    TF_RET_CHECK(ShapeUtil::Rank(subshape()) != 0)
-        << "Scalar shapes cannot be sparse";
-    TF_RET_CHECK(proto.sparse_indices_size() % ShapeUtil::Rank(subshape()) == 0)
+    TF_RET_CHECK(subshape().rank() != 0) << "Scalar shapes cannot be sparse";
+    TF_RET_CHECK(proto.sparse_indices_size() % subshape().rank() == 0)
         << "Unexpected number of indices in proto ("
         << proto.sparse_indices_size() << ") for shape of rank "
-        << ShapeUtil::Rank(subshape());
-    const int64 index_count =
-        proto.sparse_indices_size() / ShapeUtil::Rank(subshape());
+        << subshape().rank();
+    const int64 index_count = proto.sparse_indices_size() / subshape().rank();
     sparse_indices()->Resize(index_count);
 
     // Copy the indices from the proto into the SparseIndexArray object.
@@ -2065,7 +2061,7 @@ int64 LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
 
 string LiteralBase::GetR1U8AsString() const {
   CHECK(ShapeUtil::IsArray(shape()));
-  CHECK_EQ(ShapeUtil::Rank(shape()), 1);
+  CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(shape().element_type(), U8);
   return string(absl::bit_cast<const char*>(data<uint8>().data()),
                 ShapeUtil::ElementsIn(shape()));

@@ -30,7 +30,7 @@ HloSharding HloSharding::AssignDevice(int64 device_id) {
 }
 
 HloSharding HloSharding::Tile1D(const Shape& input_shape, int64 num_tiles) {
-  CHECK_EQ(1, ShapeUtil::Rank(input_shape));
+  CHECK_EQ(1, input_shape.rank());
   CHECK_GT(num_tiles, 1);
   std::vector<int64> dimensions(1, num_tiles);
   Array<int64> assignment(dimensions);
@@ -340,7 +340,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   }
 
   // The tile assignment tensor must have the same rank as the input.
-  if (ShapeUtil::Rank(shape) != tile_assignment_.num_dimensions()) {
+  if (shape.rank() != tile_assignment_.num_dimensions()) {
     return tensorflow::errors::InvalidArgument(
         "Number of tile assignment dimensions is different to the input rank. "
         "sharding=",

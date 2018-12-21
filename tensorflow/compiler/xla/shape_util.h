@@ -298,6 +298,7 @@ class ShapeUtil {
 
   // Returns the rank (number of dimensions) of the given shape.
   // Precondition: !IsTuple(shape)
+  ABSL_DEPRECATED("Use `Shape::rank` instead.")
   static int64 Rank(const Shape& shape);
 
   // Returns the number of dimensions for which the dimension is not (trivially)

@@ -698,8 +698,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   const auto* source = select_and_scatter->operand(1);
   const Window& window = select_and_scatter->window();
   PrimitiveType operand_element_type = operand->shape().element_type();
-  const int64 rank = ShapeUtil::Rank(operand->shape());
-  CHECK_EQ(rank, ShapeUtil::Rank(source->shape()));
+  const int64 rank = operand->shape().rank();
+  CHECK_EQ(rank, source->shape().rank());
   CHECK_EQ(rank, window.dimensions_size());
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
@@ -1015,7 +1015,7 @@ Status IrEmitterUnnested::EmitScatter(
     int64 raw_window_multidim_idx = 0;
     std::vector<llvm::Value*> input_window_multidim;
     std::vector<int64> input_window_bounds;
-    for (int64 i = 0, e = ShapeUtil::Rank(operand->shape()); i != e; ++i) {
+    for (int64 i = 0, e = operand->shape().rank(); i != e; ++i) {
       if (absl::c_binary_search(dim_numbers.inserted_window_dims(), i)) {
         input_window_bounds.push_back(1);  // Trivial dimension.
         input_window_multidim.push_back(index.GetConstantWithIndexType(0));
@@ -1027,12 +1027,11 @@ Status IrEmitterUnnested::EmitScatter(
         ++raw_window_multidim_idx;
       }
     }
-    DCHECK_EQ(input_window_multidim.size(), ShapeUtil::Rank(operand->shape()));
+    DCHECK_EQ(input_window_multidim.size(), operand->shape().rank());
 
     // Insert a 1 dimension at the end if index_vector_dim requests one.
     Shape scatter_indices_shape = scatter_indices->shape();
-    if (dim_numbers.index_vector_dim() ==
-        ShapeUtil::Rank(scatter_indices_shape)) {
+    if (dim_numbers.index_vector_dim() == scatter_indices_shape.rank()) {
       scatter_indices_shape.add_dimensions(1);
       scatter_indices_shape.mutable_layout()->add_minor_to_major(
           dim_numbers.index_vector_dim());
@@ -3191,7 +3190,7 @@ Status AreFusedReductionOutputsConsistent(
 // dimensions from minor to major.
 DimensionVector GetDimensionsToKeepMinorToMajor(
     const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
-  DimensionVector input_dims(ShapeUtil::Rank(input_shape), 0);
+  DimensionVector input_dims(input_shape.rank(), 0);
   absl::c_iota(input_dims, 0);
   DimensionVector input_dims_to_keep;
   for (int input_dim : input_dims) {
@@ -3231,7 +3230,7 @@ std::tuple<int64, int64, int64> GetReductionToVectorDimensions(
   if (input_dims_to_keep_minor_to_major.empty()) {
     return std::make_tuple(num_reduced_major, num_kept, num_reduced_minor);
   }
-  DimensionVector input_dims(ShapeUtil::Rank(input_shape), 0);
+  DimensionVector input_dims(input_shape.rank(), 0);
   absl::c_iota(input_dims, 0);
   absl::Span<const int64> minor_to_major =
       LayoutUtil::MinorToMajor(input_shape);

@@ -1039,7 +1039,7 @@ HloInstruction::CreateBroadcastSequence(
     const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
         adder) {
   CHECK(ShapeUtil::IsScalar(operand->shape()) ||
-        ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape));
+        operand->shape().rank() == output_shape.rank());
   Shape broadcast_shape = ShapeUtil::ChangeElementType(
       output_shape, operand->shape().element_type());
   // Do explicit broadcast for scalar.
@@ -1055,7 +1055,7 @@ HloInstruction::CreateBroadcastSequence(
   // Do explicit broadcast for degenerate broadcast.
   std::vector<int64> broadcast_dimensions;
   std::vector<int64> reshaped_dimensions;
-  for (int i = 0; i < ShapeUtil::Rank(operand->shape()); i++) {
+  for (int i = 0; i < operand->shape().rank(); i++) {
     if (operand->shape().dimensions(i) == output_shape.dimensions(i)) {
       broadcast_dimensions.push_back(i);
       reshaped_dimensions.push_back(operand->shape().dimensions(i));

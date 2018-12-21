@@ -991,8 +991,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   CHECK(ShapeUtil::IsArray(instruction->shape()));
   CHECK(ShapeUtil::IsArray(operand->shape()));
   if (!ShapeUtil::IsScalar(operand->shape()) &&
-      ShapeUtil::Rank(operand->shape()) ==
-          ShapeUtil::Rank(instruction->shape()) &&
+      operand->shape().rank() == instruction->shape().rank() &&
       !instruction_can_change_layout_func_(instruction)) {
     // Propagate the result layout to the operand layout if the instruction
     // requires the same layout out for the result and the operand.
@@ -1012,7 +1011,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     // operations. For similar reasons, if the operand and output have the same
     // rank, try to match the operand's layout to the output.
     if (ShapeUtil::TrueRank(operand->shape()) == 1 &&
-        ShapeUtil::Rank(instruction->shape()) == 1) {
+        instruction->shape().rank() == 1) {
       // Don't assign a layout in case of R1 -> effective R1 reshape.
       return nullptr;
     }
@@ -1026,7 +1025,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     if (ShapeUtil::ReshapeIsBitcast(operand_shape, output_shape_with_layout)) {
       return absl::make_unique<Layout>(operand_shape.layout());
     }
-    if (ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(output_shape)) {
+    if (operand_shape.rank() == output_shape.rank()) {
       *operand_shape.mutable_layout() = output_layout;
       if (ShapeUtil::ReshapeIsBitcast(operand_shape,
                                       output_shape_with_layout)) {
@@ -1045,7 +1044,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
 
   if (instruction->opcode() == HloOpcode::kTranspose) {
     // Pick the operand layout that makes the transpose a bitcast.
-    int64 rank = ShapeUtil::Rank(instruction->shape());
+    int64 rank = instruction->shape().rank();
     std::vector<int64> new_minor_to_major(rank);
     for (int64 i = 0; i < rank; ++i) {
       int64 output_dim = LayoutUtil::Minor(output_layout, i);
@@ -1070,7 +1069,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
         ShapeUtil::IsArray(operand->shape()));
 
   if (!ShapeUtil::IsScalar(operand->shape()) &&
-      ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(user->shape()) &&
+      operand->shape().rank() == user->shape().rank() &&
       !instruction_can_change_layout_func_(user)) {
     // Assign users the same layout as the operand.
     return absl::make_unique<Layout>(operand_layout);
@@ -1083,7 +1082,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations. For similar reasons, if the operand and output have the same
     // rank, try to match the outputs's layout to the operand.
-    if (ShapeUtil::Rank(operand->shape()) == 1 &&
+    if (operand->shape().rank() == 1 &&
         ShapeUtil::TrueRank(user->shape()) == 1) {
       // Don't assign a layout in case of R1 -> effective R1 reshape.
       return nullptr;
@@ -1098,7 +1097,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     if (ShapeUtil::ReshapeIsBitcast(output_shape, operand_shape_with_layout)) {
       return absl::make_unique<Layout>(output_shape.layout());
     }
-    if (ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape)) {
+    if (operand->shape().rank() == output_shape.rank()) {
       *output_shape.mutable_layout() = operand_layout;
       if (ShapeUtil::ReshapeIsBitcast(output_shape,
                                       operand_shape_with_layout)) {
@@ -1117,7 +1116,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
 
   if (user->opcode() == HloOpcode::kTranspose) {
     // Pick the user layout that makes the transpose a bitcast.
-    int64 rank = ShapeUtil::Rank(user->shape());
+    int64 rank = user->shape().rank();
     std::vector<int64> new_minor_to_major(rank);
     auto inverse_dimensions = InversePermutation(user->dimensions());
     for (int64 i = 0; i < rank; ++i) {
@@ -1273,7 +1272,7 @@ Status LayoutAssignment::PropagateOperandConstraint(
     return Status::OK();
   }
 
-  int64 operand_rank = ShapeUtil::Rank(operand->shape());
+  int64 operand_rank = operand->shape().rank();
   if (operand_rank <= 1) {
     return Status::OK();
   }
@@ -1288,7 +1287,7 @@ Status LayoutAssignment::PropagateOperandConstraint(
         continue;
       }
       const HloInstruction* sibling = user->operand(operand_no);
-      const int64 sibling_rank = ShapeUtil::Rank(sibling->shape());
+      const int64 sibling_rank = sibling->shape().rank();
       if (sibling_rank <= 1) {
         continue;
       }
@@ -1320,13 +1319,13 @@ Status LayoutAssignment::PropagateOperandConstraint(
           if (ShapeUtil::IsTuple(subshape)) {
             return Status::OK();
           }
-          if (ShapeUtil::Rank(subshape) <= 1) {
+          if (subshape.rank() <= 1) {
             return Status::OK();
           }
 
           // Assign the right layout to input fusion of higher rank reduce
           // operations.
-          if (ShapeUtil::Rank(subshape) != ShapeUtil::Rank(operand->shape())) {
+          if (subshape.rank() != operand->shape().rank()) {
             return Status::OK();
           }
           // TODO(b/67641796): Are there cases except fusion that use this code
@@ -1357,7 +1356,7 @@ Status LayoutAssignment::PropagateOperandConstraint(
         if (ShapeUtil::IsTuple(subshape)) {
           return Status::OK();
         }
-        if (ShapeUtil::Rank(subshape) <= 1) {
+        if (subshape.rank() <= 1) {
           return Status::OK();
         }
         TF_ASSIGN_OR_RETURN(
@@ -1402,7 +1401,7 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
     if (!instruction_can_change_layout_func_(instruction)) {
       // Copy the layout to the operand.
       if (buffer.IsArray() && ShapeUtil::IsArray(operand->shape()) &&
-          ShapeUtil::Rank(operand->shape()) ==
+          operand->shape().rank() ==
               LayoutUtil::MinorToMajor(buffer_constraint.layout()).size()) {
         TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
             buffer_constraint.layout(), instruction, operand_no,
@@ -2101,7 +2100,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
 /* static */
 bool LayoutAssignment::IsAtMostRank1(const Shape& shape) {
   if (ShapeUtil::IsArray(shape)) {
-    return ShapeUtil::Rank(shape) <= 1;
+    return shape.rank() <= 1;
   }
   return absl::c_all_of(shape.tuple_shapes(), [](const Shape& subshape) {
     return IsAtMostRank1(subshape);

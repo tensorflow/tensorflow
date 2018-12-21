@@ -189,8 +189,7 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
   for (const HloInstruction* operand : operands) {
     CHECK_EQ(computation, operand->parent());
     operand_shapes.push_back(&operand->shape());
-    max_operand_rank =
-        std::max(max_operand_rank, ShapeUtil::Rank(operand->shape()));
+    max_operand_rank = std::max(max_operand_rank, operand->shape().rank());
   }
   std::vector<int64> map_dims(max_operand_rank);
   std::iota(map_dims.begin(), map_dims.end(), 0);
@@ -207,7 +206,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloOpcode binary_opcode,
                                         HloModule* module) {
   DCHECK_NE(nullptr, module);
-  std::vector<int64> all_dims(ShapeUtil::Rank(operand->shape()));
+  std::vector<int64> all_dims(operand->shape().rank());
   std::iota(all_dims.begin(), all_dims.end(), 0);
 
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});

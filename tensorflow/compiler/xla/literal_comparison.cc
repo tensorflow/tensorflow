@@ -463,7 +463,7 @@ class NearComparator {
       }
       return;
     }
-    std::vector<int64> multi_index(ShapeUtil::Rank(actual_.shape()), 0);
+    std::vector<int64> multi_index(actual_.shape().rank(), 0);
     CompareLiteralsSlow(0, &multi_index);
   }
 
@@ -777,7 +777,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
       }
     }
   } else if (ShapeUtil::IsArray(expected)) {
-    if (ShapeUtil::Rank(expected) != ShapeUtil::Rank(actual)) {
+    if (expected.rank() != actual.rank()) {
       return InvalidArgument("want rank of %s got rank of %s",
                              ShapeUtil::HumanString(expected),
                              ShapeUtil::HumanString(actual));

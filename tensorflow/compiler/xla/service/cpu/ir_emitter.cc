@@ -535,7 +535,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     higher_dimensions *= normalized_keys_shape.dimensions(i);
   }
   int64 lower_dimensions = 1;
-  for (int64 i = ShapeUtil::Rank(normalized_keys_shape) - 1;
+  for (int64 i = normalized_keys_shape.rank() - 1;
        i > physical_dimension_to_sort; --i) {
     lower_dimensions *= normalized_keys_shape.dimensions(i);
   }
@@ -779,8 +779,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   const auto init_value = select_and_scatter->operand(2);
   const Window& window = select_and_scatter->window();
   PrimitiveType operand_element_type = operand->shape().element_type();
-  const int64 rank = ShapeUtil::Rank(operand->shape());
-  CHECK_EQ(rank, ShapeUtil::Rank(source->shape()));
+  const int64 rank = operand->shape().rank();
+  CHECK_EQ(rank, source->shape().rank());
   CHECK_EQ(rank, window.dimensions_size());
 
   // TODO(b/31410564): Implement dilation for select-and-scatter.

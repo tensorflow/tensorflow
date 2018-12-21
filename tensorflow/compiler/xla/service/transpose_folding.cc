@@ -45,7 +45,7 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoDot(
     auto& operand = *dot.operand(i);
     if (operand.IsRank2Transpose()) {
       operand_set.push_back(i);
-    } else if (ShapeUtil::Rank(operand.shape()) != 2) {
+    } else if (operand.shape().rank() != 2) {
       return {};
     }
   }

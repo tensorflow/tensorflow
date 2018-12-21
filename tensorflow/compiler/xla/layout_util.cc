@@ -211,19 +211,19 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
   }
 
   if (layout.format() == DENSE) {
-    if (layout.minor_to_major_size() != ShapeUtil::Rank(shape)) {
+    if (layout.minor_to_major_size() != shape.rank()) {
       return InvalidArgument(
           "layout minor_to_major field contains %d elements, "
           "but shape is rank %d: {%s}; shape: %s",
-          layout.minor_to_major_size(), ShapeUtil::Rank(shape),
+          layout.minor_to_major_size(), shape.rank(),
           absl::StrJoin(layout.minor_to_major(), ", "),
           shape.ShortDebugString());
     }
 
-    std::vector<bool> dimensions_in_layout(ShapeUtil::Rank(shape), false);
-    for (int64 i = 0; i < ShapeUtil::Rank(shape); ++i) {
+    std::vector<bool> dimensions_in_layout(shape.rank(), false);
+    for (int64 i = 0; i < shape.rank(); ++i) {
       int64 dim = layout.minor_to_major(i);
-      if (dim < 0 || dim >= ShapeUtil::Rank(shape)) {
+      if (dim < 0 || dim >= shape.rank()) {
         return InvalidArgument(
             "layout minor_to_major field has out-of-bounds value: %s",
             HumanString(layout));
@@ -376,7 +376,7 @@ Status CopyLayoutInternal(const Shape& src, Shape* dst) {
     }
   } else {
     if (src.has_layout()) {
-      if (ShapeUtil::Rank(src) != ShapeUtil::Rank(*dst)) {
+      if (src.rank() != dst->rank()) {
         return InvalidArgument("cannot copy layout from shape: ranks differs");
       }
       TF_RETURN_IF_ERROR(
@@ -410,7 +410,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     }
     return true;
   } else if (ShapeUtil::IsArray(lhs)) {
-    return ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs) &&
+    return lhs.rank() == rhs.rank() &&
            LayoutUtil::Equal(lhs.layout(), rhs.layout());
   } else {
     // Layouts of non-array and non-tuple shapes is ignored.

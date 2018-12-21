@@ -1005,8 +1005,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK_GE(num_spatial_dims, 0);
     CHECK_EQ(window.dimensions_size(), num_spatial_dims);
 
-    const auto lhs_rank = ShapeUtil::Rank(lhs_shape);
-    const auto rhs_rank = ShapeUtil::Rank(rhs_shape);
+    const auto lhs_rank = lhs_shape.rank();
+    const auto rhs_rank = rhs_shape.rank();
 
     CHECK_EQ(num_spatial_dims + 2, lhs_rank);
     CHECK_EQ(num_spatial_dims + 2, rhs_rank);
@@ -1175,8 +1175,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const int64 lhs_rank = ShapeUtil::Rank(lhs->shape());
-    const int64 rhs_rank = ShapeUtil::Rank(rhs->shape());
+    const int64 lhs_rank = lhs->shape().rank();
+    const int64 rhs_rank = rhs->shape().rank();
 
     CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
     CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
@@ -1238,8 +1238,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     const auto& dnums = dot->dot_dimension_numbers();
 
-    const auto lhs_rank = ShapeUtil::Rank(lhs->shape());
-    const auto rhs_rank = ShapeUtil::Rank(rhs->shape());
+    const auto lhs_rank = lhs->shape().rank();
+    const auto rhs_rank = rhs->shape().rank();
 
     CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
     CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
@@ -1329,7 +1329,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(ShapeUtil::IsArray(pad->operand(0)->shape()));
     // Padding value must be scalar.
     CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
-    CHECK_EQ(ShapeUtil::Rank(pad->operand(0)->shape()),
+    CHECK_EQ(pad->operand(0)->shape().rank(),
              pad->padding_config().dimensions_size());
 
     TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
@@ -1352,9 +1352,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& evaluated_operand =
         parent_->GetEvaluatedLiteralFor(pad->operand(0));
 
-    std::vector<int64> input_index(ShapeUtil::Rank(evaluated_operand.shape()),
-                                   0);
-    std::vector<int64> target_index(ShapeUtil::Rank(result.shape()), 0);
+    std::vector<int64> input_index(evaluated_operand.shape().rank(), 0);
+    std::vector<int64> target_index(result.shape().rank(), 0);
 
     // Loop through each element of the operand, assign them to the
     // corresponding index of the resulting padded literal.
@@ -1609,7 +1608,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& keys_literal = parent_->GetEvaluatedLiteralFor(keys);
     int64 sort_dim = sort->dimensions(0);
     int64 sort_dim_elements = keys->shape().dimensions(sort_dim);
-    int64 rank = ShapeUtil::Rank(keys->shape());
+    int64 rank = keys->shape().rank();
     if (rank == 0) {
       // Nothing to sort.
       parent_->evaluated_[sort] = keys_literal.Clone();
@@ -1868,7 +1867,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     const Literal& source_literal = parent_->GetEvaluatedLiteralFor(source);
 
-    int64 rank = ShapeUtil::Rank(operand_literal.shape());
+    int64 rank = operand_literal.shape().rank();
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     DimensionVector source_index(rank, 0);
@@ -1980,7 +1979,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         operand->shape().element_type(), window_dimension_sizes);
 
     DimensionVector window_index(window.dimensions_size());
-    DimensionVector operand_index(ShapeUtil::Rank(operand_literal.shape()));
+    DimensionVector operand_index(operand_literal.shape().rank());
 
     HloEvaluator embedded_evaluator(parent_->max_loop_iterations_);
     Literal result(reduce_window->shape());
@@ -2411,7 +2410,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
 
-    const int64 rank = ShapeUtil::Rank(operand->shape());
+    const int64 rank = operand->shape().rank();
     const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     auto func = [&](absl::Span<const int64> out_index) {
       DimensionVector operand_index(rank);
@@ -2648,12 +2647,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     }
     auto result = LiteralUtil::CreateR1<NativeT>(data);
 
-    if (ShapeUtil::Rank(iota->shape()) > 1) {
+    if (iota->shape().rank() > 1) {
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[iota],
           result.Broadcast(iota->shape(), {iota->iota_dimension()}));
     } else {
-      TF_RET_CHECK(ShapeUtil::Rank(iota->shape()) == 1);
+      TF_RET_CHECK(iota->shape().rank() == 1);
       parent_->evaluated_[iota] = std::move(result);
     }
 
@@ -2683,7 +2682,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   //
   // This lets you calculate LI given the multidimensional indices in any order.
   static DimensionVector MakeDimMultipliers(const Shape& shape) {
-    DimensionVector v(ShapeUtil::Rank(shape));
+    DimensionVector v(shape.rank());
     int64 scale = 1;
     for (auto dim : LayoutUtil::MinorToMajor(shape)) {
       v[dim] = scale;
@@ -2700,7 +2699,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       const Shape& window_shape, const Window& window, const Shape& base_shape,
       const absl::Span<const int64>& window_count_index,
       const std::function<void(const std::vector<int64>&)>& f) {
-    const int64 rank = ShapeUtil::Rank(base_shape);
+    const int64 rank = base_shape.rank();
     DimensionVector window_index(rank);
     std::fill(window_index.begin(), window_index.end(), 0);
     do {
@@ -2767,7 +2766,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                                        const Literal& start_indices_literal) {
     auto result = operand_literal.Clone();
     auto start_indices_typed = start_indices_literal.data<IndexT>();
-    const auto rank = ShapeUtil::Rank(result.shape());
+    const auto rank = result.shape().rank();
     std::vector<int64> start(start_indices_typed.begin(),
                              start_indices_typed.end());
     // Clamp the update start indices so the slice is in-bounds w.r.t the

@@ -831,7 +831,7 @@ class ShapePatternRankImpl {
   explicit constexpr ShapePatternRankImpl(int64 rank) : rank_(rank) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (ShapeUtil::Rank(*shape) != rank_) {
+    if (shape->rank() != rank_) {
       if (rank_ == 0) {
         EXPLAIN << "Shape is not a scalar";
       } else {
