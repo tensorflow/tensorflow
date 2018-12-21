@@ -437,8 +437,8 @@ Shape HloSharding::TileShape(const Shape& shape) const {
   }
   Shape result_shape = shape;
   for (int64 i = 0; i < shape.dimensions_size(); ++i) {
-    (*result_shape.mutable_dimensions())[i] =
-        CeilOfRatio<int64>(shape.dimensions(i), tile_assignment_.dim(i));
+    result_shape.set_dimensions(
+        i, CeilOfRatio<int64>(shape.dimensions(i), tile_assignment_.dim(i)));
   }
   return result_shape;
 }

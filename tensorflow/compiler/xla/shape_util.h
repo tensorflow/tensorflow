@@ -290,7 +290,7 @@ class ShapeUtil {
   // being F32. Tuple elements are compared recursively for compatibility.
   static bool CompatibleIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
-  // Returns whether the lhs and rhs shapes are identical protobufs.
+  // Returns whether the lhs and rhs shapes are identical.
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
@@ -373,10 +373,23 @@ class ShapeUtil {
                          absl::Span<const int64> dimensions);
 
   // Constructs a new shape with the given element type and sequence of
+  // potentially dynamic dimensions. The argument 'dynamic_dimensions' indicates
+  // with a true value that the respective dimension is dynamic. If the
+  // dimension is dynamic then the respective value in 'dimension' is an upper
+  // bound on the dimension size. 'dimensions' and 'dynamic_dimensions' must be
+  // the same size.
+  static Shape MakeShape(PrimitiveType element_type,
+                         absl::Span<const int64> dimensions,
+                         const std::vector<bool>& dynamic_dimensions);
+
+  // Constructs a new shape with the given element type and sequence of
   // dimensions. Method checks if the element type is valid and the shape's
   // size fits in std::numeric_limits<int64>::max().
   static StatusOr<Shape> MakeValidatedShape(PrimitiveType element_type,
                                             absl::Span<const int64> dimensions);
+  static StatusOr<Shape> MakeValidatedShape(
+      PrimitiveType element_type, absl::Span<const int64> dimensions,
+      const std::vector<bool>& dynamic_dimensions);
 
   // Creates a Shape with element type corresponding to T and the given
   // dimensions

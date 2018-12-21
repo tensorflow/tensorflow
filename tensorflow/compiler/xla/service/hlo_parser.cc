@@ -257,7 +257,8 @@ class HloParser {
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
   bool ParseString(string* result);
-  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes);
+  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                           std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
   bool ParseLayout(Layout* layout);
   bool ParseOpcode(HloOpcode* result);
@@ -2971,14 +2972,25 @@ bool HloParser::ParseParamList() {
   return ParseToken(TokKind::kRparen, "expects ')' at the end of param list");
 }
 
-// dimension_sizes ::= '[' int64_list ']'
-bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes) {
+// dimension_sizes ::= '[' dimension_list ']'
+// dimension_list
+//   ::= /*empty*/
+//   ::= <=? int64 (',' param)*
+// param ::= name shape
+bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                                    std::vector<bool>* dynamic_dimensions) {
   auto parse_and_add_item = [&]() {
     tensorflow::int64 i;
+    bool is_dynamic = false;
+    if (lexer_.GetKind() == TokKind::kLeq) {
+      is_dynamic = true;
+      lexer_.Lex();
+    }
     if (!ParseInt64(&i)) {
       return false;
     }
     dimension_sizes->push_back(i);
+    dynamic_dimensions->push_back(is_dynamic);
     return true;
   };
   return ParseList(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
@@ -3034,12 +3046,18 @@ bool HloParser::ParseShape(Shape* result) {
   PrimitiveType primitive_type = lexer_.GetPrimitiveTypeVal();
   lexer_.Lex();
 
+  // Each element contains a dimension size and a bool indicating whether this
+  // is a dynamic dimension.
   std::vector<int64> dimension_sizes;
-  if (!ParseDimensionSizes(&dimension_sizes)) {
+  std::vector<bool> dynamic_dimensions;
+  if (!ParseDimensionSizes(&dimension_sizes, &dynamic_dimensions)) {
     return false;
   }
   result->set_element_type(primitive_type);
-  *result->mutable_dimensions() = dimension_sizes;
+  for (int i = 0; i < dimension_sizes.size(); ++i) {
+    result->add_dimensions(dimension_sizes[i]);
+    result->set_dynamic_dimension(i, dynamic_dimensions[i]);
+  }
   LayoutUtil::SetToDefaultLayout(result);
 
   if (lexer_.GetKind() == TokKind::kw_sparse) {
