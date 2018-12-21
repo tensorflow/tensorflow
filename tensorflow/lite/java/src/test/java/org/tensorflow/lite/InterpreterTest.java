@@ -334,6 +334,30 @@ public final class InterpreterTest {
     interpreter.close();
   }
 
+  @Test
+  public void testNullInputs() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    try {
+      interpreter.run(null, new float[2][8][8][3]);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
+    interpreter.close();
+  }
+
+  @Test
+  public void testNullOutputs() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    try {
+      interpreter.run(new float[2][8][8][3], null);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
+    interpreter.close();
+  }
+
   /** Smoke test validating that flex model loading fails when the flex delegate is not linked. */
   @Test
   public void testFlexModel() throws Exception {
@@ -369,6 +393,25 @@ public final class InterpreterTest {
     float[] expected = {7.0f, 7.0f, 7.0f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
 
+    interpreter.close();
+  }
+
+  @Test
+  public void testNullInputsAndOutputsWithDelegate() throws Exception {
+    System.loadLibrary("tensorflowlite_test_jni");
+    Delegate delegate =
+        new Delegate() {
+          @Override
+          public long getNativeHandle() {
+            return getNativeHandleForDelegate();
+          }
+        };
+    Interpreter interpreter =
+        new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+    // The delegate installs a custom buffer handle for all tensors, in turn allowing null to be
+    // provided for the inputs/outputs (as the client can reference the buffer directly).
+    interpreter.run(new float[2][8][8][3], null);
+    interpreter.run(null, new float[2][8][8][3]);
     interpreter.close();
   }
 
