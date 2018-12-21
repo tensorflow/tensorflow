@@ -42,9 +42,12 @@ class PassInfo;
 
 class Pass {
 public:
-  explicit Pass(const void *passID) {}
+  explicit Pass(const void *passID) : passID(passID) {}
   virtual ~Pass() = default;
   virtual PassResult runOnModule(Module *m) = 0;
+
+  /// Returns the unique identifier that corresponds to this pass.
+  const void *getPassID() const { return passID; }
 
   static PassResult success() { return PassResult::Success; }
   static PassResult failure() { return PassResult::Failure; }
@@ -52,10 +55,16 @@ public:
   /// Returns the pass info for the specified pass class or null if unknown.
   static const PassInfo *lookupPassInfo(const void *passID);
 
+  /// Returns the pass info for this pass.
+  const PassInfo *lookupPassInfo() const { return lookupPassInfo(passID); }
+
 private:
   /// Out of line virtual method to ensure vtables and metadata are emitted to a
   /// single .o file.
   virtual void anchor();
+
+  /// Unique identifier for pass.
+  const void *const passID;
 };
 
 class ModulePass : public Pass {
