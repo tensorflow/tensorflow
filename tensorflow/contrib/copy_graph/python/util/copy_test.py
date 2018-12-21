@@ -66,6 +66,7 @@ class CopyVariablesTest(test.TestCase):
     assert isinstance(copy1, variables.Variable)
     assert isinstance(copy2, variables.Variable)
     assert v1 == v2 == v3 == 2
+    assert copy1.get_shape() == some_var.get_shape()
 
 
 class CopyOpsTest(test.TestCase):
