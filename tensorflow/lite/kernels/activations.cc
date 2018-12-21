@@ -34,6 +34,11 @@ namespace ops {
 namespace builtin {
 namespace activations {
 
+enum KernelType {
+  kReference,
+  kGenericOptimized,
+};
+
 struct OpData {
   int32_t input_multiplier = 0;
   int input_left_shift = 0;
@@ -382,22 +387,36 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <KernelType kernel_type>
 TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
     case kTfLiteFloat32: {
-      optimized_ops::Tanh(GetTensorShape(input), GetTensorData<float>(input),
-                          GetTensorShape(output), GetTensorData<float>(output));
+      if (kernel_type == kGenericOptimized) {
+        optimized_ops::Tanh(GetTensorShape(input), GetTensorData<float>(input),
+                            GetTensorShape(output),
+                            GetTensorData<float>(output));
+      } else {
+        reference_ops::Tanh(GetTensorShape(input), GetTensorData<float>(input),
+                            GetTensorShape(output),
+                            GetTensorData<float>(output));
+      }
       return kTfLiteOk;
     } break;
     case kTfLiteInt16: {
       TanhParams params;
       params.input_left_shift = data->input_left_shift;
-      optimized_ops::Tanh(params, GetTensorShape(input),
-                          GetTensorData<int16_t>(input), GetTensorShape(output),
-                          GetTensorData<int16_t>(output));
+      if (kernel_type == kGenericOptimized) {
+        optimized_ops::Tanh(
+            params, GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
+      } else {
+        reference_ops::Tanh(
+            params, GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
+      }
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
@@ -406,9 +425,15 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       params.input_range_radius = data->input_range_radius;
       params.input_multiplier = data->input_multiplier;
       params.input_left_shift = data->input_left_shift;
-      optimized_ops::Tanh(params, GetTensorShape(input),
-                          GetTensorData<uint8_t>(input), GetTensorShape(output),
-                          GetTensorData<uint8_t>(output));
+      if (kernel_type == kGenericOptimized) {
+        optimized_ops::Tanh(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else {
+        reference_ops::Tanh(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      }
       return kTfLiteOk;
     } break;
     default:
@@ -419,6 +444,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 // Sigmoid is also know as "Logistic".
+template <KernelType kernel_type>
 TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
@@ -426,18 +452,28 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
     case kTfLiteFloat32: {
-      size_t elements = input->bytes / sizeof(float);
-      float* in = input->data.f;
-      float* in_end = in + elements;
-      float* out = output->data.f;
-      for (; in < in_end; in++, out++) *out = 1.f / (1.f + std::exp(-*in));
+      if (kernel_type == kGenericOptimized) {
+        optimized_ops::Logistic(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      } else {
+        reference_ops::Logistic(
+            GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      }
       break;
     }
     case kTfLiteInt16: {
       LogisticParams params;
-      optimized_ops::Logistic(
-          params, GetTensorShape(input), GetTensorData<int16_t>(input),
-          GetTensorShape(output), GetTensorData<int16_t>(output));
+      if (kernel_type == kGenericOptimized) {
+        optimized_ops::Logistic(
+            params, GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
+      } else {
+        reference_ops::Logistic(
+            params, GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(output), GetTensorData<int16_t>(output));
+      }
       break;
     }
     case kTfLiteUInt8: {
@@ -446,9 +482,15 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
       params.input_range_radius = data->input_range_radius;
       params.input_multiplier = data->input_multiplier;
       params.input_left_shift = data->input_left_shift;
-      optimized_ops::Logistic(
-          params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      if (kernel_type == kGenericOptimized) {
+        optimized_ops::Logistic(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else {
+        reference_ops::Logistic(
+            params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      }
       break;
     }
     default:
@@ -735,6 +777,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <KernelType kernel_type>
 TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   const LogSoftmaxOpData* data =
       reinterpret_cast<LogSoftmaxOpData*>(node->user_data);
@@ -743,9 +786,15 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32: {
       SoftmaxParams op_params;
-      optimized_ops::LogSoftmax(
-          op_params, GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<float>(output));
+      if (kernel_type == kGenericOptimized) {
+        optimized_ops::LogSoftmax(
+            op_params, GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      } else {
+        reference_ops::LogSoftmax(
+            op_params, GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+      }
       return kTfLiteOk;
     }
     case kTfLiteUInt8: {
@@ -755,9 +804,15 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       op_params.reverse_scaling_divisor = data->reverse_scaling_divisor;
       op_params.reverse_scaling_right_shift = data->reverse_scaling_right_shift;
       op_params.diff_min = data->diff_min;
-      optimized_ops::LogSoftmax(
-          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      if (kernel_type == kGenericOptimized) {
+        optimized_ops::LogSoftmax(
+            op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else {
+        reference_ops::LogSoftmax(
+            op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      }
       return kTfLiteOk;
     }
     default:
@@ -852,17 +907,31 @@ TfLiteRegistration* Register_RELU6() {
   return &r;
 }
 
+TfLiteRegistration* Register_TANH_REF() {
+  static TfLiteRegistration r = {
+      activations::Init, activations::Free, activations::TanhPrepare,
+      activations::TanhEval<activations::kReference>};
+  return &r;
+}
+
 TfLiteRegistration* Register_TANH() {
-  static TfLiteRegistration r = {activations::Init, activations::Free,
-                                 activations::TanhPrepare,
-                                 activations::TanhEval};
+  static TfLiteRegistration r = {
+      activations::Init, activations::Free, activations::TanhPrepare,
+      activations::TanhEval<activations::kGenericOptimized>};
+  return &r;
+}
+
+TfLiteRegistration* Register_LOGISTIC_REF() {
+  static TfLiteRegistration r = {
+      activations::Init, activations::Free, activations::SigmoidPrepare,
+      activations::SigmoidEval<activations::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_LOGISTIC() {
-  static TfLiteRegistration r = {activations::Init, activations::Free,
-                                 activations::SigmoidPrepare,
-                                 activations::SigmoidEval};
+  static TfLiteRegistration r = {
+      activations::Init, activations::Free, activations::SigmoidPrepare,
+      activations::SigmoidEval<activations::kGenericOptimized>};
   return &r;
 }
 
@@ -873,10 +942,19 @@ TfLiteRegistration* Register_SOFTMAX() {
   return &r;
 }
 
+TfLiteRegistration* Register_LOG_SOFTMAX_REF() {
+  static TfLiteRegistration r = {
+      activations::LogSoftmaxInit, activations::LogSoftmaxFree,
+      activations::LogSoftmaxPrepare,
+      activations::LogSoftmaxEval<activations::kReference>};
+  return &r;
+}
+
 TfLiteRegistration* Register_LOG_SOFTMAX() {
   static TfLiteRegistration r = {
       activations::LogSoftmaxInit, activations::LogSoftmaxFree,
-      activations::LogSoftmaxPrepare, activations::LogSoftmaxEval};
+      activations::LogSoftmaxPrepare,
+      activations::LogSoftmaxEval<activations::kGenericOptimized>};
   return &r;
 }
 
