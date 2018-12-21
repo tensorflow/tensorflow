@@ -31,7 +31,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
 
-class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
+class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
 
   def _ConstOp(self, shape, dtype):
     return constant_op.constant(np.random.randn(*shape), dtype=dtype)
@@ -59,7 +59,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
-    conversion_params = super(BiasaddMatMulTest,
+    conversion_params = super(ExcludeUnsupportedInt32Test,
                               self).GetConversionParams(run_params)
     return conversion_params._replace(
         max_batch_size=100,
@@ -77,7 +77,6 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
     # mode, which is a bug. Re-enable this when trt library is fixed.
     return not trt_test.IsQuantizationMode(run_params.precision_mode)
-
 
 if __name__ == "__main__":
   test.main()
