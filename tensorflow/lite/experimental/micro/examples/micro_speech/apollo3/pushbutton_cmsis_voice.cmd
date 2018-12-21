@@ -17,7 +17,7 @@ file ../../../tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_te
 target remote localhost:2331
 load ../../../tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test
 monitor reset
-break pushbutton_main.c:313
+break pushbutton_main.c:296
 commands
 dump verilog value captured_data.txt captured_data
 c
