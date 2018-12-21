@@ -24,6 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import six
 
 from tensorflow.python import keras
@@ -62,6 +63,11 @@ class MemoryTest(test.TestCase):
     with context.eager_mode():
       # Warm up.
       f()
+
+      # Wait for background threads to start up and take over memory.
+      # FIXME: The nature of this test leaves few other options. Maybe there
+      # is a better way to do this.
+      time.sleep(4)
 
       initial = memory_profiler.memory_usage(-1)[0]
 
