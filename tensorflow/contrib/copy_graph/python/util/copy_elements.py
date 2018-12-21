@@ -93,7 +93,7 @@ def copy_variable_to_graph(org_instance, to_graph, scope=''):
         trainable,
         name=new_name,
         collections=collections,
-        validate_shape=False)
+        validate_shape=True)
 
   return new_var
 
