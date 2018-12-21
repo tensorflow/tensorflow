@@ -28,6 +28,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "analysis-utils"
 
@@ -374,11 +375,14 @@ static Statement *getStmtAtPosition(ArrayRef<unsigned> positions,
   return nullptr;
 }
 
-// TODO(andydavis) Support a 'dstLoopDepth' argument for computation slice
-// insertion (currently the computation slice is inserted at the same
-// loop depth as 'dstAccess.opStmt'.
+// Computes memref dependence between 'srcAccess' and 'dstAccess' and uses the
+// dependence constraint system to create AffineMaps with which to adjust the
+// loop bounds of the inserted compution slice so that they are functions of the
+// loop IVs and symbols of the loops surrounding 'dstAccess'.
 ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
-                                              MemRefAccess *dstAccess) {
+                                              MemRefAccess *dstAccess,
+                                              unsigned srcLoopDepth,
+                                              unsigned dstLoopDepth) {
   FlatAffineConstraints dependenceConstraints;
   if (!checkMemrefAccessDependence(*srcAccess, *dstAccess, /*loopDepth=*/1,
                                    &dependenceConstraints,
@@ -389,21 +393,32 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   SmallVector<ForStmt *, 4> srcLoopNest;
   getLoopIVs(*srcAccess->opStmt, &srcLoopNest);
   unsigned srcLoopNestSize = srcLoopNest.size();
+  assert(srcLoopDepth <= srcLoopNestSize);
 
   // Get loop nest surrounding dst operation.
   SmallVector<ForStmt *, 4> dstLoopNest;
   getLoopIVs(*dstAccess->opStmt, &dstLoopNest);
   unsigned dstLoopNestSize = dstLoopNest.size();
+  (void)dstLoopNestSize;
+  assert(dstLoopDepth > 0);
+  assert(dstLoopDepth <= dstLoopNestSize);
 
   // Solve for src IVs in terms of dst IVs, symbols and constants.
   SmallVector<AffineMap, 4> srcIvMaps(srcLoopNestSize, AffineMap::Null());
   std::vector<SmallVector<MLValue *, 2>> srcIvOperands(srcLoopNestSize);
   for (unsigned i = 0; i < srcLoopNestSize; ++i) {
+    // Skip IVs which are greater than requested loop depth.
+    if (i >= srcLoopDepth) {
+      srcIvMaps[i] = AffineMap::Null();
+      continue;
+    }
     auto cst = dependenceConstraints.clone();
     for (int j = srcLoopNestSize - 1; j >= 0; --j) {
       if (i != j)
         cst->projectOut(j);
     }
+    // TODO(andydavis) Check for case with two equalities where we have
+    // set on IV to a constant. Set a constant IV map for these cases.
     if (cst->getNumEqualities() != 1) {
       srcIvMaps[i] = AffineMap::Null();
       continue;
@@ -412,11 +427,18 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
     SmallVector<unsigned, 2> nonZeroSymbolIds;
     srcIvMaps[i] = cst->toAffineMapFromEq(0, 0, srcAccess->opStmt->getContext(),
                                           &nonZeroDimIds, &nonZeroSymbolIds);
-    if (srcIvMaps[i] == AffineMap::Null())
+    if (srcIvMaps[i] == AffineMap::Null()) {
       continue;
+    }
     // Add operands for all non-zero dst dims and symbols.
     // TODO(andydavis) Add local variable support.
     for (auto dimId : nonZeroDimIds) {
+      if (dimId - 1 >= dstLoopDepth) {
+        // This src IV has a dependence on dst IV dstLoopDepth where it will
+        // be inserted. So we cannot slice the iteration space at srcLoopDepth,
+        // and also insert it into the dst loop nest at 'dstLoopDepth'.
+        return nullptr;
+      }
       srcIvOperands[i].push_back(dstLoopNest[dimId - 1]);
     }
     // TODO(andydavis) Add symbols from the access function. Ideally, we
@@ -429,8 +451,8 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   findStmtPosition(srcAccess->opStmt, srcLoopNest[0]->getBlock(), &positions);
 
   // Clone src loop nest and insert it a the beginning of the statement block
-  // of the same loop in which containts 'dstAccess->opStmt'.
-  auto *dstForStmt = dstLoopNest[dstLoopNestSize - 1];
+  // of the loop at 'dstLoopDepth' in 'dstLoopNest'.
+  auto *dstForStmt = dstLoopNest[dstLoopDepth - 1];
   MLFuncBuilder b(dstForStmt, dstForStmt->begin());
   DenseMap<const MLValue *, MLValue *> operandMap;
   auto *sliceLoopNest = cast<ForStmt>(b.clone(*srcLoopNest[0], operandMap));
@@ -442,11 +464,14 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   SmallVector<ForStmt *, 4> sliceSurroundingLoops;
   getLoopIVs(*sliceStmt, &sliceSurroundingLoops);
   unsigned sliceSurroundingLoopsSize = sliceSurroundingLoops.size();
+  (void)sliceSurroundingLoopsSize;
 
   // Update loop bounds for loops in 'sliceLoopNest'.
-  for (unsigned i = dstLoopNestSize; i < sliceSurroundingLoopsSize; ++i) {
+  unsigned sliceLoopLimit = dstLoopDepth + srcLoopNestSize;
+  assert(sliceLoopLimit <= sliceSurroundingLoopsSize);
+  for (unsigned i = dstLoopDepth; i < sliceLoopLimit; ++i) {
     auto *forStmt = sliceSurroundingLoops[i];
-    unsigned index = i - dstLoopNestSize;
+    unsigned index = i - dstLoopDepth;
     AffineMap lbMap = srcIvMaps[index];
     if (lbMap == AffineMap::Null())
       continue;

@@ -1,4 +1,5 @@
 // RUN: mlir-opt %s -loop-fusion -split-input-file -verify | FileCheck %s
+// RUN: mlir-opt %s -loop-fusion -src-loop-depth=1 -dst-loop-depth=1 -split-input-file -verify | FileCheck %s  --check-prefix DEPTH1
 
 // TODO(andydavis) Add more tests:
 // *) Add nested fusion test cases when non-constant loop bound support is
@@ -548,5 +549,50 @@ mlfunc @remap_ivs() {
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
 
+  return
+}
+
+// -----
+
+// DEPTH1: #map0 = (d0) -> (d0)
+// DEPTH1: #map1 = (d0, d1, d2) -> (d0, d1, d2)
+
+// DEPTH1-LABEL: mlfunc @fuse_slice_at_depth1() {
+mlfunc @fuse_slice_at_depth1() {
+  %m = alloc() : memref<100x16x100xf32>
+
+  %cf7 = constant 7.0 : f32
+  for %i0 = 0 to 100 {
+    for %i1 = 0 to 16 {
+      for %i2 = 0 to 100 {
+        %a0 = affine_apply (d0, d1, d2) -> (d0, d1, d2) (%i0, %i1, %i2)
+        store %cf7, %m[%a0#0, %a0#1, %a0#2] : memref<100x16x100xf32>
+      }
+    }
+  }
+  for %i3 = 0 to 100 {
+    for %i4 = 0 to 16 {
+      for %i5 = 0 to 100 {
+        %a1 = affine_apply (d0, d1, d2) -> (d0, d1, d2) (%i3, %i4, %i5)
+        %v0 = load %m[%a1#0, %a1#1, %a1#2] : memref<100x16x100xf32>
+      }
+    }
+  }
+// DEPTH1:       for %i0 = 0 to 100 {
+// DEPTH1-NEXT:    %1 = affine_apply #map0(%i0)
+// DEPTH1-NEXT:    for %i1 = 0 to 16 {
+// DEPTH1-NEXT:      for %i2 = 0 to 100 {
+// DEPTH1-NEXT:        %2 = affine_apply #map1(%1, %i1, %i2)
+// DEPTH1-NEXT:        store %cst, %0[%2#0, %2#1, %2#2] : memref<100x16x100xf32>
+// DEPTH1-NEXT:      }
+// DEPTH1-NEXT:    }
+// DEPTH1-NEXT:    for %i3 = 0 to 16 {
+// DEPTH1-NEXT:      for %i4 = 0 to 100 {
+// DEPTH1-NEXT:        %3 = affine_apply #map1(%i0, %i3, %i4)
+// DEPTH1-NEXT:        %4 = load %0[%3#0, %3#1, %3#2] : memref<100x16x100xf32>
+// DEPTH1-NEXT:      }
+// DEPTH1-NEXT:    }
+// DEPTH1-NEXT:  }
+// DEPTH1-NEXT:  return
   return
 }

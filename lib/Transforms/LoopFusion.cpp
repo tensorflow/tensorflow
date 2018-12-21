@@ -35,11 +35,26 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
 using llvm::SetVector;
 
 using namespace mlir;
+
+// TODO(andydavis) These flags are global for the pass to be used for
+// experimentation. Find a way to provide more fine grained control (i.e.
+// depth per-loop nest, or depth per load/store op) for this pass utilizing a
+// cost model.
+static llvm::cl::opt<unsigned> clSrcLoopDepth(
+    "src-loop-depth", llvm::cl::Hidden,
+    llvm::cl::desc("Controls the depth of the source loop nest at which "
+                   "to apply loop iteration slicing before fusion."));
+
+static llvm::cl::opt<unsigned> clDstLoopDepth(
+    "dst-loop-depth", llvm::cl::Hidden,
+    llvm::cl::desc("Controls the depth of the destination loop nest at which "
+                   "to fuse the source loop nest slice."));
 
 namespace {
 
@@ -105,6 +120,18 @@ static FusionCandidate buildFusionCandidate(OperationStmt *srcStoreOpStmt,
   // Get load access for dst loop nest.
   getSingleMemRefAccess(dstLoadOpStmt, &candidate.dstAccess);
   return candidate;
+}
+
+// Returns the loop depth of the loop nest surrounding 'opStmt'.
+static unsigned getLoopDepth(OperationStmt *opStmt) {
+  unsigned loopDepth = 0;
+  auto *currStmt = opStmt->getParentStmt();
+  ForStmt *currForStmt;
+  while (currStmt && (currForStmt = dyn_cast<ForStmt>(currStmt))) {
+    ++loopDepth;
+    currStmt = currStmt->getParentStmt();
+  }
+  return loopDepth;
 }
 
 namespace {
@@ -487,8 +514,15 @@ public:
           FusionCandidate candidate =
               buildFusionCandidate(srcStoreOpStmt, dstLoadOpStmt);
           // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
+          unsigned srcLoopDepth = clSrcLoopDepth.getNumOccurrences() > 0
+                                      ? clSrcLoopDepth
+                                      : getLoopDepth(srcStoreOpStmt);
+          unsigned dstLoopDepth = clDstLoopDepth.getNumOccurrences() > 0
+                                      ? clDstLoopDepth
+                                      : getLoopDepth(dstLoadOpStmt);
           auto *sliceLoopNest = mlir::insertBackwardComputationSlice(
-              &candidate.srcAccess, &candidate.dstAccess);
+              &candidate.srcAccess, &candidate.dstAccess, srcLoopDepth,
+              dstLoopDepth);
           if (sliceLoopNest != nullptr) {
             // Remove edges between 'srcNode' and 'dstNode' and remove 'srcNode'
             mdg->updateEdgesAndRemoveSrcNode(srcNode->id, dstNode->id);
