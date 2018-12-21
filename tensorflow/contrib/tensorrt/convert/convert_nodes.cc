@@ -694,6 +694,14 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
           ostrides);
       break;
     }
+    case tensorflow::DataType::DT_INT32: {
+      Reorder2(
+          {k, c}, static_cast<int const*>(iweights.GetValues()),
+          istrides,
+          static_cast<int*>(const_cast<void*>(oweights->GetValues())),
+          ostrides);
+      break;
+    }
     default:
       LOG(FATAL) << "Unsupported type in reorder expected fp32 or fp16 but got "
                  << DataTypeString(iweights.type_);
@@ -1725,6 +1733,12 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
         "Unsupported binary op broadcast scheme for op ", node_def.name(), ": ",
         status.error_message());
   }
+  TFAttrs attrs(node_def);
+  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
+  if (dtype == nvinfer1::DataType::kINT32) {
+    return errors::Unimplemented(
+        "Binary op ", node_def.op(), " does not support INT32, at ", node_def.name());
+  }
   if (params->validation_only) return Status::OK();
 
   const nvinfer1::ITensor* tensor_l = nullptr;
@@ -1741,8 +1755,6 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
   }
 
   // Check type consistency.
-  TFAttrs attrs(node_def);
-  nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
   TFTRT_CHECK_EQ_TYPE(tensor_l->getType(), dtype)
       << DebugString(tensor_l->getType()) << " vs " << DebugString(dtype);
   TFTRT_CHECK_EQ_TYPE(tensor_r->getType(), dtype)
@@ -3450,12 +3462,12 @@ tensorflow::Status ConvertMatMul(OpConverterParams* params) {
 
   TFAttrs attrs(node_def);
   // TODO(jie): INT32 should be converted?
-  tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
-  if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
-    return errors::Unimplemented("Data type is not supported, for node ",
-                                 node_def.name(), " got ",
-                                 DataTypeString(tf_dtype));
-  }
+  // tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
+  // if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
+  //   return errors::Unimplemented("Data type is not supported, for node ",
+  //                                node_def.name(), " got ",
+  //                                DataTypeString(tf_dtype));
+  // }
   bool transpose_a = attrs.get<bool>("transpose_a");
   bool transpose_b = attrs.get<bool>("transpose_b");
 
@@ -3844,7 +3856,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
       marker_nodes.insert(node_name);
       auto seg_node = segment_def->add_node();
       tensorflow::NodeDefBuilder builder(node_name, "Identity");
-      auto status = builder.Input(connection.inside_node_name, 0, dtype)
+      auto status = builder.Input(connection.inside_node_name, connection.inside_port, dtype)
                         .Finalize(seg_node);
       VLOG(1) << "Constructing output " << node_name << " for the edge "
               << connection.inside_node_name << ":" << connection.inside_port

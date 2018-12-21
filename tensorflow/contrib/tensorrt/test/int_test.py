@@ -43,39 +43,40 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     g = ops.Graph()
     with g.as_default():
       # float part
-      input1 = array_ops.placeholder(
-          dtype=dtypes.float32, shape=input_dims, name='input_float32')
-      b1 = self._ConstOp((4, 10), dtypes.float32)
-      x1 = math_ops.matmul(input1, b)
-      b1 = self._ConstOp((1, 10), dtypes.float32)
-      x1 = x1 + b1
+      # input1 = array_ops.placeholder(
+      #     dtype=dtypes.float32, shape=input_dims, name='input_float32')
+      # b1 = self._ConstOp((4, 10), dtypes.float32)
+      # x1 = math_ops.matmul(input1, b1)
+      # b1 = self._ConstOp((1, 10), dtypes.float32)
+      # x1 = x1 + b1
 
       # int part
       input2 = array_ops.placeholder(
           dtype=dtypes.int32, shape=input_dims, name='input_int32')
+      #with g.device("/GPU:0"):
       b2 = self._ConstOp((4, 10), dtypes.int32)
-      x2 = math_ops.matmul(input2, b)
-      b2 = self._ConstOp((1, 10), dtypes.int32)
-      x2 = x2 + b2
+      x2 = math_ops.matmul(input2, b2)
+      b2 = self._ConstOp((10,), dtypes.int32)
+      x2 = nn.bias_add(x2, b2)
 
       # combine
       #y = x1 * x2
 
-      out1 = array_ops.identity(x1, name='output_float32')
+      #out1 = array_ops.identity(x1, name='output_float32')
       out2 = array_ops.identity(x2, name='output_int32')
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
-        input_names=['input_float32', 'input_int32'],
-        input_dims=[[100, 4], [100, 4]],
-        output_names=['output_int32', 'output_float32'],
-        expected_output_dims=[(100, 10), (100, 10)])
+        input_names=['input_int32'],
+        input_dims=[[100, 4]],
+        output_names=['output_int32'],
+        expected_output_dims=[(100, 10)])
 
   def GetConversionParams(self, run_params):
     """Return a ConversionParams for test."""
     conversion_params = super(BiasaddMatMulTest,
                               self).GetConversionParams(run_params)
     return conversion_params._replace(
-        max_batch_size=4,
+        max_batch_size=100,
         maximum_cached_engines=1,
         # Disable layout optimizer, since it will convert BiasAdd with NHWC
         # format to NCHW format under four dimentional input.

@@ -441,7 +441,7 @@ tensorflow::Status SegmentGraph(
     } else {
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
-        VLOG(1) << "Not a TF-TRT candidate, "
+        LOG(INFO) << "Not a TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "
                 << "(Op name: " << node->name() << "), "
                 << "(Reason: " << status << ")";
