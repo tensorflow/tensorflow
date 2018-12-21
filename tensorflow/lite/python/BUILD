@@ -61,7 +61,6 @@ py_library(
         ":lite_constants",
         ":op_hint",
         "//tensorflow/python:graph_util",
-        "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/keras",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:loader",

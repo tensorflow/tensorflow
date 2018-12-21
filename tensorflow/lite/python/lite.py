@@ -53,47 +53,17 @@ from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=un
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as _rewriter_config_pb2
-from tensorflow.core.protobuf import config_pb2 as _config_pb2
-from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import graph_util as _tf_graph_util
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
-from tensorflow.python.grappler import tf_optimizer as _tf_optimizer
 from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
-from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-
-def _run_graph_optimizations(graph_def, output_arrays):
-  """Apply standard TensorFlow optimizations to the graph_def.
-
-  Args:
-    graph_def: Frozen GraphDef to be optimized.
-    output_arrays: List of arrays that are considered outputs of the graph.
-
-  Returns:
-    A new, optimized GraphDef.
-  """
-  meta_graph = _export_meta_graph(graph_def=graph_def)
-
-  # We need to add a collection called 'train_op' so that grappler
-  # knows what the outputs are.
-  fetch_collection = _meta_graph_pb2.CollectionDef()
-  for output in output_arrays:
-    fetch_collection.node_list.value.append(output)
-  meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
-
-  config = _config_pb2.ConfigProto()
-  rewrite_options = config.graph_options.rewrite_options
-  rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
-  return _tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
 @_tf_export("lite.TFLiteConverter")
@@ -476,23 +446,16 @@ class TFLiteConverter(object):
         "dump_graphviz_video": self.dump_graphviz_video
     }
 
-    optimized_graph = None
-    try:
-      optimized_graph = _run_graph_optimizations(
-          self._graph_def, [t.name for t in self._output_tensors])
-    except Exception:
-      optimized_graph = self._graph_def
-
     # Converts model.
     if self._has_valid_tensors():
       result = _toco_convert_impl(
-          input_data=optimized_graph,
+          input_data=self._graph_def,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
           **converter_kwargs)
     else:
       result = _toco_convert_graph_def(
-          input_data=optimized_graph,
+          input_data=self._graph_def,
           input_arrays_with_shape=self._input_arrays_with_shape,
           output_arrays=self._output_arrays,
           **converter_kwargs)
