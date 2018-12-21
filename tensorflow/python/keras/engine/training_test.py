@@ -994,37 +994,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
       self.assertLess(score[0], ref_score[0])
 
   @keras_parameterized.run_all_keras_modes
-  def test_warning_for_concurrent_sample_and_class_weights(self):
-
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(10, input_shape=(3,)))
-    model.compile(
-        loss='mse',
-        optimizer=RMSPropOptimizer(learning_rate=0.01),
-        run_eagerly=testing_utils.should_run_eagerly())
-    x_train = np.random.random((10, 3))
-    y_train = np.random.random((10, 10))
-    sample_weight = np.ones((y_train.shape[0]))
-    class_weight = {0: 1., 1: 1.}
-
-    with test.mock.patch.object(logging, 'warning') as mock_log:
-      model.fit(
-          x_train,
-          y_train,
-          epochs=1,
-          verbose=0,
-          sample_weight=sample_weight,
-          class_weight=class_weight)
-      msg = 'The `class_weight` argument will be ignored.'
-
-      msg_found = False
-      for call_args in mock_log.call_args_list:
-        if msg in str(call_args):
-          msg_found = True
-
-      self.assertTrue(msg_found)
-
-  @keras_parameterized.run_all_keras_modes
   def test_temporal_sample_weights(self):
     num_classes = 5
     batch_size = 5

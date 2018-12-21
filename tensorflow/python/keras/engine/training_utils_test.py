@@ -367,5 +367,29 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
         training_utils.assert_not_shuffled(dataset_fn())
 
 
+class StandardizeWeightsTest(keras_parameterized.TestCase):
+
+  def test_sample_weights(self):
+    y = np.array([0, 1, 0, 0, 2])
+    sample_weights = np.array([0.5, 1., 1., 0., 2.])
+    weights = training_utils.standardize_weights(y, sample_weights)
+    self.assertAllClose(weights, sample_weights)
+
+  def test_class_weights(self):
+    y = np.array([0, 1, 0, 0, 2])
+    class_weights = {0: 0.5, 1: 1., 2: 1.5}
+    weights = training_utils.standardize_weights(y, class_weight=class_weights)
+    self.assertAllClose(weights, np.array([0.5, 1., 0.5, 0.5, 1.5]))
+
+  def test_sample_weights_and_class_weights(self):
+    y = np.array([0, 1, 0, 0, 2])
+    sample_weights = np.array([0.5, 1., 1., 0., 2.])
+    class_weights = {0: 0.5, 1: 1., 2: 1.5}
+    weights = training_utils.standardize_weights(y, sample_weights,
+                                                 class_weights)
+    expected = sample_weights * np.array([0.5, 1., 0.5, 0.5, 1.5])
+    self.assertAllClose(weights, expected)
+
+
 if __name__ == '__main__':
   test.main()

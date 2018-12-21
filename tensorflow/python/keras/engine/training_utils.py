@@ -676,7 +676,8 @@ def standardize_weights(y,
   """Performs sample weight validation and standardization.
 
   Everything gets normalized to a single sample-wise (or timestep-wise)
-  weight array.
+  weight array. If both `sample_weight` and `class_weight` are provided,
+  the weights are multiplied.
 
   Arguments:
       y: Numpy array of model targets to be weighted.
@@ -737,22 +738,26 @@ def standardize_weights(y,
           'Found a sample_weight array with shape ' + str(sample_weight.shape) +
           ' for an input with shape ' + str(y.shape) + '. '
           'sample_weight cannot be broadcast.')
-    return sample_weight
-  elif isinstance(class_weight, dict):
+
+  # Class weights applied per-sample.
+  class_sample_weight = None
+  if isinstance(class_weight, dict):
     if len(y.shape) > 2:
       raise ValueError('`class_weight` not supported for '
                        '3+ dimensional targets.')
-    if y.shape[1] > 1:
-      y_classes = np.argmax(y, axis=1)
-    elif y.shape[1] == 1:
-      y_classes = np.reshape(y, y.shape[0])
+
+    if len(y.shape) == 2:
+      if y.shape[1] > 1:
+        y_classes = np.argmax(y, axis=1)
+      elif y.shape[1] == 1:
+        y_classes = np.reshape(y, y.shape[0])
     else:
       y_classes = y
 
-    weights = np.asarray(
+    class_sample_weight = np.asarray(
         [class_weight[cls] for cls in y_classes if cls in class_weight])
 
-    if len(weights) != len(y_classes):
+    if len(class_sample_weight) != len(y_classes):
       # subtract the sets to pick all missing classes
       existing_classes = set(y_classes)
       existing_class_weight = set(class_weight.keys())
@@ -760,9 +765,15 @@ def standardize_weights(y,
                        ' The classes %s exist in the data but not in '
                        '`class_weight`.' %
                        (existing_classes - existing_class_weight))
-    return weights
-  else:
-    return None
+
+  if class_sample_weight is not None and sample_weight is not None:
+    # Multiply weights if both are provided.
+    return class_sample_weight * sample_weight
+  if sample_weight is not None:
+    return sample_weight
+  if class_sample_weight is not None:
+    return class_sample_weight
+  return None
 
 
 def has_symbolic_tensors(ls):
