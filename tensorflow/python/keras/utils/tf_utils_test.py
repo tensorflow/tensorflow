@@ -130,5 +130,17 @@ class TestIsSymbolicTensor(test.TestCase):
     self.assertIsInstance(y, Foo)
 
 
+class ConvertInnerNodeDataTest(test.TestCase):
+
+  def test_convert_inner_node_data(self):
+    data = tf_utils.convert_inner_node_data((tf_utils.ListWrapper(['l', 2, 3]),
+                                             tf_utils.ListWrapper(['l', 5, 6])))
+    self.assertEqual(data, (['l', 2, 3], ['l', 5, 6]))
+
+    data = tf_utils.convert_inner_node_data(((['l', 2, 3], ['l', 5, 6])),
+                                            wrap=True)
+    self.assertTrue(all(isinstance(ele, tf_utils.ListWrapper) for ele in data))
+
+
 if __name__ == '__main__':
   test.main()
