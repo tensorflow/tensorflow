@@ -3135,6 +3135,7 @@ cc_library(
         ":fft_ops",
         ":histogram_op",
         ":matmul_op",
+        ":nextafter_op",
         ":population_count_op",
         ":reduction_ops",
         ":scan_ops",
@@ -3203,6 +3204,12 @@ tf_kernel_library(
     name = "cwise_op",
     prefix = "cwise_op",
     deps = MATH_DEPS + ["//tensorflow/core:bitwise_ops_op_lib"],
+)
+
+tf_kernel_library(
+    name = "nextafter_op",
+    prefix = "nextafter_op",
+    deps = MATH_DEPS + [":cwise_op"],
 )
 
 tf_kernel_library(
@@ -5788,6 +5795,7 @@ filegroup(
             "mkl_*",
             "xsmm_*",
             "cwise_ops_sycl_common.h",
+            "nextafter_op.cc",
         ] + ANDROID_TEXTUAL_HDRS,
     ),
     visibility = ["//visibility:public"],
