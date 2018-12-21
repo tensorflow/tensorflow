@@ -4523,7 +4523,11 @@ class Graph(object):
     control_ops = []
     current = self._current_control_dependencies()
     for c in control_inputs:
-      if isinstance(c, IndexedSlices):
+      # The hasattr(handle) is designed to match ResourceVariables. This is so
+      # control dependencies on a variable or on an unread variable don't
+      # trigger reads.
+      if (isinstance(c, IndexedSlices) or
+          (hasattr(c, "_handle") and hasattr(c, "op"))):
         c = c.op
       c = self.as_graph_element(c)
       if isinstance(c, Tensor):
