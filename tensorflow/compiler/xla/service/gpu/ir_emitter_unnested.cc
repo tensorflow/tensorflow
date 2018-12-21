@@ -292,13 +292,12 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo, int64 launch_size,
 
   auto shape_in_range = [&](const Shape& s) {
     bool in_range = true;
-    ShapeUtil::ForEachSubshape(
-        s, [&](const Shape& sub_shape, const ShapeIndex& /*index*/) {
-          if (ShapeUtil::IsArray(sub_shape) &&
-              !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
-            in_range = false;
-          }
-        });
+    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
+                                      const ShapeIndex& /*index*/) {
+      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
+        in_range = false;
+      }
+    });
 
     return in_range;
   };
@@ -542,8 +541,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         // HandleFusion specializes reduction from a multi-dimensional array to
         // a 1D array. The specialized version requires a initializer thunk that
         // initializes the output array to the initial value of the reduce.
-        if (root->opcode() == HloOpcode::kReduce &&
-            ShapeUtil::IsTuple(root->shape())) {
+        if (root->opcode() == HloOpcode::kReduce && root->shape().IsTuple()) {
           // TODO(b/112040122): Support variadic reduce.
           return Unimplemented("Variadic reduce is not supported on GPU");
         }
@@ -634,7 +632,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   // TODO(b/112040122): Support multi-output reduce.
-  if (!ShapeUtil::IsArray(reduce->shape())) {
+  if (!reduce->shape().IsArray()) {
     return Unimplemented("Multi-output reduce is not supported on GPU");
   }
   if (IsReductionToVector(*reduce)) {
@@ -1309,7 +1307,7 @@ Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
   // HloModuleConfig::num_replicas changes between when the module is compiled
   // and when it's run.
   if (crs->operand_count() == 1) {
-    CHECK(ShapeUtil::IsArray(crs->operand(0)->shape()))
+    CHECK(crs->operand(0)->shape().IsArray())
         << "Operands to all-reduce must be arrays: " << crs->ToString();
     AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/GetAllocationSlice(*crs->operand(0)),

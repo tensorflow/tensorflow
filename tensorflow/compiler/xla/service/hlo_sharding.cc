@@ -57,7 +57,7 @@ HloSharding HloSharding::Tuple(const ShapeTree<HloSharding>& sub_shardings) {
 
 HloSharding HloSharding::Tuple(const Shape& tuple_shape,
                                absl::Span<const HloSharding> shardings) {
-  CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  CHECK(tuple_shape.IsTuple()) << ShapeUtil::HumanString(tuple_shape);
   for (auto& sharding : shardings) {
     CHECK(!sharding.IsTuple()) << sharding.ToString();
   }
@@ -70,7 +70,7 @@ HloSharding HloSharding::Tuple(const Shape& tuple_shape,
 
 HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
                                      const HloSharding& sharding) {
-  CHECK(ShapeUtil::IsTuple(tuple_shape)) << ShapeUtil::HumanString(tuple_shape);
+  CHECK(tuple_shape.IsTuple()) << ShapeUtil::HumanString(tuple_shape);
   CHECK(!sharding.IsTuple()) << sharding.ToString();
   int64 leaf_count = RequiredLeaves(tuple_shape);
   std::vector<HloSharding> flattened_list;
@@ -80,7 +80,7 @@ HloSharding HloSharding::SingleTuple(const Shape& tuple_shape,
 
 HloSharding HloSharding::Single(const Shape& shape,
                                 const HloSharding& sharding) {
-  return ShapeUtil::IsTuple(shape) ? SingleTuple(shape, sharding) : sharding;
+  return shape.IsTuple() ? SingleTuple(shape, sharding) : sharding;
 }
 
 string HloSharding::ToString() const {
@@ -269,7 +269,7 @@ int64 HloSharding::GetUniqueDevice() const {
 }
 
 Status HloSharding::ValidateTuple(const Shape& shape, int64 num_devices) const {
-  if (!ShapeUtil::IsTuple(shape)) {
+  if (!shape.IsTuple()) {
     return tensorflow::errors::InvalidArgument(
         StrCat("Sharding is tuple-shaped but validation shape is not."));
   }
@@ -305,7 +305,7 @@ Status HloSharding::Validate(const Shape& shape, int64 num_devices) const {
 
 Status HloSharding::ValidateNonTuple(const Shape& shape,
                                      int64 num_devices) const {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     return tensorflow::errors::InvalidArgument(
         StrCat("Validation shape is a tuple but sharding is not."));
   }
@@ -455,7 +455,7 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
     }
     sub_shape = &ShapeUtil::GetSubshape(*sub_shape, {idx});
   }
-  if (ShapeUtil::IsTuple(*sub_shape)) {
+  if (sub_shape->IsTuple()) {
     auto begin_it = tuple_elements_.begin() + sharding_index;
     std::vector<HloSharding> sub_shardings(
         begin_it, begin_it + ShapeUtil::GetLeafCount(*sub_shape));

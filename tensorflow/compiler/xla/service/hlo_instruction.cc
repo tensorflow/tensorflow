@@ -311,7 +311,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           shape, operands(0), proto.exponent_bits(), proto.mantissa_bits());
       break;
     case HloOpcode::kInfeed: {
-      TF_RET_CHECK(ShapeUtil::IsTuple(shape) &&
+      TF_RET_CHECK(shape.IsTuple() &&
                    (ShapeUtil::TupleElementCount(shape) == 2))
           << "Infeed should have a tuple shape with 2 operands, but has: "
           << shape;
@@ -628,7 +628,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     absl::Span<HloInstruction* const> operands) {
   if (opcode == HloOpcode::kCopy) {
     // It is impossible to copy an opaque shape, we don't know how big it is.
-    CHECK(!ShapeUtil::IsOpaque(shape));
+    CHECK(!shape.IsOpaque());
   }
   auto instruction = absl::WrapUnique(new HloInstruction(opcode, shape));
   for (auto operand : operands) {
@@ -1132,7 +1132,7 @@ HloInstruction::CreateBroadcastSequence(
 
 void HloInstruction::set_single_sharding(const HloSharding& sharding) {
   CHECK(!sharding.IsTuple()) << sharding;
-  if (ShapeUtil::IsTuple(shape())) {
+  if (shape().IsTuple()) {
     set_sharding(HloSharding::Tuple(sharding.GetAsShapeTree(shape())));
   } else {
     set_sharding(sharding);

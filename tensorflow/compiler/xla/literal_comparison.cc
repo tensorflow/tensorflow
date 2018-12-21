@@ -172,14 +172,14 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
 // Gets the total element count.  For tuples, this is not the count of tuple
 // elements, but the sum of elements of each tuple element.
 int64 RecursiveElementCount(const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     const int64 tuple_elements = ShapeUtil::TupleElementCount(shape);
     int64 total = 0;
     for (int64 i = 0; i < tuple_elements; ++i) {
       total += RecursiveElementCount(ShapeUtil::GetTupleElementShape(shape, i));
     }
     return total;
-  } else if (ShapeUtil::IsArray(shape)) {
+  } else if (shape.IsArray()) {
     return ShapeUtil::ElementsIn(shape);
   } else {
     return 0;
@@ -311,7 +311,7 @@ class NearComparator {
     // If the shapes mismatch, we simply fail the expectation instead of
     // printing out data, as it's a type error rather than a value error.
     TF_RETURN_IF_ERROR(EqualShapes(expected_.shape(), actual_.shape()));
-    if (!ShapeUtil::IsArray(expected_.shape())) {
+    if (!expected_.shape().IsArray()) {
       return InvalidArgument("Expected array shape; got %s.",
                              ShapeUtil::HumanString(expected_.shape()));
     }
@@ -685,7 +685,7 @@ Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                   const ShapeIndex& shape_index) {
   TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
 
-  if (ShapeUtil::IsTuple(expected.shape())) {
+  if (expected.shape().IsTuple()) {
     Status return_status;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(expected.shape()); ++i) {
       const auto expected_element = LiteralSlice(expected, {i});
@@ -761,7 +761,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
                            ShapeUtil::HumanString(expected),
                            ShapeUtil::HumanString(actual));
   }
-  if (ShapeUtil::IsTuple(expected)) {
+  if (expected.IsTuple()) {
     if (ShapeUtil::TupleElementCount(expected) !=
         ShapeUtil::TupleElementCount(actual)) {
       return InvalidArgument(
@@ -776,7 +776,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
         return AppendStatus(result, StrCat("mismatch in tuple index", i));
       }
     }
-  } else if (ShapeUtil::IsArray(expected)) {
+  } else if (expected.IsArray()) {
     if (expected.rank() != actual.rank()) {
       return InvalidArgument("want rank of %s got rank of %s",
                              ShapeUtil::HumanString(expected),

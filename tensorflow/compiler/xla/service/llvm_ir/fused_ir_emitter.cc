@@ -115,7 +115,7 @@ Status FusedIrEmitter::HandleGetTupleElement(
         /*alignment=*/1, tuple_ptr, b_, module_);
   };
 
-  if (!ShapeUtil::IsTuple(get_tuple_element->shape())) {
+  if (!get_tuple_element->shape().IsTuple()) {
     indexed_generators_[get_tuple_element] =
         [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
       // TODO(b/34080002) Add aliasing information to tuple element IrArray.

@@ -168,7 +168,7 @@ void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
 StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                           std::minstd_rand0* engine,
                                           bool no_duplicates) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     std::vector<Literal> elements;
     for (const Shape& element_shape : shape.tuple_shapes()) {
       TF_ASSIGN_OR_RETURN(

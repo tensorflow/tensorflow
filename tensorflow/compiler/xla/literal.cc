@@ -107,7 +107,7 @@ Literal::Literal(const Shape& shape)
     : Literal(shape, /*allocate_arrays=*/true) {}
 
 void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       const Shape& subshape = shape.tuple_shapes(i);
 
@@ -118,7 +118,7 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
 
       piece->emplace_back(std::move(child_piece));
     }
-  } else if (ShapeUtil::IsArray(shape)) {
+  } else if (shape.IsArray()) {
     if (allocate_arrays) {
       if (LayoutUtil::IsSparseArray(shape)) {
         // For sparse arrays, the buffer must be of the size of the maximum
@@ -187,7 +187,7 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
   Literal literal(shape);
   literal.root_piece_->ForEachMutableSubpiece(
       [&](const ShapeIndex& index, Piece* piece) {
-        if (ShapeUtil::IsArray(piece->subshape())) {
+        if (piece->subshape().IsArray()) {
           memset(piece->untyped_data(), 0, piece->size_bytes());
         }
       });
@@ -311,7 +311,7 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
           proto_element = &proto_element->tuple_literals(i);
         }
 
-        if (ShapeUtil::IsTuple(piece->subshape())) {
+        if (piece->subshape().IsTuple()) {
           if (proto_element->tuple_literals_size() !=
               ShapeUtil::TupleElementCount(piece->subshape())) {
             return InvalidArgument(
@@ -325,7 +325,7 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
           return Status::OK();
         }
 
-        CHECK(ShapeUtil::IsArray(piece->subshape()));
+        CHECK(piece->subshape().IsArray());
         TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
 
         return Status::OK();
@@ -335,7 +335,7 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
 }
 
 std::vector<Literal> Literal::DecomposeTuple() {
-  CHECK(ShapeUtil::IsTuple(shape()));
+  CHECK(shape().IsTuple());
   std::vector<Literal> elements;
   for (int i = 0; i < ShapeUtil::TupleElementCount(shape()); ++i) {
     elements.push_back(Literal(ShapeUtil::GetSubshape(shape(), {i}),
@@ -437,7 +437,7 @@ Status MutableLiteralBase::CopyFrom(const LiteralSlice& src_literal,
   }
   return root_piece_->ForEachMutableSubpieceWithStatus(
       [&](const ShapeIndex& index, Piece* piece) {
-        if (!ShapeUtil::IsArray(piece->subshape())) {
+        if (!piece->subshape().IsArray()) {
           return Status::OK();
         }
 
@@ -476,7 +476,7 @@ Status Literal::MoveFrom(Literal&& src_literal,
 
   src_literal.root_piece_->ForEachSubpiece(
       [&](const ShapeIndex& src_index, const Piece& src_piece) {
-        if (!ShapeUtil::IsArray(src_piece.subshape())) {
+        if (!src_piece.subshape().IsArray()) {
           return;
         }
 
@@ -503,8 +503,8 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
                                          absl::Span<const int64> src_base,
                                          absl::Span<const int64> dest_base,
                                          absl::Span<const int64> copy_size) {
-  TF_RET_CHECK(ShapeUtil::IsArray(shape())) << ShapeUtil::HumanString(shape());
-  TF_RET_CHECK(ShapeUtil::IsArray(src_literal.shape()))
+  TF_RET_CHECK(shape().IsArray()) << ShapeUtil::HumanString(shape());
+  TF_RET_CHECK(src_literal.shape().IsArray())
       << ShapeUtil::HumanString(src_literal.shape());
   TF_RET_CHECK(ShapeUtil::SameElementType(src_literal.shape(), shape()));
 
@@ -561,7 +561,7 @@ Status MutableLiteralBase::CopySliceFrom(const LiteralSlice& src_literal,
 }
 
 void MutableLiteralBase::PopulateR1(const tensorflow::core::Bitmap& values) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(element_count(), values.bits());
   CHECK_EQ(shape().element_type(), PRED);
@@ -591,7 +591,7 @@ Literal LiteralBase::Relayout(const Shape& shape_with_layout) const {
   ShapeUtil::ForEachSubshape(
       result.shape(),
       [this, &result](const Shape& subshape, const ShapeIndex& index) {
-        if (ShapeUtil::IsArray(subshape)) {
+        if (subshape.IsArray()) {
           TF_CHECK_OK(result.CopyFrom(*this,
                                       /*dest_shape_index=*/index,
                                       /*src_shape_index=*/index));
@@ -602,7 +602,7 @@ Literal LiteralBase::Relayout(const Shape& shape_with_layout) const {
 
 StatusOr<Literal> LiteralBase::Broadcast(
     const Shape& result_shape, absl::Span<const int64> dimensions) const {
-  if (!ShapeUtil::IsArray(shape())) {
+  if (!shape().IsArray()) {
     return InvalidArgument("Broadcast only supports arrays.");
   }
 
@@ -642,7 +642,7 @@ StatusOr<Literal> LiteralBase::Broadcast(
 
 StatusOr<Literal> LiteralBase::Reshape(
     absl::Span<const int64> dimensions) const {
-  if (!ShapeUtil::IsArray(shape())) {
+  if (!shape().IsArray()) {
     return InvalidArgument("Reshape does not support tuples.");
   }
   Literal output;
@@ -669,7 +669,7 @@ StatusOr<Literal> LiteralBase::Reshape(
 }
 
 Literal LiteralBase::Transpose(absl::Span<const int64> permutation) const {
-  CHECK(ShapeUtil::IsArray(shape())) << "Tuple is not supported for transpose";
+  CHECK(shape().IsArray()) << "Tuple is not supported for transpose";
   CHECK(IsPermutation(permutation, shape().rank()))
       << "Given permutation is not a permutation of dimension numbers";
   // To transpose the array, we just permute the dimensions and layout, and
@@ -723,7 +723,7 @@ Literal LiteralBase::SliceInternal(
 
 Literal LiteralBase::Slice(absl::Span<const int64> start_indices,
                            absl::Span<const int64> limit_indices) const {
-  CHECK(ShapeUtil::IsArray(shape())) << "tuple is not supported for slice";
+  CHECK(shape().IsArray()) << "tuple is not supported for slice";
 
   DimensionVector result_dimensions;
   for (int64 dnum = 0; dnum < shape().rank(); ++dnum) {
@@ -904,7 +904,7 @@ size_t LiteralBase::Hash() const {
 
   ShapeUtil::ForEachSubshape(
       shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!ShapeUtil::IsArray(subshape)) {
+        if (!subshape.IsArray()) {
           return;
         }
 
@@ -1152,10 +1152,10 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   CHECK(LayoutUtil::HasLayout(literal.shape()));
   CHECK(LayoutUtil::HasLayout(subshape));
-  if (ShapeUtil::IsTuple(subshape)) {
+  if (subshape.IsTuple()) {
     TupleToStringHelper(literal, shape_index, print_shape, print_layout,
                         pieces);
-  } else if (ShapeUtil::IsToken(subshape)) {
+  } else if (subshape.IsToken()) {
     pieces->push_back("token");
   } else if (LayoutUtil::IsSparseArray(subshape)) {
     SparseArrayToStringHelper(literal, subshape, print_shape, print_layout,
@@ -1215,7 +1215,7 @@ namespace {
 template <typename NativeSrcT, typename NativeDestT, typename ConverterType>
 Literal ConvertBetweenNativeTypesWithConverter(const LiteralBase& src_literal,
                                                const ConverterType& converter) {
-  CHECK(ShapeUtil::IsArray(src_literal.shape()));
+  CHECK(src_literal.shape().IsArray());
   Literal result_literal(ShapeUtil::ChangeElementType(
       src_literal.shape(),
       primitive_util::NativeToPrimitiveType<NativeDestT>()));
@@ -1276,7 +1276,7 @@ BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
 
 template <PrimitiveType primitive_src_type>
 Literal ConvertToC64(const LiteralBase& src_literal) {
-  CHECK(ShapeUtil::IsArray(src_literal.shape()));
+  CHECK(src_literal.shape().IsArray());
   Literal result_literal(
       ShapeUtil::ChangeElementType(src_literal.shape(), C64));
   using NativeSrcT =
@@ -1346,7 +1346,7 @@ StatusOr<Literal> ConvertIfDestTypeMatches(const LiteralBase& src_literal,
 StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
                                 PrimitiveType primitive_dest_type,
                                 bool bitcast) {
-  TF_RET_CHECK(ShapeUtil::IsArray(literal.shape()));
+  TF_RET_CHECK(literal.shape().IsArray());
   if (literal.shape().element_type() == primitive_dest_type) {
     return literal.Clone();
   }
@@ -1399,7 +1399,7 @@ StatusOr<Literal> LiteralBase::BitcastConvert(
 }
 
 StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
-  if (!ShapeUtil::IsTuple(dest_shape)) {
+  if (!dest_shape.IsTuple()) {
     return Convert(dest_shape.element_type());
   }
   std::vector<Literal> elements;
@@ -1494,7 +1494,7 @@ bool LiteralBase::operator==(const LiteralBase& other) const {
 
   return root_piece().ForEachSubpieceWithBool(
       [&](const ShapeIndex& index, const Piece& piece) {
-        if (!ShapeUtil::IsArray(piece.subshape())) {
+        if (!piece.subshape().IsArray()) {
           return true;
         }
 
@@ -1524,7 +1524,7 @@ static bool AllElementsEqualValue(absl::Span<const NativeT> data,
 bool LiteralBase::IsAll(int8 value) const {
   return root_piece().ForEachSubpieceWithBool([&](const ShapeIndex& index,
                                                   const Piece& piece) {
-    if (!ShapeUtil::IsArray(piece.subshape())) {
+    if (!piece.subshape().IsArray()) {
       return true;
     }
 
@@ -1592,7 +1592,7 @@ bool LiteralBase::IsAll(int8 value) const {
 bool LiteralBase::IsAllFloat(float value) const {
   return root_piece().ForEachSubpieceWithBool(
       [&](const ShapeIndex& index, const Piece& piece) {
-        if (!ShapeUtil::IsArray(piece.subshape())) {
+        if (!piece.subshape().IsArray()) {
           return true;
         }
 
@@ -1632,7 +1632,7 @@ bool LiteralBase::IsAllComplex(complex64 value) const {
 bool LiteralBase::IsAllFirst() const {
   return root_piece().ForEachSubpieceWithBool(
       [&](const ShapeIndex& index, const Piece& piece) {
-        if (!ShapeUtil::IsArray(piece.subshape())) {
+        if (!piece.subshape().IsArray()) {
           return true;
         }
 
@@ -1716,7 +1716,7 @@ bool LiteralBase::IsAllFirst() const {
 }
 
 bool LiteralBase::IsR1Iota() const {
-  if (!ShapeUtil::IsArray(shape())) {
+  if (!shape().IsArray()) {
     return false;
   }
 
@@ -1771,7 +1771,7 @@ bool LiteralBase::IsR1Iota() const {
 }
 
 bool LiteralBase::IsZero(absl::Span<const int64> indices) const {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   switch (shape().element_type()) {
     case U8:
       return Get<uint8>(indices) == 0;
@@ -1894,12 +1894,12 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
 }
 
 const void* LiteralBase::Piece::untyped_data() const {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  CHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
   return buffer();
 }
 
 void* LiteralBase::Piece::untyped_data() {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  CHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
   return buffer();
 }
 
@@ -2060,7 +2060,7 @@ int64 LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
 }
 
 string LiteralBase::GetR1U8AsString() const {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(shape().element_type(), U8);
   return string(absl::bit_cast<const char*>(data<uint8>().data()),
@@ -2075,7 +2075,7 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
       << ShapeUtil::HumanString(src_piece->subshape())
       << "dest_piece has shape: "
       << ShapeUtil::HumanString(dest_piece->subshape());
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       const Shape& subshape = shape.tuple_shapes(i);
 
@@ -2086,7 +2086,7 @@ void MutableBorrowingLiteral::CopyPieceSubtree(const Shape& shape,
 
       dest_piece->emplace_back(std::move(child_piece));
     }
-  } else if (ShapeUtil::IsArray(shape)) {
+  } else if (shape.IsArray()) {
     dest_piece->set_buffer(src_piece->buffer());
   } else {
     // If the shape is neither an array nor tuple, then it must be
@@ -2162,7 +2162,7 @@ MutableBorrowingLiteral::MutableBorrowingLiteral(const char* src_buf_ptr,
     : MutableLiteralBase() {
   shape_ = absl::make_unique<Shape>(shape);
   CHECK(LayoutUtil::HasLayout(*shape_));
-  CHECK(!ShapeUtil::IsTuple(*shape_));
+  CHECK(!shape_->IsTuple());
 
   root_piece_ = new Piece();
   root_piece_->set_buffer(const_cast<char*>(src_buf_ptr));
@@ -2189,14 +2189,14 @@ LiteralSlice::LiteralSlice(const LiteralBase& literal,
     : LiteralBase(), root_piece_(&literal.piece(view_root)) {}
 
 void BorrowingLiteral::BuildPieceSubtree(const Shape& shape, Piece* piece) {
-  CHECK(ShapeUtil::IsTuple(shape));
+  CHECK(shape.IsTuple());
   for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     const Shape& subshape = shape.tuple_shapes(i);
 
     auto child_piece = Piece();
     child_piece.set_subshape(&subshape);
 
-    if (ShapeUtil::IsTuple(subshape)) {
+    if (subshape.IsTuple()) {
       BuildPieceSubtree(subshape, &child_piece);
     }
 
@@ -2206,7 +2206,7 @@ void BorrowingLiteral::BuildPieceSubtree(const Shape& shape, Piece* piece) {
 
 BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
     : LiteralBase(), shape_(absl::make_unique<Shape>(shape)) {
-  CHECK(ShapeUtil::IsArray(*shape_));
+  CHECK(shape_->IsArray());
   CHECK(LayoutUtil::HasLayout(*shape_));
 
   root_piece_ = Piece();
@@ -2217,7 +2217,7 @@ BorrowingLiteral::BorrowingLiteral(const char* src_buf_ptr, const Shape& shape)
 BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
                                    const Shape& shape)
     : LiteralBase(), shape_(absl::make_unique<Shape>(shape)) {
-  CHECK(ShapeUtil::IsTuple(*shape_));
+  CHECK(shape_->IsTuple());
   CHECK(!ShapeUtil::IsNestedTuple(*shape_));
   CHECK_EQ(src_buf_ptrs.size(), ShapeUtil::TupleElementCount(*shape_));
   root_piece_ = Piece();
@@ -2226,7 +2226,7 @@ BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
 
   for (int i = 0; i < src_buf_ptrs.size(); ++i) {
     const auto& src_shape = shape_->tuple_shapes(i);
-    CHECK(ShapeUtil::IsArray(src_shape));
+    CHECK(src_shape.IsArray());
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));
   }
 }

@@ -160,7 +160,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
           continue;
         }
         // Skip operands with non-array shapes.
-        if (!ShapeUtil::IsArray(instruction->operand(operand_no)->shape())) {
+        if (!instruction->operand(operand_no)->shape().IsArray()) {
           continue;
         }
         Shape operand_shape(
@@ -175,7 +175,7 @@ Status CpuLayoutAssignment::AddBackendConstraints(
       }
       // Skip instructions which don't produce array shapes (tuples, opaque,
       // etc.).
-      if (!ShapeUtil::IsArray(instruction->shape())) {
+      if (!instruction->shape().IsArray()) {
         continue;
       }
     }

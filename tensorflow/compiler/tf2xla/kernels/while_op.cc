@@ -206,12 +206,12 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES(ctx, body.xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
   xla::Shape body_input_shape = body.xla_input_shapes[0];
-  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(body_input_shape),
+  OP_REQUIRES(ctx, body_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
   OP_REQUIRES(ctx, cond.xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
   xla::Shape cond_input_shape = cond.xla_input_shapes[0];
-  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(cond_input_shape),
+  OP_REQUIRES(ctx, cond_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
 
   VLOG(2) << "Body shape: " << xla::ShapeUtil::HumanString(body_input_shape)
@@ -313,7 +313,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
         xla::GetTupleElement(while_result, ctx->num_outputs());
     auto shape_or = builder->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    OP_REQUIRES(ctx, xla::ShapeUtil::IsToken(shape_or.ValueOrDie()),
+    OP_REQUIRES(ctx, shape_or.ValueOrDie().IsToken(),
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));

@@ -522,7 +522,7 @@ class CopyRemover {
         // between copies added around aliased operations (kWhile) guarantees
         // this strict order.
         for (const HloValue* value_a : buffer.values()) {
-          if (ShapeUtil::IsToken(value_a->shape())) {
+          if (value_a->shape().IsToken()) {
             // Token values have no representation and cannot interfere.
             continue;
           }

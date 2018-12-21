@@ -733,8 +733,8 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
     return true;
   }
   const int kMinUsersToOmit = 3;
-  return instr->opcode() == HloOpcode::kParameter &&
-         ShapeUtil::IsTuple(instr->shape()) && !instr->IsFused() &&
+  return instr->opcode() == HloOpcode::kParameter && instr->shape().IsTuple() &&
+         !instr->IsFused() &&
          std::count_if(instr->users().begin(), instr->users().end(),
                        [&](const HloInstruction* user) {
                          return filter_.Show(user);
@@ -816,7 +816,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     // Print the literal value of constants with <= K elements.
     optional<int64> elem_count;
-    if (ShapeUtil::IsArray(shape)) {
+    if (shape.IsArray()) {
       elem_count = 1;
       for (int64 dim : shape.dimensions()) {
         *elem_count *= dim;

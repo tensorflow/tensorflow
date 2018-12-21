@@ -61,12 +61,6 @@ string Shape::ToString(bool print_layout) const {
   }
 }
 
-int64 Shape::rank() const {
-  CHECK(ShapeUtil::IsArray(*this))
-      << "Non-arrays do not have a rank, shape: " << *this;
-  return dimensions_.size();
-}
-
 std::ostream& operator<<(std::ostream& out, const Shape& shape) {
   out << shape.ToString(/*print_layout=*/true);
   return out;

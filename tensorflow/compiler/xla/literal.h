@@ -867,7 +867,7 @@ class BorrowingLiteral : public LiteralBase {
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
   DCHECK_EQ(subshape().element_type(),
             primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
@@ -880,7 +880,7 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
   DCHECK_EQ(subshape().element_type(),
             primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
@@ -985,7 +985,7 @@ void LiteralBase::EachCell(
 
 template <typename NativeT>
 inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
   CHECK_EQ(shape().element_type(),
@@ -997,7 +997,7 @@ inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
 template <typename NativeT>
 void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 2);
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1021,7 +1021,7 @@ void MutableLiteralBase::PopulateR2(
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   CHECK_EQ(shape().rank(), values.num_dimensions());
@@ -1129,7 +1129,7 @@ Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateWithValue(NativeT value) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   for (NativeT& element : data<NativeT>()) {

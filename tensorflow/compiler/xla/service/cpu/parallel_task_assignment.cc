@@ -150,7 +150,7 @@ int64 ParallelTaskAssignment::GetTargetParallelTaskCount(
                                        target_machine_features_) ||
       (opcode == HloOpcode::kFusion &&
        instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) ||
-      ShapeUtil::IsTuple(instruction->shape())) {
+      instruction->shape().IsTuple()) {
     return 1;
   }
 
