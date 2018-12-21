@@ -2609,12 +2609,18 @@ tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
     return errors::InvalidArgument("Input expects tensor and weights, at ",
                                    node_def.name());
   }
+  TFAttrs attrs(node_def);
+  tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
+  if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
+    return errors::Unimplemented("Data type is not supported, for node ",
+                                 node_def.name(), " got ",
+                                 DataTypeString(tf_dtype));
+  }
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ITensor* tensor =
       const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
   const nvinfer1::Dims original_dims = tensor->getDimensions();
-  TFAttrs attrs(node_def);
   const string data_format = attrs.get<string>("data_format");
   const int channel_index =
       (data_format == "NHWC" ? original_dims.nbDims - 1 : 0);
@@ -3461,13 +3467,12 @@ tensorflow::Status ConvertMatMul(OpConverterParams* params) {
   }
 
   TFAttrs attrs(node_def);
-  // TODO(jie): INT32 should be converted?
-  // tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
-  // if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
-  //   return errors::Unimplemented("Data type is not supported, for node ",
-  //                                node_def.name(), " got ",
-  //                                DataTypeString(tf_dtype));
-  // }
+  tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
+  if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
+    return errors::Unimplemented("Data type is not supported, for node ",
+                                 node_def.name(), " got ",
+                                 DataTypeString(tf_dtype));
+  }
   bool transpose_a = attrs.get<bool>("transpose_a");
   bool transpose_b = attrs.get<bool>("transpose_b");
 
@@ -3487,7 +3492,6 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TFAttrs attrs(node_def);
 
-  // TODO(jie): INT32 should be converted?
   tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
   if (tf_dtype != tensorflow::DataType::DT_FLOAT &&
       tf_dtype != tensorflow::DataType::DT_HALF) {

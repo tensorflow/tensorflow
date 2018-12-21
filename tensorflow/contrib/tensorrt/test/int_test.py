@@ -53,7 +53,6 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
       # int part
       input2 = array_ops.placeholder(
           dtype=dtypes.int32, shape=input_dims, name='input_int32')
-      #with g.device("/GPU:0"):
       b2 = self._ConstOp((4, 10), dtypes.int32)
       x2 = math_ops.matmul(input2, b2)
       b2 = self._ConstOp((10,), dtypes.int32)
@@ -84,13 +83,13 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return []
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
     # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
     # mode, which is a bug. Re-enable this when trt library is fixed.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode)
+    return not trt_test.IsQuantizationMode(run_params.precision_mode) #and not run_params.dynamic_engine
 
 
 if __name__ == "__main__":

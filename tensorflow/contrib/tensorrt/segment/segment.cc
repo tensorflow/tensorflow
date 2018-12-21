@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -419,6 +420,11 @@ tensorflow::Status SegmentGraph(
   //    segment but are not eligible, using input/output_candidate_fn to
   //    determine the eligibilities;
   // 3. convert the segment into expected return format and return the result.
+  auto get_device_type = [](const string& device) {
+    DeviceNameUtils::ParsedName parsed_name;
+    DeviceNameUtils::ParseFullName(device, &parsed_name);
+    return parsed_name.type;
+  };
 
   // --------------------------------- Step 1 ---------------------------------
   auto graph = std::unique_ptr<SimpleGraph>(new SimpleGraph(tf_graph));
@@ -430,6 +436,11 @@ tensorflow::Status SegmentGraph(
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
+    const string requested_device =
+        get_device_type(node->tf_node()->requested_device());
+    const string assigned_device =
+        get_device_type(node->tf_node()->assigned_device_name());
+
     if (options.exclude_node_list.count(node->name()) != 0) {
       VLOG(1) << "Not a TF-TRT candidate, "
               << "(Op type: " << node->tf_node()->type_string() << "), "
@@ -438,10 +449,18 @@ tensorflow::Status SegmentGraph(
       unsupported_ops.emplace(node->tf_node()->type_string());
       num_unsupported_ops++;
       node = nullptr;
+    } else if (requested_device == "CPU" || assigned_device == "CPU") {
+      VLOG(1) << "Not a TF-TRT candidate, "
+              << "(Op type: " << node->tf_node()->type_string() << "), "
+              << "(Op name: " << node->name() << "), "
+              << "(Reason: node is assigned to CPU)";
+      unsupported_ops.emplace(node->tf_node()->type_string());
+      num_unsupported_ops++;
+      node = nullptr;
     } else {
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
-        LOG(INFO) << "Not a TF-TRT candidate, "
+        VLOG(1) << "Not a TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "
                 << "(Op name: " << node->name() << "), "
                 << "(Reason: " << status << ")";
