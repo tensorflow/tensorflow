@@ -605,7 +605,6 @@ tf_cc_test(
     size = "small",
     srcs = ["ceil_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable_ios",
     ],
     deps = [

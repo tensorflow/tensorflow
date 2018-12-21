@@ -1740,12 +1740,6 @@ inline void Floor(const float* input_data, const Dims<4>& input_dims,
         output_data);
 }
 
-inline void Ceil(const float* input_data, const Dims<4>& input_dims,
-                 float* output_data, const Dims<4>& output_dims) {
-  Ceil(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
-       output_data);
-}
-
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
