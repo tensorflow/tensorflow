@@ -523,6 +523,11 @@ class DistributedVariable(DistributedDelegate):
     return self.primary._unique_id   # pylint: disable=protected-access
 
   @property
+  def _graph_key(self):
+    """Lets Optimizers know which graph this variable is from."""
+    return self.primary._graph_key  # pylint: disable=protected-access
+
+  @property
   def name(self):
     return self.primary.name
 
