@@ -18,17 +18,20 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+namespace {
 
-Logger* Logger::Singleton() {
-  class DefaultLogger : public Logger {
-   private:
-    void DoLogProto(google::protobuf::Any* proto) override {
-      VLOG(2) << proto->ShortDebugString();
-    }
-    void DoFlush() override {}
-  };
-  static Logger* instance = new DefaultLogger();
-  return instance;
-}
+class DefaultLogger : public Logger {
+ private:
+  void DoLogProto(google::protobuf::Any* proto) override {
+    VLOG(2) << proto->ShortDebugString();
+  }
+  void DoFlush() override {}
+};
+
+}  // namespace
+
+Logger::FactoryFunc Logger::singleton_factory_ = []() -> Logger* {
+  return new DefaultLogger();
+};
 
 }  // namespace tensorflow
