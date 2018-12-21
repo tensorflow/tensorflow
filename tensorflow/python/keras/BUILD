@@ -589,6 +589,7 @@ py_test(
     name = "simplernn_test",
     size = "medium",
     srcs = ["layers/simplernn_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
