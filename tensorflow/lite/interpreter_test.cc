@@ -1396,6 +1396,130 @@ TEST(TestDelegateOwnership, ProperlyDisposed) {
   EXPECT_TRUE(destroyed);
 }
 
+// CancellationData contains the data required to cancel a call to Invoke().
+struct CancellationData {
+  bool is_cancelled = false;
+};
+
+// Indicates whether Invoke() has been cancelled based on the value of the
+// CancellationData object passed in.
+bool CheckCancellation(void* data) {
+  CancellationData* cancellation_data =
+      static_cast<struct CancellationData*>(data);
+  return cancellation_data->is_cancelled;
+}
+
+static struct CancellationData cancellation_data_;
+
+// Test fixture to test cancellation within the Interpreter.
+class CancellationTest : public ::testing::Test {
+ public:
+  TfLiteStatus Invoke() { return interpreter_.Invoke(); }
+  void Cancel() { cancellation_data_.is_cancelled = true; }
+
+  // Adds an CancelOp with input tensor `input` and output tensor `output`.
+  void MakeCancelNode(int input, int output) {
+    TfLiteRegistration op = CancelOpRegistration();
+    ASSERT_EQ(interpreter_.AddNodeWithParameters({input}, {output}, nullptr, 0,
+                                                 nullptr, &op),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_.ResizeInputTensor(input, {3}), kTfLiteOk);
+  }
+
+  // Adds an OkOp with input tensor `input` and output tensor `output`.
+  void MakeOkNode(int input, int output) {
+    TfLiteRegistration op = OkOpRegistration();
+    ASSERT_EQ(interpreter_.AddNodeWithParameters({input}, {output}, nullptr, 0,
+                                                 nullptr, &op),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_.ResizeInputTensor(input, {3}), kTfLiteOk);
+  }
+
+  Interpreter interpreter_;
+
+ private:
+  // Build the kernel registration for an op that cancels the operation.
+  TfLiteRegistration CancelOpRegistration() {
+    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
+
+    // Set output size to the input size in CancelOp::Prepare(). Code exists to
+    // have a framework in Prepare. The input and output tensors are not used.
+    reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+      TfLiteTensor* in_tensor = &context->tensors[node->inputs->data[0]];
+      TfLiteTensor* out_tensor = &context->tensors[node->outputs->data[0]];
+      TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
+      return context->ResizeTensor(context, out_tensor, new_size);
+    };
+
+    reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
+      cancellation_data_.is_cancelled = true;
+      return kTfLiteOk;
+    };
+    return reg;
+  }
+
+  // Build the kernel registration for an op that returns kTfLiteOk.
+  TfLiteRegistration OkOpRegistration() {
+    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
+
+    // Set output size to the input size in OkOp::Prepare(). Code exists to have
+    // a framework in Prepare. The input and output tensors are not used.
+    reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+      TfLiteTensor* in_tensor = &context->tensors[node->inputs->data[0]];
+      TfLiteTensor* out_tensor = &context->tensors[node->outputs->data[0]];
+      TfLiteIntArray* new_size = TfLiteIntArrayCopy(in_tensor->dims);
+      return context->ResizeTensor(context, out_tensor, new_size);
+    };
+
+    reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
+      return kTfLiteOk;
+    };
+    return reg;
+  }
+
+  void SetUp() final {
+    cancellation_data_.is_cancelled = false;
+
+    // Set up the interpreter. Create the input and output tensors.
+    int num_tensors = 3;
+    ASSERT_EQ(interpreter_.AddTensors(num_tensors), kTfLiteOk);
+    interpreter_.SetInputs({0});
+    interpreter_.SetOutputs({2});
+    TfLiteQuantizationParams quantized;
+    for (int tensor_index = 0; tensor_index < num_tensors; tensor_index++) {
+      ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+                    tensor_index, kTfLiteFloat32, "", {3}, quantized),
+                kTfLiteOk);
+    }
+    interpreter_.SetCancellationFunction(&cancellation_data_,
+                                         &CheckCancellation);
+  }
+};
+
+TEST_F(CancellationTest, CancelBeforeInvoke) {
+  // Cancel prior to calling Invoke.
+  CancellationTest::MakeOkNode(1, 2);
+  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+
+  CancellationTest::Cancel();
+  TfLiteStatus invoke_error_code = CancellationTest::Invoke();
+  ASSERT_EQ(invoke_error_code, kTfLiteError);
+}
+
+TEST_F(CancellationTest, CancelDuringInvoke) {
+  // Tests a model which sets the cancel in order to test cancellation works
+  // between ops.
+  //
+  // The first op will set the cancellation bit to true. The second op returns
+  // `kTfLiteOk` if executed.
+  CancellationTest::MakeCancelNode(0, 1);
+  CancellationTest::MakeOkNode(1, 2);
+  ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+
+  TfLiteStatus invoke_error_code = CancellationTest::Invoke();
+  ASSERT_EQ(invoke_error_code, kTfLiteError);
+}
+
 }  // namespace
 }  // namespace tflite
 
