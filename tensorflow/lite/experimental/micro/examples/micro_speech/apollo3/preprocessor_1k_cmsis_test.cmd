@@ -10,22 +10,22 @@ file ../../../tools/make/gen/apollo3evb_cortex-m4/bin/preprocessor_1k_cmsis_test
 target remote localhost:2331
 load ../../../tools/make/gen/apollo3evb_cortex-m4/bin/preprocessor_1k_cmsis_test
 monitor reset
-break preprocessor.cc:70
+break preprocessor.cc:68
 commands
 dump verilog value cmsis_windowed_input.txt bufB
 c
 end
-break preprocessor.cc:77
+break preprocessor.cc:76
 commands
 dump verilog value cmsis_dft.txt bufA
 c
 end
-break preprocessor.cc:82
+break preprocessor.cc:81
 commands
 dump verilog value cmsis_power.txt bufB
 c
 end
-break preprocessor.cc:84
+break preprocessor.cc:83
 commands
 dump verilog memory cmsis_power_avg.txt output output+42
 c
