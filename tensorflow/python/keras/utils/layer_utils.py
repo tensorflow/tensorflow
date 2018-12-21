@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.conv_utils import convert_kernel
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -53,14 +54,11 @@ def get_source_inputs(tensor, layer=None, node_index=None):
     node = layer._inbound_nodes[node_index]
     if not node.inbound_layers:
       # Reached an Input layer, stop recursion.
-      return node.input_tensors
+      return nest.flatten(node.input_tensors)
     else:
       source_tensors = []
-      for i in range(len(node.inbound_layers)):
-        x = node.input_tensors[i]
-        layer = node.inbound_layers[i]
-        node_index = node.node_indices[i]
-        previous_sources = get_source_inputs(x, layer, node_index)
+      for layer, node_index, _, tensor in node.iterate_inbound():
+        previous_sources = get_source_inputs(tensor, layer, node_index)
         # Avoid input redundancy.
         for x in previous_sources:
           if x not in source_tensors:
@@ -110,7 +108,8 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     nodes_by_depth = model._nodes_by_depth.values()
     nodes = []
     for v in nodes_by_depth:
-      if (len(v) > 1) or (len(v) == 1 and len(v[0].inbound_layers) > 1):
+      if (len(v) > 1) or (len(v) == 1 and
+                          len(nest.flatten(v[0].inbound_layers)) > 1):
         # if the model has multiple nodes
         # or if the nodes have multiple inbound_layers
         # the model is no longer sequential
@@ -195,12 +194,10 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       if relevant_nodes and node not in relevant_nodes:
         # node is not part of the current network
         continue
-      for i in range(len(node.inbound_layers)):
-        inbound_layer = node.inbound_layers[i].name
-        inbound_node_index = node.node_indices[i]
-        inbound_tensor_index = node.tensor_indices[i]
-        connections.append(inbound_layer + '[' + str(inbound_node_index) +
-                           '][' + str(inbound_tensor_index) + ']')
+
+      for inbound_layer, node_index, tensor_index, _ in node.iterate_inbound():
+        connections.append('{}[{}][{}]'.format(inbound_layer, node_index,
+                                               tensor_index))
 
     name = layer.name
     cls_name = layer.__class__.__name__
