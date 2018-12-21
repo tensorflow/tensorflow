@@ -1941,6 +1941,10 @@ def _split_dataset_batch(dataset, split_batch_by):
   elif isinstance(batched_dataset, batching._MapAndBatchDataset):
     batch_size = batched_dataset._batch_size_t
     drop_remainder = batched_dataset._drop_remainder_t
+
+  prefetch_buffer = None
+  if isinstance(dataset, dataset_ops.PrefetchDataset):
+    prefetch_buffer = dataset._buffer_size
   # pylint: enable=protected-access
 
   if tensor_util.is_tensor(batch_size):
@@ -1956,7 +1960,10 @@ def _split_dataset_batch(dataset, split_batch_by):
   new_batch_size = batch_size // split_batch_by
 
   dataset = dataset.apply(batching.unbatch())
-  return dataset.batch(new_batch_size, drop_remainder=drop_remainder)
+  dataset = dataset.batch(new_batch_size, drop_remainder=drop_remainder)
+  if prefetch_buffer is not None:
+    dataset = dataset.prefetch(prefetch_buffer)
+  return dataset
 
 
 class MultiStepContext(object):
