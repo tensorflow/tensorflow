@@ -233,15 +233,25 @@ class RNNOpModel : public SingleOpModel {
 // The hybrid model has quantized weights and recurrent_weights.
 class HybridRNNOpModel : public RNNOpModel {
  public:
-  HybridRNNOpModel(int batches, int units, int size)
-      : RNNOpModel(batches, units, size, TensorType_UINT8, TensorType_UINT8) {}
-
-  void SetWeights(std::initializer_list<float> f) {
-    SymmetricQuantizeAndPopulate(weights_, f);
+  HybridRNNOpModel(int batches, int units, int size, TensorType tensor_type)
+      : RNNOpModel(batches, units, size, tensor_type, tensor_type) {
+    tensor_type_ = tensor_type;
   }
 
+  TensorType tensor_type_;
+
+  void SetWeights(int weights_idx, std::vector<float> f) {
+    if (tensor_type_ == TensorType_UINT8) {
+      SymmetricQuantizeAndPopulate(weights_idx, f);
+    } else {
+      SignedSymmetricQuantizeAndPopulate(weights_idx, f);
+    }
+  }
+
+  void SetWeights(std::initializer_list<float> f) { SetWeights(weights_, f); }
+
   void SetRecurrentWeights(std::initializer_list<float> f) {
-    SymmetricQuantizeAndPopulate(recurrent_weights_, f);
+    SetWeights(recurrent_weights_, f);
   }
 };
 
@@ -272,8 +282,36 @@ TEST(RnnOpTest, BlackBoxTest) {
   }
 }
 
-TEST(HybridRnnOpTest, BlackBoxTest) {
-  HybridRNNOpModel rnn(2, 16, 8);
+TEST(HybridRnnOpTest, BlackBoxTestUint8) {
+  HybridRNNOpModel rnn(2, 16, 8, TensorType_UINT8);
+  rnn.SetWeights(rnn_weights);
+  rnn.SetBias(rnn_bias);
+  rnn.SetRecurrentWeights(rnn_recurrent_weights);
+
+  const int input_sequence_size = sizeof(rnn_input) / sizeof(float) /
+                                  (rnn.input_size() * rnn.num_batches());
+
+  for (int i = 0; i < input_sequence_size; i++) {
+    float* batch_start = rnn_input + i * rnn.input_size();
+    float* batch_end = batch_start + rnn.input_size();
+    rnn.SetInput(0, batch_start, batch_end);
+    rnn.SetInput(rnn.input_size(), batch_start, batch_end);
+
+    rnn.Invoke();
+
+    float* golden_start = rnn_golden_output + i * rnn.num_units();
+    float* golden_end = golden_start + rnn.num_units();
+    std::vector<float> expected;
+    expected.insert(expected.end(), golden_start, golden_end);
+    expected.insert(expected.end(), golden_start, golden_end);
+
+    EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                     expected, /*max_abs_error=*/0.0104)));
+  }
+}
+
+TEST(HybridRnnOpTest, BlackBoxTestInt8) {
+  HybridRNNOpModel rnn(2, 16, 8, TensorType_INT8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);

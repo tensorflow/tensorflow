@@ -174,7 +174,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version */ 1,
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF());
-  AddBuiltin(BuiltinOperator_RNN, Register_RNN());
+  AddBuiltin(BuiltinOperator_RNN, Register_RNN(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
              Register_BIDIRECTIONAL_SEQUENCE_RNN());
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
