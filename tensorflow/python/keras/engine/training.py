@@ -2242,7 +2242,8 @@ class Model(Network):
         weight the importance of each sample in `x`.
       class_weight: An optional class-weight array by the user to
         weight the importance of samples in `x` based on the class they belong
-        to, as conveyed by `y`.
+        to, as conveyed by `y`. If both `sample_weight` and `class_weight` are
+        provided, the weights are multiplied.
       batch_size: Integer batch size. If provided, it is used to run additional
         validation checks on stateful models.
       check_steps: boolean, True if we want to check for validity of `steps` and
@@ -2322,10 +2323,6 @@ class Model(Network):
       else:
         x = next_element
 
-    if sample_weight is not None and class_weight is not None:
-      logging.warning(
-          'Received both a `sample_weight` and `class_weight` argument. '
-          'The `class_weight` argument will be ignored.')
     # First, we build/compile the model on the fly if necessary.
     all_inputs = []
     is_build_called = False
