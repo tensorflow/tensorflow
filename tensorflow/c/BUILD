@@ -252,12 +252,6 @@ tf_cc_test(
     name = "c_test",
     srcs = ["c_test.c"],
     extra_copts = ["-std=c11"],
-    tags = [
-        # TODO(b/121223209): Re-enable after fixing asan memory leaks and MacOS
-        # build errors.
-        "noasan",
-        "no_mac",
-    ],
     deps = [
         ":c_api",
         ":c_api_experimental",
