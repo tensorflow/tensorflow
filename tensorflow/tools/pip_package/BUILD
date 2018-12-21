@@ -18,13 +18,6 @@ load(
     "if_ngraph",
 )
 
-# This flag specifies whether TensorFlow 2.0 API should be built instead
-# of 1.* API. Note that TensorFlow 2.0 API is currently under development.
-config_setting(
-    name = "api_version_2",
-    define_values = {"tf_api_version": "2"},
-)
-
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
 # public headers.  Not all of the headers returned by the filegroup
@@ -66,7 +59,6 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
-    "//tensorflow/examples/tutorials/mnist:package",
     "//tensorflow/lite/python:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
@@ -130,6 +122,7 @@ COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
     "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
     "//tensorflow/contrib/timeseries:timeseries_pip",
     "//tensorflow/contrib/tpu",
+    "//tensorflow/examples/tutorials/mnist:package",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -139,8 +132,8 @@ py_binary(
     name = "simple_console_for_windows",
     srcs = ["simple_console_for_windows.py"],
     data = select({
-        "api_version_2": COMMON_PIP_DEPS,
         "//conditions:default": COMMON_PIP_DEPS_V1,
+        "//tensorflow:api_version_2": COMMON_PIP_DEPS,
     }) + ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
@@ -242,7 +235,7 @@ sh_binary(
     name = "build_pip_package",
     srcs = ["build_pip_package.sh"],
     data = select({
-               "api_version_2": COMMON_PIP_DEPS,
+               "//tensorflow:api_version_2": COMMON_PIP_DEPS,
                "//conditions:default": COMMON_PIP_DEPS_V1,
            }) +
            select({
