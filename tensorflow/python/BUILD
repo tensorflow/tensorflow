@@ -77,7 +77,18 @@ py_library(
 py_library(
     name = "keras_lib",
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python/estimator:__subpackages__",
+        "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/python/tools:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
+        "//tensorflow/tools/api/tests:__pkg__",
+        "//tensorflow/tools/compatibility/update:__pkg__",
+        "//tensorflow_estimator:__subpackages__",
+    ],
     deps = [
+        ":rnn",
         "//tensorflow/python:layers",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
