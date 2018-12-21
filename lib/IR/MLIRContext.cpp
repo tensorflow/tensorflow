@@ -46,25 +46,41 @@ using namespace mlir::detail;
 using namespace llvm;
 
 namespace {
-struct FunctionTypeKeyInfo : DenseMapInfo<FunctionTypeStorage *> {
-  // Functions are uniqued based on their inputs and results.
-  using KeyTy = std::pair<ArrayRef<Type>, ArrayRef<Type>>;
-  using DenseMapInfo<FunctionTypeStorage *>::isEqual;
+/// A utility wrapper object representing a hased storage type. This class
+/// contains a type storage object and an existing computed hash value.
+struct HashedStorageType {
+  unsigned hashValue;
+  TypeStorage *storage;
+};
 
-  static unsigned getHashValue(FunctionTypeStorage *key) {
-    return getHashValue(KeyTy(key->getInputs(), key->getResults()));
+/// Storage info for storage types.
+struct StorageTypeKeyInfo : DenseMapInfo<HashedStorageType> {
+  /// Storage types use the lookup key with the type uniquer.
+  using KeyTy = TypeUniquer::TypeLookupKey;
+
+  static HashedStorageType getEmptyKey() {
+    return HashedStorageType{DenseMapInfo<unsigned>::getEmptyKey(),
+                             DenseMapInfo<TypeStorage *>::getEmptyKey()};
+  }
+  static HashedStorageType getTombstoneKey() {
+    return HashedStorageType{DenseMapInfo<unsigned>::getTombstoneKey(),
+                             DenseMapInfo<TypeStorage *>::getTombstoneKey()};
   }
 
-  static unsigned getHashValue(KeyTy key) {
-    return hash_combine(
-        hash_combine_range(key.first.begin(), key.first.end()),
-        hash_combine_range(key.second.begin(), key.second.end()));
+  static unsigned getHashValue(const HashedStorageType &key) {
+    return key.hashValue;
   }
+  static unsigned getHashValue(KeyTy key) { return key.hashValue; }
 
-  static bool isEqual(const KeyTy &lhs, const FunctionTypeStorage *rhs) {
-    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+  static bool isEqual(const HashedStorageType &lhs,
+                      const HashedStorageType &rhs) {
+    return lhs.storage == rhs.storage;
+  }
+  static bool isEqual(const KeyTy &lhs, const HashedStorageType &rhs) {
+    if (isEqual(rhs, getEmptyKey()) || isEqual(rhs, getTombstoneKey()))
       return false;
-    return lhs == KeyTy(rhs->getInputs(), rhs->getResults());
+    // Invoke the equality function on the lookup key.
+    return lhs.isEqual(rhs.storage);
   }
 };
 
@@ -119,77 +135,6 @@ struct IntegerSetKeyInfo : DenseMapInfo<IntegerSet> {
       return false;
     return lhs == std::make_tuple(rhs.getNumDims(), rhs.getNumSymbols(),
                                   rhs.getConstraints(), rhs.getEqFlags());
-  }
-};
-
-struct VectorTypeKeyInfo : DenseMapInfo<VectorTypeStorage *> {
-  // Vectors are uniqued based on their element type and shape.
-  using KeyTy = std::pair<Type, ArrayRef<int>>;
-  using DenseMapInfo<VectorTypeStorage *>::isEqual;
-
-  static unsigned getHashValue(VectorTypeStorage *key) {
-    return getHashValue(KeyTy(key->elementType, key->getShape()));
-  }
-
-  static unsigned getHashValue(KeyTy key) {
-    return hash_combine(
-        DenseMapInfo<Type>::getHashValue(key.first),
-        hash_combine_range(key.second.begin(), key.second.end()));
-  }
-
-  static bool isEqual(const KeyTy &lhs, const VectorTypeStorage *rhs) {
-    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
-      return false;
-    return lhs == KeyTy(rhs->elementType, rhs->getShape());
-  }
-};
-
-struct RankedTensorTypeKeyInfo : DenseMapInfo<RankedTensorTypeStorage *> {
-  // Ranked tensors are uniqued based on their element type and shape.
-  using KeyTy = std::pair<Type, ArrayRef<int>>;
-  using DenseMapInfo<RankedTensorTypeStorage *>::isEqual;
-
-  static unsigned getHashValue(RankedTensorTypeStorage *key) {
-    return getHashValue(KeyTy(key->elementType, key->getShape()));
-  }
-
-  static unsigned getHashValue(KeyTy key) {
-    return hash_combine(
-        DenseMapInfo<Type>::getHashValue(key.first),
-        hash_combine_range(key.second.begin(), key.second.end()));
-  }
-
-  static bool isEqual(const KeyTy &lhs, const RankedTensorTypeStorage *rhs) {
-    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
-      return false;
-    return lhs == KeyTy(rhs->elementType, rhs->getShape());
-  }
-};
-
-struct MemRefTypeKeyInfo : DenseMapInfo<MemRefTypeStorage *> {
-  // MemRefs are uniqued based on their element type, shape, affine map
-  // composition, and memory space.
-  using KeyTy = std::tuple<Type, ArrayRef<int>, ArrayRef<AffineMap>, unsigned>;
-  using DenseMapInfo<MemRefTypeStorage *>::isEqual;
-
-  static unsigned getHashValue(MemRefTypeStorage *key) {
-    return getHashValue(KeyTy(key->elementType, key->getShape(),
-                              key->getAffineMaps(), key->memorySpace));
-  }
-
-  static unsigned getHashValue(KeyTy key) {
-    return hash_combine(
-        DenseMapInfo<Type>::getHashValue(std::get<0>(key)),
-        hash_combine_range(std::get<1>(key).begin(), std::get<1>(key).end()),
-        hash_combine_range(std::get<2>(key).begin(), std::get<2>(key).end()),
-        std::get<3>(key));
-  }
-
-  static bool isEqual(const KeyTy &lhs, const MemRefTypeStorage *rhs) {
-    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
-      return false;
-    return lhs == std::make_tuple(rhs->elementType, rhs->getShape(),
-                                  rhs->getAffineMaps(), rhs->memorySpace);
   }
 };
 
@@ -385,16 +330,6 @@ public:
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
 
-  // Uniquing table for 'other' types.
-  OtherTypeStorage *otherTypes[int(Type::Kind::LAST_OTHER_TYPE) -
-                               int(Type::Kind::FIRST_OTHER_TYPE) + 1] = {
-      nullptr};
-
-  // Uniquing table for 'float' types.
-  FloatTypeStorage *floatTypes[int(Type::Kind::LAST_FLOATING_POINT_TYPE) -
-                               int(Type::Kind::FIRST_FLOATING_POINT_TYPE) + 1] =
-      {nullptr};
-
   // Affine map uniquing.
   using AffineMapSet = DenseSet<AffineMap, AffineMapKeyInfo>;
   AffineMapSet affineMaps;
@@ -415,31 +350,13 @@ public:
   // Uniqui'ing of AffineConstantExprStorage using constant value as key.
   DenseMap<int64_t, AffineConstantExprStorage *> constExprs;
 
-  /// Unique index type (lazily constructed).
-  IndexTypeStorage *indexType = nullptr;
+  /// Type uniquing.
+  // Unique types with specific hashing or storage constraints.
+  using StorageTypeSet = DenseSet<HashedStorageType, StorageTypeKeyInfo>;
+  StorageTypeSet storageTypes;
 
-  /// Integer type uniquing.
-  DenseMap<unsigned, IntegerTypeStorage *> integers;
-
-  /// Function type uniquing.
-  using FunctionTypeSet = DenseSet<FunctionTypeStorage *, FunctionTypeKeyInfo>;
-  FunctionTypeSet functions;
-
-  /// Vector type uniquing.
-  using VectorTypeSet = DenseSet<VectorTypeStorage *, VectorTypeKeyInfo>;
-  VectorTypeSet vectors;
-
-  /// Ranked tensor type uniquing.
-  using RankedTensorTypeSet =
-      DenseSet<RankedTensorTypeStorage *, RankedTensorTypeKeyInfo>;
-  RankedTensorTypeSet rankedTensors;
-
-  /// Unranked tensor type uniquing.
-  DenseMap<Type, UnrankedTensorTypeStorage *> unrankedTensors;
-
-  /// MemRef type uniquing.
-  using MemRefTypeSet = DenseSet<MemRefTypeStorage *, MemRefTypeKeyInfo>;
-  MemRefTypeSet memrefs;
+  // Unique types with just the kind.
+  DenseMap<unsigned, TypeStorage *> simpleTypes;
 
   // Attribute uniquing.
   BoolAttributeStorage *boolAttrs[2] = {nullptr};
@@ -737,15 +654,55 @@ Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
 // Type uniquing
 //===----------------------------------------------------------------------===//
 
+/// Get a reference to the internal allocator.
+llvm::BumpPtrAllocator &TypeStorageAllocator::getAllocator() {
+  return ctx->getImpl().allocator;
+}
+
+/// Get or create a uniqued type by it's kind. This overload is used for
+/// simple types that are only uniqued by kind.
+TypeStorage *TypeUniquer::getSimple(unsigned kind) {
+  auto &impl = ctx->getImpl();
+
+  // Check for an existing instance with this kind.
+  auto *&result = impl.simpleTypes[kind];
+  if (result)
+    return result;
+
+  // Otherwise, create a new instance and return it.
+  result = impl.allocator.Allocate<DefaultTypeStorage>();
+  return new (result) DefaultTypeStorage{kind, ctx};
+}
+
+/// Look up a uniqued type with a lookup key. This is used if the type defines
+/// a storage key.
+TypeStorage *TypeUniquer::lookup(const TypeLookupKey &key) {
+  auto &impl = ctx->getImpl();
+
+  auto existing = impl.storageTypes.find_as(key);
+  return existing != impl.storageTypes.end() ? existing->storage : nullptr;
+}
+
+/// Insert a pre hashed storage type into the context.
+void TypeUniquer::insert(unsigned hashValue, TypeStorage *storage) {
+  ctx->getImpl().storageTypes.insert(HashedStorageType{hashValue, storage});
+}
+
+/// Construct a unique instance of `DerivedType` of the given `kind` in the
+/// given `context` by passing `args` to the type storage.
+template <typename DerivedType, typename... Args>
+static DerivedType constructUniqueType(MLIRContext *context, Type::Kind kind,
+                                       Args... args) {
+  return TypeUniquer(context).get<DerivedType>(static_cast<unsigned>(kind),
+                                               args...);
+}
+
 IndexType IndexType::get(MLIRContext *context) {
-  auto &impl = context->getImpl();
+  return constructUniqueType<IndexType>(context, Kind::Index);
+}
 
-  if (impl.indexType)
-    return impl.indexType;
-
-  impl.indexType = impl.allocator.Allocate<IndexTypeStorage>();
-  new (impl.indexType) IndexTypeStorage{{Kind::Index, context}};
-  return impl.indexType;
+OtherType OtherType::get(Kind kind, MLIRContext *context) {
+  return constructUniqueType<OtherType>(context, kind);
 }
 
 static IntegerType getIntegerType(unsigned width, MLIRContext *context,
@@ -758,15 +715,7 @@ static IntegerType getIntegerType(unsigned width, MLIRContext *context,
     return {};
   }
 
-  auto &impl = context->getImpl();
-
-  auto *&result = impl.integers[width];
-  if (!result) {
-    result = impl.allocator.Allocate<IntegerTypeStorage>();
-    new (result) IntegerTypeStorage{{Type::Kind::Integer, context}, width};
-  }
-
-  return result;
+  return constructUniqueType<IntegerType>(context, Type::Kind::Integer, width);
 }
 
 IntegerType IntegerType::getChecked(unsigned width, MLIRContext *context,
@@ -780,77 +729,16 @@ IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
   return type;
 }
 
-FloatType FloatType::get(Kind kind, MLIRContext *context) {
+FloatType FloatType::get(Type::Kind kind, MLIRContext *context) {
   assert(kind >= Kind::FIRST_FLOATING_POINT_TYPE &&
          kind <= Kind::LAST_FLOATING_POINT_TYPE && "Not an FP type kind");
-  auto &impl = context->getImpl();
-
-  // We normally have these types.
-  auto *&entry =
-      impl.floatTypes[(int)kind - int(Kind::FIRST_FLOATING_POINT_TYPE)];
-  if (entry)
-    return entry;
-
-  // On the first use, we allocate them into the bump pointer.
-  auto *ptr = impl.allocator.Allocate<FloatTypeStorage>();
-
-  // Initialize the memory using placement new.
-  new (ptr) FloatTypeStorage{{kind, context}};
-
-  // Cache and return it.
-  return entry = ptr;
-}
-
-OtherType OtherType::get(Kind kind, MLIRContext *context) {
-  assert(kind >= Kind::FIRST_OTHER_TYPE && kind <= Kind::LAST_OTHER_TYPE &&
-         "Not an 'other' type kind");
-  auto &impl = context->getImpl();
-
-  // We normally have these types.
-  auto *&entry = impl.otherTypes[(int)kind - int(Kind::FIRST_OTHER_TYPE)];
-  if (entry)
-    return entry;
-
-  // On the first use, we allocate them into the bump pointer.
-  auto *ptr = impl.allocator.Allocate<OtherTypeStorage>();
-
-  // Initialize the memory using placement new.
-  new (ptr) OtherTypeStorage{{kind, context}};
-
-  // Cache and return it.
-  return entry = ptr;
+  return constructUniqueType<FloatType>(context, kind);
 }
 
 FunctionType FunctionType::get(ArrayRef<Type> inputs, ArrayRef<Type> results,
                                MLIRContext *context) {
-  auto &impl = context->getImpl();
-
-  // Look to see if we already have this function type.
-  FunctionTypeKeyInfo::KeyTy key(inputs, results);
-  auto existing = impl.functions.insert_as(nullptr, key);
-
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
-
-  // On the first use, we allocate them into the bump pointer.
-  auto *result = impl.allocator.Allocate<FunctionTypeStorage>();
-
-  // Copy the inputs and results into the bump pointer.
-  SmallVector<Type, 16> types;
-  types.reserve(inputs.size() + results.size());
-  types.append(inputs.begin(), inputs.end());
-  types.append(results.begin(), results.end());
-  auto typesList = impl.copyInto(ArrayRef<Type>(types));
-
-  // Initialize the memory using placement new.
-  new (result) FunctionTypeStorage{
-      {Kind::Function, context, static_cast<unsigned int>(inputs.size())},
-      static_cast<unsigned int>(results.size()),
-      typesList.data()};
-
-  // Cache and return it.
-  return *existing.first = result;
+  return constructUniqueType<FunctionType>(context, Kind::Function, inputs,
+                                           results);
 }
 
 /// Get or create a new VectorType defined by the arguments.  If the resulting
@@ -881,30 +769,8 @@ static VectorType getVectorType(ArrayRef<int> shape, Type elementType,
     return {};
   }
 
-  auto &impl = context->getImpl();
-
-  // Look to see if we already have this vector type.
-  VectorTypeKeyInfo::KeyTy key(elementType, shape);
-  auto existing = impl.vectors.insert_as(nullptr, key);
-
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
-
-  // On the first use, we allocate them into the bump pointer.
-  auto *result = impl.allocator.Allocate<VectorTypeStorage>();
-
-  // Copy the shape into the bump pointer.
-  shape = impl.copyInto(shape);
-
-  // Initialize the memory using placement new.
-  new (result) VectorTypeStorage{
-      {{Type::Kind::Vector, context, static_cast<unsigned int>(shape.size())},
-       elementType},
-      shape.data()};
-
-  // Cache and return it.
-  return *existing.first = result;
+  return constructUniqueType<VectorType>(context, Type::Kind::Vector, shape,
+                                         elementType);
 }
 
 // Try constructing a VectorType, report errors and return a nullptr on failure.
@@ -944,31 +810,8 @@ static RankedTensorType getRankedTensorType(ArrayRef<int> shape,
     return nullptr;
 
   auto *context = elementType.getContext();
-  auto &impl = context->getImpl();
-
-  // Look to see if we already have this ranked tensor type.
-  RankedTensorTypeKeyInfo::KeyTy key(elementType, shape);
-  auto existing = impl.rankedTensors.insert_as(nullptr, key);
-
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
-
-  // On the first use, we allocate them into the bump pointer.
-  auto *result = impl.allocator.Allocate<RankedTensorTypeStorage>();
-
-  // Copy the shape into the bump pointer.
-  shape = impl.copyInto(shape);
-
-  // Initialize the memory using placement new.
-  new (result)
-      RankedTensorTypeStorage{{{{Type::Kind::RankedTensor, context,
-                                 static_cast<unsigned int>(shape.size())},
-                                elementType}},
-                              shape.data()};
-
-  // Cache and return it.
-  return *existing.first = result;
+  return constructUniqueType<RankedTensorType>(
+      context, Type::Kind::RankedTensor, shape, elementType);
 }
 
 RankedTensorType RankedTensorType::get(ArrayRef<int> shape, Type elementType) {
@@ -993,22 +836,8 @@ static UnrankedTensorType getUnrankedTensorType(Type elementType,
     return nullptr;
 
   auto *context = elementType.getContext();
-  auto &impl = context->getImpl();
-
-  // Look to see if we already have this unranked tensor type.
-  auto *&result = impl.unrankedTensors[elementType];
-
-  // If we already have it, return that value.
-  if (result)
-    return result;
-
-  // On the first use, we allocate them into the bump pointer.
-  result = impl.allocator.Allocate<UnrankedTensorTypeStorage>();
-
-  // Initialize the memory using placement new.
-  new (result) UnrankedTensorTypeStorage{
-      {{{Type::Kind::UnrankedTensor, context}, elementType}}};
-  return result;
+  return constructUniqueType<UnrankedTensorType>(
+      context, Type::Kind::UnrankedTensor, elementType);
 }
 
 UnrankedTensorType UnrankedTensorType::get(Type elementType) {
@@ -1031,7 +860,6 @@ static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
                                 unsigned memorySpace,
                                 Optional<Location> location) {
   auto *context = elementType.getContext();
-  auto &impl = context->getImpl();
 
   // Check that memref is formed from allowed types.
   if (!elementType.isa<IntegerType>() && !elementType.isa<FloatType>() &&
@@ -1075,35 +903,9 @@ static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
   }
   affineMapComposition = cleanedAffineMapComposition;
 
-  // Look to see if we already have this memref type.
-  auto key =
-      std::make_tuple(elementType, shape, affineMapComposition, memorySpace);
-  auto existing = impl.memrefs.insert_as(nullptr, key);
-
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
-
-  // On the first use, we allocate them into the bump pointer.
-  auto *result = impl.allocator.Allocate<MemRefTypeStorage>();
-
-  // Copy the shape into the bump pointer.
-  shape = impl.copyInto(shape);
-
-  // Copy the affine map composition into the bump pointer.
-  affineMapComposition =
-      impl.copyInto(ArrayRef<AffineMap>(affineMapComposition));
-
-  // Initialize the memory using placement new.
-  new (result) MemRefTypeStorage{
-      {Type::Kind::MemRef, context, static_cast<unsigned int>(shape.size())},
-      elementType,
-      shape.data(),
-      static_cast<unsigned int>(affineMapComposition.size()),
-      affineMapComposition.data(),
-      memorySpace};
-  // Cache and return it.
-  return *existing.first = result;
+  return constructUniqueType<MemRefType>(context, Type::Kind::MemRef, shape,
+                                         elementType, affineMapComposition,
+                                         memorySpace);
 }
 
 // Try constructing a MemRefType, report errors and return a nullptr on failure.

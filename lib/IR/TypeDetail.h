@@ -1,4 +1,4 @@
-//===- TypeDetail.h - MLIR Affine Expr storage details ----------*- C++ -*-===//
+//===- TypeDetail.h - MLIR Type storage details -----------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -21,68 +21,119 @@
 #ifndef TYPEDETAIL_H_
 #define TYPEDETAIL_H_
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
 
 namespace mlir {
 
-class AffineMap;
 class MLIRContext;
 
 namespace detail {
 
-/// Base storage class appearing in a Type.
-struct alignas(8) TypeStorage {
-  TypeStorage(Type::Kind kind, MLIRContext *context)
-      : context(context), kind(kind), subclassData(0) {}
-  TypeStorage(Type::Kind kind, MLIRContext *context, unsigned subclassData)
-      : context(context), kind(kind), subclassData(subclassData) {}
+/// Integer Type Storage and Uniquing.
+struct IntegerTypeStorage : public TypeStorage {
+  IntegerTypeStorage(unsigned width) : width(width) {}
 
-  unsigned getSubclassData() const { return subclassData; }
+  /// The hash key used for uniquing.
+  using KeyTy = unsigned;
 
-  void setSubclassData(unsigned val) {
-    subclassData = val;
-    // Ensure we don't have any accidental truncation.
-    assert(getSubclassData() == val && "Subclass data too large for field");
+  /// Convert to the key type.
+  KeyTy getKey() const { return width; }
+
+  static IntegerTypeStorage *construct(TypeStorageAllocator &allocator,
+                                       unsigned bitwidth) {
+    auto *instance = allocator.allocate<IntegerTypeStorage>();
+    return new (instance) IntegerTypeStorage(bitwidth);
   }
 
-  /// This refers to the MLIRContext in which this type was uniqued.
-  MLIRContext *const context;
-
-  /// Classification of the subclass, used for type checking.
-  Type::Kind kind : 8;
-
-  /// Space for subclasses to store data.
-  unsigned subclassData : 24;
-};
-
-struct IndexTypeStorage : public TypeStorage {};
-
-struct IntegerTypeStorage : public TypeStorage {
   unsigned width;
 };
 
-struct FloatTypeStorage : public TypeStorage {};
-
-struct OtherTypeStorage : public TypeStorage {};
-
+/// Function Type Storage and Uniquing.
 struct FunctionTypeStorage : public TypeStorage {
+  FunctionTypeStorage(unsigned numInputs, unsigned numResults,
+                      Type const *inputsAndResults)
+      : TypeStorage(numInputs), numResults(numResults),
+        inputsAndResults(inputsAndResults) {}
+
+  /// The hash key used for uniquing.
+  using KeyTy = std::pair<ArrayRef<Type>, ArrayRef<Type>>;
+
+  /// Convert to the key type.
+  KeyTy getKey() const { return KeyTy(getInputs(), getResults()); }
+
+  /// Construction.
+  static FunctionTypeStorage *construct(TypeStorageAllocator &allocator,
+                                        ArrayRef<Type> inputs,
+                                        ArrayRef<Type> results) {
+    auto *result = allocator.allocate<FunctionTypeStorage>();
+
+    // Copy the inputs and results into the bump pointer.
+    SmallVector<Type, 16> types;
+    types.reserve(inputs.size() + results.size());
+    types.append(inputs.begin(), inputs.end());
+    types.append(results.begin(), results.end());
+    auto typesList = allocator.copyInto(ArrayRef<Type>(types));
+
+    // Initialize the memory using placement new.
+    return new (result) FunctionTypeStorage(
+        static_cast<unsigned int>(inputs.size()),
+        static_cast<unsigned int>(results.size()), typesList.data());
+  }
+
   ArrayRef<Type> getInputs() const {
-    return ArrayRef<Type>(inputsAndResults, subclassData);
+    return ArrayRef<Type>(inputsAndResults, getSubclassData());
   }
   ArrayRef<Type> getResults() const {
-    return ArrayRef<Type>(inputsAndResults + subclassData, numResults);
+    return ArrayRef<Type>(inputsAndResults + getSubclassData(), numResults);
   }
 
   unsigned numResults;
   Type const *inputsAndResults;
 };
 
+/// VectorOrTensor Type Storage.
 struct VectorOrTensorTypeStorage : public TypeStorage {
+  VectorOrTensorTypeStorage(Type elementType, unsigned subclassData = 0)
+      : TypeStorage(subclassData), elementType(elementType) {}
+
+  /// The hash key used for uniquing.
+  using KeyTy = Type;
+
+  /// Convert to the key type.
+  KeyTy getKey() const { return elementType; }
+
   Type elementType;
 };
 
+/// Vector Type Storage and Uniquing.
 struct VectorTypeStorage : public VectorOrTensorTypeStorage {
+  VectorTypeStorage(unsigned shapeSize, Type elementTy,
+                    const int *shapeElements)
+      : VectorOrTensorTypeStorage(elementTy, shapeSize),
+        shapeElements(shapeElements) {}
+
+  /// The hash key used for uniquing.
+  using KeyTy = std::pair<ArrayRef<int>, Type>;
+
+  /// Convert to the key type.
+  KeyTy getKey() const { return KeyTy(getShape(), elementType); }
+
+  /// Construction.
+  static VectorTypeStorage *construct(TypeStorageAllocator &allocator,
+                                      ArrayRef<int> shape, Type elementTy) {
+    auto *result = allocator.allocate<VectorTypeStorage>();
+
+    // Copy the shape into the bump pointer.
+    shape = allocator.copyInto(shape);
+
+    // Initialize the memory using placement new.
+    return new (result) VectorTypeStorage(
+        static_cast<unsigned int>(shape.size()), elementTy, shape.data());
+  }
+
   ArrayRef<int> getShape() const {
     return ArrayRef<int>(shapeElements, getSubclassData());
   }
@@ -90,9 +141,32 @@ struct VectorTypeStorage : public VectorOrTensorTypeStorage {
   const int *shapeElements;
 };
 
-struct TensorTypeStorage : public VectorOrTensorTypeStorage {};
+struct RankedTensorTypeStorage : public VectorOrTensorTypeStorage {
+  RankedTensorTypeStorage(unsigned shapeSize, Type elementTy,
+                          const int *shapeElements)
+      : VectorOrTensorTypeStorage(elementTy, shapeSize),
+        shapeElements(shapeElements) {}
 
-struct RankedTensorTypeStorage : public TensorTypeStorage {
+  /// The hash key used for uniquing.
+  using KeyTy = std::pair<ArrayRef<int>, Type>;
+
+  /// Convert to the key type.
+  KeyTy getKey() const { return KeyTy(getShape(), elementType); }
+
+  /// Construction.
+  static RankedTensorTypeStorage *construct(TypeStorageAllocator &allocator,
+                                            ArrayRef<int> shape,
+                                            Type elementTy) {
+    auto *result = allocator.allocate<RankedTensorTypeStorage>();
+
+    // Copy the shape into the bump pointer.
+    shape = allocator.copyInto(shape);
+
+    // Initialize the memory using placement new.
+    return new (result) RankedTensorTypeStorage(
+        static_cast<unsigned int>(shape.size()), elementTy, shape.data());
+  }
+
   ArrayRef<int> getShape() const {
     return ArrayRef<int>(shapeElements, getSubclassData());
   }
@@ -100,9 +174,57 @@ struct RankedTensorTypeStorage : public TensorTypeStorage {
   const int *shapeElements;
 };
 
-struct UnrankedTensorTypeStorage : public TensorTypeStorage {};
+struct UnrankedTensorTypeStorage : public VectorOrTensorTypeStorage {
+  UnrankedTensorTypeStorage(Type elementTy)
+      : VectorOrTensorTypeStorage(elementTy) {}
+
+  /// Construction.
+  static UnrankedTensorTypeStorage *construct(TypeStorageAllocator &allocator,
+                                              Type elementTy) {
+    auto *result = allocator.allocate<UnrankedTensorTypeStorage>();
+    return new (result) UnrankedTensorTypeStorage(elementTy);
+  }
+};
 
 struct MemRefTypeStorage : public TypeStorage {
+  MemRefTypeStorage(unsigned shapeSize, Type elementType,
+                    const int *shapeElements, const unsigned numAffineMaps,
+                    AffineMap const *affineMapList, const unsigned memorySpace)
+      : TypeStorage(shapeSize), elementType(elementType),
+        shapeElements(shapeElements), numAffineMaps(numAffineMaps),
+        affineMapList(affineMapList), memorySpace(memorySpace) {}
+
+  /// The hash key used for uniquing.
+  // MemRefs are uniqued based on their shape, element type, affine map
+  // composition, and memory space.
+  using KeyTy = std::tuple<ArrayRef<int>, Type, ArrayRef<AffineMap>, unsigned>;
+
+  /// Convert to the key type.
+  KeyTy getKey() const {
+    return KeyTy(getShape(), elementType, getAffineMaps(), memorySpace);
+  }
+
+  /// Construction.
+  static MemRefTypeStorage *construct(TypeStorageAllocator &allocator,
+                                      ArrayRef<int> shape, Type elementType,
+                                      ArrayRef<AffineMap> affineMapComposition,
+                                      unsigned memorySpace) {
+    auto *result = allocator.allocate<MemRefTypeStorage>();
+
+    // Copy the shape into the bump pointer.
+    shape = allocator.copyInto(shape);
+
+    // Copy the affine map composition into the bump pointer.
+    affineMapComposition =
+        allocator.copyInto(ArrayRef<AffineMap>(affineMapComposition));
+
+    // Initialize the memory using placement new.
+    return new (result) MemRefTypeStorage(
+        static_cast<unsigned int>(shape.size()), elementType, shape.data(),
+        static_cast<unsigned int>(affineMapComposition.size()),
+        affineMapComposition.data(), memorySpace);
+  }
+
   ArrayRef<int> getShape() const {
     return ArrayRef<int>(shapeElements, getSubclassData());
   }

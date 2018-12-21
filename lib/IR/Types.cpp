@@ -25,22 +25,18 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-Type::Kind Type::getKind() const { return type->kind; }
+Type::Kind Type::getKind() const {
+  return static_cast<Type::Kind>(type->getKind());
+}
 
-MLIRContext *Type::getContext() const { return type->context; }
+MLIRContext *Type::getContext() const { return type->getContext(); }
 
 unsigned Type::getSubclassData() const { return type->getSubclassData(); }
 void Type::setSubclassData(unsigned val) { type->setSubclassData(val); }
 
-IndexType::IndexType(Type::ImplType *ptr) : Type(ptr) {}
-
-IntegerType::IntegerType(Type::ImplType *ptr) : Type(ptr) {}
-
 unsigned IntegerType::getWidth() const {
   return static_cast<ImplType *>(type)->width;
 }
-
-FloatType::FloatType(Type::ImplType *ptr) : Type(ptr) {}
 
 unsigned FloatType::getWidth() const {
   switch (getKind()) {
@@ -84,10 +80,6 @@ unsigned Type::getIntOrFloatBitWidth() const {
   return floatType.getWidth();
 }
 
-OtherType::OtherType(Type::ImplType *ptr) : Type(ptr) {}
-
-FunctionType::FunctionType(Type::ImplType *ptr) : Type(ptr) {}
-
 ArrayRef<Type> FunctionType::getInputs() const {
   return static_cast<ImplType *>(type)->getInputs();
 }
@@ -99,8 +91,6 @@ unsigned FunctionType::getNumResults() const {
 ArrayRef<Type> FunctionType::getResults() const {
   return static_cast<ImplType *>(type)->getResults();
 }
-
-VectorOrTensorType::VectorOrTensorType(Type::ImplType *ptr) : Type(ptr) {}
 
 Type VectorOrTensorType::getElementType() const {
   return static_cast<ImplType *>(type)->elementType;
@@ -185,23 +175,13 @@ bool VectorOrTensorType::hasStaticShape() const {
   return !std::any_of(dims.begin(), dims.end(), [](int i) { return i < 0; });
 }
 
-VectorType::VectorType(Type::ImplType *ptr) : VectorOrTensorType(ptr) {}
-
 ArrayRef<int> VectorType::getShape() const {
   return static_cast<ImplType *>(type)->getShape();
 }
 
-TensorType::TensorType(Type::ImplType *ptr) : VectorOrTensorType(ptr) {}
-
-RankedTensorType::RankedTensorType(Type::ImplType *ptr) : TensorType(ptr) {}
-
 ArrayRef<int> RankedTensorType::getShape() const {
   return static_cast<ImplType *>(type)->getShape();
 }
-
-UnrankedTensorType::UnrankedTensorType(Type::ImplType *ptr) : TensorType(ptr) {}
-
-MemRefType::MemRefType(Type::ImplType *ptr) : Type(ptr) {}
 
 ArrayRef<int> MemRefType::getShape() const {
   return static_cast<ImplType *>(type)->getShape();

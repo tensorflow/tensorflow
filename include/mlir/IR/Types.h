@@ -37,11 +37,9 @@ class OtherType;
 
 namespace detail {
 
-class TypeStorage;
-class IndexTypeStorage;
-class IntegerTypeStorage;
-class FloatTypeStorage;
-struct OtherTypeStorage;
+struct TypeStorage;
+
+struct IntegerTypeStorage;
 struct FunctionTypeStorage;
 struct VectorOrTensorTypeStorage;
 struct VectorTypeStorage;
@@ -52,9 +50,53 @@ struct MemRefTypeStorage;
 
 } // namespace detail
 
-/// Instances of the Type class are immutable, uniqued, immortal, and owned by
-/// MLIRContext.  As such, they are passed around by raw non-const pointer.
+/// Instances of the Type class are immutable and uniqued.  They wrap a pointer
+/// to the storage object owned by MLIRContext.  Therefore, instances of Type
+/// are passed around by value.
 ///
+/// Some types are "primitives" meaning they do not have any parameters, for
+/// example the Index type.  Parametric types have additional information that
+/// differentiates the types of the same kind between them, for example the
+/// Integer type has bitwidth, making i8 and i16 belong to the same kind by be
+/// different instances of the IntegerType.
+///
+/// Types are constructed and uniqued via the 'detail::TypeUniquer' class.
+///
+/// Derived type classes are expected to implement several required
+/// implementaiton hooks:
+///  * Required:
+///
+///    - static bool kindof(unsigned kind);
+///      * Returns if the provided type kind corresponds to an instance of the
+///        current type. Used for isa/dyn_cast casting functionality.
+///
+///  * Optional:
+///    - static using ImplType = ...;
+///      * The type alias for the derived storage type. If one is not provided,
+///        this defaults to `detail::DefaultTypeStorage’.
+///
+///
+/// Type storage objects inherit from TypeStorage and contain the following:
+///    - The type kind (for LLVM-style RTTI);
+///    - The abstract descriptor of the type;
+///    - Any parameters of the type.
+/// For non-parametric types, a convenience DefaultTypeStorage is provided.
+/// Parametric storage types must derive TypeStorage and respect the following:
+///    - Define a type alias, KeyTy, to a type that uniquely identifies the
+///      instance of the type within its kind.
+///      * The key type must be constructible from the values passed into the
+///        detail::TypeUniquer::get call after the type kind.
+///      * The key type must have a llvm::DenseMapInfo specialization for
+///        hashing.
+///
+///    - Provide a method, 'KeyTy getKey() const', to construct the key type
+///      from an existing storage instance.
+///
+///    - Provide a construction method:
+///        'DerivedStorage *construct(TypeStorageAllocator &, ...)'
+///      that builds a unique instance of the derived storage. The arguments
+///      after the TypeStorageAllocator must correspond with the values passed
+///      into the detail::TypeUniquer::get call after the type kind.
 class Type {
 public:
   /// Integer identifier for all the concrete type kinds.
@@ -195,8 +237,7 @@ inline raw_ostream &operator<<(raw_ostream &os, Type type) {
 class IntegerType : public Type {
 public:
   using ImplType = detail::IntegerTypeStorage;
-  IntegerType() = default;
-  /* implicit */ IntegerType(Type::ImplType *ptr);
+  using Type::Type;
 
   /// Get or create a new IntegerType of the given width within the context.
   /// Assume the width is within the allowed range and assert on failures.
@@ -244,9 +285,7 @@ inline bool Type::isIntOrFloat() const {
 
 class FloatType : public Type {
 public:
-  using ImplType = detail::FloatTypeStorage;
-  FloatType() = default;
-  /* implicit */ FloatType(Type::ImplType *ptr);
+  using Type::Type;
 
   static FloatType get(Kind kind, MLIRContext *context);
 
@@ -280,9 +319,7 @@ inline FloatType Type::getF64(MLIRContext *ctx) {
 /// used in subscripts and loop induction variables.
 class IndexType : public Type {
 public:
-  using ImplType = detail::IndexTypeStorage;
-  IndexType() = default;
-  /* implicit */ IndexType(Type::ImplType *ptr);
+  using Type::Type;
 
   /// Crete an IndexType instance, unique in the given context.
   static IndexType get(MLIRContext *context);
@@ -294,9 +331,7 @@ public:
 /// This is a type for the random collection of special base types.
 class OtherType : public Type {
 public:
-  using ImplType = detail::OtherTypeStorage;
-  OtherType() = default;
-  /* implicit */ OtherType(Type::ImplType *ptr);
+  using Type::Type;
 
   static OtherType get(Kind kind, MLIRContext *context);
 
@@ -335,8 +370,7 @@ inline OtherType Type::getTFF32REF(MLIRContext *ctx) {
 class FunctionType : public Type {
 public:
   using ImplType = detail::FunctionTypeStorage;
-  FunctionType() = default;
-  /* implicit */ FunctionType(Type::ImplType *ptr);
+  using Type::Type;
 
   static FunctionType get(ArrayRef<Type> inputs, ArrayRef<Type> results,
                           MLIRContext *context);
@@ -364,8 +398,7 @@ public:
 class VectorOrTensorType : public Type {
 public:
   using ImplType = detail::VectorOrTensorTypeStorage;
-  VectorOrTensorType() = default;
-  /* implicit */ VectorOrTensorType(Type::ImplType *ptr);
+  using Type::Type;
 
   /// Return the element type.
   Type getElementType() const;
@@ -416,8 +449,7 @@ public:
 class VectorType : public VectorOrTensorType {
 public:
   using ImplType = detail::VectorTypeStorage;
-  VectorType() = default;
-  /* implicit */ VectorType(Type::ImplType *ptr);
+  using VectorOrTensorType::VectorOrTensorType;
 
   /// Get or create a new VectorType of the provided shape and element type.
   /// Assumes the arguments define a well-formed VectorType.
@@ -445,8 +477,7 @@ public:
 class TensorType : public VectorOrTensorType {
 public:
   using ImplType = detail::TensorTypeStorage;
-  TensorType() = default;
-  /* implicit */ TensorType(Type::ImplType *ptr);
+  using VectorOrTensorType::VectorOrTensorType;
 
   /// Return true if the specified element type is a TensorFlow type that is ok
   /// in a tensor.
@@ -472,8 +503,7 @@ public:
 class RankedTensorType : public TensorType {
 public:
   using ImplType = detail::RankedTensorTypeStorage;
-  RankedTensorType() = default;
-  /* implicit */ RankedTensorType(Type::ImplType *ptr);
+  using TensorType::TensorType;
 
   /// Get or create a new RankedTensorType of the provided shape and element
   /// type. Assumes the arguments define a well-formed type.
@@ -496,8 +526,7 @@ public:
 class UnrankedTensorType : public TensorType {
 public:
   using ImplType = detail::UnrankedTensorTypeStorage;
-  UnrankedTensorType() = default;
-  /* implicit */ UnrankedTensorType(Type::ImplType *ptr);
+  using TensorType::TensorType;
 
   /// Get or create a new UnrankedTensorType of the provided shape and element
   /// type. Assumes the arguments define a well-formed type.
@@ -521,8 +550,7 @@ public:
 class MemRefType : public Type {
 public:
   using ImplType = detail::MemRefTypeStorage;
-  MemRefType() = default;
-  /* implicit */ MemRefType(Type::ImplType *ptr);
+  using Type::Type;
 
   /// Get or create a new MemRefType based on shape, element type, affine
   /// map composition, and memory space.  Assumes the arguments define a
