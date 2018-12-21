@@ -715,7 +715,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
 
 static HloInstruction* BuildTupleConstant(HloComputation* computation,
                                           const LiteralSlice& literal) {
-  if (ShapeUtil::IsTuple(literal.shape())) {
+  if (literal.shape().IsTuple()) {
     std::vector<HloInstruction*> elems;
     elems.reserve(ShapeUtil::TupleElementCount(literal.shape()));
     for (int i = 0; i < ShapeUtil::TupleElementCount(literal.shape()); ++i) {
@@ -732,7 +732,7 @@ static HloInstruction* BuildTupleConstant(HloComputation* computation,
 Status AlgebraicSimplifierVisitor::HandleConstant(HloInstruction* constant) {
   // Tuple constants aren't directly supported by any backend. Expand them into
   // explicit Tuple instructions.
-  if (ShapeUtil::IsTuple(constant->shape())) {
+  if (constant->shape().IsTuple()) {
     return ReplaceInstruction(
         constant, BuildTupleConstant(computation_, constant->literal()));
   }
@@ -1686,7 +1686,7 @@ bool OutputIsPermutationOfOperandElements(HloInstruction* instruction,
     case HloOpcode::kTranspose:
       return true;
     case HloOpcode::kSort:
-      return (!ShapeUtil::IsTuple(instruction->shape()));
+      return (!instruction->shape().IsTuple());
     default:
       return false;
   }
@@ -2437,7 +2437,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
 Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
   // TODO(b/112040122): Most of those optimizations can be done for multi-output
   // reduces.
-  if (ShapeUtil::IsTuple(reduce->shape())) {
+  if (reduce->shape().IsTuple()) {
     return Status::OK();
   }
 

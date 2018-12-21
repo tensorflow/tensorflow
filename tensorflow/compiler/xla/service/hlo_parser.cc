@@ -1287,7 +1287,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       // the infeed instruction. ShapeUtil::GetTupleElementShape will check fail
       // if the shape is not a non-empty tuple, so add guard so an error message
       // can be emitted instead of a check fail
-      if (!ShapeUtil::IsTuple(shape) && !ShapeUtil::IsEmptyTuple(shape)) {
+      if (!shape.IsTuple() && !ShapeUtil::IsEmptyTuple(shape)) {
         return Error(lexer_.GetLoc(),
                      "infeed must have a non-empty tuple shape");
       }
@@ -1931,8 +1931,8 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
 //  ::= tuple
 //  ::= non_tuple
 bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
-  return ShapeUtil::IsTuple(shape) ? ParseTupleLiteral(literal, shape)
-                                   : ParseNonTupleLiteral(literal, shape);
+  return shape.IsTuple() ? ParseTupleLiteral(literal, shape)
+                         : ParseNonTupleLiteral(literal, shape);
 }
 
 // tuple

@@ -123,7 +123,7 @@ PyObject* PyShapeInfoFromXlaShape(const Shape& shape) {
   PyArray_Descr* np_dtype = PyArray_DescrFromType(np_typenum);
 
   PyObject* dimensions;
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     int num_elements = ShapeUtil::TupleElementCount(shape);
     dimensions = PyTuple_New(ShapeUtil::TupleElementCount(shape));
     for (int i = 0; i < num_elements; ++i) {
@@ -345,7 +345,7 @@ StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o) {
 }
 
 PyObject* PyObjectFromXlaLiteral(const LiteralSlice& literal) {
-  if (ShapeUtil::IsTuple(literal.shape())) {
+  if (literal.shape().IsTuple()) {
     int num_elements = ShapeUtil::TupleElementCount(literal.shape());
     PyObject* tuple = PyTuple_New(num_elements);
     for (int i = 0; i < num_elements; i++) {

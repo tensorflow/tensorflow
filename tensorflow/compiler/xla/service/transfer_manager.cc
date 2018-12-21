@@ -142,7 +142,7 @@ Status TransferManager::TransferArrayToDeviceAsync(
     se::Stream* stream, const LiteralSlice& literal,
     const se::DeviceMemoryBase& dest) {
   const Shape on_device_shape = HostShapeToDeviceShape(literal.shape());
-  TF_RET_CHECK(ShapeUtil::IsArray(on_device_shape))
+  TF_RET_CHECK(on_device_shape.IsArray())
       << "On-device representation of "
       << ShapeUtil::HumanString(literal.shape())
       << " is not an array: " << ShapeUtil::HumanString(on_device_shape);
@@ -227,7 +227,7 @@ Status TransferManager::WriteTupleIndexTablesAsync(
   return ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_device_shape(),
       [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
-        if (ShapeUtil::IsTuple(device_subshape)) {
+        if (device_subshape.IsTuple()) {
           se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
                        device_memory.size());
@@ -250,7 +250,7 @@ Status TransferManager::WriteTupleIndexTablesAsync(
 
 Status TransferManager::WriteRootTupleIndexTable(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
-  TF_RET_CHECK(ShapeUtil::IsTuple(device_buffer.on_device_shape()));
+  TF_RET_CHECK(device_buffer.on_device_shape().IsTuple());
   se::DeviceMemoryBase device_memory = device_buffer.buffer({});
   TF_RET_CHECK(GetByteSizeRequirement(device_buffer.on_device_shape()) ==
                device_memory.size());

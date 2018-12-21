@@ -42,15 +42,13 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   int64 max_rank = -1;
   const Layout* max_rank_layout;
   for (HloInstruction* param : params) {
-    if (ShapeUtil::IsArray(param->shape()) &&
-        param->shape().rank() > max_rank) {
+    if (param->shape().IsArray() && param->shape().rank() > max_rank) {
       max_rank = param->shape().rank();
       max_rank_layout = &param->shape().layout();
     }
   }
   return absl::c_all_of(params, [&](HloInstruction* param) {
-    return (!ShapeUtil::IsArray(param->shape())) ||
-           (param->shape().rank() < max_rank) ||
+    return (!param->shape().IsArray()) || (param->shape().rank() < max_rank) ||
            (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
   });
 }

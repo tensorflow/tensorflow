@@ -101,13 +101,13 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }  // namespace
 
 /* static */ Layout LayoutUtil::GetDefaultLayoutForShape(const Shape& shape) {
-  if (ShapeUtil::IsOpaque(shape) || ShapeUtil::IsToken(shape)) {
+  if (shape.IsOpaque() || shape.IsToken()) {
     // Opaque and token types have empty layouts.
     return Layout();
   }
 
   // A Layout proto corresponds to a single array, not a tuple.
-  CHECK(ShapeUtil::IsArray(shape));
+  CHECK(shape.IsArray());
   return CreateDefaultLayoutForRank(shape.dimensions_size());
 }
 
@@ -128,13 +128,13 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ void LayoutUtil::SetToDefaultLayout(Shape* shape) {
-  if (ShapeUtil::IsTuple(*shape)) {
+  if (shape->IsTuple()) {
     // Tuple shape.
     for (auto& element_shape : *shape->mutable_tuple_shapes()) {
       SetToDefaultLayout(&element_shape);
     }
     shape->clear_layout();
-  } else if (ShapeUtil::IsArray(*shape)) {
+  } else if (shape->IsArray()) {
     shape->mutable_layout()->set_format(DENSE);
     auto* minor_to_major = shape->mutable_layout()->mutable_minor_to_major();
     minor_to_major->resize(shape->dimensions_size(), 0);
@@ -160,7 +160,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 
 /* static */ Status LayoutUtil::ValidateLayoutInShape(
     const Shape& shape, bool allow_missing_layouts) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     // Tuple shape.
     if (shape.has_layout()) {
       return InvalidArgument("tuple should not have a layout field");
@@ -170,7 +170,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
     return Status::OK();
-  } else if (ShapeUtil::IsArray(shape)) {
+  } else if (shape.IsArray()) {
     if (!shape.has_layout()) {
       if (allow_missing_layouts) {
         return Status::OK();
@@ -192,11 +192,11 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 
 /* static */ Status LayoutUtil::ValidateLayoutForShape(const Layout& layout,
                                                        const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     return InvalidArgument("a single Layout is not valid for tuple shapes");
   }
 
-  if (!ShapeUtil::IsArray(shape)) {
+  if (!shape.IsArray()) {
     if (layout.minor_to_major_size() != 0) {
       return InvalidArgument(
           "shape of primitive type %s should not have a non-trivial layout",
@@ -255,8 +255,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ bool LayoutUtil::IsDenseArray(const Shape& shape) {
-  return ShapeUtil::IsArray(shape) && shape.has_layout() &&
-         IsDense(shape.layout());
+  return shape.IsArray() && shape.has_layout() && IsDense(shape.layout());
 }
 
 /* static */ bool LayoutUtil::IsDense(const Layout& layout) {
@@ -276,8 +275,7 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
-  return ShapeUtil::IsArray(shape) && shape.has_layout() &&
-         IsSparse(shape.layout());
+  return shape.IsArray() && shape.has_layout() && IsSparse(shape.layout());
 }
 
 /* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
@@ -290,11 +288,11 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 }
 
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     // Tuple shape: all subshapes must have a layout.
     return std::all_of(shape.tuple_shapes().begin(), shape.tuple_shapes().end(),
                        [](const Shape& s) { return HasLayout(s); });
-  } else if (!ShapeUtil::IsArray(shape)) {
+  } else if (!shape.IsArray()) {
     // Opaque, token types etc. ignore layout.
     return true;
   }
@@ -360,11 +358,11 @@ namespace {
 
 // Internal helper for recursively copying layouts.
 Status CopyLayoutInternal(const Shape& src, Shape* dst) {
-  if (ShapeUtil::IsTuple(src) != ShapeUtil::IsTuple(*dst)) {
+  if (src.IsTuple() != dst->IsTuple()) {
     return InvalidArgument(
         "cannot copy layout from shape: shape structure differs");
   }
-  if (ShapeUtil::IsTuple(src)) {
+  if (src.IsTuple()) {
     if (ShapeUtil::TupleElementCount(src) !=
         ShapeUtil::TupleElementCount(*dst)) {
       return InvalidArgument(
@@ -398,9 +396,9 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 
 /* static */ bool LayoutUtil::LayoutsInShapesEqual(const Shape& lhs,
                                                    const Shape& rhs) {
-  if (ShapeUtil::IsTuple(lhs)) {
-    if (!ShapeUtil::IsTuple(rhs) || ShapeUtil::TupleElementCount(lhs) !=
-                                        ShapeUtil::TupleElementCount(rhs)) {
+  if (lhs.IsTuple()) {
+    if (!rhs.IsTuple() || ShapeUtil::TupleElementCount(lhs) !=
+                              ShapeUtil::TupleElementCount(rhs)) {
       return false;
     }
     for (int i = 0; i < ShapeUtil::TupleElementCount(lhs); ++i) {
@@ -409,7 +407,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
       }
     }
     return true;
-  } else if (ShapeUtil::IsArray(lhs)) {
+  } else if (lhs.IsArray()) {
     return lhs.rank() == rhs.rank() &&
            LayoutUtil::Equal(lhs.layout(), rhs.layout());
   } else {

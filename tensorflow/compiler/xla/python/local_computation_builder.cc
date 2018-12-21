@@ -1041,7 +1041,7 @@ StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
     LocalShapedBuffer* local_shaped_buffer) {
   const Shape tuple_shape = local_shaped_buffer->shape();
 
-  if (!ShapeUtil::IsTuple(tuple_shape)) {
+  if (!tuple_shape.IsTuple()) {
     return InvalidArgument(
         "Attemped to destructure a LocalShapedBuffer that did not have a tuple "
         "shape; shape: %s",
@@ -1088,7 +1088,7 @@ StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
     XrtAllocation* allocation, const string& session_target) {
   const Shape& tuple_shape = allocation->shape();
 
-  if (!ShapeUtil::IsTuple(tuple_shape)) {
+  if (!tuple_shape.IsTuple()) {
     return InvalidArgument(
         "Attemped to destructure a LocalShapedBuffer that did not have a tuple "
         "shape; shape: %s",

@@ -457,18 +457,18 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
     XlaOp updated_ehs = ehs;
-    if (!ShapeUtil::IsTuple(shape)) {
-      if (!ShapeUtil::IsTuple(lhs_shape) &&
+    if (!shape.IsTuple()) {
+      if (!lhs_shape.IsTuple() &&
           !ShapeUtil::SameDimensions(shape, lhs_shape)) {
         // lhs is being implicitly broadcasted. Change to explicit.
         TF_ASSIGN_OR_RETURN(updated_lhs, AddBroadcastSequence(shape, lhs));
       }
-      if (!ShapeUtil::IsTuple(rhs_shape) &&
+      if (!rhs_shape.IsTuple() &&
           !ShapeUtil::SameDimensions(shape, rhs_shape)) {
         // rhs is being implicitly broadcasted. Change to explicit.
         TF_ASSIGN_OR_RETURN(updated_rhs, AddBroadcastSequence(shape, rhs));
       }
-      if (!ShapeUtil::IsTuple(ehs_shape) &&
+      if (!ehs_shape.IsTuple() &&
           !ShapeUtil::SameDimensions(shape, ehs_shape)) {
         // ehs is being implicitly broadcasted. Change to explicit.
         TF_ASSIGN_OR_RETURN(updated_ehs, AddBroadcastSequence(shape, ehs));
@@ -807,10 +807,9 @@ XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& true_shape, GetShape(on_true));
     TF_ASSIGN_OR_RETURN(const Shape& false_shape, GetShape(on_false));
-    TF_RET_CHECK(ShapeUtil::IsTuple(true_shape) ==
-                 ShapeUtil::IsTuple(false_shape));
-    HloOpcode opcode = ShapeUtil::IsTuple(true_shape) ? HloOpcode::kTupleSelect
-                                                      : HloOpcode::kSelect;
+    TF_RET_CHECK(true_shape.IsTuple() == false_shape.IsTuple());
+    HloOpcode opcode =
+        true_shape.IsTuple() ? HloOpcode::kTupleSelect : HloOpcode::kSelect;
     return TernaryOp(opcode, pred, on_true, on_false);
   });
 }
@@ -834,7 +833,7 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& tuple_shape, GetShape(tuple_data));
-    if (!ShapeUtil::IsTuple(tuple_shape)) {
+    if (!tuple_shape.IsTuple()) {
       return InvalidArgument(
           "Operand to GetTupleElement() is not a tuple; got %s",
           ShapeUtil::HumanString(tuple_shape));
@@ -1149,7 +1148,7 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
     *instr.mutable_shape() = infeed_instruction_shape.ToProto();
     instr.set_infeed_config(config);
 
-    if (ShapeUtil::IsArray(shape) && sharding() &&
+    if (shape.IsArray() && sharding() &&
         sharding()->type() == OpSharding::Type::OpSharding_Type_OTHER) {
       // TODO(b/110793772): Support tiled array-shaped infeeds.
       return InvalidArgument(
@@ -1225,7 +1224,7 @@ XlaOp XlaBuilder::InfeedWithToken(const XlaOp& token, const Shape& shape,
     *instr.mutable_shape() = infeed_instruction_shape.ToProto();
     instr.set_infeed_config(config);
 
-    if (ShapeUtil::IsArray(shape) && sharding() &&
+    if (shape.IsArray() && sharding() &&
         sharding()->type() == OpSharding::Type::OpSharding_Type_OTHER) {
       // TODO(b/110793772): Support tiled array-shaped infeeds.
       return InvalidArgument(
@@ -1338,7 +1337,7 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
     for (int i = 0; i < tokens.size(); ++i) {
       const XlaOp& operand = tokens[i];
       TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
-      if (!ShapeUtil::IsToken(operand_shape)) {
+      if (!operand_shape.IsToken()) {
         return InvalidArgument(
             "All operands to AfterAll must be tokens; operand %d has shape %s",
             i, ShapeUtil::HumanString(operand_shape));
@@ -2291,7 +2290,7 @@ XlaOp XlaBuilder::SendToHost(const XlaOp& operand, const XlaOp& token,
           ShapeUtil::HumanStringWithLayout(operand_shape));
     }
     // TODO(b/111544877): Support tuple shapes.
-    if (!ShapeUtil::IsArray(operand_shape)) {
+    if (!operand_shape.IsArray()) {
       return InvalidArgument("SendToHost only supports array shapes, shape: %s",
                              ShapeUtil::HumanString(operand_shape));
     }
@@ -2331,7 +2330,7 @@ XlaOp XlaBuilder::RecvFromHost(const XlaOp& token, const Shape& shape,
     }
 
     // TODO(b/111544877): Support tuple shapes.
-    if (!ShapeUtil::IsArray(shape)) {
+    if (!shape.IsArray()) {
       return InvalidArgument(
           "RecvFromHost only supports array shapes, shape: %s",
           ShapeUtil::HumanString(shape));

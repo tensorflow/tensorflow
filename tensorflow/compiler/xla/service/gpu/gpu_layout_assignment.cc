@@ -226,7 +226,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
         TF_RETURN_IF_ERROR(
             constraints->SetOperandLayout(shape, instruction, i));
         const LogicalBuffer* output_buffer;
-        if (ShapeUtil::IsArray(instruction->shape())) {
+        if (instruction->shape().IsArray()) {
           TF_ASSIGN_OR_RETURN(
               output_buffer,
               constraints->points_to_analysis().GetBufferDefinedAt(instruction,

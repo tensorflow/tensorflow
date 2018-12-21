@@ -442,7 +442,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
-  CHECK(ShapeUtil::IsArray(reference_shape));
+  CHECK(reference_shape.IsArray());
   const int64 rank = reference_shape.rank();
   const int64 concat_dim = concatenate->dimensions()[0];
   CHECK_GE(concat_dim, 0);
@@ -453,7 +453,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
   for (int64 i = 1; i < operands.size(); ++i) {
     const Shape& operand_shape = operands[i]->shape();
-    CHECK(ShapeUtil::IsArray(operand_shape));
+    CHECK(operand_shape.IsArray());
     // Accumulate the concat dimension from all tensors taking part to the
     // operation.
     concat_dimensions[concat_dim] +=
@@ -1382,7 +1382,7 @@ StatusOr<Literal> EvaluateSort(HloInstruction* sort,
 }  // namespace
 
 Status HloEvaluator::HandleSort(HloInstruction* sort) {
-  if (!ShapeUtil::IsTuple(sort->shape())) {
+  if (!sort->shape().IsTuple()) {
     return DefaultAction(sort);
   } else {
     // This is a really stupid work-around for the fact it's hard to support a
@@ -1407,7 +1407,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
 }
 
 Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
-  if (!ShapeUtil::IsTuple(reduce->shape())) {
+  if (!reduce->shape().IsTuple()) {
     return DefaultAction(reduce);
   } else {
     auto first_element_type = reduce->shape().tuple_shapes(0).element_type();

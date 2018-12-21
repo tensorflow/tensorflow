@@ -207,7 +207,7 @@ class ShapeUtil {
 
   // Returns the number of bytes used to store the primitive_type.
   //
-  // Precondition: ShapeUtil::IsArray(shape)
+  // Precondition: shape.IsArray()
   static int64 ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
 
   // Returns the number of bytes required to store the tuple member pointers for
@@ -445,24 +445,28 @@ class ShapeUtil {
   static bool ElementIsSigned(const Shape& shape);
 
   // Returns whether the shape is a tuple.
+  ABSL_DEPRECATED("Use Shape::IsTuple instead.")
   static bool IsTuple(const Shape& shape) {
     return shape.element_type() == TUPLE;
   }
 
   // Returns whether the shape is an opaque value (i.e. an 'existential' typed
   // value that is passed to CustomCall operations).
+  ABSL_DEPRECATED("Use Shape::IsOpaque instead.")
   static bool IsOpaque(const Shape& shape) {
     return shape.element_type() == OPAQUE;
   }
 
   // Returns whether the shape is an token value used for ordering
   // side-effecting operations.
+  ABSL_DEPRECATED("Use Shape::IsToken instead.")
   static bool IsToken(const Shape& shape) {
     return shape.element_type() == TOKEN;
   }
 
   // Returns whether the shape is an array.  Note that scalars are considered
   // arrays.
+  ABSL_DEPRECATED("Use Shape::IsArray instead.")
   static bool IsArray(const Shape& shape);
 
   // Returns whether the given primitive type corresponds to an array shape.

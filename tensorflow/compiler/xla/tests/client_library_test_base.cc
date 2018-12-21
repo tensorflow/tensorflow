@@ -224,7 +224,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
       TF_ASSIGN_OR_RETURN(auto literal,
                           client_->Transfer(*arguments[index], nullptr));
       // Skip tuples because they don't have a rank.
-      if (ShapeUtil::IsTuple(literal.shape())) {
+      if (literal.shape().IsTuple()) {
         layout_strings.push_back(
             ShapeUtil::HumanStringWithLayout(literal.shape()));
         arguments_with_layout.push_back(arguments[index]);

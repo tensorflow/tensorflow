@@ -190,7 +190,7 @@ Status BFloat16ConversionFoldingVisitor::HandleAllReduce(HloInstruction* crs) {
   }
 
   // If the output is not a tuple, we don't need special handling.
-  if (!ShapeUtil::IsTuple(crs->shape())) {
+  if (!crs->shape().IsTuple()) {
     return Status::OK();
   }
 

@@ -117,7 +117,7 @@ IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
     ++depth;
   }
 
-  if (!ShapeUtil::IsArray(*shape_) || ShapeUtil::IsScalar(*shape_)) {
+  if (!shape_->IsArray() || ShapeUtil::IsScalar(*shape_)) {
     DCHECK(depth == 1 || depth == 0) << depth;
   } else {
     DCHECK_EQ(depth, shape_->rank()) << shape.ShortDebugString();

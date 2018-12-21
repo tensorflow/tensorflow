@@ -58,7 +58,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   HloComputation* while_body = while_op->while_body();
   HloInstruction* while_body_root = while_body->root_instruction();
 
-  if (!ShapeUtil::IsTuple(while_init->shape())) {
+  if (!while_init->shape().IsTuple()) {
     VLOG(2) << "While op's carried value isn't tuple shaped.";
     return false;
   }
@@ -583,8 +583,7 @@ static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
 static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
     absl::Span<HloInstruction*> instrs, const Shape& desired_shape,
     std::vector<std::unique_ptr<HloInstruction>>* new_instrs) {
-  CHECK(ShapeUtil::IsTuple(desired_shape))
-      << ShapeUtil::HumanString(desired_shape);
+  CHECK(desired_shape.IsTuple()) << ShapeUtil::HumanString(desired_shape);
 
   // For each child shape in `desired_shape`, slice out the correct number of
   // `instrs` and call UnflattenTupleInstr recursively.  At each step we remove
@@ -593,7 +592,7 @@ static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
   std::vector<HloInstruction*> elems;
   for (int64 i = 0; i < desired_shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = desired_shape.tuple_shapes(i);
-    if (!ShapeUtil::IsTuple(subshape)) {
+    if (!subshape.IsTuple()) {
       elems.push_back(instrs[0]);
       instrs.remove_prefix(1);
       continue;
@@ -603,7 +602,7 @@ static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
     int64 num_leaves = 0;
     ShapeUtil::ForEachSubshape(
         subshape, [&](const Shape& s, const ShapeIndex& /*index*/) {
-          if (!ShapeUtil::IsTuple(s)) {
+          if (!s.IsTuple()) {
             ++num_leaves;
           }
         });
@@ -625,7 +624,7 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
     HloInstruction* instr,
     std::vector<std::unique_ptr<HloInstruction>>* new_instrs) {
   const auto& shape = instr->shape();
-  if (!ShapeUtil::IsTuple(shape)) {
+  if (!shape.IsTuple()) {
     return {instr};
   }
   std::vector<HloInstruction*> elems;
@@ -665,7 +664,7 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   std::vector<Shape> flattened_shape_elems;
   ShapeUtil::ForEachSubshape(while_shape,
                              [&](const Shape& s, const ShapeIndex& /*index*/) {
-                               if (!ShapeUtil::IsTuple(s)) {
+                               if (!s.IsTuple()) {
                                  flattened_shape_elems.push_back(s);
                                }
                              });

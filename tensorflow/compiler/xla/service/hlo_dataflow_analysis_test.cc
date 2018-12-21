@@ -73,8 +73,8 @@ class HloDataflowAnalysisTest : public HloTestBase,
   bool InstructionsMayInterfere(const HloOrdering& ordering,
                                 const HloInstruction* a,
                                 const HloInstruction* b) {
-    EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_FALSE(a->shape().IsTuple());
+    EXPECT_FALSE(b->shape().IsTuple());
     return ordering.MayInterfere(analysis_->GetValueDefinedAt(a),
                                  analysis_->GetValueDefinedAt(b), *analysis_);
   }

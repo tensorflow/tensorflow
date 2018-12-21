@@ -27,7 +27,7 @@ namespace {
 
 Status PopulateInfeedLayoutVector(const xla::Shape& shape,
                                   std::vector<int>* layouts) {
-  if (xla::ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     int64 tuple_elements = xla::ShapeUtil::TupleElementCount(shape);
     for (int64 i = 0; i < tuple_elements; ++i) {
       const xla::Shape& subshape =
@@ -49,7 +49,7 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
 // Convert an XLA Shape into the equivalent TensorFlow shape.
 Status XLAShapeToTensorShape(const xla::Shape& shape,
                              TensorShape* tensor_shape) {
-  if (xla::ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     return errors::InvalidArgument("XLA shape ",
                                    xla::ShapeUtil::HumanString(shape),
                                    " cannot be converted to a TensorShape");

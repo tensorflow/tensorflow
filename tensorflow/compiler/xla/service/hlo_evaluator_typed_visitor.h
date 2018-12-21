@@ -940,7 +940,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleSelect(HloInstruction* select) override {
     CHECK(!ShapeUtil::IsScalar(select->operand(0)->shape()));
-    CHECK(ShapeUtil::IsArray(select->shape()));
+    CHECK(select->shape().IsArray());
     std::function<ReturnT(bool, ReturnT, ReturnT)> select_op =
         [](bool pred, ReturnT on_true, ReturnT on_false) {
           if (pred) {
@@ -993,8 +993,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     TF_CHECK_OK(ShapeUtil::ValidateShape(lhs_shape));
     TF_CHECK_OK(ShapeUtil::ValidateShape(rhs_shape));
-    CHECK(ShapeUtil::IsArray(lhs_shape));
-    CHECK(ShapeUtil::IsArray(rhs_shape));
+    CHECK(lhs_shape.IsArray());
+    CHECK(rhs_shape.IsArray());
     CHECK(ShapeUtil::SameElementType(lhs_shape, rhs_shape));
     CHECK(ShapeUtil::SameElementType(lhs_shape, result_shape));
 
@@ -1169,9 +1169,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleDot(HloInstruction* dot) {
     const HloInstruction* lhs = dot->operand(0);
     const HloInstruction* rhs = dot->operand(1);
-    CHECK(ShapeUtil::IsArray(dot->shape()));
-    CHECK(ShapeUtil::IsArray(lhs->shape()));
-    CHECK(ShapeUtil::IsArray(rhs->shape()));
+    CHECK(dot->shape().IsArray());
+    CHECK(lhs->shape().IsArray());
+    CHECK(rhs->shape().IsArray());
 
     const auto& dnums = dot->dot_dimension_numbers();
 
@@ -1232,9 +1232,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleDotSlowPath(HloInstruction* dot) {
     auto lhs = dot->operand(0);
     auto rhs = dot->operand(1);
-    CHECK(ShapeUtil::IsArray(dot->shape()));
-    CHECK(ShapeUtil::IsArray(lhs->shape()));
-    CHECK(ShapeUtil::IsArray(rhs->shape()));
+    CHECK(dot->shape().IsArray());
+    CHECK(lhs->shape().IsArray());
+    CHECK(rhs->shape().IsArray());
 
     const auto& dnums = dot->dot_dimension_numbers();
 
@@ -1326,7 +1326,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandlePad(HloInstruction* pad) override {
-    CHECK(ShapeUtil::IsArray(pad->operand(0)->shape()));
+    CHECK(pad->operand(0)->shape().IsArray());
     // Padding value must be scalar.
     CHECK(ShapeUtil::IsScalar(pad->operand(1)->shape()));
     CHECK_EQ(pad->operand(0)->shape().rank(),
@@ -1669,7 +1669,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleReduce(HloInstruction* hlo) override {
     HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
     int64 num_args = reduce->inputs().size();
-    bool has_tuple_output = ShapeUtil::IsTuple(reduce->shape());
+    bool has_tuple_output = reduce->shape().IsTuple();
     absl::Span<const int64> dimensions(reduce->dimensions());
     HloComputation* function = reduce->to_apply();
 
@@ -1700,7 +1700,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // All args and results have the same dimensions, so pick an arbitrary one.
     const Shape& arg_shape = arg_literals[0]->shape();
-    const Shape& result_shape = ShapeUtil::IsTuple(reduce->shape())
+    const Shape& result_shape = reduce->shape().IsTuple()
                                     ? reduce->shape().tuple_shapes(0)
                                     : reduce->shape();
     const auto arg_dimensions = AsInt64Slice(arg_shape.dimensions());

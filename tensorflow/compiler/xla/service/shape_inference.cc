@@ -50,7 +50,7 @@ bool AllUnique(absl::Span<const int64> slice) {
 }
 
 Status ExpectArray(const Shape& shape, absl::string_view op_type) {
-  if (!ShapeUtil::IsArray(shape)) {
+  if (!shape.IsArray()) {
     return InvalidArgument("Expected array argument for %s, but got %s.",
                            string(op_type), ShapeUtil::HumanString(shape));
   }
@@ -70,7 +70,7 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
 
   const Shape& accumulator_shape = reducer_shape.result();
   std::vector<const Shape*> accumulator_subshapes;
-  if (ShapeUtil::IsArray(accumulator_shape)) {
+  if (accumulator_shape.IsArray()) {
     if (inputs != 1) {
       return InvalidArgument(
           "Reduction function must produce a tuple with %d elements, but "
@@ -78,7 +78,7 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
           inputs);
     }
     accumulator_subshapes.push_back(&accumulator_shape);
-  } else if (ShapeUtil::IsTuple(accumulator_shape)) {
+  } else if (accumulator_shape.IsTuple()) {
     if (ShapeUtil::TupleElementCount(accumulator_shape) != inputs) {
       return InvalidArgument(
           "Reduction function must produce a tuple with %d elements, but has "
@@ -401,7 +401,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
         ShapeUtil::HumanString(operand_shape),
         PrimitiveType_Name(new_element_type));
   }
-  if (!ShapeUtil::IsArray(operand_shape) ||
+  if (!operand_shape.IsArray() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -424,7 +424,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                            ShapeUtil::HumanString(operand_shape),
                            PrimitiveType_Name(new_element_type));
   }
-  if (!ShapeUtil::IsArray(operand_shape) ||
+  if (!operand_shape.IsArray() ||
       !primitive_util::IsArrayType(new_element_type)) {
     // Note: we may want to support tuple conversions via this operation in the
     // future, by recursing into the tuple elements to check all sub-conversions
@@ -472,7 +472,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 /* static */ StatusOr<Shape> ShapeInference::InferPadShape(
     const Shape& operand_shape, const Shape& padding_value_shape,
     const PaddingConfig& padding_config) {
-  if (!ShapeUtil::IsArray(operand_shape)) {
+  if (!operand_shape.IsArray()) {
     return InvalidArgument(
         "Pad operation does not support tuple-shape operands.");
   }
@@ -1892,7 +1892,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteShape(
     const Shape& shape) {
-  TF_RET_CHECK(ShapeUtil::IsArray(shape));
+  TF_RET_CHECK(shape.IsArray());
   return shape;
 }
 
@@ -2262,7 +2262,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferGetTupleElementShape(
     const Shape& arg, int64 index) {
-  if (!ShapeUtil::IsTuple(arg)) {
+  if (!arg.IsTuple()) {
     return InvalidArgument(
         "Cannot infer shape: attempting to index into non-tuple: %s.",
         ShapeUtil::HumanString(arg));

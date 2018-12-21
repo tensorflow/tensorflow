@@ -81,8 +81,7 @@ bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
 
 /* static */ bool ShapeUtil::IsArrayPrimitiveType(
     PrimitiveType primitive_type) {
-  return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
-         primitive_type != OPAQUE && primitive_type != TOKEN;
+  return primitive_util::IsArrayType(primitive_type);
 }
 
 namespace {
@@ -99,13 +98,13 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
     return false;
   }
 
-  if (ShapeUtil::IsTuple(lhs)) {
+  if (lhs.IsTuple()) {
     return absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
                          [=](const Shape& l, const Shape& r) {
                            return CompareShapes(l, r, compare_layouts,
                                                 ignore_fp_precision);
                          });
-  } else if (!ShapeUtil::IsArray(lhs)) {
+  } else if (!lhs.IsArray()) {
     // Non-tuple, non-array tupes such as opaque and token types are trivially
     // the same.
     return true;
@@ -201,8 +200,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
 }
 
 /* static */ int64 ShapeUtil::Rank(const Shape& shape) {
-  CHECK(ShapeUtil::IsArray(shape))
-      << "Non-arrays do not have a rank, shape: " << shape;
+  CHECK(shape.IsArray()) << "Non-arrays do not have a rank, shape: " << shape;
   return shape.dimensions_size();
 }
 
@@ -472,7 +470,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
-  return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
+  return shape.IsArray() && ElementsIn(shape) == 0;
 }
 
 /* static */ bool ShapeUtil::IsScalarWithElementType(
@@ -536,8 +534,8 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ bool ShapeUtil::SameDimensions(const Shape& lhs,
                                             const Shape& rhs) {
-  CHECK(ShapeUtil::IsArray(lhs));
-  CHECK(ShapeUtil::IsArray(rhs));
+  CHECK(lhs.IsArray());
+  CHECK(rhs.IsArray());
   return absl::c_equal(lhs.dimensions(), rhs.dimensions());
 }
 
@@ -663,7 +661,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ int64 ShapeUtil::ByteSizeOfElements(const Shape& shape) {
   TF_DCHECK_OK(ValidateShape(shape));
-  CHECK(ShapeUtil::IsArray(shape));
+  CHECK(shape.IsArray());
   int64 allocated_element_count;
 
   if (LayoutUtil::IsSparseArray(shape)) {
@@ -907,7 +905,7 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 }
 
 /* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
-  CHECK(ShapeUtil::IsArray(shape));
+  CHECK(shape.IsArray());
   return absl::c_linear_search(shape.dimensions(), 1);
 }
 
@@ -924,7 +922,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
                              const ShapeUtil::StatusVisitorFunction& func,
                              ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       index->push_back(i);
       TF_RETURN_IF_ERROR(ForEachSubshapeHelper(
@@ -941,7 +939,7 @@ Status ForEachMutableSubshapeHelper(
     Shape* shape, const ShapeUtil::MutatingStatusVisitorFunction& func,
     ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
-  if (ShapeUtil::IsTuple(*shape)) {
+  if (shape->IsTuple()) {
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(*shape); ++i) {
       index->push_back(i);
       TF_RETURN_IF_ERROR(ForEachMutableSubshapeHelper(

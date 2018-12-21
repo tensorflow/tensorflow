@@ -980,7 +980,7 @@ bool ShapeContainsToken(const Shape& shape) {
   bool contains_token = false;
   ShapeUtil::ForEachSubshape(
       shape, [&contains_token](const Shape& subshape, const ShapeIndex&) {
-        if (ShapeUtil::IsToken(subshape)) {
+        if (subshape.IsToken()) {
           contains_token = true;
         }
       });
@@ -1322,7 +1322,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleGetTupleElement(HloInstruction* gte) override {
-    TF_RET_CHECK(ShapeUtil::IsTuple(gte->operand(0)->shape()));
+    TF_RET_CHECK(gte->operand(0)->shape().IsTuple());
     return Status::OK();
   }
 
