@@ -135,6 +135,15 @@ class ConcatBaseOp : public OpKernel {
       }
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
+        if (std::is_same<qint8, T>::value) {
+          OP_REQUIRES(
+              c, 0 == inputs_flat_dim1 % 4,
+              errors::InvalidArgument(
+                  "For qint8, the product of dimensions after the concat axis "
+                  "must be a multiple of 4. Got ",
+                  input_shape, " -> (", inputs_flat_dim0, ", ",
+                  inputs_flat_dim1, ")"));
+        }
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             in.shaped<T, 2>({inputs_flat_dim0, inputs_flat_dim1})));
       }
@@ -213,6 +222,7 @@ REGISTER_CONCAT(qint32);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 REGISTER_GPU(bfloat16);
+REGISTER_GPU(qint8);
 TF_CALL_uint8(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);

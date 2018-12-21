@@ -87,7 +87,21 @@ void ConcatGPU(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs_flat,
     Tensor* output, typename TTypes<T, 2>::Tensor* output_flat) {
-  if (inputs_flat.size() < 16) {
+  if (std::is_same<T, qint8>::value) {
+    std::vector<std::unique_ptr<typename TTypes<int32, 2>::ConstMatrix>>
+        inputs_as_int32(inputs_flat.size());
+    for (int i = 0; i < inputs_flat.size(); ++i) {
+      auto& input = *inputs_flat[i];
+      inputs_as_int32[i].reset(new typename TTypes<int32, 2>::ConstMatrix(
+          reinterpret_cast<const int32*>(input.data()), input.dimension(0),
+          input.dimension(1) >> 2));
+    }
+    typename TTypes<int32, 2>::Matrix output_as_int32(
+        reinterpret_cast<int32*>(output_flat->data()),
+        output_flat->dimension(0), output_flat->dimension(1) >> 2);
+    ConcatGPUSlice<int32, int32>(c->eigen_gpu_device(), inputs_as_int32,
+                                 &output_as_int32);
+  } else if (inputs_flat.size() < 16) {
     if (output->NumElements() < std::numeric_limits<int32>::max()) {
       ConcatGPUSlice<T, int32>(c->eigen_gpu_device(), inputs_flat, output_flat);
     } else {
@@ -119,6 +133,7 @@ TF_CALL_int64(REGISTER);
 TF_CALL_bfloat16(REGISTER);
 TF_CALL_bool(REGISTER);
 TF_CALL_uint8(REGISTER);
+TF_CALL_qint8(REGISTER);
 
 #undef REGISTER
 
