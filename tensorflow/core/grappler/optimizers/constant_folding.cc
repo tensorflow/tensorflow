@@ -983,7 +983,8 @@ Status ConstantFolding::CreateNodeDef(const string& name,
 
   if (encoded_size > original_size && encoded_size >= 10 * 1024 * 1024) {
     return errors::InvalidArgument(
-        strings::StrCat("Can't fold ", name, ", its size would be too large"));
+        strings::StrCat("Can't fold ", name, ", its size would be too large (",
+                        encoded_size, " >= ", 10 * 1024 * 1024, " bytes)"));
   }
   return Status::OK();
 }
