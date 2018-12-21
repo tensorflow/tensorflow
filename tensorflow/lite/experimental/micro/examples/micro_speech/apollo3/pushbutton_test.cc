@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/* This file is a modification of the Tensorflow Micro Lite file micro_speech_test.cc */
+/* This file is a modification of the Tensorflow Micro Lite file
+ * micro_speech_test.cc */
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
@@ -37,11 +38,10 @@ TF_LITE_MICRO_TEST(TestPreprocessor) {
   tflite::MicroErrorReporter micro_error_reporter;
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
-  uint8_t preprocessed_data[43*49];
-  TfLiteStatus preprocess_1sec_status = Preprocess_1sec(
-      error_reporter, captured_data, preprocessed_data);
+  uint8_t preprocessed_data[43 * 49];
+  TfLiteStatus preprocess_1sec_status =
+      Preprocess_1sec(error_reporter, captured_data, preprocessed_data);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, preprocess_1sec_status);
-
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
@@ -111,7 +111,6 @@ TF_LITE_MICRO_TEST(TestPreprocessor) {
   g_no_score = output->data.uint8[kNoIndex];
 
   error_reporter->Report("Ran successfully\n");
-
 }
 
 TF_LITE_MICRO_TESTS_END
