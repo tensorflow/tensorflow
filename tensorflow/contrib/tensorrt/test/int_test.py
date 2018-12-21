@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Model script to test TF-TensorRT integration."""
+"""Test conversion of graphs involving INT32 tensors and operations."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -37,37 +37,24 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     return constant_op.constant(np.random.randn(*shape), dtype=dtype)
 
   def GetParams(self):
-    """Testing conversion of BiasAdd MatMul in TF-TRT conversion."""
-    # Note that tf.nn.bias_add supports up to 5 dimensions.
+    """Test exclusion of ops which are not supported in INT32 mode by TF-TRT"""
+    input_name = 'input'
+    output_name = 'output'
     input_dims = [100, 4]
     g = ops.Graph()
     with g.as_default():
-      # float part
-      # input1 = array_ops.placeholder(
-      #     dtype=dtypes.float32, shape=input_dims, name='input_float32')
-      # b1 = self._ConstOp((4, 10), dtypes.float32)
-      # x1 = math_ops.matmul(input1, b1)
-      # b1 = self._ConstOp((1, 10), dtypes.float32)
-      # x1 = x1 + b1
-
-      # int part
-      input2 = array_ops.placeholder(
-          dtype=dtypes.int32, shape=input_dims, name='input_int32')
-      b2 = self._ConstOp((4, 10), dtypes.int32)
-      x2 = math_ops.matmul(input2, b2)
-      b2 = self._ConstOp((10,), dtypes.int32)
-      x2 = nn.bias_add(x2, b2)
-
-      # combine
-      #y = x1 * x2
-
-      #out1 = array_ops.identity(x1, name='output_float32')
-      out2 = array_ops.identity(x2, name='output_int32')
+      x = array_ops.placeholder(
+          dtype=dtypes.int32, shape=input_dims, name=input_name)
+      b = self._ConstOp((4, 10), dtypes.int32)
+      x = math_ops.matmul(x, b)
+      b = self._ConstOp((10,), dtypes.int32)
+      x = nn.bias_add(x, b)
+      x = array_ops.identity(x, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
-        input_names=['input_int32'],
-        input_dims=[[100, 4]],
-        output_names=['output_int32'],
+        input_names=[input_name],
+        input_dims=[input_dims],
+        output_names=[output_name],
         expected_output_dims=[(100, 10)])
 
   def GetConversionParams(self, run_params):
@@ -89,7 +76,7 @@ class BiasaddMatMulTest(trt_test.TfTrtIntegrationTestBase):
     """Whether to run the test."""
     # TODO(aaroey): Trt 4.0 forbids conversion for tensors with rank <3 in int8
     # mode, which is a bug. Re-enable this when trt library is fixed.
-    return not trt_test.IsQuantizationMode(run_params.precision_mode) #and not run_params.dynamic_engine
+    return not trt_test.IsQuantizationMode(run_params.precision_mode)
 
 
 if __name__ == "__main__":

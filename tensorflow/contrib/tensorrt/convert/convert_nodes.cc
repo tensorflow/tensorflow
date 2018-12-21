@@ -694,14 +694,6 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
           ostrides);
       break;
     }
-    case tensorflow::DataType::DT_INT32: {
-      Reorder2(
-          {k, c}, static_cast<int const*>(iweights.GetValues()),
-          istrides,
-          static_cast<int*>(const_cast<void*>(oweights->GetValues())),
-          ostrides);
-      break;
-    }
     default:
       LOG(FATAL) << "Unsupported type in reorder expected fp32 or fp16 but got "
                  << DataTypeString(iweights.type_);

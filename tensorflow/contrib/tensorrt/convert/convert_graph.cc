@@ -1011,11 +1011,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   VLOG(1) << "Current cuda device is " << old_cuda_device;
   std::vector<Node*> engine_nodes;
   engine_nodes.resize(engine_segments.size());
-  LOG(INFO) << "here " << engine_segments.size();
   for (int i = 0; i < engine_segments.size(); ++i) {
     auto& engine = engine_segments.at(i);
-
-    LOG(INFO) << "here4 ";
     // Partition the workspace size by the average of node ratio and segment
     // graphdef size
     engine.max_workspace_size_bytes =
