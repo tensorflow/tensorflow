@@ -967,6 +967,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           list_ops.tensor_list_get_item(v[0], 0, element_dtype=dtypes.float32),
           1.)
 
+  def testGroupDoesntForceRead(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      assign = v.assign_add(1.0)
+      g = control_flow_ops.group([assign])
+      self.assertEqual(g.control_inputs[0].type, "AssignAddVariableOp")
+
   def testScatterNdAddStateOps(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(
