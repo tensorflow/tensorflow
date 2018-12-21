@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,7 +34,7 @@ _TEST_TYPES = (dtypes.int64, dtypes.float32,
                dtypes.complex64, dtypes.complex128)
 
 
-class GatherTest(test.TestCase):
+class GatherTest(test.TestCase, parameterized.TestCase):
 
   def _buildParams(self, data, dtype):
     data = data.astype(dtype.as_numpy_dtype)
@@ -247,6 +249,238 @@ class GatherTest(test.TestCase):
           params = np.zeros((0, 0, 7), dtype=dtype.as_numpy_dtype)
           gather = array_ops.gather(params, indices, axis=2)
           self.assertAllEqual(gather.eval(), np.zeros((0, 0, 2)))
+
+  @parameterized.parameters([
+      # batch_dims=0 (equivalent to tf.gather)
+      dict(  # 2D indices
+          batch_dims=0,
+          params=[6, 7, 8, 9],
+          indices=[[2, 1], [0, 3]],
+          expected=[[8, 7], [6, 9]]),
+      dict(  # 3D indices
+          batch_dims=0,
+          params=[6, 7, 8, 9],
+          indices=[[[3, 1], [2, 0]], [[0, 3], [2, 2]]],
+          expected=[[[9, 7], [8, 6]], [[6, 9], [8, 8]]]),
+      dict(  # 4D indices
+          batch_dims=0,
+          params=[8, 9],
+          indices=[[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+                   [[[1, 1], [0, 0]], [[0, 1], [1, 0]]]],
+          expected=[[[[8, 9], [9, 8]], [[8, 8], [9, 9]]],
+                    [[[9, 9], [8, 8]], [[8, 9], [9, 8]]]]),
+
+      # batch_dims=indices.shape.ndims - 1 (equivalent to tf.batch_gather)
+      dict(  # 2D indices (1 batch dim)
+          batch_dims=1,
+          params=[[10, 11, 12, 13], [20, 21, 22, 23]],
+          indices=[[2, 1], [0, 3]],
+          expected=[[12, 11], [20, 23]]),
+      dict(  # 3D indices (2 batch dims)
+          batch_dims=2,
+          params=[[[100, 101], [110, 111]], [[200, 201], [210, 211]]],
+          indices=[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+          expected=[[[100, 101], [111, 110]], [[200, 200], [211, 211]]]),
+      dict(  # 2D indices (1 batch dim)
+          batch_dims=-1,
+          params=[[10, 11, 12, 13], [20, 21, 22, 23]],
+          indices=[[2, 1], [0, 3]],
+          expected=[[12, 11], [20, 23]]),
+      dict(  # 3D indices (2 batch dims)
+          batch_dims=-1,
+          params=[[[100, 101], [110, 111]], [[200, 201], [210, 211]]],
+          indices=[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+          expected=[[[100, 101], [111, 110]], [[200, 200], [211, 211]]]),
+
+      # 0 < batch_dims < indices.shape.ndims - 1
+      dict(  # 3D indices (1 batch dim)
+          batch_dims=1,
+          params=[[10, 11, 12, 13], [20, 21, 22, 23]],
+          indices=[[[3, 1], [2, 0]], [[0, 3], [2, 2]]],
+          expected=[[[13, 11], [12, 10]], [[20, 23], [22, 22]]]),
+      dict(  # 4D indices (1 batch dim)
+          batch_dims=1,
+          params=[[6, 7], [8, 9]],
+          indices=[[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+                   [[[1, 1], [0, 0]], [[0, 1], [1, 0]]]],
+          expected=[[[[6, 7], [7, 6]], [[6, 6], [7, 7]]],
+                    [[[9, 9], [8, 8]], [[8, 9], [9, 8]]]]),
+      dict(  # 4D indices (2 batch dims)
+          batch_dims=2,
+          params=[[[2, 3], [4, 5]], [[6, 7], [8, 9]]],
+          indices=[[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+                   [[[1, 1], [0, 0]], [[0, 1], [1, 0]]]],
+          expected=[[[[2, 3], [3, 2]], [[4, 4], [5, 5]]],
+                    [[[7, 7], [6, 6]], [[8, 9], [9, 8]]]]),
+
+      # axis > 0
+      dict(  # 3D indices, batch_dims=1, axis=2
+          # params.shape  = [I1, J1, J2] = [2, 2, 3]
+          # indices.shape = [I1, K1, K2] = [2, 1, 5]
+          # result.shape  = [I1, J1, K1, K2] = [2, 2, 1, 5]
+          batch_dims=1,
+          axis=2,
+          params=[[[10, 11, 12], [13, 14, 15]], [[20, 21, 22], [23, 24, 25]]],
+          indices=[[[0, 1, 2, 1, 0]], [[0, 1, 2, 1, 0]]],
+          expected=[[[[10, 11, 12, 11, 10]], [[13, 14, 15, 14, 13]]],
+                    [[[20, 21, 22, 21, 20]], [[23, 24, 25, 24, 23]]]]),
+      dict(  # 3D indices, batch_dims=None, axis=1
+          batch_dims=None,
+          axis=1,
+          params=[[10, 11, 12], [13, 14, 15]],
+          indices=[1, 0],
+          expected=[[11, 10], [14, 13]]),
+  ])
+  @test_util.run_in_graph_and_eager_modes
+  def testBatchDims(self, params, indices, batch_dims, expected=None,
+                    axis=None):
+    result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
+    self.assertAllEqual(expected, result)
+
+  @parameterized.parameters([
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          axis=2,
+          output_shape=[2, 3, 8, 9, 10, 5, 6, 7]
+          # = params.shape[:2] + indices.shape[2:] + params.shape[3:]
+          ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          axis=3,
+          output_shape=[2, 3, 4, 8, 9, 10, 6, 7]
+          # = params.shape[:3] + indices.shape[2:] + params.shape[4:]
+          ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          axis=4,
+          output_shape=[2, 3, 4, 5, 8, 9, 10, 7]
+          # = params.shape[:4] + indices.shape[2:] + params.shape[5:]
+          ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          axis=5,
+          output_shape=[2, 3, 4, 5, 6, 8, 9, 10]
+          # = params.shape[:5] + indices.shape[2:] + params.shape[6:]
+          ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          axis=-4,
+          output_shape=[2, 3, 8, 9, 10, 5, 6, 7]
+          # = params.shape[:2] + indices.shape[2:] + params.shape[3:]
+          ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          axis=-3,
+          output_shape=[2, 3, 4, 8, 9, 10, 6, 7]
+          # = params.shape[:3] + indices.shape[2:] + params.shape[4:]
+          ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          axis=-2,
+          output_shape=[2, 3, 4, 5, 8, 9, 10, 7]
+          # = params.shape[:4] + indices.shape[2:] + params.shape[5:]
+          ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          axis=-1,
+          output_shape=[2, 3, 4, 5, 6, 8, 9, 10]
+          # = params.shape[:5] + indices.shape[2:] + params.shape[6:]
+          ),
+  ])
+  @test_util.run_in_graph_and_eager_modes
+  def testBatchDimsMatchesPythonBatching(self, params_shape, indices_shape,
+                                         batch_dims, axis, output_shape):
+    """Checks that batch_dims matches multiple calls to tf.gather()."""
+    # Generate a `params` tensor with the indicated shape.
+    params_size = np.prod(params_shape)
+    params = np.reshape(np.arange(params_size), params_shape)
+
+    # Generate an `indices` tensor with the indicated shape, where each index
+    # is within the appropriate range.
+    indices_size = np.prod(indices_shape)
+    indices = np.reshape(np.arange(indices_size), indices_shape)
+    indices = indices % params_shape[axis]
+
+    # Perform repeated (batched) gather operations with numpy, to find the
+    # expected result.
+    expected = self._batchNumpyGather(params, indices, axis, batch_dims)
+
+    result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
+    self.assertAllEqual(output_shape, result.shape.as_list())
+    self.assertAllEqual(expected, result)
+
+  def _batchNumpyGather(self, params, indices, axis, batch_dims):
+    """Performs a batch gather by making recursive calls to np.take().
+
+    This is used by testBatchDims() to construct the expected value.
+
+    Args:
+      params: A numpy array
+      indices: A numpy array
+      axis: An integer
+      batch_dims: An integer
+    Returns:
+      A numpy array
+    """
+    if batch_dims == 0:
+      return np.take(params, indices, axis=axis)
+    self.assertEqual(params.shape[0], indices.shape[0])
+    if axis > 0:
+      axis -= 1
+    return np.stack([
+        self._batchNumpyGather(params[i], indices[i], axis, batch_dims - 1)
+        for i in range(params.shape[0])
+    ])
+
+  def testSkipEagerErrors(self):
+    if context.executing_eagerly():
+      return
+    with self.assertRaisesRegexp(ValueError, r"tf\.gather does not allow.*"):
+      array_ops.gather(
+          params=[1, 2],
+          batch_dims=1,
+          indices=array_ops.placeholder(dtypes.int32))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testErrors(self):
+
+    with self.assertRaisesRegexp(
+        ValueError, r"batch_dims = 2 must be less than ndims\(indices\) = 2"):
+      array_ops.gather(
+          params=[[1, 2], [3, 4]], indices=[[1, 2], [3, 4]], batch_dims=2)
+
+    with self.assertRaisesRegexp(
+        ValueError, r"batch_dims = 1 must be less than ndims\(params\) = 1"):
+      array_ops.gather(
+          params=[1, 2, 3, 4], indices=[[1, 2], [3, 4]], batch_dims=1)
+
+    with self.assertRaisesRegexp(
+        ValueError, r"batch_dims = 1 must be less than or equal to axis = 0"):
+      array_ops.gather(
+          params=[[1, 2], [3, 4]],
+          indices=[[1, 2], [3, 4]],
+          batch_dims=1,
+          axis=0)
+
+    one = array_ops.ones((), dtypes.int32)
+    with self.assertRaisesRegexp(TypeError, "batch_dims must be an int"):
+      array_ops.gather(params=[[1]], indices=[[1]], batch_dims=one)
 
 
 if __name__ == "__main__":
