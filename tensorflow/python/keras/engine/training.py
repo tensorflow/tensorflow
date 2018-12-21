@@ -765,6 +765,11 @@ class Model(Network):
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
 
+    # When the model expects dictionary inputs (i.e. FeatureColumn-based
+    # models), set run_eagerly to True as there's no support for graph
+    # functions.
+    training_utils.set_run_eagerly_for_dict_structure(self, x)
+
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       return training_distributed.fit_distributed(
@@ -2363,10 +2368,6 @@ class Model(Network):
       self._set_inputs(cast_inputs)
     else:
       dict_inputs = isinstance(self.inputs, dict)
-    if dict_inputs and context.executing_eagerly():
-      # No support for graph functions when the model expects dictionary inputs
-      # (i.e. FeatureColumn-based models).
-      self.run_eagerly = True
 
     if y is not None:
       if not self.optimizer:
