@@ -355,19 +355,14 @@ tensorflow::Status GetEngineInfo(
     const auto& node_name = (*it)->name();
     if (segment_nodes.count(node_name) == 0) continue;
     auto node = *it;
+    // TODO: check for CPU device here
+    // If device is CPU, we should've caught that in the segmenter. Fall back here.
+
     auto node_device = node->requested_device();
-    LOG(INFO) << "requested: " << node_device;
-    DeviceNameUtils::ParsedName parsed_name;
-    if (DeviceNameUtils::ParseFullName(node_device, &parsed_name) && parsed_name.type == "CPU") {
-      LOG(INFO) << "type: " << parsed_name.type;
-      LOG(INFO) << "clear!";
-      node_device.clear();
-    }
     if (!node_device.empty()) {
       segment_devices.insert(node_device);
     } else {
       if (node->has_assigned_device_name()) {
-        LOG(INFO) << "assigned: " << node->assigned_device_name();
         segment_devices.insert(node->assigned_device_name());
       } else {
         VLOG(2) << "Node " << node->name()
@@ -905,8 +900,6 @@ std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
       StrAppend(&msg, ". Will get the allocator from first one.");
       LOG(WARNING) << msg;
     }
-    LOG(INFO) << "here12";
-    LOG(INFO) << devices[0]->name();
     tensorflow::AllocatorAttributes alloc_attr;
     cuda_device_id = devices[0]->tensorflow_gpu_device_info()->gpu_id;
     dev_allocator = devices[0]->GetAllocator(alloc_attr);
