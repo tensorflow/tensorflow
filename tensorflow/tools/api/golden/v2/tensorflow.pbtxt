@@ -165,10 +165,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "glorot_uniform_initializer"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "graph_util"
     mtype: "<type \'module\'>"
   }
@@ -178,10 +174,6 @@ tf_module {
   }
   member {
     name: "image"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "initializers"
     mtype: "<type \'module\'>"
   }
   member {
@@ -331,10 +323,6 @@ tf_module {
   member {
     name: "train"
     mtype: "<type \'module\'>"
-  }
-  member {
-    name: "truncated_normal_initializer"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "uint16"

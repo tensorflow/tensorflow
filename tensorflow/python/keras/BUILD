@@ -100,6 +100,7 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",

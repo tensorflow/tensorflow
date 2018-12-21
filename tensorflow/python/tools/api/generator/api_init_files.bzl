@@ -22,7 +22,6 @@ TENSORFLOW_API_INIT_FILES = [
     "image/__init__.py",
     "io/__init__.py",
     "queue/__init__.py",
-    "initializers/__init__.py",
     "linalg/__init__.py",
     "lite/__init__.py",
     "lite/constants/__init__.py",

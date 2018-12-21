@@ -1,11 +1,12 @@
-path: "tensorflow.keras.initializers.RandomNormal"
+path: "tensorflow.keras.initializers.GlorotNormal"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.RandomNormal\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.GlorotNormal\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.VarianceScaling\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'mean\', \'stddev\', \'seed\'], varargs=None, keywords=None, defaults=[\'0.0\', \'0.05\', \'None\'], "
+    argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "from_config"
