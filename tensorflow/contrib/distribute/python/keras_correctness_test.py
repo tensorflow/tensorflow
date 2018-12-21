@@ -39,6 +39,36 @@ _RANDOM_SEED = 1337
 # keras_backward_compat_test for features that are supported with both APIs.
 
 
+all_strategies = [
+    combinations.default_strategy,
+    combinations.one_device_strategy,
+    combinations.mirrored_strategy_with_gpu_and_cpu,
+    combinations.mirrored_strategy_with_two_gpus,
+    combinations.core_mirrored_strategy_with_gpu_and_cpu,
+    combinations.core_mirrored_strategy_with_two_gpus,
+    combinations.tpu_strategy,  # steps_per_run=2
+    combinations.tpu_strategy_one_step,
+]
+
+
+def all_strategy_combinations_with_eager_and_graph_modes():
+  return combinations.combine(distribution=all_strategies,
+                              mode=['graph', 'eager'])
+
+
+def all_strategy_combinations_with_graph_mode():
+  return combinations.combine(distribution=all_strategies, mode=['graph'])
+
+
+def strategy_and_input_combinations():
+  return (
+      combinations.times(
+          combinations.combine(distribution=all_strategies),
+          combinations.combine(mode=['graph', 'eager'],
+                               use_numpy=[True, False],
+                               use_validation_data=[True, False])))
+
+
 class MaybeDistributionScope(object):
   """Provides a context allowing no distribution strategy."""
 
@@ -100,8 +130,7 @@ def get_batch_size(global_batch_size, distribution):
 
 
 def get_correctness_test_inputs(use_numpy, use_validation_data,
-                                with_distribution,
-                                x_train, y_train, x_predict):
+                                with_distribution, x_train, y_train, x_predict):
   """Generates the inputs for correctness check when enable Keras with DS."""
   training_epochs = 2
   global_batch_size = 64
@@ -131,10 +160,9 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
   else:
     # For dataset inputs, we do not pass batch_size to
     # keras.fit/evaluate/predict. The batch size is part of the dataset.
-    train_dataset = dataset_ops.Dataset.from_tensor_slices(
-        (x_train, y_train))
-    x = batch_wrapper(
-        train_dataset, batch_size, with_distribution, repeat=training_epochs)
+    train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
+    x = batch_wrapper(train_dataset, batch_size, with_distribution,
+                      repeat=training_epochs)
 
     training_inputs = {
         'batch_size': None,
@@ -146,8 +174,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
     }
     if use_validation_data:
       eval_inputs = None  # Remove the eval_inputs
-      eval_dataset = dataset_ops.Dataset.from_tensor_slices(
-          (x_train, y_train))
+      eval_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       x = batch_wrapper(eval_dataset, batch_size, with_distribution)
       training_inputs['validation_data'] = x
       training_inputs['validation_steps'] = 5
@@ -161,44 +188,14 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
 
     predict_batch_size = get_batch_size(len(x_predict), with_distribution)
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
-    predict_dataset = batch_wrapper(predict_dataset,
-                                    predict_batch_size, with_distribution)
+    predict_dataset = batch_wrapper(predict_dataset, predict_batch_size,
+                                    with_distribution)
     predict_inputs = {
         'steps': 1,
         'x': predict_dataset,
     }
 
   return training_inputs, eval_inputs, predict_inputs
-
-
-all_strategies = [
-    combinations.default_strategy,
-    combinations.one_device_strategy,
-    combinations.mirrored_strategy_with_gpu_and_cpu,
-    combinations.mirrored_strategy_with_two_gpus,
-    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-    combinations.core_mirrored_strategy_with_two_gpus,
-    combinations.tpu_strategy,  # steps_per_run=2
-    combinations.tpu_strategy_one_step,
-]
-
-
-def all_strategy_combinations_with_eager_and_graph_modes():
-  return combinations.combine(distribution=all_strategies,
-                              mode=['graph', 'eager'])
-
-
-def all_strategy_combinations_with_graph_mode():
-  return combinations.combine(distribution=all_strategies, mode=['graph'])
-
-
-def strategy_and_input_combinations():
-  return (
-      combinations.times(
-          combinations.combine(distribution=all_strategies),
-          combinations.combine(mode=['graph', 'eager'],
-                               use_numpy=[True, False],
-                               use_validation_data=[True, False])))
 
 
 def fit_eval_and_predict(
@@ -311,9 +308,7 @@ class TestDistributionStrategyCorrectness(test.TestCase,
             metrics=[keras.metrics.BinaryAccuracy()])
 
       batch_size = 64
-      if not distributed_training_utils.global_batch_size_supported(
-          distribution):
-        batch_size //= distribution.num_replicas_in_sync
+      batch_size = get_batch_size(batch_size, distribution)
       train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
 
@@ -367,7 +362,6 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       self.skipTest('TODO')
 
     with self.cached_session():
-
       keras.backend.set_image_data_format('channels_last')
       np.random.seed(_RANDOM_SEED)
       random_seed.set_random_seed(_RANDOM_SEED)
