@@ -38510,6 +38510,34 @@ op {
   is_stateful: true
 }
 op {
+  name: "NextAfter"
+  input_arg {
+    name: "x1"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "x2"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+op {
   name: "NextIteration"
   input_arg {
     name: "data"
