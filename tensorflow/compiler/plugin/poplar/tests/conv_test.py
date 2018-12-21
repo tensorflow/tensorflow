@@ -95,7 +95,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
         ok = ['progIdCopy',
               'host-exchange-local-copy-',
-              'Copy_',
               'cnv3*/convolution.*/Conv_3x3',
               'ba3*/call/addToChannel']
 
