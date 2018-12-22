@@ -210,7 +210,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_BIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version */ 1,
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
-             Register_UNIDIRECTIONAL_SEQUENCE_LSTM());
+             Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_PAD, Register_PAD());
   AddBuiltin(BuiltinOperator_PADV2, Register_PADV2());
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
