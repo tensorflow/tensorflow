@@ -2681,8 +2681,9 @@ bool ConstantFolding::ConstantPushDown(NodeDef* node) {
       // to C.
       CHECK(MaybeRemoveControlInput(op_child_node->name(), const_child_node,
                                     graph_, node_map_.get()));
-      NodeDef* other_leaf = left_leaf_is_constant ? left_leaf : right_leaf;
-      MaybeAddControlInput(other_leaf->name(), const_child_node, graph_,
+      string other_leaf_input = left_leaf_is_constant ? op_child_node->input(0)
+                                                      : op_child_node->input(1);
+      MaybeAddControlInput(other_leaf_input, const_child_node, graph_,
                            node_map_.get());
     }
 
