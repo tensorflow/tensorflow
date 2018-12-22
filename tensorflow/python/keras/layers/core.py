@@ -141,7 +141,7 @@ class Dropout(Layer):
       return nn.dropout(inputs,
                         noise_shape=self._get_noise_shape(inputs),
                         seed=self.seed,
-                        rate = self.rate)
+                        rate=self.rate)
     output = tf_utils.smart_cond(training,
                                  dropped_inputs,
                                  lambda: array_ops.identity(inputs))
