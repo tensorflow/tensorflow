@@ -102,7 +102,8 @@ OpKernel::OpKernel(OpKernelConstruction* context,
       graph_def_version_(context->graph_def_version()),
       is_internal_(str_util::StartsWith(type_string(), "_")),
       input_name_map_(context->num_inputs()),
-      output_name_map_(context->num_outputs()) {
+      output_name_map_(context->num_outputs()),
+      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
                                    &output_name_map_));
