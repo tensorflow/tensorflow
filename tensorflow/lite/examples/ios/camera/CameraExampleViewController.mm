@@ -330,8 +330,10 @@ void ProcessInputWithQuantizedModel(
   const int output_tensor_index = interpreter->outputs()[0];
   TfLiteTensor* output_tensor = interpreter->tensor(output_tensor_index);
   TfLiteIntArray* output_dims = output_tensor->dims;
-  assert(output_dims->size == 2);
-  const int output_size = output_dims->data[1]-output_dims->data[0];
+  if(output_dims->size != 2 || output_dims->data[0] != 1) {
+    LOG(FATAL) << "Output of the model is in invalid format.";
+  }
+  const int output_size = output_dims->data[1];
     
   const int kNumResults = 5;
   const float kThreshold = 0.1f;
