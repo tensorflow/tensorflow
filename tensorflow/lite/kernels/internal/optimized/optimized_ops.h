@@ -5387,9 +5387,6 @@ inline void ResizeBilinearGenericSmallChannel(
     int32 output_height, int32 output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const T* input_data,
     const RuntimeShape& output_shape, T* output_data) {
-  memset(output_data, 0,
-         batches * output_height * output_width * depth * sizeof(T));
-
   T* output_ptr = &output_data[0];
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
