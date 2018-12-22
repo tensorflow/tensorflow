@@ -871,5 +871,71 @@ class HingeTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class SquaredHingeTest(test.TestCase):
+
+  def test_config(self):
+    sq_hinge_obj = keras.losses.SquaredHinge(
+        reduction=losses_impl.ReductionV2.SUM, name='sq_hinge_loss')
+    self.assertEqual(sq_hinge_obj.name, 'sq_hinge_loss')
+    self.assertEqual(sq_hinge_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_unweighted(self):
+    sq_hinge_obj = keras.losses.SquaredHinge()
+    y_true = constant_op.constant([1, 9, 2, -5], shape=(2, 2))
+    y_pred = constant_op.constant([4, 8, 12, 8],
+                                  shape=(2, 2),
+                                  dtype=dtypes.float32)
+
+    # Sq hinge = mean(square(max(1. - y_true * y_pred, 0.)), axis=-1)
+    # (1. - y_true * y_pred) = [[1-4, 1-72], [1-24, 1+40]] = [0, 48]
+    # sq(max(above val, 0)) = sq([[0, 0], [0, 41]) = [[0, 0], [0, 1681]]
+    # Mean = [0, 840.5]. Reduced loss = (0 + 840.5)/2 = 420.25
+    loss = sq_hinge_obj(y_true, y_pred)
+    self.assertAlmostEqual(self.evaluate(loss), 420.25, 3)
+
+  def test_scalar_weighted(self):
+    sq_hinge_obj = keras.losses.SquaredHinge()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = sq_hinge_obj(y_true, y_pred, sample_weight=2.3)
+    self.assertAlmostEqual(self.evaluate(loss), 647.833, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = sq_hinge_obj(y_true, y_pred, sample_weight=2.3)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    sq_hinge_obj = keras.losses.SquaredHinge()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = sq_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 957.667, 3)
+
+  def test_timestep_weighted(self):
+    sq_hinge_obj = keras.losses.SquaredHinge()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3, 1))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3, 1),
+                                  dtype=dtypes.float32)
+    sample_weight = constant_op.constant([3, 6, 5, 0, 4, 2], shape=(2, 3))
+    loss = sq_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 6.0, 3)
+
+  def test_zero_weighted(self):
+    sq_hinge_obj = keras.losses.SquaredHinge()
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = sq_hinge_obj(y_true, y_pred, sample_weight=0)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+
 if __name__ == '__main__':
   test.main()
