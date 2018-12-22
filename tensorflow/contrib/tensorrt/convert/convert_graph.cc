@@ -355,12 +355,18 @@ tensorflow::Status GetEngineInfo(
     const auto& node_name = (*it)->name();
     if (segment_nodes.count(node_name) == 0) continue;
     auto node = *it;
-    // TODO: check for CPU device here
-    // If device is CPU, we should've caught that in the segmenter. Fall back here.
-
     auto node_device = node->requested_device();
     if (!node_device.empty()) {
-      segment_devices.insert(node_device);
+      // If device is CPU, we should've caught that in the segmenter.
+      DeviceNameUtils::ParsedName parsed_name;
+      DeviceNameUtils::ParseFullName(node_device, &parsed_name);
+      if (parsed_name.type == "CPU") {
+        LOG(WARNING) << "Node " << node->name() << " was assigned to the CPU "
+                     << "but did not get excluded by the segmenter. "
+                     << "Attempting to place on GPU.";
+      } else {
+        segment_devices.insert(node_device);
+      }
     } else {
       if (node->has_assigned_device_name()) {
         segment_devices.insert(node->assigned_device_name());
