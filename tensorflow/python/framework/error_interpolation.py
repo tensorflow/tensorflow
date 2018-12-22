@@ -177,9 +177,9 @@ def _compute_colocation_summary_from_op(op, prefix=""):
 
 
 def _find_index_of_defining_frame_for_op(op):
-  """Return index in op._traceback with first 'useful' frame.
+  """Return index in op.traceback with first 'useful' frame.
 
-  This method reads through the stack stored in op._traceback looking for the
+  This method reads through the stack stored in op.traceback looking for the
   innermost frame which (hopefully) belongs to the caller.  It accomplishes this
   by rejecting frames whose filename appears to come from TensorFlow (see
   error_interpolation._BAD_FILE_SUBSTRINGS for the list of rejected substrings).
@@ -189,15 +189,13 @@ def _find_index_of_defining_frame_for_op(op):
         location.
 
   Returns:
-    Integer index into op._traceback where the first non-TF file was found
+    Integer index into op.traceback where the first non-TF file was found
     (innermost to outermost), or 0 (for the outermost stack frame) if all files
     came from TensorFlow.
   """
-  # pylint: disable=protected-access
   # Index 0 of tf_traceback is the outermost frame.
-  tf_traceback = tf_stack.convert_stack(op._traceback)
+  tf_traceback = op.traceback
   size = len(tf_traceback)
-  # pylint: enable=protected-access
   filenames = [frame[tf_stack.TB_FILENAME] for frame in tf_traceback]
   # We process the filenames from the innermost frame to outermost.
   for idx, filename in enumerate(reversed(filenames)):
@@ -210,10 +208,7 @@ def _find_index_of_defining_frame_for_op(op):
 def _get_defining_frame_from_op(op):
   """Find and return stack frame where op was defined."""
   frame_index = _find_index_of_defining_frame_for_op(op)
-  # pylint: disable=protected-access
-  frame = op._traceback[frame_index]
-  # pylint: enable=protected-access
-  return frame
+  return op.traceback[frame_index]
 
 
 def compute_field_dict(op, strip_file_prefix=""):
@@ -286,10 +281,7 @@ def traceback_files_common_prefix(all_ops):
     if ops is None:
       continue
     for op in ops:
-      # pylint: disable=protected-access
-      tf_traceback = tf_stack.convert_stack(op._traceback)
-      # pylint: enable=protected-access
-      for frame in tf_traceback:
+      for frame in op.traceback:
         filename = frame[tf_stack.TB_FILENAME]
         if "<embedded" not in filename:
           files.add(filename)
