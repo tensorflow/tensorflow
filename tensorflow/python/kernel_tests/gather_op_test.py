@@ -421,6 +421,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     # expected result.
     expected = self._batchNumpyGather(params, indices, axis, batch_dims)
 
+    # On Windows, we get an exception if we pass in the transformed numpy
+    # arrays ("Failed to convert numpy ndarray to a Tensor (Unsupported
+    # feed type)."); so convert them back to lists before calling tf.gather.
+    params = params.tolist()
+    indices = indices.tolist()
+
     result = array_ops.gather(params, indices, axis=axis, batch_dims=batch_dims)
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
