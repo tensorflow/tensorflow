@@ -83,6 +83,26 @@ bool SafeLess(const NativeT& a, const NativeT& b) {
   return SafeLess(static_cast<float>(a), static_cast<float>(b));
 }
 
+// ToArithmeticSafeType(T t):
+//  - converts `t` to the bitwise-equivalent `unsigned T` if T is a signed
+//    integer, and
+//  - otherwise returns `t` unchanged.
+//
+// It's UB in C++ to under/overflow a signed integer, so we wrap all arithmetic
+// in this type to force 2's complement behavior.
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value &&
+                                  std::is_signed<T>::value>::type* = nullptr>
+typename std::make_unsigned<T>::type ToArithmeticSafeType(T t) {
+  return static_cast<typename std::make_unsigned<T>::type>(t);
+}
+template <typename T,
+          typename std::enable_if<!std::is_integral<T>::value ||
+                                  !std::is_signed<T>::value>::type* = nullptr>
+T ToArithmeticSafeType(T t) {
+  return std::move(t);
+}
+
 // Templated DfsHloVisitor for use by HloEvaluator.
 //
 // Typically ReturnT here indicates the resulting literal type of each evaluated
@@ -498,47 +518,25 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  template <typename NativeT,
-            typename std::enable_if<
-                std::is_signed<NativeT>::value &&
-                !std::is_floating_point<NativeT>::value>::type* = nullptr>
-  Status HandleMultiply(HloInstruction* multiply) {
-    using type = typename std::make_unsigned<NativeT>::type;
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[multiply],
-        ElementWiseBinaryOp(multiply,
-                            [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
-                              return NativeT(type(lhs_elem) * type(rhs_elem));
-                            }));
-    return Status::OK();
-  }
-
-  template <
-      typename NativeT,
-      typename std::enable_if<std::is_unsigned<NativeT>::value ||
-                              std::is_floating_point<NativeT>::value ||
-                              is_complex_t<NativeT>::value>::type* = nullptr>
-  Status HandleMultiply(HloInstruction* multiply) {
-    TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[multiply],
-        ElementWiseBinaryOp(multiply,
-                            [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
-                              return lhs_elem * rhs_elem;
-                            }));
-    return Status::OK();
-  }
-
   Status HandleMultiply(HloInstruction* multiply) override {
-    return HandleMultiply<ElementwiseT>(multiply);
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[multiply],
+        ElementWiseBinaryOp(
+            multiply, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
+              return ElementwiseT(ToArithmeticSafeType(lhs_elem) *
+                                  ToArithmeticSafeType(rhs_elem));
+            }));
+    return Status::OK();
   }
 
   Status HandleSubtract(HloInstruction* subtract) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[subtract],
-        ElementWiseBinaryOp(subtract,
-                            [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
-                              return lhs_elem - rhs_elem;
-                            }));
+        ElementWiseBinaryOp(
+            subtract, [](ElementwiseT lhs_elem, ElementwiseT rhs_elem) {
+              return ElementwiseT(ToArithmeticSafeType(lhs_elem) -
+                                  ToArithmeticSafeType(rhs_elem));
+            }));
     return Status::OK();
   }
 
@@ -546,7 +544,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[add],
                         ElementWiseBinaryOp(add, [](ElementwiseT lhs_elem,
                                                     ElementwiseT rhs_elem) {
-                          return lhs_elem + rhs_elem;
+                          return ElementwiseT(ToArithmeticSafeType(lhs_elem) +
+                                              ToArithmeticSafeType(rhs_elem));
                         }));
     return Status::OK();
   }

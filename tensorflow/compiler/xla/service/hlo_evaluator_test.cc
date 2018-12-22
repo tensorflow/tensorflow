@@ -2795,6 +2795,40 @@ ENTRY main {
   }
 }
 
+// Check that s32 under/overflow doesn't trigger a ubsan failure.
+TEST_P(HloEvaluatorTest, Int32Overflow) {
+  // Test not applicable to bf16; only applies to signed integral types.
+  if (use_bfloat16_) {
+    return;
+  }
+
+  constexpr absl::string_view hlo_text = R"(
+HloModule Test
+
+ENTRY main {
+  c1 = s32[] constant(1073741824)  // 2^30
+  sum = s32[] add(c1, c1)  // 2^31, i.e. INT_MIN
+
+  c2 = s32[] constant(-2147483648)  // -2^31
+  sub = s32[] subtract(c2, c1)  // -2^31 - 2^30, underflows
+
+  mul = s32[] multiply(c1, c1)
+  ROOT tuple = (s32[], s32[], s32[]) tuple(sum, sub, mul)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  std::vector<Literal> actual = Evaluate({}).DecomposeTuple();
+  ASSERT_EQ(actual.size(), 3);
+
+  uint32 pow30 = uint32{1} << 30;
+  uint32 pow31 = uint32{1} << 31;
+  EXPECT_EQ(actual[0].GetFirstElement<int32>(), static_cast<int32>(pow31));
+  EXPECT_EQ(actual[1].GetFirstElement<int32>(),
+            static_cast<int32>(-(pow31 + pow30)));
+  EXPECT_EQ(actual[2].GetFirstElement<int32>(),
+            static_cast<int32>(pow31 * pow31));
+}
+
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,
                         ::testing::ValuesIn(use_bf16_params));
 
