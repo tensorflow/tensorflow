@@ -225,39 +225,18 @@ class ParameterServerStrategyTestBase(
           self.assertEqual(var.device, '/job:ps/task:%d' % part_id)
           self.assertEqual(var.device, x_add[part_id].device)
 
-        # The colocate_vars_with can override the distribution's device.
-        with d.colocate_vars_with(x_add[0]):
-          y = variable_scope.get_variable(
-              'y',
-              initializer=constant_op.constant([20.0, 10.0]),
-              aggregation=variable_scope.VariableAggregation.SUM,
-              partitioner=partitioner)
-        y_add = y.assign_add(
-            [array_ops.identity(x_add[0]),
-             array_ops.identity(x_add[1])])
+        return x_add
 
-        for part_id, var in enumerate(y):
-          self.assertEqual(var.device, '/job:ps/task:0')
-          self.assertEqual(y_add[part_id].device, var.device)
-          self.assertEqual(var.device, x_add[0].device)
-
-        return x_add, y_add
-
-      x, y = d.call_for_each_replica(model_fn)
+      x = d.call_for_each_replica(model_fn)
 
       if context.num_gpus() >= 1:
         variables.global_variables_initializer().run()
-        x_val, y_val = sess.run([x, y])
+        x_val = sess.run(x)
         if num_gpus < 1:
           self.assertEqual(x_val, [13.0, 25.0])
-          self.assertEqual(y_val, [33.0, 35.0])
         else:
           x_expect = [10.0 + 3 * num_gpus, 20.0 + 5 * num_gpus]
-          y_expect = [
-              20.0 + x_expect[0] * num_gpus, 10.0 + x_expect[1] * num_gpus
-          ]
           self.assertEqual(x_val, x_expect)
-          self.assertEqual(y_val, y_expect)
 
   def _test_device_assignment_local(self,
                                     d,

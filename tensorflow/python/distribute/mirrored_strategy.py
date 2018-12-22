@@ -537,6 +537,9 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
         self._container_strategy(), device_map, logical_device,
         _real_mirrored_creator, *args, **kwargs)
 
+  def _validate_colocate_with_variable(self, colocate_with_variable):
+    values.validate_colocate_distributed_variable(colocate_with_variable, self)
+
   def _distribute_dataset(self, dataset_fn):
     if self._local_mode:
       worker_index = 0
