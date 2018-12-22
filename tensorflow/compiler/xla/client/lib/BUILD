@@ -410,7 +410,10 @@ cc_library(
 xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
-    tags = ["noasan"],  # sometimes times out, http://b/78650012
+    tags = [
+        "enable_for_xla_interpreter",
+        "noasan",  # sometimes times out, http://b/78650012
+    ],
     deps = [
         ":math",
         ":matrix",

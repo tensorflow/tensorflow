@@ -568,6 +568,22 @@ Status HloEvaluator::HandleImag(HloInstruction* imag) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleComplex(HloInstruction* complex) {
+  const Literal& real = GetEvaluatedLiteralFor(complex->operand(0));
+  const Literal& imag = GetEvaluatedLiteralFor(complex->operand(1));
+  TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
+
+  Literal result(complex->shape());
+  TF_RETURN_IF_ERROR(
+      result.Populate<complex64>([&](absl::Span<const int64> multi_index) {
+        return std::complex<float>(real.Get<float>(multi_index),
+                                   imag.Get<float>(multi_index));
+      }));
+
+  evaluated_[complex] = std::move(result);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleCompare(HloInstruction* compare) {
   HloOpcode opcode = compare->opcode();
   auto lhs = compare->operand(0);
