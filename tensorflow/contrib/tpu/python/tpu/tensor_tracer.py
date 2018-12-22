@@ -99,7 +99,7 @@ _TENSOR_TRACER_COLLECTION = 'tensor_tracer_variables'
 _TENSOR_TRACER_CHECKPOINT = 'tensor_tracer_checkpoint'
 
 
-def tensor_checkpoint(tensor, checkpoint_name):
+def tensor_tracepoint(tensor, checkpoint_name):
   """Adds a checkpoint with the given checkpoint name for the given tensor.
 
   The tensor will be added to the list of tensors that will be traced by the
@@ -120,10 +120,10 @@ def tensor_checkpoint(tensor, checkpoint_name):
   return tensor
 
 
-def keras_layer_checkpoint(layer, checkpoint_name):
+def keras_layer_tracepoint(layer, checkpoint_name):
   """An interface for adding the tensor outputs of a keras layer.
 
-  Encapsulates tensor_checkpoint.
+  Encapsulates tensor_tracepoint.
 
   Args:
      layer: A keras layer.
@@ -137,12 +137,12 @@ def keras_layer_checkpoint(layer, checkpoint_name):
   try:
     outputs = layer.output
     if tensor_util.is_tensor(outputs):
-      tensor_checkpoint(outputs, '%s' % (checkpoint_name))
+      tensor_tracepoint(outputs, '%s' % (checkpoint_name))
     else:
       idx = 0
       for output_tensor in outputs:
         if tensor_util.is_tensor(outputs):
-          tensor_checkpoint(output_tensor, '%s_%d' % (checkpoint_name, idx))
+          tensor_tracepoint(output_tensor, '%s_%d' % (checkpoint_name, idx))
         idx += 1
   except AttributeError:
     pass
