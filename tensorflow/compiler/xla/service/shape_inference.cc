@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
-#include <stddef.h>
 #include <algorithm>
+#include <cstddef>
 #include <numeric>
 #include <set>
 #include <string>
@@ -516,7 +516,6 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 // Current DotDimensionNumbers Requirements:
 //
 // Contracting Dimensions:
-// *) Exactly one contracting dimension on both lhs and rhs.
 // *) Contracting dimension size must be the same on both lhs and rhs.
 // *) Contracting dimension numbers do not need to be the same (i.e. transposes
 //    are passed on to emitter implementations).
@@ -581,21 +580,6 @@ Status ValidateDotDimensionNumbers(
                            dimension_numbers.DebugString());
   }
 
-  // Check that the count of non-contracting-non-batch dimensions is in {0, 1}.
-  const int64 lhs_non_contracting_non_batch_dims =
-      lhs.rank() - dimension_numbers.lhs_contracting_dimensions_size() -
-      dimension_numbers.lhs_batch_dimensions_size();
-  const int64 rhs_non_contracting_non_batch_dims =
-      rhs.rank() - dimension_numbers.rhs_contracting_dimensions_size() -
-      dimension_numbers.rhs_batch_dimensions_size();
-  if (lhs_non_contracting_non_batch_dims < 0 ||
-      lhs_non_contracting_non_batch_dims > 1 ||
-      rhs_non_contracting_non_batch_dims < 0 ||
-      rhs_non_contracting_non_batch_dims > 1) {
-    return InvalidArgument(
-        "Batch and contracting dimension number mismatch with rank.");
-  }
-
   // Check that batch dimension numbers are ordered before all others, and
   // that they are monotonically increasing.
   std::vector<int64> batch_dim_numbers(lhs_batch_dimensions.size());
@@ -642,21 +626,24 @@ Status ValidateDotDimensionNumbers(
   // Validate basic properties of dot dimension numbers.
   TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 
-  // Check that there is only one contracting dimension for both lhs and rhs.
+  // Check that number of contracting dimensions match.
   if (dimension_numbers.lhs_contracting_dimensions_size() !=
-          dimension_numbers.rhs_contracting_dimensions_size() ||
-      dimension_numbers.lhs_contracting_dimensions_size() != 1) {
-    return fail("Must specify one contracting dimension for both lhs and rhs.");
+      dimension_numbers.rhs_contracting_dimensions_size()) {
+    return fail(
+        "Must specify the same number of contracting dimensions for lhs and "
+        "rhs.");
   }
-
   // Check that contracting dimension sizes match.
-  const int64 lhs_contracting_dimension =
-      dimension_numbers.lhs_contracting_dimensions(0);
-  const int64 rhs_contracting_dimension =
-      dimension_numbers.rhs_contracting_dimensions(0);
-  if (lhs.dimensions(lhs_contracting_dimension) !=
-      rhs.dimensions(rhs_contracting_dimension)) {
-    return fail("Contracting dimension sizes do not match.");
+  for (int64 i = 0; i < dimension_numbers.lhs_contracting_dimensions_size();
+       ++i) {
+    const int64 lhs_contracting_dimension =
+        dimension_numbers.lhs_contracting_dimensions(i);
+    const int64 rhs_contracting_dimension =
+        dimension_numbers.rhs_contracting_dimensions(i);
+    if (lhs.dimensions(lhs_contracting_dimension) !=
+        rhs.dimensions(rhs_contracting_dimension)) {
+      return fail("Contracting dimension sizes do not match.");
+    }
   }
 
   // Check that number of batch dimensions match.
@@ -685,12 +672,15 @@ Status ValidateDotDimensionNumbers(
       dimension_numbers.rhs_batch_dimensions().begin(),
       dimension_numbers.rhs_batch_dimensions().end());
   for (int64 i = 0; i < lhs.rank(); i++) {
-    if (i != lhs_contracting_dimension) {
+    if (!absl::c_linear_search(dimension_numbers.lhs_contracting_dimensions(),
+                               i)) {
       dimensions.push_back(lhs.dimensions(i));
     }
   }
   for (int64 i = 0; i < rhs.rank(); i++) {
-    if (i != rhs_contracting_dimension && rhs_batch_dims.count(i) == 0) {
+    if (!absl::c_linear_search(dimension_numbers.rhs_contracting_dimensions(),
+                               i) &&
+        rhs_batch_dims.count(i) == 0) {
       dimensions.push_back(rhs.dimensions(i));
     }
   }
