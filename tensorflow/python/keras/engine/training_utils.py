@@ -228,9 +228,8 @@ def standardize_single_array(x, expected_shape=None):
   """Expand data of shape (x,) to (x, 1), unless len(expected_shape)==1."""
   if x is None:
     return None
-
   if (x.shape is not None
-      and len(x.shape) == 1
+      and x.shape.ndims == 1
       and (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
       x = array_ops.expand_dims(x, axis=1)
