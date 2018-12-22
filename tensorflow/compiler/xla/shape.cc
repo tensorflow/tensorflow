@@ -27,6 +27,9 @@ Shape::Shape(const ShapeProto& shape_proto) {
   for (const int64 dimension : shape_proto.dimensions()) {
     add_dimensions(dimension);
   }
+  for (int i = 0; i < shape_proto.is_dynamic_dimension_size(); i++) {
+    dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
+  }
   tuple_shapes_.reserve(shape_proto.tuple_shapes_size());
   for (const ShapeProto& element_shape : shape_proto.tuple_shapes()) {
     *add_tuple_shapes() = Shape(element_shape);
@@ -42,6 +45,9 @@ ShapeProto Shape::ToProto() const {
   proto.mutable_dimensions()->Reserve(dimensions_size());
   for (const int64 dimension : dimensions()) {
     proto.add_dimensions(dimension);
+  }
+  for (const bool dynamic : dynamic_dimensions_) {
+    proto.add_is_dynamic_dimension(dynamic);
   }
   proto.mutable_tuple_shapes()->Reserve(tuple_shapes_size());
   for (const Shape& shape : tuple_shapes()) {
