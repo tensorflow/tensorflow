@@ -889,6 +889,19 @@ class UnidirectionalSequenceLstm
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    // If the input tensor is float and a weight is int8, this is a version
+    // 2 hybrid operation.
+    const string& input_name = op_signature.op->inputs[0];
+    const string& weights_name = op_signature.op->inputs[2];
+    const string& output_name = op_signature.op->outputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    const Array& weights_array = op_signature.model->GetArray(weights_name);
+    const Array& output_array = op_signature.model->GetArray(output_name);
+    if (input_array.data_type == ArrayDataType::kFloat &&
+        weights_array.data_type == ArrayDataType::kInt8 &&
+        output_array.data_type == ArrayDataType::kFloat) {
+      return 2;
+    }
     return 1;
   }
 
