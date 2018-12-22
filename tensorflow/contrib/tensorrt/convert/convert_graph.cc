@@ -357,7 +357,9 @@ tensorflow::Status GetEngineInfo(
     auto node = *it;
     auto node_device = node->requested_device();
     if (!node_device.empty()) {
-      // If device is CPU, we should've caught that in the segmenter.
+      // If device is CPU, we should've caught that in the segmenter. Don't add
+      // CPU to segment_device because that would cause a segfault in
+      // GetDeviceAndAllocator.
       DeviceNameUtils::ParsedName parsed_name;
       DeviceNameUtils::ParseFullName(node_device, &parsed_name);
       if (parsed_name.type == "CPU") {
