@@ -1026,7 +1026,7 @@ class DistributionStrategyExtended(object):
     ```
     with strategy.scope():
       var1 = tf.get_variable(...)
-      with strategy.extended.colocate_vars_with(v1):
+      with strategy.extended.colocate_vars_with(var1):
         # var2 and var3 will be created on the same device(s) as var1
         var2 = tf.get_variable(...)
         var3 = tf.get_variable(...)
@@ -1034,8 +1034,9 @@ class DistributionStrategyExtended(object):
       def fn(v1, v2, v3):
         # operates on v1 from var1, v2 from var2, and v3 from var3
 
-      # `fn` runs on every device `v1` is on, `v2` and `v3` will be there too.
-      strategy.extended.update(v1, fn, args=(v2, v3))
+      # `fn` runs on every device `var1` is on, `var2` and `var3` will be there
+      # too.
+      strategy.extended.update(var1, fn, args=(var2, var3))
     ```
 
     Args:
@@ -1053,7 +1054,12 @@ class DistributionStrategyExtended(object):
       return next_creator(*args, **kwargs)
 
     _require_strategy_scope_extended(self)
+    self._validate_colocate_with_variable(colocate_with_variable)
     return variable_scope.variable_creator_scope(create_colocated_variable)
+
+  def _validate_colocate_with_variable(self, colocate_with_variable):
+    """Validate `colocate_with_variable` argument to `colocate_vars_with`."""
+    pass
 
   def _call_dataset_fn(self, dataset_fn):
     """Call the `dataset_fn` with `input_context` as argument."""

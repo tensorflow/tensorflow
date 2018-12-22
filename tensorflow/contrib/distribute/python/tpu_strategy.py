@@ -224,6 +224,9 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     # Update Strategy state to make sure we can track device initialization.
     TPUExtended._initialized_devices.append(master)
 
+  def _validate_colocate_with_variable(self, colocate_with_variable):
+    values.validate_colocate_tpu_variable(colocate_with_variable, self)
+
   def _get_enqueue_op_per_host(self, host_id, multi_worker_iterator,
                                input_shapes, iterations):
     """Create an enqueue op for a single host identified using host_id.

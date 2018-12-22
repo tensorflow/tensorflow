@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import values
@@ -61,15 +59,11 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     if colocate_with is None:
       with ops.device(self._device):
         return next_creator(*args, **kwargs)
-    if isinstance(colocate_with, six.string_types):
-      with ops.device(colocate_with):
-        return next_creator(*args, **kwargs)
-    if (isinstance(colocate_with, (list, tuple)) and len(colocate_with) == 1 and
-        isinstance(colocate_with[0], six.string_types)):
-      with ops.device(colocate_with[0]):
-        return next_creator(*args, **kwargs)
     with ops.colocate_with(colocate_with):
       return next_creator(*args, **kwargs)
+
+  def _validate_colocate_with_variable(self, colocate_with_variable):
+    values.validate_colocate(colocate_with_variable, self)
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch."""

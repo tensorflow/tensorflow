@@ -575,6 +575,38 @@ class DistributedVariable(DistributedDelegate):
 ops.register_dense_tensor_like_type(DistributedVariable)
 
 
+def _validate_colocate_extended(v, extended):
+  if v.distribute_strategy.extended is not extended:
+    raise ValueError(
+        "`colocate_vars_with` must only be passed a variable created in this "
+        "tf.distribute.Strategy.scope(), not %s created in scope: %s" %
+        (v, v.distribute_strategy,))
+
+
+def validate_colocate_distributed_variable(v, extended):
+  if not isinstance(v, DistributedVariable):
+    raise ValueError(
+        "`colocate_vars_with` must only be passed a variable created in this "
+        "tf.distribute.Strategy.scope(), not: %r" % (v,))
+  _validate_colocate_extended(v, extended)
+
+
+def validate_colocate_tpu_variable(v, extended):
+  if not isinstance(v, TPUMirroredVariable):
+    raise ValueError(
+        "`colocate_vars_with` must only be passed a variable created in this "
+        "tf.distribute.Strategy.scope(), not: %r" % (v,))
+  _validate_colocate_extended(v, extended)
+
+
+def validate_colocate(v, extended):
+  if not hasattr(v, "distribute_strategy"):
+    raise ValueError(
+        "`colocate_vars_with` must only be passed a variable created in this "
+        "tf.distribute.Strategy.scope(), not: %r" % (v,))
+  _validate_colocate_extended(v, extended)
+
+
 def _apply_aggregation(strategy, value, aggregation, destinations):
   if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
     return strategy.broadcast(strategy.unwrap(value)[0],

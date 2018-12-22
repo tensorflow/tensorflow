@@ -232,6 +232,9 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
         "ParameterServerStrategy with compute_devices = %r, "
         "variable_device = %r", compute_devices, self._variable_device)
 
+  def _validate_colocate_with_variable(self, colocate_with_variable):
+    values.validate_colocate(colocate_with_variable, self)
+
   def _distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     return values.PerReplicaDataset(
