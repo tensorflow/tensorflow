@@ -5395,7 +5395,7 @@ inline void ResizeBilinearGenericSmallChannel(
       int32 y1 = std::min(y0 + 1, input_height - 1);
       for (int x = 0; x < output_width; ++x) {
         float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(input_x);
+        int32 x0 = static_cast<int32>(std::floor((input_x)));
         int32 x1 = std::min(x0 + 1, input_width - 1);
 
         int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
