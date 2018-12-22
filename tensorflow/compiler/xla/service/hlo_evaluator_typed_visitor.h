@@ -1181,8 +1181,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
 
     // There must be 1 and only 1 Contracting dimension for lhs and rhs.
-    CHECK_EQ(dnums.lhs_contracting_dimensions_size(), 1);
-    CHECK_EQ(dnums.rhs_contracting_dimensions_size(), 1);
     const int64 lhs_contracting_dimension = dnums.lhs_contracting_dimensions(0);
     const int64 rhs_contracting_dimension = dnums.rhs_contracting_dimensions(0);
     // Contracted dimension sizes must be the same.
@@ -1243,21 +1241,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     CHECK(ShapeUtil::SameElementType(lhs->shape(), rhs->shape()));
     CHECK(ShapeUtil::SameElementType(lhs->shape(), dot->shape()));
 
-    // There must be 1 and only 1 Contracting dimension for lhs and rhs.
-    CHECK_EQ(dnums.lhs_contracting_dimensions_size(), 1);
-    CHECK_EQ(dnums.rhs_contracting_dimensions_size(), 1);
-    const int64 lhs_contracting_dimension = dnums.lhs_contracting_dimensions(0);
-    const int64 rhs_contracting_dimension = dnums.rhs_contracting_dimensions(0);
-    // Contracted dimension sizes must be the same.
-    CHECK_EQ(lhs->shape().dimensions(lhs_contracting_dimension),
-             rhs->shape().dimensions(rhs_contracting_dimension))
-        << "lhs contracted dimension: "
-        << lhs->shape().dimensions(lhs_contracting_dimension)
-        << " rhs contracted dimension: "
-        << rhs->shape().dimensions(rhs_contracting_dimension);
-    const int64 contracted_dimension_size =
-        lhs->shape().dimensions(lhs_contracting_dimension);
-
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
 
@@ -1271,7 +1254,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     // in lhs_index or rhs_index where the i'th result index should go.
     absl::InlinedVector<std::pair<int64*, int64*>, kInlineRank>
         result_index_locations;
-    result_index_locations.reserve(lhs_rank + rhs_rank - 2);
+    result_index_locations.reserve(
+        (lhs_rank - dnums.lhs_contracting_dimensions_size()) +
+        (rhs_rank - dnums.rhs_contracting_dimensions_size()));
 
     // The first components in the output shape are the LHS and RHS batch
     // dimensions:
@@ -1283,18 +1268,32 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     // Then we have the LHS and RHS non-contracting dimensions, if any:
     for (int64 i = 0; i < lhs_rank; i++) {
-      if (i != lhs_contracting_dimension &&
+      if (!absl::c_linear_search(dnums.lhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.lhs_batch_dimensions(), i)) {
         result_index_locations.push_back({&lhs_index[i], nullptr});
       }
     }
     for (int64 i = 0; i < rhs_rank; i++) {
-      if (i != rhs_contracting_dimension &&
+      if (!absl::c_linear_search(dnums.rhs_contracting_dimensions(), i) &&
           !absl::c_linear_search(dnums.rhs_batch_dimensions(), i)) {
         result_index_locations.push_back({&rhs_index[i], nullptr});
       }
     }
 
+    absl::InlinedVector<int64, kInlineRank> accumulate_index_sizes;
+    accumulate_index_sizes.reserve(dnums.lhs_contracting_dimensions_size());
+    absl::InlinedVector<std::pair<int64*, int64*>, kInlineRank>
+        accumulate_index_locations;
+    accumulate_index_locations.reserve(dnums.lhs_contracting_dimensions_size());
+    for (int64 i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
+      const int64 lhs_dnum = dnums.lhs_contracting_dimensions(i);
+      const int64 rhs_dnum = dnums.rhs_contracting_dimensions(i);
+      accumulate_index_locations.push_back(
+          {&lhs_index[lhs_dnum], &rhs_index[rhs_dnum]});
+      const int64 dim_size = lhs->shape().dimensions(lhs_dnum);
+      accumulate_index_sizes.push_back(dim_size);
+    }
+    const int64 total_contraction_size = Product(accumulate_index_sizes);
     Literal result(dot->shape());
     TF_RETURN_IF_ERROR(
         result.Populate<ReturnT>([&](absl::Span<const int64> result_index) {
@@ -1308,13 +1307,25 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           }
 
           // Accumulates resulting product along the contracted dimension.
-          for (int64 i = 0; i < contracted_dimension_size; ++i) {
-            lhs_index[lhs_contracting_dimension] = i;
-            rhs_index[rhs_contracting_dimension] = i;
+          absl::InlinedVector<int64, kInlineRank> accumulate_index(
+              accumulate_index_sizes.size(), 0);
+          for (int64 k = 0; k < total_contraction_size; k++) {
+            for (int64 i = 0; i < accumulate_index_sizes.size(); ++i) {
+              *(accumulate_index_locations[i].first) = accumulate_index[i];
+              *(accumulate_index_locations[i].second) = accumulate_index[i];
+            }
 
             result_val +=
                 static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index)) *
                 static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+
+            for (int64 i = accumulate_index_sizes.size() - 1; i >= 0; --i) {
+              int64 value = ++accumulate_index[i];
+              if (value != accumulate_index_sizes[i]) {
+                break;
+              }
+              accumulate_index[i] = 0;
+            }
           }
 
           return static_cast<ReturnT>(result_val);

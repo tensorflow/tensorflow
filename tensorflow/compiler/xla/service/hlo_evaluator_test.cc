@@ -766,6 +766,50 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_P(HloEvaluatorTest, DotRank4AndRank4) {
+  HloComputation::Builder b(TestName());
+
+  auto lhs_array = absl::make_unique<Array4D<float>>(2, 2, 3, 1);
+  lhs_array->FillIota(1.0f);
+  auto lhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  auto rhs_array = absl::make_unique<Array4D<float>>(2, 2, 3, 1);
+  rhs_array->FillIota(2.0f);
+  auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 1});
+  DotDimensionNumbers dot_dnums;
+
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(2);
+  b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
+                                             rhs_instruction, dot_dnums,
+                                             DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  Literal result = Evaluate();
+  float expected_1 = 0;
+  for (float i = 1.0f; i < 7.0f; ++i) {
+    expected_1 += i * i + i;
+  }
+  float expected_2 = 0;
+  for (float i = 7.0f; i < 13.0f; ++i) {
+    expected_2 += i * i + i;
+  }
+  auto expected_array = Array3D<float>({{{expected_1}}, {{expected_2}}});
+  auto expected = LiteralUtil::CreateR3FromArray3D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_P(HloEvaluatorTest, SimpleConv1D) {
   HloComputation::Builder b(TestName());
 
