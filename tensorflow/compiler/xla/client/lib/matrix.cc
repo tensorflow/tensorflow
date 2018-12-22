@@ -31,8 +31,8 @@ namespace xla {
 
 XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
                      int64 n) {
-  auto a = Iota(builder, type, m);
-  auto b = Iota(builder, type, n);
+  auto a = Iota(builder, U32, m);
+  auto b = Iota(builder, U32, n);
   auto indicator = Eq(a, Broadcast(b, {m}), /*broadcast_dimensions=*/{0});
   return ConvertElementType(indicator, type);
 }
