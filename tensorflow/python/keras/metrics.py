@@ -33,6 +33,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
+from tensorflow.python.keras.losses import categorical_hinge
 from tensorflow.python.keras.losses import cosine_proximity
 from tensorflow.python.keras.losses import hinge
 from tensorflow.python.keras.losses import kullback_leibler_divergence
@@ -1448,6 +1449,38 @@ class SquaredHinge(MeanMetricWrapper):
     if 'fn' in config:
       config.pop('fn')
     return super(SquaredHinge, cls).from_config(config)
+
+
+class CategoricalHinge(MeanMetricWrapper):
+  """Computes the categorical hinge metric between `y_true` and `y_pred`.
+
+  For example, if `y_true` is [0., 1., 1.], and `y_pred` is [1., 0., 1.]
+  the categorical hinge metric value is 1.0.
+
+  Usage:
+
+  ```python
+  h = tf.keras.metrics.CategoricalHinge()
+  h.update_state([0., 1., 1.], [1., 0., 1.])
+  print('Final result: ', m.result().numpy())  # Final result: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.keras.metrics.CategoricalHinge())
+  ```
+  """
+
+  def __init__(self, name='categorical_hinge', dtype=None):
+    super(CategoricalHinge, self).__init__(categorical_hinge, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(CategoricalHinge, cls).from_config(config)
 
 
 def accuracy(y_true, y_pred):

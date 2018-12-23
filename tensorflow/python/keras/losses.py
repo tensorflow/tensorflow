@@ -463,6 +463,40 @@ class SquaredHinge(Loss):
     return squared_hinge(y_true, y_pred)
 
 
+class CategoricalHinge(Loss):
+  """Computes the categorical hinge loss between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  ch = tf.losses.CategoricalHinge()
+  loss = ch([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.CategoricalHinge())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    """Calculates the categorical hinge loss.
+
+    Args:
+      y_true: Ground truth values.
+      y_pred: The predicted values.
+
+    Returns:
+      Categorical hinge loss.
+    """
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return categorical_hinge(y_true, y_pred)
+
+
 @keras_export('keras.metrics.mean_squared_error',
               'keras.metrics.mse',
               'keras.metrics.MSE',
