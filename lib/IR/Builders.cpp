@@ -312,8 +312,9 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
   for (auto elt : state.operands)
     operands.push_back(cast<MLValue>(elt));
 
-  auto *op = OperationStmt::create(state.location, state.name, operands,
-                                   state.types, state.attributes, context);
+  auto *op =
+      OperationStmt::create(state.location, state.name, operands, state.types,
+                            state.attributes, state.successorsS, context);
   block->getStatements().insert(insertPoint, op);
   return op;
 }
@@ -324,7 +325,7 @@ OperationStmt *MLFuncBuilder::createOperation(Location location,
                                               ArrayRef<MLValue *> operands,
                                               ArrayRef<Type> types,
                                               ArrayRef<NamedAttribute> attrs) {
-  auto *op = OperationStmt::create(location, name, operands, types, attrs,
+  auto *op = OperationStmt::create(location, name, operands, types, attrs, {},
                                    getContext());
   block->getStatements().insert(insertPoint, op);
   return op;

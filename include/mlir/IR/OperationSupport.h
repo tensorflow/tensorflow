@@ -40,6 +40,7 @@ class OpAsmParserResult;
 class OpAsmPrinter;
 class Pattern;
 class RewritePattern;
+class StmtBlock;
 class SSAValue;
 class Type;
 
@@ -209,6 +210,9 @@ struct OperationState {
   /// Successors of this operation and their respective operands.
   SmallVector<BasicBlock *, 1> successors;
 
+  // TODO: rename to successors when CFG and ML Functions are merged.
+  SmallVector<StmtBlock *, 1> successorsS;
+
 public:
   OperationState(MLIRContext *context, Location location, StringRef name)
       : context(context), location(location), name(name, context) {}
@@ -225,6 +229,16 @@ public:
         types(types.begin(), types.end()),
         attributes(attributes.begin(), attributes.end()),
         successors(successors.begin(), successors.end()) {}
+
+  OperationState(MLIRContext *context, Location location, StringRef name,
+                 ArrayRef<SSAValue *> operands, ArrayRef<Type> types,
+                 ArrayRef<NamedAttribute> attributes = {},
+                 ArrayRef<StmtBlock *> successors = {})
+      : context(context), location(location), name(name, context),
+        operands(operands.begin(), operands.end()),
+        types(types.begin(), types.end()),
+        attributes(attributes.begin(), attributes.end()),
+        successorsS(successors.begin(), successors.end()) {}
 
   void addOperands(ArrayRef<SSAValue *> newOperands) {
     assert(successors.empty() &&

@@ -32,7 +32,7 @@ class MLValue;
 /// Statement block represents an ordered list of statements, with the order
 /// being the contiguous lexical order in which the statements appear as
 /// children of a parent statement in the ML Function.
-class StmtBlock {
+class StmtBlock : public IRObjectWithUseList {
 public:
   enum class StmtBlockKind {
     MLFunc,  // MLFunction

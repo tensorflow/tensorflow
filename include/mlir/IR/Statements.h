@@ -34,19 +34,23 @@ namespace mlir {
 class AffineBound;
 class IntegerSet;
 class AffineCondition;
+class OperationStmt;
+
+/// The operand of a Terminator contains a StmtBlock.
+using StmtBlockOperand = IROperandImpl<StmtBlock, OperationStmt>;
 
 /// Operation statements represent operations inside ML functions.
 class OperationStmt final
     : public Operation,
       public Statement,
-      private llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult> {
+      private llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult,
+                                    StmtBlockOperand, unsigned> {
 public:
   /// Create a new OperationStmt with the specific fields.
-  static OperationStmt *create(Location location, OperationName name,
-                               ArrayRef<MLValue *> operands,
-                               ArrayRef<Type> resultTypes,
-                               ArrayRef<NamedAttribute> attributes,
-                               MLIRContext *context);
+  static OperationStmt *
+  create(Location location, OperationName name, ArrayRef<MLValue *> operands,
+         ArrayRef<Type> resultTypes, ArrayRef<NamedAttribute> attributes,
+         ArrayRef<StmtBlock *> successors, MLIRContext *context);
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
@@ -184,6 +188,61 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
+  // Terminators
+  //===--------------------------------------------------------------------===//
+
+  MutableArrayRef<StmtBlockOperand> getBlockOperands() {
+    assert(isTerminator() && "Only terminators have a block operands list");
+    return {getTrailingObjects<StmtBlockOperand>(), numSuccs};
+  }
+  ArrayRef<StmtBlockOperand> getBlockOperands() const {
+    return const_cast<OperationStmt *>(this)->getBlockOperands();
+  }
+
+  MutableArrayRef<StmtOperand> getSuccessorOperands(unsigned index) {
+    assert(isTerminator() && "Only terminators have successors");
+    assert(index < getNumSuccessors());
+    unsigned succOpIndex = getSuccessorOperandIndex(index);
+    auto *operandBegin = getStmtOperands().data() + succOpIndex;
+    return {operandBegin, getNumSuccessorOperands(index)};
+  }
+  ArrayRef<StmtOperand> getSuccessorOperands(unsigned index) const {
+    return const_cast<OperationStmt *>(this)->getSuccessorOperands(index);
+  }
+
+  unsigned getNumSuccessors() const { return numSuccs; }
+  unsigned getNumSuccessorOperands(unsigned index) const {
+    assert(isTerminator() && "Only terminators have successors");
+    assert(index < getNumSuccessors());
+    return getTrailingObjects<unsigned>()[index];
+  }
+
+  StmtBlock *getSuccessor(unsigned index) {
+    assert(index < getNumSuccessors());
+    return getBlockOperands()[index].get();
+  }
+  const StmtBlock *getSuccessor(unsigned index) const {
+    return const_cast<OperationStmt *>(this)->getSuccessor(index);
+  }
+  void setSuccessor(BasicBlock *block, unsigned index);
+
+  /// Get the index of the first operand of the successor at the provided
+  /// index.
+  unsigned getSuccessorOperandIndex(unsigned index) const {
+    assert(isTerminator() && "Only terminators have successors.");
+    assert(index < getNumSuccessors());
+
+    // Count the number of operands for each of the successors after, and
+    // including, the one at 'index'. This is based upon the assumption that all
+    // non successor operands are placed at the beginning of the operand list.
+    auto *successorOpCountBegin = getTrailingObjects<unsigned>();
+    unsigned postSuccessorOpCount =
+        std::accumulate(successorOpCountBegin + index,
+                        successorOpCountBegin + getNumSuccessors(), 0);
+    return getNumOperands() - postSuccessorOpCount;
+  }
+
+  //===--------------------------------------------------------------------===//
   // Other
   //===--------------------------------------------------------------------===//
 
@@ -199,21 +258,26 @@ public:
   }
 
 private:
-  const unsigned numOperands, numResults;
+  const unsigned numOperands, numResults, numSuccs;
 
   OperationStmt(Location location, OperationName name, unsigned numOperands,
-                unsigned numResults, ArrayRef<NamedAttribute> attributes,
-                MLIRContext *context);
+                unsigned numResults, unsigned numSuccessors,
+                ArrayRef<NamedAttribute> attributes, MLIRContext *context);
   ~OperationStmt();
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult>;
+  friend llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult,
+                               StmtBlockOperand, unsigned>;
   size_t numTrailingObjects(OverloadToken<StmtOperand>) const {
     return numOperands;
   }
   size_t numTrailingObjects(OverloadToken<StmtResult>) const {
     return numResults;
   }
+  size_t numTrailingObjects(OverloadToken<StmtBlockOperand>) const {
+    return numSuccs;
+  }
+  size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
 };
 
 /// A ForStmtBody represents statements contained within a ForStmt.
