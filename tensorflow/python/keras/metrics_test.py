@@ -1174,6 +1174,40 @@ class SquaredHingeTest(test.TestCase):
     self.assertAllClose(0.65714, self.evaluate(result), atol=1e-5)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class CategoricalHingeTest(test.TestCase):
+
+  def test_config(self):
+    cat_hinge_obj = metrics.CategoricalHinge(
+        name='cat_hinge', dtype=dtypes.int32)
+    self.assertEqual(cat_hinge_obj.name, 'cat_hinge')
+    self.assertEqual(cat_hinge_obj._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    cat_hinge_obj = metrics.CategoricalHinge()
+    self.evaluate(variables.variables_initializer(cat_hinge_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = cat_hinge_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = cat_hinge_obj.result()
+    self.assertAllClose(0.5, result, atol=1e-5)
+
+  def test_weighted(self):
+    cat_hinge_obj = metrics.CategoricalHinge()
+    self.evaluate(variables.variables_initializer(cat_hinge_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = cat_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(0.5, self.evaluate(result), atol=1e-5)
+
+
 def _get_model(compile_metrics):
   model_layers = [
       layers.Dense(3, activation='relu', kernel_initializer='ones'),
