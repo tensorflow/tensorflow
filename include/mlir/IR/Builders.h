@@ -345,7 +345,7 @@ public:
 
   /// Returns a builder for the body of a for Stmt.
   static MLFuncBuilder getForStmtBodyBuilder(ForStmt *forStmt) {
-    return MLFuncBuilder(forStmt, forStmt->end());
+    return MLFuncBuilder(forStmt->getBody(), forStmt->getBody()->end());
   }
 
   /// Returns the current insertion point of the builder.

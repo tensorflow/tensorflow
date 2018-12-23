@@ -147,7 +147,7 @@ Instruction *Instruction::clone() const {
     int cloneOperandIt = operands.size() - 1, operandIt = getNumOperands() - 1;
     for (int succIt = getNumSuccessors() - 1, succE = 0; succIt >= succE;
          --succIt) {
-      successors[succIt] = getSuccessor(succIt);
+      successors[succIt] = const_cast<BasicBlock *>(getSuccessor(succIt));
 
       // Add the successor operands in-place in reverse order.
       for (unsigned i = 0, e = getNumSuccessorOperands(succIt); i != e;

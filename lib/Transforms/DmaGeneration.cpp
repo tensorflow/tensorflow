@@ -365,7 +365,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   replaceAllMemRefUsesWith(memref, cast<MLValue>(fastMemRef),
                            /*extraIndices=*/{}, indexRemap,
                            /*extraOperands=*/outerIVs,
-                           /*domStmtFilter=*/&*forStmt->begin());
+                           /*domStmtFilter=*/&*forStmt->getBody()->begin());
   return true;
 }
 
@@ -391,7 +391,7 @@ void DmaGeneration::runOnForStmt(ForStmt *forStmt) {
   // the pass has to be instantiated with additional information that we aren't
   // provided with at the moment.
   if (forStmt->getStep() != 1) {
-    if (auto *innerFor = dyn_cast<ForStmt>(&*forStmt->begin())) {
+    if (auto *innerFor = dyn_cast<ForStmt>(&*forStmt->getBody()->begin())) {
       runOnForStmt(innerFor);
     }
     return;

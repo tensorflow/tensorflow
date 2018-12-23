@@ -338,7 +338,7 @@ ForStmt::ForStmt(Location location, unsigned numOperands, AffineMap lbMap,
     : Statement(Kind::For, location),
       MLValue(MLValueKind::ForStmt,
               Type::getIndex(lbMap.getResult(0).getContext())),
-      StmtBlock(StmtBlockKind::For), lbMap(lbMap), ubMap(ubMap), step(step) {
+      body(this), lbMap(lbMap), ubMap(ubMap), step(step) {
   operands.reserve(numOperands);
 }
 
@@ -544,8 +544,8 @@ Statement *Statement::clone(DenseMap<const MLValue *, MLValue *> &operandMap,
     operandMap[forStmt] = newFor;
 
     // Recursively clone the body of the for loop.
-    for (auto &subStmt : *forStmt)
-      newFor->push_back(subStmt.clone(operandMap, context));
+    for (auto &subStmt : *forStmt->getBody())
+      newFor->getBody()->push_back(subStmt.clone(operandMap, context));
 
     return newFor;
   }

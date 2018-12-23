@@ -147,7 +147,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
     auto *forStmt = b.createFor(transfer->getLoc(), 0, it.value());
     loops.insert(forStmt);
     // Setting the insertion point to the innermost loop achieves nesting.
-    b.setInsertionPointToStart(loops.back());
+    b.setInsertionPointToStart(loops.back()->getBody());
     if (composed == getAffineConstantExpr(0, b.getContext())) {
       transfer->emitWarning(
           "Redundant copy can be implemented as a vector broadcast");

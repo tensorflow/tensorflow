@@ -2876,7 +2876,7 @@ ParseResult MLFunctionParser::parseForStmt() {
   // If parsing of the for statement body fails,
   // MLIR contains for statement with those nested statements that have been
   // successfully parsed.
-  if (parseStmtBlock(forStmt))
+  if (parseStmtBlock(forStmt->getBody()))
     return ParseFailure;
 
   // Reset insertion point to the current block.

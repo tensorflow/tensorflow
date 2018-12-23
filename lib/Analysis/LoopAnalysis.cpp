@@ -305,9 +305,10 @@ bool mlir::isVectorizableLoop(const ForStmt &loop) {
 // violation when we have the support.
 bool mlir::isStmtwiseShiftValid(const ForStmt &forStmt,
                                 ArrayRef<uint64_t> shifts) {
-  assert(shifts.size() == forStmt.getStatements().size());
+  auto *forBody = forStmt.getBody();
+  assert(shifts.size() == forBody->getStatements().size());
   unsigned s = 0;
-  for (const auto &stmt : forStmt) {
+  for (const auto &stmt : *forBody) {
     // A for or if stmt does not produce any def/results (that are used
     // outside).
     if (const auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
@@ -319,8 +320,8 @@ bool mlir::isStmtwiseShiftValid(const ForStmt &forStmt,
           // This is a naive way. If performance becomes an issue, a map can
           // be used to store 'shifts' - to look up the shift for a statement in
           // constant time.
-          if (auto *ancStmt = forStmt.findAncestorStmtInBlock(*use.getOwner()))
-            if (shifts[s] != shifts[forStmt.findStmtPosInBlock(*ancStmt)])
+          if (auto *ancStmt = forBody->findAncestorStmtInBlock(*use.getOwner()))
+            if (shifts[s] != shifts[forBody->findStmtPosInBlock(*ancStmt)])
               return false;
         }
       }

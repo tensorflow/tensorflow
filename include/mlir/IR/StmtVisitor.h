@@ -146,12 +146,13 @@ public:
 
   void walkForStmt(ForStmt *forStmt) {
     static_cast<SubClass *>(this)->visitForStmt(forStmt);
-    static_cast<SubClass *>(this)->walk(forStmt->begin(), forStmt->end());
+    auto *body = forStmt->getBody();
+    static_cast<SubClass *>(this)->walk(body->begin(), body->end());
   }
 
   void walkForStmtPostOrder(ForStmt *forStmt) {
-    static_cast<SubClass *>(this)->walkPostOrder(forStmt->begin(),
-                                                 forStmt->end());
+    auto *body = forStmt->getBody();
+    static_cast<SubClass *>(this)->walkPostOrder(body->begin(), body->end());
     static_cast<SubClass *>(this)->visitForStmt(forStmt);
   }
 

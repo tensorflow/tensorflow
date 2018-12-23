@@ -288,8 +288,8 @@ bool MLFuncVerifier::verifyDominance() {
     HashTable::ScopeTy blockScope(liveValues);
 
     // The induction variable of a for statement is live within its body.
-    if (auto *forStmt = dyn_cast<ForStmt>(&block))
-      liveValues.insert(forStmt, true);
+    if (auto *forStmtBody = dyn_cast<ForStmtBody>(&block))
+      liveValues.insert(forStmtBody->getFor(), true);
 
     for (auto &stmt : block) {
       // Verify that each of the operands are live.
@@ -322,7 +322,7 @@ bool MLFuncVerifier::verifyDominance() {
             return true;
       }
       if (auto *forStmt = dyn_cast<ForStmt>(&stmt))
-        if (walkBlock(*forStmt))
+        if (walkBlock(*forStmt->getBody()))
           return true;
     }
 

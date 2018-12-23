@@ -362,7 +362,7 @@ static Statement *getStmtAtPosition(ArrayRef<unsigned> positions,
     if (level == positions.size() - 1)
       return &stmt;
     if (auto *childForStmt = dyn_cast<ForStmt>(&stmt))
-      return getStmtAtPosition(positions, level + 1, childForStmt);
+      return getStmtAtPosition(positions, level + 1, childForStmt->getBody());
 
     if (auto *ifStmt = dyn_cast<IfStmt>(&stmt)) {
       auto *ret = getStmtAtPosition(positions, level + 1, ifStmt->getThen());
@@ -453,13 +453,13 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   // Clone src loop nest and insert it a the beginning of the statement block
   // of the loop at 'dstLoopDepth' in 'dstLoopNest'.
   auto *dstForStmt = dstLoopNest[dstLoopDepth - 1];
-  MLFuncBuilder b(dstForStmt, dstForStmt->begin());
+  MLFuncBuilder b(dstForStmt->getBody(), dstForStmt->getBody()->begin());
   DenseMap<const MLValue *, MLValue *> operandMap;
   auto *sliceLoopNest = cast<ForStmt>(b.clone(*srcLoopNest[0], operandMap));
 
   // Lookup stmt in cloned 'sliceLoopNest' at 'positions'.
   Statement *sliceStmt =
-      getStmtAtPosition(positions, /*level=*/0, sliceLoopNest);
+      getStmtAtPosition(positions, /*level=*/0, sliceLoopNest->getBody());
   // Get loop nest surrounding 'sliceStmt'.
   SmallVector<ForStmt *, 4> sliceSurroundingLoops;
   getLoopIVs(*sliceStmt, &sliceSurroundingLoops);

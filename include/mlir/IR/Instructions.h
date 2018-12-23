@@ -228,7 +228,7 @@ public:
     assert(index < getNumSuccessors());
     return getBasicBlockOperands()[index].get();
   }
-  BasicBlock *getSuccessor(unsigned index) const {
+  const BasicBlock *getSuccessor(unsigned index) const {
     return const_cast<Instruction *>(this)->getSuccessor(index);
   }
   void setSuccessor(BasicBlock *block, unsigned index);

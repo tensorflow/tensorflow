@@ -905,7 +905,7 @@ static StmtBlock *getCommonStmtBlock(const MemRefAccess &srcAccess,
   }
   auto *commonForValue = srcDomain.getIdValue(numCommonLoops - 1);
   assert(isa<ForStmt>(commonForValue));
-  return dyn_cast<ForStmt>(commonForValue);
+  return cast<ForStmt>(commonForValue)->getBody();
 }
 
 // Returns true if the ancestor operation statement of 'srcAccess' properly

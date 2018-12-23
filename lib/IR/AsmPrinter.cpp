@@ -206,7 +206,7 @@ void ModuleState::visitForStmt(const ForStmt *forStmt) {
   if (!hasShorthandForm(ubMap))
     recordAffineMapReference(ubMap);
 
-  for (auto &childStmt : *forStmt)
+  for (auto &childStmt : *forStmt->getBody())
     visitStatement(&childStmt);
 }
 
@@ -1447,7 +1447,7 @@ void MLFunctionPrinter::print(const ForStmt *stmt) {
     os << " step " << stmt->getStep();
 
   os << " {\n";
-  print(static_cast<const StmtBlock *>(stmt));
+  print(stmt->getBody());
   os.indent(numSpaces) << "}";
 }
 

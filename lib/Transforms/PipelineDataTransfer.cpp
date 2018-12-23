@@ -81,8 +81,9 @@ static unsigned getTagMemRefPos(const OperationStmt &dmaStmt) {
 /// the loop IV of the specified 'for' statement modulo 2. Returns false if such
 /// a replacement cannot be performed.
 static bool doubleBuffer(MLValue *oldMemRef, ForStmt *forStmt) {
-  MLFuncBuilder bInner(forStmt, forStmt->begin());
-  bInner.setInsertionPoint(forStmt, forStmt->begin());
+  auto *forBody = forStmt->getBody();
+  MLFuncBuilder bInner(forBody, forBody->begin());
+  bInner.setInsertionPoint(forBody, forBody->begin());
 
   // Doubles the shape with a leading dimension extent of 2.
   auto doubleShape = [&](MemRefType oldMemRefType) -> MemRefType {
@@ -127,7 +128,7 @@ static bool doubleBuffer(MLValue *oldMemRef, ForStmt *forStmt) {
   // non-deferencing uses of the memref.
   if (!replaceAllMemRefUsesWith(oldMemRef, cast<MLValue>(newMemRef),
                                 ivModTwoOp->getResult(0), AffineMap::Null(), {},
-                                &*forStmt->begin())) {
+                                &*forStmt->getBody()->begin())) {
     LLVM_DEBUG(llvm::dbgs()
                    << "memref replacement for double buffering failed\n";);
     ivModTwoOp->getOperation()->erase();
@@ -184,7 +185,7 @@ static void findMatchingStartFinishStmts(
 
   // Collect outgoing DMA statements - needed to check for dependences below.
   SmallVector<OpPointer<DmaStartOp>, 4> outgoingDmaOps;
-  for (auto &stmt : *forStmt) {
+  for (auto &stmt : *forStmt->getBody()) {
     auto *opStmt = dyn_cast<OperationStmt>(&stmt);
     if (!opStmt)
       continue;
@@ -195,7 +196,7 @@ static void findMatchingStartFinishStmts(
   }
 
   SmallVector<OperationStmt *, 4> dmaStartStmts, dmaFinishStmts;
-  for (auto &stmt : *forStmt) {
+  for (auto &stmt : *forStmt->getBody()) {
     auto *opStmt = dyn_cast<OperationStmt>(&stmt);
     if (!opStmt)
       continue;
@@ -228,7 +229,7 @@ static void findMatchingStartFinishStmts(
         cast<MLValue>(dmaStartOp->getOperand(dmaStartOp->getFasterMemPos()));
     bool escapingUses = false;
     for (const auto &use : memref->getUses()) {
-      if (!dominates(*forStmt->begin(), *use.getOwner())) {
+      if (!dominates(*forStmt->getBody()->begin(), *use.getOwner())) {
         LLVM_DEBUG(llvm::dbgs()
                        << "can't pipeline: buffer is live out of loop\n";);
         escapingUses = true;
@@ -339,16 +340,16 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
     }
   }
   // Everything else (including compute ops and dma finish) are shifted by one.
-  for (const auto &stmt : *forStmt) {
+  for (const auto &stmt : *forStmt->getBody()) {
     if (stmtShiftMap.find(&stmt) == stmtShiftMap.end()) {
       stmtShiftMap[&stmt] = 1;
     }
   }
 
   // Get shifts stored in map.
-  std::vector<uint64_t> shifts(forStmt->getStatements().size());
+  std::vector<uint64_t> shifts(forStmt->getBody()->getStatements().size());
   unsigned s = 0;
-  for (auto &stmt : *forStmt) {
+  for (auto &stmt : *forStmt->getBody()) {
     assert(stmtShiftMap.find(&stmt) != stmtShiftMap.end());
     shifts[s++] = stmtShiftMap[&stmt];
     LLVM_DEBUG(

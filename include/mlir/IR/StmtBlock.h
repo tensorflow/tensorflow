@@ -36,7 +36,7 @@ class StmtBlock {
 public:
   enum class StmtBlockKind {
     MLFunc,  // MLFunction
-    For,     // ForStmt
+    ForBody, // ForStmtBody
     IfClause // IfClause
   };
 
@@ -53,7 +53,11 @@ public:
 
   /// Returns the closest surrounding statement that contains this block or
   /// nullptr if this is a top-level statement block.
-  Statement *getContainingStmt() const;
+  Statement *getContainingStmt();
+
+  const Statement *getContainingStmt() const {
+    return const_cast<StmtBlock *>(this)->getContainingStmt();
+  }
 
   /// Returns the function that this statement block is part of.
   /// The function is determined by traversing the chain of parent statements.

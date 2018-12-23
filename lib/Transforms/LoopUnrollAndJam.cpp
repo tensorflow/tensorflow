@@ -152,7 +152,7 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
 
   assert(unrollJamFactor >= 1 && "unroll jam factor should be >= 1");
 
-  if (unrollJamFactor == 1 || forStmt->getStatements().empty())
+  if (unrollJamFactor == 1 || forStmt->getBody()->empty())
     return false;
 
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(*forStmt);

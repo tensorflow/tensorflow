@@ -242,7 +242,7 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   // Walking manually because we need custom logic before and after traversing
   // the list of children.
   builder.setInsertionPoint(loopBodyFirstBlock);
-  visitStmtBlock(forStmt);
+  visitStmtBlock(forStmt->getBody());
 
   // Builder point is currently at the last block of the loop body.  Append the
   // induction variable stepping to this block and branch back to the exit

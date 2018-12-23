@@ -24,18 +24,19 @@ using namespace mlir;
 // Statement block
 //===----------------------------------------------------------------------===//
 
-Statement *StmtBlock::getContainingStmt() const {
+Statement *StmtBlock::getContainingStmt() {
   switch (kind) {
   case StmtBlockKind::MLFunc:
     return nullptr;
-  case StmtBlockKind::For:
-    return cast<ForStmt>(const_cast<StmtBlock *>(this));
+  case StmtBlockKind::ForBody:
+    return cast<ForStmtBody>(this)->getFor();
   case StmtBlockKind::IfClause:
     return cast<IfClause>(this)->getIf();
   }
 }
 
 MLFunction *StmtBlock::findFunction() const {
+  // FIXME: const incorrect.
   StmtBlock *block = const_cast<StmtBlock *>(this);
 
   while (block->getContainingStmt()) {
