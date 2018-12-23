@@ -1153,11 +1153,11 @@ TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimSizesFails) {
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
   ASSERT_FALSE(inferred_status.ok());
   ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("Batch dimension numbers and sizes must match"));
+              HasSubstr("Batch dimension sizes must match"));
 }
 
-// BatchMatMul with different batch dimension numbers fails.
-TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimNumbersFails) {
+// BatchMatMul with different batch dimension numbers passes
+TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimNumbersPasses) {
   Shape lhs_shape = ShapeUtil::MakeShape(F32, {2, 11, 3});
   Shape rhs_shape = ShapeUtil::MakeShape(F32, {3, 2, 14});
 
@@ -1170,9 +1170,9 @@ TEST_F(ShapeInferenceTest, DotWithMisatchedBatchDimNumbersFails) {
 
   auto inferred_status =
       ShapeInference::InferDotOpShape(lhs_shape, rhs_shape, dot_dnums);
-  ASSERT_FALSE(inferred_status.ok());
-  ASSERT_THAT(inferred_status.status().error_message(),
-              HasSubstr("Batch dimension numbers must precede non-batch"));
+  ASSERT_TRUE(inferred_status.ok());
+  ASSERT_TRUE(ShapeUtil::Equal(inferred_status.ValueOrDie(),
+                               ShapeUtil::MakeShape(F32, {2, 11, 14})));
 }
 
 // BatchMatMul with out-of-range dimension numbers fails.
