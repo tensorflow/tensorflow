@@ -1959,6 +1959,9 @@ def _split_dataset_batch(dataset, split_batch_by):
   prefetch_buffer = None
   if isinstance(dataset, dataset_ops.PrefetchDataset):
     prefetch_buffer = dataset._buffer_size
+  elif (isinstance(dataset, dataset_ops.DatasetV1Adapter)
+        and isinstance(dataset._dataset, dataset_ops.PrefetchDataset)):
+    prefetch_buffer = dataset._dataset._buffer_size
   # pylint: enable=protected-access
 
   if tensor_util.is_tensor(batch_size):
