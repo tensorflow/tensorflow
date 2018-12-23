@@ -319,18 +319,6 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
   return op;
 }
 
-/// Create an operation given the fields.
-OperationStmt *MLFuncBuilder::createOperation(Location location,
-                                              OperationName name,
-                                              ArrayRef<MLValue *> operands,
-                                              ArrayRef<Type> types,
-                                              ArrayRef<NamedAttribute> attrs) {
-  auto *op = OperationStmt::create(location, name, operands, types, attrs, {},
-                                   getContext());
-  block->getStatements().insert(insertPoint, op);
-  return op;
-}
-
 ForStmt *MLFuncBuilder::createFor(Location location,
                                   ArrayRef<MLValue *> lbOperands,
                                   AffineMap lbMap,

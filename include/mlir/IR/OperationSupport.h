@@ -232,8 +232,8 @@ public:
 
   OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<SSAValue *> operands, ArrayRef<Type> types,
-                 ArrayRef<NamedAttribute> attributes = {},
-                 ArrayRef<StmtBlock *> successors = {})
+                 ArrayRef<NamedAttribute> attributes,
+                 ArrayRef<StmtBlock *> successors)
       : context(context), location(location), name(name, context),
         operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),

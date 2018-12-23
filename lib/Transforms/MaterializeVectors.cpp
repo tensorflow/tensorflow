@@ -416,19 +416,22 @@ instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
          "Should call the function specialized for VectorTransferWriteOp");
   bool fail = false;
   auto operands = map(
-      [hwVectorType, substitutionsMap, &fail](SSAValue *v) {
+      [hwVectorType, substitutionsMap, &fail](SSAValue *v) -> SSAValue * {
         auto *res =
             fail ? nullptr : substitute(v, hwVectorType, substitutionsMap);
         fail |= !res;
         return res;
       },
       opStmt->getOperands());
-  if (fail) {
+  if (fail)
     return nullptr;
-  }
+
   auto attrs = materializeAttributes(opStmt, hwVectorType);
-  return b->createOperation(opStmt->getLoc(), opStmt->getName(), operands,
-                            {hwVectorType}, attrs);
+
+  OperationState state(b->getContext(), opStmt->getLoc(),
+                       opStmt->getName().getStringRef(), operands,
+                       {hwVectorType}, attrs);
+  return b->createOperation(state);
 }
 
 /// Computes the permutationMap required for a VectorTransferOp from the memref

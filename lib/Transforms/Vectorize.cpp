@@ -981,9 +981,13 @@ static MLValue *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
   auto vectorType = type.cast<VectorType>();
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
   auto *constantOpStmt = cast<OperationStmt>(constant.getOperation());
-  auto *splat = cast<OperationStmt>(b.createOperation(
-      loc, constantOpStmt->getName(), {}, {vectorType},
-      {make_pair(Identifier::get("value", b.getContext()), attr)}));
+
+  OperationState state(
+      b.getContext(), loc, constantOpStmt->getName().getStringRef(), {},
+      {vectorType},
+      {make_pair(Identifier::get("value", b.getContext()), attr)});
+
+  auto *splat = cast<OperationStmt>(b.createOperation(state));
   return cast<MLValue>(splat->getResult(0));
 }
 
@@ -1102,7 +1106,7 @@ static OperationStmt *vectorizeOneOperationStmt(MLFuncBuilder *b,
 
   auto types = map([state](SSAValue *v) { return getVectorType(v, *state); },
                    opStmt->getResults());
-  auto vectorizeOneOperand = [opStmt, state](SSAValue *op) {
+  auto vectorizeOneOperand = [opStmt, state](SSAValue *op) -> SSAValue * {
     return vectorizeOperand(op, opStmt, state);
   };
   auto operands = map(vectorizeOneOperand, opStmt->getOperands());
@@ -1119,9 +1123,10 @@ static OperationStmt *vectorizeOneOperationStmt(MLFuncBuilder *b,
   // TODO(ntv): Is it worth considering an OperationStmt.clone operation
   // which changes the type so we can promote an OperationStmt with less
   // boilerplate?
-  return cast<OperationStmt>(b->createOperation(opStmt->getLoc(),
-                                                opStmt->getName(), operands,
-                                                types, opStmt->getAttrs()));
+  OperationState newOp(b->getContext(), opStmt->getLoc(),
+                       opStmt->getName().getStringRef(), operands, types,
+                       opStmt->getAttrs());
+  return b->createOperation(newOp);
 }
 
 /// Iterates over the OperationStmt in the loop and rewrites them using their

@@ -357,12 +357,6 @@ public:
   /// Creates an operation given the fields represented as an OperationState.
   OperationStmt *createOperation(const OperationState &state);
 
-  /// Creates an operation given the fields.
-  OperationStmt *createOperation(Location location, OperationName name,
-                                 ArrayRef<MLValue *> operands,
-                                 ArrayRef<Type> types,
-                                 ArrayRef<NamedAttribute> attrs);
-
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> create(Location location, Args... args) {
