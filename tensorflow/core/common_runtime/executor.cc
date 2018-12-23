@@ -135,13 +135,9 @@ struct EdgeInfo {
 // Time the execution of kernels (in CPU cycles).  Used to dynamically identify
 // inexpensive kernels which can be dispatched inline.
 struct KernelTimer {
-  uint64 start_cycles = 0;
+  uint64 start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
 
-  void Start() {
-    start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
-  }
-
-  uint64 Stop() {
+  uint64 ElapsedCycles() {
     return profile_utils::CpuUtils::GetCurrentClockCycle() - start_cycles;
   }
 };
@@ -1768,24 +1764,11 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           if (completed) Finish();
         };
         nodestats::SetOpStart(stats);
-        KernelTimer timer;
-        if (item.kernel->IsExpensive()) {
-          timer.Start();
-        }
         device->ComputeAsync(async, &state->ctx, done);
-
-        // Update kernel cost based on time spent in the current thread.
-        if (item.kernel->IsExpensive()) {
-          async->UpdateCostEstimate(timer.Stop());
-        }
       } else {
         // Synchronous computes.
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
-        KernelTimer timer;
-        if (item.kernel->IsExpensive()) {
-          timer.Start();
-        }
 
         if (TF_PREDICT_FALSE(
                 MightTrace(item, event_collector_, trace_using_annotations_))) {
@@ -1812,11 +1795,13 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           }
         } else {
           // In the common case, avoid creating any tracing objects.
-          device->Compute(op_kernel, &ctx);
-        }
-
-        if (item.kernel->IsExpensive()) {
-          op_kernel->UpdateCostEstimate(timer.Stop());
+          if (op_kernel->IsExpensive()) {
+            KernelTimer timer;
+            device->Compute(op_kernel, &ctx);
+            op_kernel->UpdateCostEstimate(timer.ElapsedCycles());
+          } else {
+            device->Compute(op_kernel, &ctx);
+          }
         }
 
         nodestats::SetOpEnd(stats);
