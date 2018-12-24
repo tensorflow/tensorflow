@@ -117,7 +117,7 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
 }
 
 /*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {
-  if (ShapeUtil::IsOpaque(shape)) {
+  if (shape.IsOpaque()) {
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));

@@ -91,7 +91,7 @@ vocabulary_size = 50000
 
 def build_dataset(words, n_words):
   """Process raw inputs into a dataset."""
-  count = [('UNK', -1)]
+  count = [['UNK', -1]]
   count.extend(collections.Counter(words).most_common(n_words - 1))
   dictionary = dict()
   for word, _ in count:

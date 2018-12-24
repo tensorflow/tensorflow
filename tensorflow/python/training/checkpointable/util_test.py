@@ -554,7 +554,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testFreezing(self):
-    with self.cached_session(use_gpu=True) as session:
+    with test_util.use_gpu():
       # Save an object-based checkpoint using a frozen saver
       directory = self.get_temp_dir()
       prefix = os.path.join(directory, "ckpt")
@@ -565,10 +565,12 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       # existing in the checkpoint on restore.
       self.evaluate(checkpoint.save_counter.assign(12))
       saver = checkpointable_utils.frozen_saver(checkpoint)
-      save_path = saver.save(session, prefix)
+      with ops.device("cpu:0"):
+        prefix_tensor = constant_op.constant(prefix)
+      save_path = self.evaluate(saver.save(prefix_tensor))
       self.evaluate(v.assign(10))
       # Use the frozen saver to restore the same object graph
-      saver.restore(session, save_path)
+      self.evaluate(saver.restore(prefix_tensor))
       self.assertEqual(3, self.evaluate(v))
 
       # Restore using another frozen saver on an identical object graph
@@ -576,7 +578,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
       checkpoint = checkpointable_utils.Checkpoint(v=v)
       saver = checkpointable_utils.frozen_saver(checkpoint)
-      saver.restore(session, save_path)
+      self.evaluate(saver.restore(prefix_tensor))
       self.assertEqual(3, self.evaluate(v))
 
       # Restore as an object-based checkpoint

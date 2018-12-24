@@ -352,10 +352,11 @@ def function_to_graph(f,
           ' in a separate expression.'.format(f, source))
     else:
       raise ValueError(
-          'Unable to identify source code of function {}. The source code'
+          'Unable to identify source code of function {}({}). The source code'
           ' reported by Python did not include exactly one matching signature:'
           '\n{}\n. This is an extremely rare occurrence. Please report it to'
-          ' the TensorFlow team.'.format(f, source))
+          ' the TensorFlow team.'.format(f, tf_inspect.getfullargspec(f),
+                                         source))
   node, = nodes
 
   # TODO(znado): Place inside standard_analysis.

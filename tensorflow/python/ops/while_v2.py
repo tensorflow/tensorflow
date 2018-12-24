@@ -242,8 +242,13 @@ def while_loop(cond,
 @ops.RegisterGradient("While")
 def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of a While op produced by while_loop."""
-  cond_graph = _get_graph(op, "cond")
-  body_graph = _get_graph(op, "body")
+  # Note that op is not always the same as while_op because the gradient tape,
+  # for eager mode compatibility, forgets information about the proper op. Since
+  # the loop cannot run in eager mode, however, we can safely introspect into
+  # the graph here.
+  while_op = op.outputs[0].op
+  cond_graph = _get_graph(while_op, "cond")
+  body_graph = _get_graph(while_op, "body")
   orig_num_params = len(body_graph.outputs)
 
   maximum_iterations = op.get_attr(
@@ -265,10 +270,6 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       for grad, output in zip(grads, body_graph.outputs)
   ]
 
-  # Ensure that all non-resource trainable outputs have incoming gradients.
-  assert all(g is not None or o.dtype == dtypes.resource or not _is_trainable(o)
-             for o, g in zip(body_graph.outputs, grads)
-            ), "All trainable loop vars must receive incoming gradients."
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
   # outputs.
@@ -291,16 +292,17 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     new_inputs = body_grad_graph.empty_tensor_lists
     new_outputs = body_graph.outputs[orig_num_params:]
 
-    op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
-    op._set_func_attr("body", util.create_new_tf_function(body_graph))
-    op._set_type_list_attr("T", body_graph.output_types)
-    op._set_shape_list_attr("output_shapes", body_graph.output_shapes)
-    op._add_while_inputs(new_inputs)
-    op._add_outputs([t.dtype for t in new_outputs],
-                    [t.shape for t in new_outputs])
+    while_op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
+    while_op._set_func_attr("body", util.create_new_tf_function(body_graph))
+    while_op._set_type_list_attr("T", body_graph.output_types)
+    while_op._set_shape_list_attr("output_shapes", body_graph.output_shapes)
+    while_op._add_while_inputs(new_inputs)
+    while_op._add_outputs([t.dtype for t in new_outputs],
+                          [t.shape for t in new_outputs])
     _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
 
-  captured_inputs = _resolve_grad_captures(body_graph, body_grad_graph, op)
+  captured_inputs = _resolve_grad_captures(body_graph, body_grad_graph,
+                                           while_op)
   loop_vars = args + captured_inputs
 
   def grad_cond(counter, max_iters, *unused_args):
@@ -318,7 +320,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(cond_grad_graph),
       util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
-      name="%s_grad" % op.name)
+      name="%s_grad" % while_op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
   util.maybe_set_lowering_attr(outputs[0].op)

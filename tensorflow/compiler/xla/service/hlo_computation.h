@@ -367,7 +367,7 @@ class HloComputation {
 
   // Returns a map from channel-id to directed dependencies of the channel
   // instructions. For send&recv pairs it means the send instruction and for
-  // cross-replica-sum the union of the dependencies for all participating
+  // all-reduce the union of the dependencies for all participating
   // instructions.
   using ChannelDependencyMap =
       absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>;

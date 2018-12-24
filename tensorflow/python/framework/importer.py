@@ -28,6 +28,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
@@ -266,7 +267,7 @@ def _ProcessNewOps(graph):
         coloc_op = graph._get_operation_by_name_unsafe(coloc_op_name)  # pylint: disable=protected-access
       except KeyError:
         # Do not error in TF2 if the colocation cannot be guaranteed
-        if tf2.enabled():
+        if tf2.enabled() or control_flow_util.EnableControlFlowV2(graph):
           continue
 
         raise ValueError('Specified colocation to an op that '

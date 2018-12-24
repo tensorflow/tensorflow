@@ -279,9 +279,18 @@ void RdmaMgr::RegMemVisitors() {
   ProcessState::singleton()->AddCPUFreeVisitor(free_visitor);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  GPUProcessState::singleton()->AddGPUHostAllocVisitor(0, alloc_visitor);
+  GPUProcessState::singleton()->AddGPUHostFreeVisitor(0, free_visitor);
+
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
-    int32_t bus_id = TryToReadNumaNode(rdma_adapter_->context_->device) + 1;
+
+    // TODO: This is to fix the 'invalid use of member in static member function
+    // bug'.
+    //       Waiting for better implementation.
+    //       int32_t bus_id = TryToReadNumaNode(rdma_adapter_->context_->device)
+    //       + 1;
+    int32_t bus_id = 0;
 
     SubAllocator::Visitor cuda_alloc_visitor = [](void* ptr, int gpu_id,
                                                   size_t num_bytes) {
@@ -290,9 +299,6 @@ void RdmaMgr::RegMemVisitors() {
     };
     GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
                                                      cuda_alloc_visitor);
-    GPUProcessState::singleton()->AddGPUHostAllocVisitor(bus_id,
-                                                          alloc_visitor);
-    GPUProcessState::singleton()->AddGPUHostFreeVisitor(bus_id, free_visitor);
     LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
   }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

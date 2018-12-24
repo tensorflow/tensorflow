@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -78,6 +79,60 @@ class WrapFunctionTest(test.TestCase):
 
     f_wrapped = wrap_function.wrap_function(f, [])
     self.assertAllEqual(1.0, f_wrapped())
+
+  def testPruneCaptures(self):
+
+    v1 = variables.Variable(2.)
+
+    def f():
+      v2 = variables.Variable(3.)
+      return array_ops.identity(v1 * v2 * constant_op.constant(1.), 'fetch')
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    self.assertAllEqual(6.0, f_wrapped())
+    pruned = f_wrapped.prune(
+        feeds=(),
+        fetches=f_wrapped.graph.get_tensor_by_name('fetch:0'))
+    self.assertAllEqual(6.0, pruned())
+
+  def testPruneOperations(self):
+
+    v = variables.Variable(0)
+
+    def f():
+      v.assign_add(1, name='increment', read_value=False)
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    pruned = f_wrapped.prune(
+        feeds=(),
+        fetches=(f_wrapped.graph.get_operation_by_name('increment'),))
+    self.assertEqual((None,), pruned())
+    self.assertEqual(1, self.evaluate(v))
+
+    del f, f_wrapped
+
+    def f1():
+      v.assign_add(
+          array_ops.placeholder(shape=[], dtype=dtypes.int32, name='step'),
+          name='increment', read_value=False)
+      return constant_op.constant(1, name='other')
+
+    f_wrapped = wrap_function.wrap_function(f1, [])
+    increments = f_wrapped.prune(
+        feeds=(f_wrapped.graph.get_tensor_by_name('step:0')),
+        fetches=(f_wrapped.graph.get_operation_by_name('increment'),
+                 f_wrapped.graph.get_tensor_by_name('other:0')))
+    first_output, second_output = increments(constant_op.constant(2))
+    self.assertEqual(['Placeholder:0', 'Placeholder_1:0'],
+                     [t.name for t in increments.inputs])
+    self.assertIs(None, first_output)
+    self.assertEqual(1, second_output.numpy())
+    self.assertEqual(3, v.numpy())
+    does_not_increment = f_wrapped.prune(
+        feeds=(f_wrapped.graph.get_tensor_by_name('step:0')),
+        fetches=f_wrapped.graph.get_tensor_by_name('other:0'))
+    self.assertEqual(1, does_not_increment(constant_op.constant(3)).numpy())
+    self.assertEqual(3, v.numpy())
 
 
 if __name__ == '__main__':

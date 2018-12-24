@@ -1117,9 +1117,9 @@ ENTRY Gather {
 
 )"
 },
-// cross-replica-sum
+// all-reduce
 {
-"CrossReplicaSum",
+"AllReduce",
 R"(HloModule CRS
 
 add {
@@ -1130,14 +1130,14 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} cross-replica-sum(input), replica_groups={}, to_apply=add
+  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, to_apply=add
 }
 
 )"
 },
-// cross-replica-sum with subgroups
+// all-reduce with subgroups
 {
-"CrossReplicaSumWithSubgroups",
+"AllReduceWithSubgroups",
 R"(HloModule CRS_Subgroups
 
 add {
@@ -1146,16 +1146,16 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
-ENTRY CrossReplicaSumWithSubgroups {
+ENTRY AllReduceWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT cross-replica-sum = f32[128,32]{0,1} cross-replica-sum(input), replica_groups={{0,1},{2,3}}, barrier="abc", to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, barrier="abc", to_apply=add
 }
 
 )"
 },
-// cross-replica-sum with all-reduce-id
+// all-reduce with all-reduce-id
 {
-"CrossReplicaSumAllReduce",
+"AllReduceAllReduce",
 R"(HloModule CRS
 
 add {
@@ -1166,8 +1166,8 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  crs.1 = f32[8]{0} cross-replica-sum(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
-  ROOT crs.0 = f32[8]{0} cross-replica-sum(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
+  crs.1 = f32[8]{0} all-reduce(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
+  ROOT crs.0 = f32[8]{0} all-reduce(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
 }
 
 )"
@@ -2327,6 +2327,26 @@ TEST_F(HloParserTest, ParseInvalidShapeString) {
     StatusOr<Shape> result = ParseShape(shape_string);
     ASSERT_FALSE(result.ok()) << "shape: " << shape_string;
   }
+}
+
+TEST_F(HloParserTest, ParseDynamicArray) {
+  string shape_string = "f32[123,<=456]";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShape(F32, {123, 456}, {false, true});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseDynamicTuple) {
+  string shape_string = "(f32[42], u32[<=123,<=456])";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {42}),
+       ShapeUtil::MakeShape(U32, {123, 456}, {true, true})});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
 }  // namespace

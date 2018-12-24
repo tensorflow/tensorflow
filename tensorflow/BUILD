@@ -203,6 +203,12 @@ config_setting(
 )
 
 config_setting(
+    name = "arm",
+    values = {"cpu": "arm"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
@@ -375,7 +381,9 @@ package_group(
     name = "internal",
     packages = [
         "-//third_party/tensorflow/python/estimator",
+        "//learning/deepmind/...",
         "//learning/meta_rank/...",
+        "//learning/pathways/...",  # While dataset C++ api requires internals
         "//tensorflow/...",
         "//tensorflow_estimator/contrib/...",
         "//tensorflow_fold/llgtm/...",
@@ -636,7 +644,11 @@ py_library(
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],
         "//conditions:default": [":tf_python_api_gen_v1"],
-    }) + [":root_init_gen"],
+    }) + [":root_init_gen"] + [
+        "//tensorflow/python/keras/api:keras_python_api_gen",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],

@@ -35,10 +35,11 @@ TEST(Port, AlignedMalloc) {
 
 TEST(Port, GetCurrentCPU) {
   const int cpu = GetCurrentCPU();
-  // TODO(b/120919972): Re-enable this EXPECT_GE after fixing MacOS Kokoro
-  // failures.
-  // EXPECT_GE(cpu, 0);
+#if !defined(__APPLE__)
+  // GetCurrentCPU does not currently work on MacOS.
+  EXPECT_GE(cpu, 0);
   EXPECT_LT(cpu, NumTotalCPUs());
+#endif
 }
 
 TEST(ConditionVariable, WaitForMilliseconds_Timeout) {

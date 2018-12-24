@@ -442,8 +442,8 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
-  CHECK(ShapeUtil::IsArray(reference_shape));
-  const int64 rank = ShapeUtil::Rank(reference_shape);
+  CHECK(reference_shape.IsArray());
+  const int64 rank = reference_shape.rank();
   const int64 concat_dim = concatenate->dimensions()[0];
   CHECK_GE(concat_dim, 0);
   CHECK_LT(concat_dim, rank);
@@ -453,7 +453,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
   for (int64 i = 1; i < operands.size(); ++i) {
     const Shape& operand_shape = operands[i]->shape();
-    CHECK(ShapeUtil::IsArray(operand_shape));
+    CHECK(operand_shape.IsArray());
     // Accumulate the concat dimension from all tensors taking part to the
     // operation.
     concat_dimensions[concat_dim] +=
@@ -565,6 +565,22 @@ Status HloEvaluator::HandleImag(HloInstruction* imag) {
       GetEvaluatedLiteralFor(imag->operand(0)));
 
   TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleComplex(HloInstruction* complex) {
+  const Literal& real = GetEvaluatedLiteralFor(complex->operand(0));
+  const Literal& imag = GetEvaluatedLiteralFor(complex->operand(1));
+  TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
+
+  Literal result(complex->shape());
+  TF_RETURN_IF_ERROR(
+      result.Populate<complex64>([&](absl::Span<const int64> multi_index) {
+        return std::complex<float>(real.Get<float>(multi_index),
+                                   imag.Get<float>(multi_index));
+      }));
+
+  evaluated_[complex] = std::move(result);
   return Status::OK();
 }
 
@@ -1036,11 +1052,9 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
 Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
 
-  TF_RET_CHECK(broadcast->dimensions().size() ==
-               ShapeUtil::Rank(operand.shape()))
+  TF_RET_CHECK(broadcast->dimensions().size() == operand.shape().rank())
       << "broadcast dimensions is of size: " << broadcast->dimensions().size()
-      << " and rank of operand_to_broadcast is: "
-      << ShapeUtil::Rank(operand.shape());
+      << " and rank of operand_to_broadcast is: " << operand.shape().rank();
   // Checks that operand's dimensions are the same as the broadcast's
   // dimensions along the dimensions to be broadcasted.
   for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
@@ -1251,7 +1265,7 @@ template <typename KeyType, typename ValueType>
 StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
                                        const Literal& keys_literal,
                                        const Literal& values_literal) {
-  auto rank = ShapeUtil::Rank(keys_literal.shape());
+  auto rank = keys_literal.shape().rank();
   TF_RET_CHECK(
       ShapeUtil::SameDimensions(keys_literal.shape(), values_literal.shape()))
       << "Sort keys and values must have the same dimensions";
@@ -1384,7 +1398,7 @@ StatusOr<Literal> EvaluateSort(HloInstruction* sort,
 }  // namespace
 
 Status HloEvaluator::HandleSort(HloInstruction* sort) {
-  if (!ShapeUtil::IsTuple(sort->shape())) {
+  if (!sort->shape().IsTuple()) {
     return DefaultAction(sort);
   } else {
     // This is a really stupid work-around for the fact it's hard to support a
@@ -1409,7 +1423,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
 }
 
 Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
-  if (!ShapeUtil::IsTuple(reduce->shape())) {
+  if (!reduce->shape().IsTuple()) {
     return DefaultAction(reduce);
   } else {
     auto first_element_type = reduce->shape().tuple_shapes(0).element_type();

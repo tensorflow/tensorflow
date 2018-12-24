@@ -257,7 +257,8 @@ class HloParser {
   bool ParseName(string* result);
   bool ParseAttributeName(string* result);
   bool ParseString(string* result);
-  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes);
+  bool ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                           std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
   bool ParseLayout(Layout* layout);
   bool ParseOpcode(HloOpcode* result);
@@ -767,7 +768,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
           HloInstruction::CreateBitcastConvert(shape, operands[0]));
       break;
     }
-    case HloOpcode::kCrossReplicaSum: {
+    case HloOpcode::kAllReduce: {
       optional<std::vector<std::vector<int64>>> tmp_groups;
       optional<HloComputation*> to_apply;
       optional<std::vector<int64>> replica_group_ids;
@@ -787,10 +788,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction =
-          builder->AddInstruction(HloInstruction::CreateCrossReplicaSum(
-              shape, operands, *to_apply, replica_groups,
-              barrier ? *barrier : "", all_reduce_id));
+      instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
+          shape, operands, *to_apply, replica_groups, barrier ? *barrier : "",
+          all_reduce_id));
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -1007,11 +1007,14 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<Window> window;
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64> feature_group_count;
+      optional<int64> batch_group_count;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
       attrs["feature_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                       &feature_group_count};
+      attrs["batch_group_count"] = {/*required=*/false, AttrTy::kInt64,
+                                    &batch_group_count};
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
@@ -1025,6 +1028,9 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!feature_group_count) {
         feature_group_count = 1;
       }
+      if (!batch_group_count) {
+        batch_group_count = 1;
+      }
       PrecisionConfig precision_config;
       if (operand_precision) {
         *precision_config.mutable_operand_precision() = {
@@ -1035,7 +1041,8 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
           shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
-          feature_group_count.value(), *window, *dnums, precision_config));
+          feature_group_count.value(), batch_group_count.value(), *window,
+          *dnums, precision_config));
       break;
     }
     case HloOpcode::kFft: {
@@ -1281,7 +1288,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       // the infeed instruction. ShapeUtil::GetTupleElementShape will check fail
       // if the shape is not a non-empty tuple, so add guard so an error message
       // can be emitted instead of a check fail
-      if (!ShapeUtil::IsTuple(shape) && !ShapeUtil::IsEmptyTuple(shape)) {
+      if (!shape.IsTuple() && !ShapeUtil::IsEmptyTuple(shape)) {
         return Error(lexer_.GetLoc(),
                      "infeed must have a non-empty tuple shape");
       }
@@ -1925,8 +1932,8 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value,
 //  ::= tuple
 //  ::= non_tuple
 bool HloParser::ParseLiteral(Literal* literal, const Shape& shape) {
-  return ShapeUtil::IsTuple(shape) ? ParseTupleLiteral(literal, shape)
-                                   : ParseNonTupleLiteral(literal, shape);
+  return shape.IsTuple() ? ParseTupleLiteral(literal, shape)
+                         : ParseNonTupleLiteral(literal, shape);
 }
 
 // tuple
@@ -1974,7 +1981,7 @@ bool HloParser::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
 }
 
 bool HloParser::ParseDenseLiteral(Literal* literal, const Shape& shape) {
-  const tensorflow::int64 rank = ShapeUtil::Rank(shape);
+  const tensorflow::int64 rank = shape.rank();
   // Create a literal with the given shape in default layout.
   *literal = LiteralUtil::CreateFromDimensions(
       shape.element_type(), AsInt64Slice(shape.dimensions()));
@@ -2139,7 +2146,7 @@ template <typename LiteralNativeT>
 bool HloParser::ParseSparseLiteralHelper(Literal* literal, const Shape& shape) {
   std::vector<tensorflow::int64> index;
 
-  tensorflow::int64 rank = ShapeUtil::Rank(shape);
+  tensorflow::int64 rank = shape.rank();
 
   *literal = Literal(shape);
 
@@ -2965,14 +2972,25 @@ bool HloParser::ParseParamList() {
   return ParseToken(TokKind::kRparen, "expects ')' at the end of param list");
 }
 
-// dimension_sizes ::= '[' int64_list ']'
-bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes) {
+// dimension_sizes ::= '[' dimension_list ']'
+// dimension_list
+//   ::= /*empty*/
+//   ::= <=? int64 (',' param)*
+// param ::= name shape
+bool HloParser::ParseDimensionSizes(std::vector<int64>* dimension_sizes,
+                                    std::vector<bool>* dynamic_dimensions) {
   auto parse_and_add_item = [&]() {
     tensorflow::int64 i;
+    bool is_dynamic = false;
+    if (lexer_.GetKind() == TokKind::kLeq) {
+      is_dynamic = true;
+      lexer_.Lex();
+    }
     if (!ParseInt64(&i)) {
       return false;
     }
     dimension_sizes->push_back(i);
+    dynamic_dimensions->push_back(is_dynamic);
     return true;
   };
   return ParseList(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
@@ -3028,12 +3046,18 @@ bool HloParser::ParseShape(Shape* result) {
   PrimitiveType primitive_type = lexer_.GetPrimitiveTypeVal();
   lexer_.Lex();
 
+  // Each element contains a dimension size and a bool indicating whether this
+  // is a dynamic dimension.
   std::vector<int64> dimension_sizes;
-  if (!ParseDimensionSizes(&dimension_sizes)) {
+  std::vector<bool> dynamic_dimensions;
+  if (!ParseDimensionSizes(&dimension_sizes, &dynamic_dimensions)) {
     return false;
   }
   result->set_element_type(primitive_type);
-  *result->mutable_dimensions() = dimension_sizes;
+  for (int i = 0; i < dimension_sizes.size(); ++i) {
+    result->add_dimensions(dimension_sizes[i]);
+    result->set_dynamic_dimension(i, dynamic_dimensions[i]);
+  }
   LayoutUtil::SetToDefaultLayout(result);
 
   if (lexer_.GetKind() == TokKind::kw_sparse) {

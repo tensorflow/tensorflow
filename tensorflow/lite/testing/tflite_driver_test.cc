@@ -56,6 +56,40 @@ TEST(TfliteDriverTest, SimpleTest) {
   ASSERT_TRUE(runner->CheckResults());
 }
 
+TEST(TfliteDriverTest, SingleAddOpTest) {
+  std::unique_ptr<TestRunner> runner(new TfLiteDriver(
+      /*use_nnapi*/ false, /*delegate*/ "", /*reference_kernel*/ true));
+
+  runner->SetModelBaseDir("tensorflow/lite");
+  runner->LoadModel("testdata/multi_add.bin");
+  ASSERT_TRUE(runner->IsValid());
+
+  ASSERT_THAT(runner->GetInputs(), ElementsAre(0, 1, 2, 3));
+  ASSERT_THAT(runner->GetOutputs(), ElementsAre(5, 6));
+
+  for (int i : {0, 1, 2, 3}) {
+    runner->ReshapeTensor(i, "1,2,2,1");
+  }
+  ASSERT_TRUE(runner->IsValid());
+
+  runner->AllocateTensors();
+
+  runner->SetInput(0, "0.1,0.2,0.3,0.4");
+  runner->SetInput(1, "0.001,0.002,0.003,0.004");
+  runner->SetInput(2, "0.001,0.002,0.003,0.004");
+  runner->SetInput(3, "0.01,0.02,0.03,0.04");
+
+  runner->ResetTensor(2);
+
+  runner->SetExpectation(5, "0.101,0.202,0.303,0.404");
+  runner->SetExpectation(6, "0.011,0.022,0.033,0.044");
+
+  runner->Invoke();
+  ASSERT_TRUE(runner->IsValid());
+
+  ASSERT_TRUE(runner->CheckResults());
+}
+
 }  // namespace
 }  // namespace testing
 }  // namespace tflite

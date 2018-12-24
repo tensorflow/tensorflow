@@ -178,7 +178,7 @@ HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
-HLO_MATCHER(CrossReplicaSum);
+HLO_MATCHER(AllReduce);
 HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(Divide);
 HLO_MATCHER(Domain);

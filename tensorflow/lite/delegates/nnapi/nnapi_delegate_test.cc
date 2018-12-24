@@ -2048,12 +2048,16 @@ class BaseSVDFOpModel : public SingleOpModelWithNNAPI {
 class SVDFOpModel : public BaseSVDFOpModel {
  public:
   using BaseSVDFOpModel::BaseSVDFOpModel;
+};
 
+class SVDFOpTest : public ::testing::Test {
+ protected:
   void VerifyGoldens(float golden_input[], float golden_output[],
-                     int golden_size, float tolerance = 1e-5) {
-    const int svdf_num_batches = num_batches();
-    const int svdf_input_size = input_size();
-    const int svdf_num_units = num_units();
+                     int golden_size, BaseSVDFOpModel* svdf,
+                     float tolerance = 1e-5) {
+    const int svdf_num_batches = svdf->num_batches();
+    const int svdf_input_size = svdf->input_size();
+    const int svdf_num_units = svdf->num_units();
     const int input_sequence_size =
         golden_size / sizeof(float) / (svdf_input_size * svdf_num_batches);
     // Going over each input batch, setting the input tensor, invoking the SVDF
@@ -2062,9 +2066,9 @@ class SVDFOpModel : public BaseSVDFOpModel {
       float* batch_start =
           golden_input + i * svdf_input_size * svdf_num_batches;
       float* batch_end = batch_start + svdf_input_size * svdf_num_batches;
-      SetInput(0, batch_start, batch_end);
+      svdf->SetInput(0, batch_start, batch_end);
 
-      Invoke();
+      svdf->Invoke();
 
       const float* golden_start =
           golden_output + i * svdf_num_units * svdf_num_batches;
@@ -2073,13 +2077,13 @@ class SVDFOpModel : public BaseSVDFOpModel {
       std::vector<float> expected;
       expected.insert(expected.end(), golden_start, golden_end);
 
-      EXPECT_THAT(GetOutput(),
+      EXPECT_THAT(svdf->GetOutput(),
                   ElementsAreArray(ArrayFloatNear(expected, tolerance)));
     }
   }
 };
 
-TEST(NNAPIDelegate, SVDFBlackBoxTestRank1) {
+TEST_F(SVDFOpTest, BlackBoxTestRank1) {
   SVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
                    /*memory_size=*/10, /*rank=*/1);
   svdf.SetWeightsFeature({-0.31930989, -0.36118156, 0.0079667, 0.37613347,
@@ -2099,10 +2103,11 @@ TEST(NNAPIDelegate, SVDFBlackBoxTestRank1) {
        -0.10781813, 0.27201805,  0.14324132,  -0.23681851, -0.27115166,
        -0.01580888, -0.14943552, 0.15465137,  0.09784451,  -0.0337657});
 
-  svdf.VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input));
+  VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input),
+                &svdf);
 }
 
-TEST(NNAPIDelegate, SVDFBlackBoxTestRank2) {
+TEST_F(SVDFOpTest, BlackBoxTestRank2) {
   SVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
                    /*memory_size=*/10, /*rank=*/2);
   svdf.SetWeightsFeature({-0.31930989, 0.0079667,   0.39296314,  0.37613347,
@@ -2137,7 +2142,8 @@ TEST(NNAPIDelegate, SVDFBlackBoxTestRank2) {
        0.27179423,  -0.04710215, 0.31069002,  0.22672787,  0.09580326,
        0.08682203,  0.1258215,   0.1851041,   0.29228821,  0.12366763});
 
-  svdf.VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input));
+  VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input),
+                &svdf);
 }
 
 class LSTMOpModel : public SingleOpModelWithNNAPI {
@@ -2223,71 +2229,69 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
     BuildInterpreter(input_shapes);
   }
 
-  void SetInputToInputWeights(std::initializer_list<float> f) {
+  void SetInputToInputWeights(std::vector<float> f) {
     PopulateTensor(input_to_input_weights_, f);
   }
 
-  void SetInputToForgetWeights(std::initializer_list<float> f) {
+  void SetInputToForgetWeights(std::vector<float> f) {
     PopulateTensor(input_to_forget_weights_, f);
   }
 
-  void SetInputToCellWeights(std::initializer_list<float> f) {
+  void SetInputToCellWeights(std::vector<float> f) {
     PopulateTensor(input_to_cell_weights_, f);
   }
 
-  void SetInputToOutputWeights(std::initializer_list<float> f) {
+  void SetInputToOutputWeights(std::vector<float> f) {
     PopulateTensor(input_to_output_weights_, f);
   }
 
-  void SetRecurrentToInputWeights(std::initializer_list<float> f) {
+  void SetRecurrentToInputWeights(std::vector<float> f) {
     PopulateTensor(recurrent_to_input_weights_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::initializer_list<float> f) {
+  void SetRecurrentToForgetWeights(std::vector<float> f) {
     PopulateTensor(recurrent_to_forget_weights_, f);
   }
 
-  void SetRecurrentToCellWeights(std::initializer_list<float> f) {
+  void SetRecurrentToCellWeights(std::vector<float> f) {
     PopulateTensor(recurrent_to_cell_weights_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::initializer_list<float> f) {
+  void SetRecurrentToOutputWeights(std::vector<float> f) {
     PopulateTensor(recurrent_to_output_weights_, f);
   }
 
-  void SetCellToInputWeights(std::initializer_list<float> f) {
+  void SetCellToInputWeights(std::vector<float> f) {
     PopulateTensor(cell_to_input_weights_, f);
   }
 
-  void SetCellToForgetWeights(std::initializer_list<float> f) {
+  void SetCellToForgetWeights(std::vector<float> f) {
     PopulateTensor(cell_to_forget_weights_, f);
   }
 
-  void SetCellToOutputWeights(std::initializer_list<float> f) {
+  void SetCellToOutputWeights(std::vector<float> f) {
     PopulateTensor(cell_to_output_weights_, f);
   }
 
-  void SetInputGateBias(std::initializer_list<float> f) {
+  void SetInputGateBias(std::vector<float> f) {
     PopulateTensor(input_gate_bias_, f);
   }
 
-  void SetForgetGateBias(std::initializer_list<float> f) {
+  void SetForgetGateBias(std::vector<float> f) {
     PopulateTensor(forget_gate_bias_, f);
   }
 
-  void SetCellBias(std::initializer_list<float> f) {
-    PopulateTensor(cell_bias_, f);
-  }
+  void SetCellBias(std::vector<float> f) { PopulateTensor(cell_bias_, f); }
 
-  void SetOutputGateBias(std::initializer_list<float> f) {
+  void SetOutputGateBias(std::vector<float> f) {
     PopulateTensor(output_gate_bias_, f);
   }
 
-  void SetProjectionWeights(std::initializer_list<float> f) {
+  void SetProjectionWeights(std::vector<float> f) {
     PopulateTensor(projection_weights_, f);
   }
 
-  void SetProjectionBias(std::initializer_list<float> f) {
+  void SetProjectionBias(std::vector<float> f) {
     PopulateTensor(projection_bias_, f);
   }
 
@@ -2342,22 +2346,22 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
 class BaseLstmTest : public ::testing::Test {
  protected:
   // Weights of the LSTM model. Some are optional.
-  std::initializer_list<float> input_to_input_weights_;
-  std::initializer_list<float> input_to_cell_weights_;
-  std::initializer_list<float> input_to_forget_weights_;
-  std::initializer_list<float> input_to_output_weights_;
-  std::initializer_list<float> input_gate_bias_;
-  std::initializer_list<float> cell_gate_bias_;
-  std::initializer_list<float> forget_gate_bias_;
-  std::initializer_list<float> output_gate_bias_;
-  std::initializer_list<float> recurrent_to_input_weights_;
-  std::initializer_list<float> recurrent_to_cell_weights_;
-  std::initializer_list<float> recurrent_to_forget_weights_;
-  std::initializer_list<float> recurrent_to_output_weights_;
-  std::initializer_list<float> cell_to_input_weights_;
-  std::initializer_list<float> cell_to_forget_weights_;
-  std::initializer_list<float> cell_to_output_weights_;
-  std::initializer_list<float> projection_weights_;
+  std::vector<float> input_to_input_weights_;
+  std::vector<float> input_to_cell_weights_;
+  std::vector<float> input_to_forget_weights_;
+  std::vector<float> input_to_output_weights_;
+  std::vector<float> input_gate_bias_;
+  std::vector<float> cell_gate_bias_;
+  std::vector<float> forget_gate_bias_;
+  std::vector<float> output_gate_bias_;
+  std::vector<float> recurrent_to_input_weights_;
+  std::vector<float> recurrent_to_cell_weights_;
+  std::vector<float> recurrent_to_forget_weights_;
+  std::vector<float> recurrent_to_output_weights_;
+  std::vector<float> cell_to_input_weights_;
+  std::vector<float> cell_to_forget_weights_;
+  std::vector<float> cell_to_output_weights_;
+  std::vector<float> projection_weights_;
 
   // LSTM input is stored as num_batch x num_inputs vector.
   std::vector<std::vector<float>> lstm_input_;

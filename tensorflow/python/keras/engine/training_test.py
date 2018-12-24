@@ -36,6 +36,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.callbacks import Callback
+from tensorflow.python.keras.engine.training_utils import set_run_eagerly_for_dict_structure
 from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -43,6 +44,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
@@ -895,9 +897,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
     class_weight = dict([(i, 1.) for i in range(num_classes)])
     class_weight[weighted_class] = weight
 
-    sample_weight = np.ones((y_train.shape[0]))
-    sample_weight[int_y_train == weighted_class] = 2.
-
     model.fit(
         x_train,
         y_train,
@@ -905,7 +904,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
         epochs=epochs // 3,
         verbose=0,
         class_weight=class_weight,
-        validation_data=(x_train, y_train, sample_weight))
+        validation_data=(x_train, y_train))
     model.fit(
         x_train,
         y_train,
@@ -995,37 +994,6 @@ class LossWeightingTest(keras_parameterized.TestCase):
       score = model.evaluate(
           x_test[test_ids, :], y_test[test_ids, :], verbose=0)
       self.assertLess(score[0], ref_score[0])
-
-  @keras_parameterized.run_all_keras_modes
-  def test_warning_for_concurrent_sample_and_class_weights(self):
-
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(10, input_shape=(3,)))
-    model.compile(
-        loss='mse',
-        optimizer=RMSPropOptimizer(learning_rate=0.01),
-        run_eagerly=testing_utils.should_run_eagerly())
-    x_train = np.random.random((10, 3))
-    y_train = np.random.random((10, 10))
-    sample_weight = np.ones((y_train.shape[0]))
-    class_weight = {0: 1., 1: 1.}
-
-    with test.mock.patch.object(logging, 'warning') as mock_log:
-      model.fit(
-          x_train,
-          y_train,
-          epochs=1,
-          verbose=0,
-          sample_weight=sample_weight,
-          class_weight=class_weight)
-      msg = 'The `class_weight` argument will be ignored.'
-
-      msg_found = False
-      for call_args in mock_log.call_args_list:
-        if msg in str(call_args):
-          msg_found = True
-
-      self.assertTrue(msg_found)
 
   @keras_parameterized.run_all_keras_modes
   def test_temporal_sample_weights(self):
@@ -2508,6 +2476,79 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     y = np.ones(shape=(10, 2))
     model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
     self.assertEqual([m.name for m in model.metrics], ['mean', 'mean_1'])
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_a1_total_loss_available_with_dict_dataset(self):
+
+    class TestModel(keras.models.Model):
+
+      def call(self, inputs, training=None, mask=None):
+        return math_ops.to_float(inputs['id'])
+
+    model = TestModel()
+    model.compile(
+        optimizer=AdamOptimizer(), loss='mean_squared_error', metrics=['mse'],
+        run_eagerly=testing_utils.should_run_eagerly())
+    dataset = dataset_ops.Dataset.from_tensor_slices(({
+        'id': [[6], [3], [1]]
+    }, [[0.7], [0.4], [0.2]]))
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(({
+        'id': [[8], [5]]
+    }, [[0.9], [0.6]]))
+    history = model.fit(
+        dataset,
+        steps_per_epoch=2,
+        validation_data=val_dataset,
+        validation_steps=2)
+    self.assertAlmostEqual(history.history['val_loss'][0], 34.885, 2)
+    model.evaluate(dataset, steps=30)
+    model.predict([7])
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_total_loss_available_with_dict_array(self):
+
+    class TestModel(keras.models.Model):
+
+      def call(self, inputs, training=None, mask=None):
+        return math_ops.to_float(inputs['id'])
+
+    model = TestModel()
+    model.compile(
+        optimizer=AdamOptimizer(), loss='mean_squared_error', metrics=['mse'],
+        run_eagerly=testing_utils.should_run_eagerly())
+    x = {'id': np.array([[3], [1]])}
+    y = np.array([[4], [2]])
+    val_dataset = (x, y)
+    history = model.fit(
+        x,
+        y,
+        batch_size=32,
+        steps_per_epoch=2,
+        validation_data=val_dataset,
+        validation_steps=2)
+    self.assertAlmostEqual(history.history['val_loss'][0], 1.0, 2)
+    model.evaluate(x, y)
+    model.predict([7])
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_set_run_eagerly_for_dict_structure(self):
+    test_model = keras.models.Model()
+    self.assertFalse(test_model.run_eagerly)
+    set_run_eagerly_for_dict_structure(
+        test_model,
+        {'a': 2})
+    self.assertTrue(test_model.run_eagerly)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_set_run_eagerly_for_dict_dataset(self):
+    test_model = keras.models.Model()
+    self.assertFalse(test_model.run_eagerly)
+    set_run_eagerly_for_dict_structure(
+        test_model,
+        dataset_ops.Dataset.from_tensor_slices(({
+            'id': [[3], [1]]
+        }, [[0.5], [0.2]])))
+    self.assertTrue(test_model.run_eagerly)
 
 
 if __name__ == '__main__':

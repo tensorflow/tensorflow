@@ -12,9 +12,7 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "tensorrt_headers",
     hdrs = [":tensorrt_include"],
-    includes = [
-        "include",
-    ],
+    include_prefix = "",
     visibility = ["//visibility:public"],
 )
 
@@ -23,9 +21,7 @@ cc_library(
     srcs = ["tensorrt/lib/libnvinfer.so.5"],
     copts = cuda_default_copts(),
     data = ["tensorrt/lib/libnvinfer.so.5"],
-    includes = [
-        "include",
-    ],
+    include_prefix = "",
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [

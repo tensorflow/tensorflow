@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/collective_order.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_partition.h"
@@ -1517,6 +1518,12 @@ Status DirectSession::CreateGraphs(
   if (run_state_args->is_partial_run) {
     run_state_args->graph.reset(new Graph(flib_def_.get()));
     CopyGraph(*execution_state->full_graph(), run_state_args->graph.get());
+  }
+
+  // Make collective execution order deterministic if needed.
+  if (options_.config.experimental()
+          .collective_deterministic_sequential_execution()) {
+    TF_RETURN_IF_ERROR(OrderCollectives(&client_graph->graph));
   }
 
   // Partition the graph across devices.

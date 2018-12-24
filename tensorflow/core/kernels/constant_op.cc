@@ -262,7 +262,8 @@ class ZerosLikeOp : public OpKernel {
       const Variant& v = input.scalar<Variant>()();
       // DT_VARIANT tensors must be allocated on CPU since they wrap C++
       // objects which can not be efficiently represented in GPU memory.
-      Tensor out(cpu_allocator(), DT_VARIANT, TensorShape({}));
+      int numa_node = DeviceNumaNode(ctx->device());
+      Tensor out(cpu_allocator(numa_node), DT_VARIANT, TensorShape({}));
       Variant* out_v = &(out.scalar<Variant>()());
       OP_REQUIRES_OK(ctx, UnaryOpVariant<Device>(
                               ctx, ZEROS_LIKE_VARIANT_UNARY_OP, v, out_v));

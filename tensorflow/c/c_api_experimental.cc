@@ -8890,3 +8890,54 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
   return new TFE_TensorHandle(tensor, nullptr, nullptr);
 }
+
+namespace {
+tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
+                                       TFE_Context* ctx) {
+  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
+  // server object (which currently CHECK-fails) and we miss the error, instead,
+  // we log the error, and then return to allow the user to see the error
+  // message.
+#define LOG_AND_RETURN_IF_ERROR(...)                    \
+  do {                                                  \
+    const ::tensorflow::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {              \
+      LOG(ERROR) << _status.error_message();            \
+      return _status;                                   \
+    }                                                   \
+  } while (0);
+
+  std::unique_ptr<tensorflow::ServerInterface> server;
+  LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &server));
+
+  tensorflow::GrpcServer* grpc_server =
+      dynamic_cast<tensorflow::GrpcServer*>(server.get());
+  if (grpc_server == nullptr) {
+    LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
+        "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+  }
+
+  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+
+  LOG_AND_RETURN_IF_ERROR(ctx->context.StoreCollectiveOpsServer(
+      std::move(server), grpc_server->worker_env()->device_mgr,
+      grpc_server->worker_env()->collective_executor_mgr));
+
+  return tensorflow::Status::OK();
+#undef LOG_AND_RETURN_IF_ERROR
+}
+}  // namespace
+
+// Set server_def on the context, possibly updating it.
+TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status) {
+  tensorflow::ServerDef server_def;
+  if (!server_def.ParseFromArray(proto, proto_len)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Invalid tensorflow.ServerDef protocol buffer");
+    return;
+  }
+  status->status = EnableCollectiveOps(server_def, ctx);
+}

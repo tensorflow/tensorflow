@@ -31,7 +31,10 @@ py_library(
 
 py_library(
     name = "saved_model",
-    srcs = ["saved_model.py"],
+    srcs = [
+        "saved_model.py",
+        "saving_utils.py",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [

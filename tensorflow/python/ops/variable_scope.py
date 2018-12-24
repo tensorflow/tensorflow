@@ -2480,12 +2480,13 @@ def default_variable_creator(next_creator=None, **kwargs):
     use_resource = _DEFAULT_USE_RESOURCE
   use_resource = use_resource or context.executing_eagerly()
   if use_resource:
+    distribute_strategy = kwargs.get("distribute_strategy", None)
     return resource_variable_ops.ResourceVariable(
         initial_value=initial_value, trainable=trainable,
         collections=collections, validate_shape=validate_shape,
         caching_device=caching_device, name=name, dtype=dtype,
         constraint=constraint, variable_def=variable_def,
-        import_scope=import_scope)
+        import_scope=import_scope, distribute_strategy=distribute_strategy)
   else:
     return variables.RefVariable(
         initial_value=initial_value, trainable=trainable,
@@ -2507,6 +2508,7 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
   dtype = kwargs.get("dtype", None)
   import_scope = kwargs.get("import_scope", None)
   constraint = kwargs.get("constraint", None)
+  distribute_strategy = kwargs.get("distribute_strategy", None)
 
   # Set trainable value based on synchronization value.
   synchronization = kwargs.get("synchronization", VariableSynchronization.AUTO)
@@ -2517,7 +2519,7 @@ def default_variable_creator_v2(next_creator=None, **kwargs):
       initial_value=initial_value, trainable=trainable,
       validate_shape=validate_shape, caching_device=caching_device,
       name=name, dtype=dtype, constraint=constraint, variable_def=variable_def,
-      import_scope=import_scope)
+      import_scope=import_scope, distribute_strategy=distribute_strategy)
 
 
 variables.default_variable_creator = default_variable_creator

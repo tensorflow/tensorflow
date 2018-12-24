@@ -240,12 +240,13 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
         transpose_y->shape().dimensions(dnums.kernel_spatial_dimensions(i)));
   }
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
-      x->shape(), transpose_y->shape(), /*feature_group_count=*/1, window,
-      dnums);
+      x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), x, transpose_y,
-      /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
@@ -295,12 +296,13 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
         transpose_y->shape().dimensions(dnums.kernel_spatial_dimensions(i)));
   }
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
-      x->shape(), transpose_y->shape(), /*feature_group_count=*/1, window,
-      dnums);
+      x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), x, transpose_y,
-      /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
@@ -355,12 +357,13 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
     dim->set_size(y->shape().dimensions(dnums.kernel_spatial_dimensions(i)));
   }
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
-      transpose_x->shape(), y->shape(), /*feature_group_count=*/1, window,
-      dnums);
+      transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), transpose_x, y,
-      /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
@@ -421,12 +424,13 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
     dim->set_size(y->shape().dimensions(dnums.kernel_spatial_dimensions(i)));
   }
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
-      transpose_x->shape(), y->shape(), /*feature_group_count=*/1, window,
-      dnums);
+      transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.ValueOrDie(), transpose_x, y,
-      /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =

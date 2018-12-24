@@ -528,8 +528,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
     for (int64 operand_no = 0; operand_no < instruction->operand_count();
          ++operand_no) {
       const HloInstruction* operand = instruction->operand(operand_no);
-      if (ShapeUtil::Rank(instruction->shape()) !=
-          ShapeUtil::Rank(operand->shape())) {
+      if (instruction->shape().rank() != operand->shape().rank()) {
         continue;
       }
       TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
@@ -894,11 +893,11 @@ TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
     ENTRY entry_computation {
       param = (f32[2,2]) parameter(0)
       gte = f32[2,2] get-tuple-element(param), index=0
-      ar.0 = f32[2,2] cross-replica-sum(gte),
+      ar.0 = f32[2,2] all-reduce(gte),
         all_reduce_id=1, replica_groups={{0}}, to_apply=add,
         sharding={maximal device=0}
       const = f32[2,2] constant({{0,1},{2,3}})
-      ROOT ar.1 = f32[2,2] cross-replica-sum(const),
+      ROOT ar.1 = f32[2,2] all-reduce(const),
         all_reduce_id=1, replica_groups={{0}}, to_apply=add,
         sharding={maximal device=1}
     })";

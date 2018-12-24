@@ -527,10 +527,11 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   dim2.set_base_dilation(lhs_dilation.second);
   *window.add_dimensions() = dim2;
 
-  const Shape& shape = ShapeInference::InferConvolveShape(
-                           lhs_literal.shape(), rhs_literal.shape(),
-                           /*feature_group_count=*/1, window, dnums)
-                           .ConsumeValueOrDie();
+  const Shape& shape =
+      ShapeInference::InferConvolveShape(
+          lhs_literal.shape(), rhs_literal.shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums)
+          .ConsumeValueOrDie();
 
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
@@ -542,7 +543,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
       /*new_size=*/2, PrecisionConfig::DEFAULT);
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, precision_config));
+      /*batch_group_count=*/1, window, dnums, precision_config));
   HloModuleConfig config;
   HloModule module("ReferenceUtil", config);
   auto computation = module.AddEntryComputation(b.Build());
@@ -551,7 +552,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   Literal result_literal =
       evaluator.Evaluate<const Literal*>(*computation, {}).ConsumeValueOrDie();
 
-  CHECK_EQ(ShapeUtil::Rank(result_literal.shape()), 4);
+  CHECK_EQ(result_literal.shape().rank(), 4);
   auto result =
       absl::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
                                         result_literal.shape().dimensions(1),

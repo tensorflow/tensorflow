@@ -12,6 +12,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 py_library(
     name = "base",
@@ -164,6 +165,29 @@ py_test(
     ],
 )
 
+tf_xla_py_test(
+    name = "util_xla_test",
+    srcs = ["util_xla_test.py"],
+    tags = [
+        "no_pip",
+        "nomac",
+        "notsan",  # b/74395663
+    ],
+    deps = [
+        ":tracking",
+        ":util",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:checkpoint_management",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
+        "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
+
 py_test(
     name = "util_with_v1_optimizers_test",
     srcs = ["util_with_v1_optimizers_test.py"],
@@ -189,6 +213,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",

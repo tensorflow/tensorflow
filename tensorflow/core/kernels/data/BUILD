@@ -504,10 +504,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "model_dataset_op",
     srcs = ["model_dataset_op.cc"],
+    hdrs = ["model_dataset_op.h"],
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],

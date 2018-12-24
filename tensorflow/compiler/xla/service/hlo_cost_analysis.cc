@@ -292,7 +292,7 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   // does not need to be multiplied by the number of input tensors - that's
   // already "priced in" by the sub-computation doing more work.
   auto arg = reduce->operand(0);
-  auto output_shape = ShapeUtil::IsArray(reduce->shape())
+  auto output_shape = reduce->shape().IsArray()
                           ? reduce->shape()
                           : reduce->shape().tuple_shapes(0);
   int64 reduction_count =
@@ -539,7 +539,7 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
 
 Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   auto real_shape =
-      ShapeUtil::IsTuple(fft->operand(0)->shape())
+      fft->operand(0)->shape().IsTuple()
           ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
           : fft->operand(0)->shape();
   constexpr int kFmaPerComplexMul = 4;
@@ -552,7 +552,7 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
+Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
   //
@@ -561,7 +561,7 @@ Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   double flops = 0.0;
   ShapeUtil::ForEachSubshape(crs->shape(),
                              [&](const Shape& subshape, const ShapeIndex&) {
-                               if (ShapeUtil::IsArray(subshape)) {
+                               if (subshape.IsArray()) {
                                  flops += ShapeUtil::ElementsIn(subshape);
                                }
                              });

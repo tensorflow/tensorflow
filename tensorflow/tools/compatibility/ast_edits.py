@@ -49,6 +49,8 @@ class APIChangeSpec(object):
     printed out if the function is used. (e.g. tf.nn.convolution())
   * `unrestricted_function_warnings`: maps names of functions to warnings that
     will be printed out when the function is used (e.g. foo.convolution()).
+  * `function_keyword_additions`: maps function names to a map of arg->value
+    names that should be passed to the function.
 
   For an example, see `TFAPIChangeSpec`.
   """
@@ -320,9 +322,9 @@ class _ASTCallVisitor(ast.NodeVisitor):
       function_handles = self._api_change_spec.function_handle
       glob_name = "*.{}".format(name)
       if glob_name in function_handles:
-        function_handles[glob_name](self._file_edit, node)
+        function_handles[glob_name](self._file_edit, node, self._lines)
       if full_name in function_handles:
-        function_handles[full_name](self._file_edit, node)
+        function_handles[full_name](self._file_edit, node, self._lines)
 
       # Examine any non-keyword argument and make it into a keyword argument
       # if reordering required.

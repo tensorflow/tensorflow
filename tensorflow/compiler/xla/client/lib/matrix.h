@@ -31,6 +31,10 @@ XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
 // diagonal elements (i.e., with indices [..., i, i]).
 XlaOp GetMatrixDiagonal(XlaOp x);
 
+// Returns a lower-triangular mask, i.e., true below the `diagonal`-th diagonal
+// and false above that diagonal.
+XlaOp TriangleMask(XlaOp x, int diagonal);
+
 // Get the upper or lower triangle part of the last two dimensions
 XlaOp Triangle(XlaOp x, bool lower);
 

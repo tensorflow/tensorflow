@@ -31,6 +31,8 @@ namespace {
 
 const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
 
+const int64 kMaxEpochsInBuffer = 3;
+
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
@@ -134,6 +136,14 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             slices_.back()->end++;
           } else {
             input_impl_.reset();
+          }
+          if (slices_.size() > kMaxEpochsInBuffer) {
+            // When the elements stored in `buffer_` span more than
+            // `kMaxEpochsInBuffer` epochs, we do not fill the buffer further to
+            // conserve memory. This means that the upper bound on the size of
+            // `buffer_` is `kMaxEpochsInBuffer * cardinality(input_dataset) +
+            // 1`.
+            break;
           }
         }
         if (num_log_entries > 0) {

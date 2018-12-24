@@ -53,6 +53,7 @@ class EagerOperation {
     return &inputs_;
   }
   void AddInput(tensorflow::TensorHandle* h);
+  void ConsumeInput(tensorflow::TensorHandle* h);
 
   const tensorflow::string& Name() const { return name_; }
   const tensorflow::AttrTypeMap* AttrTypes() const { return attr_types_; }

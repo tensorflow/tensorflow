@@ -130,6 +130,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
     self._initialize_local(local_devices)
+    self._input_workers = values.InputWorkers(
+        self._device_map, [(self._worker_device, self.worker_devices)])
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
         num_gpus_per_worker=num_gpus_per_worker,
@@ -151,13 +153,18 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   def _create_variable(self, next_creator, *args, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
-    devices = self._get_devices_from(colocate_with)
-    group_size = len(devices) * self._num_workers
-    group_key = self._collective_keys.get_group_key(self._devices)
+    if colocate_with is None:
+      device_map = self._device_map
+      logical_device = 0  # TODO(josh11b): Get logical device from scope here.
+    else:
+      device_map = colocate_with.device_map
+      logical_device = colocate_with.logical_device
+    group_size = device_map.num_replicas_in_graph * self._num_workers
+    group_key = self._collective_keys.get_group_key(self.worker_devices)
 
     def _real_mirrored_creator(devices, *args, **kwargs):
       """Creates one MirroredVariable on the current worker."""
-      index = {}
+      value_list = []
       unique_var_name = ops.get_default_graph().unique_name(
           kwargs["name"], mark_as_used=False).rstrip("/")
       collective_instance_key = self._collective_keys.get_instance_key(
@@ -174,7 +181,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         with ops.device(d):
           if i > 0:
             # Give replicas meaningful distinct names:
-            var0name = index[devices[0]].name.split(":")[0]
+            var0name = value_list[0].name.split(":")[0]
             # We append a / to variable names created on replicas with id > 0 to
             # ensure that we ignore the name scope and instead use the given
             # name as the absolute name of the variable.
@@ -210,22 +217,24 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
             assert unique_var_name == actual_var_name, "%r vs %r" % (
                 unique_var_name, actual_var_name)
           assert not isinstance(v, values.DistributedVariable)
-          index[d] = v
-      return index
+          value_list.append(v)
+      return value_list
 
     # pylint: disable=protected-access
     return mirrored_strategy._create_mirrored_variable(
-        devices, _real_mirrored_creator, *args, **kwargs)
+        self._container_strategy(), device_map, logical_device,
+        _real_mirrored_creator, *args, **kwargs)
 
   def _distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     # TODO(yuefengz): shard the dataset.
+    worker_index = 0
     return values.PerReplicaDataset(
-        self._call_dataset_fn(dataset_fn), self._devices, True)
+        self._call_dataset_fn(dataset_fn), self._input_workers, worker_index,
+        prefetch_on_device=True)
 
   def _make_dataset_iterator(self, dataset):
-    worker_device_pairs = [(self._worker_device, self._devices)]
-    return values.DatasetIterator(dataset, worker_device_pairs,
+    return values.DatasetIterator(dataset, self._input_workers,
                                   self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
@@ -244,7 +253,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_replicas_in_sync=self._num_replicas_in_sync)
 
     return values.InputFunctionIterator(
-        input_fn, [(self._worker_device, self._devices)], [input_context])
+        input_fn, self._input_workers, [input_context])
 
   def _configure(self,
                  session_config=None,
@@ -332,7 +341,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   @property
   def _num_replicas_in_sync(self):
-    return len(self._devices) * self._num_workers
+    return len(self.worker_devices) * self._num_workers
 
   # TODO(priyag): Delete this once all strategies use global batch size.
   @property

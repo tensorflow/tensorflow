@@ -91,9 +91,9 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       result = self.evaluate(get_next())
 
   def testBatchDatasetInvalidBatchSize(self):
-    dataset = (dataset_ops.Dataset.range(10).batch(0))
-    self.assertDatasetProduces(
-        dataset, expected_error=(errors.InvalidArgumentError, ''))
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = (dataset_ops.Dataset.range(10).batch(0))
+      self.evaluate(dataset._variant_tensor)
 
   def testBatchSparse(self):
 

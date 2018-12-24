@@ -127,7 +127,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCustomCall:
@@ -174,7 +174,7 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
   ShapeUtil::ForEachSubshape(
       hlo->shape(),
       [&output_rank](const Shape& subshape, const ShapeIndex& shape_index) {
-        if (ShapeUtil::IsArray(subshape)) {
+        if (subshape.IsArray()) {
           output_rank = std::max(output_rank, ShapeUtil::TrueRank(subshape));
         }
       });
@@ -274,7 +274,7 @@ InstructionFusion::ComputeGloballyUnfusible(
         ShapeUtil::ForEachSubshape(
             shape,
             [&size](const Shape& subshape, const ShapeIndex& shape_index) {
-              if (ShapeUtil::IsArray(subshape)) {
+              if (subshape.IsArray()) {
                 size += ShapeUtil::ElementsIn(subshape);
               }
             });

@@ -1672,7 +1672,7 @@ class _OutfeedHostCall(object):
               'Exception while calling %s: %s. It is likely the tensors '
               '(%s[1]) do not match the '
               'function\'s arguments', name, e, name)
-          raise e
+          raise
     return ret
 
   def record(self, host_calls):
@@ -1778,9 +1778,22 @@ class _OutfeedHostCall(object):
             raise RuntimeError(
                 'All tensors outfed from TPU should preserve batch size '
                 'dimension, but got scalar {}'.format(dequeue_ops[i][0]))
-          # TODO(xiejw): Allow users to specify the axis for batch size
-          # dimension.
-          dequeue_ops[i] = array_ops.concat(dequeue_ops[i], axis=0)
+          # TODO(xiejw): Make the specification of the outfeed combinaton
+          # function more explicit and well-documented.  We may want to give the
+          # user the option of concatenating along any axis.
+          if (self._ctx.config.tpu_config.per_host_input_for_training is
+              tpu_config.InputPipelineConfig.BROADCAST):
+            # If the infeed is in BROADCAST mode (each core recieving the same
+            # input), then we assume that the cores also produce identical
+            # copies of the same output, and we simply take the output from
+            # the first core.  This mode is used by Mesh-TensorFlow.
+            with ops.control_dependencies(dequeue_ops[i]):
+              dequeue_ops[i] = array_ops.identity(dequeue_ops[i][0])
+          else:
+            # Assume that the input has been batch-split and that axis 0 of the
+            # output tensors represents the batch size.  Concatenate along
+            # the axis 0 to re-combine the batch.
+            dequeue_ops[i] = array_ops.concat(dequeue_ops[i], axis=0)
 
         if self._tensor_keys[name] is not None:
           # The user-provided eval_metrics[1] is a dict.
@@ -1792,7 +1805,7 @@ class _OutfeedHostCall(object):
                 'Exception while calling %s: %s. It is likely the tensors '
                 '(%s[1]) do not match the '
                 'function\'s arguments', name, e, name)
-            raise e
+            raise
         else:
           ret[name] = self._host_fns[name](*dequeue_ops)
 

@@ -39,20 +39,13 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteDelegate* delegate,
 class KernelTest : public testing::FlexModelTest {
  public:
   KernelTest() {
-    CHECK(DelegateData::Create(&delegate_data_).ok());
+    CHECK(delegate_data_.Prepare(tensorflow::SessionOptions{}).ok());
     interpreter_.reset(new Interpreter(&error_reporter_));
-  }
-
-  ~KernelTest() override {
-    // The data needs to be released before the interpreter because the
-    // interpreter references the data.
-    delegate_data_.reset();
-    interpreter_.reset();
   }
 
   template <typename T>
   void ConfigureDelegate(T prepare_function) {
-    delegate_.data_ = delegate_data_.get();
+    delegate_.data_ = &delegate_data_;
     delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
     delegate_.FreeBufferHandle = nullptr;
     delegate_.Prepare = prepare_function;
@@ -71,7 +64,7 @@ class KernelTest : public testing::FlexModelTest {
   }
 
  private:
-  std::unique_ptr<DelegateData> delegate_data_;
+  DelegateData delegate_data_;
   TfLiteDelegate delegate_;
 };
 

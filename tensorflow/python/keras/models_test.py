@@ -249,6 +249,154 @@ class TestModelCloning(test.TestCase):
       self.assertFalse(has_placeholder)
 
 
+class TestModelCloningLayerPreserveWeights(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def test_clone_sequential_model(self):
+    with self.cached_session():
+      val_a = np.random.random((10, 4))
+      val_out = np.random.random((10, 4))
+
+      model = sequential_model(False)
+
+    # Everything should work in a new session.
+    keras.backend.clear_session()
+
+    with self.cached_session():
+      # With placeholder creation
+      new_model = keras.models._clone_sequential_model(
+          model, share_weights=True)
+      # update ops from batch norm needs to be included
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
+      new_model.compile('rmsprop', 'mse')
+      new_model.train_on_batch(val_a, val_out)
+
+      # On top of new tensor
+      input_a = keras.Input(shape=(4,))
+      new_model = keras.models._clone_sequential_model(
+          model, input_tensors=input_a, share_weights=True)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
+      new_model.compile('rmsprop', 'mse')
+      new_model.train_on_batch(val_a, val_out)
+
+      # On top of new, non-Keras tensor
+      input_a = keras.backend.variable(val_a)
+      new_model = keras.models._clone_sequential_model(
+          model, input_tensors=input_a, share_weights=True)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
+      new_model.compile('rmsprop', 'mse')
+      new_model.train_on_batch(None, val_out)
+
+  @test_util.run_deprecated_v1
+  def test_clone_sequential_model_input_layer(self):
+
+    @test_util.run_deprecated_v1
+    def test_input_layer(include_inputs):
+      with self.cached_session():
+        val_a = np.random.random((10, 4))
+        model = sequential_model(include_inputs, include_inputs)
+        # Sanity check
+        self.assertEqual(
+            isinstance(model._layers[0], keras.layers.InputLayer),
+            include_inputs)
+        self.assertEqual(model._is_graph_network, include_inputs)
+
+      keras.backend.clear_session()
+      with self.cached_session():
+        # With placeholder creation -- clone model should have an InputLayer
+        # if the original model has one.
+        new_model = keras.models._clone_sequential_model(
+            model, share_weights=True)
+        self.assertEqual(
+            isinstance(new_model._layers[0], keras.layers.InputLayer),
+            include_inputs)
+        self.assertEqual(new_model._is_graph_network, model._is_graph_network)
+
+        # On top of new tensor  -- clone model should always have an InputLayer.
+        input_a = keras.Input(shape=(4,))
+        new_model = keras.models._clone_sequential_model(
+            model, input_tensors=input_a, share_weights=True)
+        self.assertIsInstance(new_model._layers[0], keras.layers.InputLayer)
+        self.assertTrue(new_model._is_graph_network)
+
+        # On top of new, non-Keras tensor  -- clone model should always have an
+        # InputLayer.
+        input_a = keras.backend.variable(val_a)
+        new_model = keras.models._clone_sequential_model(
+            model, input_tensors=input_a, share_weights=True)
+        self.assertIsInstance(new_model._layers[0], keras.layers.InputLayer)
+        self.assertTrue(new_model._is_graph_network)
+
+    test_input_layer(True)
+    test_input_layer(False)
+
+  @test_util.run_deprecated_v1
+  def test_clone_functional_model(self):
+    with self.cached_session():
+      val_a = np.random.random((10, 4))
+      val_b = np.random.random((10, 4))
+      val_out = np.random.random((10, 4))
+
+      input_a = keras.Input(shape=(4,))
+      input_b = keras.Input(shape=(4,))
+      dense_1 = keras.layers.Dense(4,)
+      dense_2 = keras.layers.Dense(4,)
+
+      x_a = dense_1(input_a)
+      x_a = keras.layers.Dropout(0.5)(x_a)
+      x_a = keras.layers.BatchNormalization()(x_a)
+      x_b = dense_1(input_b)
+      x_a = dense_2(x_a)
+      outputs = keras.layers.add([x_a, x_b])
+      model = keras.models.Model([input_a, input_b], outputs)
+
+    # Everything should work in a new session.
+    keras.backend.clear_session()
+
+    with self.cached_session():
+      # With placeholder creation
+      new_model = keras.models._clone_functional_model(
+          model, share_weights=True)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
+      new_model.compile('rmsprop', 'mse')
+      new_model.train_on_batch([val_a, val_b], val_out)
+
+      # On top of new tensors
+      input_a = keras.Input(shape=(4,), name='a')
+      input_b = keras.Input(shape=(4,), name='b')
+      new_model = keras.models._clone_functional_model(
+          model, input_tensors=[input_a, input_b], share_weights=True)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
+      new_model.compile('rmsprop', 'mse')
+      new_model.train_on_batch([val_a, val_b], val_out)
+
+      # On top of new, non-Keras tensors
+      input_a = keras.backend.variable(val_a)
+      input_b = keras.backend.variable(val_b)
+      new_model = keras.models._clone_functional_model(
+          model, input_tensors=[input_a, input_b], share_weights=True)
+      self.assertEqual(len(new_model.get_updates_for(new_model.inputs)), 2)
+      new_model.compile('rmsprop', 'mse')
+      new_model.train_on_batch(None, val_out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_clone_functional_model_with_masking(self):
+    with self.cached_session():
+      x = np.array([[[1], [1]], [[0], [0]]])
+      inputs = keras.Input((2, 1))
+      outputs = keras.layers.Masking(mask_value=0)(inputs)
+      outputs = keras.layers.TimeDistributed(
+          keras.layers.Dense(1, kernel_initializer='one'))(outputs)
+      model = keras.Model(inputs, outputs)
+
+      model = keras.models._clone_functional_model(
+          model, share_weights=True)
+      model.compile(loss='mse', optimizer=adam.AdamOptimizer(0.01))
+      y = np.array([[[1], [1]], [[1], [1]]])
+      loss = model.train_on_batch(x, y)
+      self.assertEqual(float(loss), 0.)
+
+
 def _has_placeholder(graph):
   ops_types = [op.type for op in graph.get_operations()]
   return any('Placeholder' in s for s in ops_types)
@@ -482,6 +630,10 @@ class TestCloneAndBuildModel(test.TestCase):
 
   def test_replace_keras_optimizer_iterations_variable(self):
     self.assert_optimizer_iterations_increases('adam')
+
+  def test_replace_keras_optimizer_v2_iterations_variable(self):
+    self.assert_optimizer_iterations_increases(
+        keras.optimizer_v2.adam.Adam(0.01))
 
   def test_clone_and_build_sequential_model_without_inputs_defined(self):
     with self.cached_session():

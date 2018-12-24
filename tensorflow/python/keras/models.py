@@ -31,7 +31,9 @@ from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
+
 
 # API entries importable from `keras.models`:
 Model = training.Model  # pylint: disable=invalid-name
@@ -43,7 +45,11 @@ model_from_yaml = saving.model_from_yaml
 model_from_json = saving.model_from_json
 
 
-def _clone_functional_model(model, input_tensors=None):
+def _clone_layer(layer):
+  return layer.__class__.from_config(layer.get_config())
+
+
+def _clone_functional_model(model, input_tensors=None, share_weights=False):
   """Clone a functional `Model` instance.
 
   Model cloning is similar to calling a model on new inputs,
@@ -55,6 +61,11 @@ def _clone_functional_model(model, input_tensors=None):
       input_tensors: optional list of input tensors
           to build the model upon. If not provided,
           placeholders will be created.
+      share_weights: flag to enable sharing of non-input layers between the
+          cloned and original model. Note this still clones the input layers.
+          This is required when we create a per-replica copy of the model with
+          distribution strategy; we want the weights to be shared but still
+          feed inputs separately so we create new input layers.
 
   Returns:
       An instance of `Model` reproducing the behavior
@@ -88,15 +99,14 @@ def _clone_functional_model(model, input_tensors=None):
       # Cache newly created input layer.
       newly_created_input_layer = input_tensor._keras_history[0]
       layer_map[layer] = newly_created_input_layer
+
     for original_input_layer, cloned_input_layer in zip(model._input_layers,
                                                         input_layers):
       layer_map[original_input_layer] = cloned_input_layer
   else:
     # Make sure that all input tensors come from a Keras layer.
     # If tensor comes from an input layer: cache the input layer.
-    if isinstance(input_tensors, tuple):
-      input_tensors = list(input_tensors)
-    input_tensors = generic_utils.to_list(input_tensors)
+    input_tensors = nest.flatten(input_tensors)
     input_tensors_ = []
     for i in range(len(input_tensors)):
       input_tensor = input_tensors[i]
@@ -105,6 +115,7 @@ def _clone_functional_model(model, input_tensors=None):
         name = original_input_layer.name
         input_tensor = Input(tensor=input_tensor,
                              name='input_wrapper_for_' + name)
+
         input_tensors_.append(input_tensor)
         # Cache newly created input layer.
         newly_created_input_layer = input_tensor._keras_history[0]
@@ -127,10 +138,11 @@ def _clone_functional_model(model, input_tensors=None):
 
       # Get or create layer.
       if layer not in layer_map:
-        # Clone layer.
-        new_layer = layer.__class__.from_config(layer.get_config())
-        layer_map[layer] = new_layer
-        layer = new_layer
+        if not share_weights:
+          # Clone layer.
+          new_layer = _clone_layer(layer)
+          layer_map[layer] = new_layer
+          layer = new_layer
       else:
         # Reuse previously cloned layer.
         layer = layer_map[layer]
@@ -138,34 +150,18 @@ def _clone_functional_model(model, input_tensors=None):
         if isinstance(layer, InputLayer):
           continue
 
-      # Gather inputs to call the new layer.
-      reference_input_tensors = node.input_tensors
-      reference_output_tensors = node.output_tensors
-
       # If all previous input tensors are available in tensor_map,
       # then call node.inbound_layer on them.
-      computed_tensors = []
-      for x in reference_input_tensors:
-        if x in tensor_map:
-          computed_tensors.append(tensor_map[x])
-
-      if len(computed_tensors) == len(reference_input_tensors):
+      if all(
+          tensor in tensor_map for tensor in nest.flatten(node.input_tensors)):
+        computed_tensors = nest.map_structure(lambda t: tensor_map[t],
+                                              node.input_tensors)
         # Call layer.
-        if node.arguments:
-          kwargs = node.arguments
-        else:
-          kwargs = {}
-        if len(computed_tensors) == 1:
-          computed_tensor = computed_tensors[0]
-          output_tensors = generic_utils.to_list(layer(computed_tensor,
-                                                       **kwargs))
-          computed_tensors = [computed_tensor]
-        else:
-          computed_tensors = computed_tensors
-          output_tensors = generic_utils.to_list(layer(computed_tensors,
-                                                       **kwargs))
+        kwargs = node.arguments or {}
+        output_tensors = layer(computed_tensors, **kwargs)
 
-        for x, y in zip(reference_output_tensors, output_tensors):
+        for x, y in zip(
+            nest.flatten(node.output_tensors), nest.flatten(output_tensors)):
           tensor_map[x] = y
 
   # Check that we did compute the model outputs,
@@ -174,10 +170,13 @@ def _clone_functional_model(model, input_tensors=None):
   for x in model.outputs:
     assert x in tensor_map, 'Could not compute output ' + str(x)
     output_tensors.append(tensor_map[x])
+
+  input_tensors = nest.pack_sequence_as(model._nested_inputs, input_tensors)
+  output_tensors = nest.pack_sequence_as(model._nested_outputs, output_tensors)
   return Model(input_tensors, output_tensors, name=model.name)
 
 
-def _clone_sequential_model(model, input_tensors=None):
+def _clone_sequential_model(model, input_tensors=None, share_weights=False):
   """Clone a `Sequential` model instance.
 
   Model cloning is similar to calling a model on new inputs,
@@ -189,6 +188,11 @@ def _clone_sequential_model(model, input_tensors=None):
       input_tensors: optional list of input tensors
           to build the model upon. If not provided,
           placeholders will be created.
+      share_weights: flag to enable sharing of non-input layers between the
+          cloned and original model. Note this still clones the input layers.
+          This is required when we create a per-replica copy of the model with
+          distribution strategy; we want the weights to be shared but still
+          feed inputs separately so we create new input layers.
 
   Returns:
       An instance of `Sequential` reproducing the behavior
@@ -203,23 +207,28 @@ def _clone_sequential_model(model, input_tensors=None):
                      'to be a `Sequential` model instance, '
                      'but got:', model)
 
-  def clone(layer):
-    return layer.__class__.from_config(layer.get_config())
-
   # Use model._layers to ensure that all layers are cloned. The model's layers
   # property will exclude the initial InputLayer (if it exists) in the model,
   # resulting in a different Sequential model structure.
   if input_tensors is None:
-    layers = [clone(layer) for layer in model._layers]
+    if share_weights:
+      # In preserve weights case we still want the input layers to be cloned.
+      layers = []
+      for layer in model._layers:
+        if isinstance(layer, InputLayer):
+          layers.append(_clone_layer(layer))
+        else:
+          layers.append(layer)
+    else:
+      layers = [_clone_layer(layer) for layer in model._layers]
     return Sequential(layers=layers, name=model.name)
   else:
     # If input tensors are provided, the original model's InputLayer is
     # overwritten with a different InputLayer.
     layers = [
-        clone(layer)
-        for layer in model._layers
-        if not isinstance(layer, InputLayer)
-    ]
+        layer for layer in model._layers if not isinstance(layer, InputLayer)]
+    if not share_weights:
+      layers = [_clone_layer(layer) for layer in layers]
     if len(generic_utils.to_list(input_tensors)) != 1:
       raise ValueError('To clone a `Sequential` model, we expect '
                        ' at most one tensor '
@@ -242,7 +251,7 @@ def _clone_sequential_model(model, input_tensors=None):
     return Sequential(layers=[input_layer] + layers, name=model.name)
 
 
-@tf_export('keras.models.clone_model')
+@keras_export('keras.models.clone_model')
 def clone_model(model, input_tensors=None):
   """Clone any `Model` instance.
 

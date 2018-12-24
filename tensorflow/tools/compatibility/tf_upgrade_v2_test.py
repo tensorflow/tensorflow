@@ -529,6 +529,17 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testEstimatorInputs(self):
+    text = "tf.estimator.inputs.numpy_input_fn(0)"
+    expected_text = "tf.compat.v1.estimator.inputs.numpy_input_fn(0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.estimator.inputs.pandas_input_fn(0)"
+    expected_text = "tf.compat.v1.estimator.inputs.pandas_input_fn(0)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
   def testBatchToSpace(self):
     text = "tf.batch_to_space_nd(input, block_shape, crops, name)"
     expected_text = "tf.batch_to_space(input, block_shape, crops, name)"
@@ -723,6 +734,30 @@ tf.print('abc')
         "tf.sparse.split(sp_input=sp_input, num_split=num_split, "
         "name=name, axis=axis)")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+  def testBatchGather(self):
+    text = "tf.batch_gather(foo, bar)"
+    expected_text = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.batch_gather(params=foo, indices=bar)"
+    expected_text = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.batch_gather  (  foo, bar)"
+    expected_text = "tf.gather  (batch_dims=-1,   params=foo, indices=bar)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "(tf.batch_gather\n(foo, bar))"
+    expected_text = "(tf.gather\n(params=foo, indices=bar))"
+    expected_errors = ["test.py:1: Unable to add keyword argument batch_dims=-1"
+                       " to tf.batch_gather; please add it manually."]
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(errors, expected_errors)
     self.assertEqual(new_text, expected_text)
 
 

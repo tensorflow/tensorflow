@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "EnqueueInQueueDataset"
+  endpoint {
+    name: "data.EnqueueInQueueDataset"
+  }
+}

@@ -239,7 +239,7 @@ def unicode_split(input,
                   name=None):
   r"""Splits each string in `input` into a sequence of Unicode code points.
 
-  `result[i1...iN, j]` is the substring of `input[i1...iN] that encodes its
+  `result[i1...iN, j]` is the substring of `input[i1...iN]` that encodes its
   `j`th character, when decoded using `input_encoding`.
 
   Args:
@@ -293,7 +293,7 @@ def unicode_split_with_offsets(input,
 
   Returns a tuple `(chars, start_offsets)` where:
 
-  * `chars[i1...iN, j]` is the substring of `input[i1...iN] that encodes its
+  * `chars[i1...iN, j]` is the substring of `input[i1...iN]` that encodes its
     `j`th character, when decoded using `input_encoding`.
   * `start_offsets[i1...iN, j]` is the start byte offset for the `j`th
     character in `input[i1...iN]`, when decoded using `input_encoding`.

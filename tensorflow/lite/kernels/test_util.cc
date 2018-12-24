@@ -119,10 +119,10 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
   CHECK(interpreter_ != nullptr);
 
-  int i = 0;
-  for (const auto& shape : input_shapes) {
-    int input_idx = interpreter_->inputs()[i++];
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    const int input_idx = interpreter_->inputs()[i];
     if (input_idx == kOptionalTensor) continue;
+    const auto& shape = input_shapes[i];
     if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
   }
