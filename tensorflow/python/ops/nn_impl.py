@@ -1380,6 +1380,7 @@ def _compute_sampled_logits(weights,
     # weights shape is [num_classes, dim]
     all_w = embedding_ops.embedding_lookup(
         weights, all_ids, partition_strategy=partition_strategy)
+    all_w = all_w if all_w.dtype == inputs.dtype else math_ops.cast(all_w, inputs.dtype)
 
     # true_w shape is [batch_size * num_true, dim]
     true_w = array_ops.slice(all_w, [0, 0],
@@ -1397,6 +1398,7 @@ def _compute_sampled_logits(weights,
     # add the biases to the true and sampled logits.
     all_b = embedding_ops.embedding_lookup(
         biases, all_ids, partition_strategy=partition_strategy)
+    all_b = all_b if all_b.dtype == inputs.dtype else math_ops.cast(all_b, inputs.dtype)
     # true_b is a [batch_size * num_true] tensor
     # sampled_b is a [num_sampled] float tensor
     true_b = array_ops.slice(all_b, [0], array_ops.shape(labels_flat))
