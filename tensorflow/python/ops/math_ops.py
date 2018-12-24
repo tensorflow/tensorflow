@@ -3634,3 +3634,8 @@ def polyval(coeffs, x, name=None):
     for c in coeffs[1:]:
       p = c + p * x
     return p
+
+
+tf_export(v1=["quantized_add"])(gen_math_ops.quantized_add)
+tf_export(v1=["quantized_mat_mul"])(gen_math_ops.quantized_mat_mul)
+tf_export(v1=["quantized_mul"])(gen_math_ops.quantized_mul)
