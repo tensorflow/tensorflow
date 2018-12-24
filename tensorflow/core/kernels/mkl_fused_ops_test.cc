@@ -59,6 +59,23 @@ class ConvMklToTF : public OpsTestBase {
     *output = *GetOutput(0);
   }
 
+  // Runs a Tensorflow graph defined by the root scope, and fetches the result
+  // of 'fetch' node into the output Tensor.
+  void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
+                   Tensor* output) {
+    tensorflow::GraphDef graph;
+    TF_ASSERT_OK(root.ToGraphDef(&graph));
+
+    std::unique_ptr<tensorflow::Session> session(
+        tensorflow::NewSession(tensorflow::SessionOptions()));
+    TF_ASSERT_OK(session->Create(graph));
+
+    std::vector<Tensor> unfused_tensors;
+    TF_ASSERT_OK(session->Run({}, {fetch}, {}, &unfused_tensors));
+
+    *output = unfused_tensors[0];
+  }
+
   void ConvertAndCompare(DataType dtype, const Tensor& tensor,
                          const Tensor& mkl_meta_tensor,
                          const Tensor& expected) {
@@ -83,23 +100,6 @@ class MklFusedConv2DOpTest : public OpsTestBase {
       std::function<void(const Tensor& input_data, const Tensor& filter_data,
                          const Tensor& bias_data, Tensor* out)>;
 
-  // Runs a Tensorflow graph defined by the root scope, and fetches the result
-  // of 'fetch' node into the output Tensor.
-  void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
-                   Tensor* output) {
-    tensorflow::GraphDef graph;
-    TF_ASSERT_OK(root.ToGraphDef(&graph));
-
-    std::unique_ptr<tensorflow::Session> session(
-        tensorflow::NewSession(tensorflow::SessionOptions()));
-    TF_ASSERT_OK(session->Create(graph));
-
-    std::vector<Tensor> unfused_tensors;
-    TF_ASSERT_OK(session->Run({}, {fetch}, {}, &unfused_tensors));
-
-    *output = unfused_tensors[0];
-  }
-
   void RunConv2DWithBias(const Tensor& input_data, const Tensor& filter_data,
                          const Tensor& bias_data, Tensor* output,
                          int stride = 1) {
@@ -115,7 +115,8 @@ class MklFusedConv2DOpTest : public OpsTestBase {
         root.WithOpName("with_bias"), conv,
         ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
 
-    RunAndFetch(root, "with_bias", output);
+    ConvMklToTF<T> conv_comp;
+    conv_comp.RunAndFetch(root, "with_bias", output);
   }
 
   void RunConv2DWithBiasAndRelu(const Tensor& input_data,
@@ -136,7 +137,8 @@ class MklFusedConv2DOpTest : public OpsTestBase {
 
     auto with_relu = ops::Relu(root.WithOpName("with_relu"), with_bias);
 
-    RunAndFetch(root, "with_relu", output);
+    ConvMklToTF<T> conv_comp;
+    conv_comp.RunAndFetch(root, "with_relu", output);
   }
 
   void RunMklFusedConv2DOp(const Tensor& image, const Tensor& filter,
@@ -218,18 +220,18 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                             int depth = kDepth, int image_width = kImageWidth,
                             int image_height = kImageHeight,
                             int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBias(input_data, filter_data, bias_data, out);
-        };
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunConv2DWithBias(input_data, filter_data, bias_data, out);
+    };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
-                              out);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
+                          out);
+    };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
                              image_batch_count, filter_size, filter_count,
@@ -243,18 +245,18 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                                    int image_width = kImageWidth,
                                    int image_height = kImageHeight,
                                    int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out);
-        };
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out);
+    };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklFusedConv2DOp(input_data, filter_data, {bias_data},
-                              {"BiasAdd", "Relu"}, out);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DOp(input_data, filter_data, {bias_data},
+                          {"BiasAdd", "Relu"}, out);
+    };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
                              image_batch_count, filter_size, filter_count,
@@ -401,5 +403,262 @@ TEST_F(FusedPadConvOpTest, PaddingConvTestNchw) {
 
   Run<float>(DT_FLOAT, image, filter, padding, expected, "NCHW");
 }
+
+// Testing fusion of pad and fusedconv2d
+
+template <typename T>
+class MklPadWithFusedConv2DOpTest : public OpsTestBase {
+ protected:
+  static constexpr int kDepth = 3;
+  static constexpr int kImageWidth = 30;
+  static constexpr int kImageHeight = 28;
+  static constexpr int kImageBatchCount = 8;
+
+  // 0: top pad, 1 bottom pad, 2 left pad, 3 right pad
+  int padding_list[4];
+
+  using BiasAddGraphRunner =
+      std::function<void(const Tensor& input_data, const Tensor& filter_data,
+                         const Tensor& bias_data, Tensor* out)>;
+
+  void VerifyBiasAddTensorsNear(int depth, int image_width, int image_height,
+                                int image_batch_count, int filter_size,
+                                int filter_count,
+                                const BiasAddGraphRunner& run_default,
+                                const BiasAddGraphRunner& run_fused) {
+    DataType dtype = DataTypeToEnum<T>::v();
+
+    Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
+    image.flat<T>() = image.flat<T>().setRandom();
+
+    Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
+    filter.flat<T>() = filter.flat<T>().setRandom();
+
+    const int bias_size = filter_count;
+    Tensor bias(dtype, {bias_size});
+    bias.flat<T>() = bias.flat<T>().setRandom();
+
+    Tensor conv_2d;
+    Tensor fused_conv_2d;
+
+    run_default(image, filter, bias, &conv_2d);
+    run_fused(image, filter, bias, &fused_conv_2d);
+
+    ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
+    ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
+
+    test::ExpectClose(conv_2d, fused_conv_2d);
+  }
+
+  // Verifies that computing Pad+Conv2D+BiasAdd in a graph is identical to
+  // FusedConv2D.
+  void VerifyConv2DWithBiasAndPad(int filter_size, int filter_count,
+                                  int depth = kDepth,
+                                  int image_width = kImageWidth,
+                                  int image_height = kImageHeight,
+                                  int image_batch_count = kImageBatchCount) {
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DWithPadAndBias(input_data, filter_data, bias_data, out);
+    };
+
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
+                                 {"BiasAdd"}, out);
+    };
+
+    VerifyBiasAddTensorsNear(depth, image_width, image_height,
+                             image_batch_count, filter_size, filter_count,
+                             run_default, run_fused);
+  }
+
+  // Verifies that computing Pad+Conv2D+BiasAdd+Relu in a graph is identical to
+  // FusedConv2D.
+  void VerifyConv2DWithBiasReluAndPad(
+      int filter_size, int filter_count, int depth = kDepth,
+      int image_width = kImageWidth, int image_height = kImageHeight,
+      int image_batch_count = kImageBatchCount) {
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DWithPadAndBiasRelu(input_data, filter_data, bias_data,
+                                          out);
+    };
+
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DWithPadOp(input_data, filter_data, {bias_data},
+                                 {"BiasAdd", "Relu"}, out);
+    };
+
+    VerifyBiasAddTensorsNear(depth, image_width, image_height,
+                             image_batch_count, filter_size, filter_count,
+                             run_default, run_fused);
+  }
+
+  void RunMklFusedConv2DWithPadAndBias(const Tensor& input_data,
+                                       const Tensor& filter_data,
+                                       const Tensor& bias_data, Tensor* output,
+                                       int stride = 1) {
+    auto root = tensorflow::Scope::NewRootScope();
+
+    // As FusedConv2D only support NHWC format, so here use NHWC format.
+    auto padding = ops::Const(root.WithOpName("padding"),
+                              {0, 0, padding_list[0], padding_list[1],
+                               padding_list[2], padding_list[3], 0, 0},
+                              {4, 2});
+    auto pad = ops::Pad(
+        root.WithOpName("pad"),
+        ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
+        padding);
+
+    auto conv = ops::Conv2D(
+        root.WithOpName("conv"), pad,
+        ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
+        {1, stride, stride, 1}, "VALID");
+
+    auto with_bias = ops::BiasAdd(
+        root.WithOpName("with_bias"), conv,
+        ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
+
+    ConvMklToTF<T> conv_comp;
+    conv_comp.RunAndFetch(root, "with_bias", output);
+  }
+
+  void RunMklFusedConv2DWithPadAndBiasRelu(const Tensor& input_data,
+                                           const Tensor& filter_data,
+                                           const Tensor& bias_data,
+                                           Tensor* output, int stride = 1) {
+    auto root = tensorflow::Scope::NewRootScope();
+
+    // As FusedConv2D only support NHWC format, so here use NHWC format.
+    auto padding = ops::Const(root.WithOpName("padding"),
+                              {0, 0, padding_list[0], padding_list[1],
+                               padding_list[2], padding_list[3], 0, 0},
+                              {4, 2});
+    auto pad = ops::Pad(
+        root.WithOpName("pad"),
+        ops::Const(root.WithOpName("input"), Input::Initializer(input_data)),
+        padding);
+
+    auto conv = ops::Conv2D(
+        root.WithOpName("conv"), pad,
+        ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
+        {1, stride, stride, 1}, "VALID");
+
+    auto with_bias = ops::BiasAdd(
+        root.WithOpName("with_bias"), conv,
+        ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
+
+    auto with_relu = ops::Relu(root.WithOpName("with_relu"), with_bias);
+
+    ConvMklToTF<T> conv_comp;
+    conv_comp.RunAndFetch(root, "with_relu", output);
+  }
+
+  void RunMklFusedConv2DWithPadOp(const Tensor& image, const Tensor& filter,
+                                  const std::vector<Tensor>& args,
+                                  const std::vector<string>& fused_ops,
+                                  Tensor* output, int stride = 1) {
+    DataType dtype = DataTypeToEnum<T>::v();
+    const int num_args = static_cast<int>(args.size());
+    Tensor padding(DT_INT32, {4, 2});
+    test::FillValues<int32>(&padding, {0, 0, padding_list[0], padding_list[1],
+                                       padding_list[2], padding_list[3], 0, 0});
+
+    TF_EXPECT_OK(NodeDefBuilder("pad_fused_conv_op", "_MklPadWithFusedConv2D")
+                     .Input(FakeInput(dtype))
+                     .Input(FakeInput(dtype))
+                     .Attr("num_args", num_args)
+                     .Input(FakeInput(num_args, dtype))
+                     .Input(FakeInput(DT_INT32))
+                     .Input(FakeInput(DT_UINT8))
+                     .Input(FakeInput(DT_UINT8))
+                     .Input(FakeInput(num_args, DT_UINT8))
+                     .Input(FakeInput(DT_UINT8))
+                     .Attr("T", dtype)
+                     .Attr("strides", {1, stride, stride, 1})
+                     .Attr("padding", "VALID")
+                     .Attr("fused_ops", fused_ops)
+                     .Attr("_kernel", "MklOp")
+                     .Finalize(node_def()));
+
+    TF_EXPECT_OK(InitOp());
+
+    AddInputFromArray<T>(image.shape(), image.flat<T>());
+    AddInputFromArray<T>(filter.shape(), filter.flat<T>());
+    for (const Tensor& arg : args)
+      AddInputFromArray<T>(arg.shape(), arg.flat<T>());
+    AddInputFromArray<int32>(padding.shape(), padding.flat<int32>());
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    for (const Tensor& arg : args)
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    TF_ASSERT_OK(RunOpKernel());
+
+    // Compare output to expected results
+    const Tensor& output_tensor = *GetOutput(0);
+    // Index 2 will need to be changed if the number of outputs produced
+    // by MklConv2D change.
+    const Tensor& output_meta_tensor = *GetOutput(2);
+    ConvMklToTF<T> conv_comp;
+    conv_comp.PerformConversion(dtype, output_tensor, output_meta_tensor,
+                                output);
+  }
+
+ public:
+  void SetPaddingList(int top, int bottom, int left, int right) {
+    padding_list[0] = top;
+    padding_list[1] = bottom;
+    padding_list[2] = left;
+    padding_list[3] = right;
+  }
+};
+
+TYPED_TEST_CASE_P(MklPadWithFusedConv2DOpTest);
+
+TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasAndRoundPad) {
+  const int filter_size = 1;
+  const int filter_count = 12;
+  this->SetPaddingList(2, 2, 1, 1);
+  this->VerifyConv2DWithBiasAndPad(filter_size, filter_count);
+}
+
+TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasAndPartialPad) {
+  const int filter_size = 1;
+  const int filter_count = 12;
+  this->SetPaddingList(4, 0, 2, 0);
+  this->VerifyConv2DWithBiasAndPad(filter_size, filter_count);
+}
+
+TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasReluAndRoundPad) {
+  const int filter_size = 1;
+  const int filter_count = 12;
+  this->SetPaddingList(2, 2, 1, 1);
+  this->VerifyConv2DWithBiasReluAndPad(filter_size, filter_count);
+}
+
+TYPED_TEST_P(MklPadWithFusedConv2DOpTest, WithBiasReluAndPartialPad) {
+  const int filter_size = 1;
+  const int filter_count = 12;
+  this->SetPaddingList(4, 0, 2, 0);
+  this->VerifyConv2DWithBiasReluAndPad(filter_size, filter_count);
+}
+
+REGISTER_TYPED_TEST_CASE_P(MklPadWithFusedConv2DOpTest,  //
+                           WithBiasAndRoundPad,          //
+                           WithBiasAndPartialPad,        //
+                           WithBiasReluAndRoundPad,      //
+                           WithBiasReluAndPartialPad);
+
+using MklPadWithFusedConv2DDataTypes = ::testing::Types<float>;
+INSTANTIATE_TYPED_TEST_CASE_P(Test, MklPadWithFusedConv2DOpTest,
+                              MklPadWithFusedConv2DDataTypes);
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL
