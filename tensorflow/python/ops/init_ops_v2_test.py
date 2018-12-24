@@ -366,6 +366,8 @@ class OrthogonalInitializerTest(InitializersTest):
 
   @test_util.run_in_graph_and_eager_modes
   def testShapesValues(self):
+    if test.is_built_with_rocm():
+      self.skipTest('ROCm does not yet support QR for orthogonal init')
     for shape in [(10, 10), (10, 9, 8), (100, 5, 5), (50, 40), (40, 50)]:
       init = init_ops_v2.Orthogonal()
       tol = 1e-5
