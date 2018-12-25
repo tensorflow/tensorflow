@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.PriorityQueue;
 import java.util.Vector;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.Tensor;
 
 /** A classifier specialized to label images using TensorFlow. */
 public class TFLiteImageClassifier implements Classifier {
@@ -46,12 +47,16 @@ public class TFLiteImageClassifier implements Classifier {
   private Interpreter tfLite;
 
   /** Dimensions of inputs. */
-  private static final int DIM_BATCH_SIZE = 1;
+  private int[] inputTensorShape;
+  private int inputBatchSize = 1;
+  private int inputImageWidth = 224;
+  private int inputImageHeight = 224;
+  private int inputPixelChannels = 3;
 
-  private static final int DIM_PIXEL_SIZE = 3;
-
-  private static final int DIM_IMG_SIZE_X = 224;
-  private static final int DIM_IMG_SIZE_Y = 224;
+  public static int SHAPE_INDEX_BATCH_SIZE = 0;
+  public static int SHAPE_INDEX_IMAGE_WIDTH = 1;
+  public static int SHAPE_INDEX_IMAGE_HEIGHT = 2;
+  public static int SHAPE_INDEX_PIXEL_CHANNELS = 3;
 
   byte[][] labelProb;
 
@@ -79,11 +84,10 @@ public class TFLiteImageClassifier implements Classifier {
    * @param assetManager The asset manager to be used to load assets.
    * @param modelFilename The filepath of the model GraphDef protocol buffer.
    * @param labelFilename The filepath of label file for classes.
-   * @param inputSize The input size. A square image of inputSize x inputSize is assumed.
    * @throws IOException
    */
   public static Classifier create(
-      AssetManager assetManager, String modelFilename, String labelFilename, int inputSize) {
+      AssetManager assetManager, String modelFilename, String labelFilename) {
     TFLiteImageClassifier c = new TFLiteImageClassifier();
 
     // Read the label names into memory.
@@ -101,22 +105,29 @@ public class TFLiteImageClassifier implements Classifier {
       throw new RuntimeException("Problem reading label file!" , e);
     }
 
-    c.imgData =
-        ByteBuffer.allocateDirect(
-            DIM_BATCH_SIZE * DIM_IMG_SIZE_X * DIM_IMG_SIZE_Y * DIM_PIXEL_SIZE);
-
-    c.imgData.order(ByteOrder.nativeOrder());
     try {
       c.tfLite = new Interpreter(loadModelFile(assetManager, modelFilename));
+      Tensor inputTensor = c.tfLite.getInputTensor(0);
+      c.inputTensorShape = inputTensor.shape();
+
+      c.inputBatchSize = c.inputTensorShape[SHAPE_INDEX_BATCH_SIZE];
+      c.inputImageWidth = c.inputTensorShape[SHAPE_INDEX_IMAGE_WIDTH];
+      c.inputImageHeight = c.inputTensorShape[SHAPE_INDEX_IMAGE_HEIGHT];
+      c.inputPixelChannels = c.inputTensorShape[SHAPE_INDEX_PIXEL_CHANNELS];
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+
+    c.imgData =
+            ByteBuffer.allocateDirect(
+                    c.inputBatchSize * c.inputImageWidth * c.inputImageHeight * c.inputPixelChannels);
+    c.imgData.order(ByteOrder.nativeOrder());
 
     // The shape of the output is [N, NUM_CLASSES], where N is the batch size.
     Log.i(TAG, "Read " + c.labels.size() + " labels");
 
     // Pre-allocate buffers.
-    c.intValues = new int[inputSize * inputSize];
+    c.intValues = new int[c.inputImageWidth * c.inputImageHeight];
 
     c.labelProb = new byte[1][c.labels.size()];
 
@@ -133,8 +144,8 @@ public class TFLiteImageClassifier implements Classifier {
     // Convert the image to floating point.
     int pixel = 0;
     long startTime = SystemClock.uptimeMillis();
-    for (int i = 0; i < DIM_IMG_SIZE_X; ++i) {
-      for (int j = 0; j < DIM_IMG_SIZE_Y; ++j) {
+    for (int i = 0; i < inputImageHeight; ++i) {
+      for (int j = 0; j < inputImageWidth; ++j) {
         final int val = intValues[pixel++];
         imgData.put((byte) ((val >> 16) & 0xFF));
         imgData.put((byte) ((val >> 8) & 0xFF));
@@ -143,6 +154,11 @@ public class TFLiteImageClassifier implements Classifier {
     }
     long endTime = SystemClock.uptimeMillis();
     Log.d(TAG, "Timecost to put values into ByteBuffer: " + Long.toString(endTime - startTime));
+  }
+
+  @Override
+  public int[] getInputTensorShape() {
+    return inputTensorShape;
   }
 
   @Override

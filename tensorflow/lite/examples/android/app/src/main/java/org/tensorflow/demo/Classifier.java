@@ -97,6 +97,9 @@ public interface Classifier {
     }
   }
 
+  int[] getInputTensorShape();
+
+  // TODO(zaichang) move image recognition specific methods to a ImageClassifier interface
   List<Recognition> recognizeImage(Bitmap bitmap);
 
   void enableStatLogging(final boolean debug);

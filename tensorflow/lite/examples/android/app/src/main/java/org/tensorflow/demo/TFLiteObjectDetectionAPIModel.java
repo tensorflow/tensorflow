@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Vector;
 import org.tensorflow.demo.env.Logger;
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.Tensor;
 
 /**
  * Wrapper for frozen detection models trained using the Tensorflow Object Detection API:
@@ -53,7 +54,15 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
   // Number of threads in the java app
   private static final int NUM_THREADS = 4;
   // Config values.
-  private int inputSize;
+  private int[] inputTensorShape;
+  private int inputImageWidth;
+  private int inputImageHeight;
+
+  public static int SHAPE_INDEX_BATCH_SIZE = 0;
+  public static int SHAPE_INDEX_IMAGE_WIDTH = 1;
+  public static int SHAPE_INDEX_IMAGE_HEIGHT = 2;
+  public static int SHAPE_INDEX_PIXEL_CHANNELS = 3;
+
   // Pre-allocated buffers.
   private Vector<String> labels = new Vector<String>();
   private int[] intValues;
@@ -92,14 +101,12 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
    * @param assetManager The asset manager to be used to load assets.
    * @param modelFilename The filepath of the model GraphDef protocol buffer.
    * @param labelFilename The filepath of label file for classes.
-   * @param inputSize The size of image input
    * @param isQuantized Boolean representing model is quantized or not
    */
   public static Classifier create(
       final AssetManager assetManager,
       final String modelFilename,
       final String labelFilename,
-      final int inputSize,
       final boolean isQuantized)
       throws IOException {
     final TFLiteObjectDetectionAPIModel d = new TFLiteObjectDetectionAPIModel();
@@ -115,10 +122,12 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     }
     br.close();
 
-    d.inputSize = inputSize;
-
     try {
       d.tfLite = new Interpreter(loadModelFile(assetManager, modelFilename));
+      Tensor inputTensor = d.tfLite.getInputTensor(0);
+      d.inputTensorShape = inputTensor.shape();
+      d.inputImageWidth = d.inputTensorShape[SHAPE_INDEX_IMAGE_WIDTH];
+      d.inputImageHeight = d.inputTensorShape[SHAPE_INDEX_IMAGE_HEIGHT];
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -131,9 +140,11 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     } else {
       numBytesPerChannel = 4; // Floating point
     }
-    d.imgData = ByteBuffer.allocateDirect(1 * d.inputSize * d.inputSize * 3 * numBytesPerChannel);
+    final int batchSize = d.inputTensorShape[SHAPE_INDEX_BATCH_SIZE];
+    final int channels = d.inputTensorShape[SHAPE_INDEX_PIXEL_CHANNELS];
+    d.imgData = ByteBuffer.allocateDirect(batchSize * d.inputImageWidth * d.inputImageHeight * channels * numBytesPerChannel);
     d.imgData.order(ByteOrder.nativeOrder());
-    d.intValues = new int[d.inputSize * d.inputSize];
+    d.intValues = new int[d.inputImageWidth * d.inputImageHeight];
 
     d.tfLite.setNumThreads(NUM_THREADS);
     d.outputLocations = new float[1][NUM_DETECTIONS][4];
@@ -146,6 +157,11 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
   private TFLiteObjectDetectionAPIModel() {}
 
   @Override
+  public int[] getInputTensorShape() {
+    return inputTensorShape;
+  }
+
+  @Override
   public List<Recognition> recognizeImage(final Bitmap bitmap) {
     // Log this method so that it can be analyzed with systrace.
     Trace.beginSection("recognizeImage");
@@ -156,9 +172,9 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
 
     imgData.rewind();
-    for (int i = 0; i < inputSize; ++i) {
-      for (int j = 0; j < inputSize; ++j) {
-        int pixelValue = intValues[i * inputSize + j];
+    for (int i = 0; i < inputImageHeight; ++i) {
+      for (int j = 0; j < inputImageWidth; ++j) {
+        int pixelValue = intValues[i * inputImageWidth + j];
         if (isModelQuantized) {
           // Quantized model
           imgData.put((byte) ((pixelValue >> 16) & 0xFF));
@@ -199,10 +215,10 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     for (int i = 0; i < NUM_DETECTIONS; ++i) {
       final RectF detection =
           new RectF(
-              outputLocations[0][i][1] * inputSize,
-              outputLocations[0][i][0] * inputSize,
-              outputLocations[0][i][3] * inputSize,
-              outputLocations[0][i][2] * inputSize);
+              outputLocations[0][i][1] * inputImageWidth,
+              outputLocations[0][i][0] * inputImageHeight,
+              outputLocations[0][i][3] * inputImageWidth,
+              outputLocations[0][i][2] * inputImageHeight);
       // SSD Mobilenet V1 Model assumes class 0 is background class
       // in label file and class labels start from 1 to number_of_classes+1,
       // while outputClasses correspond to class index from 0 to number_of_classes

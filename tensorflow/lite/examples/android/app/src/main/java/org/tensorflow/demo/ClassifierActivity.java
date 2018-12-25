@@ -63,7 +63,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   // --input_node_names="Mul" \
   // --output_node_names="final_result" \
   // --input_binary=true
-  private static final int INPUT_SIZE = 224;
 
   private static final String MODEL_FILE = "mobilenet_v1_1.0_224_quant.tflite";
   private static final String LABEL_FILE = "labels_mobilenet_quant_v1_224.txt";
@@ -99,7 +98,9 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    classifier = TFLiteImageClassifier.create(getAssets(), MODEL_FILE, LABEL_FILE, INPUT_SIZE);
+    classifier = TFLiteImageClassifier.create(getAssets(), MODEL_FILE, LABEL_FILE);
+    final int inputWidth = classifier.getInputTensorShape()[TFLiteImageClassifier.SHAPE_INDEX_IMAGE_WIDTH];
+    final int inputHeight = classifier.getInputTensorShape()[TFLiteImageClassifier.SHAPE_INDEX_IMAGE_HEIGHT];
 
     previewWidth = size.getWidth();
     previewHeight = size.getHeight();
@@ -109,11 +110,11 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
     LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
     rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
-    croppedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Config.ARGB_8888);
+    croppedBitmap = Bitmap.createBitmap(inputWidth, inputHeight, Config.ARGB_8888);
 
     frameToCropTransform = ImageUtils.getTransformationMatrix(
         previewWidth, previewHeight,
-        INPUT_SIZE, INPUT_SIZE,
+        inputWidth, inputHeight,
         sensorOrientation, MAINTAIN_ASPECT);
 
     cropToFrameTransform = new Matrix();
