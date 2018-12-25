@@ -93,6 +93,5 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/keras/optimizer_v2:adamax_test_gpu \
     -//tensorflow/tools/api/tests:api_compatibility_test \
     -//tensorflow/python/training/checkpointable:util_xla_test_cpu \
-    -//tensorflow/python/training/checkpointable:util_xla_test_gpu \
     -//tensorflow/python/kernel_tests/signal:mfcc_ops_test \
     -//tensorflow/python/kernel_tests:self_adjoint_eig_op_test_gpu \
