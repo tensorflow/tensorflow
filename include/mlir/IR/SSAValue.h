@@ -37,6 +37,7 @@ enum class SSAValueKind {
   BBArgument,     // basic block argument
   InstResult,     // instruction result
   MLFuncArgument, // ML function argument
+  BlockArgument,  // Block argument
   StmtResult,     // statement result
   ForStmt,        // for statement induction variable
 };

@@ -25,16 +25,18 @@
 #include "mlir/IR/SSAValue.h"
 
 namespace mlir {
-class MLValue;
-class Statement;
-class MLFunction;
 class ForStmt;
+class MLValue;
+class MLFunction;
+class Statement;
+class StmtBlock;
 
 /// This enum contains all of the SSA value kinds that are valid in an ML
 /// function.  This should be kept as a proper subtype of SSAValueKind,
 /// including having all of the values of the enumerators align.
 enum class MLValueKind {
   MLFuncArgument = (int)SSAValueKind::MLFuncArgument,
+  BlockArgument = (int)SSAValueKind::BlockArgument,
   StmtResult = (int)SSAValueKind::StmtResult,
   ForStmt = (int)SSAValueKind::ForStmt,
 };
@@ -54,6 +56,7 @@ public:
   static bool classof(const SSAValue *value) {
     switch (value->getKind()) {
     case SSAValueKind::MLFuncArgument:
+    case SSAValueKind::BlockArgument:
     case SSAValueKind::StmtResult:
     case SSAValueKind::ForStmt:
       return true;
@@ -100,6 +103,33 @@ private:
   /// TODO: can encode this more efficiently to avoid the space hit of this
   /// through bitpacking shenanigans.
   MLFunction *const owner;
+};
+
+/// Block arguments are ML Values.
+class BlockArgument : public MLValue {
+public:
+  static bool classof(const SSAValue *value) {
+    return value->getKind() == SSAValueKind::BlockArgument;
+  }
+
+  /// Return the function that this argument is defined in.
+  MLFunction *getFunction();
+  const MLFunction *getFunction() const {
+    return const_cast<BlockArgument *>(this)->getFunction();
+  }
+
+  StmtBlock *getOwner() { return owner; }
+  const StmtBlock *getOwner() const { return owner; }
+
+private:
+  friend class StmtBlock; // For access to private constructor.
+  BlockArgument(Type type, StmtBlock *owner)
+      : MLValue(MLValueKind::BlockArgument, type), owner(owner) {}
+
+  /// The owner of this operand.
+  /// TODO: can encode this more efficiently to avoid the space hit of this
+  /// through bitpacking shenanigans.
+  StmtBlock *const owner;
 };
 
 /// This is a value defined by a result of an operation instruction.

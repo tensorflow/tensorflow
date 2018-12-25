@@ -47,6 +47,11 @@ template <> unsigned StmtOperand::getOperandNumber() const {
   return this - &getOwner()->getStmtOperands()[0];
 }
 
+/// Return which operand this is in the operand list.
+template <> unsigned StmtBlockOperand::getOperandNumber() const {
+  return this - &getOwner()->getBlockOperands()[0];
+}
+
 //===----------------------------------------------------------------------===//
 // Statement
 //===----------------------------------------------------------------------===//

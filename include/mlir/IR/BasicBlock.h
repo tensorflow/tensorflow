@@ -47,7 +47,7 @@ public:
   CFGFunction *getParent() { return function; }
 
   //===--------------------------------------------------------------------===//
-  // Block arguments management
+  // Block argument management
   //===--------------------------------------------------------------------===//
 
   // This is the list of arguments to the block.

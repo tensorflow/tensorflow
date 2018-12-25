@@ -29,6 +29,11 @@ class MLFunction;
 class IfStmt;
 class MLValue;
 
+// TODO(clattner): drop the Stmt prefixes on these once BasicBlock's versions of
+// these go away.
+template <typename BlockType> class StmtPredecessorIterator;
+template <typename BlockType> class StmtSuccessorIterator;
+
 /// Statement block represents an ordered list of statements, with the order
 /// being the contiguous lexical order in which the statements appear as
 /// children of a parent statement in the ML Function.
@@ -40,7 +45,7 @@ public:
     IfClause // IfClause
   };
 
-  ~StmtBlock() { clear(); }
+  ~StmtBlock();
 
   void clear() {
     // Clear statements in the reverse order so that uses are destroyed
@@ -62,6 +67,36 @@ public:
   /// Returns the function that this statement block is part of.
   /// The function is determined by traversing the chain of parent statements.
   MLFunction *findFunction() const;
+
+  //===--------------------------------------------------------------------===//
+  // Block argument management
+  //===--------------------------------------------------------------------===//
+
+  // This is the list of arguments to the block.
+  using BlockArgListType = ArrayRef<BlockArgument *>;
+  BlockArgListType getArguments() const { return arguments; }
+
+  using args_iterator = BlockArgListType::iterator;
+  using reverse_args_iterator = BlockArgListType::reverse_iterator;
+  args_iterator args_begin() const { return getArguments().begin(); }
+  args_iterator args_end() const { return getArguments().end(); }
+  reverse_args_iterator args_rbegin() const { return getArguments().rbegin(); }
+  reverse_args_iterator args_rend() const { return getArguments().rend(); }
+
+  bool args_empty() const { return arguments.empty(); }
+
+  /// Add one value to the argument list.
+  BlockArgument *addArgument(Type type);
+
+  /// Add one argument to the argument list for each type specified in the list.
+  llvm::iterator_range<args_iterator> addArguments(ArrayRef<Type> types);
+
+  /// Erase the argument at 'index' and remove it from the argument list.
+  void eraseArgument(unsigned index);
+
+  unsigned getNumArguments() const { return arguments.size(); }
+  BlockArgument *getArgument(unsigned i) { return arguments[i]; }
+  const BlockArgument *getArgument(unsigned i) const { return arguments[i]; }
 
   //===--------------------------------------------------------------------===//
   // Statement list management
@@ -100,19 +135,10 @@ public:
     return const_cast<StmtBlock *>(this)->front();
   }
 
-  /// getSublistAccess() - Returns pointer to member of statement list
-  static StmtListType StmtBlock::*getSublistAccess(Statement *) {
-    return &StmtBlock::statements;
-  }
-
-  /// These have unconventional names to avoid derive class ambiguities.
-  void printBlock(raw_ostream &os) const;
-  void dumpBlock() const;
-
   /// Returns the statement's position in this block or -1 if the statement is
   /// not present.
-  int findStmtPosInBlock(const Statement &stmt) const {
-    unsigned j = 0;
+  int64_t findStmtPosInBlock(const Statement &stmt) const {
+    int64_t j = 0;
     for (const auto &s : statements) {
       if (&s == &stmt)
         return j;
@@ -129,6 +155,75 @@ public:
     return const_cast<Statement *>(findAncestorStmtInBlock(*stmt));
   }
 
+  //===--------------------------------------------------------------------===//
+  // Terminator management
+  //===--------------------------------------------------------------------===//
+
+  /// Get the terminator instruction of this block, or null if the block is
+  /// malformed.
+  OperationStmt *getTerminator();
+
+  const OperationStmt *getTerminator() const {
+    return const_cast<StmtBlock *>(this)->getTerminator();
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Predecessors and successors.
+  //===--------------------------------------------------------------------===//
+
+  // Predecessor iteration.
+  using const_pred_iterator = StmtPredecessorIterator<const StmtBlock>;
+  const_pred_iterator pred_begin() const;
+  const_pred_iterator pred_end() const;
+  llvm::iterator_range<const_pred_iterator> getPredecessors() const;
+
+  using pred_iterator = StmtPredecessorIterator<StmtBlock>;
+  pred_iterator pred_begin();
+  pred_iterator pred_end();
+  llvm::iterator_range<pred_iterator> getPredecessors();
+
+  /// Return true if this block has no predecessors.
+  bool hasNoPredecessors() const;
+
+  /// If this block has exactly one predecessor, return it.  Otherwise, return
+  /// null.
+  ///
+  /// Note that if a block has duplicate predecessors from a single block (e.g.
+  /// if you have a conditional branch with the same block as the true/false
+  /// destinations) is not considered to be a single predecessor.
+  StmtBlock *getSinglePredecessor();
+
+  const StmtBlock *getSinglePredecessor() const {
+    return const_cast<StmtBlock *>(this)->getSinglePredecessor();
+  }
+
+  // Indexed successor access.
+  unsigned getNumSuccessors() const;
+  const StmtBlock *getSuccessor(unsigned i) const {
+    return const_cast<StmtBlock *>(this)->getSuccessor(i);
+  }
+  StmtBlock *getSuccessor(unsigned i);
+
+  // Successor iteration.
+  using const_succ_iterator = StmtSuccessorIterator<const StmtBlock>;
+  const_succ_iterator succ_begin() const;
+  const_succ_iterator succ_end() const;
+  llvm::iterator_range<const_succ_iterator> getSuccessors() const;
+
+  using succ_iterator = StmtSuccessorIterator<StmtBlock>;
+  succ_iterator succ_begin();
+  succ_iterator succ_end();
+  llvm::iterator_range<succ_iterator> getSuccessors();
+
+  /// getSublistAccess() - Returns pointer to member of statement list
+  static StmtListType StmtBlock::*getSublistAccess(Statement *) {
+    return &StmtBlock::statements;
+  }
+
+  /// These have unconventional names to avoid derive class ambiguities.
+  void printBlock(raw_ostream &os) const;
+  void dumpBlock() const;
+
 protected:
   StmtBlock(StmtBlockKind kind) : kind(kind) {}
 
@@ -137,9 +232,142 @@ private:
   /// This is the list of statements in the block.
   StmtListType statements;
 
+  /// This is the list of arguments to the block.
+  std::vector<BlockArgument *> arguments;
+
   StmtBlock(const StmtBlock &) = delete;
   void operator=(const StmtBlock &) = delete;
 };
+
+//===----------------------------------------------------------------------===//
+// Predecessors
+//===----------------------------------------------------------------------===//
+
+/// Implement a predecessor iterator as a forward iterator.  This works by
+/// walking the use lists of the blocks.  The entries on this list are the
+/// StmtBlockOperands that are embedded into terminator instructions.  From the
+/// operand, we can get the terminator that contains it, and it's parent block
+/// is the predecessor.
+template <typename BlockType>
+class StmtPredecessorIterator
+    : public llvm::iterator_facade_base<StmtPredecessorIterator<BlockType>,
+                                        std::forward_iterator_tag,
+                                        BlockType *> {
+public:
+  StmtPredecessorIterator(StmtBlockOperand *firstOperand)
+      : bbUseIterator(firstOperand) {}
+
+  StmtPredecessorIterator &operator=(const StmtPredecessorIterator &rhs) {
+    bbUseIterator = rhs.bbUseIterator;
+  }
+
+  bool operator==(const StmtPredecessorIterator &rhs) const {
+    return bbUseIterator == rhs.bbUseIterator;
+  }
+
+  BlockType *operator*() const {
+    // The use iterator points to an operand of a terminator.  The predecessor
+    // we return is the block that the terminator is embedded into.
+    return bbUseIterator.getUser()->getBlock();
+  }
+
+  StmtPredecessorIterator &operator++() {
+    ++bbUseIterator;
+    return *this;
+  }
+
+  /// Get the successor number in the predecessor terminator.
+  unsigned getSuccessorIndex() const {
+    return bbUseIterator->getOperandNumber();
+  }
+
+private:
+  using BBUseIterator = SSAValueUseIterator<StmtBlockOperand, OperationStmt>;
+  BBUseIterator bbUseIterator;
+};
+
+inline auto StmtBlock::pred_begin() const -> const_pred_iterator {
+  return const_pred_iterator((StmtBlockOperand *)getFirstUse());
+}
+
+inline auto StmtBlock::pred_end() const -> const_pred_iterator {
+  return const_pred_iterator(nullptr);
+}
+
+inline auto StmtBlock::getPredecessors() const
+    -> llvm::iterator_range<const_pred_iterator> {
+  return {pred_begin(), pred_end()};
+}
+
+inline auto StmtBlock::pred_begin() -> pred_iterator {
+  return pred_iterator((StmtBlockOperand *)getFirstUse());
+}
+
+inline auto StmtBlock::pred_end() -> pred_iterator {
+  return pred_iterator(nullptr);
+}
+
+inline auto StmtBlock::getPredecessors()
+    -> llvm::iterator_range<pred_iterator> {
+  return {pred_begin(), pred_end()};
+}
+
+//===----------------------------------------------------------------------===//
+// Successors
+//===----------------------------------------------------------------------===//
+
+/// This template implments the successor iterators for StmtBlock.
+template <typename BlockType>
+class StmtSuccessorIterator final
+    : public IndexedAccessorIterator<StmtSuccessorIterator<BlockType>,
+                                     BlockType, BlockType> {
+public:
+  /// Initializes the result iterator to the specified index.
+  StmtSuccessorIterator(BlockType *object, unsigned index)
+      : IndexedAccessorIterator<StmtSuccessorIterator<BlockType>, BlockType,
+                                BlockType>(object, index) {}
+
+  StmtSuccessorIterator(const StmtSuccessorIterator &other)
+      : StmtSuccessorIterator(other.object, other.index) {}
+
+  /// Support converting to the const variant. This will be a no-op for const
+  /// variant.
+  operator StmtSuccessorIterator<const BlockType>() const {
+    return StmtSuccessorIterator<const BlockType>(this->object, this->index);
+  }
+
+  BlockType *operator*() const {
+    return this->object->getSuccessor(this->index);
+  }
+
+  /// Get the successor number in the terminator.
+  unsigned getSuccessorIndex() const { return this->index; }
+};
+
+inline auto StmtBlock::succ_begin() const -> const_succ_iterator {
+  return const_succ_iterator(this, 0);
+}
+
+inline auto StmtBlock::succ_end() const -> const_succ_iterator {
+  return const_succ_iterator(this, getNumSuccessors());
+}
+
+inline auto StmtBlock::getSuccessors() const
+    -> llvm::iterator_range<const_succ_iterator> {
+  return {succ_begin(), succ_end()};
+}
+
+inline auto StmtBlock::succ_begin() -> succ_iterator {
+  return succ_iterator(this, 0);
+}
+
+inline auto StmtBlock::succ_end() -> succ_iterator {
+  return succ_iterator(this, getNumSuccessors());
+}
+
+inline auto StmtBlock::getSuccessors() -> llvm::iterator_range<succ_iterator> {
+  return {succ_begin(), succ_end()};
+}
 
 } //end namespace mlir
 #endif  // MLIR_IR_STMTBLOCK_H

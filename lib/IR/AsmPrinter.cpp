@@ -1011,6 +1011,7 @@ protected:
             }
         // Otherwise number it normally.
         LLVM_FALLTHROUGH;
+      case SSAValueKind::BlockArgument:
       case SSAValueKind::InstResult:
       case SSAValueKind::StmtResult:
         // This is an uninteresting result, give it a boring number and be
@@ -1576,8 +1577,9 @@ void IntegerSet::print(raw_ostream &os) const {
 void SSAValue::print(raw_ostream &os) const {
   switch (getKind()) {
   case SSAValueKind::BBArgument:
+  case SSAValueKind::BlockArgument:
     // TODO: Improve this.
-    os << "<bb argument>\n";
+    os << "<block argument>\n";
     return;
   case SSAValueKind::InstResult:
     return getDefiningInst()->print(os);

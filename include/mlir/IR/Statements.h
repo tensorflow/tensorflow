@@ -24,10 +24,7 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/IR/MLValue.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/StmtBlock.h"
-#include "mlir/Support/LLVM.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
@@ -35,9 +32,6 @@ class AffineBound;
 class IntegerSet;
 class AffineCondition;
 class OperationStmt;
-
-/// The operand of a Terminator contains a StmtBlock.
-using StmtBlockOperand = IROperandImpl<StmtBlock, OperationStmt>;
 
 /// Operation statements represent operations inside ML functions.
 class OperationStmt final

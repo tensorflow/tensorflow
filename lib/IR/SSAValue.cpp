@@ -56,6 +56,8 @@ Function *SSAValue::getFunction() {
     return getDefiningInst()->getFunction();
   case SSAValueKind::MLFuncArgument:
     return cast<MLFuncArgument>(this)->getFunction();
+  case SSAValueKind::BlockArgument:
+    return cast<BlockArgument>(this)->getFunction();
   case SSAValueKind::StmtResult:
     return getDefiningStmt()->findFunction();
   case SSAValueKind::ForStmt:
@@ -112,4 +114,15 @@ CFGFunction *BBArgument::getFunction() {
 /// Return the function that this MLValue is defined in.
 MLFunction *MLValue::getFunction() {
   return cast<MLFunction>(static_cast<SSAValue *>(this)->getFunction());
+}
+
+//===----------------------------------------------------------------------===//
+// BlockArgument implementation.
+//===----------------------------------------------------------------------===//
+
+/// Return the function that this argument is defined in.
+MLFunction *BlockArgument::getFunction() {
+  if (auto *owner = getOwner())
+    return owner->findFunction();
+  return nullptr;
 }

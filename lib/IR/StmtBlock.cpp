@@ -20,9 +20,11 @@
 #include "mlir/IR/Statements.h"
 using namespace mlir;
 
-//===----------------------------------------------------------------------===//
-// Statement block
-//===----------------------------------------------------------------------===//
+StmtBlock::~StmtBlock() {
+  clear();
+
+  llvm::DeleteContainerPointers(arguments);
+}
 
 Statement *StmtBlock::getContainingStmt() {
   switch (kind) {
@@ -61,4 +63,83 @@ StmtBlock::findAncestorStmtInBlock(const Statement &stmt) const {
       return nullptr;
   }
   return currStmt;
+}
+
+//===----------------------------------------------------------------------===//
+// Argument list management.
+//===----------------------------------------------------------------------===//
+
+BlockArgument *StmtBlock::addArgument(Type type) {
+  auto *arg = new BlockArgument(type, this);
+  arguments.push_back(arg);
+  return arg;
+}
+
+/// Add one argument to the argument list for each type specified in the list.
+auto StmtBlock::addArguments(ArrayRef<Type> types)
+    -> llvm::iterator_range<args_iterator> {
+  arguments.reserve(arguments.size() + types.size());
+  auto initialSize = arguments.size();
+  for (auto type : types) {
+    addArgument(type);
+  }
+  return {arguments.data() + initialSize, arguments.data() + arguments.size()};
+}
+
+void StmtBlock::eraseArgument(unsigned index) {
+  assert(index < arguments.size());
+
+  // Delete the argument.
+  delete arguments[index];
+  arguments.erase(arguments.begin() + index);
+
+  // Erase this argument from each of the predecessor's terminator.
+  for (auto predIt = pred_begin(), predE = pred_end(); predIt != predE;
+       ++predIt) {
+    auto *predTerminator = (*predIt)->getTerminator();
+    predTerminator->eraseSuccessorOperand(predIt.getSuccessorIndex(), index);
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Terminator management
+//===----------------------------------------------------------------------===//
+
+OperationStmt *StmtBlock::getTerminator() {
+  if (empty())
+    return nullptr;
+
+  // Check if the last instruction is a terminator.
+  auto &backInst = statements.back();
+  auto *opStmt = dyn_cast<OperationStmt>(&backInst);
+  if (!opStmt || !opStmt->isTerminator())
+    return nullptr;
+  return opStmt;
+}
+
+/// Return true if this block has no predecessors.
+bool StmtBlock::hasNoPredecessors() const { return pred_begin() == pred_end(); }
+
+// Indexed successor access.
+unsigned StmtBlock::getNumSuccessors() const {
+  return getTerminator()->getNumSuccessors();
+}
+
+StmtBlock *StmtBlock::getSuccessor(unsigned i) {
+  return getTerminator()->getSuccessor(i);
+}
+
+/// If this block has exactly one predecessor, return it.  Otherwise, return
+/// null.
+///
+/// Note that multiple edges from a single block (e.g. if you have a cond
+/// branch with the same block as the true/false destinations) is not
+/// considered to be a single predecessor.
+StmtBlock *StmtBlock::getSinglePredecessor() {
+  auto it = pred_begin();
+  if (it == pred_end())
+    return nullptr;
+  auto *firstPred = *it;
+  ++it;
+  return it == pred_end() ? firstPred : nullptr;
 }

@@ -34,6 +34,10 @@ class MLFunction;
 class StmtBlock;
 class ForStmt;
 class MLIRContext;
+
+/// The operand of a Terminator contains a StmtBlock.
+using StmtBlockOperand = IROperandImpl<StmtBlock, OperationStmt>;
+
 } // namespace mlir
 
 //===----------------------------------------------------------------------===//
