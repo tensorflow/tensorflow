@@ -51,6 +51,175 @@ local_response_normalization = gen_nn_ops.lrn
 
 # pylint: disable=protected-access
 
+def atrous_convolution(
+    input,  # pylint: disable=redefined-builtin
+    filter,  # pylint: disable=redefined-builtin
+    padding,
+    dilations,
+    data_format=None,  # pylint: disable=redefined-builtin
+    strides=None,
+    name=None):
+  """Computes sums of N-D convolutions (actually cross correlation).
+
+  It is required that 1 <= N <= 3.
+
+  This is used to implement the more generic `convolution` function, which
+  extends the interface of this function with a `dilation_rate` parameter.
+
+  Args:
+
+    input: Rank N+2 tensor of type T of shape
+      `[batch_size] + input_spatial_shape + [in_channels]` if `data_format`
+      does not start with `"NC"`, or
+      `[batch_size, in_channels] + input_spatial_shape` if `data_format` starts
+      with `"NC"`.
+    filter: Rank N+2 tensor of type T of shape
+      `filter_spatial_shape + [in_channels, out_channels]`.  Rank of either
+      `input` or `filter` must be known.
+    padding: Padding method to use, must be either "VALID" or "SAME".
+    data_format: A string or None.  Specifies whether the channel dimension of
+      the `input` and output is the last dimension (default, or if `data_format`
+      does not start with "NC"), or the second dimension (if `data_format`
+      starts with "NC").  For N=1, the valid values are "NWC" (default) and
+      "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
+      For N=3, the valid values are "NDHWC" (default) and "NCDHW".
+    strides: Sequence of N positive integers, defaults to `[1] * N`.
+    name: Name prefix to use.
+
+  Returns:
+    Rank N+2 tensor of type T of shape
+    `[batch_size] + output_spatial_shape + [out_channels]`, where
+    if padding == "SAME":
+      output_spatial_shape = input_spatial_shape
+    if padding == "VALID":
+      output_spatial_shape = input_spatial_shape - filter_spatial_shape + 1.
+
+  Raises:
+    ValueError: if ranks are incompatible.
+
+  """
+  with ops.name_scope(name, "atrous_convolution", [input, filter]) as scope:
+    input = ops.convert_to_tensor(input, name="input")  # pylint: disable=redefined-builtin
+    input_shape = input.get_shape()
+    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
+    filter_shape = filter.get_shape()
+    op = AtrousConvolution(
+        input_shape,
+        filter_shape=filter_shape,
+        padding=padding,
+        dilations=dilations,
+        data_format=data_format,
+        strides=strides,
+        name=scope)
+    return op(input, filter)
+
+
+class AtrousConvolution(object):
+  """Helper class for atrous_convolution.
+
+  Note that this class assumes that shapes of input and filter passed to
+  __call__ are compatible with input_shape and filter_shape passed to the
+  constructor.
+
+  Arguments:
+    input_shape: static input shape, i.e. input.get_shape().
+    filter_shape: static filter shape, i.e. filter.get_shape().
+    padding: see _non_atrous_convolution.
+    data_format: see _non_atrous_convolution.
+    strides: see _non_atrous_convolution.
+    name: see _non_atrous_convolution.
+  """
+
+  def __init__(
+      self,
+      input_shape,
+      filter_shape,  # pylint: disable=redefined-builtin
+      padding,
+      dilations,
+      data_format=None,
+      strides=None,
+      name=None):
+    filter_shape = filter_shape.with_rank(input_shape.ndims)
+    self.padding = padding
+    self.name = name
+    input_shape = input_shape.with_rank(filter_shape.ndims)
+    if input_shape.ndims is None:
+      raise ValueError("Rank of convolution must be known")
+    if input_shape.ndims < 3 or input_shape.ndims > 5:
+      raise ValueError(
+          "`input` and `filter` must have rank at least 3 and at most 5")
+    conv_dims = input_shape.ndims - 2
+    if strides is None:
+      strides = [1] * conv_dims
+    elif len(strides) != conv_dims:
+      raise ValueError("len(strides)=%d, but should be %d" % (len(strides),
+                                                              conv_dims))
+    if conv_dims == 1:
+      # conv1d uses the 2-d data format names
+      if data_format is None:
+        data_format = "NWC"
+      elif data_format not in {"NCW", "NWC", "NCHW", "NHWC"}:
+        raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+      self.dilations = dilations[0]
+      self.strides = strides[0]
+      self.data_format = data_format
+      self.conv_op = self._conv1d
+
+    elif conv_dims == 2:
+      if data_format is None or data_format == "NHWC":
+        data_format = "NHWC"
+        strides = [1] + list(strides) + [1]
+        dilations = [1] + list(dilations) + [1]
+      elif data_format == "NCHW":
+        strides = [1, 1] + list(strides)
+        dilations = [1, 1] + list(dilations)
+      else:
+        raise ValueError("data_format must be \"NHWC\" or \"NCHW\".")
+      self.dilations = dilations
+      self.strides = strides
+      self.data_format = data_format
+      self.conv_op = gen_nn_ops.conv2d
+    elif conv_dims == 3:
+      if data_format is None or data_format == "NDHWC":
+        strides = [1] + list(strides) + [1]
+        dilations = [1] + list(dilations) + [1]
+      elif data_format == "NCDHW":
+        strides = [1, 1] + list(strides)
+        dilations = [1, 1] + list(dilations)
+      else:
+        raise ValueError("data_format must be \"NDHWC\" or \"NCDHW\". Have: %s"
+                         % data_format)
+      self.dilations = dilations
+      self.strides = strides
+      self.data_format = data_format
+      self.conv_op = gen_nn_ops.conv3d
+
+  # Note that we need this adapter since argument names for conv1d don't match
+  # those for gen_nn_ops.conv2d and gen_nn_ops.conv3d.
+  # pylint: disable=redefined-builtin
+  def _conv1d(self, input, filter, strides, padding, dilations, data_format, name):
+    return conv1d(
+        value=input,
+        filters=filter,
+        stride=strides,
+        padding=padding,
+        dilations=dilations,
+        data_format=data_format,
+        use_cudnn_on_gpu=True,
+        name=name)
+
+  # pylint: enable=redefined-builtin
+
+  def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
+    return self.conv_op(
+        input=inp,
+        filter=filter,
+        strides=self.strides,
+        padding=self.padding,
+        data_format=self.data_format,
+        dilations=self.dilations,
+        name=self.name)
+
 
 def _non_atrous_convolution(
     input,  # pylint: disable=redefined-builtin
@@ -944,6 +1113,15 @@ class Convolution(object):
     self.data_format = data_format
     self.strides = strides
     self.name = name
+    self.conv_op = AtrousConvolution(
+        self.input_shape,
+        filter_shape=self.filter_shape,
+        padding=padding,
+        dilation_rate=dilation_rate,
+        data_format=self.data_format,
+        strides=self.strides,
+        name=self.name)
+    """
     self.conv_op = _WithSpaceToBatch(
         input_shape,
         dilation_rate=dilation_rate,
@@ -961,6 +1139,7 @@ class Convolution(object):
         data_format=self.data_format,
         strides=self.strides,
         name=self.name)
+    """
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
     return self.conv_op(inp, filter)
@@ -3413,6 +3592,7 @@ def conv1d(value,
            filters,
            stride,
            padding,
+           dilations,
            use_cudnn_on_gpu=None,
            data_format=None,
            name=None):
@@ -3459,6 +3639,7 @@ def conv1d(value,
   Raises:
     ValueError: if `data_format` is invalid.
   """
+  """
   with ops.name_scope(name, "conv1d", [value, filters]) as name:
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     if data_format is None or data_format == "NHWC" or data_format == "NWC":
@@ -3481,6 +3662,33 @@ def conv1d(value,
         use_cudnn_on_gpu=use_cudnn_on_gpu,
         data_format=data_format)
     return array_ops.squeeze(result, [spatial_start_dim])
+  """
+  with ops.name_scope(name, "conv1d", [value, filters]) as name:
+    # Reshape the input tensor to [batch, 1, in_width, in_channels]
+    if data_format is None or data_format == "NHWC" or data_format == "NWC":
+      data_format = "NHWC"
+      spatial_start_dim = 1
+      strides = [1, 1, stride, 1]
+      dilations = [1, 1, dilations, 1]
+    elif data_format == "NCHW" or data_format == "NCW":
+      data_format = "NCHW"
+      spatial_start_dim = 2
+      strides = [1, 1, 1, stride]
+      dilations = [1, 1, 1, dilations]
+    else:
+      raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+    value = array_ops.expand_dims(value, spatial_start_dim)
+    filters = array_ops.expand_dims(filters, 0)
+    result = gen_nn_ops.conv2d(
+        value,
+        filters,
+        strides,
+        padding,
+        dilations=dilations,
+        use_cudnn_on_gpu=use_cudnn_on_gpu,
+        data_format=data_format)
+    return array_ops.squeeze(result, [spatial_start_dim])
+
 
 
 @tf_export("nn.conv1d", v1=[])
