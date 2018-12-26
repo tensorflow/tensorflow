@@ -490,7 +490,7 @@ CFGFunction *FunctionConverter::convert(MLFunction *mlFunc) {
   }
 
   // Convert statements in order.
-  for (auto &stmt : *mlFunc) {
+  for (auto &stmt : *mlFunc->getBody()) {
     visit(&stmt);
   }
 

@@ -274,29 +274,6 @@ private:
   size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
 };
 
-/// A ForStmtBody represents statements contained within a ForStmt.
-class ForStmtBody : public StmtBlock {
-public:
-  explicit ForStmtBody(ForStmt *stmt)
-      : StmtBlock(StmtBlockKind::ForBody), forStmt(stmt) {
-    assert(stmt != nullptr && "ForStmtBody must have non-null parent");
-  }
-
-  ~ForStmtBody() {}
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast
-  static bool classof(const StmtBlock *block) {
-    return block->getStmtBlockKind() == StmtBlockKind::ForBody;
-  }
-
-  /// Returns the 'for' statement that contains this body.
-  ForStmt *getFor() { return forStmt; }
-  const ForStmt *getFor() const { return forStmt; }
-
-private:
-  ForStmt *forStmt;
-};
-
 /// For statement represents an affine loop nest.
 class ForStmt : public Statement, public MLValue {
 public:
@@ -324,10 +301,10 @@ public:
   using const_operand_range = llvm::iterator_range<const_operand_iterator>;
 
   /// Get the body of the ForStmt.
-  ForStmtBody *getBody() { return &body; }
+  StmtBlock *getBody() { return &body; }
 
   /// Get the body of the ForStmt.
-  const ForStmtBody *getBody() const { return &body; }
+  const StmtBlock *getBody() const { return &body; }
 
   //===--------------------------------------------------------------------===//
   // Bounds and step
@@ -455,7 +432,7 @@ public:
 
 private:
   // The StmtBlock for the body.
-  ForStmtBody body;
+  StmtBlock body;
 
   // Affine map for the lower bound.
   AffineMap lbMap;
@@ -525,31 +502,6 @@ private:
   friend class ForStmt;
 };
 
-/// An if clause represents statements contained within a then or an else clause
-/// of an if statement.
-class IfClause : public StmtBlock {
-public:
-  explicit IfClause(IfStmt *stmt)
-      : StmtBlock(StmtBlockKind::IfClause), ifStmt(stmt) {
-    assert(stmt != nullptr && "If clause must have non-null parent");
-  }
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast
-  static bool classof(const StmtBlock *block) {
-    return block->getStmtBlockKind() == StmtBlockKind::IfClause;
-  }
-
-  ~IfClause() {}
-
-  /// Returns the if statement that contains this clause.
-  const IfStmt *getIf() const { return ifStmt; }
-
-  IfStmt *getIf() { return ifStmt; }
-
-private:
-  IfStmt *ifStmt;
-};
-
 /// If statement restricts execution to a subset of the loop iteration space.
 class IfStmt : public Statement {
 public:
@@ -561,15 +513,15 @@ public:
   // Then, else, condition.
   //===--------------------------------------------------------------------===//
 
-  IfClause *getThen() { return &thenClause; }
-  const IfClause *getThen() const { return &thenClause; }
-  IfClause *getElse() { return elseClause; }
-  const IfClause *getElse() const { return elseClause; }
+  StmtBlock *getThen() { return &thenClause; }
+  const StmtBlock *getThen() const { return &thenClause; }
+  StmtBlock *getElse() { return elseClause; }
+  const StmtBlock *getElse() const { return elseClause; }
   bool hasElse() const { return elseClause != nullptr; }
 
-  IfClause *createElse() {
+  StmtBlock *createElse() {
     assert(elseClause == nullptr && "already has an else clause!");
-    return (elseClause = new IfClause(this));
+    return (elseClause = new StmtBlock(this));
   }
 
   const AffineCondition getCondition() const;
@@ -634,9 +586,9 @@ public:
 
 private:
   // it is always present.
-  IfClause thenClause;
+  StmtBlock thenClause;
   // 'else' clause of the if statement. 'nullptr' if there is no else clause.
-  IfClause *elseClause;
+  StmtBlock *elseClause;
 
   // The integer set capturing the conditional guard.
   IntegerSet set;

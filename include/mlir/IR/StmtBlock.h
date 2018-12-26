@@ -39,12 +39,8 @@ template <typename BlockType> class StmtSuccessorIterator;
 /// children of a parent statement in the ML Function.
 class StmtBlock : public IRObjectWithUseList {
 public:
-  enum class StmtBlockKind {
-    MLFunc,  // MLFunction
-    ForBody, // ForStmtBody
-    IfClause // IfClause
-  };
-
+  explicit StmtBlock(MLFunction *parent);
+  explicit StmtBlock(Statement *parent);
   ~StmtBlock();
 
   void clear() {
@@ -54,7 +50,9 @@ public:
       statements.pop_back();
   }
 
-  StmtBlockKind getStmtBlockKind() const { return kind; }
+  llvm::PointerUnion<MLFunction *, Statement *> getParent() const {
+    return parent;
+  }
 
   /// Returns the closest surrounding statement that contains this block or
   /// nullptr if this is a top-level statement block.
@@ -66,7 +64,10 @@ public:
 
   /// Returns the function that this statement block is part of.
   /// The function is determined by traversing the chain of parent statements.
-  MLFunction *findFunction() const;
+  MLFunction *findFunction();
+  const MLFunction *findFunction() const {
+    return const_cast<StmtBlock *>(this)->findFunction();
+  }
 
   //===--------------------------------------------------------------------===//
   // Block argument management
@@ -224,11 +225,10 @@ public:
   void printBlock(raw_ostream &os) const;
   void dumpBlock() const;
 
-protected:
-  StmtBlock(StmtBlockKind kind) : kind(kind) {}
-
 private:
-  StmtBlockKind kind;
+  /// This is the parent function/IfStmt/ForStmt that owns this block.
+  llvm::PointerUnion<MLFunction *, Statement *> parent;
+
   /// This is the list of statements in the block.
   StmtListType statements;
 

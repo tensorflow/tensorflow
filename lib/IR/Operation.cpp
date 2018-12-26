@@ -581,7 +581,7 @@ bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
   // Verify that the operation is at the end of the respective parent block.
   if (auto *stmt = dyn_cast<OperationStmt>(op)) {
     StmtBlock *block = stmt->getBlock();
-    if (!block || !isa<MLFunction>(block) || &block->back() != stmt)
+    if (!block || block->getContainingStmt() || &block->back() != stmt)
       return op->emitOpError("must be the last statement in the ML function");
   } else {
     const Instruction *inst = cast<Instruction>(op);

@@ -2777,7 +2777,7 @@ class MLFunctionParser : public FunctionParser {
 public:
   MLFunctionParser(ParserState &state, MLFunction *function)
       : FunctionParser(state, Kind::MLFunc), function(function),
-        builder(function, function->end()) {}
+        builder(function->getBody()) {}
 
   ParseResult parseFunctionBody();
 
@@ -2796,7 +2796,7 @@ private:
   ParseResult parseBound(SmallVectorImpl<MLValue *> &operands, AffineMap &map,
                          bool isLower);
   ParseResult parseIfStmt();
-  ParseResult parseElseClause(IfClause *elseClause);
+  ParseResult parseElseClause(StmtBlock *elseClause);
   ParseResult parseStatements(StmtBlock *block);
   ParseResult parseStmtBlock(StmtBlock *block);
 
@@ -2812,7 +2812,7 @@ ParseResult MLFunctionParser::parseFunctionBody() {
   auto braceLoc = getToken().getLoc();
 
   // Parse statements in this function.
-  if (parseStmtBlock(function))
+  if (parseStmtBlock(function->getBody()))
     return ParseFailure;
 
   return finalizeFunction(function, braceLoc);
@@ -3121,7 +3121,7 @@ ParseResult MLFunctionParser::parseIfStmt() {
   IfStmt *ifStmt =
       builder.createIf(getEncodedSourceLocation(loc), operands, set);
 
-  IfClause *thenClause = ifStmt->getThen();
+  StmtBlock *thenClause = ifStmt->getThen();
 
   // When parsing of an if statement body fails, the IR contains
   // the if statement with the portion of the body that has been
@@ -3141,7 +3141,7 @@ ParseResult MLFunctionParser::parseIfStmt() {
   return ParseSuccess;
 }
 
-ParseResult MLFunctionParser::parseElseClause(IfClause *elseClause) {
+ParseResult MLFunctionParser::parseElseClause(StmtBlock *elseClause) {
   if (getToken().is(Token::kw_if)) {
     builder.setInsertionPointToEnd(elseClause);
     return parseIfStmt();

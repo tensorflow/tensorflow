@@ -288,8 +288,8 @@ bool MLFuncVerifier::verifyDominance() {
     HashTable::ScopeTy blockScope(liveValues);
 
     // The induction variable of a for statement is live within its body.
-    if (auto *forStmtBody = dyn_cast<ForStmtBody>(&block))
-      liveValues.insert(forStmtBody->getFor(), true);
+    if (auto *forStmt = dyn_cast_or_null<ForStmt>(block.getContainingStmt()))
+      liveValues.insert(forStmt, true);
 
     for (auto &stmt : block) {
       // Verify that each of the operands are live.
@@ -330,16 +330,16 @@ bool MLFuncVerifier::verifyDominance() {
   };
 
   // Check the whole function out.
-  return walkBlock(fn);
+  return walkBlock(*fn.getBody());
 }
 
 bool MLFuncVerifier::verifyReturn() {
   // TODO: fold return verification in the pass that verifies all statements.
   const char missingReturnMsg[] = "ML function must end with return statement";
-  if (fn.getStatements().empty())
+  if (fn.getBody()->getStatements().empty())
     return failure(missingReturnMsg, fn);
 
-  const auto &stmt = fn.getStatements().back();
+  const auto &stmt = fn.getBody()->getStatements().back();
   if (const auto *op = dyn_cast<OperationStmt>(&stmt)) {
     if (!op->isReturn())
       return failure(missingReturnMsg, fn);

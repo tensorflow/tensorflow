@@ -92,10 +92,10 @@ PassResult LoopUnrollAndJam::runOnMLFunction(MLFunction *f) {
   // Currently, just the outermost loop from the first loop nest is
   // unroll-and-jammed by this pass. However, runOnForStmt can be called on any
   // for Stmt.
-  if (!isa<ForStmt>(f->begin()))
+  auto *forStmt = dyn_cast<ForStmt>(f->getBody()->begin());
+  if (!forStmt)
     return success();
 
-  auto *forStmt = cast<ForStmt>(f->begin());
   runOnForStmt(forStmt);
   return success();
 }

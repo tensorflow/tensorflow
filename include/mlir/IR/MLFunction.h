@@ -36,13 +36,15 @@ template <typename ObjectType, typename ElementType> class ArgumentIterator;
 // include nested affine for loops, conditionals and operations.
 class MLFunction final
     : public Function,
-      public StmtBlock,
       private llvm::TrailingObjects<MLFunction, MLFuncArgument> {
 public:
   /// Creates a new MLFunction with the specific type.
   static MLFunction *create(Location location, StringRef name,
                             FunctionType type,
                             ArrayRef<NamedAttribute> attrs = {});
+
+  StmtBlock *getBody() { return &body; }
+  const StmtBlock *getBody() const { return &body; }
 
   /// Destroys this statement and its subclass data.
   void destroy();
@@ -98,9 +100,6 @@ public:
   static bool classof(const Function *func) {
     return func->getKind() == Function::Kind::MLFunc;
   }
-  static bool classof(const StmtBlock *block) {
-    return block->getStmtBlockKind() == StmtBlockKind::MLFunc;
-  }
 
 private:
   MLFunction(Location location, StringRef name, FunctionType type,
@@ -119,6 +118,8 @@ private:
   MutableArrayRef<MLFuncArgument> getArgumentsInternal() {
     return {getTrailingObjects<MLFuncArgument>(), getNumArguments()};
   }
+
+  StmtBlock body;
 };
 
 //===--------------------------------------------------------------------===//

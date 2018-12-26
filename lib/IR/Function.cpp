@@ -202,14 +202,13 @@ MLFunction *MLFunction::create(Location location, StringRef name,
 
 MLFunction::MLFunction(Location location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs)
-    : Function(Kind::MLFunc, location, name, type, attrs),
-      StmtBlock(StmtBlockKind::MLFunc) {}
+    : Function(Kind::MLFunc, location, name, type, attrs), body(this) {}
 
 MLFunction::~MLFunction() {
   // Explicitly erase statements instead of relying of 'StmtBlock' destructor
   // since child statements need to be destroyed before function arguments
   // are destroyed.
-  clear();
+  getBody()->clear();
 
   // Explicitly run the destructors for the function arguments.
   for (auto &arg : getArgumentsInternal())
@@ -222,11 +221,11 @@ void MLFunction::destroy() {
 }
 
 const OperationStmt *MLFunction::getReturnStmt() const {
-  return cast<OperationStmt>(&back());
+  return cast<OperationStmt>(&getBody()->back());
 }
 
 OperationStmt *MLFunction::getReturnStmt() {
-  return cast<OperationStmt>(&back());
+  return cast<OperationStmt>(&getBody()->back());
 }
 
 void MLFunction::walk(std::function<void(OperationStmt *)> callback) {

@@ -230,8 +230,8 @@ static void getTileableBands(MLFunction *f,
     bands->push_back(band);
   };
 
-  for (auto &stmt : *f) {
-    ForStmt *forStmt = dyn_cast<ForStmt>(&stmt);
+  for (auto &stmt : *f->getBody()) {
+    auto *forStmt = dyn_cast<ForStmt>(&stmt);
     if (!forStmt)
       continue;
     getMaximalPerfectLoopNest(forStmt);

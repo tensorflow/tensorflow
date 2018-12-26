@@ -177,7 +177,8 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
         cast<Instruction>(op)->moveBefore(&entryBB, entryBB.begin());
       } else {
         auto *mlFunc = cast<MLFunction>(currentFunction);
-        cast<OperationStmt>(op)->moveBefore(mlFunc, mlFunc->begin());
+        cast<OperationStmt>(op)->moveBefore(mlFunc->getBody(),
+                                            mlFunc->getBody()->begin());
       }
 
       continue;

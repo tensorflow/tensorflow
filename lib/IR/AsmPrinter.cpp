@@ -230,7 +230,7 @@ void ModuleState::visitStatement(const Statement *stmt) {
 
 void ModuleState::visitMLFunction(const MLFunction *fn) {
   visitType(fn->getType());
-  for (auto &stmt : *fn) {
+  for (auto &stmt : *fn->getBody()) {
     ModuleState::visitStatement(&stmt);
   }
 }
@@ -1390,7 +1390,7 @@ void MLFunctionPrinter::print() {
   printFunctionSignature();
   printFunctionAttributes(getFunction());
   os << " {\n";
-  print(function);
+  print(function->getBody());
   os << "}\n\n";
 }
 
@@ -1649,7 +1649,7 @@ void Statement::print(raw_ostream &os) const {
 void Statement::dump() const { print(llvm::errs()); }
 
 void StmtBlock::printBlock(raw_ostream &os) const {
-  MLFunction *function = findFunction();
+  const MLFunction *function = findFunction();
   ModuleState state(function->getContext());
   ModulePrinter modulePrinter(os, state);
   MLFunctionPrinter(function, modulePrinter).print(this);

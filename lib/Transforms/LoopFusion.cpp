@@ -348,7 +348,7 @@ public:
 bool MemRefDependenceGraph::init(MLFunction *f) {
   unsigned id = 0;
   DenseMap<MLValue *, SetVector<unsigned>> memrefAccesses;
-  for (auto &stmt : *f) {
+  for (auto &stmt : *f->getBody()) {
     if (auto *forStmt = dyn_cast<ForStmt>(&stmt)) {
       // Create graph node 'id' to represent top-level 'forStmt' and record
       // all loads and store accesses it contains.

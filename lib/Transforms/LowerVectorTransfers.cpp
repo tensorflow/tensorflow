@@ -238,7 +238,7 @@ struct LowerVectorTransfersPass
   makeFuncWiseState(MLFunction *f) const override {
     auto state = llvm::make_unique<LowerVectorTransfersState>();
     auto builder = MLFuncBuilder(f);
-    builder.setInsertionPointToStart(f);
+    builder.setInsertionPointToStart(f->getBody());
     state->zero = builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
     return state;
   }

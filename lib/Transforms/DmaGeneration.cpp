@@ -426,7 +426,7 @@ void DmaGeneration::runOnForStmt(ForStmt *forStmt) {
 }
 
 PassResult DmaGeneration::runOnMLFunction(MLFunction *f) {
-  for (auto &stmt : *f) {
+  for (auto &stmt : *f->getBody()) {
     if (auto *forStmt = dyn_cast<ForStmt>(&stmt)) {
       runOnForStmt(forStmt);
     }

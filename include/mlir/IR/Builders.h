@@ -294,6 +294,12 @@ public:
     setInsertionPoint(stmt);
   }
 
+  MLFuncBuilder(StmtBlock *block)
+      // TODO: Eliminate findFunction from this.
+      : MLFuncBuilder(block->findFunction()) {
+    setInsertionPoint(block, block->end());
+  }
+
   MLFuncBuilder(StmtBlock *block, StmtBlock::iterator insertPoint)
       // TODO: Eliminate findFunction from this.
       : MLFuncBuilder(block->findFunction()) {
@@ -304,7 +310,7 @@ public:
   /// the function.
   MLFuncBuilder(MLFunction *func)
       : Builder(func->getContext()), function(func) {
-    setInsertionPoint(func, func->begin());
+    setInsertionPoint(func->getBody(), func->getBody()->begin());
   }
 
   /// Return the function this builder is referring to.

@@ -132,11 +132,13 @@ public:
   // Define walkers for MLFunction and all MLFunction statement kinds.
   void walk(MLFunction *f) {
     static_cast<SubClass *>(this)->visitMLFunction(f);
-    static_cast<SubClass *>(this)->walk(f->begin(), f->end());
+    static_cast<SubClass *>(this)->walk(f->getBody()->begin(),
+                                        f->getBody()->end());
   }
 
   void walkPostOrder(MLFunction *f) {
-    static_cast<SubClass *>(this)->walkPostOrder(f->begin(), f->end());
+    static_cast<SubClass *>(this)->walkPostOrder(f->getBody()->begin(),
+                                                 f->getBody()->end());
     static_cast<SubClass *>(this)->visitMLFunction(f);
   }
 
