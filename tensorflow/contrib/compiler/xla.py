@@ -34,6 +34,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -76,7 +77,9 @@ def compile(computation, inputs=None):  # pylint: disable=redefined-builtin
 
       All `Operation`s returned from `computation` will be executed when
       evaluating any of the returned output tensors.
-    inputs: A list of input tensors or `None` (equivalent to an empty list).
+    inputs: A list of inputs or `None` (equivalent to an empty list). Each input
+      can be a nested structure containing values that are convertible to
+      tensors.
 
   Returns:
     A list of output tensors.
@@ -260,17 +263,10 @@ def _compile_internal(computation, inputs=None):
   if not isinstance(inputs, collections.Sequence):
     raise TypeError('inputs must be a list')
 
+  # Flatten inputs.
+  flat_inputs = nest.flatten(inputs)
   # Converts inputs to Tensors.
-  inputs = [ops.convert_to_tensor(x) for x in inputs]
-  input_arity = len(inputs)
-
-  arg_error = check_function_argument_count(
-      computation, input_arity, infeed_queue=None)
-  if arg_error is not None:
-    raise TypeError(
-        'Supplied computation cannot be called with the specified inputs. You '
-        'specified %d inputs: %s, but the computation needs %s' %
-        (input_arity, str([i.name for i in inputs]), arg_error))
+  flat_inputs = [ops.convert_to_tensor(x) for x in flat_inputs]
 
   cluster_name = ops.get_default_graph().unique_name('cluster')
   pivot = control_flow_ops.no_op(name=cluster_name + '/pivot')
@@ -280,10 +276,14 @@ def _compile_internal(computation, inputs=None):
 
     # Add identity ops so even unused inputs are 'consumed' by the
     # computation.
-    computation_inputs = [
+    flat_inputs = [
         array_ops.identity(x, name='input_{}'.format(i))
-        for i, x in enumerate(inputs)
+        for i, x in enumerate(flat_inputs)
     ]
+
+    # Re-pack flat_inputs in same structure as 'inputs'.
+    computation_inputs = nest.pack_sequence_as(
+        structure=inputs, flat_sequence=flat_inputs)
 
     # Only resource variables work inside an XLA computation, so turn on
     # resource variables for the computation.
