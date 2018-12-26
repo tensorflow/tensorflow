@@ -443,12 +443,11 @@ class OptimizerV2(checkpointable.CheckpointableBase):
             initializer, shape=var.shape, dtype=var.dtype)
       else:
         initial_value = initializer
-      with ops._colocate_with_for_gradient(var, None):  # pylint: disable=protected-access
-        weight = tf_variables.Variable(
-            name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
-            dtype=var.dtype,
-            trainable=False,
-            initial_value=initial_value)
+      weight = tf_variables.Variable(
+          name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
+          dtype=var.dtype,
+          trainable=False,
+          initial_value=initial_value)
       backend.track_variable(weight)
       slot_dict[slot_name] = weight
       self._restore_slot_variable(
