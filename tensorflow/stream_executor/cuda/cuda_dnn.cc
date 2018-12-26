@@ -23,6 +23,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/mathutil.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
+#include "tensorflow/stream_executor/logging.pb.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
@@ -2569,6 +2571,63 @@ bool ShouldIncludeWinogradNonfusedAlgo(
 }
 #endif
 
+template <class ElementType>
+dnn::ConvolutionProto GenerateConvProto(
+    dnn::ConvolutionKind kind, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor, dnn::AlgorithmDesc algorithm,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, double conv_scale,
+    double side_value_scale, dnn::DataType acc_type,
+    dnn::ActivationMode activation) {
+  dnn::ConvolutionProto conv_config;
+  auto element_type = dnn::ToDataType<ElementType>::value;
+
+  conv_config.set_kind(kind);
+  *conv_config.mutable_input() = input_descriptor.ToProto(element_type);
+  *conv_config.mutable_filter() = filter_descriptor.ToProto(element_type);
+  *conv_config.mutable_output() = output_descriptor.ToProto(element_type);
+  *conv_config.mutable_algorithm() = algorithm.ToProto();
+  *conv_config.mutable_conv_desc() = convolution_descriptor.ToProto();
+  conv_config.mutable_conv_desc()->set_compute_mode(acc_type);
+  conv_config.set_conv_scale(conv_scale);
+  conv_config.set_side_value_scale(side_value_scale);
+  conv_config.set_activation(activation);
+  return conv_config;
+}
+
+void LogCudaProto(const dnn::ConvolutionProto& conv,
+                  StreamExecutor* stream_executor) {
+  {
+    // For rolling-out, temporarily cap the number of logs per process.
+    // TODO(timshen): remove it.
+    static int count_down = 200;
+    if (count_down == 0) {
+      return;
+    }
+    count_down--;
+  }
+
+  ConvLogEntry conv_log;
+  *conv_log.mutable_convolution() = conv;
+  auto info = conv_log.mutable_cuda_info();
+  int cc_major, cc_minor;
+  stream_executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                  &cc_minor);
+  info->mutable_compute_capability()->set_major(cc_major);
+  info->mutable_compute_capability()->set_minor(cc_minor);
+
+  if (auto* dnn = stream_executor->AsDnn()) {
+    port::StatusOr<dnn::VersionInfo> version_or = dnn->GetVersion();
+    if (version_or.ok()) {
+      const auto& version = version_or.ValueOrDie();
+      info->mutable_cudnn_version()->set_major(version.major_version());
+      info->mutable_cudnn_version()->set_minor(version.minor_version());
+      info->mutable_cudnn_version()->set_patch(version.patch());
+    }
+  }
+  tensorflow::Logger::Singleton()->LogProto(conv_log);
+}
+
 }  // namespace
 
 template <class T>
@@ -2673,6 +2732,13 @@ port::Status CudnnSupport::DoConvolveImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
+
+    LogCudaProto(
+        GenerateConvProto<T>(dnn::ConvolutionKind::FORWARD, input_descriptor,
+                             filter_descriptor, output_descriptor, algo_desc,
+                             convolution_descriptor, dalpha, dbeta,
+                             accumulator_type, dnn::ActivationMode::kNone),
+        stream->parent());
   }
 
   return port::Status::OK();
@@ -2790,6 +2856,13 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
+
+    LogCudaProto(GenerateConvProto<ElementType>(
+                     dnn::ConvolutionKind::FORWARD, conv_input_descriptor,
+                     filter_descriptor, output_descriptor, algo_desc,
+                     convolution_descriptor, conv_input_scale, side_input_scale,
+                     accumulator_type, activation_mode),
+                 stream->parent());
   }
 
   return port::Status::OK();
@@ -3350,6 +3423,13 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
+
+    LogCudaProto(GenerateConvProto<T>(
+                     dnn::ConvolutionKind::BACKWARD_DATA, input_descriptor,
+                     filter_descriptor, output_descriptor, algo_desc,
+                     convolution_descriptor, dalpha, dbeta, accumulator_type,
+                     dnn::ActivationMode::kNone),
+                 stream->parent());
   }
 
   return port::Status::OK();
@@ -3548,6 +3628,13 @@ port::Status CudnnSupport::DoConvolveBackwardFilterImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
+
+    LogCudaProto(GenerateConvProto<T>(
+                     dnn::ConvolutionKind::BACKWARD_FILTER, input_descriptor,
+                     filter_descriptor, output_descriptor, algo_desc,
+                     convolution_descriptor, dalpha, dbeta, accumulator_type,
+                     dnn::ActivationMode::kNone),
+                 stream->parent());
   }
 
   return port::Status::OK();
