@@ -439,6 +439,7 @@ class PartitionedCallOp : public AsyncOpKernel {
     opts.step_container = ctx->step_container();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.stats_collector = ctx->stats_collector();
+    opts.collective_executor = ctx->collective_executor();
     // TODO(akshayka): Consider selecting a runner on a per-device basis, i.e.,
     // using device-specific threadpools when available.
     opts.runner = ctx->runner();
