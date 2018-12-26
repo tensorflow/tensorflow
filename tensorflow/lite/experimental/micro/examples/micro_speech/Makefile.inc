@@ -91,7 +91,6 @@ FEATURE_PROVIDER_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/feature_provider_test.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/timer.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/feature_provider.cc
 ALL_SRCS += $(FEATURE_PROVIDER_TEST_SRCS)
@@ -128,6 +127,26 @@ timer_test_bin: $(TIMER_TEST_BINARY).bin
 test_timer: $(TIMER_TEST_BINARY)
 	$(TEST_SCRIPT) $(TIMER_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
 
+# Tests the feature provider module.
+RECOGNIZE_COMMANDS_TEST_SRCS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands_test.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.cc
+ALL_SRCS += $(RECOGNIZE_COMMANDS_TEST_SRCS)
+RECOGNIZE_COMMANDS_TEST_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(RECOGNIZE_COMMANDS_TEST_SRCS))))
+RECOGNIZE_COMMANDS_TEST_BINARY := $(BINDIR)recognize_commands_test
+ALL_BINARIES += $(RECOGNIZE_COMMANDS_TEST_BINARY)
+$(RECOGNIZE_COMMANDS_TEST_BINARY): $(RECOGNIZE_COMMANDS_TEST_OBJS) $(MICROLITE_LIB_PATH)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(RECOGNIZE_COMMANDS_TEST_BINARY) $(RECOGNIZE_COMMANDS_TEST_OBJS) \
+	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
+recognize_commands_test: $(RECOGNIZE_COMMANDS_TEST_BINARY)
+recognize_commands_test_bin: $(RECOGNIZE_COMMANDS_TEST_BINARY).bin
+test_recognize_commands: $(RECOGNIZE_COMMANDS_TEST_BINARY)
+	$(TEST_SCRIPT) $(RECOGNIZE_COMMANDS_TEST_BINARY) '~~~ALL TESTS PASSED~~~'
+
 # Builds a standalone speech command recognizer binary.
 MICRO_SPEECH_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/main.cc \
@@ -138,7 +157,8 @@ tensorflow/lite/experimental/micro/examples/micro_speech/timer.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/no_features_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc
+tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.cc
 ALL_SRCS += $(MICRO_SPEECH_SRCS)
 MICRO_SPEECH_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICRO_SPEECH_SRCS))))

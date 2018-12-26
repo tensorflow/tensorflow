@@ -176,7 +176,6 @@ cc_library(
         ":audio_provider",
         ":model_settings",
         ":preprocessor_reference",
-        ":timer",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
@@ -191,7 +190,6 @@ tflite_micro_cc_test(
         ":audio_provider",
         ":feature_provider",
         ":model_settings",
-        ":timer",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -221,6 +219,34 @@ tflite_micro_cc_test(
     ],
 )
 
+cc_library(
+    name = "recognize_commands",
+    srcs = [
+        "recognize_commands.cc",
+    ],
+    hdrs = [
+        "recognize_commands.h",
+    ],
+    deps = [
+        ":model_settings",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "recognize_commands_test",
+    srcs = [
+        "recognize_commands_test.cc",
+    ],
+    deps = [
+        ":recognize_commands",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
 cc_binary(
     name = "micro_speech",
     srcs = [
@@ -232,6 +258,7 @@ cc_binary(
         ":features_test_data",
         ":model_settings",
         ":preprocessor_reference",
+        ":recognize_commands",
         ":timer",
         ":tiny_conv_model_data",
         "//tensorflow/lite:schema_fbs_version",
