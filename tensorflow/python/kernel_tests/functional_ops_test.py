@@ -24,6 +24,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -199,6 +200,13 @@ class FunctionalOpsTest(test.TestCase):
         lambda x: math_ops.multiply(math_ops.add(x, 3), 2), elems)
     self.assertAllEqual(
         np.array([(x + 3) * 2 for x in nums]), self.evaluate(r))
+
+  def testMapDtypeEager(self):
+    with context.eager_mode():
+      dtype = functional_ops.map_fn(lambda x: constant_op.constant(""),
+                                    constant_op.constant([]),
+                                    dtype=dtypes.string).dtype
+      self.assertEqual(dtype, dtypes.string)
 
   def testMapSparseTensor(self):
     with self.cached_session():
