@@ -395,6 +395,7 @@ class CategoricalCrossentropy(Loss):
           y_true, y_pred, from_logits=self.from_logits)
 
 
+@keras_export('keras.losses.Hinge')
 class Hinge(Loss):
   """Computes the hinge loss between `y_true` and `y_pred`.
 
@@ -429,6 +430,7 @@ class Hinge(Loss):
     return hinge(y_true, y_pred)
 
 
+@keras_export('keras.losses.SquaredHinge')
 class SquaredHinge(Loss):
   """Computes the squared hinge loss between `y_true` and `y_pred`.
 
@@ -463,6 +465,7 @@ class SquaredHinge(Loss):
     return squared_hinge(y_true, y_pred)
 
 
+@keras_export('keras.losses.CategoricalHinge')
 class CategoricalHinge(Loss):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
@@ -629,6 +632,7 @@ def cosine_proximity(y_true, y_pred):
   return -math_ops.reduce_sum(y_true * y_pred, axis=-1)
 
 
+@keras_export('keras.losses.CosineProximity')
 class CosineProximity(Loss):
   """Computes the cosine distance between `y_true` and `y_pred`.
 

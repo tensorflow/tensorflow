@@ -1219,6 +1219,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
                                self.tn[min_index] + self.fp[min_index])
 
 
+@keras_export('keras.metrics.CosineProximity')
 class CosineProximity(MeanMetricWrapper):
   """Computes the cosine distance between the labels and predictions.
 
@@ -1256,6 +1257,7 @@ class CosineProximity(MeanMetricWrapper):
     return super(CosineProximity, cls).from_config(config)
 
 
+@keras_export('keras.metrics.MeanAbsoluteError')
 class MeanAbsoluteError(MeanMetricWrapper):
   """Computes the mean absolute error between the labels and predictions.
 
@@ -1288,6 +1290,7 @@ class MeanAbsoluteError(MeanMetricWrapper):
     return super(MeanAbsoluteError, cls).from_config(config)
 
 
+@keras_export('keras.metrics.MeanAbsolutePercentageError')
 class MeanAbsolutePercentageError(MeanMetricWrapper):
   """Computes the mean absolute percentage error between `y_true` and `y_pred`.
 
@@ -1321,6 +1324,7 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
     return super(MeanAbsolutePercentageError, cls).from_config(config)
 
 
+@keras_export('keras.metrics.MeanSquaredError')
 class MeanSquaredError(MeanMetricWrapper):
   """Computes the mean squared error between `y_true` and `y_pred`.
 
@@ -1354,6 +1358,7 @@ class MeanSquaredError(MeanMetricWrapper):
     return super(MeanSquaredError, cls).from_config(config)
 
 
+@keras_export('keras.metrics.MeanSquaredLogarithmicError')
 class MeanSquaredLogarithmicError(MeanMetricWrapper):
   """Computes the mean squared logarithmic error between `y_true` and `y_pred`.
 
@@ -1387,6 +1392,7 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
     return super(MeanSquaredLogarithmicError, cls).from_config(config)
 
 
+@keras_export('keras.metrics.Hinge')
 class Hinge(MeanMetricWrapper):
   """Computes the hinge metric between `y_true` and `y_pred`.
 
@@ -1419,6 +1425,7 @@ class Hinge(MeanMetricWrapper):
     return super(Hinge, cls).from_config(config)
 
 
+@keras_export('keras.metrics.SquaredHinge')
 class SquaredHinge(MeanMetricWrapper):
   """Computes the squared hinge metric between `y_true` and `y_pred`.
 
@@ -1451,6 +1458,7 @@ class SquaredHinge(MeanMetricWrapper):
     return super(SquaredHinge, cls).from_config(config)
 
 
+@keras_export('keras.metrics.CategoricalHinge')
 class CategoricalHinge(MeanMetricWrapper):
   """Computes the categorical hinge metric between `y_true` and `y_pred`.
 
