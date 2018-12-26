@@ -1,0 +1,58 @@
+path: "tensorflow.io.gfile.GFile"
+tf_class {
+  is_instance: "<class \'tensorflow.python.platform.gfile.GFile\'>"
+  is_instance: "<class \'tensorflow.python.lib.io.file_io.FileIO\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "mode"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\', \'mode\'], varargs=None, keywords=None, defaults=[\'r\'], "
+  }
+  member_method {
+    name: "close"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flush"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "next"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "read"
+    argspec: "args=[\'self\', \'n\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "readline"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "readlines"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "seek"
+    argspec: "args=[\'self\', \'offset\', \'whence\', \'position\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "size"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "tell"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "write"
+    argspec: "args=[\'self\', \'file_content\'], varargs=None, keywords=None, defaults=None"
+  }
+}
