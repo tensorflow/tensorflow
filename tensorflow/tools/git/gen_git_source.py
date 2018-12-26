@@ -216,7 +216,7 @@ const int tf_monolithic_build() {
   return 0;
 #endif
 }
-""" % git_version
+""" % git_version.decode('utf-8')
   open(filename, "w").write(contents)
 
 
