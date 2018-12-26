@@ -36,7 +36,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
-from tensorflow.python.util import nest
 
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
@@ -488,8 +487,7 @@ def replicate(computation,
     computation: A Python function that builds the computation to replicate.
     inputs: A list of lists of input tensors or `None` (equivalent to
       `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
-      have the same number of inputs. Each input can be a nested structure
-      containing values that are convertible to tensors.
+      have the same number of inputs.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to computation.
     device_assignment: If not `None`, a `DeviceAssignment` describing the
@@ -528,8 +526,7 @@ def split_compile_and_replicate(computation,
     computation: A Python function that builds the computation to replicate.
     inputs: A list of lists of input tensors or `None` (equivalent to
       `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
-      have the same number of inputs. Each input can be a nested structure
-      containing values that are convertible to tensors.
+      have the same number of inputs.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to computation.
     device_assignment: If not `None`, a `DeviceAssignment` describing the
@@ -583,32 +580,24 @@ def split_compile_and_replicate(computation,
   if num_replicas == 0:
     return []
 
-  # Checks all replicas have the same structure.
-  for i in xrange(1, num_replicas):
-    nest.assert_same_structure(inputs[0], inputs[i])
-
-  # Flatten inputs.
-  flat_inputs = [
-      nest.flatten(per_replica_input) for per_replica_input in inputs
-  ]
   # Converts inputs to Tensors.
-  flat_inputs = [[ops.convert_to_tensor(x) for x in inp] for inp in flat_inputs]
+  inputs = [[ops.convert_to_tensor(x) for x in inp] for inp in inputs]
 
   # Verifies that all replicas have matching numbers and types of inputs
-  flat_input_types = [x.dtype for x in flat_inputs[0]]
-  input_arity = len(inputs[0])
-  flat_input_arity = len(flat_input_types)
+  input_types = [x.dtype for x in inputs[0]]
+  input_arity = len(input_types)
   for i in range(num_replicas):
     if len(inputs[i]) != input_arity:
       raise ValueError("Replicas must have the same number of inputs. "
                        "Replica 0 had {} inputs, replica {} had {} "
                        "inputs.".format(input_arity, i, len(inputs[i])))
 
-    types = [x.dtype for x in flat_inputs[i]]
-    if types != flat_input_types:
-      raise ValueError("Replicas must have matching input types. Replica 0 had "
-                       "input types {}, replica {} had input types {}".format(
-                           flat_input_types, i, types))
+    types = [x.dtype for x in inputs[i]]
+    if types != input_types:
+      raise ValueError(
+          "Replicas must have matching input types. Replica 0 had "
+          "input types {}, replica {} had input types {}".format(
+              input_types, i, types))
 
   arg_error = xla.check_function_argument_count(
       computation, input_arity, infeed_queue)
@@ -631,8 +620,8 @@ def split_compile_and_replicate(computation,
 
   # Fan-in: Builds a TPUReplicatedInput node for each input.
   computation_inputs = []
-  for i in range(0, flat_input_arity):
-    replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
+  for i in range(0, input_arity):
+    replicas = [inputs[replica][i] for replica in xrange(num_replicas)]
     computation_inputs.append(
         tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
@@ -661,10 +650,6 @@ def split_compile_and_replicate(computation,
         # pylint: disable=protected-access
         i.op._set_attr("_tpu_input_identity", attr_value_pb2.AttrValue(b=True))
         # pylint: enable=protected-access
-
-      # Unflatten the computation inputs to match original input structure.
-      computation_inputs = nest.pack_sequence_as(
-          structure=inputs[0], flat_sequence=computation_inputs)
 
       # If there is an infeed queue, adds the dequeued values to the
       # computation's inputs.
@@ -1108,8 +1093,7 @@ def rewrite(computation,
       evaluating any of the returned output tensors, not just the ones returned.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
-      of arguments as inputs to `computation`. Each input can be a nested
-      structure containing values that are convertible to tensors.
+      of arguments as inputs to `computation`.
     device_assignment: if not `None`, a `DeviceAssignment` describing the
       mapping between logical cores in the computation with physical cores in
       the TPU topology. May be omitted for a single-core computation, in which
