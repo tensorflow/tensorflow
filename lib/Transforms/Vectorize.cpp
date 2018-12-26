@@ -1111,7 +1111,7 @@ static OperationStmt *vectorizeOneOperationStmt(MLFuncBuilder *b,
   };
   auto operands = map(vectorizeOneOperand, opStmt->getOperands());
   // Check whether a single operand is null. If so, vectorization failed.
-  bool success = llvm::any_of(operands, [](SSAValue *op) { return op; });
+  bool success = llvm::all_of(operands, [](SSAValue *op) { return op; });
   if (!success) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ an operand failed vectorize");
     return nullptr;

@@ -179,3 +179,21 @@ mlfunc @vector_add_2d(%M : index, %N : index) -> f32 {
   %res = load %C[%c7, %c42] : memref<?x?xf32, 0>
   return %res : f32
 }
+
+// This should not vectorize and should not crash.
+// CHECK-LABEL: @vec_rejected
+mlfunc @vec_rejected(%A : memref<?x?xf32>, %C : memref<?x?xf32>) {
+  %N = dim %A, 0 : memref<?x?xf32>
+  for %i = 0 to %N {
+// CHECK-NOT: vector
+    %a = load %A[%i, %i] : memref<?x?xf32> // not vectorized
+    for %j = 0 to %N {
+      %b = load %A[%i, %j] : memref<?x?xf32> // may be vectorized
+// CHECK-NOT: vector
+      %c = addf %a, %b : f32 // not vectorized because %a wasn't
+// CHECK-NOT: vector
+      store %c, %C[%i, %j] : memref<?x?xf32> // not vectorized because %c wasn't
+    }
+  }
+  return
+}
