@@ -48,8 +48,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_topology_view",
+        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -58,10 +61,11 @@ tf_cc_test(
     srcs = ["topological_sort_test.cc"],
     deps = [
         ":topological_sort",
-        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
