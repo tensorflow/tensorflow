@@ -351,6 +351,10 @@ typedef struct {
   float alpha;
 } TfLiteLeakyReluParams;
 
+typedef struct {
+  TfLiteType index_out_type;
+} TfLiteUniqueParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
