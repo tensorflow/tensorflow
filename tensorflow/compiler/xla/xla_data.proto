@@ -188,11 +188,14 @@ message ShapeProto {
   // The element type for this shape.
   PrimitiveType element_type = 2;
 
-  // The size (number of elements) for each dimension.
-  // In XLA, dimensions are numbered from 0 to N-1 for an
-  // N-dimensional array. The first element of 'dimensions' is the size of
-  // dimension 0, the second element is the size of dimension 1, and so forth.
-  // Empty list indicates a scalar.
+  // The size (number of elements) for each dimension, or an upper bound on the
+  // size if the dimension is dynamic.  In XLA, dimensions are numbered from 0
+  // to N-1 for an N-dimensional array. The first element of 'dimensions' is the
+  // size of dimension 0, the second element is the size of dimension 1, and so
+  // forth.  Empty list indicates a scalar.
+  //
+  // If the respective element in 'is_dimension_dynamic' is true then the value
+  // in this field represents an upper bound on the size of the dimension.
   repeated int64 dimensions = 3;
 
   // For tuples only, the shapes of constitutent shapes in the tuple sequence.
@@ -200,6 +203,12 @@ message ShapeProto {
 
   // The layout used to back this shape.
   LayoutProto layout = 5;
+
+  // For arrays, this indicates whether or not each dimension is
+  // dynamically-sized. The number of elements in this repeated field should be
+  // zero (indicating that no dimensions are dynamic) or equal to the number of
+  // elements in the 'dimensions' field.
+  repeated bool is_dynamic_dimension = 6;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal(),
   // ShapeUtil::Compatible() and ShapeUtil::Hash() appropriately to account for

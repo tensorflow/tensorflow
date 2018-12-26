@@ -41,6 +41,14 @@ class ExportTest : public ::testing::Test {
       if (name == "Conv") {
         auto* op = new ConvOperator;
         op->padding.type = PaddingType::kSame;
+        op->inputs = {"input", "filter"};
+        op->outputs = {"output"};
+        Array& input_array = input_model_.GetOrCreateArray(op->inputs[0]);
+        Array& filter_array = input_model_.GetOrCreateArray(op->inputs[1]);
+        Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+        input_array.data_type = ArrayDataType::kFloat;
+        filter_array.data_type = ArrayDataType::kFloat;
+        output_array.data_type = ArrayDataType::kFloat;
         input_model_.operators.emplace_back(op);
       } else if (name == "Add") {
         input_model_.operators.emplace_back(new AddOperator);
@@ -97,6 +105,13 @@ class ExportTest : public ::testing::Test {
       auto* op = new ConvOperator;
       op->padding.type = PaddingType::kSame;
       op->inputs = {"inputs", "weights"};
+      op->outputs = {"output"};
+      Array& input_array = input_model_.GetArray(op->inputs[0]);
+      Array& filter_array = input_model_.GetArray(op->inputs[1]);
+      Array& output_array = input_model_.GetOrCreateArray(op->outputs[0]);
+      input_array.data_type = ArrayDataType::kFloat;
+      filter_array.data_type = ArrayDataType::kFloat;
+      output_array.data_type = ArrayDataType::kFloat;
       input_model_.operators.emplace_back(op);
     }
     input_model_.operators.emplace_back(new AddOperator);

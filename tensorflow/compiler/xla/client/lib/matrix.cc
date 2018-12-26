@@ -31,8 +31,8 @@ namespace xla {
 
 XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
                      int64 n) {
-  auto a = Iota(builder, type, m);
-  auto b = Iota(builder, type, n);
+  auto a = Iota(builder, U32, m);
+  auto b = Iota(builder, U32, n);
   auto indicator = Eq(a, Broadcast(b, {m}), /*broadcast_dimensions=*/{0});
   return ConvertElementType(indicator, type);
 }
@@ -41,7 +41,7 @@ XlaOp GetMatrixDiagonal(XlaOp x) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     TF_RET_CHECK(n_dims >= 2);
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
@@ -64,28 +64,27 @@ XlaOp GetMatrixDiagonal(XlaOp x) {
   });
 }
 
-XlaOp Triangle(XlaOp x, bool lower) {
+XlaOp TriangleMask(XlaOp x, int diagonal) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     TF_RET_CHECK(n_dims >= 2);
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
     absl::Span<const int64> major_dims =
         AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
-    auto a = Iota(builder, U32, n);
-    auto b = Iota(builder, U32, m);
+    auto a = Iota(builder, S32, n);
+    auto b = Iota(builder, S32, m) + ConstantR0<int32>(builder, diagonal);
     XlaOp indicator;
-    if (lower) {
-      indicator = Ge(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
-    } else {
-      indicator = Le(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
-    }
-    auto mask = Broadcast(indicator, major_dims);
-
-    return Select(mask, x, Zeros(builder, shape));
+    indicator = Ge(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
+    return Broadcast(indicator, major_dims);
   });
+}
+
+XlaOp Triangle(XlaOp x, bool lower) {
+  return lower ? Select(TriangleMask(x, 0), x, ZerosLike(x))
+               : Select(TriangleMask(x, -1), ZerosLike(x), x);
 }
 
 XlaOp UpperTriangle(XlaOp x) { return Triangle(x, false); }
@@ -100,12 +99,12 @@ XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision) {
 
     // Check that both tensors have the same number of dimensions. There must be
     // at least two (the batch dimensions can be empty).
-    if (ShapeUtil::Rank(x_shape) != ShapeUtil::Rank(y_shape)) {
+    if (x_shape.rank() != y_shape.rank()) {
       return InvalidArgument(
           "Arguments to BatchDot have different ranks: %s vs. %s",
           ShapeUtil::HumanString(x_shape), ShapeUtil::HumanString(y_shape));
     }
-    const int ndims = ShapeUtil::Rank(x_shape);
+    const int ndims = x_shape.rank();
     if (ndims < 2) {
       return InvalidArgument(
           "Arguments to BatchDot must have rank >= 2: got %d", ndims);
@@ -170,7 +169,7 @@ XlaOp TransposeInMinorDims(XlaOp x) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     TF_RET_CHECK(n_dims >= 2);
     std::vector<int64> permutation(n_dims);
     std::iota(permutation.begin(), permutation.end(), 0);

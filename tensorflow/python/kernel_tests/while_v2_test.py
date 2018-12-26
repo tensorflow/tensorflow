@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
@@ -115,6 +116,18 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grady_0), [55.])
       self.assertSequenceEqual(self.evaluate(grady_1), [6.])
       self.assertSequenceEqual(self.evaluate(grady_2), [61.])
+
+  @test_util.run_deprecated_v1
+  def testGradientTape(self):
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(2.)
+      t.watch(x)
+      ret = while_loop_v2(
+          lambda v: v < 4., lambda v: v * v, [x],
+          return_same_structure=False)  # x**2
+    grad = t.gradient(ret, x)
+    with self.cached_session() as sess:
+      self.assertAllEqual(sess.run(grad), 4.0)
 
   @test_util.run_deprecated_v1
   def testMultipleWhileLoops(self):

@@ -21,7 +21,7 @@ tf_class {
   }
   member_method {
     name: "on_epoch_begin"
-    argspec: "args=[\'self\', \'epoch\', \'logs\', \'mode\'], varargs=None, keywords=None, defaults=[\'None\', \'train\'], "
+    argspec: "args=[\'self\', \'epoch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "on_epoch_end"

@@ -767,6 +767,8 @@ cc_library(
         ":target_machine_features",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:computation_layout",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:layout_assignment",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",

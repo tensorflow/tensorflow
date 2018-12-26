@@ -40,7 +40,7 @@ namespace {
 
 // Return whether the given shape is rank 2 excluding the batch dimensions.
 bool IsRank2(const Shape& shape, int64 batch_dimensions_size) {
-  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2;
+  return shape.rank() == batch_dimensions_size + 2;
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes

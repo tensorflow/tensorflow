@@ -27,6 +27,9 @@ Shape::Shape(const ShapeProto& shape_proto) {
   for (const int64 dimension : shape_proto.dimensions()) {
     add_dimensions(dimension);
   }
+  for (int i = 0; i < shape_proto.is_dynamic_dimension_size(); i++) {
+    dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
+  }
   tuple_shapes_.reserve(shape_proto.tuple_shapes_size());
   for (const ShapeProto& element_shape : shape_proto.tuple_shapes()) {
     *add_tuple_shapes() = Shape(element_shape);
@@ -43,6 +46,9 @@ ShapeProto Shape::ToProto() const {
   for (const int64 dimension : dimensions()) {
     proto.add_dimensions(dimension);
   }
+  for (const bool dynamic : dynamic_dimensions_) {
+    proto.add_is_dynamic_dimension(dynamic);
+  }
   proto.mutable_tuple_shapes()->Reserve(tuple_shapes_size());
   for (const Shape& shape : tuple_shapes()) {
     *proto.add_tuple_shapes() = shape.ToProto();
@@ -58,6 +64,40 @@ string Shape::ToString(bool print_layout) const {
     return ShapeUtil::HumanStringWithLayout(*this);
   } else {
     return ShapeUtil::HumanString(*this);
+  }
+}
+
+bool Shape::is_static() const {
+  if (ShapeUtil::IsTuple(*this)) {
+    for (const Shape& subshape : tuple_shapes_) {
+      if (!subshape.is_static()) {
+        return false;
+      }
+    }
+  }
+  return !std::any_of(dynamic_dimensions_.begin(), dynamic_dimensions_.end(),
+                      [](bool b) { return b; });
+}
+
+void Shape::DeleteDimension(int64 dim_to_delete) {
+  CHECK(ShapeUtil::IsArray(*this));
+  CHECK_GE(dim_to_delete, 0);
+  CHECK_LT(dim_to_delete, dimensions_.size());
+  dimensions_.erase(dimensions_.begin() + dim_to_delete);
+  dynamic_dimensions_.erase(dynamic_dimensions_.begin() + dim_to_delete);
+  if (LayoutUtil::HasLayout(*this)) {
+    layout_.set_format(DENSE);
+    for (int64 i = 0; i < layout_.minor_to_major().size();) {
+      if (layout_.minor_to_major(i) == dim_to_delete) {
+        layout_.mutable_minor_to_major()->erase(
+            layout_.mutable_minor_to_major()->begin() + i);
+        continue;
+      }
+      if (layout_.minor_to_major(i) > dim_to_delete) {
+        (*layout_.mutable_minor_to_major())[i] -= 1;
+      }
+      ++i;
+    }
   }
 }
 

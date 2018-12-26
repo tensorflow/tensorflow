@@ -967,6 +967,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           list_ops.tensor_list_get_item(v[0], 0, element_dtype=dtypes.float32),
           1.)
 
+  def testGroupDoesntForceRead(self):
+    with ops.Graph().as_default():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      assign = v.assign_add(1.0)
+      g = control_flow_ops.group([assign])
+      self.assertEqual(g.control_inputs[0].type, "AssignAddVariableOp")
+
   def testScatterNdAddStateOps(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(
@@ -1067,6 +1074,11 @@ class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):
     self.assertEqual(NotImplemented, v._dense_var_to_tensor(as_ref=True))
     self.assertEqual(NotImplemented,
                      v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=True))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testDistributeStrategy(self):
+    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int32)
+    self.assertIsNone(v.distribute_strategy)
 
 
 if __name__ == "__main__":

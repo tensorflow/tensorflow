@@ -154,6 +154,106 @@ class LoadTest(test.TestCase):
     imported = self.cycle(root)
     self.assertEqual(4., imported.f(constant_op.constant(2.0)).numpy())
 
+  def test_nested_func(self):
+    f = def_function.function(
+        lambda x: x*2.0,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    g = def_function.function(
+        lambda x: f(x) + 1.0,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+
+    root = tracking.Checkpointable()
+    root.g = g
+    imported = self.cycle(root)
+    imported.g(constant_op.constant([1.0]))
+
+  def test_function_with_default_bool_input(self):
+
+    def func(x, training=False):
+      if training:
+        return 2 * x
+      else:
+        return 7
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(func)
+
+    self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
+    self.assertEqual(7, root.f(constant_op.constant(1)).numpy())
+    self.assertEqual(2, root.f(constant_op.constant(1), True).numpy())
+
+    imported = self.cycle(root)
+
+    self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
+    self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+
+  def test_positional_arguments(self):
+    def func(x, training=False, abc=7.1, defg=7.7):
+      del abc
+      if training:
+        return 2 * x
+      if defg == 7:
+        return 6
+      else:
+        return 7
+
+    root = tracking.Checkpointable()
+    root.f = def_function.function(func)
+
+    self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
+    self.assertEqual(7, root.f(constant_op.constant(1)).numpy())
+    self.assertEqual(2, root.f(constant_op.constant(1), True).numpy())
+    self.assertEqual(6, root.f(constant_op.constant(1), defg=7.0).numpy())
+
+    imported = self.cycle(root)
+
+    self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
+    self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+    self.assertEqual(6, imported.f(constant_op.constant(1), defg=7.0).numpy())
+
+  def test_member_function(self):
+    class CheckpointableWithMember(tracking.Checkpointable):
+
+      def __init__(self):
+        super(CheckpointableWithMember, self).__init__()
+        self._some_value = 20
+
+      @def_function.function
+      def f(self, x, training=False):
+        if training:
+          return 2 * x
+        else:
+          return 7 + self._some_value
+
+    root = CheckpointableWithMember()
+
+    self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
+    self.assertEqual(27, root.f(constant_op.constant(1)).numpy())
+    self.assertEqual(2, root.f(constant_op.constant(1), True).numpy())
+
+    imported = self.cycle(root)
+
+    self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
+    self.assertEqual(27, imported.f(constant_op.constant(2)).numpy())
+
+  def test_side_effect_listing(self):
+    class M(tracking.Checkpointable):
+
+      def __init__(self):
+        super(M, self).__init__()
+        self.var = None
+
+      @def_function.function(
+          input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+      def f(self, x):
+        if self.var is None:
+          self.var = variables.Variable(2.)
+        return x * self.var
+
+    m = M()
+    self.cycle(m)
+    self.assertEquals(4.0, m.f(constant_op.constant(2.0)).numpy())
+
 
 if __name__ == "__main__":
   test.main()

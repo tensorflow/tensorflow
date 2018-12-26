@@ -1391,8 +1391,8 @@ class CheckpointableSaver(object):
             name=base.OBJECT_GRAPH_PROTO_KEY))
     return named_saveable_objects, graph_proto, feed_additions
 
-  def freeze(self, object_map=None, to_graph=None):
-    """Creates a `tf.train.Saver` with the current object graph frozen."""
+  def gather_objects(self, object_map=None, to_graph=None):
+    """Creates SaveableObjects with the current object graph frozen."""
     checkpointable_objects, path_to_root = (
         _breadth_first_checkpointable_traversal(self._root_checkpointable))
     if to_graph:
@@ -1412,10 +1412,12 @@ class CheckpointableSaver(object):
           base.NoRestoreSaveable(
               tensor=object_graph_tensor,
               name=base.OBJECT_GRAPH_PROTO_KEY))
-      # TODO(allenl): Swap in a function-based saver here once it can serialize
-      # to a SaverDef.
-      return v1_saver_lib.Saver(
-          var_list=named_saveable_objects, max_to_keep=None)
+    return named_saveable_objects
+
+  def freeze(self, object_map=None, to_graph=None):
+    named_saveable_objects = self.gather_objects(
+        object_map=object_map, to_graph=to_graph)
+    return functional_saver.Saver(named_saveable_objects)
 
   def _save_cached_when_graph_building(
       self,

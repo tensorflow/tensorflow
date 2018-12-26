@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -54,7 +55,7 @@ XlaOp CholeskyUnblocked(XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int n_dims = ShapeUtil::Rank(a_shape);
+    const int n_dims = a_shape.rank();
     const int64 n = ShapeUtil::GetDimension(a_shape, -1);
     auto major_dims = AsInt64Slice(a_shape.dimensions())
                           .subspan(
@@ -144,7 +145,7 @@ XlaOp Cholesky(XlaOp a, int64 block_size,
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-    const int ndims = ShapeUtil::Rank(a_shape);
+    const int ndims = a_shape.rank();
     if (ndims < 2) {
       return InvalidArgument(
           "Argument to Cholesky must have rank >= 2; shape was %s",
@@ -155,6 +156,12 @@ XlaOp Cholesky(XlaOp a, int64 block_size,
     if (n != ShapeUtil::GetDimension(a_shape, -2)) {
       return InvalidArgument(
           "Argument to Cholesky must be batched square matrices; got shape %s",
+          ShapeUtil::HumanString(a_shape));
+    }
+
+    if (primitive_util::IsComplexType(a_shape.element_type())) {
+      return Unimplemented(
+          "Complex types are not implemented in Cholesky; got shape %s",
           ShapeUtil::HumanString(a_shape));
     }
 

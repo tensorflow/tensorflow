@@ -310,7 +310,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(network.non_trainable_weights,
                      dense.trainable_weights + dense.non_trainable_weights)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def test_trainable_weights(self):
     a = keras.layers.Input(shape=(2,))
     b = keras.layers.Dense(1)(a)
@@ -402,12 +402,12 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
 
     self.assertEqual(len(dense._inbound_nodes), 2)
     self.assertEqual(len(dense._outbound_nodes), 0)
-    self.assertListEqual(dense._inbound_nodes[0].inbound_layers, [a_layer])
+    self.assertEqual(dense._inbound_nodes[0].inbound_layers, a_layer)
     self.assertEqual(dense._inbound_nodes[0].outbound_layer, dense)
-    self.assertListEqual(dense._inbound_nodes[1].inbound_layers, [b_layer])
+    self.assertEqual(dense._inbound_nodes[1].inbound_layers, b_layer)
     self.assertEqual(dense._inbound_nodes[1].outbound_layer, dense)
-    self.assertListEqual(dense._inbound_nodes[0].input_tensors, [a])
-    self.assertListEqual(dense._inbound_nodes[1].input_tensors, [b])
+    self.assertEqual(dense._inbound_nodes[0].input_tensors, a)
+    self.assertEqual(dense._inbound_nodes[1].input_tensors, b)
 
     # test layer properties
     test_layer = keras.layers.Dense(16, name='test_layer')
@@ -1201,6 +1201,77 @@ class GraphUtilsTest(test.TestCase):
       self.assertEqual(
           keras.utils.tf_utils.get_reachable_from_inputs([x_3]),
           {x_3, x_5, x_5.op})
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NestedNetworkTest(test.TestCase):
+
+  def test_nested_inputs_network(self):
+    inputs = {'x1': keras.Input(shape=(1,)), 'x2': keras.Input(shape=(1,))}
+    outputs = keras.layers.Add()([inputs['x1'], inputs['x2']])
+    network = keras.engine.network.Network(inputs, outputs)
+
+    network = keras.engine.network.Network.from_config(network.get_config())
+
+    result_tensor = network({
+        'x': array_ops.ones((1, 1), 'float32'),
+        'y': array_ops.ones((1, 1), 'float32')
+    })
+    result = self.evaluate(result_tensor)
+    self.assertAllEqual(result, [[2.]])
+
+    output_shape = network.compute_output_shape({'x1': (10, 1), 'x2': (10, 1)})
+    self.assertListEqual(output_shape.as_list(), [10, 1])
+
+  def test_nested_outputs_network(self):
+    inputs = keras.Input(shape=(1,))
+    outputs = {
+        'x+x': keras.layers.Add()([inputs, inputs]),
+        'x*x': keras.layers.Multiply()([inputs, inputs])
+    }
+
+    network = keras.engine.network.Network(inputs, outputs)
+
+    network = keras.engine.network.Network.from_config(network.get_config())
+
+    result_tensor = network(array_ops.ones((1, 1), 'float32'))
+    result = self.evaluate(result_tensor)
+    self.assertAllEqual(result['x+x'], [[2.]])
+    self.assertAllEqual(result['x*x'], [[1.]])
+
+    output_shape = network.compute_output_shape((None, 1))
+    self.assertListEqual(output_shape['x+x'].as_list(), [None, 1])
+    self.assertListEqual(output_shape['x*x'].as_list(), [None, 1])
+
+  def test_nested_network_inside_network(self):
+    inner_inputs = {
+        'x1': keras.Input(shape=(1,)),
+        'x2': keras.Input(shape=(1,))
+    }
+    inner_outputs = {
+        'x1+x2':
+            keras.layers.Add()([inner_inputs['x1'], inner_inputs['x2']]),
+        'x1*x2':
+            keras.layers.Multiply()([inner_inputs['x1'], inner_inputs['x2']])
+    }
+    inner_network = keras.engine.network.Network(inner_inputs, inner_outputs)
+
+    inputs = [keras.Input(shape=(1,)), keras.Input(shape=(1,))]
+    middle = inner_network({'x1': inputs[0], 'x2': inputs[1]})
+    outputs = keras.layers.Add()([middle['x1+x2'], middle['x1*x2']])
+    network = keras.engine.network.Network(inputs, outputs)
+
+    network = keras.engine.network.Network.from_config(network.get_config())
+
+    # Computes: `(x1+x2) + (x1*x2)`
+    result_tensor = network(
+        [array_ops.ones((1, 1), 'float32'),
+         array_ops.ones((1, 1), 'float32')])
+    result = self.evaluate(result_tensor)
+    self.assertAllEqual(result, [[3.]])
+
+    output_shape = network.compute_output_shape([(None, 1), (None, 1)])
+    self.assertListEqual(output_shape.as_list(), [None, 1])
 
 
 if __name__ == '__main__':

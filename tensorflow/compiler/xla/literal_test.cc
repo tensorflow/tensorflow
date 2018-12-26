@@ -1642,7 +1642,7 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
       LiteralUtil::MakeTuple({&inner_elements[0], &inner_elements[1]}));
 
   Literal literal = Literal::MoveIntoTuple(absl::MakeSpan(elements));
-  ASSERT_TRUE(ShapeUtil::IsTuple(literal.shape()));
+  ASSERT_TRUE(literal.shape().IsTuple());
   ASSERT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 3);
 
   EXPECT_EQ(literal.Get<float>({}, /*shape_index=*/{0}), 1.0);
@@ -1659,7 +1659,7 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
 
 TEST_F(LiteralUtilTest, MoveIntoEmptyTuple) {
   Literal literal = Literal::MoveIntoTuple({});
-  ASSERT_TRUE(ShapeUtil::IsTuple(literal.shape()));
+  ASSERT_TRUE(literal.shape().IsTuple());
   EXPECT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 0);
 }
 

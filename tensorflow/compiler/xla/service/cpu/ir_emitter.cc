@@ -223,11 +223,11 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status IrEmitter::HandleCopy(HloInstruction* copy) {
-  if (ShapeUtil::IsTuple(copy->shape())) {
+  if (copy->shape().IsTuple()) {
     // kCopy shallow copies a tuple so just memcpy the top-level buffer.
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
-  } else if (ShapeUtil::IsArray(copy->shape())) {
+  } else if (copy->shape().IsArray()) {
     // Use the elemental emitter for array shapes.
     return DefaultAction(copy);
   }
@@ -316,7 +316,7 @@ Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
   auto on_false = tuple_select->operand(2);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
   TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()));
-  TF_RET_CHECK(ShapeUtil::IsTuple(tuple_select->shape()));
+  TF_RET_CHECK(tuple_select->shape().IsTuple());
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple_select));
   llvm_ir::EmitTupleSelect(GetIrArrayFor(tuple_select), GetIrArrayFor(pred),
                            GetEmittedValueFor(on_true),
@@ -346,7 +346,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   llvm_ir::EmitTuple(GetIrArrayFor(infeed), {data_address, token_address}, &b_,
                      module_);
 
-  if (ShapeUtil::IsTuple(data_shape)) {
+  if (data_shape.IsTuple()) {
     TF_RET_CHECK(!ShapeUtil::IsNestedTuple(data_shape));
 
     // For a tuple, we first copy each of the internal elements to
@@ -470,7 +470,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
   const Shape& operand_shape = operand->shape();
 
   llvm::Value* value = GetEmittedValueFor(operand);
-  if (!ShapeUtil::IsTuple(operand_shape)) {
+  if (!operand_shape.IsTuple()) {
     return EmitXfeedTransfer(XfeedKind::kOutfeed, operand_shape, value);
   }
 
@@ -535,7 +535,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     higher_dimensions *= normalized_keys_shape.dimensions(i);
   }
   int64 lower_dimensions = 1;
-  for (int64 i = ShapeUtil::Rank(normalized_keys_shape) - 1;
+  for (int64 i = normalized_keys_shape.rank() - 1;
        i > physical_dimension_to_sort; --i) {
     lower_dimensions *= normalized_keys_shape.dimensions(i);
   }
@@ -779,8 +779,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   const auto init_value = select_and_scatter->operand(2);
   const Window& window = select_and_scatter->window();
   PrimitiveType operand_element_type = operand->shape().element_type();
-  const int64 rank = ShapeUtil::Rank(operand->shape());
-  CHECK_EQ(rank, ShapeUtil::Rank(source->shape()));
+  const int64 rank = operand->shape().rank();
+  CHECK_EQ(rank, source->shape().rank());
   CHECK_EQ(rank, window.dimensions_size());
 
   // TODO(b/31410564): Implement dilation for select-and-scatter.
@@ -1362,7 +1362,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
                         assignment_.GetUniqueSlice(crs, {i}));
 
     const Shape& operand_shape = crs->operand(i)->shape();
-    CHECK(ShapeUtil::IsArray(operand_shape))
+    CHECK(operand_shape.IsArray())
         << "Operands to all-reduce must be arrays: " << crs->ToString();
     operand_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
 
@@ -1724,7 +1724,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     return false;
   }
 
-  CHECK(!ShapeUtil::IsTuple(reduce->shape()));
+  CHECK(!reduce->shape().IsTuple());
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(reduce));
 
   // We know we're not reducing over the most minor dimension, which means we
@@ -1891,7 +1891,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   // TODO(b/112040122): Support variadic reduce.
-  if (!ShapeUtil::IsArray(reduce->shape())) {
+  if (!reduce->shape().IsArray()) {
     return Unimplemented("Variadic reduce is not supported on CPU");
   }
   auto arg = reduce->mutable_operand(0);
@@ -2267,14 +2267,13 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
   // Write the tuple table if the output is a tuple.
-  if (ShapeUtil::IsTuple(custom_call->shape())) {
+  if (custom_call->shape().IsTuple()) {
     std::vector<llvm::Value*> base_ptrs;
     for (int i = 0; i < ShapeUtil::TupleElementCount(custom_call->shape());
          ++i) {
       const Shape& elem_shape =
           ShapeUtil::GetTupleElementShape(custom_call->shape(), i);
-      TF_RET_CHECK(!ShapeUtil::IsTuple(elem_shape))
-          << "Nested tuples not implemented";
+      TF_RET_CHECK(!elem_shape.IsTuple()) << "Nested tuples not implemented";
       TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                           assignment_.GetUniqueSlice(custom_call, {i}));
       llvm::Value* addr = EmitBufferPointer(slice, elem_shape);
@@ -2803,7 +2802,7 @@ llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
           llvm_ir::EmitBufferIndexingGEP(params, param_number, &b_);
       llvm::LoadInst* param_address_untyped = Load(param_address_offset);
 
-      if (!ShapeUtil::IsOpaque(target_shape)) {
+      if (!target_shape.IsOpaque()) {
         AttachAlignmentMetadataForLoad(param_address_untyped, target_shape);
         AttachDereferenceableMetadataForLoad(param_address_untyped,
                                              target_shape);

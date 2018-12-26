@@ -118,9 +118,9 @@ BENCHMARK(BM_KernelAndDeviceInit);
 void BM_KernelAndDeviceRun(int iters) {
   tensorflow::testing::StopTiming();
   Tensor t(Input({{1.0f, 2.0f}, {3.0f, 4.0f}}).tensor());
-  std::vector<Tensor> inputs;
-  inputs.push_back(t);
-  inputs.push_back(t);
+  gtl::InlinedVector<TensorValue, 4> inputs;
+  inputs.push_back(TensorValue(&t));
+  inputs.push_back(TensorValue(&t));
   std::vector<Tensor> outputs;
   NodeDef ndef(AttrBuilder("MatMul")
                    .Set("T", DT_FLOAT)
@@ -134,7 +134,7 @@ void BM_KernelAndDeviceRun(int iters) {
                                     nullptr, &kernel));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr, nullptr, nullptr));
+    TF_CHECK_OK(kernel.Run(inputs, &outputs, nullptr, nullptr, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

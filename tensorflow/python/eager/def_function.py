@@ -236,6 +236,10 @@ class PolymorphicFunction(object):
     """
     self._python_function = python_function
     self._input_signature = input_signature
+    # TODO(vbardiovsky): Both _stateful_fn and _stateless_fn are populating the
+    # same FunctionSpec. Consider removing it from both and passing in instead.
+    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+        python_function, input_signature)
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
     if self._experimental_autograph_options is not None:
@@ -265,15 +269,8 @@ class PolymorphicFunction(object):
 
   def _canonicalize_function_inputs(self, args, kwds):
     """Canonicalize the inputs to the Python function."""
-    if not self._stateful_fn:
-      raise ValueError(
-          "_canonicalize_function_inputs must be called only after _initialize "
-          "has run.")
-    # pylint: disable=protected-access
     if self._input_signature is None or args or kwds:
-      return self._stateful_fn._function_spec.canonicalize_function_inputs(
-          *args, **kwds)
-    # pylint: enable=protected-access
+      return self._function_spec.canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
     # If an input signature is defined, we may need to fetch a concrete function
     # without any inputs specified. In this case args and kwds should be ignored
     # but running _canonicalize_function_inputs would raise an exception.
@@ -404,6 +401,10 @@ class PolymorphicFunction(object):
   @property
   def input_signature(self):
     return self._input_signature
+
+  @property
+  def function_spec(self):
+    return self._function_spec
 
   def get_initialization_function(self, *args, **kwargs):
     """Returns a `Function` object which initializes this function's variables.

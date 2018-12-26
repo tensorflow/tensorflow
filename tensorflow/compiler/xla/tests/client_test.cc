@@ -96,7 +96,7 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
                                         LiteralSlice(result, {1}));
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.shape()));
+  EXPECT_TRUE(result.shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.shape()));
 
   EXPECT_TRUE(ShapeUtil::Equal(

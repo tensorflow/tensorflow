@@ -766,6 +766,50 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_P(HloEvaluatorTest, DotRank4AndRank4) {
+  HloComputation::Builder b(TestName());
+
+  auto lhs_array = absl::make_unique<Array4D<float>>(2, 2, 3, 1);
+  lhs_array->FillIota(1.0f);
+  auto lhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*lhs_array);
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
+
+  auto rhs_array = absl::make_unique<Array4D<float>>(2, 2, 3, 1);
+  rhs_array->FillIota(2.0f);
+  auto rhs_literal = LiteralUtil::CreateR4FromArray4D<float>(*rhs_array);
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 1});
+  DotDimensionNumbers dot_dnums;
+
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_lhs_contracting_dimensions(2);
+  dot_dnums.add_rhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(2);
+  b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
+                                             rhs_instruction, dot_dnums,
+                                             DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  Literal result = Evaluate();
+  float expected_1 = 0;
+  for (float i = 1.0f; i < 7.0f; ++i) {
+    expected_1 += i * i + i;
+  }
+  float expected_2 = 0;
+  for (float i = 7.0f; i < 13.0f; ++i) {
+    expected_2 += i * i + i;
+  }
+  auto expected_array = Array3D<float>({{{expected_1}}, {{expected_2}}});
+  auto expected = LiteralUtil::CreateR3FromArray3D<float>(expected_array);
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST_P(HloEvaluatorTest, SimpleConv1D) {
   HloComputation::Builder b(TestName());
 
@@ -2793,6 +2837,40 @@ ENTRY main {
   } else {
     EXPECT_TRUE(absl::c_equal(args[0].data<float>(), actual.data<float>()));
   }
+}
+
+// Check that s32 under/overflow doesn't trigger a ubsan failure.
+TEST_P(HloEvaluatorTest, Int32Overflow) {
+  // Test not applicable to bf16; only applies to signed integral types.
+  if (use_bfloat16_) {
+    return;
+  }
+
+  constexpr absl::string_view hlo_text = R"(
+HloModule Test
+
+ENTRY main {
+  c1 = s32[] constant(1073741824)  // 2^30
+  sum = s32[] add(c1, c1)  // 2^31, i.e. INT_MIN
+
+  c2 = s32[] constant(-2147483648)  // -2^31
+  sub = s32[] subtract(c2, c1)  // -2^31 - 2^30, underflows
+
+  mul = s32[] multiply(c1, c1)
+  ROOT tuple = (s32[], s32[], s32[]) tuple(sum, sub, mul)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  std::vector<Literal> actual = Evaluate({}).DecomposeTuple();
+  ASSERT_EQ(actual.size(), 3);
+
+  uint32 pow30 = uint32{1} << 30;
+  uint32 pow31 = uint32{1} << 31;
+  EXPECT_EQ(actual[0].GetFirstElement<int32>(), static_cast<int32>(pow31));
+  EXPECT_EQ(actual[1].GetFirstElement<int32>(),
+            static_cast<int32>(-(pow31 + pow30)));
+  EXPECT_EQ(actual[2].GetFirstElement<int32>(),
+            static_cast<int32>(pow31 * pow31));
 }
 
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,

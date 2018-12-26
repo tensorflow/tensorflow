@@ -22,7 +22,8 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.eager import context
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -318,74 +319,6 @@ class LSTMLayerTest(keras_parameterized.TestCase):
     targets = np.random.random((num_samples, units))
     model.train_on_batch([main_inputs] + initial_state, targets)
 
-
-class LSTMLayerGraphOnlyTest(test.TestCase):
-
-  def test_statefulness_LSTM(self):
-    num_samples = 2
-    timesteps = 3
-    embedding_dim = 4
-    units = 2
-    layer_class = keras.layers.LSTM
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Embedding(
-              4,
-              embedding_dim,
-              mask_zero=True,
-              input_length=timesteps,
-              batch_input_shape=(num_samples, timesteps)))
-      layer = layer_class(
-          units, return_sequences=False, stateful=True, weights=None)
-      model.add(layer)
-      model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                    loss='mse')
-      out1 = model.predict(np.ones((num_samples, timesteps)))
-      self.assertEqual(out1.shape, (num_samples, units))
-
-      # train once so that the states change
-      model.train_on_batch(
-          np.ones((num_samples, timesteps)), np.ones((num_samples, units)))
-      out2 = model.predict(np.ones((num_samples, timesteps)))
-
-      # if the state is not reset, output should be different
-      self.assertNotEqual(out1.max(), out2.max())
-
-      # check that output changes after states are reset
-      # (even though the model itself didn't change)
-      layer.reset_states()
-      out3 = model.predict(np.ones((num_samples, timesteps)))
-      self.assertNotEqual(out2.max(), out3.max())
-
-      # check that container-level reset_states() works
-      model.reset_states()
-      out4 = model.predict(np.ones((num_samples, timesteps)))
-      self.assertAllClose(out3, out4, atol=1e-5)
-
-      # check that the call to `predict` updated the states
-      out5 = model.predict(np.ones((num_samples, timesteps)))
-      self.assertNotEqual(out4.max(), out5.max())
-
-      # Check masking
-      layer.reset_states()
-
-      left_padded_input = np.ones((num_samples, timesteps))
-      left_padded_input[0, :1] = 0
-      left_padded_input[1, :2] = 0
-      out6 = model.predict(left_padded_input)
-
-      layer.reset_states()
-
-      right_padded_input = np.ones((num_samples, timesteps))
-      right_padded_input[0, -1:] = 0
-      right_padded_input[1, -2:] = 0
-      out7 = model.predict(right_padded_input)
-
-      self.assertAllClose(out7, out6, atol=1e-5)
-
-  # b/120919032
-  @tf_test_util.run_deprecated_v1
   def test_regularizers_LSTM(self):
     embedding_dim = 4
     layer_class = keras.layers.LSTM
@@ -402,7 +335,78 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
     self.assertEqual(len(layer.losses), 3)
     x = keras.backend.variable(np.ones((2, 3, 2)))
     layer(x)
-    self.assertEqual(len(layer.get_losses_for(x)), 1)
+    if context.executing_eagerly():
+      self.assertEqual(len(layer.losses), 4)
+    else:
+      self.assertEqual(len(layer.get_losses_for(x)), 1)
+
+
+class LSTMLayerV1OnlyTest(test.TestCase):
+
+  @test_util.run_v1_only('b/120941292')
+  @test_util.run_in_graph_and_eager_modes
+  def test_statefulness_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    layer_class = keras.layers.LSTM
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Embedding(
+            4,
+            embedding_dim,
+            mask_zero=True,
+            input_length=timesteps,
+            batch_input_shape=(num_samples, timesteps)))
+    layer = layer_class(
+        units, return_sequences=False, stateful=True, weights=None)
+    model.add(layer)
+    model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+                  loss='mse')
+    out1 = model.predict(np.ones((num_samples, timesteps)))
+    self.assertEqual(out1.shape, (num_samples, units))
+
+    # train once so that the states change
+    model.train_on_batch(
+        np.ones((num_samples, timesteps)), np.ones((num_samples, units)))
+    out2 = model.predict(np.ones((num_samples, timesteps)))
+
+    # if the state is not reset, output should be different
+    self.assertNotEqual(out1.max(), out2.max())
+
+    # check that output changes after states are reset
+    # (even though the model itself didn't change)
+    layer.reset_states()
+    out3 = model.predict(np.ones((num_samples, timesteps)))
+    self.assertNotEqual(out2.max(), out3.max())
+
+    # check that container-level reset_states() works
+    model.reset_states()
+    out4 = model.predict(np.ones((num_samples, timesteps)))
+    self.assertAllClose(out3, out4, atol=1e-5)
+
+    # check that the call to `predict` updated the states
+    out5 = model.predict(np.ones((num_samples, timesteps)))
+    self.assertNotEqual(out4.max(), out5.max())
+
+    # Check masking
+    layer.reset_states()
+
+    left_padded_input = np.ones((num_samples, timesteps))
+    left_padded_input[0, :1] = 0
+    left_padded_input[1, :2] = 0
+    out6 = model.predict(left_padded_input)
+
+    layer.reset_states()
+
+    right_padded_input = np.ones((num_samples, timesteps))
+    right_padded_input[0, -1:] = 0
+    right_padded_input[1, -2:] = 0
+    out7 = model.predict(right_padded_input)
+
+    self.assertAllClose(out7, out6, atol=1e-5)
+
 
 if __name__ == '__main__':
   test.main()

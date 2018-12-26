@@ -757,8 +757,13 @@ def _encode_arg_for_serialization(arg):
   """A representation for this argument, for serializing signatures."""
   if isinstance(arg, ops.Tensor):
     return tensor_spec.TensorSpec(arg.shape, arg.dtype)
-  else:
-    return UnknownArgument()
+  if isinstance(arg, int):
+    return arg
+  if isinstance(arg, float):
+    return arg
+  if isinstance(arg, bool):
+    return arg
+  return UnknownArgument()
 
 
 pywrap_tensorflow.RegisterType("Tensor", ops.Tensor)
@@ -772,20 +777,41 @@ def _deterministic_dict_values(dictionary):
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
-  def __init__(self, python_function, input_signature):
+  def as_tuple(self):
+    return (self._fullargspec, self._is_method, self._args_to_prepend,
+            self._kwargs_to_include, self.input_signature)
+
+  @staticmethod
+  def from_tuple(spec_tuple):
+    return FunctionSpec(*spec_tuple)
+
+  @staticmethod
+  def from_function_and_signature(python_function, input_signature):
+    """Create a FunctionSpec instance given a python function and signature."""
     if isinstance(python_function, functools.partial):
       python_function_to_inspect = python_function.func
-      self._args_to_prepend = python_function.args or tuple()
-      self._kwargs_to_include = python_function.keywords or {}
+      args_to_prepend = python_function.args or tuple()
+      kwargs_to_include = python_function.keywords or {}
     else:
       python_function_to_inspect = python_function
-      self._args_to_prepend = tuple()
-      self._kwargs_to_include = {}
+      args_to_prepend = tuple()
+      kwargs_to_include = {}
 
     fullargspec = tf_inspect.getfullargspec(python_function_to_inspect)
+    is_method = tf_inspect.ismethod(python_function_to_inspect)
+
+    return FunctionSpec(fullargspec, is_method, args_to_prepend,
+                        kwargs_to_include, input_signature)
+
+  def __init__(self, fullargspec, is_method, args_to_prepend, kwargs_to_include,
+               input_signature):
+    self._fullargspec = fullargspec
+    self._is_method = is_method
+    self._args_to_prepend = args_to_prepend
+    self._kwargs_to_include = kwargs_to_include
     self._default_values = fullargspec.defaults
 
-    if tf_inspect.ismethod(python_function_to_inspect):
+    if self._is_method:
       # Remove `self`: default arguments shouldn't be matched to it.
       args = fullargspec.args[1:]
     else:
@@ -833,7 +859,10 @@ class FunctionSpec(object):
       **kwargs: The keyword args this function was called with.
 
     Returns:
-      A canonicalized ordering of the inputs.
+      A canonicalized ordering of the inputs representened by a tuple in the
+      form (args, kwargs). Here: `args` is a full list of bound arguments, and
+      `kwargs` contains only true keyword arguments, as opposed to named
+      arguments called in a keyword-like fashion.
 
     Raises:
       ValueError: If a keyword in `kwargs` cannot be matched with a positional
@@ -949,7 +978,8 @@ class PolymorphicFunction(object):
       self._python_function = python_function.func
     else:
       self._python_function = python_function
-    self._function_spec = FunctionSpec(python_function, input_signature)
+    self._function_spec = FunctionSpec.from_function_and_signature(
+        python_function, input_signature)
     self._name = name
     self._autograph = autograph
     self._function_cache = collections.OrderedDict()
@@ -972,6 +1002,10 @@ class PolymorphicFunction(object):
   def python_function(self):
     """Returns the wrapped Python function."""
     return self._python_function  # pylint: disable=protected-access
+
+  @property
+  def function_spec(self):
+    return self._function_spec
 
   @property
   def _input_signature(self):
@@ -1729,9 +1763,12 @@ class _PolymorphicFunctionGarbageCollector(object):
   def __del__(self):
     if func_graph_module is None or memory is None:
       return
-    while self._cache:
-      self._cache.popitem()
-    memory.dismantle_ordered_dict(self._cache)
+    try:
+      while self._cache:
+        self._cache.popitem()
+      memory.dismantle_ordered_dict(self._cache)
+    except:  # pylint: disable=bare-except
+      pass
 
 
 class _FunctionGarbageCollector(object):
@@ -1747,4 +1784,7 @@ class _FunctionGarbageCollector(object):
   def __del__(self):
     if func_graph_module is None or memory is None or self._func_graph is None:
       return
-    func_graph_module.dismantle_func_graph(self._func_graph)
+    try:
+      func_graph_module.dismantle_func_graph(self._func_graph)
+    except:  # pylint: disable=bare-except
+      pass

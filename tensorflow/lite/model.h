@@ -56,6 +56,9 @@ class TfLiteVerifier {
 
 // An RAII object that represents a read-only tflite model, copied from disk,
 // or mmapped. This uses flatbuffers as the serialization format.
+//
+// NOTE: The current API requires that a FlatBufferModel instance be kept alive
+// by the client as long as it is in use by any dependent Interpreter instances.
 class FlatBufferModel {
  public:
   // Builds a model based on a file.
@@ -79,15 +82,16 @@ class FlatBufferModel {
       const char* filename, TfLiteVerifier* extra_verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
-  // Builds a model based on a pre-loaded flatbuffer. The caller retains
-  // ownership of the buffer and should keep it alive until the returned object
-  // is destroyed. Caller retains ownership of `error_reporter` and must ensure
-  // its lifetime is longer than the FlatBufferModel instance.
+  // Builds a model based on a pre-loaded flatbuffer.
+  // Caller retains ownership of the buffer and should keep it alive until
+  // the returned object is destroyed. Caller also retains ownership of
+  // `error_reporter` and must ensure its lifetime is longer than the
+  // FlatBufferModel instance.
   // Returns a nullptr in case of failure.
   // NOTE: this does NOT validate the buffer so it should NOT be called on
   // invalid/untrusted input. Use VerifyAndBuildFromBuffer in that case
   static std::unique_ptr<FlatBufferModel> BuildFromBuffer(
-      const char* buffer, size_t buffer_size,
+      const char* caller_owned_buffer, size_t buffer_size,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Verifies whether the content of the buffer is legit, then builds a model
@@ -105,13 +109,13 @@ class FlatBufferModel {
       TfLiteVerifier* extra_verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
-  // Builds a model directly from a flatbuffer pointer. The caller retains
-  // ownership of the buffer and should keep it alive until the returned object
-  // is destroyed. Caller retains ownership of `error_reporter` and must ensure
-  // its lifetime is longer than the FlatBufferModel instance.
+  // Builds a model directly from a flatbuffer pointer
+  // Caller retains ownership of the buffer and should keep it alive until the
+  // returned object is destroyed. Caller retains ownership of `error_reporter`
+  // and must ensure its lifetime is longer than the FlatBufferModel instance.
   // Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromModel(
-      const tflite::Model* model_spec,
+      const tflite::Model* caller_owned_model_spec,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Releases memory or unmaps mmaped memory.
@@ -125,7 +129,7 @@ class FlatBufferModel {
   const tflite::Model* operator->() const { return model_; }
   const tflite::Model* GetModel() const { return model_; }
   ErrorReporter* error_reporter() const { return error_reporter_; }
-  const Allocation* allocation() const { return allocation_; }
+  const Allocation* allocation() const { return allocation_.get(); }
 
   // Returns true if the model identifier is correct (otherwise false and
   // reports an error).
@@ -137,7 +141,7 @@ class FlatBufferModel {
   // `error_reporter`remains with the caller and must have lifetime at least
   // as much as FlatBufferModel. This is to allow multiple models to use the
   // same ErrorReporter instance.
-  FlatBufferModel(Allocation* allocation,
+  FlatBufferModel(std::unique_ptr<Allocation> allocation,
                   ErrorReporter* error_reporter = DefaultErrorReporter());
 
   // Loads a model from Model flatbuffer. The `model` has to remain alive and
@@ -150,24 +154,28 @@ class FlatBufferModel {
   // The error reporter to use for model errors and subsequent errors when
   // the interpreter is created
   ErrorReporter* error_reporter_;
-  // The allocator used for holding memory of the model.
-  Allocation* allocation_ = nullptr;
+  // The allocator used for holding memory of the model. Note that this will
+  // be null if the client provides a tflite::Model directly.
+  std::unique_ptr<Allocation> allocation_;
 };
 
 // Build an interpreter capable of interpreting `model`.
 //
-// model: a scoped model whose lifetime must be at least as long as
-//   the interpreter. In principle multiple interpreters can be made from
-//   a single model.
-// op_resolver: An instance that implements the Resolver interface which maps
-//   custom op names and builtin op codes to op registrations.
-// reportError: a functor that is called to report errors that handles
-//   printf var arg semantics. The lifetime of the reportError object must
+// model: A model whose lifetime must be at least as long as any
+//   interpreter(s) created by the builder. In principle multiple interpreters
+//   can be made from a single model.
+// op_resolver: An instance that implements the OpResolver interface, which maps
+//   custom op names and builtin op codes to op registrations. The lifetime
+//   of the provided `op_resolver` object must be at least as long as the
+//   InterpreterBuilder; unlike `model` and `error_reporter`, the `op_resolver`
+//   does not need to exist for the duration of any created Interpreter objects.
+// error_reporter: a functor that is called to report errors that handles
+//   printf var arg semantics. The lifetime of the `error_reporter` object must
 //   be greater than or equal to the Interpreter created by operator().
 //
 // Returns a kTfLiteOk when successful and sets interpreter to a valid
-// Interpreter. Note: the user must ensure the model lifetime is at least as
-// long as interpreter's lifetime.
+// Interpreter. Note: The user must ensure the model lifetime (and error
+// reporter, if provided) is at least as long as interpreter's lifetime.
 class InterpreterBuilder {
  public:
   InterpreterBuilder(const FlatBufferModel& model,

@@ -110,13 +110,13 @@ class SqlDatasetTest(sql_dataset_test_base.SqlDatasetTestBase):
 
   # Test that an error is raised when `driver_name` is invalid.
   def testReadResultSetWithInvalidDriverName(self):
-    dataset = self._createSqlDataset(
-        driver_name="sqlfake",
-        query="SELECT first_name, last_name, motto FROM students "
-        "ORDER BY first_name DESC",
-        output_types=(dtypes.string, dtypes.string, dtypes.string))
-    self.assertDatasetProduces(
-        dataset, expected_error=(errors.InvalidArgumentError, ""))
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = self._createSqlDataset(
+          driver_name="sqlfake",
+          query="SELECT first_name, last_name, motto FROM students "
+          "ORDER BY first_name DESC",
+          output_types=(dtypes.string, dtypes.string, dtypes.string))
+      self.assertDatasetProduces(dataset, expected_output=[])
 
   # Test that an error is raised when a column name in `query` is nonexistent
   def testReadResultSetWithInvalidColumnName(self):

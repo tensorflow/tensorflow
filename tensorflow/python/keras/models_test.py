@@ -631,6 +631,10 @@ class TestCloneAndBuildModel(test.TestCase):
   def test_replace_keras_optimizer_iterations_variable(self):
     self.assert_optimizer_iterations_increases('adam')
 
+  def test_replace_keras_optimizer_v2_iterations_variable(self):
+    self.assert_optimizer_iterations_increases(
+        keras.optimizer_v2.adam.Adam(0.01))
+
   def test_clone_and_build_sequential_model_without_inputs_defined(self):
     with self.cached_session():
       model = sequential_model(False, False)

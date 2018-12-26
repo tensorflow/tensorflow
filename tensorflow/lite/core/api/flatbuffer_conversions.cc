@@ -417,6 +417,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->cell_clip = bidi_lstm_params->cell_clip();
         params->proj_clip = bidi_lstm_params->proj_clip();
         params->merge_outputs = bidi_lstm_params->merge_outputs();
+        params->time_major = bidi_lstm_params->time_major();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;

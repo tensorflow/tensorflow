@@ -205,7 +205,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_array, &y_array});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(3, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);
@@ -233,7 +233,7 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_array, &y_array});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);
@@ -311,7 +311,7 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(computation, {&x_buffer, &y_buffer});
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result.on_host_shape()));
+  EXPECT_TRUE(result.on_host_shape().IsTuple());
   EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.on_host_shape()));
 
   Literal result_literal = ShapedBufferToLiteral(result);

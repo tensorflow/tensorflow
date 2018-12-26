@@ -346,13 +346,24 @@ class SimpleGraphView {
     return outputs_[node_idx];
   }
 
+  enum SearchDirection { kFollowOutputs = 1, kFollowInputs = 2 };
+
   // Traverse the graph starting at `node_idx`, collecting indices of nodes
   // visited in nodes_found. If a node has an op in `op_types_to_traverse`, the
   // walk continues to its children. It is assumed that *graph_ was not modified
   // after the call to Initialize().
   // If `op_types_to_traverse` is empty the DFS will traverse any node type.
   void DepthFirstSearch(const std::unordered_set<string>& op_types_to_traverse,
-                        int node_idx, std::set<int>* nodes_found) const;
+                        int node_idx, std::set<int>* nodes_found,
+                        SearchDirection direction = kFollowOutputs) const;
+
+  typedef std::function<bool(const NodeDef&)> DFSCallback;
+
+  // Like DepthFirstSearch, but invoke `callback` as each node is discovered. If
+  // `callback` returns true, the search is terminated early.
+  void DepthFirstSearchWithCallback(
+      const std::unordered_set<string>& op_types_to_traverse, int node_idx,
+      DFSCallback callback, SearchDirection direction = kFollowOutputs) const;
 
   string PrintToString() const;
 

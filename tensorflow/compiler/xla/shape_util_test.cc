@@ -176,6 +176,28 @@ TEST(ShapeUtilTest, UnequalIgnoringFpPrecision) {
       ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
 }
 
+TEST(ShapeUtilTest, EqualDynamicShapes) {
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
+                       ShapeUtil::MakeShape(F32, {4, 3}, {true, false})));
+  EXPECT_FALSE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
+                       ShapeUtil::MakeShape(F32, {4, 3}, {false, false})));
+}
+
+TEST(ShapeUtilTest, CompatibleDynamicShapes) {
+  Shape shape_a = ShapeUtil::MakeShape(F32, {4, 3}, {true, false});
+  *shape_a.mutable_layout() = Layout({1, 0});
+  Shape shape_b = ShapeUtil::MakeShape(F32, {4, 3}, {true, false});
+  *shape_b.mutable_layout() = Layout({0, 1});
+  Shape shape_c = ShapeUtil::MakeShape(F32, {4, 3}, {false, true});
+  *shape_c.mutable_layout() = Layout({0, 1});
+
+  EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_a));
+  EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_b));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape_a, shape_c));
+}
+
 TEST(ShapeUtilTest, CompatibleTuples) {
   Shape tuple1 = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(PRED, {4, 5})});

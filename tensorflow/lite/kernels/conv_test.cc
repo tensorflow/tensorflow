@@ -758,6 +758,10 @@ class HybridConvolutionOpModel : public BaseConvolutionOpModel {
     SymmetricQuantizeAndPopulate(filter_, f);
   }
 
+  void SetSignedFilter(std::initializer_list<float> f) {
+    SignedSymmetricQuantizeAndPopulate(filter_, f);
+  }
+
   void SetBias(std::initializer_list<float> data) {
     PopulateTensor(bias_, data);
   }
@@ -765,7 +769,7 @@ class HybridConvolutionOpModel : public BaseConvolutionOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
-TEST_P(ConvolutionOpTest, SimpleTestHybrid) {
+TEST_P(ConvolutionOpTest, SimpleTestHybridUint8) {
   HybridConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
       {TensorType_UINT8, {3, 2, 2, 1}}, {TensorType_FLOAT32, {}});
@@ -824,7 +828,7 @@ TEST_P(ConvolutionOpTest, SimpleTestHybrid) {
 // while keeping the filters for each channel equivalent.
 //
 // 2 * (A/2) * B = A * B, where the left side is this new test.
-TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannels) {
+TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannelsUint8) {
   HybridConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
       {TensorType_UINT8, {3, 2, 2, 2}}, {TensorType_FLOAT32, {}});
@@ -856,7 +860,7 @@ TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannels) {
                                  0.16)));
 }
 
-TEST_P(ConvolutionOpTest, PointwiseHybrid) {
+TEST_P(ConvolutionOpTest, PointwiseHybridUint8) {
   HybridConvolutionOpModel m(
       GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
       {TensorType_UINT8, {1, 1, 1, 2}}, {TensorType_FLOAT32, {}}, 1, 1);
@@ -871,6 +875,139 @@ TEST_P(ConvolutionOpTest, PointwiseHybrid) {
   });
 
   m.SetFilter({
+      1, 2,  // first filter
+  });
+  m.SetBias({0});
+
+  m.Invoke();
+
+  // Example: we get 3.03156 instead of 3.
+  //
+  // Second batch:
+  // 0.5 0.5 1 1 1.5 1.5 2 2  -> 32 32 64 64 95 95 127 127 with scale factor
+  // 127/2. We care about the two 64's.
+  //
+  // Filter:
+  // 64 127 with scale factor of 127/2.
+  //
+  // (64 * 64 + 64 * 127) * (2/127)^2 gives us the expected result.
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.5, 1.5, 1.5, 1.5,  // first batch, row = 1
+                      3., 3., 3., 3.,      // first batch, row = 2
+                      1.5, 3., 4.5, 6.,    // second batch, row = 1
+                      1.5, 3., 4.5, 6.,    // second batch, row = 2
+                  },
+                  0.0316)));
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestHybridInt8) {
+  HybridConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+      {TensorType_INT8, {3, 2, 2, 1}}, {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetSignedFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+      -1, -1, 1, 1,  // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  m.Invoke();
+
+  // Example: we get 17.1577 instead of 17.
+  //
+  // Second batch:
+  // 1 2 3 4  -> 32 64 95 127 with scale factor 127/4.
+  // 1 2 3 4     32 64 95 127
+  //
+  // First filter:
+  // 1 2  -> 32 64  with scale factor of 127/4.
+  // 3 4     95 127
+  //
+  // The left half of the input gives us 16288. Multiply by (4/127)^2 for
+  // dequantization and adding 1 for the bias gives us the result. and adding
+  // the bias gives us the result.
+  //
+  // The optimized kernel converts the input into this matrix via Im2Col
+  //
+  // 1 1 2 2
+  // 1 1 2 2
+  // 1 2 1 2
+  // 3 4 3 4
+  //
+  // and multiplies it with the filter directly.
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     18, 2, 5,  // first batch, left
+                                     18, 2, 5,  // first batch, right
+                                     17, 4, 3,  // second batch, left
+                                     37, 4, 3,  // second batch, right
+                                 },
+                                 0.16)));
+}
+
+// This test's output is equivalent to the SimpleTestHybrid
+// because we break each input into two channels, each with half of the value,
+// while keeping the filters for each channel equivalent.
+//
+// 2 * (A/2) * B = A * B, where the left side is this new test.
+TEST_P(ConvolutionOpTest, SimpleTestHybridWithChannelsInt8) {
+  HybridConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
+      {TensorType_INT8, {3, 2, 2, 2}}, {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,  // row = 1
+      1, 1, 1, 1, 1, 1, 1, 1,                  // row = 2
+      // Second batch
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2,  // row = 1
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2   // row = 2
+  });
+  m.SetSignedFilter({
+      1,  1,  2,  2,  3,  3,  4, 4,  // first 2x2 filter
+      -1, -1, 1,  1,  -1, -1, 1, 1,  // second 2x2 filter
+      -1, -1, -1, -1, 1,  1,  1, 1   // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     18, 2, 5,  // first batch, left
+                                     18, 2, 5,  // first batch, right
+                                     17, 4, 3,  // second batch, left
+                                     37, 4, 3,  // second batch, right
+                                 },
+                                 0.16)));
+}
+
+TEST_P(ConvolutionOpTest, PointwiseHybridInt8) {
+  HybridConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 2}},
+      {TensorType_INT8, {1, 1, 1, 2}}, {TensorType_FLOAT32, {}}, 1, 1);
+
+  m.SetInput({
+      // First batch
+      0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,  // row = 1
+      1, 1, 1, 1, 1, 1, 1, 1,                  // row = 2
+      // Second batch
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2,  // row = 1
+      0.5, 0.5, 1, 1, 1.5, 1.5, 2, 2   // row = 2
+  });
+
+  m.SetSignedFilter({
       1, 2,  // first filter
   });
   m.SetBias({0});

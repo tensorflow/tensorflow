@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <limits.h>
-#include <malloc.h>
 #include <memory.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -68,6 +68,10 @@ int main(int argc, char** argv) {
   }
   fprintf(stderr, "wrote %s\n", full_path);
   free(full_path);
+  TF_CloseWritableFile(h, status);
+  if (TF_GetCode(status) != TF_OK) {
+    fprintf(stderr, "TF_CloseWritableFile failed: %s\n", TF_Message(status));
+  }
   TF_StringStreamDone(s);
 
   TF_KernelBuilder* b =

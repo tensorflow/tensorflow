@@ -734,7 +734,7 @@ HloMapInstruction::HloMapInstruction(const Shape& shape,
   AppendComputation(map_computation);
   // TODO(b/65689298) Remove code below once Map is generalized to accept
   // arbitrary map dimensions.
-  dimensions_.resize(ShapeUtil::Rank(shape));
+  dimensions_.resize(shape.rank());
   std::iota(dimensions_.begin(), dimensions_.end(), 0);
 }
 
@@ -866,7 +866,7 @@ void HloConstantInstruction::RelayoutConstant(const Layout& new_layout,
                                               const ShapeIndex& shape_index) {
   Shape* mutable_array_subshape =
       ShapeUtil::GetMutableSubshape(mutable_shape(), shape_index);
-  CHECK(ShapeUtil::IsArray(*mutable_array_subshape));
+  CHECK(mutable_array_subshape->IsArray());
 
   // Normally array_subshape will always have a layout, but this invariant is
   // temporarily broken in LayoutAssignment::AssignLayouts.
@@ -900,7 +900,7 @@ string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
   string operands;
   // For constants, show the actual value in place of an empty operand list.
   if (literal_.has_value() &&
-      ((ShapeUtil::IsArray(shape()) && ShapeUtil::ElementsIn(shape()) <= 10) ||
+      ((shape().IsArray() && ShapeUtil::ElementsIn(shape()) <= 10) ||
        options.print_large_constants())) {
     // Literal::ToString emits multidimensional arrays over multiple
     // lines. Compact this into one line by stripping out white space.

@@ -315,7 +315,7 @@ class XlaDecoratorTest(test.TestCase, parameterized.TestCase):
       estimator_spec = model_fn(
           features=features, labels=labels, mode=_TRAIN, params=params or {})
 
-      mock_xla_compile.assert_called_once()
+      self.assertEqual(mock_xla_compile.call_count, 1)
       self.assertEqual(estimator_spec.mode, _TRAIN)
 
       with self.test_session() as sess:

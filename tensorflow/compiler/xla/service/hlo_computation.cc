@@ -600,7 +600,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     const std::function<
         HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
                         HloComputation* computation)>& copy_leaf) {
-  if (ShapeUtil::IsTuple(instruction->shape())) {
+  if (instruction->shape().IsTuple()) {
     std::vector<HloInstruction*> elements;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
          i++) {
@@ -617,14 +617,14 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     }
     return AddInstruction(HloInstruction::CreateTuple(elements));
   }
-  if (ShapeUtil::IsToken(instruction->shape())) {
+  if (instruction->shape().IsToken()) {
     // Tokens have no on-device representation and cannot be copied. Pass
     // through transparently.
     return instruction;
   }
 
   // Array shape.
-  TF_RET_CHECK(ShapeUtil::IsArray(instruction->shape()));
+  TF_RET_CHECK(instruction->shape().IsArray());
   return copy_leaf(instruction, *index, this);
 }
 

@@ -60,6 +60,9 @@ class MockCallSequence {
 class MockRandomAccessFile : public RandomAccessFile {
  public:
   explicit MockRandomAccessFile(const ExpectedCalls& calls) : calls_(calls) {}
+  Status Name(StringPiece* result) const override {
+    return calls_.ConsumeNextCall("Name");
+  }
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     return calls_.ConsumeNextCall("Read");
@@ -77,7 +80,13 @@ class MockWritableFile : public WritableFile {
   }
   Status Close() override { return calls_.ConsumeNextCall("Close"); }
   Status Flush() override { return calls_.ConsumeNextCall("Flush"); }
+  Status Name(StringPiece* result) const override {
+    return calls_.ConsumeNextCall("Name");
+  }
   Status Sync() override { return calls_.ConsumeNextCall("Sync"); }
+  Status Tell(int64* position) override {
+    return calls_.ConsumeNextCall("Tell");
+  }
 
  private:
   mutable MockCallSequence calls_;
@@ -174,7 +183,8 @@ class MockFileSystem : public FileSystem {
 
 TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
   // Configure the mock base random access file.
-  ExpectedCalls expected_file_calls({std::make_tuple("Read", Status::OK())});
+  ExpectedCalls expected_file_calls({std::make_tuple("Name", Status::OK()),
+                                     std::make_tuple("Read", Status::OK())});
   std::unique_ptr<RandomAccessFile> base_file(
       new MockRandomAccessFile(expected_file_calls));
 
@@ -193,6 +203,9 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_ImmediateSuccess) {
 
   // Use it and check the results.
   StringPiece result;
+  TF_EXPECT_OK(random_access_file->Name(&result));
+  EXPECT_EQ(result, "");
+
   char scratch[10];
   TF_EXPECT_OK(random_access_file->Read(0, 10, &result, scratch));
 }
@@ -284,7 +297,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
 
 TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {
   // Configure the mock base random access file.
-  ExpectedCalls expected_file_calls({std::make_tuple("Sync", Status::OK()),
+  ExpectedCalls expected_file_calls({std::make_tuple("Name", Status::OK()),
+                                     std::make_tuple("Sync", Status::OK()),
                                      std::make_tuple("Close", Status::OK())});
   std::unique_ptr<WritableFile> base_file(
       new MockWritableFile(expected_file_calls));
@@ -301,6 +315,10 @@ TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {
   // Retrieve the wrapped writable file.
   std::unique_ptr<WritableFile> writable_file;
   TF_EXPECT_OK(fs.NewWritableFile("filename.txt", &writable_file));
+
+  StringPiece result;
+  TF_EXPECT_OK(writable_file->Name(&result));
+  EXPECT_EQ(result, "");
 
   // Use it and check the results.
   TF_EXPECT_OK(writable_file->Sync());

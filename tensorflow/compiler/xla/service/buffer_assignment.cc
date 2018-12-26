@@ -1036,7 +1036,7 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    if (ShapeUtil::IsTuple(buffer->shape())) {
+    if (buffer->shape().IsTuple()) {
       BufferAllocation* allocation =
           assignment->NewAllocation(*buffer, buffer_size);
       allocation->set_is_tuple(true);

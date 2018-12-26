@@ -21,7 +21,7 @@ different lengths.  For example, the inner (column) dimension of
 `rt=[[3, 1, 4, 1], [], [5, 9, 2], [6], []]` is ragged, since the column slices
 (`rt[0, :]`, ..., `rt[4, :]`) have different lengths.  For a more detailed
 description of ragged tensors, see the `tf.RaggedTensor` class documentation
-and the [Ragged Tensor Guide](/guides/ragged_tensor).
+and the [Ragged Tensor Guide](/guide/ragged_tensors).
 """
 
 from __future__ import absolute_import

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Sinh"
+  endpoint {
+    name: "math.Sinh"
+  }
+}

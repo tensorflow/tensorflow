@@ -38,7 +38,8 @@ from tensorflow.python.ops.ragged import segment_id_ops
 # ragged_gather
 #===============================================================================
 # TODO(edloper): Add an `axis` argument
-def gather(params, indices, validate_indices=None, axis=0, name=None):
+def gather(params, indices, validate_indices=None, axis=0, batch_dims=0,
+           name=None):
   """Gathers ragged slices from `params` axis `0` according to `indices`.
 
   Returns `RaggedTensor` output, such that:
@@ -79,6 +80,7 @@ def gather(params, indices, validate_indices=None, axis=0, name=None):
       params.shape[0]]`.
     validate_indices: Ignored.
     axis: Must be zero.
+    batch_dims: Must be zero.
     name: A name for the operation (optional).
 
   Returns:
@@ -91,7 +93,9 @@ def gather(params, indices, validate_indices=None, axis=0, name=None):
   """
   del validate_indices
   if not isinstance(axis, int) or axis != 0:
-    raise ValueError('axis>0 is not supported for ragged gather yet.')
+    raise ValueError('axis != 0 is not supported for ragged gather yet.')
+  if not isinstance(batch_dims, int) or batch_dims != 0:
+    raise ValueError('batch_dims != 0 is not supported for ragged gather yet.')
   with ops.name_scope(name, 'RaggedGather', [params, indices]):
     params = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         params, name='params')
@@ -655,7 +659,7 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
   # Special case: if there's only one input, then return it as-is.
   if len(rt_inputs) == 1:
     if stack_values:
-      return expand_dims(rt_inputs[0], axis=0)
+      return expand_dims(rt_inputs[0], axis=axis)
     else:
       return rt_inputs[0]
 

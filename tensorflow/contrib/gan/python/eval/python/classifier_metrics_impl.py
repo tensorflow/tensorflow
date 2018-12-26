@@ -387,7 +387,7 @@ def classifier_score_from_logits(logits):
   # Use maximum precision for best results.
   logits_dtype = logits.dtype
   if logits_dtype != dtypes.float64:
-    logits = math_ops.to_double(logits)
+    logits = math_ops.cast(logits, dtypes.float64)
 
   p = nn_ops.softmax(logits)
   q = math_ops.reduce_mean(p, axis=0)
@@ -562,8 +562,8 @@ def mean_only_frechet_classifier_distance_from_activations(
 
   activations_dtype = real_activations.dtype
   if activations_dtype != dtypes.float64:
-    real_activations = math_ops.to_double(real_activations)
-    generated_activations = math_ops.to_double(generated_activations)
+    real_activations = math_ops.cast(real_activations, dtypes.float64)
+    generated_activations = math_ops.cast(generated_activations, dtypes.float64)
 
   # Compute means of activations.
   m = math_ops.reduce_mean(real_activations, 0)
@@ -623,8 +623,8 @@ def diagonal_only_frechet_classifier_distance_from_activations(
 
   activations_dtype = real_activations.dtype
   if activations_dtype != dtypes.float64:
-    real_activations = math_ops.to_double(real_activations)
-    generated_activations = math_ops.to_double(generated_activations)
+    real_activations = math_ops.cast(real_activations, dtypes.float64)
+    generated_activations = math_ops.cast(generated_activations, dtypes.float64)
 
   # Compute mean and covariance matrices of activations.
   m, var = nn_impl.moments(real_activations, axes=[0])
@@ -698,15 +698,16 @@ def frechet_classifier_distance_from_activations(real_activations,
 
   activations_dtype = real_activations.dtype
   if activations_dtype != dtypes.float64:
-    real_activations = math_ops.to_double(real_activations)
-    generated_activations = math_ops.to_double(generated_activations)
+    real_activations = math_ops.cast(real_activations, dtypes.float64)
+    generated_activations = math_ops.cast(generated_activations, dtypes.float64)
 
   # Compute mean and covariance matrices of activations.
   m = math_ops.reduce_mean(real_activations, 0)
   m_w = math_ops.reduce_mean(generated_activations, 0)
-  num_examples_real = math_ops.to_double(array_ops.shape(real_activations)[0])
-  num_examples_generated = math_ops.to_double(
-      array_ops.shape(generated_activations)[0])
+  num_examples_real = math_ops.cast(
+      array_ops.shape(real_activations)[0], dtypes.float64)
+  num_examples_generated = math_ops.cast(
+      array_ops.shape(generated_activations)[0], dtypes.float64)
 
   # sigma = (1 / (n - 1)) * (X - mu) (X - mu)^T
   real_centered = real_activations - m

@@ -204,6 +204,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleImag(HloInstruction* imag) override;
 
+  Status HandleComplex(HloInstruction* complex) override;
+
   Status HandleReduce(HloInstruction* reduce) override;
 
   // Returns the already-evaluated literal result for the instruction.
