@@ -608,3 +608,13 @@ bb0(%arg0 : vector<4xf32>):
   %1 = addf %arg0, %0 : vector<4xf32>
   return %1 : vector<4xf32>
 }
+
+// CHECK-LABEL: @ops
+cfgfunc @ops(f32, f32, i32, i32) -> (f32, i32) {
+bb0(%arg0 : f32, %arg1 : f32, %arg2 : i32, %arg3 : i32):
+// CHECK-NEXT: fsub float %0, %1
+  %0 = subf %arg0, %arg1 : f32
+// CHECK-NEXT: sub i32 %2, %3
+  %1 = subi %arg2, %arg3 : i32
+  return %0, %1 : f32, i32
+}

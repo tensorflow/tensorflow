@@ -523,6 +523,11 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
                builder.CreateAdd(valueMapping[op->getOperand(0)],
                                  valueMapping[op->getOperand(1)]),
            false;
+  if (auto op = inst.dyn_cast<SubIOp>())
+    return valueMapping[op->getResult()] =
+               builder.CreateSub(valueMapping[op->getOperand(0)],
+                                 valueMapping[op->getOperand(1)]),
+           false;
   if (auto op = inst.dyn_cast<MulIOp>())
     return valueMapping[op->getResult()] =
                builder.CreateMul(valueMapping[op->getOperand(0)],
@@ -538,6 +543,11 @@ bool ModuleLowerer::convertInstruction(const Instruction &inst) {
   if (auto op = inst.dyn_cast<AddFOp>())
     return valueMapping[op->getResult()] =
                builder.CreateFAdd(valueMapping.lookup(op->getOperand(0)),
+                                  valueMapping.lookup(op->getOperand(1))),
+           false;
+  if (auto op = inst.dyn_cast<SubFOp>())
+    return valueMapping[op->getResult()] =
+               builder.CreateFSub(valueMapping.lookup(op->getOperand(0)),
                                   valueMapping.lookup(op->getOperand(1))),
            false;
   if (auto op = inst.dyn_cast<MulFOp>())
