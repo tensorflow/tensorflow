@@ -37,6 +37,22 @@ unsigned FileLineColLoc::getColumn() const {
   return static_cast<ImplType *>(loc)->column;
 }
 
+NameLoc::NameLoc(Location::ImplType *ptr) : Location(ptr) {}
+
+Identifier NameLoc::getName() const {
+  return static_cast<ImplType *>(loc)->name;
+}
+
+CallSiteLoc::CallSiteLoc(Location::ImplType *ptr) : Location(ptr) {}
+
+Location CallSiteLoc::getCallee() const {
+  return static_cast<ImplType *>(loc)->callee;
+}
+
+Location CallSiteLoc::getCaller() const {
+  return static_cast<ImplType *>(loc)->caller;
+}
+
 FusedLoc::FusedLoc(Location::ImplType *ptr) : Location(ptr) {}
 
 ArrayRef<Location> FusedLoc::getLocations() const {

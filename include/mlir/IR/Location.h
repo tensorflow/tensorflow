@@ -30,12 +30,15 @@ namespace mlir {
 
 class Attribute;
 class MLIRContext;
+class Identifier;
 
 namespace detail {
 
 class LocationStorage;
 class UnknownLocationStorage;
 class FileLineColLocationStorage;
+class NameLocationStorage;
+class CallSiteLocationStorage;
 class FusedLocationStorage;
 
 } // namespace detail
@@ -49,6 +52,12 @@ public:
 
     /// This represents a file/line/column location.
     FileLineCol,
+
+    /// This represents an identity name, such as variable and function name.
+    Name,
+
+    /// This represents a location as call site or variable usage site. .
+    CallSite,
 
     // Represents a location as a 'void*' pointer to a front-end's opaque
     // location information, which must live longer than the MLIR objects that
@@ -120,7 +129,7 @@ public:
   static UnknownLoc get(MLIRContext *context);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Location::Kind kind) { return kind == Kind::Unknown; }
+  static bool kindof(Kind kind) { return kind == Kind::Unknown; }
 };
 
 /// This class is used to represent a uniqued filename in an MLIRContext.  It is
@@ -158,7 +167,45 @@ public:
   unsigned getColumn() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Location::Kind kind) { return kind == Kind::FileLineCol; }
+  static bool kindof(Kind kind) { return kind == Kind::FileLineCol; }
+};
+
+/// Represents an identity name. It is usually the callee of a CallLocation.
+class NameLoc : public Location {
+public:
+  using ImplType = detail::NameLocationStorage;
+  /* implicit */ NameLoc(Location::ImplType *ptr);
+
+  /// Return a uniqued name location object.
+  static NameLoc get(Identifier name, MLIRContext *context);
+
+  Identifier getName() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(Kind kind) { return kind == Kind::Name; }
+};
+
+/// Represents a location as call site. "callee" is the concrete location
+/// (Unknown/NameLocation/FileLineColLoc) and "caller" points to the caller's
+/// location (another CallLocation or a concrete location). Multiple
+/// CallLocations can be chained to form a call stack.
+class CallSiteLoc : public Location {
+public:
+  using ImplType = detail::CallSiteLocationStorage;
+  /* implicit */ CallSiteLoc(Location::ImplType *ptr);
+
+  /// Return a uniqued call location object.
+  static CallSiteLoc get(Location callee, Location caller,
+                         MLIRContext *context);
+
+  /// The concrete location information this object presents.
+  Location getCallee() const;
+
+  /// The caller's location.
+  Location getCaller() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(Kind kind) { return kind == Kind::CallSite; }
 };
 
 /// Represents a value composed of multiple source constructs, with an optional
@@ -182,9 +229,7 @@ public:
   Attribute getMetadata() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Location::Kind kind) {
-    return kind == Kind::FusedLocation;
-  }
+  static bool kindof(Kind kind) { return kind == Kind::FusedLocation; }
 };
 
 // Make Location hashable.

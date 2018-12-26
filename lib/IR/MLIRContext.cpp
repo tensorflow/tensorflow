@@ -265,6 +265,27 @@ struct OpaqueElementsAttrInfo : DenseMapInfo<OpaqueElementsAttributeStorage *> {
   }
 };
 
+struct CallSiteLocationKeyInfo : DenseMapInfo<CallSiteLocationStorage *> {
+  // Call locations are uniqued based on their held concret location
+  // and the caller location.
+  using KeyTy = std::pair<Location, Location>;
+  using DenseMapInfo<CallSiteLocationStorage *>::isEqual;
+
+  static unsigned getHashValue(CallSiteLocationStorage *key) {
+    return getHashValue(KeyTy(key->callee, key->caller));
+  }
+
+  static unsigned getHashValue(KeyTy key) {
+    return hash_combine(key.first, key.second);
+  }
+
+  static bool isEqual(const KeyTy &lhs, const CallSiteLocationStorage *rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs == std::make_pair(rhs->callee, rhs->caller);
+  }
+};
+
 struct FusedLocKeyInfo : DenseMapInfo<FusedLocationStorage *> {
   // Fused locations are uniqued based on their held locations and an optional
   // metadata attribute.
@@ -307,6 +328,12 @@ public:
   DenseMap<std::tuple<const char *, unsigned, unsigned>,
            FileLineColLocationStorage *>
       fileLineColLocs;
+
+  /// NameLocation uniquing.
+  DenseMap<const char *, NameLocationStorage *> nameLocs;
+
+  /// CallLocation uniquing.
+  DenseSet<CallSiteLocationStorage *, CallSiteLocationKeyInfo> callLocs;
 
   /// FusedLoc uniquing.
   using FusedLocations = DenseSet<FusedLocationStorage *, FusedLocKeyInfo>;
@@ -592,6 +619,39 @@ FileLineColLoc FileLineColLoc::get(UniquedFilename filename, unsigned line,
   }
 
   return entry;
+}
+
+NameLoc NameLoc::get(Identifier name, MLIRContext *context) {
+  auto &impl = context->getImpl();
+  auto &entry = impl.nameLocs[name.data()];
+  if (!entry) {
+    entry = impl.allocator.Allocate<NameLocationStorage>();
+    new (entry) NameLocationStorage{{Location::Kind::Name}, name};
+  }
+
+  return entry;
+}
+
+CallSiteLoc CallSiteLoc::get(Location callee, Location caller,
+                             MLIRContext *context) {
+  auto &impl = context->getImpl();
+
+  // Look to see if the fused location has been created already.
+  auto existing =
+      impl.callLocs.insert_as(nullptr, std::make_pair(callee, caller));
+
+  // If it has been created, return it.
+  if (!existing.second)
+    return *existing.first;
+
+  // On the first use, we allocate them into the bump pointer.
+  auto *result = impl.allocator.Allocate<detail::CallSiteLocationStorage>();
+
+  // Initialize the memory using placement new.
+  new (result) detail::CallSiteLocationStorage{
+      {Location::Kind::CallSite}, callee, caller};
+
+  return *existing.first = result;
 }
 
 Location FusedLoc::get(ArrayRef<Location> locs, MLIRContext *context) {

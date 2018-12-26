@@ -22,6 +22,7 @@
 #define MLIR_IR_LOCATIONDETAIL_H_
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/TrailingObjects.h"
@@ -45,6 +46,14 @@ struct UnknownLocationStorage : public LocationStorage {};
 struct FileLineColLocationStorage : public LocationStorage {
   const UniquedFilename filename;
   const unsigned line, column;
+};
+
+struct NameLocationStorage : public LocationStorage {
+  const Identifier name;
+};
+
+struct CallSiteLocationStorage : public LocationStorage {
+  const Location callee, caller;
 };
 
 struct FusedLocationStorage final

@@ -1683,6 +1683,22 @@ void Location::print(raw_ostream &os) const {
        << fileLoc.getColumn();
     break;
   }
+  case Kind::Name: {
+    auto nameLoc = cast<NameLoc>();
+    os << nameLoc.getName();
+    break;
+  }
+  case Kind::CallSite: {
+    auto callLocation = cast<CallSiteLoc>();
+    auto callee = callLocation.getCallee();
+    auto caller = callLocation.getCaller();
+    callee.print(os);
+    if (caller.isa<CallSiteLoc>()) {
+      os << "\n at ";
+    }
+    caller.print(os);
+    break;
+  }
   case Kind::FusedLocation: {
     auto fusedLoc = cast<FusedLoc>();
     if (auto metadata = fusedLoc.getMetadata())
