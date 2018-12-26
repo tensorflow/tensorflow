@@ -28,6 +28,7 @@ namespace mlir {
 class MLFunction;
 class IfStmt;
 class MLValue;
+class StmtBlockList;
 
 // TODO(clattner): drop the Stmt prefixes on these once BasicBlock's versions of
 // these go away.
@@ -37,10 +38,11 @@ template <typename BlockType> class StmtSuccessorIterator;
 /// Statement block represents an ordered list of statements, with the order
 /// being the contiguous lexical order in which the statements appear as
 /// children of a parent statement in the ML Function.
-class StmtBlock : public IRObjectWithUseList {
+class StmtBlock
+    : public IRObjectWithUseList,
+      public llvm::ilist_node_with_parent<StmtBlock, StmtBlockList> {
 public:
-  explicit StmtBlock(MLFunction *parent);
-  explicit StmtBlock(Statement *parent);
+  explicit StmtBlock() {}
   ~StmtBlock();
 
   void clear() {
@@ -50,9 +52,7 @@ public:
       statements.pop_back();
   }
 
-  llvm::PointerUnion<MLFunction *, Statement *> getParent() const {
-    return parent;
-  }
+  StmtBlockList *getParent() const { return parent; }
 
   /// Returns the closest surrounding statement that contains this block or
   /// nullptr if this is a top-level statement block.
@@ -227,7 +227,7 @@ public:
 
 private:
   /// This is the parent function/IfStmt/ForStmt that owns this block.
-  llvm::PointerUnion<MLFunction *, Statement *> parent;
+  StmtBlockList *parent = nullptr;
 
   /// This is the list of statements in the block.
   StmtListType statements;
@@ -237,6 +237,100 @@ private:
 
   StmtBlock(const StmtBlock &) = delete;
   void operator=(const StmtBlock &) = delete;
+
+  friend struct llvm::ilist_traits<StmtBlock>;
+};
+
+} // end namespace mlir
+
+//===----------------------------------------------------------------------===//
+// ilist_traits for StmtBlock
+//===----------------------------------------------------------------------===//
+
+namespace llvm {
+
+template <>
+struct ilist_traits<::mlir::StmtBlock>
+    : public ilist_alloc_traits<::mlir::StmtBlock> {
+  using StmtBlock = ::mlir::StmtBlock;
+  using block_iterator = simple_ilist<::mlir::StmtBlock>::iterator;
+
+  void addNodeToList(StmtBlock *block);
+  void removeNodeFromList(StmtBlock *block);
+  void transferNodesFromList(ilist_traits<StmtBlock> &otherList,
+                             block_iterator first, block_iterator last);
+
+private:
+  mlir::StmtBlockList *getContainingBlockList();
+};
+} // end namespace llvm
+
+namespace mlir {
+
+/// This class contains a list of basic blocks and has a notion of the object it
+/// is part of - an MLFunction or IfStmt or ForStmt.
+class StmtBlockList {
+public:
+  explicit StmtBlockList(MLFunction *container);
+  explicit StmtBlockList(Statement *container);
+
+  using BlockListType = llvm::iplist<StmtBlock>;
+  BlockListType &getBlocks() { return blocks; }
+  const BlockListType &getBlocks() const { return blocks; }
+
+  // Iteration over the block in the function.
+  using iterator = BlockListType::iterator;
+  using const_iterator = BlockListType::const_iterator;
+  using reverse_iterator = BlockListType::reverse_iterator;
+  using const_reverse_iterator = BlockListType::const_reverse_iterator;
+
+  iterator begin() { return blocks.begin(); }
+  iterator end() { return blocks.end(); }
+  const_iterator begin() const { return blocks.begin(); }
+  const_iterator end() const { return blocks.end(); }
+  reverse_iterator rbegin() { return blocks.rbegin(); }
+  reverse_iterator rend() { return blocks.rend(); }
+  const_reverse_iterator rbegin() const { return blocks.rbegin(); }
+  const_reverse_iterator rend() const { return blocks.rend(); }
+
+  bool empty() const { return blocks.empty(); }
+  void push_back(StmtBlock *block) { blocks.push_back(block); }
+  void push_front(StmtBlock *block) { blocks.push_front(block); }
+
+  StmtBlock &back() { return blocks.back(); }
+  const StmtBlock &back() const {
+    return const_cast<StmtBlockList *>(this)->back();
+  }
+
+  StmtBlock &front() { return blocks.front(); }
+  const StmtBlock &front() const {
+    return const_cast<StmtBlockList *>(this)->front();
+  }
+
+  /// getSublistAccess() - Returns pointer to member of block list.
+  static BlockListType StmtBlockList::*getSublistAccess(StmtBlock *) {
+    return &StmtBlockList::blocks;
+  }
+
+  /// A StmtBlockList is part of a MLFunction or and IfStmt/ForStmt.  If it is
+  /// part of an IfStmt/ForStmt, then return it, otherwise return null.
+  Statement *getContainingStmt();
+  const Statement *getContainingStmt() const {
+    return const_cast<StmtBlockList *>(this)->getContainingStmt();
+  }
+
+  /// A StmtBlockList is part of a MLFunction or and IfStmt/ForStmt.  If it is
+  /// part of an MLFunction, then return it, otherwise return null.
+  MLFunction *getContainingFunction();
+  const MLFunction *getContainingFunction() const {
+    return const_cast<StmtBlockList *>(this)->getContainingFunction();
+  }
+
+private:
+  BlockListType blocks;
+
+  /// This is the object we are part of.
+  llvm::PointerUnion<MLFunction *, Statement *> container;
 };
 
 //===----------------------------------------------------------------------===//
@@ -369,5 +463,5 @@ inline auto StmtBlock::getSuccessors() -> llvm::iterator_range<succ_iterator> {
   return {succ_begin(), succ_end()};
 }
 
-} //end namespace mlir
+} // end namespace mlir
 #endif  // MLIR_IR_STMTBLOCK_H

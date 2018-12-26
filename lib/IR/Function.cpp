@@ -202,7 +202,10 @@ MLFunction *MLFunction::create(Location location, StringRef name,
 
 MLFunction::MLFunction(Location location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs)
-    : Function(Kind::MLFunc, location, name, type, attrs), body(this) {}
+    : Function(Kind::MLFunc, location, name, type, attrs), body(this) {
+  // The body of an MLFunction always has one block.
+  body.push_back(new StmtBlock());
+}
 
 MLFunction::~MLFunction() {
   // Explicitly erase statements instead of relying of 'StmtBlock' destructor

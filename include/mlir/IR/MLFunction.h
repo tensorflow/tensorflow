@@ -43,8 +43,11 @@ public:
                             FunctionType type,
                             ArrayRef<NamedAttribute> attrs = {});
 
-  StmtBlock *getBody() { return &body; }
-  const StmtBlock *getBody() const { return &body; }
+  StmtBlockList &getStatementList() { return body; }
+  const StmtBlockList &getStatementList() const { return body; }
+
+  StmtBlock *getBody() { return &body.front(); }
+  const StmtBlock *getBody() const { return &body.front(); }
 
   /// Destroys this statement and its subclass data.
   void destroy();
@@ -119,7 +122,7 @@ private:
     return {getTrailingObjects<MLFuncArgument>(), getNumArguments()};
   }
 
-  StmtBlock body;
+  StmtBlockList body;
 };
 
 //===--------------------------------------------------------------------===//

@@ -405,6 +405,9 @@ ForStmt::ForStmt(Location location, unsigned numOperands, AffineMap lbMap,
       MLValue(MLValueKind::ForStmt,
               Type::getIndex(lbMap.getResult(0).getContext())),
       body(this), lbMap(lbMap), ubMap(ubMap), step(step) {
+
+  // The body of a for stmt always has one block.
+  body.push_back(new StmtBlock());
   operands.reserve(numOperands);
 }
 
@@ -522,6 +525,9 @@ IfStmt::IfStmt(Location location, unsigned numOperands, IntegerSet set)
     : Statement(Kind::If, location), thenClause(this), elseClause(nullptr),
       set(set) {
   operands.reserve(numOperands);
+
+  // The then of an 'if' stmt always has one block.
+  thenClause.push_back(new StmtBlock());
 }
 
 IfStmt::~IfStmt() {

@@ -301,10 +301,10 @@ public:
   using const_operand_range = llvm::iterator_range<const_operand_iterator>;
 
   /// Get the body of the ForStmt.
-  StmtBlock *getBody() { return &body; }
+  StmtBlock *getBody() { return &body.front(); }
 
   /// Get the body of the ForStmt.
-  const StmtBlock *getBody() const { return &body; }
+  const StmtBlock *getBody() const { return &body.front(); }
 
   //===--------------------------------------------------------------------===//
   // Bounds and step
@@ -432,7 +432,7 @@ public:
 
 private:
   // The StmtBlock for the body.
-  StmtBlock body;
+  StmtBlockList body;
 
   // Affine map for the lower bound.
   AffineMap lbMap;
@@ -513,15 +513,19 @@ public:
   // Then, else, condition.
   //===--------------------------------------------------------------------===//
 
-  StmtBlock *getThen() { return &thenClause; }
-  const StmtBlock *getThen() const { return &thenClause; }
-  StmtBlock *getElse() { return elseClause; }
-  const StmtBlock *getElse() const { return elseClause; }
+  StmtBlock *getThen() { return &thenClause.front(); }
+  const StmtBlock *getThen() const { return &thenClause.front(); }
+  StmtBlock *getElse() { return elseClause ? &elseClause->front() : nullptr; }
+  const StmtBlock *getElse() const {
+    return elseClause ? &elseClause->front() : nullptr;
+  }
   bool hasElse() const { return elseClause != nullptr; }
 
   StmtBlock *createElse() {
     assert(elseClause == nullptr && "already has an else clause!");
-    return (elseClause = new StmtBlock(this));
+    elseClause = new StmtBlockList(this);
+    elseClause->push_back(new StmtBlock());
+    return &elseClause->front();
   }
 
   const AffineCondition getCondition() const;
@@ -586,9 +590,9 @@ public:
 
 private:
   // it is always present.
-  StmtBlock thenClause;
+  StmtBlockList thenClause;
   // 'else' clause of the if statement. 'nullptr' if there is no else clause.
-  StmtBlock *elseClause;
+  StmtBlockList *elseClause;
 
   // The integer set capturing the conditional guard.
   IntegerSet set;

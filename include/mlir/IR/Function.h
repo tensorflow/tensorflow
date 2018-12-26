@@ -145,7 +145,7 @@ struct ilist_traits<::mlir::Function>
   using Function = ::mlir::Function;
   using function_iterator = simple_ilist<Function>::iterator;
 
-  static void deleteNode(Function *inst) { inst->destroy(); }
+  static void deleteNode(Function *function) { function->destroy(); }
 
   void addNodeToList(Function *function);
   void removeNodeFromList(Function *function);

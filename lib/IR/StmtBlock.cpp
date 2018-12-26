@@ -20,10 +20,6 @@
 #include "mlir/IR/Statements.h"
 using namespace mlir;
 
-StmtBlock::StmtBlock(MLFunction *parent) : parent(parent) {}
-
-StmtBlock::StmtBlock(Statement *parent) : parent(parent) {}
-
 StmtBlock::~StmtBlock() {
   clear();
 
@@ -33,7 +29,7 @@ StmtBlock::~StmtBlock() {
 /// Returns the closest surrounding statement that contains this block or
 /// nullptr if this is a top-level statement block.
 Statement *StmtBlock::getContainingStmt() {
-  return parent.dyn_cast<Statement *>();
+  return parent ? parent->getContainingStmt() : nullptr;
 }
 
 MLFunction *StmtBlock::findFunction() {
@@ -43,7 +39,9 @@ MLFunction *StmtBlock::findFunction() {
     if (!block)
       return nullptr;
   }
-  return block->getParent().get<MLFunction *>();
+  if (auto *list = block->getParent())
+    return list->getContainingFunction();
+  return nullptr;
 }
 
 /// Returns 'stmt' if 'stmt' lies in this block, or otherwise finds the ancestor
@@ -139,4 +137,59 @@ StmtBlock *StmtBlock::getSinglePredecessor() {
   auto *firstPred = *it;
   ++it;
   return it == pred_end() ? firstPred : nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// StmtBlockList
+//===----------------------------------------------------------------------===//
+
+StmtBlockList::StmtBlockList(MLFunction *container) : container(container) {}
+
+StmtBlockList::StmtBlockList(Statement *container) : container(container) {}
+
+Statement *StmtBlockList::getContainingStmt() {
+  return container.dyn_cast<Statement *>();
+}
+
+MLFunction *StmtBlockList::getContainingFunction() {
+  return container.dyn_cast<MLFunction *>();
+}
+
+StmtBlockList *llvm::ilist_traits<::mlir::StmtBlock>::getContainingBlockList() {
+  size_t Offset(size_t(
+      &((StmtBlockList *)nullptr->*StmtBlockList::getSublistAccess(nullptr))));
+  iplist<StmtBlock> *Anchor(static_cast<iplist<StmtBlock> *>(this));
+  return reinterpret_cast<StmtBlockList *>(reinterpret_cast<char *>(Anchor) -
+                                           Offset);
+}
+
+/// This is a trait method invoked when a basic block is added to a function.
+/// We keep the function pointer up to date.
+void llvm::ilist_traits<::mlir::StmtBlock>::addNodeToList(StmtBlock *block) {
+  assert(!block->parent && "already in a function!");
+  block->parent = getContainingBlockList();
+}
+
+/// This is a trait method invoked when an instruction is removed from a
+/// function.  We keep the function pointer up to date.
+void llvm::ilist_traits<::mlir::StmtBlock>::removeNodeFromList(
+    StmtBlock *block) {
+  assert(block->parent && "not already in a function!");
+  block->parent = nullptr;
+}
+
+/// This is a trait method invoked when an instruction is moved from one block
+/// to another.  We keep the block pointer up to date.
+void llvm::ilist_traits<::mlir::StmtBlock>::transferNodesFromList(
+    ilist_traits<StmtBlock> &otherList, block_iterator first,
+    block_iterator last) {
+  // If we are transferring instructions within the same function, the parent
+  // pointer doesn't need to be updated.
+  auto *curParent = getContainingBlockList();
+  if (curParent == otherList.getContainingBlockList())
+    return;
+
+  // Update the 'parent' member of each StmtBlock.
+  for (; first != last; ++first)
+    first->parent = curParent;
 }
