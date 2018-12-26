@@ -201,7 +201,6 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     additional_deps = [
         ":optimizer_v2",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
