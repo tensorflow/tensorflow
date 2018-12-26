@@ -4,6 +4,30 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 
 cc_library(
+    name = "meta_optimizer",
+    srcs = ["meta_optimizer.cc"],
+    hdrs = [
+        "meta_optimizer.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:arithmetic_optimizer",
+        "//tensorflow/core/grappler/optimizers:model_pruner",
+        "//tensorflow/core/grappler/optimizers:shape_optimizer",
+        "//tensorflow/core/grappler/optimizers:dependency_optimizer",
+        "//tensorflow/core/grappler/optimizers:function_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ptr_util",
+    ] + tf_protos_all(),
+)
+
+cc_library(
     name = "filter_fusion",
     srcs = ["filter_fusion.cc"],
     hdrs = [
@@ -561,6 +585,7 @@ cc_library(
         ":map_fusion",
         ":map_parallelization",
         ":map_vectorization",
+        ":meta_optimizer",
         ":noop_elimination",
         ":shuffle_and_repeat_fusion",
     ],
