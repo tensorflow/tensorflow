@@ -209,11 +209,11 @@ def _check_python_lib(repository_ctx, python_lib):
   """Checks the python lib path."""
   return_codes = []
   for entry in python_lib.split(":"):
-      cmd = 'test -d "%s" -a -x "%s"' % (entry, entry)
-      result = repository_ctx.execute([_get_bash_bin(repository_ctx), "-c", cmd])
-      return_codes.append(result.return_code)
+    cmd = 'test -d "%s" -a -x "%s"' % (entry, entry)
+    result = repository_ctx.execute([_get_bash_bin(repository_ctx), "-c", cmd])
+    return_codes.append(result.return_code)
   if all(return_codes):
-      _fail("Invalid python library path: %s" % python_lib)
+    _fail("Invalid python library path: %s" % python_lib)
 
 
 def _check_python_bin(repository_ctx, python_bin):
