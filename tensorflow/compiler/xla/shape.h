@@ -138,7 +138,7 @@ class Shape {
   string ShortDebugString() const { return ToProto().ShortDebugString(); }
   string DebugString() const { return ToProto().DebugString(); }
 
- public:
+ private:
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
 
