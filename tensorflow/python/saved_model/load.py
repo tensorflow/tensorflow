@@ -20,8 +20,6 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.eager import function
-from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -44,20 +42,11 @@ class _Loader(object):
     self._asset_file_def = meta_graph.asset_file_def
     self._proto = object_graph_proto
     self._export_dir = export_dir
-    self._load_func_graphs(meta_graph.graph_def.library)
+    self._functions = function_deserialization.load_function_def_library(
+        meta_graph.graph_def.library)
     self._load_all()
     self._bind_function_captures()
     self._restore_checkpoint()
-
-  def _load_func_graphs(self, function_library):
-    # TODO(allenl): Do we need to do name mapping here? Not quite sure what
-    # happens when loaded names collide with existing names.
-    # TODO(andresp): Look into restoring nested and gradient functions in the
-    # right order.
-    self._functions = {}
-    for fdef in function_library.function:
-      graph = function_def_lib.function_def_to_graph(fdef)
-      self._functions[fdef.signature.name] = function.Function(graph)
 
   def _bind_function_captures(self):
     """Setup captured tensors in restored concrete functions."""

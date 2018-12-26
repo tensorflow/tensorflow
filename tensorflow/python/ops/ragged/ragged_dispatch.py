@@ -392,12 +392,13 @@ _V1_OPS_THAT_DELEGATE_TO_V2_OPS = [
 
 
 def _ragged_gather_v1(params, indices, validate_indices=None, name=None,
-                      axis=0):
+                      axis=0, batch_dims=0):
   return ragged_array_ops.gather(
       params=params,
       indices=indices,
       validate_indices=validate_indices,
       axis=axis,
+      batch_dims=batch_dims,
       name=name)
 
 

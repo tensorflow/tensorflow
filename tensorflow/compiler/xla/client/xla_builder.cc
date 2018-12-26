@@ -343,7 +343,7 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
   TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
 
   CHECK(ShapeUtil::IsScalar(operand_shape) ||
-        ShapeUtil::Rank(operand_shape) == ShapeUtil::Rank(output_shape));
+        operand_shape.rank() == output_shape.rank());
   Shape broadcast_shape =
       ShapeUtil::ChangeElementType(output_shape, operand_shape.element_type());
 
@@ -355,7 +355,7 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
   // Do explicit broadcast for degenerate broadcast.
   std::vector<int64> broadcast_dimensions;
   std::vector<int64> reshaped_dimensions;
-  for (int i = 0; i < ShapeUtil::Rank(operand_shape); i++) {
+  for (int i = 0; i < operand_shape.rank(); i++) {
     if (operand_shape.dimensions(i) == output_shape.dimensions(i)) {
       broadcast_dimensions.push_back(i);
       reshaped_dimensions.push_back(operand_shape.dimensions(i));
@@ -398,8 +398,8 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
                             binop, lhs_shape, rhs_shape, broadcast_dimensions));
     *instr.mutable_shape() = shape.ToProto();
 
-    const int64 lhs_rank = ShapeUtil::Rank(lhs_shape);
-    const int64 rhs_rank = ShapeUtil::Rank(rhs_shape);
+    const int64 lhs_rank = lhs_shape.rank();
+    const int64 rhs_rank = rhs_shape.rank();
 
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
@@ -413,8 +413,7 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
       for (int64 size : shape.dimensions()) {
         to_size.push_back(size);
       }
-      for (int64 from_dim = 0; from_dim < ShapeUtil::Rank(from_shape);
-           from_dim++) {
+      for (int64 from_dim = 0; from_dim < from_shape.rank(); from_dim++) {
         int64 to_dim = broadcast_dimensions[from_dim];
         to_size[to_dim] = from_shape.dimensions(from_dim);
       }
@@ -458,18 +457,18 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
     XlaOp updated_ehs = ehs;
-    if (!ShapeUtil::IsTuple(shape)) {
-      if (!ShapeUtil::IsTuple(lhs_shape) &&
+    if (!shape.IsTuple()) {
+      if (!lhs_shape.IsTuple() &&
           !ShapeUtil::SameDimensions(shape, lhs_shape)) {
         // lhs is being implicitly broadcasted. Change to explicit.
         TF_ASSIGN_OR_RETURN(updated_lhs, AddBroadcastSequence(shape, lhs));
       }
-      if (!ShapeUtil::IsTuple(rhs_shape) &&
+      if (!rhs_shape.IsTuple() &&
           !ShapeUtil::SameDimensions(shape, rhs_shape)) {
         // rhs is being implicitly broadcasted. Change to explicit.
         TF_ASSIGN_OR_RETURN(updated_rhs, AddBroadcastSequence(shape, rhs));
       }
-      if (!ShapeUtil::IsTuple(ehs_shape) &&
+      if (!ehs_shape.IsTuple() &&
           !ShapeUtil::SameDimensions(shape, ehs_shape)) {
         // ehs is being implicitly broadcasted. Change to explicit.
         TF_ASSIGN_OR_RETURN(updated_ehs, AddBroadcastSequence(shape, ehs));
@@ -563,10 +562,10 @@ XlaOp XlaBuilder::Broadcast(const XlaOp& operand,
     // output, so to append dimensions on the left the instruction's dimensions
     // should just be the n highest dimension numbers of the output shape where
     // n is the number of input dimensions.
-    const int64 operand_rank = ShapeUtil::Rank(operand_shape);
+    const int64 operand_rank = operand_shape.rank();
     std::vector<int64> dimensions(operand_rank);
     for (int i = 0; i < operand_rank; ++i) {
-      dimensions[i] = i + ShapeUtil::Rank(shape) - operand_rank;
+      dimensions[i] = i + shape.rank() - operand_rank;
     }
     return InDimBroadcast(shape, operand, dimensions);
   });
@@ -639,10 +638,10 @@ XlaOp XlaBuilder::SliceInDim(const XlaOp& operand, int64 start_index,
                              int64 limit_index, int64 stride, int64 dimno) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
-    std::vector<int64> starts(ShapeUtil::Rank(shape), 0);
+    std::vector<int64> starts(shape.rank(), 0);
     std::vector<int64> limits(shape.dimensions().begin(),
                               shape.dimensions().end());
-    std::vector<int64> strides(ShapeUtil::Rank(shape), 1);
+    std::vector<int64> strides(shape.rank(), 1);
     starts[dimno] = start_index;
     limits[dimno] = limit_index;
     strides[dimno] = stride;
@@ -780,7 +779,7 @@ XlaOp XlaBuilder::Collapse(const XlaOp& operand,
     VLOG(3) << "dims to collapse: " << absl::StrJoin(dimensions, ",");
 
     std::vector<int64> new_sizes;
-    for (int i = 0; i < ShapeUtil::Rank(original_shape); ++i) {
+    for (int i = 0; i < original_shape.rank(); ++i) {
       if (i <= dimensions.front() || i > dimensions.back()) {
         new_sizes.push_back(original_shape.dimensions(i));
       } else {
@@ -808,10 +807,9 @@ XlaOp XlaBuilder::Select(const XlaOp& pred, const XlaOp& on_true,
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& true_shape, GetShape(on_true));
     TF_ASSIGN_OR_RETURN(const Shape& false_shape, GetShape(on_false));
-    TF_RET_CHECK(ShapeUtil::IsTuple(true_shape) ==
-                 ShapeUtil::IsTuple(false_shape));
-    HloOpcode opcode = ShapeUtil::IsTuple(true_shape) ? HloOpcode::kTupleSelect
-                                                      : HloOpcode::kSelect;
+    TF_RET_CHECK(true_shape.IsTuple() == false_shape.IsTuple());
+    HloOpcode opcode =
+        true_shape.IsTuple() ? HloOpcode::kTupleSelect : HloOpcode::kSelect;
     return TernaryOp(opcode, pred, on_true, on_false);
   });
 }
@@ -835,7 +833,7 @@ XlaOp XlaBuilder::GetTupleElement(const XlaOp& tuple_data, int64 index) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& tuple_shape, GetShape(tuple_data));
-    if (!ShapeUtil::IsTuple(tuple_shape)) {
+    if (!tuple_shape.IsTuple()) {
       return InvalidArgument(
           "Operand to GetTupleElement() is not a tuple; got %s",
           ShapeUtil::HumanString(tuple_shape));
@@ -915,13 +913,13 @@ XlaOp XlaBuilder::DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
 Status XlaBuilder::VerifyConvolution(
     const Shape& lhs_shape, const Shape& rhs_shape,
     const ConvolutionDimensionNumbers& dimension_numbers) const {
-  if (ShapeUtil::Rank(lhs_shape) != ShapeUtil::Rank(rhs_shape)) {
+  if (lhs_shape.rank() != rhs_shape.rank()) {
     return InvalidArgument(
         "Convolution arguments must have same number of "
         "dimensions. Got: %s and %s",
         ShapeUtil::HumanString(lhs_shape), ShapeUtil::HumanString(rhs_shape));
   }
-  int num_dims = ShapeUtil::Rank(lhs_shape);
+  int num_dims = lhs_shape.rank();
   if (num_dims < 2) {
     return InvalidArgument(
         "Convolution expects argument arrays with >= 3 dimensions. "
@@ -1150,7 +1148,7 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
     *instr.mutable_shape() = infeed_instruction_shape.ToProto();
     instr.set_infeed_config(config);
 
-    if (ShapeUtil::IsArray(shape) && sharding() &&
+    if (shape.IsArray() && sharding() &&
         sharding()->type() == OpSharding::Type::OpSharding_Type_OTHER) {
       // TODO(b/110793772): Support tiled array-shaped infeeds.
       return InvalidArgument(
@@ -1226,7 +1224,7 @@ XlaOp XlaBuilder::InfeedWithToken(const XlaOp& token, const Shape& shape,
     *instr.mutable_shape() = infeed_instruction_shape.ToProto();
     instr.set_infeed_config(config);
 
-    if (ShapeUtil::IsArray(shape) && sharding() &&
+    if (shape.IsArray() && sharding() &&
         sharding()->type() == OpSharding::Type::OpSharding_Type_OTHER) {
       // TODO(b/110793772): Support tiled array-shaped infeeds.
       return InvalidArgument(
@@ -1339,7 +1337,7 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
     for (int i = 0; i < tokens.size(); ++i) {
       const XlaOp& operand = tokens[i];
       TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
-      if (!ShapeUtil::IsToken(operand_shape)) {
+      if (!operand_shape.IsToken()) {
         return InvalidArgument(
             "All operands to AfterAll must be tokens; operand %d has shape %s",
             i, ShapeUtil::HumanString(operand_shape));
@@ -1582,7 +1580,7 @@ XlaOp XlaBuilder::Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
     *instr.mutable_shape() = shape.ToProto();
     if (dimension == -1) {
       TF_ASSIGN_OR_RETURN(const Shape& keys_shape, GetShape(keys));
-      dimension = ShapeUtil::Rank(keys_shape) - 1;
+      dimension = keys_shape.rank() - 1;
     }
     instr.add_dimensions(dimension);
     std::vector<XlaOp> operands{keys};
@@ -1652,12 +1650,12 @@ XlaOp XlaBuilder::Map(absl::Span<const XlaOp> operands,
     *instr.mutable_shape() = shape.ToProto();
 
     Shape output_shape(instr.shape());
-    const int64 output_rank = ShapeUtil::Rank(output_shape);
+    const int64 output_rank = output_shape.rank();
     AddCalledComputation(computation, &instr);
     std::vector<XlaOp> new_operands(operands.begin(), operands.end());
     for (XlaOp& new_operand : new_operands) {
       TF_ASSIGN_OR_RETURN(Shape shape, GetShape(new_operand));
-      const int64 rank = ShapeUtil::Rank(shape);
+      const int64 rank = shape.rank();
       if (rank != output_rank) {
         TF_ASSIGN_OR_RETURN(new_operand,
                             InDimBroadcast(output_shape, new_operand, {}));
@@ -1866,7 +1864,7 @@ XlaOp XlaBuilder::ReduceAll(const XlaOp& operand, const XlaOp& init_value,
                             const XlaComputation& computation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
-    std::vector<int64> all_dimnos(ShapeUtil::Rank(operand_shape));
+    std::vector<int64> all_dimnos(operand_shape.rank());
     std::iota(all_dimnos.begin(), all_dimnos.end(), 0);
     return Reduce(operand, init_value, computation, all_dimnos);
   });
@@ -2292,7 +2290,7 @@ XlaOp XlaBuilder::SendToHost(const XlaOp& operand, const XlaOp& token,
           ShapeUtil::HumanStringWithLayout(operand_shape));
     }
     // TODO(b/111544877): Support tuple shapes.
-    if (!ShapeUtil::IsArray(operand_shape)) {
+    if (!operand_shape.IsArray()) {
       return InvalidArgument("SendToHost only supports array shapes, shape: %s",
                              ShapeUtil::HumanString(operand_shape));
     }
@@ -2332,7 +2330,7 @@ XlaOp XlaBuilder::RecvFromHost(const XlaOp& token, const Shape& shape,
     }
 
     // TODO(b/111544877): Support tuple shapes.
-    if (!ShapeUtil::IsArray(shape)) {
+    if (!shape.IsArray()) {
       return InvalidArgument(
           "RecvFromHost only supports array shapes, shape: %s",
           ShapeUtil::HumanString(shape));

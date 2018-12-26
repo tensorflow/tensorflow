@@ -1405,16 +1405,20 @@ Status DotOpEmitter::EmitScalarDot() {
   llvm::Value* rhs_value =
       rhs_array_.EmitReadArrayElement(/*index=*/element_index, b_);
   if (ShapeUtil::ElementIsComplex(lhs_array_.GetShape())) {
-#define REAL(x) b_->CreateExtractValue(x, {0})
-#define IMAG(x) b_->CreateExtractValue(x, {1})
-    llvm::Value* real =
-        b_->CreateFSub(b_->CreateFMul(REAL(lhs_value), REAL(rhs_value)),
-                       b_->CreateFMul(IMAG(lhs_value), IMAG(rhs_value)));
-    llvm::Value* imag =
-        b_->CreateFAdd(b_->CreateFMul(REAL(lhs_value), IMAG(rhs_value)),
-                       b_->CreateFMul(IMAG(lhs_value), REAL(rhs_value)));
-#undef IMAG
-#undef REAL
+    auto get_real = [&](llvm::Value* x) {
+      return b_->CreateExtractValue(x, {0});
+    };
+
+    auto get_imag = [&](llvm::Value* x) {
+      return b_->CreateExtractValue(x, {1});
+    };
+
+    llvm::Value* real = b_->CreateFSub(
+        b_->CreateFMul(get_real(lhs_value), get_real(rhs_value)),
+        b_->CreateFMul(get_imag(lhs_value), get_imag(rhs_value)));
+    llvm::Value* imag = b_->CreateFAdd(
+        b_->CreateFMul(get_real(lhs_value), get_imag(rhs_value)),
+        b_->CreateFMul(get_imag(lhs_value), get_real(rhs_value)));
     result = llvm::ConstantAggregateZero::get(lhs_array_.GetElementLlvmType());
     result = b_->CreateInsertValue(result, real, {0});
     result = b_->CreateInsertValue(result, imag, {1});
@@ -1546,7 +1550,7 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
 }
 
 // Return whether the given shape is rank 2.
-static bool IsRank2(const Shape& shape) { return ShapeUtil::Rank(shape) == 2; }
+static bool IsRank2(const Shape& shape) { return shape.rank() == 2; }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
 // are valid for the operation.

@@ -80,11 +80,10 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       }
 
       // Don't constant fold unless it's a net positive or the output is small.
-      if (ShapeUtil::IsArray(instruction->shape())) {
+      if (instruction->shape().IsArray()) {
         int64 elements_in_removed_operands = 0;
         for (HloInstruction* operand : instruction->operands()) {
-          if (operand->user_count() == 1 &&
-              ShapeUtil::IsArray(operand->shape())) {
+          if (operand->user_count() == 1 && operand->shape().IsArray()) {
             elements_in_removed_operands +=
                 ShapeUtil::ElementsIn(operand->shape());
           }

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
-#include <time.h>
-
 #include <iostream>
 #include <sstream>
 
@@ -28,18 +26,11 @@ void SleepForSeconds(double sleep_seconds) {
   if (sleep_seconds <= 0.0) {
     return;
   }
-  // Convert the run_delay string into a timespec.
-  timespec req;
-  req.tv_sec = static_cast<time_t>(sleep_seconds);
-  req.tv_nsec = (sleep_seconds - req.tv_sec) * 1000000000;
   // If requested, sleep between runs for an arbitrary amount of time.
   // This can be helpful to determine the effect of mobile processor
   // scaling and thermal throttling.
-#ifdef PLATFORM_WINDOWS
-  Sleep(sleep_seconds * 1000);
-#else
-  nanosleep(&req, nullptr);
-#endif
+  return tflite::profiling::time::SleepForMicros(
+      static_cast<uint64_t>(sleep_seconds * 1e6));
 }
 
 }  // namespace

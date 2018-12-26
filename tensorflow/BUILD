@@ -637,7 +637,11 @@ py_library(
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],
         "//conditions:default": [":tf_python_api_gen_v1"],
-    }) + [":root_init_gen"],
+    }) + [":root_init_gen"] + [
+        "//tensorflow/python/keras/api:keras_python_api_gen",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],

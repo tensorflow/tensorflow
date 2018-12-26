@@ -234,7 +234,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
   if (instruction->users().empty()) {
     // No sharding from users, use domain_sharding, after checking
     // compatibility.
-    TF_RET_CHECK(ShapeUtil::IsTuple(instruction->shape()) &&
+    TF_RET_CHECK(instruction->shape().IsTuple() &&
                  ShapeUtil::GetLeafCount(instruction->shape()) ==
                      domain_sharding.tuple_elements().size());
     instruction->set_sharding(domain_sharding);
@@ -266,7 +266,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
     AssignmentKind sub_assigned = AssignmentKind::kUnassigned;
     TF_ASSIGN_OR_RETURN(ShapeTree<HloSharding> user_sharding_tree,
                         GetShardingTreeFromUser(*instruction, *user));
-    if (ShapeUtil::IsTuple(instruction->shape())) {
+    if (instruction->shape().IsTuple()) {
       // For tuple-shaped instructions collect individual tuple subshardings
       // from the uses, and then combine them into the tuple sharding.
       // If the user is a GTE its sharding concerns only the subtree of
@@ -298,7 +298,7 @@ StatusOr<bool> ApplyShardingFromUsers(HloInstruction* instruction,
   }
 
   if (assigned == AssignmentKind::kAssigned) {
-    if (ShapeUtil::IsTuple(instruction->shape())) {
+    if (instruction->shape().IsTuple()) {
       instruction->set_sharding(HloSharding::Tuple(sharding_tree));
     } else {
       TF_RET_CHECK(sharding_tree.leaf_count() == 1);
@@ -361,7 +361,7 @@ Status ApplyDomainSharding(const DomainMetadata::Domain& domain,
       // kUnassignedDevice. Indeed in case of doubt it is better to leave the
       // entire tuple unassigned, and let the device placer decide for it.
       if (instruction->sharding().UsesDevice(kUnassignedDevice)) {
-        TF_RET_CHECK(ShapeUtil::IsTuple(instruction->shape()))
+        TF_RET_CHECK(instruction->shape().IsTuple())
             << "Only tuples can have kUnassignedDevice sub shardings";
         instruction->clear_sharding();
       }

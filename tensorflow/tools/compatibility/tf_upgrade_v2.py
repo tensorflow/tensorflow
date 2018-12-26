@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
 from tensorflow.tools.compatibility import reorders_v2
@@ -356,6 +358,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.manual_symbol_renames = {
         "tf.batch_to_space_nd":
             "tf.batch_to_space",
+        "tf.batch_gather":
+            "tf.gather",
         "tf.space_to_batch_nd":
             "tf.space_to_batch",
         "tf.nn.space_to_batch":
@@ -556,6 +560,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         # changed significantly.
         "tf.nn.ctc_loss":
             "tf.compat.v1.nn.ctc_loss",
+        "tf.zeros_initializer":
+            "tf.compat.v1.initializers.zeros",
+        "tf.ones_initializer":
+            "tf.compat.v1.initializers.ones",
+        "tf.constant_initializer":
+            "tf.compat.v1.initializers.constant",
+        "tf.random_uniform_initializer":
+            "tf.compat.v1.initializers.random_uniform",
+        "tf.random_normal_initializer":
+            "tf.compat.v1.initializers.random_normal",
+        "tf.truncated_normal_initializer":
+            "tf.compat.v1.initializers.truncated_normal",
     }
     # pylint: enable=line-too-long
 
@@ -578,6 +594,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.io.serialize_many_sparse",
         "tf.argmax",
         "tf.argmin",
+        "tf.batch_gather",
         "tf.batch_to_space",
         "tf.nn.space_to_batch",
         "tf.boolean_mask",
@@ -657,6 +674,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Specially handled functions.
     self.function_handle = {
+        "tf.batch_gather": self._batch_gather_handler,
         "tf.nn.dropout": self._dropout_handler,
         "tf.gradients": self._colocate_handler("tf.gradients"),
         "*.minimize": self._colocate_handler("Optimizer.minimize"),
@@ -704,6 +722,19 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     deprecate_partition_strategy_comment = (
         "WARNING: `partition_strategy` has been removed from `%s` "
         " The 'div' strategy is used by default.")
+
+    initializers_no_dtype_comment = (
+        "WARNING: tf.initializers and tf.keras.initializers no longer have the "
+        "dtype argument in the constructor or partition_info argument in the "
+        "call method in TF 2.0 and after. The only API symbols are now "
+        "tf.keras.initializers.* or tf.initializers.*."
+        "\nThe calls have been converted to compat.v1 for safety (even though "
+        "they may already have been correct).")
+
+    uniform_unit_scaling_initializer_comment = (
+        "WARNING: uniform_unit_scaling_initializer has been removed. Please use"
+        " tf.initializers.variance_scaling instead with distribution=uniform "
+        "to get equivalent behaviour.")
 
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
@@ -846,6 +877,78 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.test.assert_equal_graph_def":
             "tf.assert_equal_graph_def no longer takes 'checkpoint_v2' "
             "argument. 'checkpoint_v2' now defaults to True.",
+        "tf.keras.initializers.Zeros":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.zeros":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.Ones":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.ones":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.Constant":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.constant":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.VarianceScaling":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.Orthogonal":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.orthogonal":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.Identity":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.identity":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.glorot_uniform":
+            initializers_no_dtype_comment,
+        "tf.keras.initializers.glorot_normal":
+            initializers_no_dtype_comment,
+        "tf.initializers.zeros":
+            initializers_no_dtype_comment,
+        "tf.zeros_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.ones":
+            initializers_no_dtype_comment,
+        "tf.ones_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.constant":
+            initializers_no_dtype_comment,
+        "tf.constant_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.random_uniform":
+            initializers_no_dtype_comment,
+        "tf.random_uniform_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.random_normal":
+            initializers_no_dtype_comment,
+        "tf.random_normal_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.truncated_normal":
+            initializers_no_dtype_comment,
+        "tf.truncated_normal_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.variance_scaling":
+            initializers_no_dtype_comment,
+        "tf.variance_scaling_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.orthogonal":
+            initializers_no_dtype_comment,
+        "tf.orthogonal_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.identity":
+            initializers_no_dtype_comment,
+        "tf.glorot_uniform_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.glorot_uniform":
+            initializers_no_dtype_comment,
+        "tf.glorot_normal_initializer":
+            initializers_no_dtype_comment,
+        "tf.initializers.glorot_normal":
+            initializers_no_dtype_comment,
+        "tf.initializers.uniform_unit_scaling":
+            uniform_unit_scaling_initializer_comment,
+        "tf.uniform_unit_scaling_initializer":
+            uniform_unit_scaling_initializer_comment,
     }
 
     self.symbol_renames = {
@@ -891,7 +994,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
 
   @staticmethod
-  def _dropout_handler(file_edit_recorder, node):
+  def _dropout_handler(file_edit_recorder, node, lines):
+    del lines
     if len(node.args) < 2:
       comment = ("ERROR: tf.nn.dropout did not take arguments, so automatic "
                  "transformation was disabled. tf.nn.dropout has changed "
@@ -915,7 +1019,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
   @staticmethod
   def _colocate_handler(name):
-    def _helper(file_edit_recorder, node):
+    def _helper(file_edit_recorder, node, lines):
+      """Handler for updating colocate arguments."""
+      del lines
       for keyword in node.keywords:
         if keyword.arg == "colocate_gradients_with_ops":
           # TODO(jhseu): Since ast_edit.py does string replacement, there's no
@@ -932,3 +1038,24 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
               "",
               error="{} requires manual check.".format(name))
     return _helper
+
+  @staticmethod
+  def _batch_gather_handler(file_edit_recorder, node, lines):
+    lineno = node.lineno
+    column = node.col_offset
+
+    # Find the position to add the batch_dims argument.  We add it as the
+    # first argument, since that's easiest.  This is safe because we included
+    # batch_gather in self.reordered_function_names, so it will have all
+    # of its arguments changed to keyword arguments.
+    m = re.match(r"tf\s*\.\s*batch_gather\s*\(", lines[lineno - 1][column:])
+    if m is not None:
+      file_edit_recorder.add(
+          "Added keyword argument 'batch_dims=-1' to 'tf.batch_gather'",
+          lineno, column + m.end(), "", "batch_dims=-1, ")
+    else:
+      file_edit_recorder.add(
+          "Unable to add keyword argument 'batch_dims=-1' to 'tf.batch_gather'",
+          lineno, column, "", "",
+          error="Unable to add keyword argument batch_dims=-1 to "
+          "tf.batch_gather; please add it manually.")

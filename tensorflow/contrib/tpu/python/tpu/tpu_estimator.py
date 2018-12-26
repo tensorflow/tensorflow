@@ -1672,7 +1672,7 @@ class _OutfeedHostCall(object):
               'Exception while calling %s: %s. It is likely the tensors '
               '(%s[1]) do not match the '
               'function\'s arguments', name, e, name)
-          raise e
+          raise
     return ret
 
   def record(self, host_calls):
@@ -1805,7 +1805,7 @@ class _OutfeedHostCall(object):
                 'Exception while calling %s: %s. It is likely the tensors '
                 '(%s[1]) do not match the '
                 'function\'s arguments', name, e, name)
-            raise e
+            raise
         else:
           ret[name] = self._host_fns[name](*dequeue_ops)
 

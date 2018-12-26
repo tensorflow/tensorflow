@@ -1267,6 +1267,7 @@ class CudnnRnnSequenceTensorDescriptor
   static port::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
       CUDAExecutor* parent, int max_seq_length, int batch_size, int data_size,
       const absl::Span<const int>& seq_lengths, cudnnDataType_t data_type) {
+#if CUDNN_VERSION >= 7201
     CHECK_GT(max_seq_length, 0);
     int dims[] = {batch_size, data_size, 1};
     int strides[] = {dims[1] * dims[2], dims[2], 1};
@@ -1276,7 +1277,6 @@ class CudnnRnnSequenceTensorDescriptor
         /*nbDims=*/sizeof(dims) / sizeof(dims[0]), /*dimA=*/dims,
         /*strideA=*/strides));
     const int* seq_lengths_array = seq_lengths.data();
-#if CUDNN_VERSION >= 7201
     RNNDataDescriptor data_desc = CreateRNNDataDescriptor();
     float padding_fill = 0.0f;
     RETURN_IF_CUDNN_ERROR(cudnnSetRNNDataDescriptor(

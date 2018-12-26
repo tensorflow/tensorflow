@@ -528,8 +528,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
     for (int64 operand_no = 0; operand_no < instruction->operand_count();
          ++operand_no) {
       const HloInstruction* operand = instruction->operand(operand_no);
-      if (ShapeUtil::Rank(instruction->shape()) !=
-          ShapeUtil::Rank(operand->shape())) {
+      if (instruction->shape().rank() != operand->shape().rank()) {
         continue;
       }
       TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(

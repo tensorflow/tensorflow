@@ -45,6 +45,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -224,39 +225,18 @@ class ParameterServerStrategyTestBase(
           self.assertEqual(var.device, '/job:ps/task:%d' % part_id)
           self.assertEqual(var.device, x_add[part_id].device)
 
-        # The colocate_vars_with can override the distribution's device.
-        with d.colocate_vars_with(x_add[0]):
-          y = variable_scope.get_variable(
-              'y',
-              initializer=constant_op.constant([20.0, 10.0]),
-              aggregation=variable_scope.VariableAggregation.SUM,
-              partitioner=partitioner)
-        y_add = y.assign_add(
-            [array_ops.identity(x_add[0]),
-             array_ops.identity(x_add[1])])
+        return x_add
 
-        for part_id, var in enumerate(y):
-          self.assertEqual(var.device, '/job:ps/task:0')
-          self.assertEqual(y_add[part_id].device, var.device)
-          self.assertEqual(var.device, x_add[0].device)
-
-        return x_add, y_add
-
-      x, y = d.call_for_each_replica(model_fn)
+      x = d.call_for_each_replica(model_fn)
 
       if context.num_gpus() >= 1:
         variables.global_variables_initializer().run()
-        x_val, y_val = sess.run([x, y])
+        x_val = sess.run(x)
         if num_gpus < 1:
           self.assertEqual(x_val, [13.0, 25.0])
-          self.assertEqual(y_val, [33.0, 35.0])
         else:
           x_expect = [10.0 + 3 * num_gpus, 20.0 + 5 * num_gpus]
-          y_expect = [
-              20.0 + x_expect[0] * num_gpus, 10.0 + x_expect[1] * num_gpus
-          ]
           self.assertEqual(x_val, x_expect)
-          self.assertEqual(y_val, y_expect)
 
   def _test_device_assignment_local(self,
                                     d,
@@ -477,7 +457,7 @@ class ParameterServerStrategyTestBase(
         before_list = []
         after_list = []
         for g, v in g_v:
-          fetched = d.read_var(v)
+          fetched = d.extended.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
@@ -485,7 +465,7 @@ class ParameterServerStrategyTestBase(
                 reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
-              after_list.append(d.read_var(v))
+              after_list.append(d.extended.read_var(v))
         return before_list, after_list
 
       before_out, after_out = step()
@@ -532,21 +512,22 @@ class ParameterServerStrategyTestBase(
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run(
-            [values.select_device(d, next_element) for d in devices])
+        computed_value = sess.run([values.select_replica(r, next_element)
+                                   for r in range(len(devices))])
         self.assertEqual(expected_value, computed_value)
 
       with self.assertRaises(errors.OutOfRangeError):
         next_element = iterator.get_next()
-        sess.run([values.select_device(d, next_element) for d in devices])
+        sess.run([values.select_replica(r, next_element)
+                  for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
       sess.run(iterator.initialize())
 
       for expected_value in expected_values:
         next_element = iterator.get_next()
-        computed_value = sess.run(
-            [values.select_device(d, next_element) for d in devices])
+        computed_value = sess.run([values.select_replica(r, next_element)
+                                   for r in range(len(devices))])
         self.assertEqual(expected_value, computed_value)
 
 
@@ -703,7 +684,7 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
     self._run_between_graph_clients(self._test_minimize_loss_graph,
                                     self._cluster_spec, num_gpus)
 
-  def testGlobalStepIsWrapped(self):
+  def testGlobalStepIsWrappedOnTwoGPUs(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     with ops.Graph().as_default(), distribution.scope():
@@ -715,6 +696,21 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                              id(get_step), get_step.__class__.__name__)))
       self.assertIs(values.AggregatingVariable, type(created_step))
       self.assertIs(values.AggregatingVariable, type(get_step))
+      self.assertIs(distribution, created_step.distribute_strategy)
+
+  def testGlobalStepIsNotWrappedOnOneGPU(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=1)
+    with ops.Graph().as_default(), distribution.scope():
+      created_step = training_util.create_global_step()
+      get_step = training_util.get_global_step()
+      self.assertEqual(created_step, get_step,
+                       msg=('created_step %s type %s vs. get_step %s type %s' %
+                            (id(created_step), created_step.__class__.__name__,
+                             id(get_step), get_step.__class__.__name__)))
+      self.assertIs(resource_variable_ops.ResourceVariable, type(created_step))
+      self.assertIs(resource_variable_ops.ResourceVariable, type(get_step))
+      self.assertIs(distribution, created_step.distribute_strategy)
 
   def testValueContainer(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(

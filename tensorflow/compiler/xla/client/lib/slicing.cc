@@ -26,7 +26,7 @@ XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
 
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
 
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     TF_RET_CHECK(n_minor_dims <= n_dims);
     auto major_dims = AsInt64Slice(shape.dimensions())
                           .subspan(
@@ -55,7 +55,7 @@ XlaOp UpdateSlice(XlaOp x, XlaOp update, absl::Span<const int64> start) {
     std::vector<int32> start_as_int32(start.begin(), start.end());
     auto start_constant = ConstantR1<int32>(builder, start_as_int32);
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     TF_ASSIGN_OR_RETURN(Shape start_constant_shape,
                         builder->GetShape(start_constant));
     const int64 start_length =
@@ -70,7 +70,7 @@ XlaOp UpdateSliceInMinorDims(XlaOp x, XlaOp update,
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     const int64 n_minor_dims = start.size();
     TF_RET_CHECK(n_minor_dims <= n_dims);
     std::vector<int64> padded_start(n_dims, 0);
@@ -94,7 +94,7 @@ XlaOp PrependZerosInMajorDims(XlaOp x, absl::Span<const XlaOp> starts) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     auto zero = Reshape(ConstantR0<int32>(builder, 0), {1});
     std::vector<XlaOp> padded_starts(n_dims, zero);
     for (int i = 0; i < starts.size(); ++i) {
@@ -111,7 +111,7 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64 n_dims = ShapeUtil::Rank(shape);
+    const int64 n_dims = shape.rank();
     int64 n_minor_dims = starts.size();
     TF_RET_CHECK(n_minor_dims == sizes.size());
     TF_RET_CHECK(n_minor_dims <= n_dims);

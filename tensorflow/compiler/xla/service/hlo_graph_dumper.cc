@@ -733,8 +733,8 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
     return true;
   }
   const int kMinUsersToOmit = 3;
-  return instr->opcode() == HloOpcode::kParameter &&
-         ShapeUtil::IsTuple(instr->shape()) && !instr->IsFused() &&
+  return instr->opcode() == HloOpcode::kParameter && instr->shape().IsTuple() &&
+         !instr->IsFused() &&
          std::count_if(instr->users().begin(), instr->users().end(),
                        [&](const HloInstruction* user) {
                          return filter_.Show(user);
@@ -816,7 +816,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     // Print the literal value of constants with <= K elements.
     optional<int64> elem_count;
-    if (ShapeUtil::IsArray(shape)) {
+    if (shape.IsArray()) {
       elem_count = 1;
       for (int64 dim : shape.dimensions()) {
         *elem_count *= dim;
@@ -1597,8 +1597,10 @@ string WrapDotInHTML(const string& dot) {
 <head>
   <meta charset="utf-8">
   <style type="text/css">
-    html, body { height: 100%; }
-    body { margin: 0; }
+    body {
+      height: 100vh;
+      margin: 0;
+    }
   </style>
 </head>
 <body>
@@ -1612,7 +1614,7 @@ string WrapDotInHTML(const string& dot) {
   <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.0/dist/svg-pan-zoom.min.js"
      integrity="sha384-3008WpYB2pOBvE7lwkrKf+qTmbTPGGPYxA9C1YVhvbPukns4ZFj7E98QPLkNW9dS"
      crossorigin="anonymous"></script>
-  <div id="container" style="height:95%; border:1px solid black; "></div>
+  <div id="container" style="height:95vh; border:1px solid black; "></div>
   <script>
     var data = `
 )html";
@@ -1680,7 +1682,7 @@ string WrapDotInHTML(const string& dot) {
                 var node = document.createTextNode(css_data);
                 style.appendChild(node);
                 svg.setAttribute('width', '100%');
-                svg.setAttribute('height', 'auto');
+                svg.setAttribute('height', '100%');
                 svg.setAttribute('id', 'graph');
                 svg.appendChild(style);
                 container.appendChild(svg);

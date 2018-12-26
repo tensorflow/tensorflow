@@ -86,6 +86,16 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_numBytes(JNIEnv* env,
 
 /*
  *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    hasDelegateBufferHandle
+ *  Signature: (J)Z
+ */
+JNIEXPORT jboolean JNICALL
+Java_org_tensorflow_lite_Tensor_hasDelegateBufferHandle(JNIEnv* env,
+                                                        jclass clazz,
+                                                        jlong handle);
+
+/*
+ *  Class:     org_tensorflow_lite_Tensor
  *  Method:    readMultiDimensionalArray
  *  Signature: (JLjava/lang/Object;)
  */

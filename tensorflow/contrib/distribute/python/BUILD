@@ -1,5 +1,9 @@
 # Implementation of a prototype TF distributed computation library.
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -9,9 +13,6 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 # TODO(priyag): Figure out testonly issues that are preventing us from
 # including our tests in pip for now.
@@ -584,7 +585,10 @@ cuda_py_test(
 py_library(
     name = "keras_test_lib",
     testonly = 1,
-    srcs = ["keras_test.py"],
+    srcs = [
+        "keras_backward_compat_test.py",
+        "keras_test.py",
+    ],
     deps = [
         ":combinations",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
@@ -604,6 +608,57 @@ cuda_py_test(
     srcs = ["keras_test.py"],
     additional_deps = [
         ":keras_test_lib",
+    ],
+    shard_count = 16,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+)
+
+# TODO(b/121200287): Remove this in 2.0
+cuda_py_test(
+    name = "keras_backward_compat_test",
+    srcs = ["keras_backward_compat_test.py"],
+    additional_deps = [
+        ":keras_test_lib",
+    ],
+    shard_count = 16,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+)
+
+py_library(
+    name = "keras_correctness_test_lib",
+    testonly = 1,
+    srcs = ["keras_correctness_test.py"],
+    deps = [
+        ":combinations",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/contrib/distribute/python:tpu_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_correctness_test",
+    srcs = ["keras_correctness_test.py"],
+    additional_deps = [
+        ":keras_correctness_test_lib",
     ],
     shard_count = 16,
     tags = [
@@ -676,5 +731,26 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
+    ],
+)
+
+tf_xla_py_test(
+    name = "checkpointing_test",
+    srcs = ["checkpointing_test.py"],
+    disabled_backends = [
+        # Only makes sense on TPUs
+        "cpu",
+        "gpu",
+        "cpu_ondemand",
+    ],
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/checkpointable:util",
     ],
 )

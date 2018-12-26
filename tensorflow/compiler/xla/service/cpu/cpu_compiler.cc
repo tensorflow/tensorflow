@@ -506,7 +506,7 @@ Status CreateHloProfilingArtifacts(
 
   auto shape_size_bytes = [](const Shape& shape) {
     // On the cpu, opaques are pointers.
-    if (ShapeUtil::IsOpaque(shape)) {
+    if (shape.IsOpaque()) {
       return static_cast<int64>(sizeof(void*));
     }
     return ShapeUtil::ByteSizeOf(shape, sizeof(void*));

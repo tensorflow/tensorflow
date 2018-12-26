@@ -25,7 +25,9 @@ import copy
 import numpy as np
 import six
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -68,7 +70,7 @@ class Aggregator(object):
     Arguments:
       batch_outs: A list of batch-level outputs.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   @abc.abstractmethod
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
@@ -81,12 +83,12 @@ class Aggregator(object):
       batch_end: The end index of this batch. Always `None` if `use_steps` is
         `True`.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   @abc.abstractmethod
   def finalize(self):
     """Prepares the total results to be returned."""
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
 
 class MetricsAggregator(Aggregator):
@@ -674,7 +676,8 @@ def standardize_weights(y,
   """Performs sample weight validation and standardization.
 
   Everything gets normalized to a single sample-wise (or timestep-wise)
-  weight array.
+  weight array. If both `sample_weight` and `class_weight` are provided,
+  the weights are multiplied.
 
   Arguments:
       y: Numpy array of model targets to be weighted.
@@ -735,22 +738,26 @@ def standardize_weights(y,
           'Found a sample_weight array with shape ' + str(sample_weight.shape) +
           ' for an input with shape ' + str(y.shape) + '. '
           'sample_weight cannot be broadcast.')
-    return sample_weight
-  elif isinstance(class_weight, dict):
+
+  # Class weights applied per-sample.
+  class_sample_weight = None
+  if isinstance(class_weight, dict):
     if len(y.shape) > 2:
       raise ValueError('`class_weight` not supported for '
                        '3+ dimensional targets.')
-    if y.shape[1] > 1:
-      y_classes = np.argmax(y, axis=1)
-    elif y.shape[1] == 1:
-      y_classes = np.reshape(y, y.shape[0])
+
+    if len(y.shape) == 2:
+      if y.shape[1] > 1:
+        y_classes = np.argmax(y, axis=1)
+      elif y.shape[1] == 1:
+        y_classes = np.reshape(y, y.shape[0])
     else:
       y_classes = y
 
-    weights = np.asarray(
+    class_sample_weight = np.asarray(
         [class_weight[cls] for cls in y_classes if cls in class_weight])
 
-    if len(weights) != len(y_classes):
+    if len(class_sample_weight) != len(y_classes):
       # subtract the sets to pick all missing classes
       existing_classes = set(y_classes)
       existing_class_weight = set(class_weight.keys())
@@ -758,9 +765,15 @@ def standardize_weights(y,
                        ' The classes %s exist in the data but not in '
                        '`class_weight`.' %
                        (existing_classes - existing_class_weight))
-    return weights
-  else:
-    return None
+
+  if class_sample_weight is not None and sample_weight is not None:
+    # Multiply weights if both are provided.
+    return class_sample_weight * sample_weight
+  if sample_weight is not None:
+    return sample_weight
+  if class_sample_weight is not None:
+    return class_sample_weight
+  return None
 
 
 def has_symbolic_tensors(ls):
@@ -861,11 +874,11 @@ def get_loss_function(loss):
   return losses.get(loss)
 
 
-def validate_iterator_input(x, y, sample_weight, validation_split=None):
+def validate_dataset_input(x, y, sample_weight, validation_split=None):
   """Validates user input arguments when a dataset iterator is passed.
 
   Arguments:
-    x: Input data. A `tf.data` dataset iterator.
+    x: Input data. A `tf.data` dataset or iterator.
     y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
         Expected to be `None` when `x` is a dataset iterator.
     sample_weight: An optional sample-weight array passed by the user to
@@ -899,7 +912,9 @@ def validate_iterator_input(x, y, sample_weight, validation_split=None):
         'Received: x=%s, validation_split=%f' % (x, validation_split))
 
 
-def check_generator_arguments(y=None, sample_weight=None):
+def check_generator_arguments(y=None,
+                              sample_weight=None,
+                              validation_split=None):
   """Validates arguments passed when using a generator."""
   if y is not None:
     raise ValueError('`y` argument is not supported when data is'
@@ -909,6 +924,9 @@ def check_generator_arguments(y=None, sample_weight=None):
     raise ValueError('`sample_weight` argument is not supported when data is'
                      'a generator or Sequence instance. Instead pass sample'
                      ' weights as the third element of the generator.')
+  if validation_split:
+    raise ValueError('If your data is in the form of a Python generator, '
+                     'you cannot use `validation_split`.')
 
 
 def check_steps_argument(input_data, steps, steps_name):
@@ -934,15 +952,14 @@ def check_steps_argument(input_data, steps, steps_name):
       ValueError: if `steps` argument is required for given input data type
         but not provided.
   """
-
-  is_x_iterator = (
-      isinstance(input_data, iterator_ops.Iterator) or
-      isinstance(input_data, iterator_ops.EagerIterator))
-
-  if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
+  # TODO(fchollet): allow datasets with steps=None if cardinality is known.
+  is_x_dataset = isinstance(input_data, (iterator_ops.Iterator,
+                                         iterator_ops.EagerIterator,
+                                         dataset_ops.DatasetV2))
+  if (input_data is None or is_x_dataset or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
-      input_type_str = 'iterators' if is_x_iterator else 'data tensors'
+      input_type_str = 'a Dataset' if is_x_dataset else 'data tensors'
       raise ValueError('When using {input_type} as input to a model, you should'
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
@@ -1061,6 +1078,125 @@ def prepare_sample_weights(output_names, sample_weight_mode,
 def is_feature_layer(layer):
   """Returns whether `layer` is a FeatureLayer or not."""
   return getattr(layer, '_is_feature_layer', False)
+
+
+def is_eager_dataset_or_iterator(data):
+  if context.executing_eagerly():
+    if isinstance(data, (dataset_ops.DatasetV2, iterator_ops.EagerIterator)):
+      return True
+  return False
+
+
+# pylint: disable=protected-access
+def assert_not_batched(dataset):
+  """Asserts that `dataset` is not batched.
+
+  The algorithm used by this method is sound but not complete. In other words,
+  if the method fails to establish the assertion, it does not mean the dataset
+  is batched.
+
+  Example usage:
+  ```python
+  try:
+    assert_not_batched(dataset)
+    # safe to assume `dataset` it not batched here
+  expect ValueError:
+    # make no assumptions about `dataset`
+  ```
+
+  Args:
+    dataset: The dataset to analyze.
+
+  Raises:
+    ValueError: If the method cannot establish the assertion.
+  """
+  if isinstance(dataset, dataset_ops.DatasetV1Adapter):
+    return assert_not_batched(dataset._dataset)
+  else:
+    whitelisted_types = [
+        dataset_ops._OptionsDataset,
+        dataset_ops.ConcatenateDataset,
+        dataset_ops.CacheDataset,
+        dataset_ops.FilterDataset,
+        dataset_ops.MapDataset,
+        dataset_ops.ParallelMapDataset,
+        dataset_ops.PrefetchDataset,
+        dataset_ops.RangeDataset,
+        dataset_ops.RepeatDataset,
+        dataset_ops.ShuffleDataset,
+        dataset_ops.SkipDataset,
+        dataset_ops.SparseTensorSliceDataset,
+        dataset_ops.TakeDataset,
+        dataset_ops.TensorDataset,
+        dataset_ops.TensorSliceDataset,
+        dataset_ops.ZipDataset,
+        readers.FixedLengthRecordDatasetV2,
+        readers.TextLineDatasetV2,
+        readers.TFRecordDatasetV2,
+    ]
+    for ty in whitelisted_types:
+      if isinstance(dataset, ty):
+        for input_dataset in dataset._inputs():
+          assert_not_batched(input_dataset)
+        return
+    raise ValueError('Could not assert that dataset is not batched.')
+
+
+# pylint: disable=protected-access
+def assert_not_shuffled(dataset):
+  """Asserts that `dataset` is not shuffled.
+
+  The algorithm used by this method is sound but not complete. In other words,
+  if the method fails to establish the assertion, it does not mean the dataset
+  is shuffled.
+
+  Example usage:
+  ```python
+  try:
+    assert_not_shuffled(dataset)
+    # safe to assume `dataset` it not shuffled here
+  expect ValueError:
+    # make no assumptions about `dataset`
+  ```
+
+  Args:
+    dataset: The dataset to analyze.
+
+  Raises:
+    ValueError: If the method cannot establish the assertion.
+  """
+  if isinstance(dataset, dataset_ops.DatasetV1Adapter):
+    return assert_not_shuffled(dataset._dataset)
+  else:
+    whitelisted_types = [
+        dataset_ops._OptionsDataset,
+        dataset_ops.BatchDataset,
+        dataset_ops.ConcatenateDataset,
+        dataset_ops.CacheDataset,
+        dataset_ops.FilterDataset,
+        dataset_ops.MapDataset,
+        dataset_ops.PaddedBatchDataset,
+        dataset_ops.ParallelMapDataset,
+        dataset_ops.PrefetchDataset,
+        dataset_ops.RangeDataset,
+        dataset_ops.RepeatDataset,
+        dataset_ops.SkipDataset,
+        dataset_ops.SparseTensorSliceDataset,
+        dataset_ops.TakeDataset,
+        dataset_ops.TensorDataset,
+        dataset_ops.TensorSliceDataset,
+        dataset_ops.WindowDataset,
+        dataset_ops.ZipDataset,
+        readers.FixedLengthRecordDatasetV2,
+        readers.TextLineDatasetV2,
+        readers.TFRecordDatasetV2,
+    ]
+    for ty in whitelisted_types:
+      if isinstance(dataset, ty):
+        for input_dataset in dataset._inputs():
+          assert_not_shuffled(input_dataset)
+        return
+    raise ValueError('Could not assert that dataset is not shuffled.')
 
 
 class ModelInputs(object):
@@ -1245,3 +1381,24 @@ def trace_model_call(model, input_signature=None):
 
   return _wrapped_model
 
+
+def set_run_eagerly_for_dict_structure(model, x):
+  """Set model.run_eagerly to true if x is dict structure.
+
+  Set model.run_eagerly to true if x is dict or
+  Iterator/EagerIterator/Dataset of dict.
+
+  Args:
+    model: A Keras model.
+    x: Input data.
+  """
+  if not context.executing_eagerly():
+    return
+  if isinstance(x, dict):
+    model.run_eagerly = True
+  if (isinstance(x, (iterator_ops.Iterator, iterator_ops.EagerIterator,
+                     dataset_ops.DatasetV2))):
+    for item in x.output_shapes:
+      if isinstance(item, dict):
+        model.run_eagerly = True
+        return

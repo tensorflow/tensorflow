@@ -552,7 +552,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   Literal result_literal =
       evaluator.Evaluate<const Literal*>(*computation, {}).ConsumeValueOrDie();
 
-  CHECK_EQ(ShapeUtil::Rank(result_literal.shape()), 4);
+  CHECK_EQ(result_literal.shape().rank(), 4);
   auto result =
       absl::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
                                         result_literal.shape().dimensions(1),

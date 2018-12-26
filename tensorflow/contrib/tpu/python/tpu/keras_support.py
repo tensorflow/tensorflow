@@ -1373,6 +1373,10 @@ class KerasTPUModel(models.Model):
     # not hashable.
     self._numpy_to_infeed_manager_list = []
 
+    # Add distribution specific arguments since we don't call the Model init.
+    self._distribution_strategy = None
+    self._compile_distribution = None
+
     self.predict_function = None
     self.test_function = None
     self.train_function = None

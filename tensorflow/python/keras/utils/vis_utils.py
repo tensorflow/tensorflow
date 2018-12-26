@@ -20,7 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 try:
@@ -127,7 +127,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   return dot
 
 
-@tf_export('keras.utils.plot_model')
+@keras_export('keras.utils.plot_model')
 def plot_model(model,
                to_file='model.png',
                show_shapes=False,

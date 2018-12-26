@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities related to distributed training."""
+# pylint:disable=protected-access
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -24,15 +25,20 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
+from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
@@ -152,14 +158,12 @@ def flatten_perdevice_values(distribution_strategy, perdevice_values):
           for e in distribution_strategy.unwrap(flattened)]
 
 
-def validate_callbacks(input_callbacks, optimizer, current_strategy):
+def validate_callbacks(input_callbacks, optimizer):
   """Validate whether given callbacks are supported by DistributionStrategy.
 
   Args:
     input_callbacks: List of callbacks passed by the user to fit.
     optimizer: Optimizer instance used to train the model.
-    current_strategy: The DistributionStrategy used to distribute training
-      and validation.
 
   Raises:
     ValueError: If `LearningRateScheduler` or `ReduceLROnPlateau` is one of the
@@ -183,12 +187,6 @@ def validate_callbacks(input_callbacks, optimizer, current_strategy):
                         '`_grouped_model` attribute of your original model.')
       if isinstance(callback, (callbacks.LearningRateScheduler,
                                callbacks.ReduceLROnPlateau)):
-        strategy_name = current_strategy.__class__.__name__
-        # TODO(anjalisridhar): We might need to add a condition for multi
-        # worker strategy when we support it in Keras.
-        if is_tpu_strategy(current_strategy):
-          raise ValueError('%s callback is not supported with %s.' %
-                           (callback, strategy_name))
 
         if not isinstance(optimizer, optimizer_v2.OptimizerV2):
           raise ValueError('You must specify a Keras Optimizer V2 when using '
@@ -615,3 +613,339 @@ def _get_var_for_numpy(distribution_strategy, input_array):
     start = end
 
   return input_var
+
+
+def _get_input_from_iterator(iterator, model):
+  """Get elements from the iterator and verify the input shape and type."""
+  next_element = iterator.get_next()
+
+  if len(nest.flatten(next_element)) == len(model.inputs):
+    x = next_element
+    y = None
+    sample_weights = None
+  elif len(nest.flatten(next_element)) == (len(model.inputs) +
+                                           len(model.outputs)):
+    x, y = next_element
+    sample_weights = None
+  else:
+    x, y, sample_weights = next_element
+
+  # Validate that all the elements in x and y are of the same type and shape.
+  # We can then pass the first element of x and y to `_standardize_weights`
+  # below and be confident of the output.
+  validate_distributed_dataset_inputs(
+      model._distribution_strategy, x, y, sample_weights)
+  return x, y, sample_weights
+
+
+def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
+  """Prepare feed values to the model execution function.
+
+  Arguments:
+    model: Model to prepare feed values for.
+    inputs: List or dict of model inputs.
+    targets: Optional list of model targets.
+    sample_weights: Optional list of sample weight arrays.
+    mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
+
+  Returns:
+    Feed values for the model in the given mode.
+  """
+  strategy = model._distribution_strategy
+  inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
+  inputs = flatten_perdevice_values(strategy, inputs)
+  targets = flatten_perdevice_values(strategy, targets)
+  if mode == ModeKeys.PREDICT:
+    sample_weights = []
+    targets = []
+  else:
+    sample_weights = [
+        None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
+    ]
+  ins = inputs + targets + sample_weights
+  if mode == ModeKeys.TRAIN and not isinstance(K.symbolic_learning_phase(),
+                                               int):
+    ins += [True]
+  return ins
+
+
+def _custom_compile_for_predict(model):
+  """Custom compile for TPU predict mode."""
+  model.total_loss = None
+  model._fit_function = None
+  model._eval_function = None
+  model.train_function = None
+  model.test_function = None
+  model.predict_function = None
+
+
+def _build_network_on_replica(model, inputs=None, targets=None, mode=None):
+  """Build an updated model on replicas.
+
+  We create a new Keras model while sharing the variables from the old graph.
+  Building a new sub-graph is required since the original keras model creates
+  placeholders for the input and the output that are not accessible till we
+  call iterator.get_next() inside the step_fn for `fit`/`evaluate`/`predict`.
+
+  The sharing of weights and layers between the old and the new model gaurantee
+  that we're using Strategy variables and any updates on either model are
+  reflected correctly in callbacks and loop iterations.
+
+  We need to make sure we share the optimizers between the old and the new model
+  as well so that optimizer state is not lost if the user is running fit
+  multiple times.
+
+  Args:
+    model: Model to be replicated across Replicas
+    inputs: Input variables to be passed to the model
+    targets: Target tensor to be passed to model.compile
+    mode: Which of fit/eval/predict is building the distributed network
+
+  Returns:
+    A new model with shared layers with the old model.
+  """
+  # Need to do imports here since we run into a circular dependency error.
+  from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.engine import sequential  # pylint: disable=g-import-not-at-top
+
+  # We rely on the internal methods to avoid having share_weights weights in the
+  # public API.
+  if isinstance(model, sequential.Sequential):
+    updated_model = models._clone_sequential_model(model, input_tensors=inputs,
+                                                   share_weights=True)
+  else:
+    updated_model = models._clone_functional_model(model, input_tensors=inputs,
+                                                   share_weights=True)
+
+  # Recast all low precision outputs back to float32 since we only casted
+  # the inputs to bfloat16 and not targets. This is done so that we can preserve
+  # precision when calculating the loss value.
+  def _upcast_low_precision_outputs(output):
+    if output.dtype == dtypes.bfloat16:
+      return math_ops.cast(output, dtypes.float32)
+    else:
+      return output
+  updated_model.outputs = [_upcast_low_precision_outputs(o)
+                           for o in updated_model.outputs]
+
+  if isinstance(targets, tuple):
+    targets = nest.flatten(targets)
+
+  if mode == ModeKeys.PREDICT:
+    _custom_compile_for_predict(updated_model)
+  else:
+    updated_model.compile(
+        model.optimizer,
+        model.loss,
+        metrics=metrics_module.clone_metrics(model._compile_metrics),
+        loss_weights=model.loss_weights,
+        sample_weight_mode=model.sample_weight_mode,
+        weighted_metrics=metrics_module.clone_metrics(
+            model._compile_weighted_metrics),
+        target_tensors=targets)
+  return updated_model
+
+
+def _build_distributed_network(model, strategy, inputs=None, targets=None,
+                               mode=None):
+  """Create a cloned model on each replica."""
+  with K.get_graph().as_default(), strategy.scope():
+    distributed_model = strategy.extended.call_for_each_replica(
+        _build_network_on_replica,
+        args=(model, inputs, targets, mode))
+    if mode is ModeKeys.TRAIN:
+      model._distributed_model_train = distributed_model
+    elif mode is ModeKeys.TEST:
+      model._distributed_model_test = distributed_model
+    elif mode is ModeKeys.PREDICT:
+      model._distributed_model_predict = distributed_model
+    else:
+      model._distributed_model = distributed_model
+
+
+def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
+  """Clone and build the given keras_model."""
+  # We need to set the import here since we run into a circular dependency
+  # error.
+  from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
+  cloned_model = models.clone_model(model, input_tensors=inputs)
+
+  # Compile and build model.
+  if isinstance(model.optimizer, optimizers.TFOptimizer):
+    optimizer = model.optimizer
+  else:
+    optimizer_config = model.optimizer.get_config()
+    optimizer = model.optimizer.__class__.from_config(optimizer_config)
+
+  # Recast all low precision outputs back to float32 since we only casted
+  # the inputs to bfloat16 and not targets. This is done so that we can preserve
+  # precision when calculating the loss value.
+  def _upcast_low_precision_outputs(output):
+    if output.dtype == dtypes.bfloat16:
+      return math_ops.cast(output, dtypes.float32)
+    else:
+      return output
+  cloned_model.outputs = [_upcast_low_precision_outputs(o)
+                          for o in cloned_model.outputs]
+
+  if isinstance(targets, tuple):
+    targets = nest.flatten(targets)
+  if mode == ModeKeys.PREDICT:
+    _custom_compile_for_predict(cloned_model)
+  else:
+    cloned_model.compile(
+        optimizer,
+        model.loss,
+        metrics=metrics_module.clone_metrics(model._compile_metrics),
+        loss_weights=model.loss_weights,
+        sample_weight_mode=model.sample_weight_mode,
+        weighted_metrics=metrics_module.clone_metrics(
+            model._compile_weighted_metrics),
+        target_tensors=targets)
+  return cloned_model
+
+
+def clone_model_on_replicas(model, strategy, make_callback_model=False,
+                            inputs=None, targets=None, mode=None):
+  """Create a cloned model on each replica."""
+  with K.get_graph().as_default(), strategy.scope():
+    distributed_model = strategy.extended.call_for_each_replica(
+        _clone_and_build_model, args=(model, inputs, targets, mode))
+    if mode is ModeKeys.TRAIN:
+      model._distributed_model_train = distributed_model
+    elif mode is ModeKeys.TEST:
+      model._distributed_model_test = distributed_model
+    elif mode is ModeKeys.PREDICT:
+      model._distributed_model_predict = distributed_model
+    else:
+      model._distributed_model = distributed_model
+  if make_callback_model:
+    model._make_callback_model(distributed_model)
+
+
+def _make_execution_function(model, mode):
+  """Makes function to run one step of distributed model execution."""
+  if context.executing_eagerly():
+    return _make_eager_execution_function(model, mode)
+
+  strategy = model._distribution_strategy
+  if not model._distributed_model:
+    if model._compile_distribution:
+      clone_model_on_replicas(
+          model, strategy, make_callback_model=(mode == ModeKeys.TRAIN))
+    else:
+      _build_distributed_network(model, strategy)
+
+  def _per_device_function(model):
+    f = model._make_execution_function(mode)
+    return (f.inputs, f.outputs, f.updates_op, f.session_kwargs)
+
+  with strategy.scope():
+    # Create train ops on each of the devices when we call
+    # `_per_device_fit_function`.
+    (grouped_inputs, grouped_outputs, grouped_updates,
+     grouped_session_args) = strategy.extended.call_for_each_replica(
+         _per_device_function, args=(model._distributed_model,))
+
+    if mode == ModeKeys.TRAIN:
+      # Initialize the variables in the replicated model. This is necessary for
+      # multi-worker training because on some workers, initialization is not
+      # needed. This method does initialization or waiting for initialization
+      # according to the context object of distribute coordinator.
+      init_restore_or_wait_for_variables()
+
+    # Unwrap all the per device values returned from `call_for_each_replica`.
+    # Unwrapping per device values gives you a list of values that can be
+    # used to construct a new train function that is composed of update ops on
+    # all the devices over which the model is distributed.
+    (all_inputs, all_outputs, all_updates, all_session_args) = unwrap_values(
+        strategy,
+        grouped_inputs,
+        grouped_outputs,
+        grouped_updates,
+        grouped_session_args,
+        with_loss_tensor=(mode != ModeKeys.PREDICT))
+
+    return K.function(
+        all_inputs,
+        all_outputs,
+        updates=all_updates,
+        name='distributed_{}_function'.format(mode),
+        **all_session_args)
+
+
+def _make_eager_execution_function(model, mode):
+  """Makes function to run one step of distributed model eager execution."""
+  strategy = model._distribution_strategy
+  if not model._distributed_model:
+    if model._compile_distribution:
+      clone_model_on_replicas(
+          model, strategy, make_callback_model=(mode == ModeKeys.TRAIN))
+    else:
+      _build_distributed_network(model, strategy)
+
+  def _per_device_function(model):
+    f = model._make_execution_function(mode)
+    return (f.inputs, f.outputs)
+
+  # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
+  # the global one.
+  with K.get_graph().as_default(), strategy.scope():
+    # Create train ops on each of the devices when we call
+    # `_per_device_fit_function`.
+    (grouped_inputs, grouped_outputs) = strategy.call_for_each_replica(
+        _per_device_function, args=(model._distributed_model,))
+
+    # Unwrap all the per device values returned from `call_for_each_replica`.
+    # Unwrapping per device values gives you a list of values that can be
+    # used to construct a new train function that is composed of inptus/outputs
+    # on all the devices over which the model is distributed.
+    (all_inputs, all_outputs, _, _) = unwrap_values(
+        strategy,
+        grouped_inputs,
+        grouped_outputs,
+        with_loss_tensor=(mode != ModeKeys.PREDICT))
+
+    return K.function(
+        all_inputs,
+        all_outputs,
+        name='eager_distributed_{}_function'.format(mode))
+
+
+def _copy_weights_to_distributed_model(original_model, grouped_model):
+  """Copies weights from original model to distributed models."""
+  strategy = original_model._distribution_strategy
+  if strategy:
+    # Copy the weights from the original model to each of the replicated
+    # models.
+    orig_model_weights = original_model.get_weights()
+    distributed_model = strategy.unwrap(grouped_model)[0]
+    set_weights(strategy, distributed_model, orig_model_weights)
+
+
+def _copy_weights_to_original_model(model, grouped_model, mode):
+  """Copies weights from first distributed model back to original model."""
+  if model._distribution_strategy and mode == ModeKeys.TRAIN:
+    updated_weights = model._distribution_strategy.unwrap(
+        grouped_model)[0].get_weights()
+    model.set_weights(updated_weights)
+
+
+def _per_device_aggregate_batch(batch_outs, model, mode):
+  """Aggregates the per-device batch-level outputs from a distributed step."""
+  if model._distribution_strategy is not None and mode == ModeKeys.PREDICT:
+    total_batch_outs = []
+    for i in range(len(model.outputs)):
+      num_replicas = model._distribution_strategy.num_replicas_in_sync
+      nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
+      total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
+    return total_batch_outs
+  return batch_outs
+
+
+def _reset_metrics(model, distributed_model=None):
+  if model._distribution_strategy:
+    distributed_model = (
+        distributed_model or
+        model._distribution_strategy.unwrap(model._distributed_model)[0])
+    distributed_model.reset_metrics()

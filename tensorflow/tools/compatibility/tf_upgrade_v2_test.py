@@ -736,6 +736,30 @@ tf.print('abc')
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
+  def testBatchGather(self):
+    text = "tf.batch_gather(foo, bar)"
+    expected_text = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.batch_gather(params=foo, indices=bar)"
+    expected_text = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "tf.batch_gather  (  foo, bar)"
+    expected_text = "tf.gather  (batch_dims=-1,   params=foo, indices=bar)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, expected_text)
+
+    text = "(tf.batch_gather\n(foo, bar))"
+    expected_text = "(tf.gather\n(params=foo, indices=bar))"
+    expected_errors = ["test.py:1: Unable to add keyword argument batch_dims=-1"
+                       " to tf.batch_gather; please add it manually."]
+    _, unused_report, errors, new_text = self._upgrade(text)
+    self.assertEqual(errors, expected_errors)
+    self.assertEqual(new_text, expected_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

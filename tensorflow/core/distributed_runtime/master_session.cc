@@ -1354,9 +1354,7 @@ Status MasterSession::DeleteWorkerSessions() {
         &workers[i].call_opts, &workers[i].request, &workers[i].response, cb);
   }
 
-  if (!done.WaitFor(std::chrono::milliseconds(10000))) {
-    LOG(WARNING) << "Timeout for closing worker session";
-  }
+  done.Wait();
   for (size_t i = 0; i < workers.size(); ++i) {
     status.Update(workers[i].status);
   }

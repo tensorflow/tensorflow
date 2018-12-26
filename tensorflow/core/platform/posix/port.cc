@@ -29,7 +29,7 @@ limitations under the License.
 #include <sys/syscall.h>
 #endif
 
-#if !defined(__APPLE__) && (__x86_64__ || __i386__)
+#if (__x86_64__ || __i386__)
 #include <cpuid.h>
 #endif
 
@@ -78,20 +78,24 @@ int NumSchedulableCPUs() {
 
 int NumTotalCPUs() {
   int count = absl::base_internal::NumCPUs();
-  return (count == 0) ? kUnknownCPU : count;
+  return (count <= 0) ? kUnknownCPU : count;
 }
 
 int GetCurrentCPU() {
 #if defined(__linux__) && !defined(__ANDROID__)
   return sched_getcpu();
-#elif defined(__cpuid_count)
   // Attempt to use cpuid on all other platforms.  If that fails, perform a
   // syscall.
-  uint32_t eax, ebx, ecx, edx;
-  __cpuid_count(/*leaf=*/1, /*subleaf=*/0, eax, ebx, ecx, edx);
-  if ((edx & (1 << 9)) != 0) {
+#elif defined(__cpuid) && !defined(__APPLE__)
+  // TODO(b/120919972): __cpuid returns invalid APIC ids on OS X.
+  uint32_t eax = 0;
+  uint32_t ebx = 0;
+  uint32_t ecx = 0;
+  uint32_t edx = 0;
+  __cpuid(/*level=*/1, eax, ebx, ecx, edx);
+  if ((edx & /*bit_APIC=*/(1 << 9)) != 0) {
     // EBX bits 24-31 are APIC ID
-    return static_cast<unsigned int>(ebx >> 24);
+    return (ebx & 0xFF) >> 24;
   }
 #elif defined(__NR_getcpu)
   unsigned int cpu;

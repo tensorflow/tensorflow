@@ -1086,7 +1086,7 @@ in the future.
 
 The Graph Transform Tool associates names of transforms with the code to
 implement them using the `REGISTER_GRAPH_TRANSFORM()` macro. This takes a string
-and a function, and automagically registers the transform with the tool. You
+and a function, and automatically registers the transform with the tool. You
 will need to watch out for a few things though:
 
 *   Because it's using global C++ objects in each file under the hood, the

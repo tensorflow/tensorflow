@@ -258,6 +258,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.conv3d = "Conv3D";
     csinfo_.conv3d_grad_input = "Conv3DBackpropInputV2";
     csinfo_.conv3d_grad_filter = "Conv3DBackpropFilterV2";
+    csinfo_.depthwise_conv2d = "DepthwiseConv2dNative";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_conv2d = "_FusedConv2D";
@@ -378,6 +379,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.conv3d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv3d_grad_input),
                       CopyAttrsConv, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.depthwise_conv2d,
+                      mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d),
+                      CopyAttrsConv2DDepthwise, AlwaysRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
@@ -680,6 +684,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string conv3d;
     string conv3d_grad_input;
     string conv3d_grad_filter;
+    string depthwise_conv2d;
     string fused_batch_norm;
     string fused_batch_norm_grad;
     string fused_conv2d;
@@ -1031,7 +1036,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             e->dst_input() == kPermTensorIndex) {
           // we find the "perm" node, now try to retrieve its value.
           const TensorProto* proto = nullptr;
-          DCHECK(GetNodeAttr(perm_node->def(), "value", &proto).ok());
+          TF_CHECK_OK(GetNodeAttr(perm_node->def(), "value", &proto));
 
           DataType type;
           GetNodeAttr(perm_node->def(), "dtype", &type);
@@ -1392,6 +1397,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                               bool change_format = false);
   static void CopyAttrsConcatV2(const Node* orig_node, NodeBuilder* nb,
                                 bool change_format = false);
+  static void CopyAttrsConv2DDepthwise(const Node* orig_node, NodeBuilder* nb,
+                                       bool change_format = false);
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
   static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb,
@@ -2047,6 +2054,30 @@ void MklLayoutRewritePass::CopyAttrsFromPadAndConv2D(const Node* orig_node1,
   nb->Attr("data_format", data_format);
   nb->Attr("use_cudnn_on_gpu", use_cudnn_on_gpu);
   nb->Attr("Tpaddings", Tpaddings);
+}
+
+void MklLayoutRewritePass::CopyAttrsConv2DDepthwise(const Node* orig_node,
+                                                    NodeBuilder* nb,
+                                                    bool change_format) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> strides;
+  std::vector<int32> dilations;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("strides", strides);
+  nb->Attr("dilations", dilations);
+  nb->Attr("padding", padding);
+  nb->Attr("data_format", data_format);
 }
 
 void MklLayoutRewritePass::CopyAttrsAddN(const Node* orig_node, NodeBuilder* nb,
@@ -3117,8 +3148,9 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   for (const Edge* e : transpose_to_nchw->out_edges()) {
     if (!e->IsControlEdge()) {
       const int kTransposeWithMklOpOutputSlot = 0;
-      DCHECK((*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot, e->dst(),
-                           e->dst_input()));
+      auto new_edge = (*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot,
+                                    e->dst(), e->dst_input());
+      DCHECK(new_edge);
     }
   }
 
@@ -3319,7 +3351,6 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
 
   DumpGraph("After running MklLayoutRewritePass(NodeMerge)", &**g);
 
-#ifdef ENABLE_TRANSPOSE_OPTIMIZATION
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.
   for (Node* n : order) {
@@ -3341,7 +3372,6 @@ bool MklLayoutRewritePass::RunPass(std::unique_ptr<Graph>* g) {
     }
   }
   DumpGraph("After running MklLayoutRewritePass(NodeFusion)", &**g);
-#endif  // ENABLE_TRANSPOSE_OPTIMIZATION
 
   order.clear();
   GetReversePostOrder(**g, &order);  // This will give us topological sort.

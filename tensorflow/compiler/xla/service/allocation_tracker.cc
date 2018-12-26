@@ -142,13 +142,13 @@ StatusOr<std::vector<GlobalDataHandle>> AllocationTracker::DeconstructTuple(
   // We only need to care about replica id 0 here, since the GlobalDataHandle is
   // the same for all buffers across replicas.
   const ShapedBuffer* shaped_buffer = replicated_buffers[0];
-  if (!ShapeUtil::IsTuple(shaped_buffer->on_host_shape())) {
+  if (!shaped_buffer->on_host_shape().IsTuple()) {
     return InvalidArgument("global data handle %d is not a tuple",
                            data.handle());
   }
   // If the on-host representation is a tuple, then the on-device one should be
   // as well.
-  TF_RET_CHECK(ShapeUtil::IsTuple(shaped_buffer->on_device_shape()));
+  TF_RET_CHECK(shaped_buffer->on_device_shape().IsTuple());
 
   if (ShapeUtil::IsNestedTuple(shaped_buffer->on_device_shape())) {
     return Unimplemented("Deconstructing nested tuples is not implemented.");

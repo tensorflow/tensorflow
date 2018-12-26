@@ -1040,7 +1040,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
                 self.evaluate(cond_v2.cond_v2(constant_op.constant(True),
                                               fn2, fn2)))
         else:
-          self.skipTest("Test requrires a GPU to check GPU device placement.")
+          self.skipTest("Test requires a GPU to check GPU device placement.")
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
