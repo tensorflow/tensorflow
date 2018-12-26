@@ -22,6 +22,7 @@ import copy
 import itertools
 import math
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -419,6 +420,53 @@ class RMSpropOptimizerTest(test.TestCase):
     self.assertEqual(opt_2.lr, 1.0)
     opt_3 = rmsprop.RMSprop(learning_rate=0.1)
     self.assertEqual(opt_3.lr, 0.1)
+
+
+class SlotColocationTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters([True, False])
+  @test_util.run_in_graph_and_eager_modes
+  def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
+    if not context.context().num_gpus():
+      self.skipTest("No GPUs found")
+
+    with ops.device("/device:CPU:0"):
+      if use_resource:
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                      dtype=dtypes.float32)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0],
+                                                      dtype=dtypes.float32)
+      else:
+        var0 = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
+        var1 = variables.Variable([3.0, 4.0], dtype=dtypes.float32)
+
+    def loss():
+      return 5 * var0 + 3 * var1
+
+    opt = rmsprop.RMSprop(
+        learning_rate=1.0, decay=0.9, momentum=0.5, epsilon=1.0)
+
+    # Fetch params to validate initial values
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+    self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+
+    # Run 1 step through optimizer on GPU.
+    # Slot variables are created the first time optimizer is used on some
+    # variable. This tests that slot variables will be colocated with the base
+    # variable.
+    with ops.device("/device:GPU:0"):
+      # Note that for eager execution, minimize expects a function instead of a
+      # Tensor.
+      opt_op = opt.minimize(loss, [var0, var1])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(opt_op)
+
+    # Validate updated params, All variables should have decreased.
+    self.assertTrue(all(v < 0.0 for v in self.evaluate(var0)),
+                    msg="updated variables: %s" % self.evaluate(var0))
+    self.assertTrue(all(v < 2.0 for v in self.evaluate(var1)),
+                    msg="updated variables: %s" % self.evaluate(var1))
 
 
 if __name__ == "__main__":
