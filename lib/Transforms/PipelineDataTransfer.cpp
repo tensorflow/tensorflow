@@ -357,7 +357,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
         if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
           MLFuncBuilder b(opStmt);
           opStmt->setAttr(b.getIdentifier("shift"),
-                          b.getIntegerAttr(shifts[s - 1]));
+                          b.getI64IntegerAttr(shifts[s - 1]));
         });
   }
 

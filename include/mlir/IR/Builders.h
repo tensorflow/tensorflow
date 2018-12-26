@@ -96,17 +96,11 @@ public:
   UnrankedTensorType getTensorType(Type elementType);
 
   // Attributes.
-
   BoolAttr getBoolAttr(bool value);
   IntegerAttr getIntegerAttr(Type type, int64_t value);
   IntegerAttr getIntegerAttr(Type type, const APInt &value);
   FloatAttr getFloatAttr(Type type, double value);
   FloatAttr getFloatAttr(Type type, const APFloat &value);
-  // Convenience methods that assumes fixed type.
-  // TODO(jpienaar): remove these.
-  IntegerAttr getIntegerAttr(int64_t value);
-  FloatAttr getFloatAttr(double value);
-  FloatAttr getFloatAttr(float value);
   StringAttr getStringAttr(StringRef bytes);
   ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
   AffineMapAttr getAffineMapAttr(AffineMap map);
@@ -120,6 +114,12 @@ public:
                                      DenseIntElementsAttr indices,
                                      DenseElementsAttr values);
   ElementsAttr getOpaqueElementsAttr(VectorOrTensorType type, StringRef bytes);
+
+  // Convenience methods for fixed types.
+  FloatAttr getF32FloatAttr(float value);
+  FloatAttr getF64FloatAttr(double value);
+  IntegerAttr getI32IntegerAttr(int32_t value);
+  IntegerAttr getI64IntegerAttr(int64_t value);
 
   // Affine expressions and affine maps.
   AffineExpr getAffineDimExpr(unsigned position);

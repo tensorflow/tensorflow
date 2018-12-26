@@ -121,8 +121,12 @@ BoolAttr Builder::getBoolAttr(bool value) {
   return BoolAttr::get(value, context);
 }
 
-IntegerAttr Builder::getIntegerAttr(int64_t value) {
+IntegerAttr Builder::getI64IntegerAttr(int64_t value) {
   return IntegerAttr::get(getIntegerType(64), APInt(64, value));
+}
+
+IntegerAttr Builder::getI32IntegerAttr(int32_t value) {
+  return IntegerAttr::get(getIntegerType(32), APInt(32, value));
 }
 
 IntegerAttr Builder::getIntegerAttr(Type type, int64_t value) {
@@ -135,11 +139,11 @@ IntegerAttr Builder::getIntegerAttr(Type type, const APInt &value) {
   return IntegerAttr::get(type, value);
 }
 
-FloatAttr Builder::getFloatAttr(double value) {
+FloatAttr Builder::getF64FloatAttr(double value) {
   return FloatAttr::get(getF64Type(), APFloat(value));
 }
 
-FloatAttr Builder::getFloatAttr(float value) {
+FloatAttr Builder::getF32FloatAttr(float value) {
   return FloatAttr::get(getF32Type(), APFloat(value));
 }
 

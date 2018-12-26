@@ -535,7 +535,7 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
                              "unknown comparison predicate \"" +
                                  Twine(predicateName.getValue()) + "\"");
   auto builder = parser->getBuilder();
-  attrs[0].second = builder.getIntegerAttr(static_cast<int64_t>(predicate));
+  attrs[0].second = builder.getI64IntegerAttr(static_cast<int64_t>(predicate));
   result->attributes = attrs;
 
   result->addTypes({getI1SameShape(&builder, type)});
