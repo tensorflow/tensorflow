@@ -24,3 +24,14 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
 )
+
+tf_py_test(
+    name = "disable_v2_behavior_test",
+    size = "small",
+    srcs = ["disable_v2_behavior_test.py"],
+    additional_deps = [
+        ":compat",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:client_testlib",
+    ],
+)
