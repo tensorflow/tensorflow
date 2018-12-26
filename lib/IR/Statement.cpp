@@ -259,8 +259,8 @@ OperationStmt *OperationStmt::create(Location location, OperationName name,
                                      MLIRContext *context) {
   unsigned numSuccessors = successors.size();
   auto byteSize =
-      totalSizeToAlloc<StmtOperand, StmtResult, StmtBlockOperand, unsigned>(
-          operands.size(), resultTypes.size(), numSuccessors, numSuccessors);
+      totalSizeToAlloc<StmtResult, StmtBlockOperand, unsigned, StmtOperand>(
+          resultTypes.size(), numSuccessors, numSuccessors, operands.size());
   void *rawMem = malloc(byteSize);
 
   // Initialize the OperationStmt part of the statement.

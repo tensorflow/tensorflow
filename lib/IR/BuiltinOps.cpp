@@ -203,14 +203,6 @@ void BranchOp::setDest(BasicBlock *block) {
   return getOperation()->setSuccessor(block, 0);
 }
 
-void BranchOp::addOperand(SSAValue *value) {
-  return getOperation()->addSuccessorOperand(0, value);
-}
-
-void BranchOp::addOperands(ArrayRef<SSAValue *> values) {
-  return getOperation()->addSuccessorOperands(0, values);
-}
-
 void BranchOp::eraseOperand(unsigned index) {
   getOperation()->eraseSuccessorOperand(0, index);
 }
@@ -221,10 +213,12 @@ void BranchOp::eraseOperand(unsigned index) {
 
 void CondBranchOp::build(Builder *builder, OperationState *result,
                          SSAValue *condition, BasicBlock *trueDest,
-                         BasicBlock *falseDest) {
+                         ArrayRef<SSAValue *> trueOperands,
+                         BasicBlock *falseDest,
+                         ArrayRef<SSAValue *> falseOperands) {
   result->addOperands(condition);
-  result->addSuccessor(trueDest, /*succOperands=*/{});
-  result->addSuccessor(falseDest, /*succOperands=*/{});
+  result->addSuccessor(trueDest, trueOperands);
+  result->addSuccessor(falseDest, falseOperands);
 }
 
 bool CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -286,28 +280,12 @@ unsigned CondBranchOp::getNumTrueOperands() const {
   return getOperation()->getNumSuccessorOperands(trueIndex);
 }
 
-void CondBranchOp::addTrueOperand(SSAValue *value) {
-  return getOperation()->addSuccessorOperand(trueIndex, value);
-}
-
-void CondBranchOp::addTrueOperands(ArrayRef<SSAValue *> values) {
-  return getOperation()->addSuccessorOperands(trueIndex, values);
-}
-
 void CondBranchOp::eraseTrueOperand(unsigned index) {
   getOperation()->eraseSuccessorOperand(trueIndex, index);
 }
 
 unsigned CondBranchOp::getNumFalseOperands() const {
   return getOperation()->getNumSuccessorOperands(falseIndex);
-}
-
-void CondBranchOp::addFalseOperand(SSAValue *value) {
-  return getOperation()->addSuccessorOperand(falseIndex, value);
-}
-
-void CondBranchOp::addFalseOperands(ArrayRef<SSAValue *> values) {
-  return getOperation()->addSuccessorOperands(falseIndex, values);
 }
 
 void CondBranchOp::eraseFalseOperand(unsigned index) {

@@ -37,8 +37,8 @@ class OperationStmt;
 class OperationStmt final
     : public Operation,
       public Statement,
-      private llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult,
-                                    StmtBlockOperand, unsigned> {
+      private llvm::TrailingObjects<OperationStmt, StmtResult, StmtBlockOperand,
+                                    unsigned, StmtOperand> {
 public:
   /// Create a new OperationStmt with the specific fields.
   static OperationStmt *
@@ -260,8 +260,8 @@ private:
   ~OperationStmt();
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<OperationStmt, StmtOperand, StmtResult,
-                               StmtBlockOperand, unsigned>;
+  friend llvm::TrailingObjects<OperationStmt, StmtResult, StmtBlockOperand,
+                               unsigned, StmtOperand>;
   size_t numTrailingObjects(OverloadToken<StmtOperand>) const {
     return numOperands;
   }

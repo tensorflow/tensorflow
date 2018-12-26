@@ -144,19 +144,19 @@ SSAValue *Operation::getResult(unsigned idx) {
 
 unsigned Operation::getNumSuccessors() const {
   assert(isTerminator() && "Only terminators have successors.");
-  if (llvm::isa<Instruction>(this))
-    return llvm::cast<Instruction>(this)->getNumSuccessors();
+  if (auto *inst = llvm::dyn_cast<Instruction>(this))
+    return inst->getNumSuccessors();
 
-  // OperationStmt currently only has a return terminator.
-  assert(llvm::cast<OperationStmt>(this)->isReturn() &&
-         "Unhandled OperationStmt terminator.");
-  return 0;
+  return llvm::cast<OperationStmt>(this)->getNumSuccessors();
 }
 
 unsigned Operation::getNumSuccessorOperands(unsigned index) const {
   assert(isTerminator() && "Only terminators have successors.");
-  assert(llvm::isa<Instruction>(this) && "Only instructions have successors.");
-  return llvm::cast<Instruction>(this)->getNumSuccessorOperands(index);
+
+  if (auto *inst = llvm::dyn_cast<Instruction>(this))
+    return inst->getNumSuccessorOperands(index);
+
+  return llvm::cast<OperationStmt>(this)->getNumSuccessorOperands(index);
 }
 BasicBlock *Operation::getSuccessor(unsigned index) {
   assert(isTerminator() && "Only terminators have successors.");
@@ -170,12 +170,7 @@ void Operation::setSuccessor(BasicBlock *block, unsigned index) {
          "Only instructions have basic block successors.");
   llvm::cast<Instruction>(this)->setSuccessor(block, index);
 }
-void Operation::addSuccessorOperand(unsigned index, SSAValue *value) {
-  assert(isTerminator() && "Only terminators have successors.");
-  assert(llvm::isa<Instruction>(this) && "Only instructions have successors.");
-  return llvm::cast<Instruction>(this)->addSuccessorOperand(
-      index, llvm::cast<CFGValue>(value));
-}
+
 void Operation::eraseSuccessorOperand(unsigned succIndex, unsigned opIndex) {
   assert(isTerminator() && "Only terminators have successors.");
   assert(llvm::isa<Instruction>(this) && "Only instructions have successors.");

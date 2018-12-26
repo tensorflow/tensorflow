@@ -285,7 +285,8 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
       forStmt->getLoc(), CmpIPredicate::SLT, iv, upperBound);
   auto comparisonResult = cast<CFGValue>(comparisonOp->getResult());
   builder.create<CondBranchOp>(builder.getUnknownLoc(), comparisonResult,
-                               loopBodyFirstBlock, postLoopBlock);
+                               loopBodyFirstBlock, ArrayRef<SSAValue *>(),
+                               postLoopBlock, ArrayRef<SSAValue *>());
 
   // Finally, make sure building can continue by setting the post-loop block
   // (end of loop SESE region) as the insertion point.
@@ -424,7 +425,9 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
         ifStmt->getLoc(), isEquality ? CmpIPredicate::EQ : CmpIPredicate::SGE,
         affResult, zeroConstant);
     builder.create<CondBranchOp>(ifStmt->getLoc(), comparisonOp->getResult(),
-                                 nextBlock, elseBlock);
+                                 nextBlock, /*trueArgs*/ ArrayRef<SSAValue *>(),
+                                 elseBlock,
+                                 /*falseArgs*/ ArrayRef<SSAValue *>());
     builder.setInsertionPoint(nextBlock);
   }
   ifConditionExtraBlocks.pop_back();

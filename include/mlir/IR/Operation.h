@@ -119,11 +119,6 @@ public:
     return const_cast<Operation *>(this)->getSuccessor(index);
   }
   void setSuccessor(BasicBlock *block, unsigned index);
-  void addSuccessorOperand(unsigned index, SSAValue *value);
-  void addSuccessorOperands(unsigned index, ArrayRef<SSAValue *> values) {
-    for (auto *value : values)
-      addSuccessorOperand(index, value);
-  }
   void eraseSuccessorOperand(unsigned succIndex, unsigned opIndex);
   llvm::iterator_range<const_operand_iterator>
   getSuccessorOperands(unsigned index) const;

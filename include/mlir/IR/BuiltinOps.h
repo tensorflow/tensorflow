@@ -113,12 +113,6 @@ public:
   BasicBlock *getDest() const;
   void setDest(BasicBlock *block);
 
-  /// Add one value to the operand list.
-  void addOperand(SSAValue *value);
-
-  /// Add a list of values to the operand list.
-  void addOperands(ArrayRef<SSAValue *> values);
-
   /// Erase the operand at 'index' from the operand list.
   void eraseOperand(unsigned index);
 
@@ -153,7 +147,8 @@ public:
 
   static void build(Builder *builder, OperationState *result,
                     SSAValue *condition, BasicBlock *trueDest,
-                    BasicBlock *falseDest);
+                    ArrayRef<SSAValue *> trueOperands, BasicBlock *falseDest,
+                    ArrayRef<SSAValue *> falseOperands);
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -201,12 +196,6 @@ public:
 
   unsigned getNumTrueOperands() const;
 
-  /// Add one value to the true operand list.
-  void addTrueOperand(SSAValue *value);
-
-  /// Add a list of values to the operand list.
-  void addTrueOperands(ArrayRef<SSAValue *> values);
-
   /// Erase the operand at 'index' from the true operand list.
   void eraseTrueOperand(unsigned index);
 
@@ -242,12 +231,6 @@ public:
   }
 
   unsigned getNumFalseOperands() const;
-
-  /// Add one value to the false operand list.
-  void addFalseOperand(SSAValue *value);
-
-  /// Add a list of values to the false operand list.
-  void addFalseOperands(ArrayRef<SSAValue *> values);
 
   /// Erase the operand at 'index' from the false operand list.
   void eraseFalseOperand(unsigned index);

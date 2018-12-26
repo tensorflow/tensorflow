@@ -248,24 +248,6 @@ bool Instruction::emitError(const Twine &message) const {
   return getContext()->emitError(getLoc(), message);
 }
 
-void Instruction::addSuccessorOperand(unsigned index, CFGValue *value) {
-  assert(isTerminator() && "Only terminators have successors.");
-  assert(index < getNumSuccessors());
-  assert(std::accumulate(getTrailingObjects<unsigned>() + index + 1,
-                         getTrailingObjects<unsigned>() + numSuccs, 0u) == 0 &&
-         "All successor operands must be added before moving to the next.");
-
-  operands.push_back(InstOperand(this, value));
-  ++getTrailingObjects<unsigned>()[index];
-}
-
-void Instruction::addSuccessorOperands(unsigned index,
-                                       ArrayRef<CFGValue *> values) {
-  operands.reserve(operands.size() + values.size());
-  for (auto *value : values)
-    addSuccessorOperand(index, value);
-}
-
 void llvm::ilist_traits<::mlir::Instruction>::deleteNode(Instruction *inst) {
   inst->destroy();
 }

@@ -233,13 +233,6 @@ public:
   }
   void setSuccessor(BasicBlock *block, unsigned index);
 
-  /// Add one value to the operand list of the successor at the provided index.
-  void addSuccessorOperand(unsigned index, CFGValue *value);
-
-  /// Add a list of values to the operand list of the successor at the provided
-  /// index.
-  void addSuccessorOperands(unsigned index, ArrayRef<CFGValue *> values);
-
   /// Erase a specific operand from the operand list of the successor at
   /// 'index'.
   void eraseSuccessorOperand(unsigned succIndex, unsigned opIndex) {
