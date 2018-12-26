@@ -218,18 +218,18 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                             int depth = kDepth, int image_width = kImageWidth,
                             int image_height = kImageHeight,
                             int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBias(input_data, filter_data, bias_data, out);
-        };
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunConv2DWithBias(input_data, filter_data, bias_data, out);
+    };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
-                              out);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
+                          out);
+    };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
                              image_batch_count, filter_size, filter_count,
@@ -243,18 +243,18 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                                    int image_width = kImageWidth,
                                    int image_height = kImageHeight,
                                    int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out);
-        };
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out);
+    };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunMklFusedConv2DOp(input_data, filter_data, {bias_data},
-                              {"BiasAdd", "Relu"}, out);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunMklFusedConv2DOp(input_data, filter_data, {bias_data},
+                          {"BiasAdd", "Relu"}, out);
+    };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
                              image_batch_count, filter_size, filter_count,
@@ -400,6 +400,71 @@ TEST_F(FusedPadConvOpTest, PaddingConvTestNchw) {
        59, 12,  0,   0,   0,   0,  0,   0,   0,   0,   0,   0});
 
   Run<float>(DT_FLOAT, image, filter, padding, expected, "NCHW");
+}
+
+class FilterCacheTest : public OpsTestBase {
+ public:
+  template <typename T>
+  void Run(DataType dtype, Tensor& image, Tensor& filter, Tensor& expected,
+           const bool is_filter_const) {
+    const int stride = 1;
+
+    TF_EXPECT_OK(NodeDefBuilder("conv2d_filter_cache", "_MklConv2D")
+                     .Input(FakeInput(dtype))     // Input
+                     .Input(FakeInput(dtype))     // Filter
+                     .Input(FakeInput(DT_UINT8))  // MKl second tensor
+                     .Input(FakeInput(DT_UINT8))  // MKl second tensor
+                     .Attr("padding", "VALID")
+                     .Attr("data_format", "NHWC")
+                     .Attr("is_filter_const", is_filter_const)
+                     .Attr("T", dtype)
+                     .Attr("strides", {1, stride, stride, 1})
+                     .Attr("_kernel", "MklOp")
+                     .Finalize(node_def()));
+    TF_EXPECT_OK(InitOp());
+
+    // Setting up inputs and execute
+    AddInputFromArray<T>(image.shape(), image.flat<T>());
+    AddInputFromArray<T>(filter.shape(), filter.flat<T>());
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+
+    TF_ASSERT_OK(RunOpKernel());
+
+    // Compare output to expected results
+    const Tensor& first = *GetOutput(0);
+    const Tensor& second = *GetOutput(2);
+    ConvMklToTF<T> conv_comp;
+    conv_comp.ConvertAndCompare(dtype, first, second, expected);
+
+    // Run kernel again to ensure cached data is being reused
+    TF_ASSERT_OK(RunOpKernel());
+
+    // Compare output to expected results
+    const Tensor& first_new = *GetOutput(0);
+    const Tensor& second_new = *GetOutput(2);
+    ConvMklToTF<T> conv_comp_new;
+    conv_comp_new.ConvertAndCompare(dtype, first_new, second_new, expected);
+  }
+};
+
+TEST_F(FilterCacheTest, Conv2DFilterCacheTest) {
+  const int depth = 1;
+  const int image_width = 4;
+  const int image_height = 3;
+  const int image_batch_count = 1;
+  Tensor image(DT_FLOAT, {image_batch_count, image_height, image_width, depth});
+  test::FillValues<float>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+
+  const int filter_size = 3;
+  const int filter_count = 1;
+  Tensor filter(DT_FLOAT, {filter_size, filter_size, depth, filter_count});
+  test::FillValues<float>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
+
+  Tensor expected(DT_FLOAT, TensorShape({1, 1, 2, 1}));
+  test::FillValues<float>(&expected, {312, 357});
+
+  Run<float>(DT_FLOAT, image, filter, expected, true);
 }
 }  // namespace tensorflow
 #endif  // INTEL_MKL
