@@ -98,8 +98,8 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
   {
     tensorflow::mutex_lock lock(evaluator_lock_);
     evaluator_->ResetVisitStates();
-    TF_ASSIGN_OR_RETURN(result_literal, evaluator_->Evaluate<Literal>(
-                                            *computation, arg_literals));
+    TF_ASSIGN_OR_RETURN(result_literal,
+                        evaluator_->Evaluate(*computation, arg_literals));
   }
 
   // Transform the result literal back into a ShapedBuffer.
