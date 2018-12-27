@@ -217,7 +217,7 @@ class StatefulScatterNdTest(test.TestCase):
   def testVariableRankAdd(self):
     self._VariableRankTests(_NumpyAdd, state_ops.scatter_nd_add)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_deprecated_v1
   def testVariableRankSub(self):
     self._VariableRankTests(_NumpySub, state_ops.scatter_nd_sub)
 

@@ -77,6 +77,7 @@ CreateResourceOpInfoMap() {
   add("ResourceScatterMin"                   , kReadWrite, kVariable);
   add("ResourceScatterMul"                   , kReadWrite, kVariable);
   add("ResourceScatterNdAdd"                 , kReadWrite, kVariable);
+  add("ResourceScatterNdSub"                 , kReadWrite, kVariable);
   add("ResourceScatterNdUpdate"              , kReadWrite, kVariable);
   add("ResourceScatterSub"                   , kReadWrite, kVariable);
   add("ResourceScatterUpdate"                , kReadWrite, kVariable);

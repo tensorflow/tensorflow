@@ -629,7 +629,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           variable_def=other_v_def)
       self.assertTrue(other_v_prime._cached_value is not None)
 
-  @test_util.run_v1_only("b/120545219")
   def testVariableDefInitializedInstances(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v_def = resource_variable_ops.ResourceVariable(
@@ -977,11 +976,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testScatterNdAddStateOps(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(
-          [1, 1, 1, 1, 1, 1, 1, 1], dtype=dtypes.float32, name="add")
+          [1, 2, 3, 4, 5, 6, 7, 8], dtype=dtypes.float32, name="add")
       indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
       updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
-      expected = np.array([1, 12, 1, 11, 10, 1, 1, 13])
+      expected = np.array([1, 13, 3, 14, 14, 6, 7, 20])
       state_ops.scatter_nd_add(v, indices, updates)
+      self.assertAllClose(expected, v.numpy())
+
+  def testScatterNdSubStateOps(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(
+          [1, 2, 3, 4, 5, 6, 7, 8], dtype=dtypes.float32, name="sub")
+      indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
+      updates = constant_op.constant([9, 10, 11, 12], dtype=dtypes.float32)
+      expected = np.array([1, -9, 3, -6, -4, 6, 7, -4])
+      state_ops.scatter_nd_sub(v, indices, updates)
       self.assertAllClose(expected, v.numpy())
 
   def testScatterUpdateCast(self):
