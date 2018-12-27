@@ -4569,6 +4569,7 @@ cc_library(
     srcs = ["sdca_internal.cc"],
     hdrs = ["sdca_internal.h"],
     deps = [
+        ":eigen_contraction_kernel",
         ":loss_updaters",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
