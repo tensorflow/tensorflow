@@ -60,7 +60,7 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 //  extra operands, note that 'indexRemap' would just be applied to the existing
 //  indices (%i, %j).
 //
-// TODO(mlir-team): extend this for Value/ CFGFunctions. Can also be easily
+// TODO(mlir-team): extend this for CFG Functions. Can also be easily
 // extended to add additional indices at any position.
 bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                                     ArrayRef<Value *> extraIndices,
@@ -313,9 +313,8 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
 }
 
 void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
-  if (affineApplyOp->getOperation()->getOperationFunction()->getKind() !=
-      Function::Kind::MLFunc) {
-    // TODO: Support forward substitution for CFGFunctions.
+  if (!affineApplyOp->getOperation()->getOperationFunction()->isML()) {
+    // TODO: Support forward substitution for CFG style functions.
     return;
   }
   auto *opStmt = cast<OperationStmt>(affineApplyOp->getOperation());

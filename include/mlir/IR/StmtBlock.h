@@ -30,14 +30,10 @@ class StmtBlockList;
 using CFGFunction = Function;
 using MLFunction = Function;
 
-// TODO(clattner): drop the Stmt prefixes on these once BasicBlock's versions of
-// these go away.
-template <typename BlockType> class StmtPredecessorIterator;
-template <typename BlockType> class StmtSuccessorIterator;
+template <typename BlockType> class PredecessorIterator;
+template <typename BlockType> class SuccessorIterator;
 
-/// Statement block represents an ordered list of statements, with the order
-/// being the contiguous lexical order in which the statements appear as
-/// children of a parent statement in the ML Function.
+/// Blocks represents an ordered list of Instructions.
 class StmtBlock
     : public IRObjectWithUseList,
       public llvm::ilist_node_with_parent<StmtBlock, StmtBlockList> {
@@ -175,12 +171,12 @@ public:
   //===--------------------------------------------------------------------===//
 
   // Predecessor iteration.
-  using const_pred_iterator = StmtPredecessorIterator<const StmtBlock>;
+  using const_pred_iterator = PredecessorIterator<const StmtBlock>;
   const_pred_iterator pred_begin() const;
   const_pred_iterator pred_end() const;
   llvm::iterator_range<const_pred_iterator> getPredecessors() const;
 
-  using pred_iterator = StmtPredecessorIterator<StmtBlock>;
+  using pred_iterator = PredecessorIterator<StmtBlock>;
   pred_iterator pred_begin();
   pred_iterator pred_end();
   llvm::iterator_range<pred_iterator> getPredecessors();
@@ -208,12 +204,12 @@ public:
   StmtBlock *getSuccessor(unsigned i);
 
   // Successor iteration.
-  using const_succ_iterator = StmtSuccessorIterator<const StmtBlock>;
+  using const_succ_iterator = SuccessorIterator<const StmtBlock>;
   const_succ_iterator succ_begin() const;
   const_succ_iterator succ_end() const;
   llvm::iterator_range<const_succ_iterator> getSuccessors() const;
 
-  using succ_iterator = StmtSuccessorIterator<StmtBlock>;
+  using succ_iterator = SuccessorIterator<StmtBlock>;
   succ_iterator succ_begin();
   succ_iterator succ_end();
   llvm::iterator_range<succ_iterator> getSuccessors();
@@ -378,19 +374,19 @@ private:
 /// operand, we can get the terminator that contains it, and it's parent block
 /// is the predecessor.
 template <typename BlockType>
-class StmtPredecessorIterator
-    : public llvm::iterator_facade_base<StmtPredecessorIterator<BlockType>,
+class PredecessorIterator
+    : public llvm::iterator_facade_base<PredecessorIterator<BlockType>,
                                         std::forward_iterator_tag,
                                         BlockType *> {
 public:
-  StmtPredecessorIterator(StmtBlockOperand *firstOperand)
+  PredecessorIterator(StmtBlockOperand *firstOperand)
       : bbUseIterator(firstOperand) {}
 
-  StmtPredecessorIterator &operator=(const StmtPredecessorIterator &rhs) {
+  PredecessorIterator &operator=(const PredecessorIterator &rhs) {
     bbUseIterator = rhs.bbUseIterator;
   }
 
-  bool operator==(const StmtPredecessorIterator &rhs) const {
+  bool operator==(const PredecessorIterator &rhs) const {
     return bbUseIterator == rhs.bbUseIterator;
   }
 
@@ -400,7 +396,7 @@ public:
     return bbUseIterator.getUser()->getBlock();
   }
 
-  StmtPredecessorIterator &operator++() {
+  PredecessorIterator &operator++() {
     ++bbUseIterator;
     return *this;
   }
@@ -447,22 +443,22 @@ inline auto StmtBlock::getPredecessors()
 
 /// This template implments the successor iterators for StmtBlock.
 template <typename BlockType>
-class StmtSuccessorIterator final
-    : public IndexedAccessorIterator<StmtSuccessorIterator<BlockType>,
-                                     BlockType, BlockType> {
+class SuccessorIterator final
+    : public IndexedAccessorIterator<SuccessorIterator<BlockType>, BlockType,
+                                     BlockType> {
 public:
   /// Initializes the result iterator to the specified index.
-  StmtSuccessorIterator(BlockType *object, unsigned index)
-      : IndexedAccessorIterator<StmtSuccessorIterator<BlockType>, BlockType,
+  SuccessorIterator(BlockType *object, unsigned index)
+      : IndexedAccessorIterator<SuccessorIterator<BlockType>, BlockType,
                                 BlockType>(object, index) {}
 
-  StmtSuccessorIterator(const StmtSuccessorIterator &other)
-      : StmtSuccessorIterator(other.object, other.index) {}
+  SuccessorIterator(const SuccessorIterator &other)
+      : SuccessorIterator(other.object, other.index) {}
 
   /// Support converting to the const variant. This will be a no-op for const
   /// variant.
-  operator StmtSuccessorIterator<const BlockType>() const {
-    return StmtSuccessorIterator<const BlockType>(this->object, this->index);
+  operator SuccessorIterator<const BlockType>() const {
+    return SuccessorIterator<const BlockType>(this->object, this->index);
   }
 
   BlockType *operator*() const {

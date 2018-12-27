@@ -1,4 +1,4 @@
-//===- CFGFunctionViewGraph.h - View/write graphviz graphs ------*- C++ -*-===//
+//===- ViewFunctionGraph.h - View/write graphviz graphs ---------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,29 +15,29 @@
 // limitations under the License.
 // =============================================================================
 //
-// Defines interface to produce Graphviz outputs of MLIR CFGFunctions.
+// Defines interface to produce Graphviz outputs of MLIR Functions.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_TRANSFORMS_CFGFUNCTIONVIEWGRAPH_H_
-#define MLIR_TRANSFORMS_CFGFUNCTIONVIEWGRAPH_H_
+#ifndef MLIR_TRANSFORMS_VIEWFUNCTIONGRAPH_H_
+#define MLIR_TRANSFORMS_VIEWFUNCTIONGRAPH_H_
 
-#include "mlir/IR/Function.h"
-#include "mlir/Pass.h"
-#include "llvm/ADT/Twine.h"
+#include "mlir/Support/LLVM.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace mlir {
 
+class Function;
+class FunctionPass;
+
 /// Displays the CFG in a window. This is for use from the debugger and
 /// depends on Graphviz to generate the graph.
-void viewGraph(const CFGFunction &function, const Twine &name,
+void viewGraph(const Function &function, const Twine &name,
                bool shortNames = false, const Twine &title = "",
                llvm::GraphProgram::Name program = llvm::GraphProgram::DOT);
 
-llvm::raw_ostream &writeGraph(llvm::raw_ostream &os,
-                              const CFGFunction *function,
+llvm::raw_ostream &writeGraph(llvm::raw_ostream &os, const Function *function,
                               bool shortNames = false, const Twine &title = "");
 
 /// Creates a pass to print CFG graphs.
@@ -47,4 +47,4 @@ FunctionPass *createPrintCFGGraphPass(llvm::raw_ostream &os = llvm::errs(),
 
 } // end namespace mlir
 
-#endif // MLIR_TRANSFORMS_CFGFUNCTIONVIEWGRAPH_H_
+#endif // MLIR_TRANSFORMS_VIEWFUNCTIONGRAPH_H_

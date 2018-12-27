@@ -1,4 +1,4 @@
-//===- CFGFunctionViewGraph.cpp - View/write graphviz graphs --------------===//
+//===- ViewFunctionGraph.cpp - View/write graphviz graphs -----------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,8 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Transforms/CFGFunctionViewGraph.h"
+#include "mlir/Transforms/ViewFunctionGraph.h"
 #include "mlir/IR/FunctionGraphTraits.h"
+#include "mlir/Pass.h"
 
 using namespace mlir;
 
