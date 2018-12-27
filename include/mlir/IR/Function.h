@@ -27,7 +27,6 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/StmtBlock.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
@@ -39,6 +38,7 @@ class FunctionType;
 class MLIRContext;
 class Module;
 template <typename ObjectType, typename ElementType> class ArgumentIterator;
+using BasicBlock = StmtBlock;
 
 /// NamedAttribute is used for function attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute

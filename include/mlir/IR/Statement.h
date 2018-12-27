@@ -22,7 +22,6 @@
 #ifndef MLIR_IR_STATEMENT_H
 #define MLIR_IR_STATEMENT_H
 
-#include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
@@ -63,6 +62,7 @@ private:
 } // end namespace llvm
 
 namespace mlir {
+template <typename ObjectType, typename ElementType> class OperandIterator;
 
 /// Statement is a basic unit of execution within an ML function.
 /// Statements can be nested within for and if statements effectively
@@ -143,32 +143,22 @@ public:
   // Support non-const operand iteration.
   using operand_iterator = OperandIterator<Statement, Value>;
 
-  operand_iterator operand_begin() { return operand_iterator(this, 0); }
+  operand_iterator operand_begin();
 
-  operand_iterator operand_end() {
-    return operand_iterator(this, getNumOperands());
-  }
+  operand_iterator operand_end();
 
-  /// Returns an iterator on the underlying Value's (Value *).
-  llvm::iterator_range<operand_iterator> getOperands() {
-    return {operand_begin(), operand_end()};
-  }
+  /// Returns an iterator on the underlying Values.
+  llvm::iterator_range<operand_iterator> getOperands();
 
   // Support const operand iteration.
   using const_operand_iterator = OperandIterator<const Statement, const Value>;
 
-  const_operand_iterator operand_begin() const {
-    return const_operand_iterator(this, 0);
-  }
+  const_operand_iterator operand_begin() const;
 
-  const_operand_iterator operand_end() const {
-    return const_operand_iterator(this, getNumOperands());
-  }
+  const_operand_iterator operand_end() const;
 
-  /// Returns a const iterator on the underlying Value's (Value *).
-  llvm::iterator_range<const_operand_iterator> getOperands() const {
-    return {operand_begin(), operand_end()};
-  }
+  /// Returns a const iterator on the underlying Values.
+  llvm::iterator_range<const_operand_iterator> getOperands() const;
 
   MutableArrayRef<StmtOperand> getStmtOperands();
   ArrayRef<StmtOperand> getStmtOperands() const {
@@ -219,6 +209,94 @@ inline raw_ostream &operator<<(raw_ostream &os, const Statement &stmt) {
   stmt.print(os);
   return os;
 }
+
+/// This is a helper template used to implement an iterator that contains a
+/// pointer to some object and an index into it.  The iterator moves the
+/// index but keeps the object constant.
+template <typename ConcreteType, typename ObjectType, typename ElementType>
+class IndexedAccessorIterator
+    : public llvm::iterator_facade_base<
+          ConcreteType, std::random_access_iterator_tag, ElementType *,
+          std::ptrdiff_t, ElementType *, ElementType *> {
+public:
+  ptrdiff_t operator-(const IndexedAccessorIterator &rhs) const {
+    assert(object == rhs.object && "incompatible iterators");
+    return index - rhs.index;
+  }
+  bool operator==(const IndexedAccessorIterator &rhs) const {
+    return object == rhs.object && index == rhs.index;
+  }
+  bool operator<(const IndexedAccessorIterator &rhs) const {
+    assert(object == rhs.object && "incompatible iterators");
+    return index < rhs.index;
+  }
+
+  ConcreteType &operator+=(ptrdiff_t offset) {
+    this->index += offset;
+    return static_cast<ConcreteType &>(*this);
+  }
+  ConcreteType &operator-=(ptrdiff_t offset) {
+    this->index -= offset;
+    return static_cast<ConcreteType &>(*this);
+  }
+
+protected:
+  IndexedAccessorIterator(ObjectType *object, unsigned index)
+      : object(object), index(index) {}
+  ObjectType *object;
+  unsigned index;
+};
+
+/// This template implements the const/non-const operand iterators for the
+/// Instruction class in terms of getOperand(idx).
+template <typename ObjectType, typename ElementType>
+class OperandIterator final
+    : public IndexedAccessorIterator<OperandIterator<ObjectType, ElementType>,
+                                     ObjectType, ElementType> {
+public:
+  /// Initializes the operand iterator to the specified operand index.
+  OperandIterator(ObjectType *object, unsigned index)
+      : IndexedAccessorIterator<OperandIterator<ObjectType, ElementType>,
+                                ObjectType, ElementType>(object, index) {}
+
+  /// Support converting to the const variant. This will be a no-op for const
+  /// variant.
+  operator OperandIterator<const ObjectType, const ElementType>() const {
+    return OperandIterator<const ObjectType, const ElementType>(this->object,
+                                                                this->index);
+  }
+
+  ElementType *operator*() const {
+    return this->object->getOperand(this->index);
+  }
+};
+
+// Implement the inline operand iterator methods.
+inline auto Statement::operand_begin() -> operand_iterator {
+  return operand_iterator(this, 0);
+}
+
+inline auto Statement::operand_end() -> operand_iterator {
+  return operand_iterator(this, getNumOperands());
+}
+
+inline auto Statement::getOperands() -> llvm::iterator_range<operand_iterator> {
+  return {operand_begin(), operand_end()};
+}
+
+inline auto Statement::operand_begin() const -> const_operand_iterator {
+  return const_operand_iterator(this, 0);
+}
+
+inline auto Statement::operand_end() const -> const_operand_iterator {
+  return const_operand_iterator(this, getNumOperands());
+}
+
+inline auto Statement::getOperands() const
+    -> llvm::iterator_range<const_operand_iterator> {
+  return {operand_begin(), operand_end()};
+}
+
 } // end namespace mlir
 
 #endif  // MLIR_IR_STATEMENT_H

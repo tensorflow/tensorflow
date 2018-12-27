@@ -23,9 +23,6 @@
 #define MLIR_ANALYSIS_AFFINE_STRUCTURES_H
 
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/Support/LLVM.h"
-#include "llvm/ADT/SmallVector.h"
 
 namespace mlir {
 
@@ -38,6 +35,7 @@ class IntegerSet;
 class MLIRContext;
 class Value;
 class HyperRectangularSet;
+class MemRefType;
 
 /// A mutable affine map. Its affine expressions are however unique.
 struct MutableAffineMap {

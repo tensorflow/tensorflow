@@ -28,8 +28,7 @@
 #ifndef MLIR_IR_OPDEFINITION_H
 #define MLIR_IR_OPDEFINITION_H
 
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/Value.h"
+#include "mlir/IR/Statements.h"
 #include <type_traits>
 
 namespace mlir {

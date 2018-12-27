@@ -19,6 +19,7 @@
 #define MLIR_IR_OPERATION_H
 
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/Statement.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/Twine.h"
 
@@ -313,67 +314,6 @@ private:
 
   /// This holds general named attributes for the operation.
   AttributeListStorage *attrs;
-};
-
-/// This is a helper template used to implement an iterator that contains a
-/// pointer to some object and an index into it.  The iterator moves the
-/// index but keeps the object constant.
-template <typename ConcreteType, typename ObjectType, typename ElementType>
-class IndexedAccessorIterator
-    : public llvm::iterator_facade_base<
-          ConcreteType, std::random_access_iterator_tag, ElementType *,
-          std::ptrdiff_t, ElementType *, ElementType *> {
-public:
-  ptrdiff_t operator-(const IndexedAccessorIterator &rhs) const {
-    assert(object == rhs.object && "incompatible iterators");
-    return index - rhs.index;
-  }
-  bool operator==(const IndexedAccessorIterator &rhs) const {
-    return object == rhs.object && index == rhs.index;
-  }
-  bool operator<(const IndexedAccessorIterator &rhs) const {
-    assert(object == rhs.object && "incompatible iterators");
-    return index < rhs.index;
-  }
-
-  ConcreteType &operator+=(ptrdiff_t offset) {
-    this->index += offset;
-    return static_cast<ConcreteType &>(*this);
-  }
-  ConcreteType &operator-=(ptrdiff_t offset) {
-    this->index -= offset;
-    return static_cast<ConcreteType &>(*this);
-  }
-
-protected:
-  IndexedAccessorIterator(ObjectType *object, unsigned index)
-      : object(object), index(index) {}
-  ObjectType *object;
-  unsigned index;
-};
-
-/// This template implements the operand iterators for the various IR classes
-/// in terms of getOperand(idx).
-template <typename ObjectType, typename ElementType>
-class OperandIterator final
-    : public IndexedAccessorIterator<OperandIterator<ObjectType, ElementType>,
-                                     ObjectType, ElementType> {
-public:
-  /// Initializes the operand iterator to the specified operand index.
-  OperandIterator(ObjectType *object, unsigned index)
-      : IndexedAccessorIterator<OperandIterator<ObjectType, ElementType>,
-                                ObjectType, ElementType>(object, index) {}
-
-  /// Support converting to the const variant. This will be a no-op for const
-  /// variant.
-  operator OperandIterator<const ObjectType, const ElementType>() const {
-    return OperandIterator<const ObjectType, const ElementType>(this->object,
-                                                                this->index);
-  }
-
-  ElementType *operator*() const {
-    return this->object->getOperand(this->index);
-  }
 };
 
 /// This template implements the result iterators for the various IR classes

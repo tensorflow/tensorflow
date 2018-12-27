@@ -23,6 +23,7 @@
 #define MLIR_IR_STMTBLOCK_H
 
 #include "mlir/IR/Statement.h"
+#include "llvm/ADT/PointerUnion.h"
 
 namespace mlir {
 class IfStmt;
@@ -218,7 +219,7 @@ public:
   // Other
   //===--------------------------------------------------------------------===//
 
-  /// Unlink this BasicBlock from its CFGFunction and delete it.
+  /// Unlink this Block from its Function and delete it.
   void eraseFromFunction();
 
   /// Split the basic block into two basic blocks before the specified
@@ -228,11 +229,11 @@ public:
   /// the original basic block, an unconditional branch is added to the original
   /// block (going to the new block), and the rest of the instructions in the
   /// original block are moved to the new BB, including the old terminator.  The
-  /// newly formed BasicBlock is returned.
+  /// newly formed Block is returned.
   ///
   /// This function invalidates the specified iterator.
-  BasicBlock *splitBasicBlock(iterator splitBefore);
-  BasicBlock *splitBasicBlock(Instruction *splitBeforeInst) {
+  StmtBlock *splitBasicBlock(iterator splitBefore);
+  StmtBlock *splitBasicBlock(Instruction *splitBeforeInst) {
     return splitBasicBlock(iterator(splitBeforeInst));
   }
 

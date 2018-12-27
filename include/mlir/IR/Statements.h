@@ -24,6 +24,7 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/IntegerSet.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/StmtBlock.h"
 #include "llvm/Support/TrailingObjects.h"
 

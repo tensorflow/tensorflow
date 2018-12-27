@@ -18,7 +18,7 @@
 #ifndef ATTRIBUTELISTSTORAGE_H
 #define ATTRIBUTELISTSTORAGE_H
 
-#include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
