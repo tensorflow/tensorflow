@@ -2595,7 +2595,7 @@ dnn::ConvolutionProto GenerateConvProto(
   return conv_config;
 }
 
-void LogCudaProto(const dnn::ConvolutionProto& conv,
+void LogCudaProto(const dnn::ConvolutionProto& conv, float profile_time_ms,
                   StreamExecutor* stream_executor) {
   {
     // For rolling-out, temporarily cap the number of logs per process.
@@ -2609,6 +2609,8 @@ void LogCudaProto(const dnn::ConvolutionProto& conv,
 
   ConvLogEntry conv_log;
   *conv_log.mutable_convolution() = conv;
+  conv_log.set_profile_time_ms(profile_time_ms);
+
   auto info = conv_log.mutable_cuda_info();
   int cc_major, cc_minor;
   stream_executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
@@ -2738,7 +2740,7 @@ port::Status CudnnSupport::DoConvolveImpl(
                              filter_descriptor, output_descriptor, algo_desc,
                              convolution_descriptor, dalpha, dbeta,
                              accumulator_type, dnn::ActivationMode::kNone),
-        stream->parent());
+        output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
@@ -2862,7 +2864,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
                      filter_descriptor, output_descriptor, algo_desc,
                      convolution_descriptor, conv_input_scale, side_input_scale,
                      accumulator_type, activation_mode),
-                 stream->parent());
+                 output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
@@ -3429,7 +3431,7 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
                      filter_descriptor, output_descriptor, algo_desc,
                      convolution_descriptor, dalpha, dbeta, accumulator_type,
                      dnn::ActivationMode::kNone),
-                 stream->parent());
+                 output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
@@ -3634,7 +3636,7 @@ port::Status CudnnSupport::DoConvolveBackwardFilterImpl(
                      filter_descriptor, output_descriptor, algo_desc,
                      convolution_descriptor, dalpha, dbeta, accumulator_type,
                      dnn::ActivationMode::kNone),
-                 stream->parent());
+                 output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
