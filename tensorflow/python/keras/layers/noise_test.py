@@ -19,13 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import keras
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
-class NoiseLayersTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes
+class NoiseLayersTest(keras_parameterized.TestCase):
 
   def test_GaussianNoise(self):
     testing_utils.layer_test(

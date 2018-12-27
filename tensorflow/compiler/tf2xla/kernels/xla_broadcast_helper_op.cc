@@ -89,13 +89,10 @@ class XlaBroadcastHelperOp : public XlaOpKernel {
               lhs_shape.DebugString(), " and ", rhs_shape.DebugString()));
       broadcast_shape[dim] = min_rank_shape->dim_size(i);
     }
-    xla::PrimitiveType type = context->input_xla_type(0);
-    xla::Shape broadcast_xla_shape =
-        xla::ShapeUtil::MakeShape(type, broadcast_shape);
     if (broadcast_lhs) {
-      lhs = xla::BroadcastInDim(lhs, broadcast_xla_shape, broadcast_dims);
+      lhs = xla::BroadcastInDim(lhs, broadcast_shape, broadcast_dims);
     } else {
-      rhs = xla::BroadcastInDim(rhs, broadcast_xla_shape, broadcast_dims);
+      rhs = xla::BroadcastInDim(rhs, broadcast_shape, broadcast_dims);
     }
     context->SetOutput(0, lhs);
     context->SetOutput(1, rhs);

@@ -59,37 +59,9 @@ COMMON_PIP_DEPS = [
     "setup.py",
     ":included_headers",
     "//tensorflow:tensorflow_py",
-    "//tensorflow/contrib/autograph:autograph",
-    "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
-    "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
-    "//tensorflow/contrib/compiler:xla",
-    "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
-    "//tensorflow/contrib/eager/python/examples:examples_pip",
-    "//tensorflow/contrib/eager/python:evaluator",
-    "//tensorflow/contrib/gan:gan",
-    "//tensorflow/contrib/graph_editor:graph_editor_pip",
-    "//tensorflow/contrib/ipu",
-    "//tensorflow/contrib/keras:keras",
-    "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
-    "//tensorflow/contrib/nn:nn_py",
-    "//tensorflow/contrib/predictor:predictor_pip",
-    "//tensorflow/contrib/proto:proto",
-    "//tensorflow/contrib/receptive_field:receptive_field_pip",
-    "//tensorflow/contrib/rate:rate",
-    "//tensorflow/contrib/rpc:rpc_pip",
-    "//tensorflow/contrib/session_bundle:session_bundle_pip",
-    "//tensorflow/contrib/signal:signal_py",
-    "//tensorflow/contrib/signal:test_util",
-    "//tensorflow/contrib/slim:slim",
-    "//tensorflow/contrib/slim/python/slim/data:data_pip",
-    "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
-    "//tensorflow/contrib/specs:specs",
-    "//tensorflow/contrib/summary:summary_test_util",
-    "//tensorflow/contrib/tensor_forest:init_py",
-    "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
-    "//tensorflow/contrib/timeseries:timeseries_pip",
-    "//tensorflow/contrib/tpu",
-    "//tensorflow/examples/tutorials/mnist:package",
+    "//tensorflow/lite/python:interpreter_test_data",
+    "//tensorflow/lite/python:tflite_convert",
+    "//tensorflow/lite/toco/python:toco_from_protos",
     # "//tensorflow/python/autograph/converters:converters",
     # "//tensorflow/python/autograph/core:core",
     "//tensorflow/python/autograph/core:test_lib",
@@ -110,7 +82,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
+    "//tensorflow/python/ops/ragged:ragged_test_util",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
@@ -119,13 +93,49 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
 
+COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
+    "//tensorflow/contrib/autograph:autograph",
+    "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
+    "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
+    "//tensorflow/contrib/compiler:xla",
+    "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
+    "//tensorflow/contrib/eager/python/examples:examples_pip",
+    "//tensorflow/contrib/eager/python:evaluator",
+    "//tensorflow/contrib/gan:gan",
+    "//tensorflow/contrib/graph_editor:graph_editor_pip",
+    "//tensorflow/contrib/ipu",
+    "//tensorflow/contrib/keras:keras",
+    "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
+    "//tensorflow/contrib/nn:nn_py",
+    "//tensorflow/contrib/predictor:predictor_pip",
+    "//tensorflow/contrib/proto:proto",
+    "//tensorflow/contrib/receptive_field:receptive_field_pip",
+    "//tensorflow/contrib/rate:rate",
+    "//tensorflow/contrib/rpc:rpc_pip",
+    "//tensorflow/contrib/session_bundle:session_bundle_pip",
+    "//tensorflow/contrib/signal:signal_py",
+    "//tensorflow/contrib/slim:slim",
+    "//tensorflow/contrib/slim/python/slim/data:data_pip",
+    "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
+    "//tensorflow/contrib/specs:specs",
+    "//tensorflow/contrib/summary:summary_test_util",
+    "//tensorflow/contrib/tensor_forest:init_py",
+    "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
+    "//tensorflow/contrib/timeseries:timeseries_pip",
+    "//tensorflow/contrib/tpu",
+    "//tensorflow/examples/tutorials/mnist:package",
+]
+
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
 py_binary(
     name = "simple_console_for_windows",
     srcs = ["simple_console_for_windows.py"],
-    data = COMMON_PIP_DEPS,
+    data = select({
+        "//conditions:default": COMMON_PIP_DEPS_V1,
+        "//tensorflow:api_version_2": COMMON_PIP_DEPS,
+    }) + ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )
@@ -133,6 +143,7 @@ py_binary(
 filegroup(
     name = "licenses",
     data = [
+        "//third_party/icu/data:LICENSE",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
@@ -154,6 +165,7 @@ filegroup(
         "@highwayhash//:LICENSE",
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
+        "@keras_applications_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -210,7 +222,6 @@ filegroup(
         "grpc",
         [
             "@grpc//:LICENSE",
-            "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
     ) + if_ngraph([
@@ -225,19 +236,17 @@ sh_binary(
     name = "build_pip_package",
     srcs = ["build_pip_package.sh"],
     data = select({
-        "//tensorflow:windows": [
-            ":simple_console_for_windows",
-            "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tflite_convert",
-            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
-        ],
-        "//conditions:default": COMMON_PIP_DEPS + [
-            ":simple_console",
-            "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tflite_convert",
-            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
-        ],
-    }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
+               "//tensorflow:api_version_2": COMMON_PIP_DEPS,
+               "//conditions:default": COMMON_PIP_DEPS_V1,
+           }) +
+           select({
+               "//tensorflow:windows": [
+                   ":simple_console_for_windows",
+               ],
+               "//conditions:default": [
+                   ":simple_console",
+               ],
+           }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

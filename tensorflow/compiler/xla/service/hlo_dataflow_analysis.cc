@@ -190,7 +190,7 @@ string HloDataflowAnalysis::ToString() const {
   for (const HloComputation* computation : module_.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
-      if (ShapeUtil::IsTuple(instruction->shape())) {
+      if (instruction->shape().IsTuple()) {
         GetInstructionValueSet(instruction)
             .ForEachElement([this, &instruction, &out](
                                 const ShapeIndex& index,
@@ -466,6 +466,21 @@ bool HloDataflowAnalysis::UpdateDomainValueSet(HloInstruction* domain) {
   return changed;
 }
 
+bool HloDataflowAnalysis::UpdateAddDependencyValueSet(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand.
+  CHECK_EQ(add_dependency->opcode(), HloOpcode::kAddDependency);
+  const InstructionValueSet& operand_set =
+      GetInstructionValueSet(add_dependency->operand(0));
+  InstructionValueSet& add_dependency_set =
+      GetInstructionValueSet(add_dependency);
+  if (operand_set != add_dependency_set) {
+    add_dependency_set = operand_set;
+    return true;
+  }
+  return false;
+}
+
 bool HloDataflowAnalysis::UpdateGetTupleElementValueSet(HloInstruction* gte) {
   CHECK_EQ(gte->opcode(), HloOpcode::kGetTupleElement);
   bool changed = false;
@@ -622,6 +637,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
     HloInstruction* instruction) {
   // Recompute from operands.
   switch (instruction->opcode()) {
+    case HloOpcode::kAddDependency:
+      return UpdateAddDependencyValueSet(instruction);
     case HloOpcode::kBitcast:
       return UpdateBitcastValueSet(instruction);
     case HloOpcode::kDomain:
@@ -795,6 +812,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             define_all_values();
           }
           break;
+        case HloOpcode::kAddDependency:
         case HloOpcode::kWhile:
         case HloOpcode::kCall:
         case HloOpcode::kConditional:

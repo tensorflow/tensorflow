@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -216,14 +216,13 @@ XLA_TEST_P(ReducePrecisionAccuracyTest, ReducePrecisionF32) {
   const uint32_t sign_bit = 1u << 31;
   for (const auto& test_value : test_values) {
     // Add positive values.
-    input_values.push_back(tensorflow::bit_cast<float>(test_value[0]));
-    expected_values.push_back(tensorflow::bit_cast<float>(test_value[index]));
+    input_values.push_back(absl::bit_cast<float>(test_value[0]));
+    expected_values.push_back(absl::bit_cast<float>(test_value[index]));
     // Add negative values.  We do this in the bitwise representation so as to
     // avoid problems with NaN handling.
-    input_values.push_back(
-        tensorflow::bit_cast<float>(test_value[0] ^ sign_bit));
+    input_values.push_back(absl::bit_cast<float>(test_value[0] ^ sign_bit));
     expected_values.push_back(
-        tensorflow::bit_cast<float>(test_value[index] ^ sign_bit));
+        absl::bit_cast<float>(test_value[index] ^ sign_bit));
   }
 
   // This is required for proper handling of NaN values.

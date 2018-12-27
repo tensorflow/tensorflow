@@ -21,11 +21,13 @@ from __future__ import print_function
 import abc
 import collections
 
+import six
+
 from tensorflow.contrib.timeseries.python.timeseries import math_utils
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import PredictionFeatures
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import TrainEvalFeatures
 
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -53,10 +55,9 @@ ModelOutputs = collections.namedtuple(  # pylint: disable=invalid-name
     ])
 
 
+@six.add_metaclass(abc.ABCMeta)
 class TimeSeriesModel(object):
   """Base class for creating generative time series models."""
-
-  __metaclass__ = abc.ABCMeta
 
   def __init__(self,
                num_features,

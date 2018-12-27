@@ -170,6 +170,7 @@ cc_library_with_android_deps(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -488,6 +489,7 @@ tf_gen_op_wrappers_cc(
         "image_ops",
         "io_ops",
         "linalg_ops",
+        "list_ops",
         "logging_ops",
         "lookup_ops",
         "manip_ops",
@@ -516,6 +518,8 @@ tf_gen_op_wrappers_cc(
         ":array_ops",
         ":const_op",
         ":math_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
     ],
 )
 

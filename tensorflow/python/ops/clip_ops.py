@@ -31,10 +31,12 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import numerics
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("clip_by_value")
+@dispatch.add_dispatch_support
 def clip_by_value(t, clip_value_min, clip_value_max,
                   name=None):
   """Clips tensor values to a specified min and max.
@@ -300,7 +302,12 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   return list_clipped, use_norm
 
 
-@tf_export("clip_by_average_norm")
+@deprecation.deprecated(
+    date=None,
+    instructions=
+    "clip_by_average_norm is deprecated in TensorFlow 2.0. Please use "
+    "clip_by_norm(t, clip_norm * tf.to_float(tf.size(t), name)) instead.")
+@tf_export(v1=["clip_by_average_norm"])
 def clip_by_average_norm(t, clip_norm, name=None):
   """Clips tensor values to a maximum average L2-norm.
 

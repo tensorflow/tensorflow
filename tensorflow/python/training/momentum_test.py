@@ -160,6 +160,7 @@ class MomentumOptimizerTest(test.TestCase):
       self.assertStartsWith(optimizer_variables[1].name, "var3")
       self.assertEquals(2, len(optimizer_variables))
 
+  @test_util.run_deprecated_v1
   def testNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -183,9 +184,10 @@ class MomentumOptimizerTest(test.TestCase):
           var1_np, accum1_np = self._update_nesterov_momentum_numpy(var1_np,
                                                                     accum1_np,
                                                                     3, 2.0, 0.9)
-          self.assertAllClose(var0_np, var0.eval())
-          self.assertAllClose(var1_np, var1.eval())
+          self.assertAllClose(var0_np, self.evaluate(var0))
+          self.assertAllClose(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testSparseNesterovMomentum(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -224,8 +226,8 @@ class MomentumOptimizerTest(test.TestCase):
           var1_np, accum1_np = self._update_nesterov_momentum_numpy(var1_np,
                                                                     accum1_np,
                                                                     3, 2.0, 0.9)
-          self.assertAllClose(var0_np, var0.eval())
-          self.assertAllClose(var1_np, var1.eval())
+          self.assertAllClose(var0_np, self.evaluate(var0))
+          self.assertAllClose(var1_np, self.evaluate(var1))
 
   @test_util.run_in_graph_and_eager_modes(reset_test=True)
   def testMinimizeSparseResourceVariable(self):
@@ -280,6 +282,7 @@ class MomentumOptimizerTest(test.TestCase):
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))
 
+  @test_util.run_deprecated_v1
   def testTensorLearningRateAndMomentum(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -303,37 +306,43 @@ class MomentumOptimizerTest(test.TestCase):
         self.assertFalse(slot1 in variables.trainable_variables())
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Step 1: the momentum accumulators where 0. So we should see a normal
         # update: v -= grad * learning_rate
         mom_update.run()
         # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(np.array([0.1, 0.1]), slot0.eval())
-        self.assertAllCloseAccordingToType(np.array([0.01, 0.01]), slot1.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([0.1, 0.1]), self.evaluate(slot0))
+        self.assertAllCloseAccordingToType(
+            np.array([0.01, 0.01]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]), var0.eval())
+            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
+            self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]), var1.eval())
+            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
+            self.evaluate(var1))
         # Step 2: the momentum accumulators contain the previous update.
         mom_update.run()
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]), slot0.eval())
+            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]), slot1.eval())
+            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+            self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([
                 1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
                 2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
-            ]), var0.eval())
+            ]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
             np.array([
-                2.98 - ((0.9 * 0.01 + 0.01) * 2.0), 3.98 - (
-                    (0.9 * 0.01 + 0.01) * 2.0)
-            ]), var1.eval())
+                2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+                3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
+            ]), self.evaluate(var1))
 
   def _dbParamsMom01(self):
     """Return dist-belief momentum values.
@@ -434,6 +443,7 @@ class MomentumOptimizerTest(test.TestCase):
     # pylint: enable=line-too-long
     return db_grad, db_out
 
+  @test_util.run_deprecated_v1
   def testLikeDistBeliefMom01(self):
     with self.cached_session():
       db_grad, db_out = self._dbParamsMom01()
@@ -445,8 +455,9 @@ class MomentumOptimizerTest(test.TestCase):
       variables.global_variables_initializer().run()
       for i in xrange(num_samples):
         mom_update.run(feed_dict={grads0: db_grad[i]})
-        self.assertAllClose(np.array(db_out[i]), var0.eval())
+        self.assertAllClose(np.array(db_out[i]), self.evaluate(var0))
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -476,46 +487,59 @@ class MomentumOptimizerTest(test.TestCase):
         self.assertEquals(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
-        self.assertAllClose([0, 0], var0.eval()[0])
-        self.assertAllClose([0, 0], var0.eval()[1])
-        self.assertAllClose([1, 1], var1.eval()[2])
+        self.assertAllClose([0, 0], self.evaluate(var0)[0])
+        self.assertAllClose([0, 0], self.evaluate(var0)[1])
+        self.assertAllClose([1, 1], self.evaluate(var1)[2])
 
         # Step 1: the momentum accumulators are 0. So we should see a normal
         # update: v -= grad * learning_rate
         mom_update.run()
         # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(np.array([0, 0]), slot0.eval()[0])
-        self.assertAllCloseAccordingToType(np.array([.1, .1]), slot0.eval()[1])
         self.assertAllCloseAccordingToType(
-            np.array([.01, .01]), slot1.eval()[2])
+            np.array([0, 0]),
+            self.evaluate(slot0)[0])
+        self.assertAllCloseAccordingToType(
+            np.array([.1, .1]),
+            self.evaluate(slot0)[1])
+        self.assertAllCloseAccordingToType(
+            np.array([.01, .01]),
+            self.evaluate(slot1)[2])
         # Check that the parameters have been updated.
-        self.assertAllCloseAccordingToType(np.array([0, 0]), var0.eval()[0])
         self.assertAllCloseAccordingToType(
-            np.array([-(0.1 * 2.0), -(0.1 * 2.0)]), var0.eval()[1])
+            np.array([0, 0]),
+            self.evaluate(var0)[0])
         self.assertAllCloseAccordingToType(
-            np.array([1.0 - (0.01 * 2.0), 1.0 - (0.01 * 2.0)]), var1.eval()[2])
+            np.array([-(0.1 * 2.0), -(0.1 * 2.0)]),
+            self.evaluate(var0)[1])
+        self.assertAllCloseAccordingToType(
+            np.array([1.0 - (0.01 * 2.0), 1.0 - (0.01 * 2.0)]),
+            self.evaluate(var1)[2])
         # Step 2: the momentum accumulators contain the previous update.
         mom_update.run()
         # Check that the momentum accumulators have been updated.
-        self.assertAllClose(np.array([0, 0]), slot0.eval()[0])
+        self.assertAllClose(np.array([0, 0]), self.evaluate(slot0)[0])
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]), slot0.eval()[1])
+            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            self.evaluate(slot0)[1])
         self.assertAllCloseAccordingToType(
             np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
-            slot1.eval()[2])
+            self.evaluate(slot1)[2])
         # Check that the parameters have been updated.
-        self.assertAllClose(np.array([0, 0]), var0.eval()[0])
+        self.assertAllClose(np.array([0, 0]), self.evaluate(var0)[0])
         self.assertAllCloseAccordingToType(
             np.array([
-                -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0), -(0.1 * 2.0) - (
-                    (0.9 * 0.1 + 0.1) * 2.0)
-            ]), var0.eval()[1])
+                -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
+                -(0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
+            ]),
+            self.evaluate(var0)[1])
         self.assertAllCloseAccordingToType(
             np.array([
-                0.98 - ((0.9 * 0.01 + 0.01) * 2.0), 0.98 - (
-                    (0.9 * 0.01 + 0.01) * 2.0)
-            ]), var1.eval()[2])
+                0.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+                0.98 - ((0.9 * 0.01 + 0.01) * 2.0)
+            ]),
+            self.evaluate(var1)[2])
 
+  @test_util.run_deprecated_v1
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -538,37 +562,43 @@ class MomentumOptimizerTest(test.TestCase):
         self.assertEquals(slot1.get_shape(), var1.get_shape())
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Step 1: the momentum accumulators where 0. So we should see a normal
         # update: v -= grad * learning_rate
         mom_update1.run()
         # Check that the momentum accumulators have been updated.
-        self.assertAllCloseAccordingToType(np.array([0.1, 0.1]), slot0.eval())
-        self.assertAllCloseAccordingToType(np.array([0.01, 0.01]), slot1.eval())
+        self.assertAllCloseAccordingToType(
+            np.array([0.1, 0.1]), self.evaluate(slot0))
+        self.assertAllCloseAccordingToType(
+            np.array([0.01, 0.01]), self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]), var0.eval())
+            np.array([1.0 - (0.1 * 2.0), 2.0 - (0.1 * 2.0)]),
+            self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]), var1.eval())
+            np.array([3.0 - (0.01 * 2.0), 4.0 - (0.01 * 2.0)]),
+            self.evaluate(var1))
         # Step 2: the second momentum accumulators contain the previous update.
         mom_update2.run()
         # Check that the momentum accumulators have been updated.
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]), slot0.eval())
+            np.array([(0.9 * 0.1 + 0.1), (0.9 * 0.1 + 0.1)]),
+            self.evaluate(slot0))
         self.assertAllCloseAccordingToType(
-            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]), slot1.eval())
+            np.array([(0.9 * 0.01 + 0.01), (0.9 * 0.01 + 0.01)]),
+            self.evaluate(slot1))
         # Check that the parameters have been updated.
         self.assertAllCloseAccordingToType(
             np.array([
                 1.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0),
                 2.0 - (0.1 * 2.0) - ((0.9 * 0.1 + 0.1) * 2.0)
-            ]), var0.eval())
+            ]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
             np.array([
-                2.98 - ((0.9 * 0.01 + 0.01) * 2.0), 3.98 - (
-                    (0.9 * 0.01 + 0.01) * 2.0)
-            ]), var1.eval())
+                2.98 - ((0.9 * 0.01 + 0.01) * 2.0),
+                3.98 - ((0.9 * 0.01 + 0.01) * 2.0)
+            ]), self.evaluate(var1))
 
 
 if __name__ == "__main__":

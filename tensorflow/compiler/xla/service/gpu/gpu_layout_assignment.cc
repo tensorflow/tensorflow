@@ -65,8 +65,8 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
 
-  // Empirically we've found with Volta and cudnn 7 that backward-input convs
-  // with stride are significantly faster with NCHW layouts.
+  // Empirically we've found with Volta and cudnn <= 7.3 that backward-input
+  // convs with stride are significantly faster with NCHW layouts.
   //
   // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
   // which on paper gives good performance. However, there are two observations:
@@ -75,11 +75,17 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // * we've also observed that for mixed layouts, cuDNN transposes data back
   //   and forth from a different layout combination. If we end up with
   //   transposes anyway, we prefer to have them in XLA, as they can be fused.
-  // TODO(timshen): Figure out the exact condition. This may be achieved by
-  // auto-tuning layouts offline.
-  if (instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
-      window_util::HasStride(instr->window())) {
-    return kAllNCHW;
+  if (auto* dnn = stream_executor->AsDnn()) {
+    auto version_status = dnn->GetVersion();
+    if (version_status.ok()) {
+      auto version = version_status.ConsumeValueOrDie();
+      if (std::make_tuple(version.major_version(), version.minor_version()) <=
+              std::make_tuple(7, 3) &&
+          instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
+          window_util::HasStride(instr->window())) {
+        return kAllNCHW;
+      }
+    }
   }
 
   // For other Volta f16 convolutions, use NHWC.
@@ -190,9 +196,9 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
                dim_nums.rhs_batch_dimensions_size());
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
-               ShapeUtil::Rank(instruction->shape()));
+               instruction->shape().rank());
       for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
-        CHECK_LT(batch_dim, ShapeUtil::Rank(instruction->shape()) - 2);
+        CHECK_LT(batch_dim, instruction->shape().rank() - 2);
       }
 
       // Set both inputs and the output to default layout.
@@ -209,18 +215,18 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kSort &&
-               ShapeUtil::Rank(instruction->operand(0)->shape()) > 1) {
+               instruction->operand(0)->shape().rank() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.
       Shape keys_shape = instruction->operand(0)->shape();
       Layout keys_layout =
-          LayoutUtil::GetDefaultLayoutForRank(ShapeUtil::Rank(keys_shape));
+          LayoutUtil::GetDefaultLayoutForRank(keys_shape.rank());
       for (int64 i = 0; i < instruction->operand_count(); ++i) {
         Shape shape = instruction->operand(i)->shape();
         *shape.mutable_layout() = keys_layout;
         TF_RETURN_IF_ERROR(
             constraints->SetOperandLayout(shape, instruction, i));
         const LogicalBuffer* output_buffer;
-        if (ShapeUtil::IsArray(instruction->shape())) {
+        if (instruction->shape().IsArray()) {
           TF_ASSIGN_OR_RETURN(
               output_buffer,
               constraints->points_to_analysis().GetBufferDefinedAt(instruction,

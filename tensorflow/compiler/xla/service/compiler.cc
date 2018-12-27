@@ -110,6 +110,6 @@ Compiler::GetPlatformCompilers() {
 }
 
 AotCompilationOptions::AotCompilationOptions()
-    : debug_options_(legacy_flags::GetDebugOptionsFromFlags()) {}
+    : debug_options_(GetDebugOptionsFromFlags()) {}
 
 }  // namespace xla

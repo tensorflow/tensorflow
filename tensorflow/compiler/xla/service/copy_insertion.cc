@@ -442,7 +442,6 @@ class CopyRemover {
               const HloOrdering& ordering, HloModule* module)
       : module_(module),
         alias_analysis_(alias_analysis),
-        ordering_(ordering),
         buffer_value_tracker_(*module, alias_analysis, ordering) {}
 
   // Try to elide the given copy. The copy is elided if the instruction is not
@@ -523,7 +522,7 @@ class CopyRemover {
         // between copies added around aliased operations (kWhile) guarantees
         // this strict order.
         for (const HloValue* value_a : buffer.values()) {
-          if (ShapeUtil::IsToken(value_a->shape())) {
+          if (value_a->shape().IsToken()) {
             // Token values have no representation and cannot interfere.
             continue;
           }
@@ -1003,7 +1002,6 @@ class CopyRemover {
 
   HloModule* module_;
   const HloAliasAnalysis& alias_analysis_;
-  const HloOrdering& ordering_;
 
   // Object tracking the HLO values contained in each HLO buffer.
   BufferValueTracker buffer_value_tracker_;

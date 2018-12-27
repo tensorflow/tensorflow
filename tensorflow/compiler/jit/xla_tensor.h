@@ -50,7 +50,7 @@ class XlaTensor {
   // Assign the internal ShapedBuffer to new memory for the given dtype and
   // shape. If a ShapedBuffer exists already (has_shaped_buffer() == true), it
   // is replaced and the managed memory deallocated.
-  Status AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
+  Status AllocateShapedBuffer(DataType dtype, const xla::Shape& on_host_shape,
                               xla::LocalClient* client, int device_ordinal);
 
   // Some Tensors can have complex on-device shapes, including tuple shapes. To

@@ -193,6 +193,33 @@ TEST_F(GpuKernelTilingTest,
                      /*match_optimized_ir=*/true);
 }
 
+TEST_F(GpuKernelTilingTest, FusionTransposeWithReverseNotTiled) {
+  const char *const kHloString = R"(
+    HloModule FusionTransposeWithReverseNotTiled
+    fused_computation.1 {
+      arg0 = f32[128,64]{1,0} parameter(0)
+      copy0 = f32[128,64]{0,1} copy(arg0)
+      ROOT reverse0 = f32[128,64]{0,1} reverse(copy0), dimensions={0}
+    }
+
+    ENTRY reverse_break_assumption {
+      param0 = f32[128,64]{1,0} parameter(0)
+      ROOT fusion0 = f32[128,64]{0,1} fusion(param0), kind=kLoop,
+        calls=fused_computation.1
+    })";
+
+  // Check that a call to llvm.nvvm.barrier0 is not generated.
+  auto hlo_module =
+      ParseHloString(kHloString, ConfigWithoutLayoutAssignment()).ValueOrDie();
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(
+; CHECK-LABEL: define void @fusion
+; CHECK-NOT: tail call void @llvm.nvvm.barrier0()
+; CHECK: }
+)",
+                     /*match_optimized_ir=*/true);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -457,7 +457,7 @@ string HloAliasAnalysis::ToString() const {
   for (const HloComputation* computation : module_->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
-      if (ShapeUtil::IsTuple(instruction->shape())) {
+      if (instruction->shape().IsTuple()) {
         ShapeUtil::ForEachSubshape(
             instruction->shape(),
             [&out, &instruction, this](const Shape&, const ShapeIndex& index) {
@@ -533,11 +533,11 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
     const HloOrdering& ordering) const {
   for (const HloBuffer& buffer : buffers()) {
     CHECK(!buffer.values().empty());
-    if (ShapeUtil::IsToken(buffer.values().front()->shape())) {
+    if (buffer.values().front()->shape().IsToken()) {
       // Tokens have no on-device representation and cannot interfere.
       for (const HloValue* value : buffer.values()) {
         // If one of the values is a token, all values must be a token.
-        DCHECK(ShapeUtil::IsToken(value->shape()));
+        DCHECK(value->shape().IsToken());
       }
       continue;
     }

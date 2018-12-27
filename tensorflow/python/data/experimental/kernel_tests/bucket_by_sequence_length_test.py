@@ -22,10 +22,12 @@ import random
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -69,9 +71,11 @@ def _get_record_shape(sparse):
   return tensor_shape.TensorShape([None])
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BucketBySequenceLengthTest(test_base.DatasetTestBase):
 
-  def testBucket(self):
+  # TODO(b/117581999): add eager coverage.
+  def testSkipEagerBucket(self):
 
     boundaries = [10, 20, 30]
     batch_sizes = [10, 8, 4, 2]
@@ -105,14 +109,14 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
               boundaries,
               batch_sizes,
               no_padding=no_padding))
-      batch, = dataset.make_one_shot_iterator().get_next()
+      get_next = self.getNext(dataset)
+      batches = []
+      for _ in range(4):
+        batch, = self.evaluate(get_next())
+        batches.append(batch)
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
 
-      with self.cached_session() as sess:
-        batches = []
-        for _ in range(4):
-          batches.append(sess.run(batch))
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(batch)
       batch_sizes_val = []
       lengths_val = []
       for batch in batches:
@@ -121,8 +125,9 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
         length = shape[1]
         batch_sizes_val.append(batch_size)
         lengths_val.append(length)
-        sum_check = batch.values.sum() if no_padding else batch.sum()
-        self.assertEqual(sum_check, batch_size * length - 1)
+        if not context.executing_eagerly():
+          sum_check = batch.values.sum() if no_padding else batch.sum()
+          self.assertEqual(sum_check, batch_size * length - 1)
       self.assertEqual(sum(batch_sizes_val), sum(batch_sizes))
       self.assertEqual(sorted(batch_sizes), sorted(batch_sizes_val))
       self.assertEqual(sorted(lengths), sorted(lengths_val))
@@ -155,14 +160,15 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
             grouping.bucket_by_sequence_length(
                 element_len, boundaries, batch_sizes,
                 pad_to_bucket_boundary=True))
-    batch, = dataset.make_one_shot_iterator().get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      batches = []
-      for _ in range(3):
-        batches.append(sess.run(batch))
-      with self.assertRaisesOpError("bucket_boundaries"):
-        sess.run(batch)
+    batches = []
+    for _ in range(3):
+      batch, = self.evaluate(get_next())
+      batches.append(batch)
+    with self.assertRaisesOpError("bucket_boundaries"):
+      self.evaluate(get_next())
+
     batch_sizes_val = []
     lengths_val = []
     for batch in batches:
@@ -192,14 +198,14 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
             grouping.bucket_by_sequence_length(
                 element_len, boundaries, batch_sizes,
                 pad_to_bucket_boundary=True))
-    batch, = dataset.make_one_shot_iterator().get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      batches = []
-      for _ in range(5):
-        batches.append(sess.run(batch))
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(batch)
+    batches = []
+    for _ in range(5):
+      batch, = self.evaluate(get_next())
+      batches.append(batch)
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
     self.assertAllEqual(batches[0], [[1, 0],
                                      [1, 1]])
@@ -243,7 +249,8 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
     for no_padding in (True, False):
       _test_tuple_elements_by_padding(no_padding)
 
-  def testBucketSparse(self):
+  # TODO(b/117581999): add eager coverage
+  def testSkipEagerBucketSparse(self):
     """Tests bucketing of sparse tensors (case where `no_padding` == True).
 
     Test runs on following dataset:
@@ -295,17 +302,16 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase):
 
     def _compute_batches(dataset):
       """Computes actual batch outputs of dataset and stores in a set."""
-      batch = dataset.make_one_shot_iterator().get_next()
+      batch = self.getNext(dataset)
       all_sparse_tensors = set()
-      with self.cached_session() as sess:
-        with self.assertRaises(errors.OutOfRangeError):
-          while True:
-            output = sess.run(batch)
-            sprs_tensor = (tuple([tuple(idx) for idx in output.indices]),
-                           tuple(output.values))
-            all_sparse_tensors.add(sprs_tensor)
-      return all_sparse_tensors
+      with self.assertRaises(errors.OutOfRangeError):
+        while True:
+          output = self.evaluate(batch())
+          sprs_tensor = (tuple([tuple(idx) for idx in output.indices]),
+                         tuple(output.values))
+          all_sparse_tensors.add(sprs_tensor)
 
+      return all_sparse_tensors
     dataset = _build_dataset()
     boundaries = range(min_len + bucket_size + 1, max_len, bucket_size)
     dataset = dataset.apply(grouping.bucket_by_sequence_length(

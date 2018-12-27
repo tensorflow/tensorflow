@@ -34,8 +34,14 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   // Setting `hoist_constants` to false can be help if LICM is run in the mid
   // level HLO pipeline because hoisting constants out of while loop bodies can
   // break optimizations like constant folding.
-  explicit WhileLoopInvariantCodeMotion(bool hoist_constants = false)
-      : hoist_constants_(hoist_constants) {}
+  // Setting `hoist_size_inflating_ops` to false will forbid hoisting
+  // instructions where the size of the output(s) is larger than the size of the
+  // input(s). This is useful on platforms on which it's important to prevent
+  // blow-ups in memory size.
+  explicit WhileLoopInvariantCodeMotion(bool hoist_constants = false,
+                                        bool hoist_size_inflating_ops = true)
+      : hoist_constants_(hoist_constants),
+        hoist_size_inflating_ops_(hoist_size_inflating_ops) {}
   ~WhileLoopInvariantCodeMotion() override = default;
 
   absl::string_view name() const override {
@@ -49,6 +55,7 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
       HloInstruction* while_instr);
 
   bool hoist_constants_;
+  bool hoist_size_inflating_ops_;
 };
 }  // namespace xla
 

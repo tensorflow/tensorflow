@@ -111,9 +111,6 @@ class CheckpointableDataStructure(base.CheckpointableBase):
   """Base class for data structures which contain checkpointable objects."""
 
   def __init__(self):
-    # An append-only ordered set
-    self._layers = []
-
     self.trainable = True
     self._extra_variables = []
 
@@ -128,20 +125,29 @@ class CheckpointableDataStructure(base.CheckpointableBase):
           ("Only checkpointable objects (such as Layers or Optimizers) may be "
            "stored in a List object. Got %s, which does not inherit from "
            "CheckpointableBase.") % (value,))
-    if (isinstance(value, CheckpointableDataStructure)
-        or layer_utils.is_layer(value)
-        or layer_utils.has_weights(value)):
-      # Check for object-identity rather than with __eq__ to avoid
-      # de-duplicating empty container types. Automatically generated list
-      # wrappers keep things like "[] == []" true, which means "[] in [[]]" is
-      # also true. This becomes not true once one of the lists is mutated.
-      if not any((layer is value for layer in self._layers)):
-        self._layers.append(value)
-        if hasattr(value, "_use_resource_variables"):
-          # In subclassed models, legacy layers (tf.layers) must always use
-          # resource variables.
-          value._use_resource_variables = True  # pylint: disable=protected-access
+    if hasattr(value, "_use_resource_variables"):
+      # In subclassed models, legacy layers (tf.layers) must always use
+      # resource variables.
+      value._use_resource_variables = True  # pylint: disable=protected-access
     return value
+
+  @property
+  def _values(self):
+    """An iterable/sequence which may contain checkpointable objects."""
+    raise NotImplementedError("Abstract method")
+
+  @property
+  def _layers(self):
+    """All Layers and Layer containers, including empty containers."""
+    # Filter objects on demand so that wrapper objects use values from the thing
+    # they're wrapping if out of sync.
+    collected = []
+    for obj in self._values:
+      if (isinstance(obj, CheckpointableDataStructure)
+          or layer_utils.is_layer(obj)
+          or layer_utils.has_weights(obj)):
+        collected.append(obj)
+    return collected
 
   @property
   def layers(self):
@@ -264,6 +270,10 @@ class List(CheckpointableDataStructure, collections.Sequence):
 
   def _name_element(self, index):
     return "%d" % (index,)
+
+  @property
+  def _values(self):
+    return self
 
   def append(self, value):
     """Add a new checkpointable value."""
@@ -478,6 +488,14 @@ class Mapping(CheckpointableDataStructure, collections.Mapping):
 
   def _make_storage(self, *args, **kwargs):
     return dict(*args, **kwargs)
+
+  @property
+  def _values(self):
+    # Sort items deterministically by key
+    ordered = list(zip(*sorted(self.items(), key=lambda it: it[0])))
+    if ordered:
+      return ordered[1]
+    return []
 
   def _name_element(self, key):
     if not isinstance(key, six.string_types):

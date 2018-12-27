@@ -118,6 +118,7 @@ cuda_py_tests(
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -196,6 +197,7 @@ cuda_py_tests(
     srcs = ["python/kernel_tests/lstm_ops_test.py"],
     additional_deps = [
         ":rnn_py",
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

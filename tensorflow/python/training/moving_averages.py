@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
@@ -25,7 +27,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util.tf_export import tf_export
 
@@ -95,11 +96,11 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
       # In a replica context, we update variable using the mean of value across
       # replicas.
       def merge_fn(strategy, v, value):
-        value = strategy.reduce(
-            variable_scope.VariableAggregation.MEAN, value, v)
+        value = strategy.extended.reduce_to(
+            ds_reduce_util.ReduceOp.MEAN, value, v)
         return strategy.update(v, update_fn, value)
 
-      return replica_context.merge_call(merge_fn, variable, value)
+      return replica_context.merge_call(merge_fn, args=(variable, value))
     else:
       strategy = distribution_strategy_context.get_cross_replica_context()
       return strategy.update(variable, update_fn, value)

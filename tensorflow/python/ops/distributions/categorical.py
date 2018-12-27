@@ -59,7 +59,7 @@ def _broadcast_cat_event_and_params(event, params, base_dtype):
   return event, params
 
 
-@tf_export("distributions.Categorical")
+@tf_export(v1=["distributions.Categorical"])
 class Categorical(distribution.Distribution):
   """Categorical distribution.
 

@@ -30,14 +30,13 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kFusedOpName[] = "MapAndBatchDatasetV2";
+constexpr char kFusedOpName[] = "ExperimentalMapAndBatchDataset";
 
 NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
                             MutableGraphView* graph) {
   NodeDef new_node;
   new_node.set_op(kFusedOpName);
-  graph_utils::SetUniqueGraphNodeName(kFusedOpName, graph->GetGraph(),
-                                      &new_node);
+  graph_utils::SetUniqueGraphNodeName(kFusedOpName, graph->graph(), &new_node);
 
   // Set the `input` input argument.
   new_node.add_input(map_node.input(0));
@@ -78,15 +77,22 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
     new_node.add_input(tmp->name());
   }
 
-  // Set `f` and `Targuments` attributes.
+  // Required attributes.
   for (auto key : {"f", "Targuments"}) {
     graph_utils::CopyAttribute(key, map_node, &new_node);
   }
-
-  // Set `output_types` and `output_shapes` attributes.
   for (auto key : {"output_shapes", "output_types"}) {
     graph_utils::CopyAttribute(key, batch_node, &new_node);
   }
+
+  // Optional attributes.
+  // TODO(jsimsa): Support `use_inter_op_parallelism` and `sloppy`.
+  for (auto key : {"preserve_cardinality"}) {
+    if (gtl::FindOrNull(map_node.attr(), key)) {
+      graph_utils::CopyAttribute(key, map_node, &new_node);
+    }
+  }
+
   return new_node;
 }
 
@@ -114,7 +120,7 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* new_node =
         graph.AddNode(MakeMapAndBatchNode(*map_node, batch_node, &graph));
-    graph.ReplaceInput(batch_node, *new_node);
+    graph.UpdateFanouts(batch_node.name(), new_node->name());
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());

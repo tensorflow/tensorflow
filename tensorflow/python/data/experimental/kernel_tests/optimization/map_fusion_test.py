@@ -22,7 +22,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -62,6 +62,7 @@ def _map_fusion_test_cases():
   return tuple(tests)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(*_map_fusion_test_cases())
@@ -73,23 +74,18 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset.cache()
     options = dataset_ops.Options()
-    options.experimental_map_fusion = True
+    options.experimental_optimization.map_fusion = True
     dataset = dataset.with_options(options)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-    with self.cached_session() as sess:
-      for x in range(5):
-        result = sess.run(get_next)
-        r = x
-        for function in functions:
-          if isinstance(r, tuple):
-            r = function(*r)  # Pass tuple as multiple arguments.
-          else:
-            r = function(r)
-        self.assertAllEqual(r, result)
-
-      with self.assertRaises(errors.OutOfRangeError):
-        sess.run(get_next)
+    expected_output = []
+    for x in range(5):
+      r = x
+      for function in functions:
+        if isinstance(r, tuple):
+          r = function(*r)  # Pass tuple as multiple arguments.
+        else:
+          r = function(r)
+      expected_output.append(r)
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
 
 if __name__ == "__main__":

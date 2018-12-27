@@ -23,6 +23,11 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/stream_executor/device_memory.h"
+
+#ifndef PLATFORM_GOOGLE
+#include "tensorflow/stream_executor/dso_loader.h"
+#endif
+
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -38,6 +43,7 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuFftPlugin);
 
 namespace wrap {
 
+#ifdef PLATFORM_GOOGLE
 // This macro wraps a global identifier, given by __name, in a callable
 // structure that loads the DLL symbol out of the DSO handle in a thread-safe
 // manner on first use. This dynamic loading technique is used to avoid DSO
@@ -52,22 +58,69 @@ namespace wrap {
     }                                                            \
   } __name;
 
-#define CUFFT_ROUTINE_EACH(__macro)                                            \
-  __macro(cufftDestroy) __macro(cufftSetStream) __macro(cufftPlan1d)           \
-      __macro(cufftPlan2d) __macro(cufftPlan3d) __macro(cufftPlanMany)         \
-          __macro(cufftExecD2Z) __macro(cufftExecZ2D) __macro(cufftExecC2C)    \
-              __macro(cufftExecC2R) __macro(cufftExecZ2Z)                      \
-                  __macro(cufftExecR2C) __macro(cufftCreate)                   \
-                      __macro(cufftSetAutoAllocation)                          \
-                          __macro(cufftSetWorkArea) __macro(cufftGetSize1d)    \
-                              __macro(cufftMakePlan1d) __macro(cufftGetSize2d) \
-                                  __macro(cufftMakePlan2d)                     \
-                                      __macro(cufftGetSize3d)                  \
-                                          __macro(cufftMakePlan3d)             \
-                                              __macro(cufftGetSizeMany)        \
-                                                  __macro(cufftMakePlanMany)
+#else
+
+#define STREAM_EXECUTOR_CUFFT_WRAP(__name)                                \
+  struct DynLoadShim__##__name {                                          \
+    static const char *kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void *GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetCufftDsoHandle();            \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void *f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in cufft DSO; dlerror: " << s.error_message();   \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    cufftResult operator()(CUDAExecutor *parent, Args... args) {          \
+      cuda::ScopedActivateExecutorContext sac{parent};                    \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char *DynLoadShim__##__name::kName = #__name;
+
+#endif
+
+// clang-format off
+
+#define CUFFT_ROUTINE_EACH(__macro)                                     \
+  __macro(cufftDestroy)                                                 \
+  __macro(cufftSetStream)                                               \
+  __macro(cufftPlan1d)                                                  \
+  __macro(cufftPlan2d)                                                  \
+  __macro(cufftPlan3d)                                                  \
+  __macro(cufftPlanMany)                                                \
+  __macro(cufftExecD2Z)                                                 \
+  __macro(cufftExecZ2D)                                                 \
+  __macro(cufftExecC2C)                                                 \
+  __macro(cufftExecC2R)                                                 \
+  __macro(cufftExecZ2Z)                                                 \
+  __macro(cufftExecR2C)                                                 \
+  __macro(cufftCreate)                                                  \
+  __macro(cufftSetAutoAllocation)                                       \
+  __macro(cufftSetWorkArea)                                             \
+  __macro(cufftGetSize1d)                                               \
+  __macro(cufftMakePlan1d)                                              \
+  __macro(cufftGetSize2d)                                               \
+  __macro(cufftMakePlan2d)                                              \
+  __macro(cufftGetSize3d)                                               \
+  __macro(cufftMakePlan3d)                                              \
+  __macro(cufftGetSizeMany)                                             \
+  __macro(cufftMakePlanMany)
+
+// clang-format on
 
 CUFFT_ROUTINE_EACH(STREAM_EXECUTOR_CUFFT_WRAP)
+#undef CUFFT_ROUTINE_EACH
 
 }  // namespace wrap
 
@@ -332,6 +385,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlan(Stream *stream, uint64 num_x,
   // TODO(yangzihao): In the future, send error msg back to TensorFlow
   // so it can fail gracefully,
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(FATAL) << "failed to initialize cufft 1d plan: "
                << status.error_message();
   }
@@ -346,6 +400,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create1dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 1, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x;
     LOG(FATAL)
         << "failed to initialize cufft 1d plan with customized allocator: "
         << status.error_message();
@@ -361,6 +416,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlan(Stream *stream, uint64 num_x,
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 1, elem_count, type, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(FATAL) << "failed to initialize cufft 2d plan: "
                << status.error_message();
   }
@@ -375,6 +431,7 @@ std::unique_ptr<fft::Plan> CUDAFft::Create2dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 2, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y;
     LOG(FATAL)
         << "failed to initialize cufft 2d plan with customized allocator: "
         << status.error_message();
@@ -391,6 +448,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlan(Stream *stream, uint64 num_x,
   port::Status status = fft_plan_ptr->Initialize(
       parent_, stream, 3, elem_count, type, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
+               << " num_z: " << num_z;
     LOG(FATAL) << "failed to initialize cufft 3d plan: "
                << status.error_message();
   }
@@ -405,6 +464,8 @@ std::unique_ptr<fft::Plan> CUDAFft::Create3dPlanWithScratchAllocator(
   port::Status status = fft_plan_ptr->Initialize(parent_, stream, 3, elem_count,
                                                  type, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Plan Parameters: num_x: " << num_x << " num_y: " << num_y
+               << " num_z: " << num_z;
     LOG(FATAL)
         << "failed to initialize cufft 3d plan with customized allocator: "
         << status.error_message();
@@ -423,6 +484,15 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlan(
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, /*scratch_allocator=*/nullptr);
   if (!status.ok()) {
+    LOG(ERROR) << "Initialize Params: rank: " << rank
+               << " elem_count: " << *elem_count
+               << " input_embed: " << *input_embed
+               << " input_stride: " << input_stride
+               << " input_distance: " << input_distance
+               << " output_embed: " << *output_embed
+               << " output_stride: " << output_stride
+               << " output_distance: " << output_distance
+               << " batch_count: " << batch_count;
     LOG(FATAL) << "failed to initialize batched cufft plan: "
                << status.error_message();
   }
@@ -441,6 +511,15 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, scratch_allocator);
   if (!status.ok()) {
+    LOG(ERROR) << "Initialize Params: rank: " << rank
+               << " elem_count: " << *elem_count
+               << " input_embed: " << *input_embed
+               << " input_stride: " << input_stride
+               << " input_distance: " << input_distance
+               << " output_embed: " << *output_embed
+               << " output_stride: " << output_stride
+               << " output_distance: " << output_distance
+               << " batch_count: " << batch_count;
     LOG(FATAL)
         << "failed to initialize batched cufft plan with customized allocator: "
         << status.error_message();

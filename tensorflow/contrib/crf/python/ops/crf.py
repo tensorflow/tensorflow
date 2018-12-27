@@ -38,12 +38,12 @@ tf_unary_scores, tf_sequence_lengths, tf_transition_params, _ = session.run(
     [unary_scores, sequence_lengths, transition_params, train_op])
 for tf_unary_scores_, tf_sequence_length_ in zip(tf_unary_scores,
                                                  tf_sequence_lengths):
-# Remove padding.
-tf_unary_scores_ = tf_unary_scores_[:tf_sequence_length_]
+    # Remove padding.
+    tf_unary_scores_ = tf_unary_scores_[:tf_sequence_length_]
 
-# Compute the highest score and its tag sequence.
-tf_viterbi_sequence, tf_viterbi_score = tf.contrib.crf.viterbi_decode(
-    tf_unary_scores_, tf_transition_params)
+    # Compute the highest score and its tag sequence.
+    tf_viterbi_sequence, tf_viterbi_score = tf.contrib.crf.viterbi_decode(
+        tf_unary_scores_, tf_transition_params)
 """
 
 from __future__ import absolute_import

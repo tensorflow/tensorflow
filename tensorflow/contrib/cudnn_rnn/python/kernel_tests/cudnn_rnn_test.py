@@ -536,7 +536,9 @@ class CudnnRNNTestSaveRestore(test_util.TensorFlowTestCase):
       save_path = os.path.join(self.get_temp_dir(),
                                "save-restore-variable-test")
       saver = saver_lib.Saver()
-      weights, biases = model.rnn.saveable._OpaqueParamsToCanonical()
+      weights, biases = (
+          model.rnn.saveable.format_converter._opaque_to_cu_canonical(
+              model.rnn.saveable._variables))
       opaque_params = rnn.trainable_variables[0]
       # CudnnTestModel() creates CudnnOpaqueParamsSaveable that helps saver save
       # Cudnn vars in canonical format.
@@ -583,8 +585,12 @@ class CudnnRNNTestSaveRestore(test_util.TensorFlowTestCase):
             dtype=dtype)
       opaque_params = (model1.rnn.trainable_variables[0],
                        model2.rnn.trainable_variables[0])
-      weights1, biases1 = model1.rnn.saveable._OpaqueParamsToCanonical()
-      weights2, biases2 = model2.rnn.saveable._OpaqueParamsToCanonical()
+      saveable1 = model1.rnn.saveable
+      weights1, biases1 = saveable1.format_converter._opaque_to_cu_canonical(
+          saveable1._variables)
+      saveable2 = model1.rnn.saveable
+      weights2, biases2 = saveable2.format_converter._opaque_to_cu_canonical(
+          saveable2._variables)
       reset_params = [
           state_ops.assign(params,
                            array_ops.zeros_like(params, dtype=dtype))
@@ -1039,8 +1045,8 @@ class CudnnRNNTestParamsSize(test_util.TensorFlowTestCase):
 
     # Min param size estimate = sum(weights.size) + sum(biases.size)
     min_params_size = (
-        np.sum(list(map(np.prod, rnn.canonical_weight_shapes))) +
-        np.sum([sp[0] for sp in rnn.canonical_bias_shapes]))
+        sum(map(np.prod, rnn.canonical_weight_shapes)) +
+        sum(sp[0] for sp in rnn.canonical_bias_shapes))
 
     opaque_params = rnn.trainable_variables[0]
     with self.test_session(use_gpu=True, graph=ops.get_default_graph()):

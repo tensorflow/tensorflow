@@ -42,14 +42,8 @@ class BuildXlaOpsTest : public ::testing::Test {
               .ok());
   }
 
-  void TearDown() override {
-    for (Device* device : devices_) {
-      delete device;
-    }
-  }
-
  private:
-  std::vector<Device*> devices_;
+  std::vector<std::unique_ptr<Device>> devices_;
 };
 
 using ::tensorflow::testing::FindNodeByName;

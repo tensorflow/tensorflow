@@ -339,6 +339,7 @@ Status Conditional::AddSwitch(Node* s) {
         DebugString(switch_predicate_), " vs ", DebugString(predicate), ").");
   }
   switches_.insert(s);
+  parent_->AddSwitchId(s->id());
   return Status::OK();
 }
 
@@ -639,7 +640,8 @@ Status Conditional::ExtractBodies(Graph* graph) {
 Status Conditional::BuildIfNode(Graph* graph,
                                 FunctionLibraryDefinition* library) {
   VLOG(2) << "Build cond function for " << name();
-  NodeDefBuilder builder(name(), "If", library);
+  NodeDebugInfo debug_info((*merges_.begin())->def());
+  NodeDefBuilder builder(name(), "If", library, &debug_info);
   const string branch_name[] = {"else_branch", "then_branch"};
   for (auto branch : {BranchType::kElseBranch, BranchType::kThenBranch}) {
     int branch_index = static_cast<int>(branch);
@@ -1185,7 +1187,7 @@ Status FunctionalizeCond::DetermineAncestorState(Node* dst) {
 }
 
 void FunctionalizeCond::DeleteReachableAndDeadNodes(
-    const std::vector<int>& switch_ids, const std::vector<Node*>& merge_order) {
+    const std::vector<Node*>& merge_order) {
   // Delete all nodes that have been extracted or are reachable from
   // deleted/dead nodes. The input and outgoing edges should have already been
   // removed.
@@ -1197,7 +1199,7 @@ void FunctionalizeCond::DeleteReachableAndDeadNodes(
 
   // All remaining Switch nodes are not reachable from a Merge node and
   // removed. This is to account for dead Switch nodes.
-  for (int s_id : switch_ids) {
+  for (int s_id : switch_ids_) {
     Node* s = graph_->FindNodeId(s_id);
     if (s == nullptr) continue;
     for (const Edge* e : s->out_edges()) {
@@ -1288,11 +1290,10 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   //   reverse topological sorting);
   // * Record reverse topological for merge and switch nodes;
   std::vector<Node*> rev_topo_order;
-  std::vector<int> switch_ids;
   std::vector<Node*> merge_order;
   DFS(*graph_, nullptr, [&](Node* n) {
     if (IsSwitch(n)) {
-      switch_ids.push_back(n->id());
+      AddSwitchId(n->id());
     }
     if (IsMerge(n)) {
       merge_order.push_back(n);
@@ -1306,9 +1307,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   if (merge_order.empty()) {
     // No merges mean no switch values consumed (as only considering values
     // fetchable as output of merge);
-    for (auto it = switch_ids.begin(); it != switch_ids.end(); ++it) {
-      graph_->RemoveNode(graph_->FindNodeId(*it));
-    }
+    DeleteReachableAndDeadNodes(merge_order);
     return Status::OK();
   }
 
@@ -1351,7 +1350,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
     if (VLOG_IS_ON(4)) DumpGraphWithCondState("after_extract");
   }
 
-  DeleteReachableAndDeadNodes(switch_ids, merge_order);
+  DeleteReachableAndDeadNodes(merge_order);
 
   return Status::OK();
 }
@@ -1369,6 +1368,10 @@ void FunctionalizeCond::DumpGraphWithCondState(const string& name) {
             << dump_graph::DumpGraphToFile(
                    absl::StrCat("functionalize_cond_", name), *graph_,
                    library_);
+}
+
+void FunctionalizeCond::AddSwitchId(int switch_id) {
+  switch_ids_.push_back(switch_id);
 }
 
 Status FunctionalizeCond::Functionalize(Graph* graph,

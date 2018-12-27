@@ -42,15 +42,15 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      self.assertAllClose([0.0, 0.0], var0.eval())
-      self.assertAllClose([0.0, 0.0], var1.eval())
+      self.assertAllClose([0.0, 0.0], self.evaluate(var0))
+      self.assertAllClose([0.0, 0.0], self.evaluate(var1))
 
       # Run 3 steps Proximal Gradient Descent.
       for _ in range(3):
         update.run()
 
-      self.assertAllClose(np.array([-0.9, -1.8]), var0.eval())
-      self.assertAllClose(np.array([-0.09, -0.18]), var1.eval())
+      self.assertAllClose(np.array([-0.9, -1.8]), self.evaluate(var0))
+      self.assertAllClose(np.array([-0.09, -0.18]), self.evaluate(var1))
 
   def testProximalGradientDescentwithoutRegularization2(self):
     with self.cached_session(), self.test_scope():
@@ -64,15 +64,15 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([4.0, 3.0], var1.eval())
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
       # Run 3 steps Proximal Gradient Descent
       for _ in range(3):
         update.run()
 
-      self.assertAllClose(np.array([0.1, 0.2]), var0.eval())
-      self.assertAllClose(np.array([3.91, 2.82]), var1.eval())
+      self.assertAllClose(np.array([0.1, 0.2]), self.evaluate(var0))
+      self.assertAllClose(np.array([3.91, 2.82]), self.evaluate(var1))
 
   def testProximalGradientDescentWithL1(self):
     with self.cached_session(), self.test_scope():
@@ -86,15 +86,15 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([4.0, 3.0], var1.eval())
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
       # Run 10 steps proximal gradient descent.
       for _ in range(10):
         update.run()
 
-      self.assertAllClose(np.array([-1.988, -3.988001]), var0.eval())
-      self.assertAllClose(np.array([3.67, 2.37]), var1.eval())
+      self.assertAllClose(np.array([-1.988, -3.988001]), self.evaluate(var0))
+      self.assertAllClose(np.array([3.67, 2.37]), self.evaluate(var1))
 
   def testProximalGradientDescentWithL1_L2(self):
     with self.cached_session(), self.test_scope():
@@ -108,15 +108,15 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([4.0, 3.0], var1.eval())
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
       # Run 10 steps Proximal Gradient Descent
       for _ in range(10):
         update.run()
 
-      self.assertAllClose(np.array([-0.0495, -0.0995]), var0.eval())
-      self.assertAllClose(np.array([-0.0045, -0.0095]), var1.eval())
+      self.assertAllClose(np.array([-0.0495, -0.0995]), self.evaluate(var0))
+      self.assertAllClose(np.array([-0.0045, -0.0095]), self.evaluate(var1))
 
   def applyOptimizer(self, opt, steps=5):
     var0 = resource_variable_ops.ResourceVariable([1.0, 2.0])
@@ -127,14 +127,14 @@ class ProximalGradientDescentOptimizerTest(xla_test.XLATestCase):
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     variables.global_variables_initializer().run()
 
-    self.assertAllClose([1.0, 2.0], var0.eval())
-    self.assertAllClose([3.0, 4.0], var1.eval())
+    self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+    self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
     # Run ProximalAdagrad for a few steps
     for _ in range(steps):
       update.run()
 
-    return var0.eval(), var1.eval()
+    return self.evaluate(var0), self.evaluate(var1)
 
   def testEquivGradientDescentwithoutRegularization(self):
     with self.cached_session(), self.test_scope():

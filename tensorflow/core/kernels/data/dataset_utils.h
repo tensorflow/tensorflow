@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_DATASET_UTILS_H_
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 namespace data {
@@ -44,8 +44,8 @@ std::vector<bool> ComputeMoveVector(const std::vector<int>& indices);
 
 Status MakeIteratorFromInputElement(
     IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, CapturedFunction* captured_func, StringPiece prefix,
-    std::unique_ptr<IteratorBase>* out_iterator);
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
 
 // Returns Status::OK() if `expected` and `received` types match,
 // errors::InvalidArgument otherwise.

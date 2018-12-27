@@ -1,0 +1,1 @@
+{features:{feature:{age:{float_list:{value:29.0}}},feature:{movie:{bytes_list:{value:"VGhlIFNoYXdzaGFuayBSZWRlbXB0aW9u",value:"RmlnaHQgQ2x1Yg=="}}},feature:{movie_ratings:{float_list:{value:9.0,value:9.7}}},feature:{suggestion:{bytes_list:{value:"SW5jZXB0aW9u"}}},feature:{suggestion_purchased:{float_list:{value:1.0}}},feature:{purchase_price:{float_list:{value:9.99}}}}}

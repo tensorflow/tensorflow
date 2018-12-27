@@ -310,6 +310,9 @@ Status ExplicitShape(InferenceContext* c);
 // Shape function for multiple-output ops with an explicit "shapes" attribute.
 Status ExplicitShapes(InferenceContext* c);
 
+// Shape function for SparseReduceMax and SparseReduceSum.
+Status SparseReduceShapeFn(InferenceContext* c);
+
 }  // namespace shape_inference
 
 }  // namespace tensorflow

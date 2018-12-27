@@ -28,11 +28,13 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import session_debug_testlib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
+@test_util.run_v1_only("b/120545219")
 class SessionDebugFileTest(session_debug_testlib.SessionDebugTestBase):
 
   def _debug_urls(self, run_number=None):

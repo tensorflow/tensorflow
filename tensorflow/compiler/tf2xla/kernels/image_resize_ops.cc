@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -231,20 +230,22 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
     num_extended[0] = upper_padding[0] / (dims.kernel_size[0]);
     num_extended[1] = upper_padding[1] / (dims.kernel_size[1]);
 
+    const int64 batch_dim_size =
+        builder->GetShape(input).ValueOrDie().dimensions(0);
     if (num_extended[0] > 0) {
-      auto slice =
-          xla::Slice(input_data, {0, in_size[0] - 1, 0, 0},
-                     {1, in_size[0], in_size[1], channels}, {1, 1, 1, 1});
+      auto slice = xla::Slice(
+          input_data, {0, in_size[0] - 1, 0, 0},
+          {batch_dim_size, in_size[0], in_size[1], channels}, {1, 1, 1, 1});
       for (int i = 0; i < num_extended[0]; i++) {
         input_data = xla::ConcatInDim(builder, {input_data, slice}, 1);
       }
     }
 
     if (num_extended[1] > 0) {
-      auto slice =
-          xla::Slice(input_data, {0, 0, in_size[1] - 1, 0},
-                     {1, in_size[0] + num_extended[0], in_size[1], channels},
-                     {1, 1, 1, 1});
+      auto slice = xla::Slice(
+          input_data, {0, 0, in_size[1] - 1, 0},
+          {batch_dim_size, in_size[0] + num_extended[0], in_size[1], channels},
+          {1, 1, 1, 1});
       for (int i = 0; i < num_extended[1]; i++) {
         input_data = xla::ConcatInDim(builder, {input_data, slice}, 2);
       }

@@ -41,7 +41,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static Device* NewDevice(const string& type, const string& name) {
+static std::unique_ptr<Device> NewDevice(const string& type,
+                                         const string& name) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
@@ -52,7 +53,7 @@ static Device* NewDevice(const string& type, const string& name) {
   attr.set_name(name);
   attr.set_device_type(type);
   attr.mutable_locality()->set_numa_node(3);  // a non-default value
-  return new FakeDevice(attr);
+  return absl::make_unique<FakeDevice>(attr);
 }
 
 static int64 kStepId = 123;
@@ -104,7 +105,7 @@ class FakeWorker : public TestWorkerInterface {
             // bytes in the response.
             RecvBufRespExtra extra;
             int64 num_bytes = h->prod_value->TotalBytes();
-            extra.set_tensor_content(string(
+            extra.add_tensor_content(string(
                 reinterpret_cast<const char*>(DMAHelper::base(h->prod_value)),
                 num_bytes));
             response->mutable_transport_options()->PackFrom(extra);
@@ -211,16 +212,16 @@ class CollRMADistTest : public ::testing::Test {
 
   void DefineWorker(const ConfigProto& config, const string& worker_name,
                     const string& device_type, int num_devices) {
-    std::vector<Device*> devices;
+    std::vector<std::unique_ptr<Device>> devices;
     for (int i = 0; i < num_devices; ++i) {
       devices.push_back(NewDevice(
           device_type,
           strings::StrCat(worker_name, "/device:", device_type, ":", i)));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(devices);
+    DeviceMgr* dev_mgr = new DeviceMgr(std::move(devices));
     device_mgrs_.push_back(dev_mgr);
     std::vector<string>* dv = &dev_by_task_[worker_name];
-    for (auto d : devices) {
+    for (auto d : dev_mgr->ListDevices()) {
       dv->push_back(d->name());
     }
     DeviceResolverDistributed* dev_res =

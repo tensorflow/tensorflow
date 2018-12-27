@@ -7,7 +7,7 @@ This document describes how the broadcasting semantics in XLA work.
 Broadcasting is the process of making arrays with different shapes have
 compatible shapes for arithmetic operations. The terminology is borrowed from
 Numpy
-[(broadcasting)](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+[broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 
 Broadcasting may be required for operations between multi-dimensional arrays of
 different ranks, or between multi-dimensional arrays with different but
@@ -28,8 +28,8 @@ by replicating it over rows to get:
     |1 2 3| + |7 8 9| = |8  10 12|
     |4 5 6|   |7 8 9|   |11 13 15|
 
-In Numpy, this is called [broadcasting]
-(http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+In Numpy, this is called
+[broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 
 ## Principles
 
@@ -161,8 +161,8 @@ Examples:
 A special case arises, and is also supported, where each of the input arrays has
 a degenerate dimension at a different index. In this case, the result is an
 "outer operation": (2,1) and (1,3) broadcast to (2,3). For more examples,
-consult the [Numpy documentation on
-broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
+consult the
+[Numpy documentation on broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 
 ## Broadcast composition
 

@@ -43,7 +43,17 @@ class GrpcWorkerCache : public WorkerCachePartial {
         local_worker_(local_worker),
         channel_cache_(channel_cache),
         threads_(kGrpcWorkerCacheThreadCount),
-        next_round_robin_assignment_(0) {}
+        next_round_robin_assignment_(0) {
+    // NOTE: We don't yet have any reason to assign NUMA affinity to this
+    // ThreadPool.  If there's only a single NIC it shouldn't make any
+    // difference since presumably it is handling memory from all nodes.
+    ThreadOptions options;
+    options.numa_node = port::kNUMANoAffinity;
+    const int kNumCallbackThreads = 10;
+    callback_threadpool_.reset(new thread::ThreadPool(
+        Env::Default(), options, "grpc_wcache_callback", kNumCallbackThreads,
+        false /*low_latency_hint*/, nullptr /*allocator*/));
+  }
 
   // Explicit destructor to control destruction order.
   ~GrpcWorkerCache() override {
@@ -67,7 +77,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
       if (!channel) return nullptr;
       return NewGrpcRemoteWorker(
           channel, threads_[AssignWorkerToThread(target)].completion_queue(),
-          &logger_);
+          callback_threadpool_.get(), &logger_);
     }
   }
 
@@ -137,6 +147,8 @@ class GrpcWorkerCache : public WorkerCachePartial {
   std::shared_ptr<GrpcChannelCache> channel_cache_;
   WorkerCacheLogger logger_;
   std::vector<GrpcWorkerCacheThread> threads_;
+
+  std::unique_ptr<thread::ThreadPool> callback_threadpool_;
 
   mutex assignment_mu_;
   std::unordered_map<std::string, size_t> target_assignments_

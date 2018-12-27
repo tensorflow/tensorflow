@@ -83,9 +83,16 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
   {
     int full_index = 0;
 
-    const auto& strides_flat = sparse.strides_tensor.flat<T>();
+    const T* const strides_flat = sparse.strides_tensor.vec<T>().data();
     dense->begin_valid = sparse.begin_tensor != nullptr;
     dense->end_valid = sparse.end_tensor != nullptr;
+
+    const T* const begin_flat = sparse.begin_tensor != nullptr
+                                    ? sparse.begin_tensor->vec<T>().data()
+                                    : nullptr;
+    const T* const end_flat = sparse.end_tensor != nullptr
+                                  ? sparse.end_tensor->vec<T>().data()
+                                  : nullptr;
 
     for (int i = 0; i < sparse.dims; i++) {
       if ((1 << i) & sparse.ellipsis_mask) {
@@ -112,16 +119,14 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
         }
 
         // Gather slicing spec into appropriate index
-        if (sparse.begin_tensor != nullptr) {
-          const auto& begin_flat = sparse.begin_tensor->flat<T>();
-          dense->begin[full_index] = internal::SubtleMustCopy<T>(begin_flat(i));
+        if (begin_flat != nullptr) {
+          dense->begin[full_index] = internal::SubtleMustCopy<T>(begin_flat[i]);
         }
-        if (sparse.end_tensor != nullptr) {
-          const auto& end_flat = sparse.end_tensor->flat<T>();
-          dense->end[full_index] = internal::SubtleMustCopy<T>(end_flat(i));
+        if (end_flat != nullptr) {
+          dense->end[full_index] = internal::SubtleMustCopy<T>(end_flat[i]);
         }
         dense->strides[full_index] =
-            internal::SubtleMustCopy<T>(strides_flat(i));
+            internal::SubtleMustCopy<T>(strides_flat[i]);
         if (sparse.begin_mask & (1 << i)) {
           dense->begin_mask |= (1 << full_index);
         }

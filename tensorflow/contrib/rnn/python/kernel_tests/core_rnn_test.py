@@ -227,7 +227,7 @@ class RNNTest(test.TestCase):
   def testDropout(self):
     cell = Plus1RNNCell()
     full_dropout_cell = rnn_cell.DropoutWrapper(
-        cell, input_keep_prob=1e-12, seed=0)
+        cell, input_keep_prob=1e-6, seed=0)
     (name, dep), = full_dropout_cell._checkpoint_dependencies
     self.assertIs(dep, cell)
     self.assertEqual("cell", name)

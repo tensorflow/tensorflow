@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
@@ -39,11 +40,11 @@ class LogarithmOpTest(test.TestCase):
 
   def _verifyLogarithm(self, x, np_type):
     inp = x.astype(np_type)
-    with self.cached_session(use_gpu=True):
+    with test_util.use_gpu():
       # Verify that expm(logm(A)) == A.
       tf_ans = linalg_impl.matrix_exponential(
           gen_linalg_ops.matrix_logarithm(inp))
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertAllClose(inp, out, rtol=1e-4, atol=1e-3)
 
   def _verifyLogarithmComplex(self, x):
@@ -83,6 +84,7 @@ class LogarithmOpTest(test.TestCase):
     # Complex batch
     self._verifyLogarithmComplex(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_v1_only("b/120545219")
   def testNonSquareMatrix(self):
     # When the logarithm of a non-square matrix is attempted we should return
     # an error
@@ -90,6 +92,7 @@ class LogarithmOpTest(test.TestCase):
       gen_linalg_ops.matrix_logarithm(
           np.array([[1., 2., 3.], [3., 4., 5.]], dtype=np.complex64))
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The input to the logarithm should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.], dtype=dtypes.complex64)
@@ -120,6 +123,7 @@ class LogarithmOpTest(test.TestCase):
             size=np.prod(shape)).reshape(shape).astype(np.complex128)
         self._verifyLogarithmComplex(matrix)
 
+  @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       matrix1 = math_ops.cast(
@@ -128,7 +132,7 @@ class LogarithmOpTest(test.TestCase):
           random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
       logm1 = gen_linalg_ops.matrix_logarithm(matrix1)
       logm2 = gen_linalg_ops.matrix_logarithm(matrix2)
-      logm = sess.run([logm1, logm2])
+      logm = self.evaluate([logm1, logm2])
       self.assertAllEqual(logm[0], logm[1])
 
 

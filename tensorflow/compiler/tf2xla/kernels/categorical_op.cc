@@ -21,10 +21,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -57,11 +60,9 @@ class CategoricalOp : public XlaOpKernel {
     const int64 batch_size = logits_shape.dim_size(0);
     const int64 num_classes = logits_shape.dim_size(1);
 
-    xla::XlaBuilder* builder = ctx->builder();
-
     xla::Shape uniform_shape;
     int class_dimension;
-    if (num_samples > 1) {
+    if (num_samples != 1) {
       std::array<int64, 3> uniform_shape_array = {
           {batch_size, num_samples, num_classes}};
       xla::PrimitiveType uniform_xla_type;
@@ -83,16 +84,16 @@ class CategoricalOp : public XlaOpKernel {
           xla::ShapeUtil::MakeShape(uniform_xla_type, uniform_shape_array);
       class_dimension = 1;
     }
-    xla::XlaOp uniforms =
-        xla::RngUniform(XlaHelpers::Zero(builder, input_type(0)),
-                        XlaHelpers::One(builder, input_type(0)), uniform_shape);
+    xla::PrimitiveType type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(0), &type));
+    xla::XlaOp log_uniforms = GetLogUniforms(uniform_shape, type, ctx);
 
     // Use Gumbel softmax trick to generate categorical samples.
     // See:
     // https://hips.seas.harvard.edu/blog/2013/04/06/the-gumbel-max-trick-for-discrete-distributions/
     // TODO(b/68769470): Switch to using a cumulative sum approach.
     auto softmax_entries =
-        xla::Sub(logits, xla::Log(-xla::Log(uniforms)),
+        xla::Sub(logits, log_uniforms,
                  /*broadcast_dimensions=*/{0, class_dimension});
 
     xla::PrimitiveType xla_output_type;
@@ -107,6 +108,16 @@ class CategoricalOp : public XlaOpKernel {
     ctx->SetOutput(0, argmax);
   }
 
+  virtual xla::XlaOp GetLogUniforms(xla::Shape uniform_shape,
+                                    xla::PrimitiveType type,
+                                    XlaOpKernelContext* ctx) {
+    xla::XlaBuilder* builder = ctx->builder();
+    auto uniforms =
+        xla::RngUniform(XlaHelpers::Zero(builder, input_type(0)),
+                        XlaHelpers::One(builder, input_type(0)), uniform_shape);
+    return xla::Log(-xla::Log(uniforms));
+  }
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(CategoricalOp);
 };
@@ -114,6 +125,49 @@ class CategoricalOp : public XlaOpKernel {
 // TODO(b/68769717): Rename this sampler to Categorical.
 REGISTER_XLA_OP(Name("Multinomial").CompileTimeConstantInput("num_samples"),
                 CategoricalOp);
+
+class StatelessCategoricalOp : public CategoricalOp {
+ public:
+  explicit StatelessCategoricalOp(OpKernelConstruction* ctx)
+      : CategoricalOp(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
+  }
+
+  xla::XlaOp GetLogUniforms(xla::Shape uniform_shape, xla::PrimitiveType type,
+                            XlaOpKernelContext* ctx) override {
+    xla::XlaOp seed = ctx->Input(2);
+    auto seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
+    auto seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
+
+    xla::XlaBuilder* builder = ctx->builder();
+    if (uniform_shape.element_type() == xla::BF16) {
+      uniform_shape.set_element_type(xla::F32);
+    }
+    auto uniforms = xla::StatelessRngUniform(
+        {seed0, seed1}, uniform_shape, XlaHelpers::Zero(builder, DT_FLOAT),
+        XlaHelpers::One(builder, DT_FLOAT));
+    return xla::ConvertElementType(xla::Log(-xla::Log(uniforms)), type);
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape seed_shape = ctx->InputShape(2);
+    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_shape.DebugString()));
+    CategoricalOp::Compile(ctx);
+  }
+
+ private:
+  DataType dtype_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(StatelessCategoricalOp);
+};
+
+REGISTER_XLA_OP(Name("StatelessMultinomial")
+                    .CompileTimeConstantInput("num_samples")
+                    .TypeConstraint("T", {DT_FLOAT, DT_BFLOAT16})
+                    .TypeConstraint("Tseed", DT_INT32),
+                StatelessCategoricalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

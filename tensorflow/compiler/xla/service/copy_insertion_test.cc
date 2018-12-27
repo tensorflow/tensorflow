@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <set>
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -94,7 +94,7 @@ TEST_F(CopyInsertionTest, SingleParameter) {
 
   EXPECT_THAT(x->users(), UnorderedElementsAre(tuple));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   InsertCopies(module.get());
@@ -114,7 +114,7 @@ TEST_F(CopyInsertionTest, SingleConstant) {
 
   EXPECT_THAT(constant->users(), UnorderedElementsAre(tuple));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   InsertCopies(module.get());
@@ -127,7 +127,7 @@ TEST_F(CopyInsertionTest, SingleConstant) {
 TEST_F(CopyInsertionTest, ExistingCopiesNotRemoved) {
   // Verify that kCopy instructions which change layout and exist before
   // copy-insertion remain in the graph after copy-insertion.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* constant =
@@ -181,7 +181,7 @@ TEST_F(CopyInsertionTest, MultipleConstantsAndParameters) {
 
   builder.AddInstruction(HloInstruction::CreateTuple({constant2, x, add}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   InsertCopies(module.get());
@@ -217,7 +217,7 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
   EXPECT_THAT(constant2->users(), UnorderedElementsAre(tuple1, tuple2));
   EXPECT_THAT(constant3->users(), UnorderedElementsAre(tuple2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   HloInstruction* old_root = module->entry_computation()->root_instruction();
@@ -238,7 +238,7 @@ TEST_F(CopyInsertionTest, BitcastParameter) {
   HloInstruction* bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(F32, {2, 2}), HloOpcode::kBitcast, x));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(x->users(), UnorderedElementsAre(bitcast));
@@ -261,7 +261,7 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
   HloInstruction* bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(F32, {2, 2}), HloOpcode::kBitcast, constant));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(constant->users(), UnorderedElementsAre(bitcast));
@@ -283,7 +283,7 @@ TEST_F(CopyInsertionTest, BitcastTupleElementParameter) {
       ShapeUtil::MakeShape(F32, {2, 2}), HloOpcode::kBitcast, x));
   builder.AddInstruction(HloInstruction::CreateTuple({bitcast}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(x->users(), UnorderedElementsAre(bitcast));
@@ -310,7 +310,7 @@ TEST_F(CopyInsertionTest, NestedTupleParameter) {
            ShapeUtil::MakeShape(F32, {42})}),
       "param0"));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(HloOpcode::kParameter,
@@ -351,7 +351,7 @@ TEST_F(CopyInsertionTest, ElementOfNestedTupleParameter) {
   auto gte = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
       ShapeUtil::GetSubshape(param->shape(), {0}), param, 0));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(gte, module->entry_computation()->root_instruction());
@@ -388,7 +388,7 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::GetSubshape(select->shape(), {0}), select, 0));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(gte, module->entry_computation()->root_instruction());
@@ -403,7 +403,7 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
 
 class WhileCopyInsertionTest : public CopyInsertionTest {
  protected:
-  WhileCopyInsertionTest() : module_(CreateNewModule()) {}
+  WhileCopyInsertionTest() : module_(CreateNewUnverifiedModule()) {}
 
   // Builds a While condition computation which reads the induction variable
   // from the tuple parameter, and returns a predicate indicating whether this
@@ -1295,7 +1295,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinctUsedByTwoWhileLoops) {
 TEST_F(CopyInsertionTest, SwizzlingWhile) {
   // Test a while instruction with a body which permutes its tuple parameter
   // elements.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape loop_state_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1362,7 +1362,7 @@ TEST_F(CopyInsertionTest, CrossingParameters) {
   //   |  / \ |
   //   | /   \|
   //  (p1  ,  p0)
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1395,7 +1395,7 @@ TEST_F(CopyInsertionTest, ParametersAliasing) {
   //   |      |
   //   |      |
   //  (p0 ,  p1)
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1428,7 +1428,7 @@ TEST_F(CopyInsertionTest, ParameterWithNoAliasing) {
   //   |      |
   //   |      |
   //  (p0 ,  p1)
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1461,7 +1461,7 @@ TEST_F(CopyInsertionTest, ParameterWithPartialAliasing) {
   //   |      |
   //   |      |
   //  (p0 ,  p1)
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1496,7 +1496,7 @@ TEST_F(CopyInsertionTest, ParameterAndParallelOpsWithPartialAliasing) {
   //   |    |      |
   //   |    |      |
   //   +-- (p0 ,  p1)
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1534,7 +1534,7 @@ TEST_F(CopyInsertionTest, ParameterAndOpsWithPartialAliasing) {
   //   |    Add----+
   //   |    |      |
   //   +-- (p0 ,  p1)
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1569,7 +1569,7 @@ TEST_F(CopyInsertionTest, SwizzlingWhileWithOneOp) {
   // the operation (instruction) on the element makes the live range of the
   // respective input and output elements different than if the instruction were
   // not there (as in the SwizzlingWhile test above).
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape loop_state_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1632,7 +1632,7 @@ TEST_F(CopyInsertionTest, SwizzlingWhileSharedInput) {
   // the while body is a single constant (both loop state elements are the same
   // constant). This means no copies are necessary because both loop state
   // elements are the same so interchanging them is a no-op.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape loop_state_shape =
       ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
 
@@ -1693,7 +1693,7 @@ TEST_F(CopyInsertionTest, SequentialWhiles) {
   const Shape loop_state_shape = ShapeUtil::MakeTupleShape(
       {element_shape, element_shape, element_shape, element_shape});
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto param_0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, element_shape, "param_0"));
@@ -1783,7 +1783,7 @@ TEST_F(CopyInsertionTest, SequentialWhiles) {
 TEST_F(CopyInsertionTest, WhileBodyWithConstantRoot) {
   // Test a while body and condition which are each simply a constant (root of
   // computation is a constant). The body constant should be copied.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto param_0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param_0"));
@@ -1896,7 +1896,7 @@ void BM_SequentialWhiles(int num_iters, int num_whiles) {
   tensorflow::testing::StopTiming();
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
-    config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+    config.set_debug_options(GetDebugOptionsFromFlags());
     HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_SequentialWhiles");
@@ -1936,7 +1936,7 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
   tensorflow::testing::StopTiming();
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
-    config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+    config.set_debug_options(GetDebugOptionsFromFlags());
     HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
@@ -2003,7 +2003,7 @@ std::unique_ptr<HloComputation> MakeBenchmarkWhileBody(
 void BM_ManyElementTuple(int num_iters, const int num_tuple_inputs) {
   tensorflow::testing::StopTiming();
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsFromFlags());
   CopyInsertion copy_insertion;
   const Shape element_shape = ShapeUtil::MakeShape(F32, {});
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);

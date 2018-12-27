@@ -27,14 +27,13 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import parsing_ops as contrib_parsing_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging
 
 # Helpers for creating Example objects
 example = example_pb2.Example
@@ -49,70 +48,63 @@ feature_lists = lambda d: feature_pb2.FeatureLists(feature_list=d)
 sequence_example = example_pb2.SequenceExample
 
 
-def _compare_output_to_expected(tester, dict_tensors, expected_tensors,
-                                flat_output):
-  tester.assertEqual(set(dict_tensors.keys()), set(expected_tensors.keys()))
-
-  i = 0  # Index into the flattened output of session.run()
-  for k, v in sorted(dict_tensors.items()):
-    # TODO(shivaniagrawal): flat_output is same as v.
-    expected_v = expected_tensors[k]
-    tf_logging.info("Comparing key: %s", k)
-    print("i", i, "flat_output", flat_output[i], "expected_v", expected_v)
-    if sparse_tensor.is_sparse(v):
-      # Three outputs for SparseTensor : indices, values, shape.
-      tester.assertEqual([k, len(expected_v)], [k, 3])
-      print("i", i, "flat_output", flat_output[i].indices, "expected_v",
-            expected_v[0])
-      tester.assertAllEqual(expected_v[0], flat_output[i].indices)
-      tester.assertAllEqual(expected_v[1], flat_output[i].values)
-      tester.assertAllEqual(expected_v[2], flat_output[i].dense_shape)
-    else:
-      # One output for standard Tensor.
-      tester.assertAllEqual(expected_v, flat_output[i])
-    i += 1
-
-
+@test_util.run_all_in_graph_and_eager_modes
 class ParseExampleDatasetTest(test_base.DatasetTestBase):
+
+  def _compare_output_to_expected(self, dict_tensors, expected_tensors):
+    self.assertEqual(set(dict_tensors.keys()), set(expected_tensors.keys()))
+
+    for k, v in sorted(dict_tensors.items()):
+      expected_v = expected_tensors[k]
+      if sparse_tensor.is_sparse(v):
+        self.assertSparseValuesEqual(expected_v, v)
+      else:
+        # One output for standard Tensor.
+        self.assertAllEqual(expected_v, v)
 
   def _test(self,
             input_tensor,
             feature_val,
             expected_values=None,
-            expected_err=None):
+            expected_err=None,
+            create_iterator_twice=False):
 
-    with self.cached_session() as sess:
-      if expected_err:
-        with self.assertRaisesWithPredicateMatch(expected_err[0],
-                                                 expected_err[1]):
-          dataset = dataset_ops.Dataset.from_tensors(input_tensor).apply(
-              contrib_parsing_ops.parse_example_dataset(feature_val))
-          get_next = dataset.make_one_shot_iterator().get_next()
-          sess.run(get_next)
-        return
-      else:
-        # Returns dict w/ Tensors and SparseTensors.
-        # Check values.
+    if expected_err:
+      with self.assertRaisesWithPredicateMatch(expected_err[0],
+                                               expected_err[1]):
         dataset = dataset_ops.Dataset.from_tensors(input_tensor).apply(
             contrib_parsing_ops.parse_example_dataset(feature_val))
-        get_next = dataset.make_one_shot_iterator().get_next()
-        result = sess.run(get_next)
-        flattened = nest.flatten(result)
-        print("result", result, "expected_values", expected_values)
-        _compare_output_to_expected(self, result, expected_values, flattened)
-
-      # Check shapes; if serialized is a Tensor we need its size to
-      # properly check.
-      batch_size = (
-          input_tensor.eval().size if isinstance(input_tensor, ops.Tensor) else
-          np.asarray(input_tensor).size)
-      for k, f in feature_val.items():
-        print("output_shapes as list ",
-              tuple(dataset.output_shapes[k].as_list()))
-        if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
-          self.assertEqual(dataset.output_shapes[k].as_list()[0], batch_size)
-        elif isinstance(f, parsing_ops.VarLenFeature):
-          self.assertEqual(dataset.output_shapes[k].as_list()[1], None)
+        get_next = self.getNext(dataset)
+        self.evaluate(get_next())
+      return
+    else:
+      # Returns dict w/ Tensors and SparseTensors.
+      # Check values.
+      dataset = dataset_ops.Dataset.from_tensors(input_tensor).apply(
+          contrib_parsing_ops.parse_example_dataset(feature_val))
+      get_next = self.getNext(dataset)
+      result = self.evaluate(get_next())
+      self._compare_output_to_expected(result, expected_values)
+      with self.assertRaises(errors_impl.OutOfRangeError):
+        self.evaluate(get_next())
+      with self.assertRaises(errors_impl.OutOfRangeError):
+        self.evaluate(get_next())
+      if create_iterator_twice:
+        get_next = self.getNext(dataset)
+        result = self.evaluate(get_next())
+        self._compare_output_to_expected(result, expected_values)
+        with self.assertRaises(errors_impl.OutOfRangeError):
+          self.evaluate(get_next())
+    # Check shapes; if serialized is a Tensor we need its size to
+    # properly check.
+    batch_size = (
+        self.evaluate(input_tensor).size if isinstance(input_tensor, ops.Tensor)
+        else np.asarray(input_tensor).size)
+    for k, f in feature_val.items():
+      if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
+        self.assertEqual(dataset.output_shapes[k].as_list()[0], batch_size)
+      elif isinstance(f, parsing_ops.VarLenFeature):
+        self.assertEqual(dataset.output_shapes[k].as_list()[1], None)
 
   def testEmptySerializedWithAllDefaults(self):
     sparse_name = "st_a"
@@ -123,13 +115,10 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
     b_default = np.random.rand(3, 3).astype(bytes)
     c_default = np.random.rand(2).astype(np.float32)
 
-    expected_st_a = (  # indices, values, shape
-        np.empty(
-            (0, 2), dtype=np.int64),  # indices
-        np.empty(
-            (0,), dtype=np.int64),  # sp_a is DT_INT64
-        np.array(
-            [2, 0], dtype=np.int64))  # batch == 2, max_elems = 0
+    expected_st_a = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.empty((0, 2), dtype=np.int64),  # indices
+        np.empty((0,), dtype=np.int64),  # sp_a is DT_INT64
+        np.array([2, 0], dtype=np.int64))  # batch == 2, max_elems = 0
 
     expected_output = {
         sparse_name: expected_st_a,
@@ -152,8 +141,10 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
                 parsing_ops.FixedLenFeature(
                     (2,), dtypes.float32, default_value=c_default),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
+  @test_util.run_deprecated_v1
   def testEmptySerializedWithoutDefaultsShouldFail(self):
     input_features = {
         "st_a":
@@ -187,6 +178,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_err=(errors_impl.InvalidArgumentError,
                       "Feature: c \\(data type: float\\) is required"))
 
+  @test_util.run_deprecated_v1
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
         example(features=features({
@@ -233,17 +225,14 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
 
     serialized = [m.SerializeToString() for m in original]
 
-    expected_st_c = (  # indices, values, shape
-        np.array(
-            [[0, 0], [0, 1], [3, 0], [3, 1], [3, 2]], dtype=np.int64), np.array(
-                [3.0, 4.0, 1.0, 2.0, -1.0], dtype=np.float32), np.array(
-                    [4, 3], dtype=np.int64))  # batch == 2, max_elems = 3
+    expected_st_c = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.array([[0, 0], [0, 1], [3, 0], [3, 1], [3, 2]], dtype=np.int64),
+        np.array([3.0, 4.0, 1.0, 2.0, -1.0], dtype=np.float32),
+        np.array([4, 3], dtype=np.int64))  # batch == 2, max_elems = 3
 
-    expected_st_d = (  # indices, values, shape
-        np.array(
-            [[3, 0]], dtype=np.int64), np.array(
-                ["hi"], dtype=bytes), np.array(
-                    [4, 1], dtype=np.int64))  # batch == 2, max_elems = 1
+    expected_st_d = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.array([[3, 0]], dtype=np.int64), np.array(["hi"], dtype=bytes),
+        np.array([4, 1], dtype=np.int64))  # batch == 2, max_elems = 1
 
     expected_output = {
         "st_c": expected_st_c,
@@ -255,7 +244,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
             "st_c": parsing_ops.VarLenFeature(dtypes.float32),
             "st_d": parsing_ops.VarLenFeature(dtypes.string)
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   def testSerializedContainingSparseFeature(self):
     original = [
@@ -280,19 +270,18 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
 
     serialized = [m.SerializeToString() for m in original]
 
-    expected_sp = (  # indices, values, shape
-        np.array(
-            [[0, 5], [0, 10], [3, 0], [3, 3], [3, 9]], dtype=np.int64),
-        np.array(
-            [3.0, 4.0, 1.0, -1.0, 2.0], dtype=np.float32), np.array(
-                [4, 13], dtype=np.int64))  # batch == 4, max_elems = 13
+    expected_sp = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.array([[0, 5], [0, 10], [3, 0], [3, 3], [3, 9]], dtype=np.int64),
+        np.array([3.0, 4.0, 1.0, -1.0, 2.0], dtype=np.float32),
+        np.array([4, 13], dtype=np.int64))  # batch == 4, max_elems = 13
 
     expected_output = {"sp": expected_sp,}
 
     self._test(
         ops.convert_to_tensor(serialized),
         {"sp": parsing_ops.SparseFeature(["idx"], "val", dtypes.float32, [13])},
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   def testSerializedContainingSparseFeatureReuse(self):
     original = [
@@ -309,17 +298,15 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
 
     serialized = [m.SerializeToString() for m in original]
 
-    expected_sp1 = (  # indices, values, shape
-        np.array(
-            [[0, 5], [0, 10]], dtype=np.int64), np.array(
-                [3.0, 4.0], dtype=np.float32), np.array(
-                    [2, 13], dtype=np.int64))  # batch == 2, max_elems = 13
+    expected_sp1 = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.array([[0, 5], [0, 10]], dtype=np.int64),
+        np.array([3.0, 4.0], dtype=np.float32),
+        np.array([2, 13], dtype=np.int64))  # batch == 2, max_elems = 13
 
-    expected_sp2 = (  # indices, values, shape
-        np.array(
-            [[0, 5], [0, 10]], dtype=np.int64), np.array(
-                [5.0, 6.0], dtype=np.float32), np.array(
-                    [2, 7], dtype=np.int64))  # batch == 2, max_elems = 13
+    expected_sp2 = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.array([[0, 5], [0, 10]], dtype=np.int64),
+        np.array([5.0, 6.0], dtype=np.float32),
+        np.array([2, 7], dtype=np.int64))  # batch == 2, max_elems = 13
 
     expected_output = {
         "sp1": expected_sp1,
@@ -334,7 +321,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
                 parsing_ops.SparseFeature(
                     "idx", "val2", dtypes.float32, size=7, already_sorted=True)
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   def testSerializedContaining3DSparseFeature(self):
     original = [
@@ -361,11 +349,10 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
 
     serialized = [m.SerializeToString() for m in original]
 
-    expected_sp = (
+    expected_sp = sparse_tensor.SparseTensorValue(
         # indices
-        np.array(
-            [[0, 5, 0], [0, 10, 2], [3, 0, 1], [3, 3, 2], [3, 9, 0]],
-            dtype=np.int64),
+        np.array([[0, 5, 0], [0, 10, 2], [3, 0, 1], [3, 3, 2], [3, 9, 0]],
+                 dtype=np.int64),
         # values
         np.array([3.0, 4.0, 1.0, -1.0, 2.0], dtype=np.float32),
         # shape batch == 4, max_elems = 13
@@ -379,7 +366,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
                 parsing_ops.SparseFeature(["idx0", "idx1"], "val",
                                           dtypes.float32, [13, 3])
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   def testSerializedContainingDense(self):
     aname = "a"
@@ -413,7 +401,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
             bname:
                 parsing_ops.FixedLenFeature((1, 1, 1, 1), dtype=dtypes.string),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   # This test is identical as the previous one except
   # for the creation of 'serialized'.
@@ -459,7 +448,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
             bname:
                 parsing_ops.FixedLenFeature((1, 1, 1, 1), dtype=dtypes.string),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   def testSerializedContainingDenseScalar(self):
     original = [
@@ -482,7 +472,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
                 parsing_ops.FixedLenFeature(
                     (1,), dtype=dtypes.float32, default_value=-1),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   def testSerializedContainingDenseWithDefaults(self):
     original = [
@@ -519,21 +510,18 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
                 parsing_ops.FixedLenFeature(
                     (1, 1, 1, 1), dtype=dtypes.string, default_value="tmp_str"),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
-  def testSerializedContainingSparseAndSparseFeatureAndDenseWithNoDefault(self):
-    expected_st_a = (  # indices, values, shape
-        np.empty(
-            (0, 2), dtype=np.int64),  # indices
-        np.empty(
-            (0,), dtype=np.int64),  # sp_a is DT_INT64
-        np.array(
-            [2, 0], dtype=np.int64))  # batch == 2, max_elems = 0
-    expected_sp = (  # indices, values, shape
-        np.array(
-            [[0, 0], [0, 3], [1, 7]], dtype=np.int64), np.array(
-                ["a", "b", "c"], dtype="|S"), np.array(
-                    [2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
+  def testSerializedSparseAndSparseFeatureAndDenseWithNoDefault(self):
+    expected_st_a = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.empty((0, 2), dtype=np.int64),  # indices
+        np.empty((0,), dtype=np.int64),  # sp_a is DT_INT64
+        np.array([2, 0], dtype=np.int64))  # batch == 2, max_elems = 0
+    expected_sp = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.array([[0, 0], [0, 3], [1, 7]], dtype=np.int64),
+        np.array(["a", "b", "c"], dtype="|S"),
+        np.array([2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
 
     original = [
         example(features=features({
@@ -577,20 +565,19 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
             "c":
                 parsing_ops.FixedLenFeature((2,), dtypes.float32),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
-  def testSerializedContainingSparseAndSparseFeatureWithReuse(self):
-    expected_idx = (  # indices, values, shape
-        np.array(
-            [[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
-        np.array([0, 3, 7, 1]), np.array(
-            [2, 2], dtype=np.int64))  # batch == 4, max_elems = 2
+  def testerializedContainingSparseAndSparseFeatureWithReuse(self):
+    expected_idx = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.array([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=np.int64),
+        np.array([0, 3, 7, 1]),
+        np.array([2, 2], dtype=np.int64))  # batch == 4, max_elems = 2
 
-    expected_sp = (  # indices, values, shape
-        np.array(
-            [[0, 0], [0, 3], [1, 1], [1, 7]], dtype=np.int64), np.array(
-                ["a", "b", "d", "c"], dtype="|S"), np.array(
-                    [2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
+    expected_sp = sparse_tensor.SparseTensorValue(  # indices, values, shape
+        np.array([[0, 0], [0, 3], [1, 1], [1, 7]], dtype=np.int64),
+        np.array(["a", "b", "d", "c"], dtype="|S"),
+        np.array([2, 13], dtype=np.int64))  # batch == 4, max_elems = 13
 
     original = [
         example(features=features({
@@ -616,7 +603,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
             "sp":
                 parsing_ops.SparseFeature(["idx"], "val", dtypes.string, [13]),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   def _testSerializedContainingVarLenDenseLargerBatch(self, batch_size):
     # During parsing, data read from the serialized proto is stored in buffers.
@@ -675,18 +663,19 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
                     allow_missing=True,
                     default_value="default"),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
   def testSerializedContainingVarLenDenseLargerBatch(self):
     np.random.seed(3456)
     for batch_size in (1, 10, 20, 100, 256):
       self._testSerializedContainingVarLenDenseLargerBatch(batch_size)
 
-  def testSerializedContainingVarLenDense(self):
+  @test_util.run_deprecated_v1
+  def testSkipEagerSerializedShapeMismatch(self):
     aname = "a"
     bname = "b"
     cname = "c"
-    dname = "d"
     original = [
         example(features=features({
             cname: int64_feature([2]),
@@ -703,6 +692,48 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
             aname: float_feature([]),
             cname: int64_feature([3]),
         })),
+    ]
+
+    serialized = [m.SerializeToString() for m in original]
+    self._test(
+        ops.convert_to_tensor(serialized), {
+            aname:
+                parsing_ops.FixedLenSequenceFeature((2, 1),
+                                                    dtype=dtypes.float32,
+                                                    allow_missing=True,
+                                                    default_value=[]),
+            bname:
+                parsing_ops.FixedLenSequenceFeature(
+                    (2, 1, 1), dtype=dtypes.string, allow_missing=True),
+        },
+        expected_err=(ValueError,
+                      "Cannot reshape a tensor with 0 elements to shape"))
+
+  @test_util.run_deprecated_v1
+  def testSerializedContainingVarLenDense(self):
+    aname = "a"
+    bname = "b"
+    cname = "c"
+    dname = "d"
+    original = [
+        example(features=features({
+            cname: int64_feature([2]),
+        })),
+        example(
+            features=features({
+                aname: float_feature([1, 1]),
+                bname: bytes_feature([b"b0_str", b"b1_str"]),
+            })),
+        example(
+            features=features({
+                aname: float_feature([-1, -1, 2, 2]),
+                bname: bytes_feature([b"b1"]),
+            })),
+        example(
+            features=features({
+                aname: float_feature([]),
+                cname: int64_feature([3]),
+            })),
     ]
 
     serialized = [m.SerializeToString() for m in original]
@@ -742,7 +773,8 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
                 parsing_ops.FixedLenSequenceFeature(
                     shape=[], dtype=dtypes.string, allow_missing=True),
         },
-        expected_values=expected_output)
+        expected_values=expected_output,
+        create_iterator_twice=True)
 
     # Test with padding values.
     expected_output_custom_padding = dict(expected_output)
@@ -788,21 +820,6 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase):
         expected_err=(
             errors_impl.OpError, "Key: b, Index: 2.  "
             "Number of bytes values is not a multiple of stride length."))
-
-    self._test(
-        ops.convert_to_tensor(serialized), {
-            aname:
-                parsing_ops.FixedLenSequenceFeature(
-                    (2, 1),
-                    dtype=dtypes.float32,
-                    allow_missing=True,
-                    default_value=[]),
-            bname:
-                parsing_ops.FixedLenSequenceFeature(
-                    (2, 1, 1), dtype=dtypes.string, allow_missing=True),
-        },
-        expected_err=(ValueError,
-                      "Cannot reshape a tensor with 0 elements to shape"))
 
     self._test(
         ops.convert_to_tensor(serialized), {

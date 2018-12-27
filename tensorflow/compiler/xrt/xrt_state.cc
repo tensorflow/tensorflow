@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_state.h"
 
 #include <stdint.h>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
@@ -41,11 +43,44 @@ namespace tensorflow {
 
 namespace {
 
+class BufferAllocStats {
+ public:
+  struct Stats {
+    int64 count = 0;
+    int64 size = 0;
+  };
+
+  Stats ReportAlloc(int64 device, int64 msize) {
+    mutex_lock lock(lock_);
+    Stats* device_stats = &stats_[device];
+    device_stats->count += 1;
+    device_stats->size += msize;
+    return *device_stats;
+  }
+
+  Stats ReportFree(int64 device, int64 msize) {
+    mutex_lock lock(lock_);
+    Stats* device_stats = &stats_[device];
+    device_stats->count -= 1;
+    device_stats->size -= msize;
+    return *device_stats;
+  }
+
+ private:
+  mutable mutex lock_;
+  std::map<int64, Stats> stats_;
+};
+
 const char* kTupleContainer = "tuples";
 
 int64 get_uid() {
   uint64 unsigned_rand = random::New64() & INT64_MAX;
   return static_cast<int64>(unsigned_rand);
+}
+
+BufferAllocStats* GetAllocStats() {
+  static BufferAllocStats* stats = new BufferAllocStats();
+  return stats;
 }
 
 Status AllocateScopedShapedBuffer(
@@ -100,9 +135,19 @@ XRTBufferAllocation::XRTBufferAllocation(const se::DeviceMemoryBase& allocation,
                                          xla::DeviceMemoryAllocator* allocator)
     : allocation_(allocation),
       device_ordinal_(device_ordinal),
-      allocator_(allocator) {}
+      allocator_(allocator) {
+  if (VLOG_IS_ON(2)) {
+    auto stats =
+        GetAllocStats()->ReportAlloc(device_ordinal_, allocation_.size());
+    LOG(INFO) << "XRT Allocation Stats: device=" << device_ordinal_
+              << " count=" << stats.count << " size=" << stats.size;
+  }
+}
 
 XRTBufferAllocation::~XRTBufferAllocation() {
+  if (VLOG_IS_ON(2)) {
+    GetAllocStats()->ReportFree(device_ordinal_, allocation_.size());
+  }
   // Deallocate explicitly allows allocation_ to be null.
   Status s = allocator_->Deallocate(device_ordinal_, allocation_);
   // Nothing to do but check fail here if memory datastructures are corrupted.
@@ -183,6 +228,20 @@ Status XRTTupleAllocation::ToLiteral(xla::Backend* backend, int device_ordinal,
   return Status::OK();
 }
 
+Status XRTTupleAllocation::WriteLiteral(xla::Backend* backend,
+                                        const xla::Literal& literal) {
+  if (!xla::ShapeUtil::Equal(literal.shape(), on_host_shape())) {
+    return errors::InvalidArgument(
+        "New literal shape not matching the existing one: literal=",
+        xla::ShapeUtil::HumanStringWithLayout(literal.shape()),
+        " device=", xla::ShapeUtil::HumanStringWithLayout(on_host_shape()));
+  }
+  auto transfer_manager = backend->transfer_manager();
+  TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal()));
+  return transfer_manager->TransferLiteralToDevice(stream.get(), literal,
+                                                   ToShapedBuffer());
+}
+
 void XRTTupleAllocation::DiscardAllocation(
     const xla::ShapeIndex& buffer_index) {
   buffers_.element(buffer_index)->DiscardAllocation();
@@ -211,6 +270,11 @@ const se::DeviceMemoryBase& XRTTupleAllocation::root_allocation() {
                                                                 int64 key) {
   string key_string = absl::StrCat(key);
   return rm->Delete<XRTTupleAllocation>(kTupleContainer, key_string);
+}
+
+/* static */ Status XRTTupleAllocation::ReleaseAllAllocations(ResourceMgr* rm) {
+  VLOG(1) << "Releasing all XRT held device memory";
+  return rm->Cleanup(kTupleContainer);
 }
 
 // Helper typedef to make ShapeTree ForEach helper lambda signatures more

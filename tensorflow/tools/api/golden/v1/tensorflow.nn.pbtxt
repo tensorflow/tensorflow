@@ -45,6 +45,10 @@ tf_module {
     argspec: "args=[\'cell_fw\', \'cell_bw\', \'inputs\', \'sequence_length\', \'initial_state_fw\', \'initial_state_bw\', \'dtype\', \'parallel_iterations\', \'swap_memory\', \'time_major\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\', \'False\', \'None\'], "
   }
   member_method {
+    name: "collapse_repeated"
+    argspec: "args=[\'labels\', \'seq_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "compute_accidental_hits"
     argspec: "args=[\'true_classes\', \'sampled_candidates\', \'num_true\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
@@ -71,6 +75,10 @@ tf_module {
   member_method {
     name: "conv3d"
     argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "conv3d_backprop_filter"
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'[1, 1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "conv3d_backprop_filter_v2"
@@ -105,12 +113,28 @@ tf_module {
     argspec: "args=[\'labels\', \'inputs\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'time_major\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'True\'], "
   }
   member_method {
+    name: "ctc_loss_v2"
+    argspec: "args=[\'labels\', \'logits\', \'label_length\', \'logit_length\', \'logits_time_major\', \'unique\', \'blank_index\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "ctc_unique_labels"
+    argspec: "args=[\'labels\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "depth_to_space"
     argspec: "args=[\'input\', \'block_size\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'NHWC\'], "
   }
   member_method {
     name: "depthwise_conv2d"
     argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'rate\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "depthwise_conv2d_backprop_filter"
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+  }
+  member_method {
+    name: "depthwise_conv2d_backprop_input"
+    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "depthwise_conv2d_native"
@@ -130,7 +154,7 @@ tf_module {
   }
   member_method {
     name: "dropout"
-    argspec: "args=[\'x\', \'keep_prob\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'x\', \'keep_prob\', \'noise_shape\', \'seed\', \'name\', \'rate\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "dynamic_rnn"
@@ -302,7 +326,7 @@ tf_module {
   }
   member_method {
     name: "softmax_cross_entropy_with_logits_v2"
-    argspec: "args=[\'labels\', \'logits\', \'dim\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "softplus"

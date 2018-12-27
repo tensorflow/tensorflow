@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
@@ -38,6 +40,7 @@ def _AddTest(test_class, op_name, testcase_name, fn):
 
 class SvdOpTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The input to svd should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
@@ -49,6 +52,7 @@ class SvdOpTest(test.TestCase):
                                  "Shape must be at least rank 2 but is rank 1"):
       linalg_ops.svd(vector)
 
+  @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       all_ops = []
@@ -68,7 +72,7 @@ class SvdOpTest(test.TestCase):
             s2 = linalg_ops.svd(
                 matrix2, compute_uv=compute_uv_, full_matrices=full_matrices_)
             all_ops += [s1, s2]
-      val = sess.run(all_ops)
+      val = self.evaluate(all_ops)
       for i in range(2):
         s = 6 * i
         self.assertAllEqual(val[s], val[s + 3])  # s1 == s2
@@ -117,14 +121,15 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         diag_s = array_ops.concat([diag_s, zeros], a.ndim - 1)
     a_recon = math_ops.matmul(u, diag_s)
     a_recon = math_ops.matmul(a_recon, v, adjoint_b=True)
-    self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
+    self.assertAllClose(a_recon, a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x, tol):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
-    self.assertAllClose(identity.eval(), xx.eval(), atol=tol)
+    self.assertAllClose(identity, xx, atol=tol)
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     is_complex = dtype_ in (np.complex64, np.complex128)
     is_single = dtype_ in (np.float32, np.complex64)
@@ -150,7 +155,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf, u_tf, v_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf])
+          s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
         else:
           s_tf_val, u_tf_val, v_tf_val = sess.run(
               [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
@@ -158,7 +163,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val = sess.run(s_tf)
+          s_tf_val = self.evaluate(s_tf)
         else:
           s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
 
@@ -213,6 +218,7 @@ def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
     tf_v *= phase[..., :n]
     return tf_s, tf_u, tf_v
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     np.random.seed(42)
     a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
@@ -263,7 +269,8 @@ if __name__ == "__main__":
           for cols in 1, 2, 5, 10, 32, 100:
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
               shape = batch_dims + (rows, cols)
-              for use_static_shape in True, False:
+              # TF2 does not support placeholders under eager so we skip it
+              for use_static_shape in set([True, tf2.enabled()]):
                 name = "%s_%s_static_shape_%s__compute_uv_%s_full_%s" % (
                     dtype.__name__, "_".join(map(str, shape)), use_static_shape,
                     compute_uv, full_matrices)

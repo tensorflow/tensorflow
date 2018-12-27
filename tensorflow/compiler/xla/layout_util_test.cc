@@ -304,30 +304,6 @@ TEST_F(LayoutUtilTest, SetToDefaultLayoutTuple) {
       shape.tuple_shapes(1).layout()));
 }
 
-TEST_F(LayoutUtilTest, IsPadded) {
-  Shape shape_without_layout = ShapeUtil::MakeShape(F32, {2, 3, 4});
-  LayoutUtil::ClearLayout(&shape_without_layout);
-  EXPECT_FALSE(LayoutUtil::IsPadded(shape_without_layout));
-
-  Shape shape_with_layout = ShapeUtil::MakeShape(F32, {2, 3, 4});
-  LayoutUtil::SetToDefaultLayout(&shape_with_layout);
-  EXPECT_FALSE(LayoutUtil::IsPadded(shape_with_layout));
-
-  // Add padding equal to the dimension sizes. In this case the padding is a
-  // nop.
-  Shape shape_with_degenerate_padding = ShapeUtil::MakeShape(F32, {2, 3, 4});
-  shape_with_degenerate_padding.mutable_layout()->add_padded_dimensions(2);
-  shape_with_degenerate_padding.mutable_layout()->add_padded_dimensions(3);
-  shape_with_degenerate_padding.mutable_layout()->add_padded_dimensions(4);
-  EXPECT_FALSE(LayoutUtil::IsPadded(shape_with_degenerate_padding));
-
-  Shape shape_with_padding = ShapeUtil::MakeShape(F32, {2, 3, 4});
-  shape_with_padding.mutable_layout()->add_padded_dimensions(2);
-  shape_with_padding.mutable_layout()->add_padded_dimensions(14);
-  shape_with_padding.mutable_layout()->add_padded_dimensions(42);
-  EXPECT_TRUE(LayoutUtil::IsPadded(shape_with_padding));
-}
-
 TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
   EXPECT_TRUE(LayoutUtil::Equal(LayoutUtil::MakeLayout({1, 0}),
                                 LayoutUtil::GetDefaultLayoutForR2()));
@@ -339,17 +315,6 @@ TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
       LayoutUtil::Equal(LayoutUtil::MakeLayout({4, 3, 2, 1, 0}),
                         LayoutUtil::GetDefaultLayoutForShape(
                             ShapeUtil::MakeShape(F32, {10, 20, 30, 15, 25}))));
-}
-
-TEST_F(LayoutUtilTest, SparseLayoutMaxElements) {
-  EXPECT_EQ(LayoutUtil::MaxSparseElements(LayoutUtil::MakeSparseLayout(101)),
-            101);
-}
-
-TEST_F(LayoutUtilTest, StreamOut) {
-  std::ostringstream oss;
-  oss << LayoutUtil::MakeLayout({0, 1, 2});
-  EXPECT_EQ(oss.str(), "{0,1,2}");
 }
 
 TEST_F(LayoutUtilTest, ValidateLayout_ValidArrayLayout) {

@@ -73,7 +73,16 @@ class SummaryFileWriter : public SummaryWriterInterface {
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
     Summary::Value* v = e->mutable_summary()->add_value();
-    t.AsProtoTensorContent(v->mutable_tensor());
+
+    if (t.dtype() == DT_STRING) {
+      // Treat DT_STRING specially, so that tensor_util.MakeNdarray in Python
+      // can convert the TensorProto to string-type numpy array. MakeNdarray
+      // does not work with strings encoded by AsProtoTensorContent() in
+      // tensor_content.
+      t.AsProtoField(v->mutable_tensor());
+    } else {
+      t.AsProtoTensorContent(v->mutable_tensor());
+    }
     v->set_tag(tag);
     if (!serialized_metadata.empty()) {
       v->mutable_metadata()->ParseFromString(serialized_metadata);

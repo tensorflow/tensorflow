@@ -37,7 +37,7 @@ from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
-from tensorflow.python.feature_column import feature_column as fc_core
+from tensorflow.python.feature_column import feature_column_lib as fc_core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -155,8 +155,8 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       parent_scope,
       values=tuple(six.itervalues(features)),
       partitioner=partitioner) as scope:
-    if all([isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
-            for fc in feature_columns]):
+    if all(isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
+           for fc in feature_columns):
       if joint_weights:
         layer_fn = layers.joint_weighted_sum_from_feature_columns
       else:

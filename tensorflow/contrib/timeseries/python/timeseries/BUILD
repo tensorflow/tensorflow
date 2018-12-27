@@ -104,8 +104,10 @@ py_test(
     srcs = [
         "estimators_test.py",
     ],
+    shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",
         "no_pip_gpu",  # b/63391119
         "nomsan",  # Takes too long to run.
         "notsan",  # b/67865658

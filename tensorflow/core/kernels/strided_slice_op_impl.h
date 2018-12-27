@@ -179,10 +179,9 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
   }
 };
 
-// NODE(aselle): according to bsteiner, we need this because otherwise
+// NOTE(aselle): according to bsteiner, we need this because otherwise
 // nvcc instantiates templates that are invalid. strided_slice_op_gpu.cu
-// handles instantiates externally. It is important that this is done#
-
+// handles instantiates externally. It is important that this is done
 // before the HandleXXCase's are instantiated to avoid duplicate
 // specialization errors.
 
@@ -285,6 +284,8 @@ TF_CALL_complex128(PREVENT_FOR_N_GPU);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_N_GPU);
 TF_CALL_complex64(DECLARE_FOR_N_GPU);
 TF_CALL_complex128(DECLARE_FOR_N_GPU);
+TF_CALL_bool(DECLARE_FOR_N_GPU);
+TF_CALL_int8(DECLARE_FOR_N_GPU);
 DECLARE_FOR_N_GPU(int32);
 DECLARE_FOR_N_GPU(int64);
 #endif  // END GOOGLE_CUDA

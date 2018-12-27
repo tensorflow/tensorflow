@@ -41,6 +41,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training.checkpointable import util as checkpointable_util
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
@@ -54,7 +55,7 @@ _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
 USE_DEFAULT = object()
 
 
-@tf_export('train.Scaffold')
+@tf_export(v1=['train.Scaffold'])
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
 
@@ -136,6 +137,16 @@ class Scaffold(object):
         string tensor containing a serialized `Summary` proto.
       saver: Optional `tf.train.Saver` object to use to save and restore
         variables.
+
+        May also be a `tf.train.Checkpoint` object, in which case object-based
+        checkpoints are saved. This will also load some object-based checkpoints
+        saved from elsewhere, but that loading may be fragile since it uses
+        fixed keys rather than performing a full graph-based match. For example
+        if a variable has two paths from the `Checkpoint` object because two
+        `Model` objects share the `Layer` object that owns it, removing one
+        `Model` may change the keys and break checkpoint loading through this
+        API, whereas a graph-based match would match the variable through the
+        other `Model`.
       copy_from_scaffold: Optional scaffold object to copy fields from. Its
         fields will be overwritten by the provided fields in this function.
     """
@@ -216,7 +227,13 @@ class Scaffold(object):
     if self._saver is None:
       self._saver = training_saver._get_saver_or_default()  # pylint: disable=protected-access
     # pylint: enable=g-long-lambda
-    self._saver.build()
+    if isinstance(self._saver, checkpointable_util.Checkpoint):
+      self._saver = training_saver.Saver(
+          var_list=checkpointable_util.CheckpointableSaver(
+              self._saver).gather_objects(),
+          sharded=True)
+    else:
+      self._saver.build()
 
     ops.get_default_graph().finalize()
     logging.info('Graph was finalized.')
@@ -346,7 +363,7 @@ def _create_monitored_session_with_worker_context(worker_context,  # pylint: dis
       stop_grace_period_secs=stop_grace_period_secs)
 
 
-@tf_export('train.MonitoredTrainingSession')
+@tf_export(v1=['train.MonitoredTrainingSession'])
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,
@@ -508,7 +525,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       stop_grace_period_secs=stop_grace_period_secs)
 
 
-@tf_export('train.SessionCreator')
+@tf_export(v1=['train.SessionCreator'])
+@six.add_metaclass(abc.ABCMeta)
 class SessionCreator(object):
   """A factory for tf.Session."""
 
@@ -518,7 +536,7 @@ class SessionCreator(object):
         'create_session is not implemented for {}.'.format(self))
 
 
-@tf_export('train.ChiefSessionCreator')
+@tf_export(v1=['train.ChiefSessionCreator'])
 class ChiefSessionCreator(SessionCreator):
   """Creates a tf.Session for a chief."""
 
@@ -570,7 +588,7 @@ class ChiefSessionCreator(SessionCreator):
         init_fn=self._scaffold.init_fn)
 
 
-@tf_export('train.WorkerSessionCreator')
+@tf_export(v1=['train.WorkerSessionCreator'])
 class WorkerSessionCreator(SessionCreator):
   """Creates a tf.Session for a worker."""
 
@@ -839,10 +857,18 @@ class _MonitoredSession(object):
     return self._coordinated_creator.tf_sess is None
 
   def _tf_sess(self):
+    """Return underlying tf.Session object.
+
+    Warning: accessing the returned object in user code is likely to cause races
+    or "flaky tests".
+
+    Returns:
+      A tf.Session object.
+    """
     return self._coordinated_creator.tf_sess
 
 
-@tf_export('train.MonitoredSession')
+@tf_export(v1=['train.MonitoredSession'])
 class MonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, recovery and hooks.
 
@@ -925,7 +951,7 @@ class MonitoredSession(_MonitoredSession):
         stop_grace_period_secs=stop_grace_period_secs)
 
 
-@tf_export('train.SingularMonitoredSession')
+@tf_export(v1=['train.SingularMonitoredSession'])
 class SingularMonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, restoring, and hooks.
 
@@ -1071,8 +1097,10 @@ class _WrappedSession(object):
     if self._sess:
       try:
         self._sess.close()
-      except _PREEMPTION_ERRORS:
-        pass
+      except _PREEMPTION_ERRORS as e:
+        logging.warning('An error occurred when attempting to close the '
+                        'session. This may be due to a preemption in a '
+                        'connected worker or parameter server. Error: %s', e)
       finally:
         self._sess = None
 
@@ -1381,9 +1409,11 @@ class _HookedSession(_WrappedSession):
     options.output_partition_graphs = max(
         options.output_partition_graphs,
         incoming_options.output_partition_graphs)
-
     options.debug_options.debug_tensor_watch_opts.extend(
         incoming_options.debug_options.debug_tensor_watch_opts)
     options.debug_options.reset_disk_byte_usage = (
         options.debug_options.reset_disk_byte_usage or
         incoming_options.debug_options.reset_disk_byte_usage)
+    options.report_tensor_allocations_upon_oom = (
+        options.report_tensor_allocations_upon_oom or
+        incoming_options.report_tensor_allocations_upon_oom)

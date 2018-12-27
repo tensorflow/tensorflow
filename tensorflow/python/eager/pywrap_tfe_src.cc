@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstring>
 #include <thread>
 
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 
 #include "absl/strings/str_cat.h"
@@ -1644,6 +1645,29 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   if (PyErr_Occurred()) {
     return nullptr;
   }
+  tensorflow::gtl::FlatSet<tensorflow::int64> sources_set(sources_vec.begin(),
+                                                          sources_vec.end());
+
+  tensorflow::Safe_PyObjectPtr seq =
+      tensorflow::make_safe(PySequence_Fast(target, "expected a sequence"));
+  int len = PySequence_Fast_GET_SIZE(seq.get());
+  tensorflow::gtl::FlatMap<tensorflow::int64, PyTapeTensor>
+      source_tensors_that_are_targets;
+  for (int i = 0; i < len; ++i) {
+    tensorflow::int64 target_id = target_vec[i];
+    if (sources_set.find(target_id) != sources_set.end()) {
+      auto tensor = PySequence_Fast_GET_ITEM(seq.get(), i);
+      source_tensors_that_are_targets.insert(
+          std::make_pair(target_id, TapeTensorFromTensor(tensor)));
+    }
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
+  }
+  if (PyErr_Occurred()) {
+    return nullptr;
+  }
+
   std::vector<PyObject*> outgrad_vec;
   if (output_gradients != Py_None) {
     outgrad_vec = MakeTensorList(output_gradients);
@@ -1658,7 +1682,8 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   }
   std::vector<PyObject*> result;
   status->status = tape_obj->tape->ComputeGradient(
-      *py_vspace, target_vec, sources_vec, outgrad_vec, &result);
+      *py_vspace, target_vec, sources_vec, source_tensors_that_are_targets,
+      outgrad_vec, &result);
   if (!status->status.ok()) {
     if (PyErr_Occurred()) {
       // Do not propagate the erroneous status as that would swallow the
@@ -1852,7 +1877,7 @@ bool OpGradientDoesntRequireOutputIndices(
           {"Conv3DBackpropInputV2", {true, {}}},
           {"AvgPool3D", {true, {}}},
           {"AvgPool3DGrad", {true, {}}},
-          {"MaxPool3D", {true, {}}},
+          {"MaxPool3D", {false, {}}},
           {"MaxPool3DGrad", {true, {}}},
           {"MaxPool3DGradGrad", {true, {}}},
           {"BiasAdd", {true, {}}},
@@ -2113,7 +2138,9 @@ bool CastTensor(const FastPathOpExecInfo& op_exec_info,
     *handle = tensorflow::make_safe(
         tensorflow::EagerCast(op_exec_info.ctx, handle->get(), input_dtype,
                               static_cast<TF_DataType>(desired_dtype), status));
-    if (!status->status.ok()) return false;
+    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+      return false;
+    }
     output_dtype = desired_dtype;
   }
 
@@ -2122,7 +2149,9 @@ bool CastTensor(const FastPathOpExecInfo& op_exec_info,
     // if copying to the same device.
     *handle = tensorflow::make_safe(TFE_TensorHandleCopyToDevice(
         handle->get(), op_exec_info.ctx, op_exec_info.device_name, status));
-    if (!status->status.ok()) return false;
+    if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+      return false;
+    }
   }
   return true;
 }
@@ -2205,14 +2234,19 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
   return true;
 }
 
-// Supports only 2 cases at the moment:
-//  i) input is an EagerTensor
+// Supports 3 cases at the moment:
+//  i) input is an EagerTensor.
 //  ii) input is a ResourceVariable - in this case, the is_variable param is
 //  set to true.
+//  iii) input is an arbitrary python list/tuple (note, this handling doesn't
+//  support packing).
 //
 //  NOTE: dtype_hint_getter must *always* return a PyObject that can be
 //  decref'd. So if no hint is found, Py_RETURN_NONE (which correctly
 //  increfs Py_None).
+//
+//  NOTE: This function sets a python error directly, and returns false.
+//  TF_Status is only passed since we don't want to have to reallocate it.
 bool ConvertToTensor(
     const FastPathOpExecInfo& op_exec_info, PyObject* input,
     tensorflow::Safe_PyObjectPtr* output_handle,
@@ -2239,25 +2273,45 @@ bool ConvertToTensor(
       tensorflow::make_safe(static_cast<TFE_TensorHandle*>(
           tensorflow::ConvertToEagerTensor(input, dtype_hint.get())));
   if (handle == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Unable to convert value to tensor");
-    return false;
+    return MaybeRaiseExceptionFromTFStatus(status, nullptr);
   }
 
   int desired_dtype = -1;
   if (dtype_hint.get() != Py_None) {
     if (!ParseTypeValue("", dtype_hint.get(), status, &desired_dtype)) {
-      status->status = tensorflow::errors::InvalidArgument(
-          "Expecting a DataType value for dtype. Got ",
-          Py_TYPE(dtype_hint.get())->tp_name);
+      PyErr_SetString(PyExc_TypeError,
+                      tensorflow::strings::StrCat(
+                          "Expecting a DataType value for dtype. Got ",
+                          Py_TYPE(dtype_hint.get())->tp_name)
+                          .c_str());
+      return false;
     }
   }
 
-  if (!CastTensor(op_exec_info, static_cast<TF_DataType>(desired_dtype),
-                  &handle, status)) {
-    return false;
-  }
+  // Maybe cast to the desired type. This is intended to match python
+  // convert_to_tensor behavior.
   TF_DataType output_dtype = TFE_TensorHandleDataType(handle.get());
+  if (desired_dtype >= 0 && desired_dtype != output_dtype) {
+    if (tensorflow::IsCompatible(desired_dtype, output_dtype)) {
+      if (!CastTensor(op_exec_info, static_cast<TF_DataType>(desired_dtype),
+                      &handle, status)) {
+        return false;
+      }
+      output_dtype = TFE_TensorHandleDataType(handle.get());
+    } else {
+      tensorflow::Safe_PyObjectPtr input_str(PyObject_Str(input));
+      PyErr_SetString(
+          PyExc_TypeError,
+          tensorflow::strings::StrCat(
+              "Cannot convert provided value to EagerTensor. Provided value: ",
+              TFE_GetPythonString(input_str.get()), " Requested dtype: ",
+              tensorflow::DataTypeString(
+                  static_cast<tensorflow::DataType>(desired_dtype)))
+              .c_str());
+      return false;
+    }
+  }
+
   output_handle->reset(EagerTensorFromHandle(handle.release()));
   dtype_setter(output_dtype);
 

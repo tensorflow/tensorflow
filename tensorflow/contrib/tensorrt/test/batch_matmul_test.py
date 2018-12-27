@@ -79,12 +79,12 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     if (run_params.dynamic_engine and
         not trt_test.IsQuantizationMode(run_params.precision_mode)):
-      return ["my_trt_op_0", "my_trt_op_1"]
-    return ["my_trt_op_1"]
+      return ["TRTEngineOp_0", "TRTEngineOp_1"]
+    return ["TRTEngineOp_1"]
 
   def ExpectedEnginesToRun(self, run_params):
     """Return the expected engines to run."""
-    return ["my_trt_op_1"]
+    return ["TRTEngineOp_1"]
 
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""

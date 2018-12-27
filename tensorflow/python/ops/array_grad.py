@@ -489,10 +489,12 @@ def _GatherNdGrad(op, grad):
 
 
 @ops.RegisterGradient("CheckNumerics")
-def _CheckNumericsGrad(_, grad):
+def _CheckNumericsGrad(op, grad):
   """Gradient for check_numerics op."""
   return array_ops.check_numerics(
-      grad, "Not a number (NaN) or infinity (Inf) values detected in gradient.")
+      grad,
+      "Not a number (NaN) or infinity (Inf) values detected in gradient. %s" %
+      op.get_attr("message"))
 
 
 @ops.RegisterGradient("PlaceholderWithDefault")
@@ -798,6 +800,32 @@ def _ScatterNdGrad(op, grad):
   indices = op.inputs[0]
   updates_grad = array_ops.gather_nd(grad, indices)
   return [None, updates_grad, None]
+
+
+@ops.RegisterGradient("TensorScatterUpdate")
+def _TensorScatterUpdateGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.tensor_scatter_update(
+      array_ops.identity(grad), indices,
+      array_ops.zeros_like(op.inputs[2], dtype=grad.dtype))
+  return [tensor_grad, None, updates_grad]
+
+
+@ops.RegisterGradient("TensorScatterAdd")
+def _TensorScatterAddGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.identity(grad)
+  return [tensor_grad, None, updates_grad]
+
+
+@ops.RegisterGradient("TensorScatterSub")
+def _TensorScatterSubGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.identity(grad)
+  return [tensor_grad, None, -updates_grad]
 
 
 @ops.RegisterGradient("ScatterNdNonAliasingAdd")

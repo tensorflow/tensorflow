@@ -46,7 +46,7 @@ class ThunkSchedule {
  public:
   ThunkSchedule(std::unique_ptr<ThunkSequence> thunks,
                 std::unique_ptr<StreamAssignment> stream_assignment,
-                const std::vector<const HloInstruction*>& hlo_total_order);
+                const std::vector<HloInstruction*>& hlo_total_order);
 
   // Returns the total order of executing all the thunks.
   const std::vector<Thunk*>& TotalOrder() const { return thunk_total_order_; }

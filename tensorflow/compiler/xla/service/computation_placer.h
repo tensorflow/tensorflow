@@ -105,8 +105,6 @@ class ComputationPlacer {
   // Map from platform kind to computation placer singleton.
   static std::map<se::Platform::Id, State>* GetPlatformComputationPlacers();
 
-  se::Platform::Id platform_id_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(ComputationPlacer);
 };
 

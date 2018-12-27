@@ -167,7 +167,7 @@ class BigtableSampleKeyPairsDatasetOp : public DatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
-        if (index_ > keys_.size() - 2) {
+        if (index_ + 2 > keys_.size()) {
           *end_of_sequence = true;
           return Status::OK();
         }

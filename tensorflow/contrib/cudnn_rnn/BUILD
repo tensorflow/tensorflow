@@ -42,10 +42,11 @@ tf_custom_op_py_library(
 
 cuda_py_test(
     name = "cudnn_rnn_ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_test.py"],
     additional_deps = [
         ":cudnn_rnn_py",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python/ops/losses:losses",
@@ -61,10 +62,10 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
-    shard_count = 6,
+    shard_count = 2,
     tags = [
-        "no_oss",  # b/117989214
         "noasan",  # http://b/62067814
+        "requires-gpu-sm35",
     ],
 )
 

@@ -25,7 +25,8 @@ namespace tensorflow {
 
 class GdrWorker : public GrpcWorker {
  public:
-  GdrWorker(WorkerEnv* env, RemoteMemoryManager* remote_memory_manager);
+  GdrWorker(WorkerEnv* env, const ConfigProto& config,
+            RemoteMemoryManager* remote_memory_manager);
 
   // Serve the RecvTensorRequest but omit the tensor content and transmit it
   // out-of-band using GPU Direct RDMA whenever possible.

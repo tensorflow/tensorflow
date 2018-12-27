@@ -18,6 +18,7 @@ py_library(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/signal",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

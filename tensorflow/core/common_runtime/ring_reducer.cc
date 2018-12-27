@@ -290,7 +290,7 @@ void RingReducer::Run(StatusCallback done) {
         col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
         col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,
         col_ctx_->output, 0 /*dev_to_dev_stream_index*/,
-        [this, &note, &status](const Status& s) {
+        [&note, &status](const Status& s) {
           status.Update(s);
           note.Notify();
         });

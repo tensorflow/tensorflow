@@ -51,7 +51,7 @@ GpuExecutable::GpuExecutable(
     const string& ptx, const std::vector<uint8>& cubin,
     std::pair<int, int> compute_capability,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
-    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
@@ -218,7 +218,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
 
       const Literal& literal =
           llvm_ir::LiteralForConstantAllocation(allocation);
-      CHECK(ShapeUtil::IsArray(literal.shape()));
+      CHECK(literal.shape().IsArray());
       if (!ShouldEmitLiteralInLlvmIr(literal)) {
         VLOG(3) << "H2D memcpy for constant with shape "
                 << ShapeUtil::HumanString(literal.shape());

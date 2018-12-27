@@ -470,13 +470,19 @@ TEST_F(GraphPartitionTest, Functions) {
   ConstructOp(in_.WithOpName("A2"), "XTimesTwo", {a1});
   ConstructOp(in_.WithOpName("B2"), "XTimesFour", {b1});
 
+  // The `Partition()` helper function uses the first letter of the op name ('A'
+  // or 'B') to choose a device for each node.
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
-  // Test that partition graphs inherit function library from original graph
+  // Test that partition graphs inherit function library from original graph.
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
-  ExpectFunctions(partitions_[a].library(), {"XTimesTwo", "XTimesFour"});
+
+  // Node "A2" is placed in part `a`, and uses only "XTimesTwo".
+  ExpectFunctions(partitions_[a].library(), {"XTimesTwo"});
+  // Node "B2" is placed in part `b`, and uses both "XTimesFour" directly,
+  // and "XTimesTwo" in the body of "XTimesFour".
   ExpectFunctions(partitions_[b].library(), {"XTimesTwo", "XTimesFour"});
 }
 

@@ -42,9 +42,10 @@ cc_library(
     deps = [
         ":utils",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
-        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
@@ -53,6 +54,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:evaluation_utils",
     ] + tf_protos_grappler(),
 )
 
@@ -131,9 +133,6 @@ tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    cuda_deps = [
-        "@local_config_cuda//cuda:cudnn_header",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/eigen3",

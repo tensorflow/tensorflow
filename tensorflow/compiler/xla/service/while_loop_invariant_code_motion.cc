@@ -19,7 +19,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
+#include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -125,7 +127,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     HloInstruction* while_instr) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
 
-  if (!ShapeUtil::IsTuple(while_instr->shape())) {
+  if (!while_instr->shape().IsTuple()) {
     // This restriction leaves one interesting pattern on the table:
     //
     //  while_body(f32[1024, 1024] %param) {
@@ -142,6 +144,12 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
 
   string while_instr_name = while_instr->ToString(print_no_metadata);
   VLOG(2) << "Trying to hoist from " << while_instr_name;
+
+  auto maybe_upper_bound = ComputeWhileLoopTripCountUpperBound(while_instr);
+  if (maybe_upper_bound && *maybe_upper_bound <= 1) {
+    VLOG(2) << "Loop has a trip count of at most 1, skipping.";
+    return false;
+  }
 
   HloComputation* while_body = while_instr->while_body();
 
@@ -160,7 +168,7 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   // is no benefit to hoisting them unless something that uses it is also
   // hoisted.
   for (auto* instr : WhileUtil::GetInvariantGTEsForWhileBody(*while_body)) {
-    if (ShapeUtil::IsArray(instr->shape())) {
+    if (instr->shape().IsArray()) {
       // TODO(b/79147885): We should try to generalize this to tuples for
       // uniformity's sake, if nothing else.
       InsertOrDie(&unhoisted_invariant_instructions, instr);
@@ -180,6 +188,13 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     return false;
   }
 
+  // LICM in the presence of domain instructions is complex, bail.
+  for (auto* instruction : while_body->MakeInstructionPostOrder()) {
+    if (instruction->opcode() == HloOpcode::kDomain) {
+      return false;
+    }
+  }
+
   // instructions_to_replace[i] is hoisted into a loop invariant instruction
   // replacement_instructions[i].
   std::vector<HloInstruction*> instructions_to_replace;
@@ -191,6 +206,37 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
         !instruction->control_predecessors().empty() ||
         !instruction->control_successors().empty()) {
       continue;
+    }
+
+    if (!hoist_size_inflating_ops_) {
+      // Check that hoisting the instruction doesn't cause a significant memory
+      // blow-up. LICM extends the live-range of the output of the hoisted
+      // instruction to be the entire while loop, which may be problematic on
+      // platforms where memory is limited. This can be especially harmful if
+      // the instruction has a significantly larger output than its input, e.g.
+      // kIota, kBroadcast or kConstant.
+      int64 input_size = 0, output_size = 0;
+
+      for (auto* operand : instruction->operands()) {
+        ShapeUtil::ForEachSubshape(
+            operand->shape(),
+            [&input_size](const Shape& subshape, const ShapeIndex& /*index*/) {
+              if (subshape.IsArray()) {
+                input_size += ShapeUtil::ByteSizeOfElements(subshape);
+              }
+            });
+      }
+      ShapeUtil::ForEachSubshape(
+          instruction->shape(),
+          [&output_size](const Shape& subshape, const ShapeIndex& /*index*/) {
+            if (subshape.IsArray()) {
+              output_size += ShapeUtil::ByteSizeOfElements(subshape);
+            }
+          });
+
+      if (output_size > input_size) {
+        continue;
+      }
     }
 
     auto is_invariant = [&](HloInstruction* op) {

@@ -111,10 +111,9 @@ IrEmitter::IrEmitter(
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, const string& function_name_prefix,
     bool is_top_level_computation,
-    const std::vector<const HloInstruction*>* instruction_order) {
+    absl::Span<HloInstruction* const> instruction_order) {
   string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
-  VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix
-          << "]; ordered? " << (instruction_order != nullptr);
+  VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix << "]";
   is_top_level_computation_ = is_top_level_computation;
   num_dynamic_loop_bounds_ = 0;
   if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
@@ -140,12 +139,8 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   // readcyclecounter if it is unavailable.
   bool use_rdtscp = arch_type_ == llvm::Triple::ArchType::x86 ||
                     arch_type_ == llvm::Triple::ArchType::x86_64;
-  profiling_state_ = ProfilingState(use_rdtscp, GetProfileCountersArgument());
-  if (instruction_order == nullptr) {
-    TF_RETURN_IF_ERROR(computation->Accept(this));
-  } else {
-    TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, *instruction_order));
-  }
+  profiling_state_ = ProfilingState(use_rdtscp);
+  TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
   InsertOrDie(&emitted_functions_, computation, ir_function);
   // Delete 'compute_function', finalizing 'ir_function' and restoring caller
@@ -228,11 +223,11 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status IrEmitter::HandleCopy(HloInstruction* copy) {
-  if (ShapeUtil::IsTuple(copy->shape())) {
+  if (copy->shape().IsTuple()) {
     // kCopy shallow copies a tuple so just memcpy the top-level buffer.
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
-  } else if (ShapeUtil::IsArray(copy->shape())) {
+  } else if (copy->shape().IsArray()) {
     // Use the elemental emitter for array shapes.
     return DefaultAction(copy);
   }
@@ -321,7 +316,7 @@ Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
   auto on_false = tuple_select->operand(2);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
   TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()));
-  TF_RET_CHECK(ShapeUtil::IsTuple(tuple_select->shape()));
+  TF_RET_CHECK(tuple_select->shape().IsTuple());
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple_select));
   llvm_ir::EmitTupleSelect(GetIrArrayFor(tuple_select), GetIrArrayFor(pred),
                            GetEmittedValueFor(on_true),
@@ -351,7 +346,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
   llvm_ir::EmitTuple(GetIrArrayFor(infeed), {data_address, token_address}, &b_,
                      module_);
 
-  if (ShapeUtil::IsTuple(data_shape)) {
+  if (data_shape.IsTuple()) {
     TF_RET_CHECK(!ShapeUtil::IsNestedTuple(data_shape));
 
     // For a tuple, we first copy each of the internal elements to
@@ -475,7 +470,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
   const Shape& operand_shape = operand->shape();
 
   llvm::Value* value = GetEmittedValueFor(operand);
-  if (!ShapeUtil::IsTuple(operand_shape)) {
+  if (!operand_shape.IsTuple()) {
     return EmitXfeedTransfer(XfeedKind::kOutfeed, operand_shape, value);
   }
 
@@ -540,7 +535,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
     higher_dimensions *= normalized_keys_shape.dimensions(i);
   }
   int64 lower_dimensions = 1;
-  for (int64 i = ShapeUtil::Rank(normalized_keys_shape) - 1;
+  for (int64 i = normalized_keys_shape.rank() - 1;
        i > physical_dimension_to_sort; --i) {
     lower_dimensions *= normalized_keys_shape.dimensions(i);
   }
@@ -784,8 +779,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   const auto init_value = select_and_scatter->operand(2);
   const Window& window = select_and_scatter->window();
   PrimitiveType operand_element_type = operand->shape().element_type();
-  const int64 rank = ShapeUtil::Rank(operand->shape());
-  CHECK_EQ(rank, ShapeUtil::Rank(source->shape()));
+  const int64 rank = operand->shape().rank();
+  CHECK_EQ(rank, source->shape().rank());
   CHECK_EQ(rank, window.dimensions_size());
 
   // TODO(b/31410564): Implement dilation for select-and-scatter.
@@ -1338,11 +1333,11 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
+Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() != 1) {
     // TODO(b/33011107): Support nontrivial cross replica sum on CPU.
     return Unimplemented(
-        "CrossReplicaSum with >1 replica is not implemented on CPU.");
+        "AllReduce with >1 replica is not implemented on CPU.");
   }
 
   // When there is a single replica, a cross replica sum is the identity
@@ -1367,8 +1362,8 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
                         assignment_.GetUniqueSlice(crs, {i}));
 
     const Shape& operand_shape = crs->operand(i)->shape();
-    CHECK(ShapeUtil::IsArray(operand_shape))
-        << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
+    CHECK(operand_shape.IsArray())
+        << "Operands to all-reduce must be arrays: " << crs->ToString();
     operand_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
 
     // TODO(b/63762267): Be more aggressive about specifying alignment.
@@ -1377,33 +1372,6 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
   }
   llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &b_, module_);
   return Status::OK();
-}
-
-// Fills up the free variables in 'index_with_free_var' with values from
-// 'filler_index'. The size of free variables must be the same as the
-// size of 'filler_index'.
-//
-// This is often used after dimension reduction, where
-// 'index_with_free_var' has one or more dimensions reduced, which serves as
-// free variables (represented as nullptr). For example, if we have a 4
-// dimensional input and index for the dimension being reduced is
-// 2 (third dimension), we will have an index like [i, j, NULL, k]
-// after reduced dimension.
-//
-// Here we fill up that free variable by 'filler_index', which contains
-// the value in the reduced dimension.
-static llvm_ir::IrArray::Index FillReducedDimensionIndex(
-    llvm_ir::IrArray::Index index_with_free_var,
-    llvm_ir::IrArray::Index filler_index) {
-  llvm_ir::IrArray::Index::const_iterator it = filler_index.begin();
-
-  for (size_t i = 0; i < index_with_free_var.size(); ++i) {
-    if (index_with_free_var[i] == nullptr) {
-      index_with_free_var[i] = *it++;
-    }
-  }
-  CHECK(filler_index.end() == it);
-  return index_with_free_var;
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
@@ -1536,7 +1504,8 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
     case HloOpcode::kMaximum:
       return [root_is_floating_point, root_is_signed](
-                 llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+                 llvm::IRBuilder<>* b, llvm::Value* lhs,
+                 llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
           return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
                                               {lhs, rhs}, {lhs->getType()}, b);
@@ -1551,7 +1520,8 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
     case HloOpcode::kMinimum:
       return [root_is_floating_point, root_is_signed](
-                 llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+                 llvm::IRBuilder<>* b, llvm::Value* lhs,
+                 llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
           return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
                                               {lhs, rhs}, {lhs->getType()}, b);
@@ -1754,7 +1724,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     return false;
   }
 
-  CHECK(!ShapeUtil::IsTuple(reduce->shape()));
+  CHECK(!reduce->shape().IsTuple());
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(reduce));
 
   // We know we're not reducing over the most minor dimension, which means we
@@ -1921,7 +1891,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   // TODO(b/112040122): Support variadic reduce.
-  if (!ShapeUtil::IsArray(reduce->shape())) {
+  if (!reduce->shape().IsArray()) {
     return Unimplemented("Variadic reduce is not supported on CPU");
   }
   auto arg = reduce->mutable_operand(0);
@@ -2192,30 +2162,22 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   return Status::OK();
 }
 
-// If `hlo` is a Transpose, returns its operand; otherwise returns `hlo` itself.
-static const HloInstruction* StripTranspose(const HloInstruction& hlo) {
-  if (hlo.IsRank2Transpose()) {
-    return hlo.operand(0);
-  }
-  return &hlo;
-}
-
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   auto* root = fusion->fused_expression_root();
   if (llvm_ir::CanEmitFusedDynamicUpdateSliceInPlace(fusion, assignment_)) {
     VLOG(3) << "HandleFusion FusedDynamicUpdateSliceInPlace";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(fusion));
-
     // Delegate to common implementation of fused in-place dynamic-update-slice.
-    auto operands = GetIrArraysForOperandsOf(fusion);
     return llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
-        fusion, operands, GetIrArrayFor(fusion), &elemental_emitter, &b_);
+        fusion, GetGeneratorForOperandIrArrays(fusion), GetIrArrayFor(fusion),
+        &elemental_emitter, &b_);
   } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kLoop) {
     VLOG(3) << "HandleFusion kLoop";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     auto operands = GetIrArraysForOperandsOf(fusion);
-    FusedIrEmitter fused_emitter(operands, &elemental_emitter);
+    FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(fusion),
+                                 &elemental_emitter);
     TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
     return EmitTargetElementLoop(fusion, fused_emitter.GetRootGenerator());
@@ -2304,6 +2266,21 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
               /*isVarArg=*/false)));
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  // Write the tuple table if the output is a tuple.
+  if (custom_call->shape().IsTuple()) {
+    std::vector<llvm::Value*> base_ptrs;
+    for (int i = 0; i < ShapeUtil::TupleElementCount(custom_call->shape());
+         ++i) {
+      const Shape& elem_shape =
+          ShapeUtil::GetTupleElementShape(custom_call->shape(), i);
+      TF_RET_CHECK(!elem_shape.IsTuple()) << "Nested tuples not implemented";
+      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                          assignment_.GetUniqueSlice(custom_call, {i}));
+      llvm::Value* addr = EmitBufferPointer(slice, elem_shape);
+      base_ptrs.push_back(addr);
+    }
+    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_, module_);
+  }
   auto* output_address_arg =
       PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
 
@@ -2415,13 +2392,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
       *failure_reason = "operand has mismatching layouts";
       return false;
     }
-    if (LayoutUtil::IsPadded(op->shape())) {
-      *failure_reason = "operand has padded layout";
-      return false;
-    }
   }
-
-  CHECK(!LayoutUtil::IsPadded(concatenate->shape()));
 
   // We split the dimensions into three categories: the dimension over which we
   // are concatenating (concat_dim), the dimensions that are minor to it
@@ -2604,10 +2575,17 @@ Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   return Status::OK();
 }
 
-Status IrEmitter::HandleAfterAll(HloInstruction* gen_token) {
-  TF_RET_CHECK(ByteSizeOf(gen_token->shape()) == 0);
+Status IrEmitter::HandleAfterAll(HloInstruction* after_all) {
+  TF_RET_CHECK(ByteSizeOf(after_all->shape()) == 0);
   // No code to generate, but we need to emit an address for book-keeping.
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(gen_token));
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(after_all));
+  return Status::OK();
+}
+
+Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
+  // AddDedendency just forwards its zero-th operand.
+  emitted_value_[add_dependency] =
+      GetEmittedValueFor(add_dependency->operand(0));
   return Status::OK();
 }
 
@@ -2824,7 +2802,7 @@ llvm::Value* IrEmitter::EmitThreadLocalBufferPointer(
           llvm_ir::EmitBufferIndexingGEP(params, param_number, &b_);
       llvm::LoadInst* param_address_untyped = Load(param_address_offset);
 
-      if (!ShapeUtil::IsOpaque(target_shape)) {
+      if (!target_shape.IsOpaque()) {
         AttachAlignmentMetadataForLoad(param_address_untyped, target_shape);
         AttachDereferenceableMetadataForLoad(param_address_untyped,
                                              target_shape);
@@ -2883,7 +2861,9 @@ llvm::Value* IrEmitter::EmitBufferPointer(const BufferAllocation::Slice& slice,
   if (slice.allocation()->is_thread_local()) {
     return EmitThreadLocalBufferPointer(slice, target_shape);
   } else if (slice.allocation()->is_constant()) {
-    return FindOrDie(constant_buffer_to_global_, slice.allocation()->index());
+    return BitCast(
+        FindOrDie(constant_buffer_to_global_, slice.allocation()->index()),
+        IrShapeType(target_shape)->getPointerTo());
   } else {
     return EmitGlobalBufferPointer(slice, target_shape);
   }

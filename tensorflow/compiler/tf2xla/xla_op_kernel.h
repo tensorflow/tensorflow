@@ -60,6 +60,8 @@ class XlaOpKernelContext {
  public:
   explicit XlaOpKernelContext(OpKernelContext* context);
 
+  XlaContext* xla_context() const;
+
   // Returns the XLA XlaBuilder containing the output of compilation.
   xla::XlaBuilder* builder() const;
 
@@ -88,9 +90,9 @@ class XlaOpKernelContext {
   // Returns input `index` as a XlaOp. Unlike
   // OpKernelContext::Input returns a symbolic value rather than a concrete
   // Tensor.
-  const xla::XlaOp& Input(int index);
+  xla::XlaOp Input(int index);
   // Returns input `name` as a XlaOp.
-  const xla::XlaOp& Input(absl::string_view name);
+  xla::XlaOp Input(absl::string_view name);
 
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.
@@ -111,14 +113,6 @@ class XlaOpKernelContext {
   Status ConstantInput(int index, xla::Literal* constant_literal);
   Status ConstantInput(absl::string_view name, xla::Literal* constant_literal);
 
-  // Evaluates input `index`, reshapes it to `new_shape` if new_shape !=
-  // InputShape(index), and stores it in `*constant_literal`. If the input
-  // cannot be evaluated, e.g., because it depends on unbound parameters,
-  // returns a non-Ok status. If InputShape(index).num_elements() !=
-  // new_shape.num_elements(), returns an error status.
-  Status ConstantInputReshaped(int index, absl::Span<const int64> new_dims,
-                               xla::Literal* constant_literal);
-
   // Converts a constant scalar int32 or int64 tensor into an int64.
   Status ConstantInputAsIntScalar(int index, int64* out);
   Status ConstantInputAsIntScalar(absl::string_view name, int64* out);
@@ -134,6 +128,8 @@ class XlaOpKernelContext {
   // Reshapes and converts a constant int32 or int64 tensor into a vector of
   // int64s.
   Status ConstantInputReshapedToIntVector(int index, std::vector<int64>* out);
+  Status ConstantInputReshapedToIntVector(absl::string_view name,
+                                          std::vector<int64>* out);
 
   // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
   Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
@@ -147,6 +143,10 @@ class XlaOpKernelContext {
   // returns a one-element list.
   Status ConstantInputList(absl::string_view name,
                            std::vector<xla::Literal>* literals);
+
+  // Returns an XlaExpression describing the value of 'index'.
+  const XlaExpression& InputExpression(int index);
+  const XlaExpression& InputExpression(absl::string_view name);
 
   // Outputs
 
@@ -165,9 +165,8 @@ class XlaOpKernelContext {
   // SetConstantOutput where possible.
   void SetConstantOutput(int index, const Tensor& host_tensor);
 
-  // Sets output `index` to an invalid value.
-  // Any subsequent attempt to consume this output will cause an error.
-  void SetInvalidOutput(int index);
+  // Returns an XlaExpression describing the value of 'index'.
+  void SetOutputExpression(int index, const XlaExpression& expression);
 
   // Status handling.
   void SetStatus(const Status& status) { context_->SetStatus(status); }
@@ -255,10 +254,13 @@ class XlaOpKernelContext {
   // Returns the tensor of input `name`.
   const Tensor& GetInputTensorByName(absl::string_view name);
 
-  // Wraps OpKernelContext's allocate_output method while providing special
-  // behavior for DT_VARIANT: a variant is treated as DT_UINT8 scalar as the
-  // type to allow mapping for variant to more generic types.
-  Status allocate_output(int index, const xla::Shape& shape, Tensor** output);
+  // Evaluates input `index`, reshapes it to `new_shape` if new_shape !=
+  // InputShape(index), and stores it in `*constant_literal`. If the input
+  // cannot be evaluated, e.g., because it depends on unbound parameters,
+  // returns a non-Ok status. If InputShape(index).num_elements() !=
+  // new_shape.num_elements(), returns an error status.
+  Status ConstantInputReshaped(int index, absl::Span<const int64> new_dims,
+                               xla::Literal* constant_literal);
 
   OpKernelContext* const context_;
 };

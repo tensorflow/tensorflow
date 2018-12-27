@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "matrix_inverse"
-    deprecated: true
+    deprecation_version: 2
   }
 }

@@ -30,6 +30,7 @@ from tensorflow.python.platform import googletest
 
 class BincountTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_deprecated_v1
   def test_empty(self):
     with self.session(use_gpu=True):
       self.assertAllEqual(
@@ -43,6 +44,7 @@ class BincountTest(test_util.TensorFlowTestCase):
           math_ops.bincount([], minlength=3, dtype=np.float64).eval().dtype,
           np.float64)
 
+  @test_util.run_deprecated_v1
   def test_values(self):
     with self.session(use_gpu=True):
       self.assertAllEqual(
@@ -58,12 +60,14 @@ class BincountTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(
           math_ops.bincount(np.arange(10000)).eval(), np.ones(10000))
 
+  @test_util.run_deprecated_v1
   def test_maxlength(self):
     with self.session(use_gpu=True):
       self.assertAllEqual(math_ops.bincount([5], maxlength=3).eval(), [0, 0, 0])
       self.assertAllEqual(math_ops.bincount([1], maxlength=3).eval(), [0, 1])
       self.assertAllEqual(math_ops.bincount([], maxlength=3).eval(), [])
 
+  @test_util.run_deprecated_v1
   def test_random_with_weights(self):
     num_samples = 10000
     with self.session(use_gpu=True):
@@ -77,6 +81,7 @@ class BincountTest(test_util.TensorFlowTestCase):
         self.assertAllClose(
             math_ops.bincount(arr, weights).eval(), np.bincount(arr, weights))
 
+  @test_util.run_deprecated_v1
   def test_random_without_weights(self):
     num_samples = 10000
     with self.session(use_gpu=True):
@@ -87,6 +92,7 @@ class BincountTest(test_util.TensorFlowTestCase):
         self.assertAllClose(
             math_ops.bincount(arr, None).eval(), np.bincount(arr, weights))
 
+  @test_util.run_deprecated_v1
   def test_zero_weights(self):
     with self.session(use_gpu=True):
       self.assertAllEqual(
@@ -99,6 +105,7 @@ class BincountTest(test_util.TensorFlowTestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         math_ops.bincount([1, 2, 3, -1, 6, 8]).eval()
 
+  @test_util.run_deprecated_v1
   def test_shape_function(self):
     # size must be scalar.
     with self.assertRaisesRegexp(

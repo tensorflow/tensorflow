@@ -73,6 +73,7 @@ class HasList(training.Model):
 class ListTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testTracking(self):
     model = HasList()
     output = model(array_ops.ones([32, 2]))
@@ -105,6 +106,7 @@ class ListTests(test.TestCase):
     self.assertIn(v, model.trainable_variables)
     self.assertNotIn(v, model.non_trainable_variables)
 
+  @test_util.run_v1_only("b/120545219")
   def testUpdatesForwarded(self):
     with context.graph_mode():
       model = HasList()
@@ -121,6 +123,7 @@ class ListTests(test.TestCase):
       self.assertEqual(0, len(model.updates))
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testLossesForwarded(self):
     model = HasList()
     model_input = array_ops.ones([32, 2])
@@ -253,6 +256,13 @@ class ListTests(test.TestCase):
     l.append(1)
     self.assertEqual([1], l_wrapper)
 
+  def testLayerCollectionWithExternalMutation(self):
+    l = []
+    l_wrapper = data_structures._ListWrapper(l)
+    layer = core.Dense(1)
+    l.append(layer)
+    self.assertEqual([layer], l_wrapper.layers)
+
   def testHashing(self):
     has_sequences = set([data_structures.List(),
                          data_structures.List()])
@@ -288,6 +298,7 @@ class HasMapping(training.Model):
 class MappingTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testTracking(self):
     model = HasMapping()
     output = model(array_ops.ones([32, 2]))
@@ -323,6 +334,20 @@ class MappingTests(test.TestCase):
     mapping = data_structures.Mapping()
     with self.assertRaises(TypeError):
       mapping[1] = data_structures.List()
+
+  def testLayerCollectionWithExternalMutation(self):
+    d = {}
+    root = tracking.Checkpointable()
+    root.wrapper = d
+    self.assertEqual([], root.wrapper.layers)
+    self.assertEqual([], root.wrapper.trainable_weights)
+    layer1 = core.Dense(1)
+    layer2 = core.Dense(1)
+    d["a"] = layer1
+    d["b"] = layer2
+    self.assertEqual([layer1, layer2], root.wrapper.layers)
+    # The layers have still not created variables
+    self.assertEqual([], root.wrapper.trainable_weights)
 
   def testHashing(self):
     has_mappings = set([data_structures.Mapping(),

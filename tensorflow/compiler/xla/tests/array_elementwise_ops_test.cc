@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -139,7 +139,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
 }
 
 // A non-canonical quiet NaN value.
-static const float kNonCanonicalNaN = tensorflow::bit_cast<float>(0x7FD01234);
+static const float kNonCanonicalNaN = absl::bit_cast<float>(0x7FD01234);
 
 XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteScalarF32) {
   XlaBuilder builder(TestName());
@@ -329,13 +329,13 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
   Literal b_literal = LiteralUtil::CreateR1<float>({b_values});
   std::unique_ptr<GlobalData> b_data =
       client_->TransferToServer(b_literal).ConsumeValueOrDie();
-  auto b_constant = Parameter(&builder, 1, a_literal.shape(), "b_param");
-  auto b_param = ConstantR1<float>(&builder, b_values);
+  auto b_param = Parameter(&builder, 1, a_literal.shape(), "b_param");
+  auto b_constant = ConstantR1<float>(&builder, b_values);
 
-  auto sum1 = Add(a_constant, b_constant);
-  auto sum2 = Add(a_constant, b_param);
-  auto sum3 = Add(a_param, b_constant);
-  auto sum4 = Add(a_param, b_param);
+  auto sum1 = Add(a_constant, b_param);
+  auto sum2 = Add(a_constant, b_constant);
+  auto sum3 = Add(a_param, b_param);
+  auto sum4 = Add(a_param, b_constant);
 
   auto sum = Add(sum1, sum2);
   sum = Add(sum, sum3);
@@ -348,6 +348,44 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
 
   ComputeAndCompareR1<float>(&builder, expected, {a_data.get(), b_data.get()},
                              error_spec_);
+}
+
+// TODO(b/119692968): This test runs OOM on the GPU and CPU backend.
+XLA_TEST_F(ArrayElementwiseOpTest,
+           DISABLED_ON_GPU(DISABLED_ON_CPU(DeeplyNestedAddWithSlices))) {
+  XlaBuilder builder(TestName());
+  std::vector<float> values(30, 0.0);
+  auto a_literal = LiteralUtil::CreateR1<float>(values);
+  auto a = Parameter(&builder, 0, a_literal.shape(), "x");
+  auto b_literal = LiteralUtil::CreateR1<float>(values);
+  auto b = Parameter(&builder, 1, b_literal.shape(), "x");
+
+  // Construct a sequence of diamond-shaped gadgets like this:
+  //
+  //      add
+  //    /    \
+  //  slice  slice
+  //     \   /
+  //      add
+  //
+  // Each 'left' slice removes the last element, each 'right' slice removes the
+  // first element. In this way, we index into the add with different
+  // multi-dimensional index arrays, which defeats the caching we use to avoid
+  // exponential compile time.
+  std::function<XlaOp(int64)> generate_recursive =
+      [&](int64 slice_size) -> XlaOp {
+    if (slice_size == values.size()) {
+      return Add(a, b);
+    }
+    XlaOp param = generate_recursive(slice_size + 1);
+    auto slice1 = Slice(param, {0}, {slice_size}, {1});
+    auto slice2 = Slice(param, {1}, {slice_size + 1}, {1});
+    return Add(slice1, slice2);
+  };
+  generate_recursive(1);
+  auto a_data = client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto b_data = client_->TransferToServer(b_literal).ConsumeValueOrDie();
+  ComputeAndCompareR1<float>(&builder, {0.0}, {a_data.get(), b_data.get()});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantF32s) {
@@ -2478,8 +2516,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
   Ne(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,2] {
-  { 00 },
-  { 01 }
+  { 0, 0 },
+  { 0, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2492,8 +2530,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
   Ge(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 1100 },
-  { 0001 }
+  { 1, 1, 0, 0 },
+  { 0, 0, 0, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2506,8 +2544,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
   Gt(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 0100 },
-  { 0000 }
+  { 0, 1, 0, 0 },
+  { 0, 0, 0, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2520,8 +2558,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
   Le(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 1011 },
-  { 1111 }
+  { 1, 0, 1, 1 },
+  { 1, 1, 1, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2534,8 +2572,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
   Lt(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 0011 },
-  { 1110 }
+  { 0, 0, 1, 1 },
+  { 1, 1, 1, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2744,12 +2782,16 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
   Array3D<int> expected_3d(
       {{{0, 1}, {0, 0}, {0, 0}}, {{0, 1}, {1, 0}, {0, 1}}});
   const string expected = R"(pred[2,3,2] {
-{ { 01 },
-  { 00 },
-  { 00 } },
-{ { 01 },
-  { 10 },
-  { 01 } }
+{
+  { 0, 1 },
+  { 0, 0 },
+  { 0, 0 }
+},
+{
+  { 0, 1 },
+  { 1, 0 },
+  { 0, 1 }
+}
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }

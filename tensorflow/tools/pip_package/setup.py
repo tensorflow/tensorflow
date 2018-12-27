@@ -45,7 +45,7 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.12.0-rc0'
+_VERSION = '1.12.0'
 
 if '--version' in sys.argv:
   version_idx = sys.argv.index('--version')
@@ -94,7 +94,10 @@ if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
-      break
+    elif 'tensorflow_estimator' in pkg and '2.0' in project_name:
+      REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
+    elif 'tensorflow_estimator' in pkg:
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 
 # weakref.finalize and enum were introduced in Python 3.4
 if sys.version_info < (3, 4):
@@ -104,15 +107,16 @@ if sys.version_info < (3, 4):
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
-    'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
-    'tflite_convert = tensorflow.contrib.lite.python.tflite_convert:main',
-    'toco = tensorflow.contrib.lite.python.tflite_convert:main',
+    'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
+    'tflite_convert = tensorflow.lite.python.tflite_convert:main',
+    'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
     'tensorboard = tensorboard.main:run_main',
+    'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
 ]
 # pylint: enable=line-too-long
 

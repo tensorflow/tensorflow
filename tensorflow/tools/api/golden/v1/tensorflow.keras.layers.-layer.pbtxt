@@ -12,6 +12,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dynamic"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "inbound_nodes"
     mtype: "<type \'property\'>"
   }
@@ -81,11 +85,15 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'trainable\', \'name\', \'dtype\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'trainable\', \'name\', \'dtype\', \'dynamic\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "add_loss"
     argspec: "args=[\'self\', \'losses\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "add_metric"
+    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_update"

@@ -19,10 +19,10 @@ limitations under the License.
 namespace tensorflow {
 namespace port {
 
-// Platform-specific initialization routine that may be invoked by a
+// Platform-specific initialization routine that should be invoked by a
 // main() program that uses TensorFlow.
-//
-// Default implementation does nothing.
+// This performs necessary initialization on some platforms; TensorFlow
+// may not work unless it has been called.
 void InitMain(const char* usage, int* argc, char*** argv);
 
 }  // namespace port

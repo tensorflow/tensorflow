@@ -88,7 +88,7 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
 static StatusOr<HloInstruction*> PermuteScatterAndWindowDims(
     HloInstruction* updates, absl::Span<const int64> update_window_dims) {
   std::vector<int64> permutation;
-  const int64 updates_rank = ShapeUtil::Rank(updates->shape());
+  const int64 updates_rank = updates->shape().rank();
   permutation.reserve(updates_rank);
 
   for (int64 i = 0; i < updates_rank; ++i) {

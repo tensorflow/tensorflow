@@ -71,5 +71,15 @@ class TestCustomObjectScope(test.TestCase):
       self.assertEqual(cl.__class__, CustomClass)
 
 
+class SerializeKerasObjectTest(test.TestCase):
+
+  def test_serialize_none(self):
+    serialized = keras.utils.generic_utils.serialize_keras_object(None)
+    self.assertEqual(serialized, None)
+    deserialized = keras.utils.generic_utils.deserialize_keras_object(
+        serialized)
+    self.assertEqual(deserialized, None)
+
+
 if __name__ == '__main__':
   test.main()

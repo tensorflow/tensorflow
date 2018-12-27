@@ -61,8 +61,8 @@ Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
         " but op has dtype ", DataTypeString(dtype), ".");
   }
 
-  TF_RET_CHECK(resource->tensor_array_size() >= 0)
-      << resource->name() << " size " << resource->tensor_array_size();
+  TF_RET_CHECK(resource->max_array_size() >= 0)
+      << resource->name() << " size " << resource->max_array_size();
 
   if (!resource->initialized()) {
     TF_RETURN_IF_ERROR(resource->SetTypeAndShape(dtype, elem_shape));
@@ -78,7 +78,7 @@ Status MaybeInitializeTensorArray(xla::XlaBuilder* builder,
         XLAShapeToTensorShape(shape_or_status.ValueOrDie(), &shape));
 
     TensorShape ta_shape;
-    ta_shape.AddDim(resource->tensor_array_size());
+    ta_shape.AddDim(resource->max_array_size());
     ta_shape.AppendShape(elem_shape);
     if (ta_shape != shape) {
       return errors::InvalidArgument(
@@ -114,7 +114,7 @@ Status CheckTensorArrayIsInitialized(const string& op_name,
 Status GetTensorArrayShape(const XlaResource* resource,
                            xla::XlaBuilder* builder, TensorShape* shape) {
   *shape = resource->shape();
-  shape->InsertDim(0, resource->tensor_array_size());
+  shape->InsertDim(0, resource->max_array_size());
   return Status::OK();
 }
 
@@ -166,13 +166,10 @@ class TensorArrayOp : public XlaOpKernel {
       value = xla::Broadcast(zero, ta_shape.dim_sizes());
     }
 
-    XlaContext& xc = XlaContext::Get(ctx);
-    XlaResource* var;
-    string name = absl::StrCat("TensorArray: ", tensor_array_name_);
-    OP_REQUIRES_OK(
-        ctx, xc.CreateResource(XlaResource::kTensorArray, -1, std::move(name),
-                               dtype_, shape, value, /*tensor_array_size=*/size,
-                               /*tensor_array_gradients=*/{}, &var));
+    XlaResource* var =
+        ctx->xla_context()->AddResource(XlaResource::CreateTensorArray(
+            /*name=*/absl::StrCat("TensorArray: ", tensor_array_name_), dtype_,
+            shape, /*initial_value=*/value, /*max_array_size=*/size));
     ctx->SetResourceOutput(0, var);
 
     Tensor flow(DT_FLOAT, TensorShape({}));
@@ -517,14 +514,13 @@ class TensorArraySplitOp : public XlaOpKernel {
     xla::XlaOp ta = resource->value();
 
     TensorShape ta_shape;
-    ta_shape.AddDim(resource->tensor_array_size());
+    ta_shape.AddDim(resource->max_array_size());
     ta_shape.AppendShape(elem_shape);
 
-    OP_REQUIRES(
-        ctx, lengths.size() == resource->tensor_array_size(),
-        errors::InvalidArgument(
-            "TensorArray's size is not equal to the size of lengths (",
-            lengths.size(), " vs. ", resource->tensor_array_size(), ")"));
+    OP_REQUIRES(ctx, lengths.size() == resource->max_array_size(),
+                errors::InvalidArgument(
+                    "TensorArray's size is not equal to the size of lengths (",
+                    lengths.size(), " vs. ", resource->max_array_size(), ")"));
 
     const xla::XlaOp value = ctx->Input(1);
     const xla::XlaOp flow = ctx->Input(3);
@@ -562,8 +558,7 @@ class TensorArraySizeOp : public XlaOpKernel {
     XlaResource* var;
     OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &var));
     Tensor size_tensor(DT_INT32, {});
-    size_tensor.scalar<int32>()() =
-        static_cast<int32>(var->tensor_array_size());
+    size_tensor.scalar<int32>()() = static_cast<int32>(var->max_array_size());
     ctx->SetConstantOutput(0, size_tensor);
   }
 

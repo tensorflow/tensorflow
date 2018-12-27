@@ -129,6 +129,10 @@ class XRTTupleAllocation : public ResourceBase {
   // Deletes the reference in the rm to an allocation interned under key.
   static Status DeleteFromResourceManager(ResourceMgr* rm, int64 key);
 
+  // Releases all the device memory allocated by XRT within the resource
+  // manager.
+  static Status ReleaseAllAllocations(ResourceMgr* rm);
+
   // Adds the allocation to a ResourceMgr and returns the key that will be used
   // to retrieve it. Transfers a reference on *this to rm.
   Status Intern(ResourceMgr* rm, int64* key);
@@ -136,6 +140,9 @@ class XRTTupleAllocation : public ResourceBase {
   // Copies the allocation from device to host and returns it in literal.
   Status ToLiteral(xla::Backend* backend, int device_ordinal,
                    xla::Literal* literal);
+
+  // Write a new literal value to the allocation.
+  Status WriteLiteral(xla::Backend* backend, const xla::Literal& literal);
 
   // True if none of the buffers in the allocation are aliased by any other live
   // handle.

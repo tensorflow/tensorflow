@@ -210,7 +210,7 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
             &logical_buffer_analysis_->GetBuffer(hlo_instruction, index));
       });
 
-  if (ShapeUtil::IsTuple(hlo_instruction->shape())) {
+  if (hlo_instruction->shape().IsTuple()) {
     // If the hlo instruction is a tuple-shaped, then trivially the instruction
     // itself is the source of the tuple.
     points_to_set.add_tuple_source({}, hlo_instruction);
@@ -277,6 +277,13 @@ Status TuplePointsToAnalysis::HandleDomain(HloInstruction* domain) {
   // result *is* the buffer of its operand, so just copy the operands points-to
   // set.
   CreateCopiedPointsToSet(domain, domain->operand(0));
+  return Status::OK();
+}
+
+Status TuplePointsToAnalysis::HandleAddDependency(
+    HloInstruction* add_dependency) {
+  // AddDependency just forwards the value of its zero-th operand.
+  CreateCopiedPointsToSet(add_dependency, add_dependency->operand(0));
   return Status::OK();
 }
 

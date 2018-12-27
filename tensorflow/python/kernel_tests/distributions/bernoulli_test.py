@@ -151,6 +151,7 @@ class BernoulliTest(test.TestCase):
       self.assertAllClose(self.evaluate(dist.prob(x)), expected_pmf)
       self.assertAllClose(self.evaluate(dist.log_prob(x)), np.log(expected_pmf))
 
+  @test_util.run_deprecated_v1
   def testPmfCorrectBroadcastDynamicShape(self):
     with self.cached_session():
       p = array_ops.placeholder(dtype=dtypes.float32)
@@ -167,6 +168,7 @@ class BernoulliTest(test.TestCase):
           }), [[0.2, 0.7, 0.4]])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_deprecated_v1
   def testPmfInvalid(self):
     p = [0.1, 0.2, 0.7]
     dist = bernoulli.Bernoulli(probs=p, validate_args=True)
@@ -193,6 +195,7 @@ class BernoulliTest(test.TestCase):
         self.evaluate(
             bernoulli.Bernoulli(probs=p, validate_args=False).log_prob(samps)))
 
+  @test_util.run_deprecated_v1
   def testBroadcasting(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes.float32)
@@ -207,6 +210,7 @@ class BernoulliTest(test.TestCase):
               p: [0.5, 0.5, 0.5]
           }))
 
+  @test_util.run_deprecated_v1
   def testPmfShapes(self):
     with self.cached_session():
       p = array_ops.placeholder(dtypes.float32, shape=[None, 1])
@@ -276,6 +280,7 @@ class BernoulliTest(test.TestCase):
     grad_p = tape.gradient(samples, p)
     self.assertIsNone(grad_p)
 
+  @test_util.run_deprecated_v1
   def testSampleActsLikeSampleN(self):
     with self.cached_session() as sess:
       p = [0.2, 0.6]

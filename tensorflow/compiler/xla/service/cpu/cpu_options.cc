@@ -22,7 +22,6 @@ limitations under the License.
 namespace {
 
 const char* const kXlaOptimizeForSizeCpuOption = "xla_cpu_optimize_for_size";
-const char* const kXlaDisableVectorizedReduce = "xla_disable_vectorized_reduce";
 const char* const kLlvmIrDotTilingFactor = "xla_llvm_dot_tiling_factor";
 const char* const kXlaEnableExperimentalLlvmIrGemm =
     "xla_enable_experimental_llvm_ir_gemm";

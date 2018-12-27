@@ -64,7 +64,7 @@ class ConstBroadcastTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ['my_trt_op_0']
+    return ['TRTEngineOp_0']
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""

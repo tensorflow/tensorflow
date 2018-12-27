@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "categorical_column_with_vocabulary_file"
-    argspec: "args=[\'key\', \'vocabulary_file\', \'vocabulary_size\', \'num_oov_buckets\', \'default_value\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \"<dtype: \'string\'>\"], "
+    argspec: "args=[\'key\', \'vocabulary_file\', \'vocabulary_size\', \'dtype\', \'default_value\', \'num_oov_buckets\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\", \'None\', \'0\'], "
   }
   member_method {
     name: "categorical_column_with_vocabulary_list"
@@ -31,14 +31,6 @@ tf_module {
   member_method {
     name: "indicator_column"
     argspec: "args=[\'categorical_column\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "input_layer"
-    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\', \'cols_to_vars\', \'cols_to_output_tensors\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "linear_model"
-    argspec: "args=[\'features\', \'feature_columns\', \'units\', \'sparse_combiner\', \'weight_collections\', \'trainable\', \'cols_to_vars\'], varargs=None, keywords=None, defaults=[\'1\', \'sum\', \'None\', \'True\', \'None\'], "
   }
   member_method {
     name: "make_parse_example_spec"

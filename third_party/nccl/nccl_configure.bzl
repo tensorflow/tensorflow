@@ -3,7 +3,7 @@
 
 `nccl_configure` depends on the following environment variables:
 
-  * `TF_NCCL_VERSION`: The NCCL version.
+  * `TF_NCCL_VERSION`: Installed NCCL version or empty to build from source.
   * `NCCL_INSTALL_PATH`: The installation path of the NCCL library.
   * `NCCL_HDR_PATH`: The installation path of the NCCL header files.
 """
@@ -44,6 +44,7 @@ _NCCL_ARCHIVE_BUILD_CONTENT = """
 exports_files([
     "cuda/bin/crt/link.stub",
     "cuda/bin/fatbinary",
+    "cuda/bin/bin2c",
     "nvlink",
 ])
 

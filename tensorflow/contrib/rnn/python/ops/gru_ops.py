@@ -21,7 +21,7 @@ from tensorflow.contrib.rnn.ops import gen_gru_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.layers import base as base_layer
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -165,7 +165,7 @@ class GRUBlockCell(LayerRNNCell):
       num_units = cell_size
     self._cell_size = num_units
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
   @property
   def state_size(self):

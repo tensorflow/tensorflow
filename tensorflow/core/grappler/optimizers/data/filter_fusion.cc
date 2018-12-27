@@ -37,7 +37,7 @@ NodeDef MakeFusedFilterNode(const NodeDef& first_filter_node,
                             const FunctionDef& fused_function,
                             MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_filter", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("fused_filter", graph->graph(),
                                       &fused_node);
 
   fused_node.set_op("FilterDataset");
@@ -109,7 +109,7 @@ Status FilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* fused_filter_node = graph.AddNode(MakeFusedFilterNode(
         *first_filter_node, *second_filter_node, *fused_predicate, &graph));
 
-    graph.ReplaceInput(*second_filter_node, *fused_filter_node);
+    graph.UpdateFanouts(second_filter_node->name(), fused_filter_node->name());
 
     // TODO(prazek): we should run some optimizations on the fused filter
     // functions, or make sure that optimization passes run after filter

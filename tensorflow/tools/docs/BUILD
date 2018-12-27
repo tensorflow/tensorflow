@@ -142,15 +142,28 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "generate_1_0",
-    srcs = ["generate_1_0.py"],
+py_test(
+    name = "generate2_test",
+    srcs = ["generate2_test.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        ":generate_lib",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python/debug:debug_py",
+    tags = [
+        "manual",
+        # No reason to run sanitizers or fastbuild for this test.
+        "noasan",
+        "nomsan",
+        "notsan",
+        "optonly",
     ],
+    deps = [
+        ":generate2",
+    ],
+)
+
+py_binary(
+    name = "generate2",
+    srcs = ["generate2.py"],
+    srcs_version = "PY2AND3",
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_library(

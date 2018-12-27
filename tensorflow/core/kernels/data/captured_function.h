@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -34,12 +34,83 @@ class ResourceMgr;
 
 namespace data {
 
-// A `CapturedFunction` encapsulates a TensorFlow function and all of
-// the runtime support required to execute it.
+class CapturedFunction;
+
+// An InstantiatedCapturedFunction encapsulates all the runtime support needed
+// to execute a tensorflow function.
 //
-// The `Dataset`-related classes use `CapturedFunction` to execute
-// TensorFlow functions outside a the normal `OpKernel::Compute()`
-// context.
+// While CapturedFunction (below) encapsulates the more permanent attributes
+// of the function i.e. name, captured arguments etc.,
+// InstantiatedCapturedFunction encapsulates the more runtime aspects i.e.
+// FunctionLibraryRuntime, function handle etc.
+//
+// The `Iterator-`related classes use `InstantiatedCapturedFunction` to execute
+// functions outside a the normal `OpKernel::Compute()` context.
+class InstantiatedCapturedFunction {
+ public:
+  ~InstantiatedCapturedFunction();
+
+  // Runs the "Instantiated Captured function". This method takes ownership of
+  // the tensors in `args`, in order to be able to deallocate them as early as
+  // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
+  // ownership of the `args`.
+  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
+             std::vector<Tensor>* rets) const;
+
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
+  // possible.
+  Status RunWithBorrowedArgs(IteratorContext* ctx,
+                             const std::vector<Tensor>& args,
+                             std::vector<Tensor>* rets) const;
+
+  // Synchronously runs the captured function on the given `args`, and stores
+  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
+  // possible. This can be useful for calling a captured
+  // function in cases where an `IteratorContext*` is not available
+  // (such as a destructor).
+  Status RunInstantiated(const std::vector<Tensor>& args,
+                         std::vector<Tensor>* rets);
+
+  // Asynchronously runs the captured function on the given `args`, stores
+  // the results in `*rets`, and calls the given `done` callback when the
+  // function returns. This method takes ownership of the tensors in `args`,
+  // in order to be able to deallocate them as early as possible.
+  void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
+                std::vector<Tensor>* rets,
+                FunctionLibraryRuntime::DoneCallback done,
+                const string& prefix) const;
+
+  // Returns a step ID for use when running an `InstantiatedCapturedFunction`.
+  static int64 generate_step_id() {
+    // Choose a step ID that is guaranteed not to clash with any
+    // Session-generated step ID. DirectSession only generates
+    // non-negative step IDs (contiguous, starting from 0), and
+    // MasterSession generates 56-bit random step IDs whose MSB is
+    // always 0, so a negative random step ID should suffice.
+    return -std::abs(static_cast<int64>(random::New64()));
+  }
+
+ private:
+  InstantiatedCapturedFunction(
+      FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
+      DataTypeVector ret_types,
+      std::function<void(std::function<void()>)> runner,
+      CapturedFunction* captured_func);
+
+  friend class CapturedFunction;
+
+  FunctionLibraryRuntime* const lib_;
+  const FunctionLibraryRuntime::Handle f_handle_;
+  const DataTypeVector ret_types_;
+  std::function<void(std::function<void()>)> captured_runner_;
+  CapturedFunction* const captured_func_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
+};
+
+// A `CapturedFunction` encapsulates a TensorFlow function, plus any "captured"
+// arguments that it closed over in the user program.
 class CapturedFunction {
  public:
   // Creates a new instance using a list of named attributes, fetching captured
@@ -57,85 +128,29 @@ class CapturedFunction {
                        const string& argument, bool use_inter_op_parallelism,
                        std::unique_ptr<CapturedFunction>* out_function);
 
-  ~CapturedFunction();
-
-  // Runs the "Captured function" using the given FLR and caches the lib and
-  // handle generated during instantiation. If Run is called with a different
-  // lib afterwards, generates an error. This method takes ownership of the
-  // tensors in `args`, in order to be able to deallocate them as early as
-  // possible. Use `RunWithBorrowedArgs()` if the caller needs to retain
-  // ownership of the `args`.
-  Status Run(IteratorContext* ctx, std::vector<Tensor>&& args,
-             std::vector<Tensor>* rets);
-
-  // Synchronously runs the captured function on the given `args`, and stores
-  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
-  // possible.
-  Status RunWithBorrowedArgs(IteratorContext* ctx,
-                             const std::vector<Tensor>& args,
-                             std::vector<Tensor>* rets);
-
-  // Explicitly instantiate this function for use in the given
-  // context. This method, and the context-less overload
-  // `RunInstantiated()` below can be useful for calling a captured
-  // function in cases where an `IteratorContext*` is not available
-  // (such as a destructor).
-  Status Instantiate(IteratorContext* ctx);
-
-  // Synchronously runs the captured function on the given `args`, and stores
-  // the results in `*rets`. Prefer to use `Run()` or `RunAsync()` when
-  // possible.
-  //
-  // REQUIRES: `this->Instantiate()` must have been called before this method.
-  Status RunInstantiated(const std::vector<Tensor>& args,
-                         std::vector<Tensor>* rets);
-
-  // Asynchronously runs the captured function on the given `args`, stores
-  // the results in `*rets`, and calls the given `done` callback when the
-  // function returns. This method takes ownership of the tensors in `args`,
-  // in order to be able to deallocate them as early as possible.
-  void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
-                std::vector<Tensor>* rets,
-                FunctionLibraryRuntime::DoneCallback done,
-                const string& prefix);
+  // Instantiates this function for use in the given context, providing an
+  // InstantiatedCapturedFunction that can be used to execute functions.
+  Status Instantiate(IteratorContext* ctx,
+                     std::unique_ptr<InstantiatedCapturedFunction>*
+                         instantiated_captured_function);
 
   // Returns the named list of function arguments.
   const NameAttrList& func() { return func_; }
 
   // Returns that additional captured inputs that will be passed to the function
-  // when `Run*()` is called.
   const std::vector<Tensor>& captured_inputs() { return captured_inputs_; }
-
-  // Returns a step ID for use when running a `CapturedFunction`.
-  static int64 generate_step_id() {
-    // Choose a step ID that is guaranteed not to clash with any
-    // Session-generated step ID. DirectSession only generates
-    // non-negative step IDs (contiguous, starting from 0), and
-    // MasterSession generates 56-bit random step IDs whose MSB is
-    // always 0, so a negative random step ID should suffice.
-    return -std::abs(static_cast<int64>(random::New64()));
-  }
 
  private:
   CapturedFunction(const NameAttrList& func,
                    std::vector<Tensor> captured_inputs,
                    bool use_inter_op_parallelism);
 
-  Status GetHandle(IteratorContext* ctx,
-                   FunctionLibraryRuntime::Handle* out_handle);
-
-  mutex mu_;
   const NameAttrList func_;
-  FunctionLibraryRuntime* lib_ GUARDED_BY(mu_);
-  FunctionLibraryRuntime::Handle f_handle_ GUARDED_BY(mu_);
   const std::vector<Tensor> captured_inputs_;
-  DataTypeSlice ret_types_;
-  std::function<void(std::function<void()>)> captured_runner_ = nullptr;
   const bool use_inter_op_parallelism_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };
-
 }  // namespace data
 
 // TODO(b/114112161): Remove these aliases when all users have moved over to the

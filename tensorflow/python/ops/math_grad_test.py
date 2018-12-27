@@ -20,14 +20,21 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
+from tensorflow.python.eager import execution_callbacks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+
+RAISE = execution_callbacks.ExecutionCallback.RAISE
 
 
 class SquaredDifferenceOpTest(test.TestCase):
@@ -52,6 +59,7 @@ class SquaredDifferenceOpTest(test.TestCase):
     self.assertLess(left_err, 1e-10)
     self.assertLess(right_err, 1e-10)
 
+  @test_util.run_deprecated_v1
   def testGrad(self):
     self._testGrad([1, 2, 3, 2], [3, 2])
     self._testGrad([2, 4], [3, 2, 4])
@@ -83,6 +91,7 @@ class AbsOpTest(test.TestCase):
           value, shape, output, output.get_shape().as_list())
     self.assertLess(error, max_error)
 
+  @test_util.run_deprecated_v1
   def testComplexAbs(self):
     # Bias random test values away from zero to avoid numeric instabilities.
     self._testGrad(
@@ -99,6 +108,7 @@ class AbsOpTest(test.TestCase):
 
 class MinOrMaxGradientTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testMinGradient(self):
     inputs = constant_op.constant([1.0], dtype=dtypes.float32)
     outputs = math_ops.reduce_min(array_ops.concat([inputs, inputs], 0))
@@ -106,6 +116,7 @@ class MinOrMaxGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [1], outputs, [])
       self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testMaxGradient(self):
     inputs = constant_op.constant([1.0], dtype=dtypes.float32)
     outputs = math_ops.reduce_max(array_ops.concat([inputs, inputs], 0))
@@ -116,6 +127,7 @@ class MinOrMaxGradientTest(test.TestCase):
 
 class MaximumOrMinimumGradientTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testMaximumGradient(self):
     inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
     outputs = math_ops.maximum(inputs, 3.0)
@@ -123,6 +135,7 @@ class MaximumOrMinimumGradientTest(test.TestCase):
       error = gradient_checker.compute_gradient_error(inputs, [4], outputs, [4])
       self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testMinimumGradient(self):
     inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
     outputs = math_ops.minimum(inputs, 2.0)
@@ -133,6 +146,7 @@ class MaximumOrMinimumGradientTest(test.TestCase):
 
 class ProdGradientTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testProdGradient(self):
     inputs = constant_op.constant([[1., 2.], [3., 4.]],
                                   dtype=dtypes.float32)
@@ -143,6 +157,7 @@ class ProdGradientTest(test.TestCase):
           outputs, outputs.get_shape().as_list())
       self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testProdGradientForNegativeAxis(self):
     inputs = constant_op.constant([[1., 2.], [3., 4.]],
                                   dtype=dtypes.float32)
@@ -153,6 +168,7 @@ class ProdGradientTest(test.TestCase):
           outputs, outputs.get_shape().as_list())
       self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testProdGradientComplex(self):
     for dtype in dtypes.complex64, dtypes.complex128:
       inputs = constant_op.constant([[1 + 3j, 2 - 1j], [3j, 4]],
@@ -164,6 +180,7 @@ class ProdGradientTest(test.TestCase):
             outputs, outputs.get_shape().as_list())
         self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testProdGradientForNegativeAxisComplex(self):
     for dtype in dtypes.complex64, dtypes.complex128:
       inputs = constant_op.constant([[1 + 3j, 2 - 1j], [3j, 4]],
@@ -178,6 +195,7 @@ class ProdGradientTest(test.TestCase):
 
 class SegmentMinOrMaxGradientTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSegmentMinGradient(self):
     data = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
     segment_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
@@ -187,6 +205,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
                                                       [2])
       self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testSegmentMaxGradient(self):
     data = constant_op.constant([1.0, 2.0, 3.0], dtype=dtypes.float32)
     segment_ids = constant_op.constant([0, 0, 1], dtype=dtypes.int64)
@@ -196,6 +215,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
                                                       [2])
       self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testSegmentMinGradientWithTies(self):
     inputs = constant_op.constant([1.0], dtype=dtypes.float32)
     data = array_ops.concat([inputs, inputs], 0)
@@ -206,6 +226,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
                                                       [1])
       self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testSegmentMaxGradientWithTies(self):
     inputs = constant_op.constant([1.0], dtype=dtypes.float32)
     data = array_ops.concat([inputs, inputs], 0)
@@ -219,6 +240,7 @@ class SegmentMinOrMaxGradientTest(test.TestCase):
 
 class FloorModGradientTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testFloorModGradient(self):
     # Making sure the input is not near the discontinuity point where
     # x/y == floor(x/y)
@@ -233,6 +255,7 @@ class FloorModGradientTest(test.TestCase):
 
 class DivNoNanGradientTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testBasicGradient(self):
     inputs = constant_op.constant(np.arange(-3, 3),
                                   dtype=dtypes.float32)
@@ -244,6 +267,7 @@ class DivNoNanGradientTest(test.TestCase):
           outputs.get_shape().as_list())
       self.assertLess(error, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testGradientWithDenominatorIsZero(self):
     x = constant_op.constant(np.arange(-3, 3),
                              dtype=dtypes.float32)
@@ -263,6 +287,7 @@ class XlogyTest(test.TestCase):
     xlogy_ygrad = self.evaluate(gradients.gradients(math_ops.xlogy(x, y), y)[0])
     return xlogy_xgrad, xlogy_ygrad
 
+  @test_util.run_deprecated_v1
   def testNonZeroValuesGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant(0.1, dtype=dtype)
@@ -273,6 +298,7 @@ class XlogyTest(test.TestCase):
       self.assertAllClose(xlogy_expected_xgrad, xlogy_xgrad)
       self.assertAllClose(xlogy_expected_ygrad, xlogy_ygrad)
 
+  @test_util.run_deprecated_v1
   def testZeroXGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant(0., dtype=dtype)
@@ -282,6 +308,7 @@ class XlogyTest(test.TestCase):
       self.assertAllClose(zero, xlogy_xgrad)
       self.assertAllClose(zero, xlogy_ygrad)
 
+  @test_util.run_deprecated_v1
   def testZeroYGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant(0.1, dtype=dtype)
@@ -290,6 +317,7 @@ class XlogyTest(test.TestCase):
       self.assertAllClose(-np.inf, xlogy_xgrad)
       self.assertAllClose(np.inf, xlogy_ygrad)
 
+  @test_util.run_deprecated_v1
   def testZeroXYGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant(0., dtype=dtype)
@@ -307,6 +335,7 @@ class XdivyTest(test.TestCase):
     xdivy_ygrad = self.evaluate(gradients.gradients(math_ops.xdivy(x, y), y)[0])
     return xdivy_xgrad, xdivy_ygrad
 
+  @test_util.run_deprecated_v1
   def testNonZeroValuesGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant(0.1, dtype=dtype)
@@ -317,6 +346,7 @@ class XdivyTest(test.TestCase):
       self.assertAllClose(xdivy_expected_xgrad, xdivy_xgrad)
       self.assertAllClose(xdivy_expected_ygrad, xdivy_ygrad)
 
+  @test_util.run_deprecated_v1
   def testZeroXGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant(0., dtype=dtype)
@@ -326,6 +356,7 @@ class XdivyTest(test.TestCase):
       self.assertAllClose(zero, xdivy_xgrad)
       self.assertAllClose(zero, xdivy_ygrad)
 
+  @test_util.run_deprecated_v1
   def testZeroYGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant(0.1, dtype=dtype)
@@ -334,6 +365,7 @@ class XdivyTest(test.TestCase):
       self.assertAllClose(np.inf, xdivy_xgrad)
       self.assertAllClose(-np.inf, xdivy_ygrad)
 
+  @test_util.run_deprecated_v1
   def testZeroXYGrad(self):
     for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant(0., dtype=dtype)
@@ -342,6 +374,80 @@ class XdivyTest(test.TestCase):
       zero = self.evaluate(x)
       self.assertAllClose(zero, xdivy_xgrad)
       self.assertAllClose(zero, xdivy_ygrad)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class PowGradTest(test.TestCase):
+
+  def test_zero_grad_tf_gradients(self):
+    if context.executing_eagerly():
+      self.skipTest("tf.gradients not supported in eager.")
+
+    x = constant_op.constant([-1., 0., 1.])
+    g = self.evaluate(gradients.gradients(math_ops.pow(x, 2), x)[0])
+    self.assertAllClose([-2., 0., 2.], g)
+
+  def test_zero_grad_tape(self):
+    with execution_callbacks.errstate(inf_or_nan=RAISE):
+      x = constant_op.constant([-1, 0., 1.])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        g = tape.gradient(math_ops.pow(x, 2), x)
+      g = self.evaluate(g)
+      self.assertAllClose([-2., 0., 2.], g)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NextAfterTest(test.TestCase):
+
+  def _nextafter_gradient(self, x1, x2):
+    with backprop.GradientTape() as tape:
+      tape.watch(x1)
+      tape.watch(x2)
+      y = math_ops.nextafter(x1, x2)
+      return tape.gradient(y, [x1, x2])
+
+  def testBasic(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x1 = constant_op.constant(0.1, dtype=dtype)
+      x2 = constant_op.constant(3.1, dtype=dtype)
+      dx1, dx2 = self._nextafter_gradient(x1, x2)
+      expected_dx1 = constant_op.constant(1, dtype=dtype)
+      expected_dx2 = constant_op.constant(0, dtype=dtype)
+      self.assertAllClose(expected_dx1, dx1)
+      self.assertAllClose(expected_dx2, dx2)
+
+  def testDynamicShapes(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      default_x1 = constant_op.constant(0.1, dtype=dtype)
+      default_x2 = constant_op.constant(3.1, dtype=dtype)
+      x1 = array_ops.placeholder_with_default(default_x1, shape=None)
+      x2 = array_ops.placeholder_with_default(default_x2, shape=None)
+      dx1, dx2 = self._nextafter_gradient(x1, x2)
+      expected_dx1 = constant_op.constant(1, dtype=dtype)
+      expected_dx2 = constant_op.constant(0, dtype=dtype)
+      self.assertAllClose(expected_dx1, dx1)
+      self.assertAllClose(expected_dx2, dx2)
+
+  def testWithGradientChecker(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        x1 = np.array([-1, 0, 1, 2, 3], dtype=dtype.as_numpy_dtype)
+        x2 = np.array([2, 2, 2, 2, 2], dtype=dtype.as_numpy_dtype)
+        err = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(
+                lambda x: math_ops.nextafter(x, x2), [x1]))  # pylint: disable=cell-var-from-loop
+        self.assertLess(err, 1e-3)
+
+  def testBroadcastingWithGradientChecker(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      with self.cached_session():
+        x1 = np.array([-1, 0, 1, 2, 3], dtype=dtype.as_numpy_dtype)
+        x2 = np.array([2], dtype=dtype.as_numpy_dtype)
+        err = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(
+                lambda x: math_ops.nextafter(x, x2), [x1]))  # pylint: disable=cell-var-from-loop
+        self.assertLess(err, 1e-3)
 
 
 if __name__ == "__main__":

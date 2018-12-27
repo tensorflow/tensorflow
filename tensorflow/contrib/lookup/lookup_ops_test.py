@@ -25,6 +25,7 @@ import six
 from tensorflow.contrib import lookup
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import counter
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -50,7 +51,7 @@ class HashTableOpTest(test.TestCase):
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
-      table.init.run()
+      table.initializer.run()
 
       self.assertAllEqual(3, table.size().eval())
 
@@ -74,7 +75,7 @@ class HashTableOpTest(test.TestCase):
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
-      table.init.run()
+      table.initializer.run()
 
       self.assertAllEqual(3, table.size().eval())
 
@@ -94,7 +95,7 @@ class HashTableOpTest(test.TestCase):
           lookup.KeyValueTensorInitializer(
               keys, values, value_dtype=dtypes.int64),
           default_val)
-      table.init.run()
+      table.initializer.run()
 
       self.assertAllEqual(3, table.size().eval())
 
@@ -111,7 +112,7 @@ class HashTableOpTest(test.TestCase):
       values = np.array([0, 1, 2], dtype=np.int64)
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
-      table.init.run()
+      table.initializer.run()
 
       self.assertAllEqual(3, table.size().eval())
 
@@ -156,7 +157,7 @@ class HashTableOpTest(test.TestCase):
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
-      table.init.run()
+      table.initializer.run()
 
       input_string = constant_op.constant(["brain", "salad", "tank"])
       output = table.lookup(input_string)
@@ -171,7 +172,7 @@ class HashTableOpTest(test.TestCase):
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
-      table.init.run()
+      table.initializer.run()
 
       sp_indices = [[0, 0], [0, 1], [1, 0]]
       sp_shape = [2, 2]
@@ -194,7 +195,7 @@ class HashTableOpTest(test.TestCase):
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
-      table.init.run()
+      table.initializer.run()
 
       # Ref types do not produce a lookup signature mismatch.
       input_string_ref = variables.Variable("brain")
@@ -238,10 +239,10 @@ class HashTableOpTest(test.TestCase):
       values = constant_op.constant([0, 1, 2], dtypes.int64)
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
-      table.init.run()
+      table.initializer.run()
 
       with self.assertRaisesOpError("Table already initialized"):
-        table.init.run()
+        table.initializer.run()
 
   def testInitializationWithInvalidDimensions(self):
     with self.cached_session():
@@ -273,13 +274,13 @@ class HashTableOpTest(test.TestCase):
 
     # Init the table in the first session.
     with session1:
-      table.init.run()
+      table.initializer.run()
       self.assertAllEqual(3, table.size().eval())
 
     # Init the table in the second session and verify that we do not get a
     # "Table already initialized" error.
     with session2:
-      table.init.run()
+      table.initializer.run()
       self.assertAllEqual(3, table.size().eval())
 
   def testHashTableInt32String(self):
@@ -289,7 +290,7 @@ class HashTableOpTest(test.TestCase):
       values = constant_op.constant(["brain", "salad", "surgery"])
       table = lookup.HashTable(
           lookup.KeyValueTensorInitializer(keys, values), default_val)
-      table.init.run()
+      table.initializer.run()
 
       input_tensor = constant_op.constant([0, 1, -1])
       output = table.lookup(input_tensor)
@@ -1669,7 +1670,7 @@ class IndexTableFromFile(test.TestCase):
       table = lookup.index_table_from_file(
           vocabulary_file=vocabulary_file, vocab_size=4)
       self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                              "Invalid vocab_size", table.init.run)
+                              "Invalid vocab_size", table.initializer.run)
 
   def test_index_table_from_file_with_vocab_size(self):
     vocabulary_file = self._createVocabFile("f2i_vocab8.txt")
@@ -1717,14 +1718,14 @@ class KeyValueTensorInitializerTest(test.TestCase):
       init = lookup.KeyValueTensorInitializer(
           ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string, dtypes.int64)
       table = lookup.HashTable(init, default_value=-1)
-      table.init.run()
+      table.initializer.run()
 
   def test_int64(self):
     with ops.Graph().as_default(), self.cached_session():
       init = lookup.KeyValueTensorInitializer(
           (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64)
       table = lookup.HashTable(init, default_value=-1)
-      table.init.run()
+      table.initializer.run()
 
   def test_int32(self):
     with ops.Graph().as_default(), self.cached_session():
@@ -1733,7 +1734,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
       table = lookup.HashTable(init, default_value=-1)
       with self.assertRaisesRegexp(
           errors_impl.OpError, "No OpKernel was registered"):
-        table.init.run()
+        table.initializer.run()
 
 
 class IndexTableFromTensor(test.TestCase):
@@ -2021,7 +2022,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
                                    dtypes.int64,
                                    lookup.TextFileIndex.LINE_NUMBER),
         default_value)
-    self.evaluate(table.init)
+    self.evaluate(table.initializer)
 
     output = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
 
@@ -2040,7 +2041,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
                                      dtypes.int64,
                                      lookup.TextFileIndex.LINE_NUMBER),
           default_value)
-      table.init.run()
+      table.initializer.run()
 
       output = table.lookup(
           constant_op.constant((42, 1, 11), dtype=dtypes.int64))
@@ -2059,7 +2060,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           lookup.TextFileInitializer(vocabulary_file, dtypes.int64,
                                      key_index, dtypes.string, value_index),
           default_value)
-      table.init.run()
+      table.initializer.run()
 
       input_values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
       output = table.lookup(input_values)
@@ -2081,7 +2082,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           lookup.TextFileInitializer(vocabulary_file, dtypes.string,
                                      key_index, dtypes.int64, value_index),
           default_value)
-      table.init.run()
+      table.initializer.run()
 
       input_string = constant_op.constant(["brain", "salad", "surgery"])
       output = table.lookup(input_string)
@@ -2103,7 +2104,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
                                      key_index, dtypes.int64, value_index),
           default_value)
       with self.assertRaisesOpError("is not a valid"):
-        table.init.run()
+        table.initializer.run()
 
   def testInvalidDataType(self):
     vocabulary_file = self._createVocabFile("one_column_3.txt")
@@ -2131,7 +2132,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           default_value)
 
       with self.assertRaisesOpError("Invalid number of columns"):
-        table.init.run()
+        table.initializer.run()
 
   def testInitializeSameTableWithMultipleNodes(self):
     vocabulary_file = self._createVocabFile("one_column_5.txt")
@@ -2200,7 +2201,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           default_value)
 
       # Initialize from file.
-      table1.init.run()
+      table1.initializer.run()
       self.assertEquals(vocab_size, table1.size().eval())
 
       vocabulary_file2 = self._createVocabFile("one_column7.txt")
@@ -2215,7 +2216,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
               vocab_size=vocab_size),
           default_value)
       with self.assertRaisesOpError("Invalid vocab_size"):
-        table2.init.run()
+        table2.initializer.run()
 
       vocab_size = 1
       vocabulary_file3 = self._createVocabFile("one_column3.txt")
@@ -2230,7 +2231,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           default_value)
 
       # Smaller vocab size reads only vocab_size records.
-      table3.init.run()
+      table3.initializer.run()
       self.assertEquals(vocab_size, table3.size().eval())
 
   def testFeedVocabularyName(self):
@@ -2248,11 +2249,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
       # Initialize with non existing file (old_file.txt) should fail.
       # TODO(yleon): Update message, which might change per FileSystem.
       with self.assertRaisesOpError("old_file.txt"):
-        table.init.run()
+        table.initializer.run()
 
       # Initialize the model feeding the vocabulary file.
       filenames = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
-      table.init.run(feed_dict={filenames[0]: vocabulary_file})
+      table.initializer.run(feed_dict={filenames[0]: vocabulary_file})
 
       input_string = constant_op.constant(["brain", "salad", "tank"])
       output = table.lookup(input_string)
@@ -2294,7 +2295,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
               vocab_file, vocab_size=vocab_size),
           default_value)
 
-      table.init.run()
+      table.initializer.run()
 
       input_values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
 
@@ -2311,7 +2312,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           lookup.TextFileIdTableInitializer(
               vocab_file, vocab_size=vocab_size),
           default_value)
-      table.init.run()
+      table.initializer.run()
 
       input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
 
@@ -2329,7 +2330,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           lookup.TextFileIdTableInitializer(
               vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
           default_value)
-      table.init.run()
+      table.initializer.run()
 
       out = table.lookup(
           constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int64))
@@ -2358,7 +2359,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
               default_value),
           oov_buckets)
 
-      table.init.run()
+      table.initializer.run()
 
       input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
 
@@ -2380,7 +2381,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
           oov_buckets,
           key_dtype=dtypes.int32)
 
-      table.init.run()
+      table.initializer.run()
 
       values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int32)
 
@@ -2401,7 +2402,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
               default_value),
           oov_buckets)
 
-      table.init.run()
+      table.initializer.run()
 
       values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int64)
 
@@ -2416,7 +2417,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       # Set a table that only uses hash buckets, for each input value returns
       # an id calculated by fingerprint("input") mod oov_buckets.
       table = lookup.IdTableWithHashBuckets(None, oov_buckets)
-      table.init.run()
+      table.initializer.run()
 
       values = constant_op.constant(("brain", "salad", "surgery"))
 
@@ -2438,7 +2439,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       # an id calculated by fingerprint("input") mod oov_buckets.
       table = lookup.IdTableWithHashBuckets(
           None, oov_buckets, key_dtype=dtypes.int32)
-      table.init.run()
+      table.initializer.run()
 
       input_string = constant_op.constant([42, 1, -1000], dtype=dtypes.int32)
 
@@ -2520,7 +2521,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
               shared_name=shared_name),
           oov_buckets)
 
-      table1.init.run()
+      table1.initializer.run()
 
       input_string_1 = constant_op.constant(
           ["brain", "salad", "surgery", "UNK"])
@@ -2536,7 +2537,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       oov_buckets = 1
 
       # Underlying lookup table already initialized in previous session.
-      # No need to call table2.init.run()
+      # No need to call table2.initializer.run()
       table2 = lookup.IdTableWithHashBuckets(
           lookup.HashTable(
               lookup.TextFileIdTableInitializer(
@@ -2605,7 +2606,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
                   vocab_file, vocab_size=3),
               -1),
           1)
-      table.init.run()
+      table.initializer.run()
 
       sp_ids = table.lookup(sp_features)
 
@@ -2634,7 +2635,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
               -1),
           1,
           key_dtype=dtypes.int32)
-      table.init.run()
+      table.initializer.run()
 
       sp_ids = table.lookup(sp_features)
 
@@ -2663,7 +2664,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
               -1),
           1,
           key_dtype=dtypes.int64)
-      table.init.run()
+      table.initializer.run()
 
       sp_ids = table.lookup(sp_features)
 
@@ -2737,7 +2738,7 @@ class MutableHashTableBenchmark(test.Benchmark):
 
   def benchmark_many_repeated_scalar_insert_scalar(self):
     table = self._create_table()
-    c = counter.Counter().make_one_shot_iterator().get_next()
+    c = dataset_ops.make_one_shot_iterator(counter.Counter()).get_next()
     value = variables.Variable(1.0)
     insert = table.insert(c, value)
     size = table.size()
@@ -2758,7 +2759,7 @@ class MutableHashTableBenchmark(test.Benchmark):
 
   def benchmark_many_repeated_batch_32_insert_scalar(self):
     table = self._create_table()
-    c = counter.Counter().make_one_shot_iterator().get_next()
+    c = dataset_ops.make_one_shot_iterator(counter.Counter()).get_next()
     value = variables.Variable([1.0] * 32)
     insert = table.insert(32 * c + list(range(32)), value)
     size = table.size()

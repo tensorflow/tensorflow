@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/platform/macros.h"
@@ -26,12 +27,26 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+enum QuantizerRoundMode {
+  // Round half up: if the fraction of y is exactly 0.5, then
+  // round(y) = y + 0.5
+  // E.g., -5.5 gets rounded to -5, -5.4 goes to -5,
+  // 5.4 goes to 5, and 5.5 goes to 6.
+  ROUND_HALF_UP,
+  // Round half to even: if the fraction of y is exactly 0.5, then round(y) is
+  // the nearest even integer to y.
+  // E.g., 23.5 gets rounded to 24, 24.5 gets rounded to 24, while -23.5 becomes
+  // -24, and -24.5 gets rounded to 24.
+  ROUND_HALF_TO_EVEN,
+};
+
 class QuantizeAndDequantizeOp : public XlaOpKernel {
  public:
   explicit QuantizeAndDequantizeOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("signed_input", &signed_input_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("range_given", &range_given_));
+    round_mode_ = ROUND_HALF_TO_EVEN;
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -117,8 +132,17 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
       // in that case they were measured from the tensor.
       input = Clamp(min_range, input, max_range);
     }
-    xla::XlaOp result =
-        Floor((input - min_range) * scale + half) * inverse_scale + min_range;
+    xla::XlaOp result;
+    switch (round_mode_) {
+      case ROUND_HALF_TO_EVEN: {
+        result = xla::RoundToEven(input * scale) * inverse_scale;
+        break;
+      }
+      case ROUND_HALF_UP: {
+        result = Floor(input * scale + half) * inverse_scale;
+        break;
+      }
+    }
     ctx->SetOutput(0, result);
   }
 
@@ -126,6 +150,7 @@ class QuantizeAndDequantizeOp : public XlaOpKernel {
   int64 num_bits_ = -1;
   bool signed_input_;
   bool range_given_;
+  QuantizerRoundMode round_mode_;
 };
 
 class QuantizeAndDequantizeV2Op : public QuantizeAndDequantizeOp {
@@ -136,6 +161,20 @@ class QuantizeAndDequantizeV2Op : public QuantizeAndDequantizeOp {
     OP_REQUIRES(ctx, num_bits_ > 0 && num_bits_ < (signed_input_ ? 62 : 63),
                 errors::InvalidArgument("num_bits is out of range: ", num_bits_,
                                         " with signed_input_ ", signed_input_));
+    string round_mode_string;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
+    OP_REQUIRES(
+        ctx,
+        (round_mode_string == "HALF_UP" || round_mode_string == "HALF_TO_EVEN"),
+        errors::InvalidArgument("Round mode string must be "
+                                "'HALF_UP' or "
+                                "'HALF_TO_EVEN', is '" +
+                                round_mode_string + "'"));
+    if (round_mode_string == "HALF_UP") {
+      round_mode_ = ROUND_HALF_UP;
+    } else if (round_mode_string == "HALF_TO_EVEN") {
+      round_mode_ = ROUND_HALF_TO_EVEN;
+    }
   }
 };
 

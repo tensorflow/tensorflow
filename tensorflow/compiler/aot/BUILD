@@ -93,7 +93,7 @@ cc_library(
         ":tfcompile_lib",
         "//tensorflow/compiler/tf2xla:tf2xla_proto",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",

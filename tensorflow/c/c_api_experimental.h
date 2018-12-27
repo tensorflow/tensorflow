@@ -67,9 +67,10 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 // a) ConfigProto.optimizer_options.global_jit_level is set to to ON_1 if
 // `enable_xla_compilation` is non-zero, and OFF otherwise.
 // b) ConfigProto.gpu_options.allow_growth is set to `gpu_memory_allow_growth`.
+// c) ConfigProto.device_count is set to `num_cpu_devices`.
 TF_CAPI_EXPORT extern TF_Buffer* TF_CreateConfig(
-    unsigned char enable_xla_compilation,
-    unsigned char gpu_memory_allow_growth);
+    unsigned char enable_xla_compilation, unsigned char gpu_memory_allow_growth,
+    unsigned int num_cpu_devices);
 
 // Create a serialized tensorflow.RunOptions proto, where RunOptions.trace_level
 // is set to FULL_TRACE if `enable_full_trace` is non-zero, and NO_TRACE
@@ -180,6 +181,25 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
 TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
     TFE_TensorHandle* handle);
 
+typedef struct TFE_ExecuteOpNotification TFE_ExecuteOpNotification;
+
+// Allows invoking a kernel asynchronously, and explicitly returns a
+// notification that can be waited upon. This always executes the kernel in a
+// new thread.
+// 1. `retvals` and `num_retvals` can only be consumed after
+// `TFE_ExecuteOp` returns successfully. They shouldn't be used
+// if the return is unsuccessful
+// 2. These new APIs cannot be used together with the TFE context level async
+// support.
+TF_CAPI_EXPORT extern TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(
+    TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
+    TF_Status* status);
+
+// Waits to complete the op execution, and cleans up the notification.
+// Errors reported by op execution are set in `status`.
+TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
+    TFE_ExecuteOpNotification* notification, TF_Status* status);
+
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
 
@@ -202,6 +222,39 @@ TF_CAPI_EXPORT extern void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder,
 TF_CAPI_EXPORT extern void TF_AttrBuilderCheckCanRunOnDevice(
     TF_AttrBuilder* builder, const char* device_type, TF_Status* status);
 
+// For argument number input_index, fetch the corresponding number_attr that
+// needs to be updated with the argument length of the input list.
+// Returns nullptr if there is any problem like op_name is not found, or the
+// argument does not support this attribute type.
+TF_CAPI_EXPORT extern const char* TF_GetNumberAttrForOpListInput(
+    const char* op_name, int input_index, TF_Status* status);
+
+// Returns 1 if the op is stateful, 0 otherwise. The return value is undefined
+// if the status is not ok.
+TF_CAPI_EXPORT extern int TF_OpIsStateful(const char* op_type,
+                                          TF_Status* status);
+
+// Platform specific initialization routine. Very few platforms actually require
+// this to be called.
+TF_CAPI_EXPORT void TF_InitMain(const char* usage, int* argc, char*** argv);
+
+// Platform-specific implementation to return an unused port. (This should used
+// in tests only.)
+TF_CAPI_EXPORT int TF_PickUnusedPortOrDie(void);
+
+// Fast path method that makes constructing a single scalar tensor require less
+// overhead and copies.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromScalar(
+    TF_DataType dtype, void* scalar, size_t len);
+
+// Specify the server_def that enables collective ops.
+// This is different to the above function in that it doesn't create remote
+// contexts, and remotely executing ops is not possible. It just enables
+// communication for collective ops.
+TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

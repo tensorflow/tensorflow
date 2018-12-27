@@ -634,7 +634,7 @@ TEST_F(DependencyOptimizerTest, IdentityInputs) {
   EXPECT_EQ("s:1", output.node(5).input(0));
 }
 
-TEST_F(DependencyOptimizerTest, IdentityN) {
+TEST_F(DependencyOptimizerTest, RemoveIdentityN_SwitchInput) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   Output b = ops::Placeholder(scope.WithOpName("b"), DT_BOOL);
   Output x = ops::RandomUniform(scope.WithOpName("x"), {1, 2}, DT_FLOAT);
@@ -643,8 +643,6 @@ TEST_F(DependencyOptimizerTest, IdentityN) {
   // IdentityN nodes to be removed.
   auto id_f = ops::IdentityN(scope.WithOpName("id_f"), {s.output_false});
   auto id_t = ops::IdentityN(scope.WithOpName("id_t"), {s.output_true});
-
-  // IdentityN node that can't be removed.
   auto id_b =
       ops::IdentityN(scope.WithOpName("id_b"), {s.output_false, s.output_true});
 
@@ -663,22 +661,50 @@ TEST_F(DependencyOptimizerTest, IdentityN) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(9, output.node_size());
-  EXPECT_EQ("out1", output.node(5).name());
-  EXPECT_EQ(1, output.node(5).input_size());
-  EXPECT_EQ("s", output.node(5).input(0));
+  EXPECT_EQ(8, output.node_size());
 
-  EXPECT_EQ("out2", output.node(6).name());
-  EXPECT_EQ(1, output.node(6).input_size());
-  EXPECT_EQ("s:1", output.node(6).input(0));
+  auto out1_node = output.node(7);
+  EXPECT_EQ("out1", out1_node.name());
+  EXPECT_EQ(1, out1_node.input_size());
+  EXPECT_EQ("s", out1_node.input(0));
 
-  EXPECT_EQ("out3", output.node(7).name());
-  EXPECT_EQ(1, output.node(7).input_size());
-  EXPECT_EQ("id_b", output.node(7).input(0));
+  auto out2_node = output.node(4);
+  EXPECT_EQ("out2", out2_node.name());
+  EXPECT_EQ(1, out2_node.input_size());
+  EXPECT_EQ("s:1", out2_node.input(0));
 
-  EXPECT_EQ("out4", output.node(8).name());
-  EXPECT_EQ(1, output.node(8).input_size());
-  EXPECT_EQ("id_b:1", output.node(8).input(0));
+  auto out3_node = output.node(5);
+  EXPECT_EQ("out3", out3_node.name());
+  EXPECT_EQ(1, out3_node.input_size());
+  EXPECT_EQ("s", out3_node.input(0));
+
+  auto out4_node = output.node(6);
+  EXPECT_EQ("out4", out4_node.name());
+  EXPECT_EQ(1, out4_node.input_size());
+  EXPECT_EQ("s:1", out4_node.input(0));
+}
+
+TEST_F(DependencyOptimizerTest, DoNotRemoveIdentityNWithControlDependency) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output input1 = ops::Placeholder(scope.WithOpName("input1"), DT_BOOL);
+  Output input2 = ops::Const(scope.WithOpName("input2"), {1, 2});
+
+  auto id_n = ops::IdentityN(scope.WithOpName("id_n"), {input1, input2});
+  Output out1 = ops::Identity(scope.WithOpName("out1"), id_n[0]);
+  Output out2 = ops::Identity(scope.WithOpName("out2"), id_n[1]);
+  auto out3 =
+      ops::NoOp(scope.WithOpName("out3").WithControlDependencies(id_n[1]));
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"out1", "out2", "out3"};
+
+  DependencyOptimizer optimizer;
+  GraphDef optimized_graph_def;
+  Status status = optimizer.Optimize(nullptr, item, &optimized_graph_def);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, optimized_graph_def.node_size());
 }
 
 TEST_F(DependencyOptimizerTest,

@@ -67,7 +67,7 @@ class SessionDebugMultiGPUTest(test_util.TensorFlowTestCase):
         u1 = math_ops.multiply(v, v, name="u1")
       w = math_ops.subtract(u1, u0, name="w")
 
-      sess.run(v.initializer)
+      self.evaluate(v.initializer)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(run_options, sess.graph,

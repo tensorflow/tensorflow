@@ -159,7 +159,7 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
   // Set the layout.
   if (LayoutUtil::HasLayout(instruction->shape())) {
     string layout_string;
-    if (ShapeUtil::IsTuple(instruction->shape())) {
+    if (instruction->shape().IsTuple()) {
       // For tuples, emit the full shape because the layout of a tuple is not
       // represented in a single Layout field.
       layout_string = ShapeUtil::HumanStringWithLayout(instruction->shape());

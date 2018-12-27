@@ -244,11 +244,11 @@ class SparseTensor(_TensorLike):
 
 SparseTensorValue = collections.namedtuple(
     "SparseTensorValue", ["indices", "values", "dense_shape"])
-tf_export("SparseTensorValue")(SparseTensorValue)
+tf_export(v1=["SparseTensorValue"])(SparseTensorValue)
 pywrap_tensorflow.RegisterType("SparseTensorValue", SparseTensorValue)
 
 
-@tf_export("convert_to_tensor_or_sparse_tensor")
+@tf_export(v1=["convert_to_tensor_or_sparse_tensor"])
 def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
   """Converts value to a `SparseTensor` or `Tensor`.
 

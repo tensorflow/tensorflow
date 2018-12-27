@@ -43,11 +43,10 @@ namespace tensorflow {
   }
 }
 
-Status XlaTensor::AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
+Status XlaTensor::AllocateShapedBuffer(DataType dtype,
+                                       const xla::Shape& on_host_shape,
                                        xla::LocalClient* client,
                                        int device_ordinal) {
-  xla::Shape on_host_shape;
-  TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &on_host_shape));
   xla::Shape on_device_shape =
       client->backend().transfer_manager()->HostShapeToDeviceShape(
           on_host_shape);

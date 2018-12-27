@@ -86,7 +86,7 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
 
     NodeDef* shuffle_and_repeat_node =
         graph.AddNode(make_shuffle_and_repeat_node(shuffle_node, repeat_node));
-    graph.ReplaceInput(repeat_node, *shuffle_and_repeat_node);
+    graph.UpdateFanouts(repeat_node.name(), shuffle_and_repeat_node->name());
 
     // Mark the `Shuffle` and `Repeat` nodes for removal.
     nodes_to_delete.insert(shuffle_node.name());

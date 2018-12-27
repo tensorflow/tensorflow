@@ -39,9 +39,9 @@ def get_empty_tensors(gradient_shape, hessian_shape):
   empty_hess_shape = [1] + hessian_shape.as_list()
   empty_grad_shape = [1] + gradient_shape.as_list()
 
-  empty_gradients = constant_op.constant(
+  empty_gradients = constant_op.constant_v1(
       [], dtype=dtypes.float32, shape=empty_grad_shape)
-  empty_hessians = constant_op.constant(
+  empty_hessians = constant_op.constant_v1(
       [], dtype=dtypes.float32, shape=empty_hess_shape)
 
   return empty_gradients, empty_hessians
@@ -1476,9 +1476,9 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
 
   def testEmpty(self):
     with self.cached_session() as sess:
-      indices = array_ops.constant([], dtype=dtypes.int64, shape=[0, 2])
+      indices = constant_op.constant_v1([], dtype=dtypes.int64, shape=[0, 2])
       # No values in this feature column in this mini-batch.
-      values = array_ops.constant([], dtype=dtypes.float32)
+      values = constant_op.constant_v1([], dtype=dtypes.float32)
       sparse_column = sparse_tensor.SparseTensor(indices, values, [4, 1])
 
       gradient_shape = tensor_shape.scalar()
@@ -1549,8 +1549,9 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
       sparse_column = array_ops.sparse_placeholder(dtypes.float32)
 
       # We have two batches - at first, a sparse feature is empty.
-      empty_indices = array_ops.constant([], dtype=dtypes.int64, shape=[0, 2])
-      empty_values = array_ops.constant([], dtype=dtypes.float32)
+      empty_indices = constant_op.constant_v1([], dtype=dtypes.int64,
+                                              shape=[0, 2])
+      empty_values = constant_op.constant_v1([], dtype=dtypes.float32)
       empty_sparse_column = sparse_tensor.SparseTensor(empty_indices,
                                                        empty_values, [4, 2])
       empty_sparse_column = empty_sparse_column.eval(session=sess)

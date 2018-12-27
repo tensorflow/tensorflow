@@ -236,8 +236,10 @@ class RaggedGatherOpBase : public OpKernel {
     values_shape.set_dim(0, num_values);
     TF_RETURN_IF_ERROR(
         context->allocate_output(values_index, values_shape, &values_out));
-    int64 value_size = params_dense_values_in.NumElements() /
-                       params_dense_values_in.dim_size(0);
+    const int64 num_elements = params_dense_values_in.NumElements();
+    const int64 value_size =
+        num_elements == 0 ? 0
+                          : (num_elements / params_dense_values_in.dim_size(0));
     CallWriteValueSlices(params_dense_values_in, value_slices, value_size,
                          values_out);
     return ::tensorflow::Status::OK();

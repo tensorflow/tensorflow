@@ -20,9 +20,10 @@ from __future__ import print_function
 from tensorflow.contrib.kinesis.python.ops import gen_dataset_ops
 from tensorflow.contrib.kinesis.python.ops import kinesis_op_loader  # pylint: disable=unused-import
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import deprecation
 
 
 class KinesisDataset(dataset_ops.DatasetSource):
@@ -34,15 +35,12 @@ class KinesisDataset(dataset_ops.DatasetSource):
 
   For example, we can construct and use the KinesisDataset as follows:
   ```python
+  tf.enable_eager_execution()
+
   dataset = tf.contrib.kinesis.KinesisDataset(
       "kinesis_stream_name", read_indefinitely=False)
-  next = dataset.make_one_shot_iterator().get_next()
-  with tf.Session() as sess:
-    while True:
-      try:
-        print(sess.run(nxt))
-      except tf.errors.OutOfRangeError:
-        break
+  for element in dataset:
+    print(element)
   ```
 
   Since Kinesis is a data streaming service, data may not be available
@@ -53,6 +51,10 @@ class KinesisDataset(dataset_ops.DatasetSource):
   is returned immediately instead.
   """
 
+  @deprecation.deprecated(
+      None,
+      "tf.contrib.kinesis will be removed in 2.0, the support for Kinesis "
+      "will continue to be provided through the tensorflow/io GitHub project.")
   def __init__(self,
                stream,
                shard="",
@@ -84,13 +86,5 @@ class KinesisDataset(dataset_ops.DatasetSource):
         self._stream, self._shard, self._read_indefinitely, self._interval)
 
   @property
-  def output_classes(self):
-    return ops.Tensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.scalar()
-
-  @property
-  def output_types(self):
-    return dtypes.string
+  def _element_structure(self):
+    return structure.TensorStructure(dtypes.string, [])

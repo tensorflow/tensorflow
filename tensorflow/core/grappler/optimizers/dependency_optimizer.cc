@@ -57,7 +57,7 @@ bool RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
 }  // namespace
 
 bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
-  if (!IsIdentity(node) && !IsIdentityNSingleInput(node)) {
+  if (!IsIdentity(node) && !IsIdentityN(node)) {
     return true;
   }
 
@@ -133,15 +133,53 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
   return true;
 }
 
+int DependencyOptimizer::NumEdgesIfBypassed(
+    const NodeDef& node, const std::vector<NodeDef*>& output_nodes) const {
+  const bool is_multi_input_identity_n =
+      IsIdentityN(node) && !IsIdentityNSingleInput(node);
+  const int num_outputs = output_nodes.size();
+  const int num_inputs = node.input_size();
+
+  if (is_multi_input_identity_n) {
+    // multi-input identity_n with input/output control dependencies will likely
+    // increase number of edges after optimization.
+    int num_edges_if_bypassed(0);
+    for (string input_node_name : node.input()) {
+      if (IsControlInput(input_node_name)) {
+        num_edges_if_bypassed += num_outputs;
+      } else {
+        ++num_edges_if_bypassed;
+      }
+    }
+
+    for (auto consumer : output_nodes) {
+      for (int j = 0; j < consumer->input_size(); ++j) {
+        const TensorId consumer_input = ParseTensorName(consumer->input(j));
+        if (consumer_input.node() == node.name()) {
+          if (IsControlInput(consumer_input)) {
+            num_edges_if_bypassed += num_inputs;
+          } else {
+            ++num_edges_if_bypassed;
+          }
+        }
+      }
+    }
+    return num_edges_if_bypassed;
+  } else {
+    return num_inputs * num_outputs;
+  }
+}
+
 bool DependencyOptimizer::BypassingNodeIsBeneficial(
     const NodeDef& node, const std::vector<NodeDef*>& input_nodes,
     const std::vector<NodeDef*>& output_nodes) const {
   const bool is_identity = IsIdentity(node) || IsIdentityNSingleInput(node);
+  const bool is_multi_input_identity_n =
+      IsIdentityN(node) && !IsIdentityNSingleInput(node);
   const int num_outputs = output_nodes.size();
   const int num_inputs = node.input_size();
 
-  // Don't increase the number of edges in the graph.
-  if (num_inputs * num_outputs > num_inputs + num_outputs) {
+  if (NumEdgesIfBypassed(node, output_nodes) > num_inputs + num_outputs) {
     return false;
   }
 
@@ -166,7 +204,9 @@ bool DependencyOptimizer::BypassingNodeIsBeneficial(
   for (NodeDef* output_node : output_nodes) {
     num_cross_out += static_cast<int>(output_node->device() != node_dev);
   }
-  if (is_identity && num_cross_in > 0 && num_cross_out > 0) {
+
+  if ((is_identity || is_multi_input_identity_n) && num_cross_in > 0 &&
+      num_cross_out > 0) {
     // This identity node follows a device crossing, so it might be
     // following a _Recv node after partioning. Do not remove such nodes,
     // unless they only have consumers on the same device as themselves.
@@ -194,6 +234,8 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
   NodeDef* node = optimized_graph_->mutable_node(node_idx);
   const bool is_noop = IsNoOp(*node);
   const bool is_identity = IsIdentity(*node) || IsIdentityNSingleInput(*node);
+  const bool is_multi_input_identity =
+      IsIdentityN(*node) && !IsIdentityNSingleInput(*node);
   const string node_name = node->name();
   // Constant nodes with no input control dependency are always executed early,
   // so we can prune all their output control dependencies.
@@ -203,11 +245,9 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       bool optimize_fanout = false;
       bool data_connection = false;
       for (int i = fanout->input_size() - 1; i >= 0; --i) {
-        int pos;
-        StringPiece input_name =
-            ParseNodeNameAsStringPiece(fanout->input(i), &pos);
-        if (input_name == node_name) {
-          if (pos < 0) {
+        const TensorId input_tensor = ParseTensorName(fanout->input(i));
+        if (input_tensor.node() == node_name) {
+          if (input_tensor.index() < 0) {
             fanout->mutable_input()->SwapElements(i, fanout->input_size() - 1);
             fanout->mutable_input()->RemoveLast();
             optimize_fanout = true;
@@ -315,7 +355,8 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
   //    y --^> |          | --^> b       /\    +---+
   //           +----------+             y --^> b
 
-  if (is_noop || (is_identity && SafeToRemoveIdentity(*node))) {
+  if (is_noop || ((is_identity || is_multi_input_identity) &&
+                  SafeToRemoveIdentity(*node))) {
     const auto& output_node_set = node_map_->GetOutputs(node_name);
     const std::vector<NodeDef*> output_nodes(output_node_set.begin(),
                                              output_node_set.end());
@@ -343,34 +384,30 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
         const NodeDef* input = input_nodes[i];
         // Forward dependency from input to consumer if it doesn't already
         // depend on it.
-        if (is_identity && i == 0) {
+        if ((is_identity && i == 0) ||
+            (is_multi_input_identity && !IsControlInput(node->input(i)))) {
           // Replace regular input from Identity node.
-          bool found_input = false;
           string new_input;
-          const string& input_to_forward = node->input(0);
+          const string& input_to_forward = node->input(i);
           CHECK(!IsControlInput(input_to_forward));
           for (int j = 0; j < consumer->input_size(); ++j) {
-            const string& old_input = consumer->input(j);
-            int old_input_pos;
-            StringPiece old_input_node_name =
-                ParseNodeNameAsStringPiece(old_input, &old_input_pos);
-            if (old_input_node_name == node_name) {
-              if (old_input_pos >= 0) {
+            const TensorId old_input = ParseTensorName(consumer->input(j));
+            if (old_input.node() == node_name) {
+              if (old_input.index() == i) {
                 // Regular input
                 new_input = input_to_forward;
-                node_map_->UpdateInput(consumer->name(), old_input, new_input);
+                node_map_->UpdateInput(consumer->name(), old_input.ToString(),
+                                       new_input);
                 consumer->set_input(j, new_input);
-                found_input = true;
-              } else {
+              } else if (old_input.index() == -1) {
                 // Control dependency
                 new_input = AsControlDependency(NodeName(input_to_forward));
-                node_map_->UpdateInput(consumer->name(), old_input, new_input);
+                node_map_->UpdateInput(consumer->name(), old_input.ToString(),
+                                       new_input);
                 consumer->set_input(j, new_input);
-                found_input = true;
               }
             }
           }
-          CHECK(found_input);
           updated_consumer = true;
         } else {
           // Forward dependency from input to consumer if it doesn't already
@@ -415,7 +452,7 @@ Status DependencyOptimizer::OptimizeDependencies() {
   std::set<int> nodes_to_delete;
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
     const NodeDef& node = optimized_graph_->node(i);
-    if (IsNoOp(node) || IsIdentity(node) || IsIdentityNSingleInput(node) ||
+    if (IsNoOp(node) || IsIdentity(node) || IsIdentityN(node) ||
         IsConstant(node) || SafeToConvertToNoOp(node)) {
       nodes_to_simplify.PushBack(i);
     }

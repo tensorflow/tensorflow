@@ -205,6 +205,40 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
       /*profile=*/profile);
 }
 
+StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
+    std::unique_ptr<Executable> executable,
+    const absl::Span<const ShapedBuffer* const> arguments,
+    ExecutionProfile* profile) {
+  // Get service run options.
+  se::Stream stream(backend().default_stream_executor());
+  stream.Init();
+  ServiceExecutableRunOptions service_run_options =
+      GetServiceRunOptionsForDevice(backend().default_device_ordinal(), &stream,
+                                    nullptr);
+
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer retval,
+      executable->ExecuteOnStreamWrapper(&service_run_options,
+                                         /*profile=*/profile, arguments));
+  TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
+  return std::move(retval);
+}
+
+StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
+    std::unique_ptr<Executable> executable,
+    const absl::Span<const ScopedShapedBuffer> arguments,
+    ExecutionProfile* profile) {
+  std::vector<const ShapedBuffer*> argument_pointers;
+  argument_pointers.reserve(arguments.size());
+  for (const auto& argument : arguments) {
+    argument_pointers.push_back(&argument);
+  }
+  return ExecuteWithDeviceBuffers(
+      /*executable=*/std::move(executable),
+      /*arguments=*/argument_pointers,
+      /*profile=*/profile);
+}
+
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const ReplicatedExecuteOptions& options) {

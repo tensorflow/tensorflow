@@ -105,7 +105,7 @@ def get_cxx_inc_directories(repository_ctx, cc):
     return includes_cpp + [
         inc
         for inc in includes_c
-        if inc not in includes_cpp_set
+        if inc not in includes_cpp_set.to_list()
     ]
 
 def auto_configure_fail(msg):

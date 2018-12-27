@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
+#include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -108,19 +109,26 @@ Status XRTCompileOp::Compile(OpKernelContext* ctx,
   TF_ASSIGN_OR_RETURN(xla::XlaComputation computation,
                       client->LoadSnapshot(computation_proto.hlo_snapshot()));
 
-  std::vector<const xla::Shape*> argument_layouts(
+  std::vector<xla::Shape> argument_layouts(
+      config.program_shape().parameters_size());
+  std::vector<const xla::Shape*> argument_layout_ptrs(
       config.program_shape().parameters_size());
   for (int i = 0; i < config.program_shape().parameters_size(); ++i) {
-    argument_layouts[i] = &config.program_shape().parameters(i);
+    argument_layouts[i] = xla::Shape(config.program_shape().parameters(i));
+    argument_layout_ptrs[i] = &argument_layouts[i];
   }
   xla::ExecutableBuildOptions build_options;
   build_options.set_device_ordinal(client->default_device_ordinal());
-  build_options.set_result_layout(config.program_shape().result());
+  build_options.set_result_layout(xla::Shape(config.program_shape().result()));
   build_options.set_device_allocator(device_ref.backend()->memory_allocator());
+  if (config.has_debug_options()) {
+    *build_options.mutable_debug_options() =
+        BuildXlaDebugOptions(config.debug_options());
+  }
 
   VLOG(1) << "Building executable";
   auto compile_result =
-      client->Compile(computation, argument_layouts, build_options);
+      client->Compile(computation, argument_layout_ptrs, build_options);
   if (!compile_result.ok()) {
     return compile_result.status();
   }
@@ -174,11 +182,12 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, handle_output);
 
   xla::LocalExecutable* executable = entry->get().get_executable();
-  xla::ProgramShape program_shape = executable->executable()
-                                        ->module()
-                                        .config()
-                                        .entry_computation_layout()
-                                        .ComputeProgramShape();
+  xla::ProgramShapeProto program_shape = executable->executable()
+                                             ->module()
+                                             .config()
+                                             .entry_computation_layout()
+                                             .ComputeProgramShape()
+                                             .ToProto();
   Tensor program_shape_output(DT_STRING, TensorShape({1}));
   program_shape_output.vec<string>()(0) = program_shape.SerializeAsString();
   ctx->set_output(1, program_shape_output);
