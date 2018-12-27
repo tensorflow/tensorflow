@@ -819,6 +819,7 @@ cc_library(
         ":functional_ops_op_lib",
         ":lib",
         ":lib_internal",
+        ":ops",
         ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//tensorflow/core/kernels:required",
@@ -3820,7 +3821,6 @@ tf_cc_test(
         "ops/cudnn_rnn_ops_test.cc",
     ],
     deps = [
-        ":cudnn_rnn_ops",
         "//tensorflow/core",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
