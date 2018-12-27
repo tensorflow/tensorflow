@@ -21,7 +21,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
@@ -239,11 +238,6 @@ class Adam(optimizer_v2.OptimizerV2):
           lr * m_t / (v_hat_sqrt + epsilon_t),
           use_locking=self._use_locking)
       return control_flow_ops.group(*[var_update, m_t, v_t, v_hat_t])
-
-  def _resource_scatter_add(self, x, i, v):
-    with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
-      return x.value()
 
   def get_config(self):
     config = super(Adam, self).get_config()

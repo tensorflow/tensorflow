@@ -486,14 +486,12 @@ class OptimizerTest(test.TestCase):
 
 class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
 
-  # TODO(tanzheny): remove test_numeric after algorithm for Momentum, Adam and
-  # NAdam has been unified: currently these three algorithms behave differently.
   @parameterized.named_parameters(
-      ('adadelta', 'adadelta', True, True), ('adagrad', 'adagrad', True, True),
-      ('adam', 'adam', True, True), ('adamax', 'adamax', True, True),
-      ('nadam', 'nadam', True, False), ('momentum', 'momentum', True, True),
-      ('sgd', 'sgd', False, True))
-  def testOptimizersCompatibility(self, opt_str, test_weights, test_numeric):
+      ('adadelta', 'adadelta', True), ('adagrad', 'adagrad', True),
+      ('adam', 'adam', True), ('adamax', 'adamax', True),
+      ('nadam', 'nadam', True), ('momentum', 'momentum', True),
+      ('sgd', 'sgd', False))
+  def testOptimizersCompatibility(self, opt_str, test_weights):
     np.random.seed(1331)
     with self.cached_session():
       train_samples = 20
@@ -535,12 +533,12 @@ class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
       # this call checks the weights can be set correctly.
       if test_weights:
         opt_v2.set_weights(opt_v1.get_weights())
-      if test_numeric:
-        hist_1 = model.fit(x, y, batch_size=5, epochs=1, shuffle=False)
-        hist_2 = model_2.fit(x, y, batch_size=5, epochs=1, shuffle=False)
-        self.assertAllClose(model.get_weights(), model_2.get_weights())
-        self.assertAllClose(model.get_weights(), model_2.get_weights())
-        self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'])
+
+      hist_1 = model.fit(x, y, batch_size=5, epochs=1, shuffle=False)
+      hist_2 = model_2.fit(x, y, batch_size=5, epochs=1, shuffle=False)
+      self.assertAllClose(model.get_weights(), model_2.get_weights())
+      self.assertAllClose(model.get_weights(), model_2.get_weights())
+      self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'])
 
       if old_mode is not None:
         os.environ['TF2_BEHAVIOR'] = old_mode
