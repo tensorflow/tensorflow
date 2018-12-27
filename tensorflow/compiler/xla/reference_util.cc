@@ -550,7 +550,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 
   HloEvaluator evaluator;
   Literal result_literal =
-      evaluator.Evaluate<const Literal*>(*computation, {}).ConsumeValueOrDie();
+      evaluator.Evaluate(*computation, {}).ConsumeValueOrDie();
 
   CHECK_EQ(result_literal.shape().rank(), 4);
   auto result =

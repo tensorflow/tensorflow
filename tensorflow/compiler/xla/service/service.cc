@@ -1098,8 +1098,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
                       CreateModuleFromProto(arg->computation(), config));
 
   HloEvaluator evaluator;
-  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate<Literal>(
-                                               *module, /*arg_literals=*/{}));
+  TF_ASSIGN_OR_RETURN(auto result_literal, evaluator.Evaluate(*module, {}));
 
   // Since the result layout is non-effective to the Evaluator results, explicit
   // relayout here.
