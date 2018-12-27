@@ -104,9 +104,6 @@ cc_library(
         "//tensorflow:windows": ["/DNOGDI"],
         "//conditions:default": [],
     }),
-    data = [
-        "@local_config_cuda//cuda:cudnn",
-    ],
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//tensorflow:windows": [],
@@ -121,6 +118,7 @@ cc_library(
     ] + if_cuda_is_configured([
         "//tensorflow/core:cuda",
         "@local_config_cuda//cuda:cuda_driver",
+        "@local_config_cuda//cuda:cudnn",
     ]),
     alwayslink = 1,
 )
