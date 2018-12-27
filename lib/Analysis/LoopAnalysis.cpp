@@ -197,6 +197,11 @@ static bool isContiguousAccess(const MLValue &iv, const LoadOrStoreOp &memoryOp,
                     std::is_same<LoadOrStoreOp, StoreOp>::value,
                 "Must be called on either const LoadOp & or const StoreOp &");
   auto memRefType = memoryOp.getMemRefType();
+  if (fastestVaryingDim >= memRefType.getRank()) {
+    memoryOp.emitError("fastest varying dim out of bounds");
+    return false;
+  }
+
   auto layoutMap = memRefType.getAffineMaps();
   // TODO(ntv): remove dependence on Builder once we support non-identity
   // layout map.
@@ -207,11 +212,9 @@ static bool isContiguousAccess(const MLValue &iv, const LoadOrStoreOp &memoryOp,
          b.getMultiDimIdentityMap(layoutMap[0].getNumDims())))) {
     return memoryOp.emitError("NYI: non-trivial layoutMap"), false;
   }
-  assert(fastestVaryingDim < memRefType.getRank());
 
   auto indices = memoryOp.getIndices();
-  // TODO(clattner): should iterator_range have a size method?
-  auto numIndices = indices.end() - indices.begin();
+  auto numIndices = llvm::size(indices);
   unsigned d = 0;
   for (auto index : indices) {
     if (fastestVaryingDim == (numIndices - 1) - d++) {
