@@ -19,8 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_DSO_LOADER_H_
 
-#include "tensorflow/stream_executor/platform/port.h"
 #include <vector>
+#include "tensorflow/stream_executor/platform/port.h"
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/lib/status.h"

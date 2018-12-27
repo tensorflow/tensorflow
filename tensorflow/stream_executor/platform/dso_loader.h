@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_MUTEX_H_
-#define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_MUTEX_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
+#define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
 
 #include "tensorflow/stream_executor/platform/platform.h"
 
+// Include appropriate platform-dependent implementations
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/stream_executor/platform/google/mutex.h"
+#include "tensorflow/stream_executor/platform/google/dso_loader.h"
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
+    defined(PLATFORM_GOOGLE_ANDROID)
+#include "tensorflow/stream_executor/platform/default/dso_loader.h"
 #else
-#include "tensorflow/stream_executor/platform/default/mutex.h"
+#error Define the appropriate PLATFORM_<foo> macro for this platform
 #endif
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_MUTEX_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
