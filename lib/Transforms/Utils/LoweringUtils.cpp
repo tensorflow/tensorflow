@@ -124,7 +124,7 @@ bool mlir::expandAffineApply(AffineApplyOp *op) {
   if (!op)
     return true;
 
-  FuncBuilder builder(op->getOperation());
+  FuncBuilder builder(cast<OperationStmt>(op->getOperation()));
   auto affineMap = op->getAffineMap();
   for (auto numberedExpr : llvm::enumerate(affineMap.getResults())) {
     Value *expanded = expandAffineExpr(&builder, numberedExpr.value(), op);

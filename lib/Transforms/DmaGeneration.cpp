@@ -173,14 +173,14 @@ static void getMultiLevelStrides(const MemRefRegion &region,
 bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
                                 uint64_t *sizeInBytes) {
   // DMAs for read regions are going to be inserted just before the for loop.
-  MLFuncBuilder prologue(forStmt);
+  FuncBuilder prologue(forStmt);
   // DMAs for write regions are going to be inserted just after the for loop.
-  MLFuncBuilder epilogue(forStmt->getBlock(),
-                         std::next(StmtBlock::iterator(forStmt)));
-  MLFuncBuilder *b = region.isWrite() ? &epilogue : &prologue;
+  FuncBuilder epilogue(forStmt->getBlock(),
+                       std::next(StmtBlock::iterator(forStmt)));
+  FuncBuilder *b = region.isWrite() ? &epilogue : &prologue;
 
   // Builder to create constants at the top level.
-  MLFuncBuilder top(forStmt->getFunction());
+  FuncBuilder top(forStmt->getFunction());
 
   auto loc = forStmt->getLoc();
   auto *memref = region.memref;

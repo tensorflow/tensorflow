@@ -81,7 +81,7 @@ static unsigned getTagMemRefPos(const OperationStmt &dmaStmt) {
 /// a replacement cannot be performed.
 static bool doubleBuffer(Value *oldMemRef, ForStmt *forStmt) {
   auto *forBody = forStmt->getBody();
-  MLFuncBuilder bInner(forBody, forBody->begin());
+  FuncBuilder bInner(forBody, forBody->begin());
   bInner.setInsertionPoint(forBody, forBody->begin());
 
   // Doubles the shape with a leading dimension extent of 2.
@@ -101,7 +101,7 @@ static bool doubleBuffer(Value *oldMemRef, ForStmt *forStmt) {
   auto newMemRefType = doubleShape(oldMemRefType);
 
   // Put together alloc operands for the dynamic dimensions of the memref.
-  MLFuncBuilder bOuter(forStmt);
+  FuncBuilder bOuter(forStmt);
   SmallVector<Value *, 4> allocOperands;
   unsigned dynamicDimCount = 0;
   for (auto dimSize : oldMemRefType.getShape()) {
@@ -353,7 +353,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
     LLVM_DEBUG(
         // Tagging statements with shifts for debugging purposes.
         if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
-          MLFuncBuilder b(opStmt);
+          FuncBuilder b(opStmt);
           opStmt->setAttr(b.getIdentifier("shift"),
                           b.getI64IntegerAttr(shifts[s - 1]));
         });

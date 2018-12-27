@@ -247,7 +247,7 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
 }
 
 static OperationStmt *
-instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
+instantiate(FuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
             DenseMap<const Value *, Value *> *substitutionsMap);
 
 /// Not all Values belong to a program slice scoped within the immediately
@@ -265,7 +265,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
   if (it == substitutionsMap->end()) {
     auto *opStmt = cast<OperationStmt>(v->getDefiningOperation());
     if (opStmt->isa<ConstantOp>()) {
-      MLFuncBuilder b(opStmt);
+      FuncBuilder b(opStmt);
       auto *inst = instantiate(&b, opStmt, hwVectorType, substitutionsMap);
       auto res =
           substitutionsMap->insert(std::make_pair(v, inst->getResult(0)));
@@ -334,7 +334,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 /// TODO(ntv): these implementation details should be captured in a
 /// vectorization trait at the op level directly.
 static SmallVector<mlir::Value *, 8>
-reindexAffineIndices(MLFuncBuilder *b, VectorType hwVectorType,
+reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
                      ArrayRef<unsigned> hwVectorInstance,
                      ArrayRef<Value *> memrefIndices) {
   auto vectorShape = hwVectorType.getShape();
@@ -405,7 +405,7 @@ materializeAttributes(OperationStmt *opStmt, VectorType hwVectorType) {
 ///
 /// If the underlying substitution fails, this fails too and returns nullptr.
 static OperationStmt *
-instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
+instantiate(FuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
             DenseMap<const Value *, Value *> *substitutionsMap) {
   assert(!opStmt->isa<VectorTransferReadOp>() &&
          "Should call the function specialized for VectorTransferReadOp");
@@ -476,8 +476,8 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
 static OperationStmt *
-instantiate(MLFuncBuilder *b, VectorTransferReadOp *read,
-            VectorType hwVectorType, ArrayRef<unsigned> hwVectorInstance,
+instantiate(FuncBuilder *b, VectorTransferReadOp *read, VectorType hwVectorType,
+            ArrayRef<unsigned> hwVectorInstance,
             DenseMap<const Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
       map(makePtrDynCaster<Value>(), read->getIndices());
@@ -496,7 +496,7 @@ instantiate(MLFuncBuilder *b, VectorTransferReadOp *read,
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
 static OperationStmt *
-instantiate(MLFuncBuilder *b, VectorTransferWriteOp *write,
+instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
             VectorType hwVectorType, ArrayRef<unsigned> hwVectorInstance,
             DenseMap<const Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
@@ -543,7 +543,7 @@ static bool instantiateMaterialization(Statement *stmt,
     return stmt->emitError("NYI path IfStmt");
 
   // Create a builder here for unroll-and-jam effects.
-  MLFuncBuilder b(stmt);
+  FuncBuilder b(stmt);
   auto *opStmt = cast<OperationStmt>(stmt);
   if (auto write = opStmt->dyn_cast<VectorTransferWriteOp>()) {
     instantiate(&b, write, state->hwVectorType, state->hwVectorInstance,

@@ -64,7 +64,7 @@ using namespace mlir;
 ///
 /// Prerequisites:
 ///   `a` and `b` must be of IndexType.
-static mlir::Value *add(MLFuncBuilder *b, Location loc, Value *v, Value *w) {
+static Value *add(FuncBuilder *b, Location loc, Value *v, Value *w) {
   assert(v->getType().isa<IndexType>() && "v must be of IndexType");
   assert(w->getType().isa<IndexType>() && "w must be of IndexType");
   auto *context = b->getContext();
@@ -114,7 +114,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // forward them or define a whole rewriting chain based on MLFunctionBuilder
   // instead of Builer, the code for it would be duplicate boilerplate.  As we
   // go towards unifying ML and CFG functions, this separation will disappear.
-  MLFuncBuilder &b = *rewriter->getBuilder();
+  FuncBuilder &b = *rewriter->getBuilder();
 
   // 1. First allocate the local buffer in fast memory.
   // TODO(ntv): CL memory space.
@@ -234,7 +234,7 @@ struct LowerVectorTransfersPass
   std::unique_ptr<MLFuncGlobalLoweringState>
   makeFuncWiseState(MLFunction *f) const override {
     auto state = llvm::make_unique<LowerVectorTransfersState>();
-    auto builder = MLFuncBuilder(f);
+    auto builder = FuncBuilder(f);
     builder.setInsertionPointToStart(f->getBody());
     state->zero = builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
     return state;

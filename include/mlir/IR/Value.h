@@ -36,10 +36,10 @@ class Value;
 using Instruction = Statement;
 using OperationInst = OperationStmt;
 
-/// The operand of ML function statement contains a Value.
+/// Operands contain a Value.
 using StmtOperand = IROperandImpl<Value, Statement>;
 
-/// This is the common base class for all values in the MLIR system,
+/// This is the common base class for all SSA values in the MLIR system,
 /// representing a computable value that has a type and a set of users.
 ///
 class Value : public IRObjectWithUseList {
@@ -48,7 +48,7 @@ public:
   enum class Kind {
     BlockArgument, // block argument
     StmtResult,    // statement result
-    ForStmt,       // for statement induction variable
+    ForStmt,       // 'for' statement induction variable
   };
 
   ~Value() {}

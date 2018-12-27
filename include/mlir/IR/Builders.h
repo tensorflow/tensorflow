@@ -159,161 +159,33 @@ protected:
   MLIRContext *context;
 };
 
-/// This class helps build a CFGFunction.  Instructions that are created are
-/// automatically inserted at an insertion point or added to the current basic
-/// block.
-class CFGFuncBuilder : public Builder {
+/// This class helps build a Function.  Instructions that are created are
+/// automatically inserted at an insertion point.  The builder is copyable.
+class FuncBuilder : public Builder {
 public:
-  CFGFuncBuilder(BasicBlock *block, BasicBlock::iterator insertPoint)
-      : Builder(block->getFunction()->getContext()),
-        function(block->getFunction()) {
-    setInsertionPoint(block, insertPoint);
+  /// Create an ML function builder and set the insertion point to the start of
+  /// the function.
+  FuncBuilder(Function *func) : Builder(func->getContext()), function(func) {
+    setInsertionPoint(&func->front(), func->front().begin());
   }
 
-  CFGFuncBuilder(Instruction *insertBefore)
-      : CFGFuncBuilder(insertBefore->getBlock(),
-                       BasicBlock::iterator(insertBefore)) {}
-
-  CFGFuncBuilder(BasicBlock *block)
-      : Builder(block->getFunction()->getContext()),
-        function(block->getFunction()) {
-    setInsertionPoint(block);
-  }
-
-  CFGFuncBuilder(CFGFunction *function)
-      : Builder(function->getContext()), function(function) {}
-
-  /// Return the function this builder is referring to.
-  CFGFunction *getFunction() const { return function; }
-
-  /// Reset the insertion point to no location.  Creating an operation without a
-  /// set insertion point is an error, but this can still be useful when the
-  /// current insertion point a builder refers to is being removed.
-  void clearInsertionPoint() {
-    this->block = nullptr;
-    insertPoint = BasicBlock::iterator();
-  }
-
-  /// Return the block the current insertion point belongs to.  Note that the
-  /// the insertion point is not necessarily the end of the block.
-  BasicBlock *getInsertionBlock() const { return block; }
-
-  /// Return the insert position as the BasicBlock iterator.  The block itself
-  /// can be obtained by calling getInsertionBlock.
-  BasicBlock::iterator getInsertionPoint() const { return insertPoint; }
-
-  /// Set the insertion point to the specified location.
-  void setInsertionPoint(BasicBlock *block, BasicBlock::iterator insertPoint) {
-    assert(block->getFunction() == function &&
-           "can't move to a different function");
-    this->block = block;
-    this->insertPoint = insertPoint;
-  }
-
-  /// Set the insertion point to the specified operation.
-  void setInsertionPoint(Instruction *inst) {
-    setInsertionPoint(inst->getBlock(), BasicBlock::iterator(inst));
-  }
-
-  /// Set the insertion point to the end of the specified block.
-  void setInsertionPoint(BasicBlock *block) {
-    setInsertionPoint(block, block->end());
-  }
-
-  void insert(Instruction *opInst) {
-    block->getStatements().insert(insertPoint, opInst);
-  }
-
-  /// Add new basic block and set the insertion point to the end of it.  If an
-  /// 'insertBefore' basic block is passed, the block will be placed before the
-  /// specified block.  If not, the block will be appended to the end of the
-  /// current function.
-  BasicBlock *createBlock(BasicBlock *insertBefore = nullptr);
-
-  /// Create an operation given the fields represented as an OperationState.
-  OperationStmt *createOperation(const OperationState &state);
-
-  /// Create operation of specific op type at the current insertion point
-  /// without verifying to see if it is valid.
-  template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Location location, Args... args) {
-    OperationState state(getContext(), location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
-    auto *inst = createOperation(state);
-    auto result = inst->dyn_cast<OpTy>();
-    assert(result && "Builder didn't return the right type");
-    return result;
-  }
-
-  /// Creates an operation of specific op type at the current insertion point.
-  /// If the result is an invalid op (the verifier hook fails), emit an error
-  /// and return null.
-  template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(Location location, Args... args) {
-    OperationState state(getContext(), location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
-    auto *inst = createOperation(state);
-
-    // If the Instruction we produce is valid, return it.
-    if (!OpTy::verifyInvariants(inst)) {
-      auto result = inst->dyn_cast<OpTy>();
-      assert(result && "Builder didn't return the right type");
-      return result;
-    }
-
-    // Otherwise, the error message got emitted.  Just remove the instruction
-    // we made.
-    inst->erase();
-    return OpPointer<OpTy>();
-  }
-
-  OperationStmt *cloneOperation(const OperationStmt &srcOpInst) {
-    auto *op = cast<OperationStmt>(srcOpInst.clone(getContext()));
-    insert(op);
-    return op;
-  }
-
-private:
-  CFGFunction *function;
-  BasicBlock *block = nullptr;
-  BasicBlock::iterator insertPoint;
-};
-
-/// This class helps build an MLFunction.  Statements that are created are
-/// automatically inserted at an insertion point or added to the current
-/// statement block. The builder has only two member variables and can be passed
-/// around by value.
-class MLFuncBuilder : public Builder {
-public:
-  /// Create ML function builder and set insertion point to the given statement,
+  /// Create a function builder and set insertion point to the given statement,
   /// which will cause subsequent insertions to go right before it.
-  MLFuncBuilder(Statement *stmt)
-      // TODO: Eliminate getFunction from this.
-      : MLFuncBuilder(stmt->getFunction()) {
+  FuncBuilder(Statement *stmt) : FuncBuilder(stmt->getFunction()) {
     setInsertionPoint(stmt);
   }
 
-  MLFuncBuilder(StmtBlock *block)
-      // TODO: Eliminate getFunction from this.
-      : MLFuncBuilder(block->getFunction()) {
+  FuncBuilder(StmtBlock *block) : FuncBuilder(block->getFunction()) {
     setInsertionPoint(block, block->end());
   }
 
-  MLFuncBuilder(StmtBlock *block, StmtBlock::iterator insertPoint)
-      // TODO: Eliminate getFunction from this.
-      : MLFuncBuilder(block->getFunction()) {
+  FuncBuilder(StmtBlock *block, StmtBlock::iterator insertPoint)
+      : FuncBuilder(block->getFunction()) {
     setInsertionPoint(block, insertPoint);
   }
 
-  /// Create an ML function builder and set the insertion point to the start of
-  /// the function.
-  MLFuncBuilder(MLFunction *func)
-      : Builder(func->getContext()), function(func) {
-    setInsertionPoint(func->getBody(), func->getBody()->begin());
-  }
-
   /// Return the function this builder is referring to.
-  MLFunction *getFunction() const { return function; }
+  Function *getFunction() const { return function; }
 
   /// Reset the insertion point to no location.  Creating an operation without a
   /// set insertion point is an error, but this can still be useful when the
@@ -324,8 +196,6 @@ public:
   }
 
   /// Set the insertion point to the specified location.
-  /// Unlike CFGFuncBuilder, MLFuncBuilder allows to set insertion
-  /// point to a different function.
   void setInsertionPoint(StmtBlock *block, StmtBlock::iterator insertPoint) {
     // TODO: check that insertPoint is in this rather than some other block.
     this->block = block;
@@ -348,13 +218,23 @@ public:
     setInsertionPoint(block, block->end());
   }
 
-  /// Returns a builder for the body of a for Stmt.
-  static MLFuncBuilder getForStmtBodyBuilder(ForStmt *forStmt) {
-    return MLFuncBuilder(forStmt->getBody(), forStmt->getBody()->end());
-  }
+  /// Return the block the current insertion point belongs to.  Note that the
+  /// the insertion point is not necessarily the end of the block.
+  BasicBlock *getInsertionBlock() const { return block; }
 
   /// Returns the current insertion point of the builder.
   StmtBlock::iterator getInsertionPoint() const { return insertPoint; }
+
+  /// Add new block and set the insertion point to the end of it.  If an
+  /// 'insertBefore' block is passed, the block will be placed before the
+  /// specified block.  If not, the block will be appended to the end of the
+  /// current function.
+  StmtBlock *createBlock(StmtBlock *insertBefore = nullptr);
+
+  /// Returns a builder for the body of a for Stmt.
+  static FuncBuilder getForStmtBodyBuilder(ForStmt *forStmt) {
+    return FuncBuilder(forStmt->getBody(), forStmt->getBody()->end());
+  }
 
   /// Returns the current block of the builder.
   StmtBlock *getBlock() const { return block; }
@@ -421,82 +301,9 @@ public:
                    IntegerSet set);
 
 private:
-  MLFunction *function;
+  Function *function;
   StmtBlock *block = nullptr;
   StmtBlock::iterator insertPoint;
-};
-
-// Wrapper around common CFGFuncBuilder and MLFuncBuilder functionality. Use
-// this wrapper for interfaces where operations need to be created in either a
-// CFG function or ML function.
-class FuncBuilder : public Builder {
-public:
-  FuncBuilder(CFGFuncBuilder &cfgFuncBuilder)
-      : Builder(cfgFuncBuilder.getContext()), builder(cfgFuncBuilder),
-        kind(Function::Kind::CFGFunc) {}
-  FuncBuilder(MLFuncBuilder &mlFuncBuilder)
-      : Builder(mlFuncBuilder.getContext()), builder(mlFuncBuilder),
-        kind(Function::Kind::MLFunc) {}
-  FuncBuilder(Operation *op) : Builder(op->getContext()) {
-    if (op->getOperationFunction()->isCFG()) {
-      builder = builderUnion(CFGFuncBuilder(cast<OperationInst>(op)));
-      kind = Function::Kind::CFGFunc;
-    } else {
-      builder = builderUnion(MLFuncBuilder(cast<OperationStmt>(op)));
-      kind = Function::Kind::MLFunc;
-    }
-  }
-
-  /// Creates an operation given the fields represented as an OperationState.
-  Operation *createOperation(const OperationState &state) {
-    if (kind == Function::Kind::CFGFunc)
-      return builder.cfg.createOperation(state);
-    return builder.ml.createOperation(state);
-  }
-
-  /// Creates operation of specific op type at the current insertion point
-  /// without verifying to see if it is valid.
-  template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Location location, Args... args) {
-    if (kind == Function::Kind::CFGFunc)
-      return builder.cfg.create<OpTy, Args...>(location, args...);
-    return builder.ml.create<OpTy, Args...>(location, args...);
-  }
-
-  /// Creates an operation of specific op type at the current insertion point.
-  /// If the result is an invalid op (the verifier hook fails), emit an error
-  /// and return null.
-  template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(Location location, Args... args) {
-    if (kind == Function::Kind::CFGFunc)
-      return builder.cfg.createChecked<OpTy, Args...>(location, args...);
-    return builder.ml.createChecked<OpTy, Args...>(location, args...);
-  }
-
-  /// Set the insertion point to the specified operation. This requires that the
-  /// input operation is a Instruction when building a CFG function and a
-  /// OperationStmt when building a ML function.
-  void setInsertionPoint(Operation *op) {
-    if (kind == Function::Kind::CFGFunc)
-      builder.cfg.setInsertionPoint(cast<OperationStmt>(op));
-    else
-      builder.ml.setInsertionPoint(cast<OperationStmt>(op));
-  }
-
-private:
-  // Wrapped builders for CFG and ML functions.
-  union builderUnion {
-    builderUnion(CFGFuncBuilder cfg) : cfg(cfg) {}
-    builderUnion(MLFuncBuilder ml) : ml(ml) {}
-    // Default initializer to allow deferring initialization of member.
-    builderUnion() {}
-
-    CFGFuncBuilder cfg;
-    MLFuncBuilder ml;
-  } builder;
-
-  // The type of builder in the builderUnion.
-  Function::Kind kind;
 };
 
 } // namespace mlir

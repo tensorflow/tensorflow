@@ -78,7 +78,7 @@ static void constructTiledIndexSetHyperRect(ArrayRef<ForStmt *> origLoops,
   assert(!origLoops.empty());
   assert(origLoops.size() == tileSizes.size());
 
-  MLFuncBuilder b(origLoops[0]);
+  FuncBuilder b(origLoops[0]);
   unsigned width = origLoops.size();
 
   // Bounds for tile space loops.
@@ -161,7 +161,7 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
 
   // Add intra-tile (or point) loops.
   for (unsigned i = 0; i < width; i++) {
-    MLFuncBuilder b(topLoop);
+    FuncBuilder b(topLoop);
     // Loop bounds will be set later.
     auto *pointLoop = b.createFor(loc, 0, 0);
     pointLoop->getBody()->getStatements().splice(
@@ -175,7 +175,7 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
 
   // Add tile space loops;
   for (unsigned i = width; i < 2 * width; i++) {
-    MLFuncBuilder b(topLoop);
+    FuncBuilder b(topLoop);
     // Loop bounds will be set later.
     auto *tileSpaceLoop = b.createFor(loc, 0, 0);
     tileSpaceLoop->getBody()->getStatements().splice(

@@ -193,8 +193,8 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
       mayBeConstantTripCount.getValue() % unrollJamFactor != 0) {
     DenseMap<const Value *, Value *> operandMap;
     // Insert the cleanup loop right after 'forStmt'.
-    MLFuncBuilder builder(forStmt->getBlock(),
-                          std::next(StmtBlock::iterator(forStmt)));
+    FuncBuilder builder(forStmt->getBlock(),
+                        std::next(StmtBlock::iterator(forStmt)));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
     cleanupForStmt->setLowerBoundMap(
         getCleanupLoopLowerBound(*forStmt, unrollJamFactor, &builder));
@@ -214,8 +214,7 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
   for (auto &subBlock : subBlocks) {
     // Builder to insert unroll-jammed bodies. Insert right at the end of
     // sub-block.
-    MLFuncBuilder builder(subBlock.first->getBlock(),
-                          std::next(subBlock.second));
+    FuncBuilder builder(subBlock.first->getBlock(), std::next(subBlock.second));
 
     // Unroll and jam (appends unrollJamFactor-1 additional copies).
     for (unsigned i = 1; i < unrollJamFactor; i++) {

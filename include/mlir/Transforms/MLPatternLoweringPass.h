@@ -32,10 +32,10 @@ namespace mlir {
 /// Specialization of the pattern rewriter to ML functions.
 class MLFuncLoweringRewriter : public PatternRewriter {
 public:
-  explicit MLFuncLoweringRewriter(MLFuncBuilder *builder)
+  explicit MLFuncLoweringRewriter(FuncBuilder *builder)
       : PatternRewriter(builder->getContext()), builder(builder) {}
 
-  MLFuncBuilder *getBuilder() { return builder; }
+  FuncBuilder *getBuilder() { return builder; }
 
   Operation *createOperation(const OperationState &state) override {
     auto *result = builder->createOperation(state);
@@ -43,7 +43,7 @@ public:
   }
 
 private:
-  MLFuncBuilder *builder;
+  FuncBuilder *builder;
 };
 
 /// Base class for the MLFunction-wise lowering state.  A pointer to the same
@@ -140,7 +140,7 @@ PassResult MLPatternLoweringPass<Patterns...>::runOnMLFunction(MLFunction *f) {
   detail::ListAdder<Patterns...>::addPatternsToList(&patterns, f->getContext());
   auto funcWiseState = makeFuncWiseState(f);
 
-  MLFuncBuilder builder(f);
+  FuncBuilder builder(f);
   MLFuncLoweringRewriter rewriter(&builder);
 
   llvm::SmallVector<OperationStmt *, 0> ops;

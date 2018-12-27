@@ -271,8 +271,8 @@ static void processMLFunction(MLFunction *fn,
                               OwningRewritePatternList &&patterns) {
   class MLFuncRewriter : public WorklistRewriter {
   public:
-    MLFuncRewriter(GreedyPatternRewriteDriver &driver, MLFuncBuilder &builder)
-        : WorklistRewriter(driver, builder.getContext()), builder(builder) {}
+    MLFuncRewriter(GreedyPatternRewriteDriver &theDriver, FuncBuilder &builder)
+        : WorklistRewriter(theDriver, builder.getContext()), builder(builder) {}
 
     // Implement the hook for creating operations, and make sure that newly
     // created ops are added to the worklist for processing.
@@ -288,13 +288,13 @@ static void processMLFunction(MLFunction *fn,
     }
 
   private:
-    MLFuncBuilder &builder;
+    FuncBuilder &builder;
   };
 
   GreedyPatternRewriteDriver driver(std::move(patterns));
   fn->walk([&](OperationStmt *stmt) { driver.addToWorklist(stmt); });
 
-  MLFuncBuilder mlBuilder(fn);
+  FuncBuilder mlBuilder(fn);
   MLFuncRewriter rewriter(driver, mlBuilder);
   driver.simplifyFunction(fn, rewriter);
 }
@@ -303,8 +303,8 @@ static void processCFGFunction(CFGFunction *fn,
                                OwningRewritePatternList &&patterns) {
   class CFGFuncRewriter : public WorklistRewriter {
   public:
-    CFGFuncRewriter(GreedyPatternRewriteDriver &driver, CFGFuncBuilder &builder)
-        : WorklistRewriter(driver, builder.getContext()), builder(builder) {}
+    CFGFuncRewriter(GreedyPatternRewriteDriver &theDriver, FuncBuilder &builder)
+        : WorklistRewriter(theDriver, builder.getContext()), builder(builder) {}
 
     // Implement the hook for creating operations, and make sure that newly
     // created ops are added to the worklist for processing.
@@ -320,7 +320,7 @@ static void processCFGFunction(CFGFunction *fn,
     }
 
   private:
-    CFGFuncBuilder &builder;
+    FuncBuilder &builder;
   };
 
   GreedyPatternRewriteDriver driver(std::move(patterns));
@@ -329,7 +329,7 @@ static void processCFGFunction(CFGFunction *fn,
       if (auto *opInst = dyn_cast<OperationStmt>(&op))
         driver.addToWorklist(opInst);
 
-  CFGFuncBuilder cfgBuilder(fn);
+  FuncBuilder cfgBuilder(fn);
   CFGFuncRewriter rewriter(driver, cfgBuilder);
   driver.simplifyFunction(fn, rewriter);
 }

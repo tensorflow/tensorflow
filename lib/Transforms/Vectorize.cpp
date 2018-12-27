@@ -842,7 +842,7 @@ static bool vectorizeRootOrTerminal(Value *iv, LoadOrStoreOpPointer memoryOp,
         makePermutationMap(opStmt, state->strategy->loopToVectorDim);
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
     LLVM_DEBUG(permutationMap.print(dbgs()));
-    MLFuncBuilder b(opStmt);
+    FuncBuilder b(opStmt);
     auto transfer = b.create<VectorTransferReadOp>(
         opStmt->getLoc(), vectorType, memoryOp->getMemRef(),
         map(makePtrDynCaster<Value>(), memoryOp->getIndices()), permutationMap);
@@ -970,7 +970,7 @@ static Value *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
       !VectorType::isValidElementType(constant.getType())) {
     return nullptr;
   }
-  MLFuncBuilder b(stmt);
+  FuncBuilder b(stmt);
   Location loc = stmt->getLoc();
   auto vectorType = type.cast<VectorType>();
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
@@ -1068,7 +1068,7 @@ static Value *vectorizeOperand(Value *operand, Statement *stmt,
 /// TODO(ntv): consider adding a trait to Op to describe how it gets vectorized.
 /// Maybe some Ops are not vectorizable or require some tricky logic, we cannot
 /// do one-off logic here; ideally it would be TableGen'd.
-static OperationStmt *vectorizeOneOperationStmt(MLFuncBuilder *b,
+static OperationStmt *vectorizeOneOperationStmt(FuncBuilder *b,
                                                 OperationStmt *opStmt,
                                                 VectorizationState *state) {
   // Sanity checks.
@@ -1084,7 +1084,7 @@ static OperationStmt *vectorizeOneOperationStmt(MLFuncBuilder *b,
     auto *value = store->getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opStmt, state);
     auto indices = map(makePtrDynCaster<Value>(), store->getIndices());
-    MLFuncBuilder b(opStmt);
+    FuncBuilder b(opStmt);
     auto permutationMap =
         makePermutationMap(opStmt, state->strategy->loopToVectorDim);
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
@@ -1159,7 +1159,7 @@ static bool vectorizeOperations(VectorizationState *state) {
 
     // 2. Create vectorized form of the statement.
     // Insert it just before stmt, on success register stmt as replaced.
-    MLFuncBuilder b(stmt);
+    FuncBuilder b(stmt);
     auto *vectorizedStmt = vectorizeOneOperationStmt(&b, stmt, state);
     if (!vectorizedStmt) {
       return true;
@@ -1200,7 +1200,7 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
       LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ loop is not vectorizable");
       continue;
     }
-    MLFuncBuilder builder(loop); // builder to insert in place of loop
+    FuncBuilder builder(loop); // builder to insert in place of loop
     DenseMap<const Value *, Value *> nomap;
     ForStmt *clonedLoop = cast<ForStmt>(builder.clone(*loop, nomap));
     auto fail = doVectorize(m, &state);
@@ -1244,7 +1244,7 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
       if (fail) {
         return;
       }
-      MLFuncBuilder b(stmt);
+      FuncBuilder b(stmt);
       auto *res = vectorizeOneOperationStmt(&b, stmt, &state);
       if (res == nullptr) {
         fail = true;

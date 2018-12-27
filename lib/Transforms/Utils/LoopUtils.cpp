@@ -40,7 +40,7 @@ using namespace mlir;
 /// the trip count can't be expressed as an affine expression.
 AffineMap mlir::getUnrolledLoopUpperBound(const ForStmt &forStmt,
                                           unsigned unrollFactor,
-                                          MLFuncBuilder *builder) {
+                                          FuncBuilder *builder) {
   auto lbMap = forStmt.getLowerBoundMap();
 
   // Single result lower bound map only.
@@ -66,7 +66,7 @@ AffineMap mlir::getUnrolledLoopUpperBound(const ForStmt &forStmt,
 /// when the trip count can't be expressed as an affine expression.
 AffineMap mlir::getCleanupLoopLowerBound(const ForStmt &forStmt,
                                          unsigned unrollFactor,
-                                         MLFuncBuilder *builder) {
+                                         FuncBuilder *builder) {
   auto lbMap = forStmt.getLowerBoundMap();
 
   // Single result lower bound map only.
@@ -101,14 +101,14 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
   if (!forStmt->use_empty()) {
     if (forStmt->hasConstantLowerBound()) {
       auto *mlFunc = forStmt->getFunction();
-      MLFuncBuilder topBuilder(&mlFunc->getBody()->front());
+      FuncBuilder topBuilder(&mlFunc->getBody()->front());
       auto constOp = topBuilder.create<ConstantIndexOp>(
           forStmt->getLoc(), forStmt->getConstantLowerBound());
       forStmt->replaceAllUsesWith(constOp);
     } else {
       const AffineBound lb = forStmt->getLowerBound();
       SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
-      MLFuncBuilder builder(forStmt->getBlock(), StmtBlock::iterator(forStmt));
+      FuncBuilder builder(forStmt->getBlock(), StmtBlock::iterator(forStmt));
       auto affineApplyOp = builder.create<AffineApplyOp>(
           forStmt->getLoc(), lb.getMap(), lbOperands);
       forStmt->replaceAllUsesWith(affineApplyOp->getResult(0));
@@ -146,7 +146,7 @@ static ForStmt *
 generateLoop(AffineMap lbMap, AffineMap ubMap,
              const std::vector<std::pair<uint64_t, ArrayRef<Statement *>>>
                  &stmtGroupQueue,
-             unsigned offset, ForStmt *srcForStmt, MLFuncBuilder *b) {
+             unsigned offset, ForStmt *srcForStmt, FuncBuilder *b) {
   SmallVector<Value *, 4> lbOperands(srcForStmt->getLowerBoundOperands());
   SmallVector<Value *, 4> ubOperands(srcForStmt->getUpperBoundOperands());
 
@@ -167,7 +167,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
     // Generate the remapping if the shift is not zero: remappedIV = newIV -
     // shift.
     if (!srcForStmt->use_empty() && shift != 0) {
-      auto b = MLFuncBuilder::getForStmtBodyBuilder(loopChunk);
+      auto b = FuncBuilder::getForStmtBodyBuilder(loopChunk);
       auto *ivRemap = b.create<AffineApplyOp>(
                            srcForStmt->getLoc(),
                            b.getSingleDimShiftAffineMap(-static_cast<int64_t>(
@@ -261,7 +261,7 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> shifts,
 
   auto origLbMap = forStmt->getLowerBoundMap();
   uint64_t lbShift = 0;
-  MLFuncBuilder b(forStmt);
+  FuncBuilder b(forStmt);
   for (uint64_t d = 0, e = sortedStmtGroups.size(); d < e; ++d) {
     // If nothing is shifted by d, continue.
     if (sortedStmtGroups[d].empty())
@@ -379,7 +379,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
   if (getLargestDivisorOfTripCount(*forStmt) % unrollFactor != 0) {
     DenseMap<const Value *, Value *> operandMap;
-    MLFuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
+    FuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
     auto clLbMap = getCleanupLoopLowerBound(*forStmt, unrollFactor, &builder);
     assert(clLbMap &&
@@ -404,7 +404,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
 
   // Builder to insert unrolled bodies right after the last statement in the
   // body of 'forStmt'.
-  MLFuncBuilder builder(forStmt->getBody(), forStmt->getBody()->end());
+  FuncBuilder builder(forStmt->getBody(), forStmt->getBody()->end());
 
   // Keep a pointer to the last statement in the original block so that we know
   // what to clone (since we are doing this in-place).

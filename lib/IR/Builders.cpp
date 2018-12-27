@@ -268,15 +268,15 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 }
 
 //===----------------------------------------------------------------------===//
-// CFG function elements.
+// Statements.
 //===----------------------------------------------------------------------===//
 
 /// Add new basic block and set the insertion point to the end of it.  If an
 /// 'insertBefore' basic block is passed, the block will be placed before the
 /// specified block.  If not, the block will be appended to the end of the
 /// current function.
-BasicBlock *CFGFuncBuilder::createBlock(BasicBlock *insertBefore) {
-  BasicBlock *b = new BasicBlock();
+StmtBlock *FuncBuilder::createBlock(StmtBlock *insertBefore) {
+  StmtBlock *b = new StmtBlock();
 
   // If we are supposed to insert before a specific block, do so, otherwise add
   // the block to the end of the function.
@@ -285,12 +285,12 @@ BasicBlock *CFGFuncBuilder::createBlock(BasicBlock *insertBefore) {
   else
     function->push_back(b);
 
-  setInsertionPoint(b);
+  setInsertionPointToEnd(b);
   return b;
 }
 
 /// Create an operation given the fields represented as an OperationState.
-OperationStmt *CFGFuncBuilder::createOperation(const OperationState &state) {
+OperationStmt *FuncBuilder::createOperation(const OperationState &state) {
   auto *op = OperationInst::create(state.location, state.name, state.operands,
                                    state.types, state.attributes,
                                    state.successors, context);
@@ -298,38 +298,24 @@ OperationStmt *CFGFuncBuilder::createOperation(const OperationState &state) {
   return op;
 }
 
-//===----------------------------------------------------------------------===//
-// Statements.
-//===----------------------------------------------------------------------===//
-
-/// Create an operation given the fields represented as an OperationState.
-OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
-  auto *op = OperationStmt::create(state.location, state.name, state.operands,
-                                   state.types, state.attributes,
-                                   state.successors, context);
-  block->getStatements().insert(insertPoint, op);
-  return op;
-}
-
-ForStmt *MLFuncBuilder::createFor(Location location,
-                                  ArrayRef<Value *> lbOperands, AffineMap lbMap,
-                                  ArrayRef<Value *> ubOperands, AffineMap ubMap,
-                                  int64_t step) {
+ForStmt *FuncBuilder::createFor(Location location, ArrayRef<Value *> lbOperands,
+                                AffineMap lbMap, ArrayRef<Value *> ubOperands,
+                                AffineMap ubMap, int64_t step) {
   auto *stmt =
       ForStmt::create(location, lbOperands, lbMap, ubOperands, ubMap, step);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;
 }
 
-ForStmt *MLFuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
-                                  int64_t step) {
+ForStmt *FuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
+                                int64_t step) {
   auto lbMap = AffineMap::getConstantMap(lb, context);
   auto ubMap = AffineMap::getConstantMap(ub, context);
   return createFor(location, {}, lbMap, {}, ubMap, step);
 }
 
-IfStmt *MLFuncBuilder::createIf(Location location, ArrayRef<Value *> operands,
-                                IntegerSet set) {
+IfStmt *FuncBuilder::createIf(Location location, ArrayRef<Value *> operands,
+                              IntegerSet set) {
   auto *stmt = IfStmt::create(location, operands, set);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;

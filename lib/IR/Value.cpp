@@ -1,4 +1,4 @@
-//===- SSAValue.cpp - MLIR ValueClasses ------------===//
+//===- Value.cpp - MLIR Value Classes -------------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,10 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/IR/Value.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Statements.h"
-#include "mlir/IR/Value.h"
-
 using namespace mlir;
 
 /// If this value is the result of an Instruction, return the instruction

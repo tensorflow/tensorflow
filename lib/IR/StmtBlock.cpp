@@ -174,7 +174,7 @@ BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
 
   // Create an unconditional branch to the new block, and move our terminator
   // to the new block.
-  CFGFuncBuilder(this).create<BranchOp>(branchLoc, newBB);
+  FuncBuilder(this).create<BranchOp>(branchLoc, newBB);
   return newBB;
 }
 

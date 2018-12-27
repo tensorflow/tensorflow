@@ -32,7 +32,7 @@ class AffineMap;
 class ForStmt;
 class Function;
 using MLFunction = Function;
-class MLFuncBuilder;
+class FuncBuilder;
 
 // Values that can be used to signal success/failure. This can be implicitly
 // converted to/from boolean values, with false representing success and true
@@ -73,14 +73,13 @@ void promoteSingleIterationLoops(MLFunction *f);
 /// Returns the lower bound of the cleanup loop when unrolling a loop
 /// with the specified unroll factor.
 AffineMap getCleanupLoopLowerBound(const ForStmt &forStmt,
-                                   unsigned unrollFactor,
-                                   MLFuncBuilder *builder);
+                                   unsigned unrollFactor, FuncBuilder *builder);
 
 /// Returns the upper bound of an unrolled loop when unrolling with
 /// the specified trip count, stride, and unroll factor.
 AffineMap getUnrolledLoopUpperBound(const ForStmt &forStmt,
                                     unsigned unrollFactor,
-                                    MLFuncBuilder *builder);
+                                    FuncBuilder *builder);
 
 /// Skew the statements in the body of a 'for' statement with the specified
 /// statement-wise shifts. The shifts are with respect to the original execution

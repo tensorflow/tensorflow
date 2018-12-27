@@ -173,7 +173,7 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
   // Build the constraints for this region.
   FlatAffineConstraints *regionCst = region->getConstraints();
 
-  MLFuncBuilder b(opStmt);
+  FuncBuilder b(opStmt);
   auto idMap = b.getMultiDimIdentityMap(rank);
 
   // Initialize 'accessValueMap' and compose with reachable AffineApplyOps.
@@ -453,7 +453,7 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   // Clone src loop nest and insert it a the beginning of the statement block
   // of the loop at 'dstLoopDepth' in 'dstLoopNest'.
   auto *dstForStmt = dstLoopNest[dstLoopDepth - 1];
-  MLFuncBuilder b(dstForStmt->getBody(), dstForStmt->getBody()->begin());
+  FuncBuilder b(dstForStmt->getBody(), dstForStmt->getBody()->begin());
   DenseMap<const Value *, Value *> operandMap;
   auto *sliceLoopNest = cast<ForStmt>(b.clone(*srcLoopNest[0], operandMap));
 

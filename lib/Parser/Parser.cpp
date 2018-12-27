@@ -2578,7 +2578,7 @@ private:
 
   /// This builder intentionally shadows the builder in the base class, with a
   /// more specific builder type.
-  CFGFuncBuilder builder;
+  FuncBuilder builder;
 
   /// Get the basic block with the specified name, creating it if it doesn't
   /// already exist.  The location specified is the point of use, which allows
@@ -2744,7 +2744,7 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
 
   // Set the insertion point to the block we want to insert new operations
   // into.
-  builder.setInsertionPoint(block);
+  builder.setInsertionPointToEnd(block);
 
   auto createOpFunc = [&](const OperationState &result) -> Operation * {
     return builder.createOperation(result);
@@ -2782,7 +2782,7 @@ private:
 
   /// This builder intentionally shadows the builder in the base class, with a
   /// more specific builder type.
-  MLFuncBuilder builder;
+  FuncBuilder builder;
 
   ParseResult parseForStmt();
   ParseResult parseIntConstant(int64_t &val);

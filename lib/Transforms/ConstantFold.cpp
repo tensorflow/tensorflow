@@ -104,7 +104,7 @@ bool ConstantFold::foldOperation(Operation *op,
 // conditional branches, or anything else fancy.
 PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
   existingConstants.clear();
-  CFGFuncBuilder builder(f);
+  FuncBuilder builder(f);
 
   for (auto &bb : *f) {
     for (auto instIt = bb.begin(), e = bb.end(); instIt != e;) {
@@ -141,7 +141,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
 // Override the walker's operation statement visit for constant folding.
 void ConstantFold::visitOperationStmt(OperationStmt *stmt) {
   auto constantFactory = [&](Attribute value, Type type) -> Value * {
-    MLFuncBuilder builder(stmt);
+    FuncBuilder builder(stmt);
     return builder.create<ConstantOp>(stmt->getLoc(), value, type);
   };
   if (!ConstantFold::foldOperation(stmt, existingConstants, constantFactory)) {

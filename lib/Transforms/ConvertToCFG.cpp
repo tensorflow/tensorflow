@@ -57,7 +57,7 @@ private:
       llvm::iterator_range<Operation::result_iterator> values);
 
   CFGFunction *cfgFunc;
-  CFGFuncBuilder builder;
+  FuncBuilder builder;
 
   // Mapping between original Values and lowered Values.
   llvm::DenseMap<const Value *, Value *> valueRemapping;
@@ -224,21 +224,21 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   BasicBlock *loopBodyFirstBlock = builder.createBlock();
 
   // At the loop insertion location, branch immediately to the loop init block.
-  builder.setInsertionPoint(loopInsertionPoint);
+  builder.setInsertionPointToEnd(loopInsertionPoint);
   builder.create<BranchOp>(builder.getUnknownLoc(), loopInitBlock);
 
   // The loop condition block has an argument for loop induction variable.
   // Create it upfront and make the loop induction variable -> basic block
   // argument remapping available to the following instructions.  ForStatement
   // is-a Value corresponding to the loop induction variable.
-  builder.setInsertionPoint(loopConditionBlock);
+  builder.setInsertionPointToEnd(loopConditionBlock);
   Value *iv = loopConditionBlock->addArgument(builder.getIndexType());
   valueRemapping.insert(std::make_pair(forStmt, iv));
 
   // Recursively construct loop body region.
   // Walking manually because we need custom logic before and after traversing
   // the list of children.
-  builder.setInsertionPoint(loopBodyFirstBlock);
+  builder.setInsertionPointToEnd(loopBodyFirstBlock);
   visitStmtBlock(forStmt->getBody());
 
   // Builder point is currently at the last block of the loop body.  Append the
@@ -257,7 +257,7 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   // Create post-loop block here so that it appears after all loop body blocks.
   BasicBlock *postLoopBlock = builder.createBlock();
 
-  builder.setInsertionPoint(loopInitBlock);
+  builder.setInsertionPointToEnd(loopInitBlock);
   // Compute loop bounds using affine_apply after remapping its operands.
   auto remapOperands = [this](const Value *value) -> Value * {
     return valueRemapping.lookup(value);
@@ -276,7 +276,7 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   builder.create<BranchOp>(builder.getUnknownLoc(), loopConditionBlock,
                            lowerBound);
 
-  builder.setInsertionPoint(loopConditionBlock);
+  builder.setInsertionPointToEnd(loopConditionBlock);
   auto comparisonOp = builder.create<CmpIOp>(
       forStmt->getLoc(), CmpIPredicate::SLT, iv, upperBound);
   auto comparisonResult = comparisonOp->getResult();
@@ -286,7 +286,7 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
 
   // Finally, make sure building can continue by setting the post-loop block
   // (end of loop SESE region) as the insertion point.
-  builder.setInsertionPoint(postLoopBlock);
+  builder.setInsertionPointToEnd(postLoopBlock);
 }
 
 // Convert an "if" statement into a flow of basic blocks.
@@ -388,7 +388,7 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
   }
   BasicBlock *thenBlock = builder.createBlock();
   BasicBlock *elseBlock = builder.createBlock();
-  builder.setInsertionPoint(ifInsertionBlock);
+  builder.setInsertionPointToEnd(ifInsertionBlock);
 
   // Implement short-circuit logic.  For each affine expression in the 'if'
   // condition, convert it into an affine map and call `affine_apply` to obtain
@@ -424,17 +424,17 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
                                  nextBlock, /*trueArgs*/ ArrayRef<Value *>(),
                                  elseBlock,
                                  /*falseArgs*/ ArrayRef<Value *>());
-    builder.setInsertionPoint(nextBlock);
+    builder.setInsertionPointToEnd(nextBlock);
   }
   ifConditionExtraBlocks.pop_back();
 
   // Recursively traverse the 'then' block.
-  builder.setInsertionPoint(thenBlock);
+  builder.setInsertionPointToEnd(thenBlock);
   visitStmtBlock(ifStmt->getThen());
   BasicBlock *lastThenBlock = builder.getInsertionBlock();
 
   // Recursively traverse the 'else' block if present.
-  builder.setInsertionPoint(elseBlock);
+  builder.setInsertionPointToEnd(elseBlock);
   if (ifStmt->hasElse())
     visitStmtBlock(ifStmt->getElse());
   BasicBlock *lastElseBlock = builder.getInsertionBlock();
@@ -443,14 +443,14 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
   // 'then' and 'else' blocks, branch from end of 'then' and 'else' SESE regions
   // to the continuation block.
   BasicBlock *continuationBlock = builder.createBlock();
-  builder.setInsertionPoint(lastThenBlock);
+  builder.setInsertionPointToEnd(lastThenBlock);
   builder.create<BranchOp>(ifStmt->getLoc(), continuationBlock);
-  builder.setInsertionPoint(lastElseBlock);
+  builder.setInsertionPointToEnd(lastElseBlock);
   builder.create<BranchOp>(ifStmt->getLoc(), continuationBlock);
 
   // Make sure building can continue by setting up the continuation block as the
   // insertion point.
-  builder.setInsertionPoint(continuationBlock);
+  builder.setInsertionPointToEnd(continuationBlock);
 }
 
 // Entry point of the function convertor.
