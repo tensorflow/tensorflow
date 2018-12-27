@@ -48,7 +48,7 @@ public:
   virtual raw_ostream &getStream() const = 0;
 
   /// Print implementations for various things an operation contains.
-  virtual void printOperand(const SSAValue *value) = 0;
+  virtual void printOperand(const Value *value) = 0;
 
   /// Print a comma separated list of operands.
   template <typename ContainerType>
@@ -95,7 +95,7 @@ private:
 };
 
 // Make the implementations convenient to use.
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const SSAValue &value) {
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const Value &value) {
   p.printOperand(&value);
   return p;
 }
@@ -119,7 +119,7 @@ inline OpAsmPrinter &operator<<(OpAsmPrinter &p, AffineMap map) {
 // even if it isn't exactly one of them.  For example, we want to print
 // FunctionType with the Type& version above, not have it match this.
 template <typename T, typename std::enable_if<
-                          !std::is_convertible<T &, SSAValue &>::value &&
+                          !std::is_convertible<T &, Value &>::value &&
                               !std::is_convertible<T &, Type &>::value &&
                               !std::is_convertible<T &, Attribute &>::value &&
                               !std::is_convertible<T &, AffineMap &>::value,
@@ -264,9 +264,8 @@ public:
   virtual bool parseOperand(OperandType &result) = 0;
 
   /// Parse a single operation successor and it's operand list.
-  virtual bool
-  parseSuccessorAndUseList(BasicBlock *&dest,
-                           SmallVectorImpl<SSAValue *> &operands) = 0;
+  virtual bool parseSuccessorAndUseList(BasicBlock *&dest,
+                                        SmallVectorImpl<Value *> &operands) = 0;
 
   /// These are the supported delimiters around operand lists, used by
   /// parseOperandList.
@@ -311,13 +310,13 @@ public:
   /// Resolve an operand to an SSA value, emitting an error and returning true
   /// on failure.
   virtual bool resolveOperand(const OperandType &operand, Type type,
-                              SmallVectorImpl<SSAValue *> &result) = 0;
+                              SmallVectorImpl<Value *> &result) = 0;
 
   /// Resolve a list of operands to SSA values, emitting an error and returning
   /// true on failure, or appending the results to the list on success.
   /// This method should be used when all operands have the same type.
   virtual bool resolveOperands(ArrayRef<OperandType> operands, Type type,
-                               SmallVectorImpl<SSAValue *> &result) {
+                               SmallVectorImpl<Value *> &result) {
     for (auto elt : operands)
       if (resolveOperand(elt, type, result))
         return true;
@@ -329,7 +328,7 @@ public:
   /// to the list on success.
   virtual bool resolveOperands(ArrayRef<OperandType> operands,
                                ArrayRef<Type> types, llvm::SMLoc loc,
-                               SmallVectorImpl<SSAValue *> &result) {
+                               SmallVectorImpl<Value *> &result) {
     if (operands.size() != types.size())
       return emitError(loc, Twine(operands.size()) +
                                 " operands present, but expected " +

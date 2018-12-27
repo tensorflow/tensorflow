@@ -489,11 +489,11 @@ bool mlir::getFlattenedAffineExprs(
 // TODO(andydavis) Add a method to AffineApplyOp which forward substitutes
 // the AffineApplyOp into any user AffineApplyOps.
 void mlir::getReachableAffineApplyOps(
-    ArrayRef<MLValue *> operands,
+    ArrayRef<Value *> operands,
     SmallVectorImpl<OperationStmt *> &affineApplyOps) {
   struct State {
     // The ssa value for this node in the DFS traversal.
-    MLValue *value;
+    Value *value;
     // The operand index of 'value' to explore next during DFS traversal.
     unsigned operandIndex;
   };
@@ -557,8 +557,8 @@ void mlir::forwardSubstituteReachableOps(AffineValueMap *valueMap) {
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
 bool mlir::getIndexSet(ArrayRef<ForStmt *> forStmts,
                        FlatAffineConstraints *domain) {
-  SmallVector<MLValue *, 4> indices(forStmts.begin(), forStmts.end());
-  // Reset while associated MLValues in 'indices' to the domain.
+  SmallVector<Value *, 4> indices(forStmts.begin(), forStmts.end());
+  // Reset while associated Values in 'indices' to the domain.
   domain->reset(forStmts.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
   for (auto *forStmt : forStmts) {
     // Add constraints from forStmt's bounds.
@@ -583,10 +583,10 @@ static bool getStmtIndexSet(const Statement *stmt,
   return getIndexSet(loops, indexSet);
 }
 
-// ValuePositionMap manages the mapping from MLValues which represent dimension
+// ValuePositionMap manages the mapping from Values which represent dimension
 // and symbol identifiers from 'src' and 'dst' access functions to positions
-// in new space where some MLValues are kept separate (using addSrc/DstValue)
-// and some MLValues are merged (addSymbolValue).
+// in new space where some Values are kept separate (using addSrc/DstValue)
+// and some Values are merged (addSymbolValue).
 // Position lookups return the absolute position in the new space which
 // has the following format:
 //
@@ -595,7 +595,7 @@ static bool getStmtIndexSet(const Statement *stmt,
 // Note: access function non-IV dimension identifiers (that have 'dimension'
 // positions in the access function position space) are assigned as symbols
 // in the output position space. Convienience access functions which lookup
-// an MLValue in multiple maps are provided (i.e. getSrcDimOrSymPos) to handle
+// an Value in multiple maps are provided (i.e. getSrcDimOrSymPos) to handle
 // the common case of resolving positions for all access function operands.
 //
 // TODO(andydavis) Generalize this: could take a template parameter for
@@ -603,25 +603,25 @@ static bool getStmtIndexSet(const Statement *stmt,
 // of maps to check. So getSrcDimOrSymPos would be "getPos(value, {0, 2})".
 class ValuePositionMap {
 public:
-  void addSrcValue(const MLValue *value) {
+  void addSrcValue(const Value *value) {
     if (addValueAt(value, &srcDimPosMap, numSrcDims))
       ++numSrcDims;
   }
-  void addDstValue(const MLValue *value) {
+  void addDstValue(const Value *value) {
     if (addValueAt(value, &dstDimPosMap, numDstDims))
       ++numDstDims;
   }
-  void addSymbolValue(const MLValue *value) {
+  void addSymbolValue(const Value *value) {
     if (addValueAt(value, &symbolPosMap, numSymbols))
       ++numSymbols;
   }
-  unsigned getSrcDimOrSymPos(const MLValue *value) const {
+  unsigned getSrcDimOrSymPos(const Value *value) const {
     return getDimOrSymPos(value, srcDimPosMap, 0);
   }
-  unsigned getDstDimOrSymPos(const MLValue *value) const {
+  unsigned getDstDimOrSymPos(const Value *value) const {
     return getDimOrSymPos(value, dstDimPosMap, numSrcDims);
   }
-  unsigned getSymPos(const MLValue *value) const {
+  unsigned getSymPos(const Value *value) const {
     auto it = symbolPosMap.find(value);
     assert(it != symbolPosMap.end());
     return numSrcDims + numDstDims + it->second;
@@ -633,8 +633,7 @@ public:
   unsigned getNumSymbols() const { return numSymbols; }
 
 private:
-  bool addValueAt(const MLValue *value,
-                  DenseMap<const MLValue *, unsigned> *posMap,
+  bool addValueAt(const Value *value, DenseMap<const Value *, unsigned> *posMap,
                   unsigned position) {
     auto it = posMap->find(value);
     if (it == posMap->end()) {
@@ -643,8 +642,8 @@ private:
     }
     return false;
   }
-  unsigned getDimOrSymPos(const MLValue *value,
-                          const DenseMap<const MLValue *, unsigned> &dimPosMap,
+  unsigned getDimOrSymPos(const Value *value,
+                          const DenseMap<const Value *, unsigned> &dimPosMap,
                           unsigned dimPosOffset) const {
     auto it = dimPosMap.find(value);
     if (it != dimPosMap.end()) {
@@ -658,25 +657,25 @@ private:
   unsigned numSrcDims = 0;
   unsigned numDstDims = 0;
   unsigned numSymbols = 0;
-  DenseMap<const MLValue *, unsigned> srcDimPosMap;
-  DenseMap<const MLValue *, unsigned> dstDimPosMap;
-  DenseMap<const MLValue *, unsigned> symbolPosMap;
+  DenseMap<const Value *, unsigned> srcDimPosMap;
+  DenseMap<const Value *, unsigned> dstDimPosMap;
+  DenseMap<const Value *, unsigned> symbolPosMap;
 };
 
-// Builds a map from MLValue to identifier position in a new merged identifier
+// Builds a map from Value to identifier position in a new merged identifier
 // list, which is the result of merging dim/symbol lists from src/dst
 // iteration domains. The format of the new merged list is as follows:
 //
 //   [src-dim-identifiers, dst-dim-identifiers, symbol-identifiers]
 //
-// This method populates 'valuePosMap' with mappings from operand MLValues in
+// This method populates 'valuePosMap' with mappings from operand Values in
 // 'srcAccessMap'/'dstAccessMap' (as well as those in 'srcDomain'/'dstDomain')
 // to the position of these values in the merged list.
 static void buildDimAndSymbolPositionMaps(
     const FlatAffineConstraints &srcDomain,
     const FlatAffineConstraints &dstDomain, const AffineValueMap &srcAccessMap,
     const AffineValueMap &dstAccessMap, ValuePositionMap *valuePosMap) {
-  auto updateValuePosMap = [&](ArrayRef<MLValue *> values, bool isSrc) {
+  auto updateValuePosMap = [&](ArrayRef<Value *> values, bool isSrc) {
     for (unsigned i = 0, e = values.size(); i < e; ++i) {
       auto *value = values[i];
       if (!isa<ForStmt>(values[i]))
@@ -688,7 +687,7 @@ static void buildDimAndSymbolPositionMaps(
     }
   };
 
-  SmallVector<MLValue *, 4> srcValues, destValues;
+  SmallVector<Value *, 4> srcValues, destValues;
   srcDomain.getIdValues(&srcValues);
   dstDomain.getIdValues(&destValues);
 
@@ -702,17 +701,10 @@ static void buildDimAndSymbolPositionMaps(
   updateValuePosMap(dstAccessMap.getOperands(), /*isSrc=*/false);
 }
 
-static unsigned getPos(const DenseMap<const MLValue *, unsigned> &posMap,
-                       const MLValue *value) {
-  auto it = posMap.find(value);
-  assert(it != posMap.end());
-  return it->second;
-}
-
 // Adds iteration domain constraints from 'srcDomain' and 'dstDomain' into
 // 'dependenceDomain'.
 // Uses 'valuePosMap' to determine the position in 'dependenceDomain' to which a
-// srcDomain/dstDomain MLValue maps.
+// srcDomain/dstDomain Value maps.
 static void addDomainConstraints(const FlatAffineConstraints &srcDomain,
                                  const FlatAffineConstraints &dstDomain,
                                  const ValuePositionMap &valuePosMap,
@@ -790,10 +782,10 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   unsigned numResults = srcMap.getNumResults();
 
   unsigned srcNumIds = srcMap.getNumDims() + srcMap.getNumSymbols();
-  ArrayRef<MLValue *> srcOperands = srcAccessMap.getOperands();
+  ArrayRef<Value *> srcOperands = srcAccessMap.getOperands();
 
   unsigned dstNumIds = dstMap.getNumDims() + dstMap.getNumSymbols();
-  ArrayRef<MLValue *> dstOperands = dstAccessMap.getOperands();
+  ArrayRef<Value *> dstOperands = dstAccessMap.getOperands();
 
   std::vector<SmallVector<int64_t, 8>> srcFlatExprs;
   std::vector<SmallVector<int64_t, 8>> destFlatExprs;
@@ -848,7 +840,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   }
 
   // Add equality constraints for any operands that are defined by constant ops.
-  auto addEqForConstOperands = [&](ArrayRef<const MLValue *> operands) {
+  auto addEqForConstOperands = [&](ArrayRef<const Value *> operands) {
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       if (isa<ForStmt>(operands[i]))
         continue;
@@ -1095,7 +1087,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //    upper/lower loop bounds for each ForStmt in the loop nest associated
 //    with each access.
 // *) Build dimension and symbol position maps for each access, which map
-//    MLValues from access functions and iteration domains to their position
+//    Values from access functions and iteration domains to their position
 //    in the merged constraint system built by this method.
 //
 // This method builds a constraint system with the following column format:
@@ -1202,7 +1194,7 @@ bool mlir::checkMemrefAccessDependence(
     return false;
   }
   // Build dim and symbol position maps for each access from access operand
-  // MLValue to position in merged contstraint system.
+  // Value to position in merged contstraint system.
   ValuePositionMap valuePosMap;
   buildDimAndSymbolPositionMaps(srcDomain, dstDomain, srcAccessMap,
                                 dstAccessMap, &valuePosMap);

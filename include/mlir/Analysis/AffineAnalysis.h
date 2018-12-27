@@ -37,9 +37,9 @@ class ForStmt;
 class MLIRContext;
 class FlatAffineConstraints;
 class IntegerSet;
-class MLValue;
 class OperationStmt;
 class Statement;
+class Value;
 
 /// Simplify an affine expression through flattening and some amount of
 /// simple analysis. This has complexity linear in the number of nodes in
@@ -78,7 +78,7 @@ AffineExpr composeWithUnboundedMap(AffineExpr e, AffineMap g);
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.
 void getReachableAffineApplyOps(
-    llvm::ArrayRef<MLValue *> operands,
+    llvm::ArrayRef<Value *> operands,
     llvm::SmallVectorImpl<OperationStmt *> &affineApplyOps);
 
 /// Forward substitutes into 'valueMap' all AffineApplyOps reachable from the
@@ -122,9 +122,9 @@ bool getIndexSet(llvm::ArrayRef<ForStmt *> forStmts,
                  FlatAffineConstraints *domain);
 
 struct MemRefAccess {
-  const MLValue *memref;
+  const Value *memref;
   const OperationStmt *opStmt;
-  llvm::SmallVector<MLValue *, 4> indices;
+  llvm::SmallVector<Value *, 4> indices;
   // Populates 'accessMap' with composition of AffineApplyOps reachable from
   // 'indices'.
   void getAccessMap(AffineValueMap *accessMap) const;

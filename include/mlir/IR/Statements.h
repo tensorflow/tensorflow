@@ -43,7 +43,7 @@ class OperationStmt final
 public:
   /// Create a new OperationStmt with the specific fields.
   static OperationStmt *
-  create(Location location, OperationName name, ArrayRef<MLValue *> operands,
+  create(Location location, OperationName name, ArrayRef<Value *> operands,
          ArrayRef<Type> resultTypes, ArrayRef<NamedAttribute> attributes,
          ArrayRef<StmtBlock *> successors, MLIRContext *context);
 
@@ -69,16 +69,16 @@ public:
 
   unsigned getNumOperands() const { return numOperands; }
 
-  MLValue *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
-  const MLValue *getOperand(unsigned idx) const {
+  Value *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+  const Value *getOperand(unsigned idx) const {
     return getStmtOperand(idx).get();
   }
-  void setOperand(unsigned idx, MLValue *value) {
+  void setOperand(unsigned idx, Value *value) {
     return getStmtOperand(idx).set(value);
   }
 
   // Support non-const operand iteration.
-  using operand_iterator = OperandIterator<OperationStmt, MLValue>;
+  using operand_iterator = OperandIterator<OperationStmt, Value>;
 
   operand_iterator operand_begin() { return operand_iterator(this, 0); }
 
@@ -86,14 +86,14 @@ public:
     return operand_iterator(this, getNumOperands());
   }
 
-  /// Returns an iterator on the underlying MLValue's (MLValue *).
+  /// Returns an iterator on the underlying Value's (Value *).
   llvm::iterator_range<operand_iterator> getOperands() {
     return {operand_begin(), operand_end()};
   }
 
   // Support const operand iteration.
   using const_operand_iterator =
-      OperandIterator<const OperationStmt, const MLValue>;
+      OperandIterator<const OperationStmt, const Value>;
 
   const_operand_iterator operand_begin() const {
     return const_operand_iterator(this, 0);
@@ -103,7 +103,7 @@ public:
     return const_operand_iterator(this, getNumOperands());
   }
 
-  /// Returns a const iterator on the underlying MLValue's (MLValue *).
+  /// Returns a const iterator on the underlying Value's (Value *).
   llvm::iterator_range<const_operand_iterator> getOperands() const {
     return {operand_begin(), operand_end()};
   }
@@ -126,11 +126,11 @@ public:
 
   unsigned getNumResults() const { return numResults; }
 
-  MLValue *getResult(unsigned idx) { return &getStmtResult(idx); }
-  const MLValue *getResult(unsigned idx) const { return &getStmtResult(idx); }
+  Value *getResult(unsigned idx) { return &getStmtResult(idx); }
+  const Value *getResult(unsigned idx) const { return &getStmtResult(idx); }
 
   // Support non-const result iteration.
-  using result_iterator = ResultIterator<OperationStmt, MLValue>;
+  using result_iterator = ResultIterator<OperationStmt, Value>;
   result_iterator result_begin() { return result_iterator(this, 0); }
   result_iterator result_end() {
     return result_iterator(this, getNumResults());
@@ -141,7 +141,7 @@ public:
 
   // Support const result iteration.
   using const_result_iterator =
-      ResultIterator<const OperationStmt, const MLValue>;
+      ResultIterator<const OperationStmt, const Value>;
   const_result_iterator result_begin() const {
     return const_result_iterator(this, 0);
   }
@@ -170,7 +170,7 @@ public:
 
   // Support result type iteration.
   using result_type_iterator =
-      ResultTypeIterator<const OperationStmt, const MLValue>;
+      ResultTypeIterator<const OperationStmt, const Value>;
   result_type_iterator result_type_begin() const {
     return result_type_iterator(this, 0);
   }
@@ -290,15 +290,15 @@ private:
 };
 
 /// For statement represents an affine loop nest.
-class ForStmt : public Statement, public MLValue {
+class ForStmt : public Statement, public Value {
 public:
-  static ForStmt *create(Location location, ArrayRef<MLValue *> lbOperands,
-                         AffineMap lbMap, ArrayRef<MLValue *> ubOperands,
+  static ForStmt *create(Location location, ArrayRef<Value *> lbOperands,
+                         AffineMap lbMap, ArrayRef<Value *> ubOperands,
                          AffineMap ubMap, int64_t step);
 
   ~ForStmt() {
     // Explicitly erase statements instead of relying of 'StmtBlock' destructor
-    // since child statements need to be destroyed before the MLValue that this
+    // since child statements need to be destroyed before the Value that this
     // for stmt represents is destroyed. Affine maps are immortal objects and
     // don't need to be deleted.
     getBody()->clear();
@@ -308,8 +308,8 @@ public:
   using Statement::getFunction;
 
   /// Operand iterators.
-  using operand_iterator = OperandIterator<ForStmt, MLValue>;
-  using const_operand_iterator = OperandIterator<const ForStmt, const MLValue>;
+  using operand_iterator = OperandIterator<ForStmt, Value>;
+  using const_operand_iterator = OperandIterator<const ForStmt, const Value>;
 
   /// Operand iterator range.
   using operand_range = llvm::iterator_range<operand_iterator>;
@@ -340,9 +340,9 @@ public:
   AffineMap getUpperBoundMap() const { return ubMap; }
 
   /// Set lower bound.
-  void setLowerBound(ArrayRef<MLValue *> operands, AffineMap map);
+  void setLowerBound(ArrayRef<Value *> operands, AffineMap map);
   /// Set upper bound.
-  void setUpperBound(ArrayRef<MLValue *> operands, AffineMap map);
+  void setUpperBound(ArrayRef<Value *> operands, AffineMap map);
 
   /// Set the lower bound map without changing operands.
   void setLowerBoundMap(AffineMap map);
@@ -385,11 +385,11 @@ public:
 
   unsigned getNumOperands() const { return operands.size(); }
 
-  MLValue *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
-  const MLValue *getOperand(unsigned idx) const {
+  Value *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+  const Value *getOperand(unsigned idx) const {
     return getStmtOperand(idx).get();
   }
-  void setOperand(unsigned idx, MLValue *value) {
+  void setOperand(unsigned idx, Value *value) {
     getStmtOperand(idx).set(value);
   }
 
@@ -439,10 +439,10 @@ public:
   }
 
   // For statement represents implicitly represents induction variable by
-  // inheriting from MLValue class. Whenever you need to refer to the loop
+  // inheriting from Value class. Whenever you need to refer to the loop
   // induction variable, just use the for statement itself.
-  static bool classof(const SSAValue *value) {
-    return value->getKind() == SSAValueKind::ForStmt;
+  static bool classof(const Value *value) {
+    return value->getKind() == Value::Kind::ForStmt;
   }
 
 private:
@@ -475,7 +475,7 @@ public:
   AffineMap getMap() const { return map; }
 
   unsigned getNumOperands() const { return opEnd - opStart; }
-  const MLValue *getOperand(unsigned idx) const {
+  const Value *getOperand(unsigned idx) const {
     return stmt.getOperand(opStart + idx);
   }
   const StmtOperand &getStmtOperand(unsigned idx) const {
@@ -486,15 +486,15 @@ public:
   using operand_range = ForStmt::operand_range;
 
   operand_iterator operand_begin() const {
-    // These are iterators over MLValue *. Not casting away const'ness would
-    // require the caller to use const MLValue *.
+    // These are iterators over Value *. Not casting away const'ness would
+    // require the caller to use const Value *.
     return operand_iterator(const_cast<ForStmt *>(&stmt), opStart);
   }
   operand_iterator operand_end() const {
     return operand_iterator(const_cast<ForStmt *>(&stmt), opEnd);
   }
 
-  /// Returns an iterator on the underlying MLValue's (MLValue *).
+  /// Returns an iterator on the underlying Value's (Value *).
   operand_range getOperands() const { return {operand_begin(), operand_end()}; }
   ArrayRef<StmtOperand> getStmtOperands() const {
     auto ops = stmt.getStmtOperands();
@@ -520,7 +520,7 @@ private:
 /// If statement restricts execution to a subset of the loop iteration space.
 class IfStmt : public Statement {
 public:
-  static IfStmt *create(Location location, ArrayRef<MLValue *> operands,
+  static IfStmt *create(Location location, ArrayRef<Value *> operands,
                         IntegerSet set);
   ~IfStmt();
 
@@ -556,8 +556,8 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Operand iterators.
-  using operand_iterator = OperandIterator<IfStmt, MLValue>;
-  using const_operand_iterator = OperandIterator<const IfStmt, const MLValue>;
+  using operand_iterator = OperandIterator<IfStmt, Value>;
+  using const_operand_iterator = OperandIterator<const IfStmt, const Value>;
 
   /// Operand iterator range.
   using operand_range = llvm::iterator_range<operand_iterator>;
@@ -565,11 +565,11 @@ public:
 
   unsigned getNumOperands() const { return operands.size(); }
 
-  MLValue *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
-  const MLValue *getOperand(unsigned idx) const {
+  Value *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+  const Value *getOperand(unsigned idx) const {
     return getStmtOperand(idx).get();
   }
-  void setOperand(unsigned idx, MLValue *value) {
+  void setOperand(unsigned idx, Value *value) {
     getStmtOperand(idx).set(value);
   }
 

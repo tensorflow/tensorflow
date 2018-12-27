@@ -27,8 +27,8 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include <type_traits>
 
 namespace mlir {
@@ -107,7 +107,7 @@ template <typename OpClass> struct op_matcher {
 
 /// Entry point for matching a pattern over an SSAValue.
 template <typename Pattern>
-inline bool matchPattern(SSAValue *value, const Pattern &pattern) {
+inline bool matchPattern(Value *value, const Pattern &pattern) {
   // TODO: handle other cases
   if (auto *op = value->getDefiningOperation())
     return const_cast<Pattern &>(pattern).match(op);

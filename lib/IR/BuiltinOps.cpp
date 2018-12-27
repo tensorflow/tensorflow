@@ -20,8 +20,8 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -54,7 +54,7 @@ void mlir::printDimAndSymbolList(Operation::const_operand_iterator begin,
 // dimension operands parsed.
 // Returns 'false' on success and 'true' on error.
 bool mlir::parseDimAndSymbolList(OpAsmParser *parser,
-                                 SmallVector<SSAValue *, 4> &operands,
+                                 SmallVector<Value *, 4> &operands,
                                  unsigned &numDims) {
   SmallVector<OpAsmParser::OperandType, 8> opInfos;
   if (parser->parseOperandList(opInfos, -1, OpAsmParser::Delimiter::Paren))
@@ -76,7 +76,7 @@ bool mlir::parseDimAndSymbolList(OpAsmParser *parser,
 //===----------------------------------------------------------------------===//
 
 void AffineApplyOp::build(Builder *builder, OperationState *result,
-                          AffineMap map, ArrayRef<SSAValue *> operands) {
+                          AffineMap map, ArrayRef<Value *> operands) {
   result->addOperands(operands);
   result->types.append(map.getNumResults(), builder->getIndexType());
   result->addAttribute("map", builder->getAffineMapAttr(map));
@@ -133,24 +133,22 @@ bool AffineApplyOp::verify() const {
 }
 
 // The result of the affine apply operation can be used as a dimension id if it
-// is a CFG value or if it is an MLValue, and all the operands are valid
+// is a CFG value or if it is an Value, and all the operands are valid
 // dimension ids.
 bool AffineApplyOp::isValidDim() const {
   for (auto *op : getOperands()) {
-    if (auto *v = dyn_cast<MLValue>(op))
-      if (!v->isValidDim())
-        return false;
+    if (!op->isValidDim())
+      return false;
   }
   return true;
 }
 
 // The result of the affine apply operation can be used as a symbol if it is
-// a CFG value or if it is an MLValue, and all the operands are symbols.
+// a CFG value or if it is an Value, and all the operands are symbols.
 bool AffineApplyOp::isValidSymbol() const {
   for (auto *op : getOperands()) {
-    if (auto *v = dyn_cast<MLValue>(op))
-      if (!v->isValidSymbol())
-        return false;
+    if (!op->isValidSymbol())
+      return false;
   }
   return true;
 }
@@ -170,13 +168,13 @@ bool AffineApplyOp::constantFold(ArrayRef<Attribute> operandConstants,
 //===----------------------------------------------------------------------===//
 
 void BranchOp::build(Builder *builder, OperationState *result, BasicBlock *dest,
-                     ArrayRef<SSAValue *> operands) {
+                     ArrayRef<Value *> operands) {
   result->addSuccessor(dest, operands);
 }
 
 bool BranchOp::parse(OpAsmParser *parser, OperationState *result) {
   BasicBlock *dest;
-  SmallVector<SSAValue *, 4> destOperands;
+  SmallVector<Value *, 4> destOperands;
   if (parser->parseSuccessorAndUseList(dest, destOperands))
     return true;
   result->addSuccessor(dest, destOperands);
@@ -212,17 +210,16 @@ void BranchOp::eraseOperand(unsigned index) {
 //===----------------------------------------------------------------------===//
 
 void CondBranchOp::build(Builder *builder, OperationState *result,
-                         SSAValue *condition, BasicBlock *trueDest,
-                         ArrayRef<SSAValue *> trueOperands,
-                         BasicBlock *falseDest,
-                         ArrayRef<SSAValue *> falseOperands) {
+                         Value *condition, BasicBlock *trueDest,
+                         ArrayRef<Value *> trueOperands, BasicBlock *falseDest,
+                         ArrayRef<Value *> falseOperands) {
   result->addOperands(condition);
   result->addSuccessor(trueDest, trueOperands);
   result->addSuccessor(falseDest, falseOperands);
 }
 
 bool CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
-  SmallVector<SSAValue *, 4> destOperands;
+  SmallVector<Value *, 4> destOperands;
   BasicBlock *dest;
   OpAsmParser::OperandType condInfo;
 
@@ -446,7 +443,7 @@ void ConstantIndexOp::build(Builder *builder, OperationState *result,
 //===----------------------------------------------------------------------===//
 
 void ReturnOp::build(Builder *builder, OperationState *result,
-                     ArrayRef<SSAValue *> results) {
+                     ArrayRef<Value *> results) {
   result->addOperands(results);
 }
 
@@ -465,9 +462,10 @@ void ReturnOp::print(OpAsmPrinter *p) const {
     *p << ' ';
     p->printOperands(operand_begin(), operand_end());
     *p << " : ";
-    interleave(operand_begin(), operand_end(),
-               [&](const SSAValue *e) { p->printType(e->getType()); },
-               [&]() { *p << ", "; });
+    interleave(
+        operand_begin(), operand_end(),
+        [&](const Value *e) { p->printType(e->getType()); },
+        [&]() { *p << ", "; });
   }
 }
 

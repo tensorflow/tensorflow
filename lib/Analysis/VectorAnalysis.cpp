@@ -108,7 +108,7 @@ static AffineMap makePermutationMap(
     const DenseMap<ForStmt *, unsigned> &enclosingLoopToVectorDim) {
   using functional::makePtrDynCaster;
   using functional::map;
-  auto unwrappedIndices = map(makePtrDynCaster<SSAValue, MLValue>(), indices);
+  auto unwrappedIndices = map(makePtrDynCaster<Value, Value>(), indices);
   SmallVector<AffineExpr, 4> perm(enclosingLoopToVectorDim.size(),
                                   getAffineConstantExpr(0, context));
   for (auto kvp : enclosingLoopToVectorDim) {

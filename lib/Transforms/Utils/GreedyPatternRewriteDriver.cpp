@@ -217,7 +217,7 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
 
         // If we already have a canonicalized version of this constant, just
         // reuse it.  Otherwise create a new one.
-        SSAValue *cstValue;
+        Value *cstValue;
         auto it = uniquedConstants.find({resultConstants[i], res->getType()});
         if (it != uniquedConstants.end())
           cstValue = it->second->getResult(0);

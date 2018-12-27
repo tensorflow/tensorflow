@@ -40,8 +40,8 @@ class OpAsmPrinter;
 class Pattern;
 class RewritePattern;
 class StmtBlock;
-class SSAValue;
 class Type;
+class Value;
 using BasicBlock = StmtBlock;
 
 /// This is a vector that owns the patterns inside of it.
@@ -203,7 +203,7 @@ struct OperationState {
   MLIRContext *const context;
   Location location;
   OperationName name;
-  SmallVector<SSAValue *, 4> operands;
+  SmallVector<Value *, 4> operands;
   /// Types of the results of this operation.
   SmallVector<Type, 4> types;
   SmallVector<NamedAttribute, 4> attributes;
@@ -218,7 +218,7 @@ public:
       : context(context), location(location), name(name) {}
 
   OperationState(MLIRContext *context, Location location, StringRef name,
-                 ArrayRef<SSAValue *> operands, ArrayRef<Type> types,
+                 ArrayRef<Value *> operands, ArrayRef<Type> types,
                  ArrayRef<NamedAttribute> attributes,
                  ArrayRef<StmtBlock *> successors = {})
       : context(context), location(location), name(name, context),
@@ -227,7 +227,7 @@ public:
         attributes(attributes.begin(), attributes.end()),
         successors(successors.begin(), successors.end()) {}
 
-  void addOperands(ArrayRef<SSAValue *> newOperands) {
+  void addOperands(ArrayRef<Value *> newOperands) {
     assert(successors.empty() &&
            "Non successor operands should be added first.");
     operands.append(newOperands.begin(), newOperands.end());
@@ -247,7 +247,7 @@ public:
     attributes.push_back({name, attr});
   }
 
-  void addSuccessor(StmtBlock *successor, ArrayRef<SSAValue *> succOperands) {
+  void addSuccessor(StmtBlock *successor, ArrayRef<Value *> succOperands) {
     successors.push_back(successor);
     // Insert a sentinal operand to mark a barrier between successor operands.
     operands.push_back(nullptr);

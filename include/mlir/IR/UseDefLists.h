@@ -30,7 +30,7 @@ namespace mlir {
 
 class IROperand;
 class IROperandOwner;
-template <typename OperandType, typename OwnerType> class SSAValueUseIterator;
+template <typename OperandType, typename OwnerType> class ValueUseIterator;
 
 class IRObjectWithUseList {
 public:
@@ -44,7 +44,7 @@ public:
   /// Returns true if this value has exactly one use.
   inline bool hasOneUse() const;
 
-  using use_iterator = SSAValueUseIterator<IROperand, IROperandOwner>;
+  using use_iterator = ValueUseIterator<IROperand, IROperandOwner>;
   using use_range = llvm::iterator_range<use_iterator>;
 
   inline use_iterator use_begin() const;
@@ -228,33 +228,33 @@ public:
 
 /// An iterator over all uses of a ValueBase.
 template <typename OperandType, typename OwnerType>
-class SSAValueUseIterator
+class ValueUseIterator
     : public std::iterator<std::forward_iterator_tag, IROperand> {
 public:
-  SSAValueUseIterator() = default;
-  explicit SSAValueUseIterator(OperandType *current) : current(current) {}
+  ValueUseIterator() = default;
+  explicit ValueUseIterator(OperandType *current) : current(current) {}
   OperandType *operator->() const { return current; }
   OperandType &operator*() const { return *current; }
 
   OwnerType *getUser() const { return current->getOwner(); }
 
-  SSAValueUseIterator &operator++() {
+  ValueUseIterator &operator++() {
     assert(current && "incrementing past end()!");
     current = (OperandType *)current->getNextOperandUsingThisValue();
     return *this;
   }
 
-  SSAValueUseIterator operator++(int unused) {
-    SSAValueUseIterator copy = *this;
+  ValueUseIterator operator++(int unused) {
+    ValueUseIterator copy = *this;
     ++*this;
     return copy;
   }
 
-  friend bool operator==(SSAValueUseIterator lhs, SSAValueUseIterator rhs) {
+  friend bool operator==(ValueUseIterator lhs, ValueUseIterator rhs) {
     return lhs.current == rhs.current;
   }
 
-  friend bool operator!=(SSAValueUseIterator lhs, SSAValueUseIterator rhs) {
+  friend bool operator!=(ValueUseIterator lhs, ValueUseIterator rhs) {
     return !(lhs == rhs);
   }
 

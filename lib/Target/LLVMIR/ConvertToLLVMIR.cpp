@@ -111,7 +111,7 @@ private:
   /// descriptor and get the pointer to the element indexed by the linearized
   /// subscript.  Return nullptr on errors.
   llvm::Value *emitMemRefElementAccess(
-      const SSAValue *memRef, const Operation &op,
+      const Value *memRef, const Operation &op,
       llvm::iterator_range<Operation::const_operand_iterator> opIndices);
 
   /// Emit LLVM IR corresponding to the given Alloc `op`.  In particular, create
@@ -136,12 +136,12 @@ private:
 
   /// Create a single LLVM value of struct type that includes the list of
   /// given MLIR values.  The `values` list must contain at least 2 elements.
-  llvm::Value *packValues(ArrayRef<const SSAValue *> values);
+  llvm::Value *packValues(ArrayRef<const Value *> values);
   /// Extract a list of `num` LLVM values from a `value` of struct type.
   SmallVector<llvm::Value *, 4> unpackValues(llvm::Value *value, unsigned num);
 
   llvm::DenseMap<const Function *, llvm::Function *> functionMapping;
-  llvm::DenseMap<const SSAValue *, llvm::Value *> valueMapping;
+  llvm::DenseMap<const Value *, llvm::Value *> valueMapping;
   llvm::DenseMap<const BasicBlock *, llvm::BasicBlock *> blockMapping;
   llvm::LLVMContext &llvmContext;
   llvm::IRBuilder<llvm::ConstantFolder, llvm::IRBuilderDefaultInserter> builder;
@@ -316,7 +316,7 @@ static bool checkSupportedMemRefType(MemRefType type, const Operation &op) {
 }
 
 llvm::Value *ModuleLowerer::emitMemRefElementAccess(
-    const SSAValue *memRef, const Operation &op,
+    const Value *memRef, const Operation &op,
     llvm::iterator_range<Operation::const_operand_iterator> opIndices) {
   auto type = memRef->getType().dyn_cast<MemRefType>();
   assert(type && "expected memRef value to have a MemRef type");
@@ -340,7 +340,7 @@ llvm::Value *ModuleLowerer::emitMemRefElementAccess(
   // Obtain the list of access subscripts as values and linearize it given the
   // list of sizes.
   auto indices = functional::map(
-      [this](const SSAValue *value) { return valueMapping.lookup(value); },
+      [this](const Value *value) { return valueMapping.lookup(value); },
       opIndices);
   auto subscript = linearizeSubscripts(indices, sizes);
 
@@ -460,11 +460,11 @@ llvm::Value *ModuleLowerer::emitConstantSplat(const ConstantOp &op) {
 }
 
 // Create an undef struct value and insert individual values into it.
-llvm::Value *ModuleLowerer::packValues(ArrayRef<const SSAValue *> values) {
+llvm::Value *ModuleLowerer::packValues(ArrayRef<const Value *> values) {
   assert(values.size() > 1 && "cannot pack less than 2 values");
 
   auto types =
-      functional::map([](const SSAValue *v) { return v->getType(); }, values);
+      functional::map([](const Value *v) { return v->getType(); }, values);
   llvm::Type *packedType = getPackedResultType(types);
 
   llvm::Value *packed = llvm::UndefValue::get(packedType);
@@ -641,7 +641,7 @@ bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
     return false;
   }
   if (auto dimOp = inst.dyn_cast<DimOp>()) {
-    const SSAValue *container = dimOp->getOperand();
+    const Value *container = dimOp->getOperand();
     MemRefType type = container->getType().dyn_cast<MemRefType>();
     if (!type)
       return dimOp->emitError("only memref types are supported");
@@ -672,7 +672,7 @@ bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
 
   if (auto callOp = inst.dyn_cast<CallOp>()) {
     auto operands = functional::map(
-        [this](const SSAValue *value) { return valueMapping.lookup(value); },
+        [this](const Value *value) { return valueMapping.lookup(value); },
         callOp->getOperands());
     auto numResults = callOp->getNumResults();
     llvm::Value *result =
@@ -779,10 +779,9 @@ bool ModuleLowerer::convertBasicBlock(const BasicBlock &bb,
 
 // Get the SSA value passed to the current block from the terminator instruction
 // of its predecessor.
-static const SSAValue *getPHISourceValue(const BasicBlock *current,
-                                         const BasicBlock *pred,
-                                         unsigned numArguments,
-                                         unsigned index) {
+static const Value *getPHISourceValue(const BasicBlock *current,
+                                      const BasicBlock *pred,
+                                      unsigned numArguments, unsigned index) {
   auto &terminator = *pred->getTerminator();
   if (terminator.isa<BranchOp>()) {
     return terminator.getOperand(index);

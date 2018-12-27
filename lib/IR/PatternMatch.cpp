@@ -16,8 +16,8 @@
 // =============================================================================
 
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Statements.h"
+#include "mlir/IR/Value.h"
 using namespace mlir;
 
 PatternBenefit::PatternBenefit(unsigned benefit) : representation(benefit) {
@@ -77,8 +77,8 @@ PatternRewriter::~PatternRewriter() {
 /// clients can specify a list of other nodes that this replacement may make
 /// (perhaps transitively) dead.  If any of those ops are dead, this will
 /// remove them as well.
-void PatternRewriter::replaceOp(Operation *op, ArrayRef<SSAValue *> newValues,
-                                ArrayRef<SSAValue *> valuesToRemoveIfDead) {
+void PatternRewriter::replaceOp(Operation *op, ArrayRef<Value *> newValues,
+                                ArrayRef<Value *> valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootReplaced(op);
 
@@ -97,15 +97,14 @@ void PatternRewriter::replaceOp(Operation *op, ArrayRef<SSAValue *> newValues,
 /// op and newOp are known to have the same number of results, replace the
 /// uses of op with uses of newOp
 void PatternRewriter::replaceOpWithResultsOfAnotherOp(
-    Operation *op, Operation *newOp,
-    ArrayRef<SSAValue *> valuesToRemoveIfDead) {
+    Operation *op, Operation *newOp, ArrayRef<Value *> valuesToRemoveIfDead) {
   assert(op->getNumResults() == newOp->getNumResults() &&
          "replacement op doesn't match results of original op");
   if (op->getNumResults() == 1)
     return replaceOp(op, newOp->getResult(0), valuesToRemoveIfDead);
 
-  SmallVector<SSAValue *, 8> newResults(newOp->getResults().begin(),
-                                        newOp->getResults().end());
+  SmallVector<Value *, 8> newResults(newOp->getResults().begin(),
+                                     newOp->getResults().end());
   return replaceOp(op, newResults, valuesToRemoveIfDead);
 }
 
@@ -118,7 +117,7 @@ void PatternRewriter::replaceOpWithResultsOfAnotherOp(
 /// should remove if they are dead at this point.
 ///
 void PatternRewriter::updatedRootInPlace(
-    Operation *op, ArrayRef<SSAValue *> valuesToRemoveIfDead) {
+    Operation *op, ArrayRef<Value *> valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootUpdated(op);
 

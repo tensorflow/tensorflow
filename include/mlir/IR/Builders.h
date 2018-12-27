@@ -408,8 +408,8 @@ public:
   }
 
   // Creates a for statement. When step is not specified, it is set to 1.
-  ForStmt *createFor(Location location, ArrayRef<MLValue *> lbOperands,
-                     AffineMap lbMap, ArrayRef<MLValue *> ubOperands,
+  ForStmt *createFor(Location location, ArrayRef<Value *> lbOperands,
+                     AffineMap lbMap, ArrayRef<Value *> ubOperands,
                      AffineMap ubMap, int64_t step = 1);
 
   // Creates a for statement with known (constant) lower and upper bounds.
@@ -417,7 +417,7 @@ public:
   ForStmt *createFor(Location loc, int64_t lb, int64_t ub, int64_t step = 1);
 
   /// Creates if statement.
-  IfStmt *createIf(Location location, ArrayRef<MLValue *> operands,
+  IfStmt *createIf(Location location, ArrayRef<Value *> operands,
                    IntegerSet set);
 
 private:

@@ -98,26 +98,24 @@ public:
   static StringRef getOperationName() { return "vector_transfer_read"; }
   static StringRef getPermutationMapAttrName() { return "permutation_map"; }
   static void build(Builder *builder, OperationState *result,
-                    VectorType vectorType, SSAValue *srcMemRef,
-                    ArrayRef<SSAValue *> srcIndices, AffineMap permutationMap,
-                    Optional<SSAValue *> paddingValue = None);
+                    VectorType vectorType, Value *srcMemRef,
+                    ArrayRef<Value *> srcIndices, AffineMap permutationMap,
+                    Optional<Value *> paddingValue = None);
   VectorType getResultType() const {
     return getResult()->getType().cast<VectorType>();
   }
-  SSAValue *getVector() { return getResult(); }
-  const SSAValue *getVector() const { return getResult(); }
-  SSAValue *getMemRef() { return getOperand(Offsets::MemRefOffset); }
-  const SSAValue *getMemRef() const {
-    return getOperand(Offsets::MemRefOffset);
-  }
+  Value *getVector() { return getResult(); }
+  const Value *getVector() const { return getResult(); }
+  Value *getMemRef() { return getOperand(Offsets::MemRefOffset); }
+  const Value *getMemRef() const { return getOperand(Offsets::MemRefOffset); }
   VectorType getVectorType() const { return getResultType(); }
   MemRefType getMemRefType() const {
     return getMemRef()->getType().cast<MemRefType>();
   }
   llvm::iterator_range<Operation::operand_iterator> getIndices();
   llvm::iterator_range<Operation::const_operand_iterator> getIndices() const;
-  Optional<SSAValue *> getPaddingValue();
-  Optional<const SSAValue *> getPaddingValue() const;
+  Optional<Value *> getPaddingValue();
+  Optional<const Value *> getPaddingValue() const;
   AffineMap getPermutationMap() const;
 
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -169,20 +167,16 @@ class VectorTransferWriteOp
 public:
   static StringRef getOperationName() { return "vector_transfer_write"; }
   static StringRef getPermutationMapAttrName() { return "permutation_map"; }
-  static void build(Builder *builder, OperationState *result,
-                    SSAValue *srcVector, SSAValue *dstMemRef,
-                    ArrayRef<SSAValue *> dstIndices, AffineMap permutationMap);
-  SSAValue *getVector() { return getOperand(Offsets::VectorOffset); }
-  const SSAValue *getVector() const {
-    return getOperand(Offsets::VectorOffset);
-  }
+  static void build(Builder *builder, OperationState *result, Value *srcVector,
+                    Value *dstMemRef, ArrayRef<Value *> dstIndices,
+                    AffineMap permutationMap);
+  Value *getVector() { return getOperand(Offsets::VectorOffset); }
+  const Value *getVector() const { return getOperand(Offsets::VectorOffset); }
   VectorType getVectorType() const {
     return getVector()->getType().cast<VectorType>();
   }
-  SSAValue *getMemRef() { return getOperand(Offsets::MemRefOffset); }
-  const SSAValue *getMemRef() const {
-    return getOperand(Offsets::MemRefOffset);
-  }
+  Value *getMemRef() { return getOperand(Offsets::MemRefOffset); }
+  const Value *getMemRef() const { return getOperand(Offsets::MemRefOffset); }
   MemRefType getMemRefType() const {
     return getMemRef()->getType().cast<MemRefType>();
   }
@@ -212,8 +206,8 @@ class VectorTypeCastOp
     : public Op<VectorTypeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
   static StringRef getOperationName() { return "vector_type_cast"; }
-  static void build(Builder *builder, OperationState *result,
-                    SSAValue *srcVector, Type dstType);
+  static void build(Builder *builder, OperationState *result, Value *srcVector,
+                    Type dstType);
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;

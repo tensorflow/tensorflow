@@ -64,21 +64,20 @@ public:
   /// Return the number of operands this operation has.
   unsigned getNumOperands() const;
 
-  SSAValue *getOperand(unsigned idx);
-  const SSAValue *getOperand(unsigned idx) const {
+  Value *getOperand(unsigned idx);
+  const Value *getOperand(unsigned idx) const {
     return const_cast<Operation *>(this)->getOperand(idx);
   }
-  void setOperand(unsigned idx, SSAValue *value);
+  void setOperand(unsigned idx, Value *value);
 
   // Support non-const operand iteration.
-  using operand_iterator = OperandIterator<Operation, SSAValue>;
+  using operand_iterator = OperandIterator<Operation, Value>;
   operand_iterator operand_begin();
   operand_iterator operand_end();
   llvm::iterator_range<operand_iterator> getOperands();
 
   // Support const operand iteration.
-  using const_operand_iterator =
-      OperandIterator<const Operation, const SSAValue>;
+  using const_operand_iterator = OperandIterator<const Operation, const Value>;
   const_operand_iterator operand_begin() const;
   const_operand_iterator operand_end() const;
   llvm::iterator_range<const_operand_iterator> getOperands() const;
@@ -87,26 +86,25 @@ public:
   unsigned getNumResults() const;
 
   /// Return the indicated result.
-  SSAValue *getResult(unsigned idx);
-  const SSAValue *getResult(unsigned idx) const {
+  Value *getResult(unsigned idx);
+  const Value *getResult(unsigned idx) const {
     return const_cast<Operation *>(this)->getResult(idx);
   }
 
   // Support non-const result iteration.
-  using result_iterator = ResultIterator<Operation, SSAValue>;
+  using result_iterator = ResultIterator<Operation, Value>;
   result_iterator result_begin();
   result_iterator result_end();
   llvm::iterator_range<result_iterator> getResults();
 
   // Support const result iteration.
-  using const_result_iterator = ResultIterator<const Operation, const SSAValue>;
+  using const_result_iterator = ResultIterator<const Operation, const Value>;
   const_result_iterator result_begin() const;
   const_result_iterator result_end() const;
   llvm::iterator_range<const_result_iterator> getResults() const;
 
   // Support for result type iteration.
-  using result_type_iterator =
-      ResultTypeIterator<const Operation, const SSAValue>;
+  using result_type_iterator = ResultTypeIterator<const Operation, const Value>;
   result_type_iterator result_type_begin() const;
   result_type_iterator result_type_end() const;
   llvm::iterator_range<result_type_iterator> getResultTypes() const;

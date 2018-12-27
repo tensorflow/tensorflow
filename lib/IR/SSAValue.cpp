@@ -1,4 +1,4 @@
-//===- SSAValue.cpp - MLIR SSAValue Classes ------------===//
+//===- SSAValue.cpp - MLIR ValueClasses ------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,15 +15,15 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Statements.h"
+#include "mlir/IR/Value.h"
 
 using namespace mlir;
 
 /// If this value is the result of an Instruction, return the instruction
 /// that defines it.
-OperationInst *SSAValue::getDefiningInst() {
+OperationInst *Value::getDefiningInst() {
   if (auto *result = dyn_cast<InstResult>(this))
     return result->getOwner();
   return nullptr;
@@ -31,13 +31,13 @@ OperationInst *SSAValue::getDefiningInst() {
 
 /// If this value is the result of an OperationStmt, return the statement
 /// that defines it.
-OperationStmt *SSAValue::getDefiningStmt() {
+OperationStmt *Value::getDefiningStmt() {
   if (auto *result = dyn_cast<StmtResult>(this))
     return result->getOwner();
   return nullptr;
 }
 
-Operation *SSAValue::getDefiningOperation() {
+Operation *Value::getDefiningOperation() {
   if (auto *inst = getDefiningInst())
     return inst;
   if (auto *stmt = getDefiningStmt())
@@ -45,14 +45,14 @@ Operation *SSAValue::getDefiningOperation() {
   return nullptr;
 }
 
-/// Return the function that this SSAValue is defined in.
-Function *SSAValue::getFunction() {
+/// Return the function that this Valueis defined in.
+Function *Value::getFunction() {
   switch (getKind()) {
-  case SSAValueKind::BlockArgument:
+  case Value::Kind::BlockArgument:
     return cast<BlockArgument>(this)->getFunction();
-  case SSAValueKind::StmtResult:
+  case Value::Kind::StmtResult:
     return getDefiningStmt()->getFunction();
-  case SSAValueKind::ForStmt:
+  case Value::Kind::ForStmt:
     return cast<ForStmt>(this)->getFunction();
   }
 }
@@ -87,15 +87,6 @@ MLIRContext *IROperandOwner::getContext() const {
     auto *fn = cast<Instruction>(this)->getFunction();
     return fn ? fn->getContext() : nullptr;
   }
-}
-
-//===----------------------------------------------------------------------===//
-// MLValue implementation.
-//===----------------------------------------------------------------------===//
-
-/// Return the function that this MLValue is defined in.
-MLFunction *MLValue::getFunction() {
-  return cast<MLFunction>(static_cast<SSAValue *>(this)->getFunction());
 }
 
 //===----------------------------------------------------------------------===//

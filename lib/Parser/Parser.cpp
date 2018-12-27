@@ -42,7 +42,6 @@
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include <algorithm>
-
 using namespace mlir;
 using llvm::MemoryBuffer;
 using llvm::SMLoc;
@@ -1890,10 +1889,10 @@ public:
 
   /// Given a reference to an SSA value and its type, return a reference. This
   /// returns null on failure.
-  SSAValue *resolveSSAUse(SSAUseInfo useInfo, Type type);
+  Value *resolveSSAUse(SSAUseInfo useInfo, Type type);
 
   /// Register a definition of a value with the symbol table.
-  ParseResult addDefinition(SSAUseInfo useInfo, SSAValue *value);
+  ParseResult addDefinition(SSAUseInfo useInfo, Value *value);
 
   // SSA parsing productions.
   ParseResult parseSSAUse(SSAUseInfo &result);
@@ -1903,9 +1902,9 @@ public:
   ResultType parseSSADefOrUseAndType(
       const std::function<ResultType(SSAUseInfo, Type)> &action);
 
-  SSAValue *parseSSAUseAndType() {
-    return parseSSADefOrUseAndType<SSAValue *>(
-        [&](SSAUseInfo useInfo, Type type) -> SSAValue * {
+  Value *parseSSAUseAndType() {
+    return parseSSADefOrUseAndType<Value *>(
+        [&](SSAUseInfo useInfo, Type type) -> Value * {
           return resolveSSAUse(useInfo, type);
         });
   }
@@ -1920,9 +1919,8 @@ public:
   Operation *parseCustomOperation(const CreateOperationFunction &createOpFunc);
 
   /// Parse a single operation successor and it's operand list.
-  virtual bool
-  parseSuccessorAndUseList(BasicBlock *&dest,
-                           SmallVectorImpl<SSAValue *> &operands) = 0;
+  virtual bool parseSuccessorAndUseList(BasicBlock *&dest,
+                                        SmallVectorImpl<Value *> &operands) = 0;
 
 protected:
   FunctionParser(ParserState &state, Kind kind) : Parser(state), kind(kind) {}
@@ -1934,24 +1932,23 @@ private:
   Kind kind;
   /// This keeps track of all of the SSA values we are tracking, indexed by
   /// their name.  This has one entry per result number.
-  llvm::StringMap<SmallVector<std::pair<SSAValue *, SMLoc>, 1>> values;
+  llvm::StringMap<SmallVector<std::pair<Value *, SMLoc>, 1>> values;
 
   /// These are all of the placeholders we've made along with the location of
   /// their first reference, to allow checking for use of undefined values.
-  DenseMap<SSAValue *, SMLoc> forwardReferencePlaceholders;
+  DenseMap<Value *, SMLoc> forwardReferencePlaceholders;
 
-  SSAValue *createForwardReferencePlaceholder(SMLoc loc, Type type);
+  Value *createForwardReferencePlaceholder(SMLoc loc, Type type);
 
   /// Return true if this is a forward reference.
-  bool isForwardReferencePlaceholder(SSAValue *value) {
+  bool isForwardReferencePlaceholder(Value *value) {
     return forwardReferencePlaceholders.count(value);
   }
 };
 } // end anonymous namespace
 
 /// Create and remember a new placeholder for a forward reference.
-SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
-                                                            Type type) {
+Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
   // Forward references are always created as instructions, even in ML
   // functions, because we just need something with a def/use chain.
   //
@@ -1969,7 +1966,7 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
 
 /// Given an unbound reference to an SSA value and its type, return the value
 /// it specifies.  This returns null on failure.
-SSAValue *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
+Value *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
   auto &entries = values[useInfo.name];
 
   // If we have already seen a value of this name, return it.
@@ -2010,7 +2007,7 @@ SSAValue *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
 }
 
 /// Register a definition of a value with the symbol table.
-ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, SSAValue *value) {
+ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
   auto &entries = values[useInfo.name];
 
   // Make sure there is a slot for this value.
@@ -2046,7 +2043,7 @@ ParseResult FunctionParser::finalizeFunction(Function *func, SMLoc loc) {
   // Check for any forward references that are left.  If we find any, error
   // out.
   if (!forwardReferencePlaceholders.empty()) {
-    SmallVector<std::pair<const char *, SSAValue *>, 4> errors;
+    SmallVector<std::pair<const char *, Value *>, 4> errors;
     // Iteration over the map isn't deterministic, so sort by source location.
     for (auto entry : forwardReferencePlaceholders)
       errors.push_back({entry.second.getPointer(), entry.first});
@@ -2399,9 +2396,8 @@ public:
     return false;
   }
 
-  bool
-  parseSuccessorAndUseList(BasicBlock *&dest,
-                           SmallVectorImpl<SSAValue *> &operands) override {
+  bool parseSuccessorAndUseList(BasicBlock *&dest,
+                                SmallVectorImpl<Value *> &operands) override {
     // Defer successor parsing to the function parsers.
     return parser.parseSuccessorAndUseList(dest, operands);
   }
@@ -2493,7 +2489,7 @@ public:
   llvm::SMLoc getNameLoc() const override { return nameLoc; }
 
   bool resolveOperand(const OperandType &operand, Type type,
-                      SmallVectorImpl<SSAValue *> &result) override {
+                      SmallVectorImpl<Value *> &result) override {
     FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
                                               operand.location};
     if (auto *value = parser.resolveSSAUse(operandInfo, type)) {
@@ -2573,7 +2569,7 @@ public:
   ParseResult parseFunctionBody();
 
   bool parseSuccessorAndUseList(BasicBlock *&dest,
-                                SmallVectorImpl<SSAValue *> &operands);
+                                SmallVectorImpl<Value *> &operands);
 
 private:
   CFGFunction *function;
@@ -2636,7 +2632,7 @@ private:
 ///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
 ///
 bool CFGFunctionParser::parseSuccessorAndUseList(
-    BasicBlock *&dest, SmallVectorImpl<SSAValue *> &operands) {
+    BasicBlock *&dest, SmallVectorImpl<Value *> &operands) {
   // Verify branch is identifier and get the matching block.
   if (!getToken().is(Token::bare_identifier))
     return emitError("expected basic block name");
@@ -2790,10 +2786,10 @@ private:
 
   ParseResult parseForStmt();
   ParseResult parseIntConstant(int64_t &val);
-  ParseResult parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
+  ParseResult parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
                                     unsigned numDims, unsigned numOperands,
                                     const char *affineStructName);
-  ParseResult parseBound(SmallVectorImpl<MLValue *> &operands, AffineMap &map,
+  ParseResult parseBound(SmallVectorImpl<Value *> &operands, AffineMap &map,
                          bool isLower);
   ParseResult parseIfStmt();
   ParseResult parseElseClause(StmtBlock *elseClause);
@@ -2801,7 +2797,7 @@ private:
   ParseResult parseStmtBlock(StmtBlock *block);
 
   bool parseSuccessorAndUseList(BasicBlock *&dest,
-                                SmallVectorImpl<SSAValue *> &operands) {
+                                SmallVectorImpl<Value *> &operands) {
     assert(false && "MLFunctions do not have terminators with successors.");
     return true;
   }
@@ -2838,7 +2834,7 @@ ParseResult MLFunctionParser::parseForStmt() {
     return ParseFailure;
 
   // Parse lower bound.
-  SmallVector<MLValue *, 4> lbOperands;
+  SmallVector<Value *, 4> lbOperands;
   AffineMap lbMap;
   if (parseBound(lbOperands, lbMap, /*isLower*/ true))
     return ParseFailure;
@@ -2847,7 +2843,7 @@ ParseResult MLFunctionParser::parseForStmt() {
     return ParseFailure;
 
   // Parse upper bound.
-  SmallVector<MLValue *, 4> ubOperands;
+  SmallVector<Value *, 4> ubOperands;
   AffineMap ubMap;
   if (parseBound(ubOperands, ubMap, /*isLower*/ false))
     return ParseFailure;
@@ -2913,7 +2909,7 @@ ParseResult MLFunctionParser::parseIntConstant(int64_t &val) {
 /// dim-and-symbol-use-list ::= dim-use-list symbol-use-list?
 ///
 ParseResult
-MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
+MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
                                         unsigned numDims, unsigned numOperands,
                                         const char *affineStructName) {
   if (parseToken(Token::l_paren, "expected '('"))
@@ -2942,18 +2938,17 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
   // Resolve SSA uses.
   Type indexType = builder.getIndexType();
   for (unsigned i = 0, e = opInfo.size(); i != e; ++i) {
-    SSAValue *sval = resolveSSAUse(opInfo[i], indexType);
+    Value *sval = resolveSSAUse(opInfo[i], indexType);
     if (!sval)
       return ParseFailure;
 
-    auto *v = cast<MLValue>(sval);
-    if (i < numDims && !v->isValidDim())
+    if (i < numDims && !sval->isValidDim())
       return emitError(opInfo[i].loc, "value '" + opInfo[i].name.str() +
                                           "' cannot be used as a dimension id");
-    if (i >= numDims && !v->isValidSymbol())
+    if (i >= numDims && !sval->isValidSymbol())
       return emitError(opInfo[i].loc, "value '" + opInfo[i].name.str() +
                                           "' cannot be used as a symbol");
-    operands.push_back(v);
+    operands.push_back(sval);
   }
 
   return ParseSuccess;
@@ -2965,7 +2960,7 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<MLValue *> &operands,
 ///  shorthand-bound upper-bound ::= `min`? affine-map dim-and-symbol-use-list
 ///  | shorthand-bound shorthand-bound ::= ssa-id | `-`? integer-literal
 ///
-ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
+ParseResult MLFunctionParser::parseBound(SmallVectorImpl<Value *> &operands,
                                          AffineMap &map, bool isLower) {
   // 'min' / 'max' prefixes are syntactic sugar. Ignore them.
   if (isLower)
@@ -3003,7 +2998,7 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<MLValue *> &operands,
   // TODO: improve error message when SSA value is not an affine integer.
   // Currently it is 'use of value ... expects different type than prior uses'
   if (auto *value = resolveSSAUse(opInfo, builder.getIndexType()))
-    operands.push_back(cast<MLValue>(value));
+    operands.push_back(value);
   else
     return ParseFailure;
 
@@ -3113,7 +3108,7 @@ ParseResult MLFunctionParser::parseIfStmt() {
   if (!set)
     return ParseFailure;
 
-  SmallVector<MLValue *, 4> operands;
+  SmallVector<Value *, 4> operands;
   if (parseDimAndSymbolList(operands, set.getNumDims(), set.getNumOperands(),
                             "integer set"))
     return ParseFailure;

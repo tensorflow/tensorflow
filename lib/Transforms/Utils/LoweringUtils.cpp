@@ -32,17 +32,17 @@ using namespace mlir;
 
 namespace {
 // Visit affine expressions recursively and build the sequence of instructions
-// that correspond to it.  Visitation functions return an SSAValue of the
+// that correspond to it.  Visitation functions return an Value of the
 // expression subtree they visited or `nullptr` on error.
 class AffineApplyExpander
-    : public AffineExprVisitor<AffineApplyExpander, SSAValue *> {
+    : public AffineExprVisitor<AffineApplyExpander, Value *> {
 public:
   // This internal clsas expects arguments to be non-null, checks must be
   // performed at the call site.
   AffineApplyExpander(FuncBuilder *builder, AffineApplyOp *op)
       : builder(*builder), applyOp(*op), loc(op->getLoc()) {}
 
-  template <typename OpTy> SSAValue *buildBinaryExpr(AffineBinaryOpExpr expr) {
+  template <typename OpTy> Value *buildBinaryExpr(AffineBinaryOpExpr expr) {
     auto lhs = visit(expr.getLHS());
     auto rhs = visit(expr.getRHS());
     if (!lhs || !rhs)
@@ -51,33 +51,33 @@ public:
     return op->getResult();
   }
 
-  SSAValue *visitAddExpr(AffineBinaryOpExpr expr) {
+  Value *visitAddExpr(AffineBinaryOpExpr expr) {
     return buildBinaryExpr<AddIOp>(expr);
   }
 
-  SSAValue *visitMulExpr(AffineBinaryOpExpr expr) {
+  Value *visitMulExpr(AffineBinaryOpExpr expr) {
     return buildBinaryExpr<MulIOp>(expr);
   }
 
   // TODO(zinenko): implement when the standard operators are made available.
-  SSAValue *visitModExpr(AffineBinaryOpExpr) {
+  Value *visitModExpr(AffineBinaryOpExpr) {
     builder.getContext()->emitError(loc, "unsupported binary operator: mod");
     return nullptr;
   }
 
-  SSAValue *visitFloorDivExpr(AffineBinaryOpExpr) {
+  Value *visitFloorDivExpr(AffineBinaryOpExpr) {
     builder.getContext()->emitError(loc,
                                     "unsupported binary operator: floor_div");
     return nullptr;
   }
 
-  SSAValue *visitCeilDivExpr(AffineBinaryOpExpr) {
+  Value *visitCeilDivExpr(AffineBinaryOpExpr) {
     builder.getContext()->emitError(loc,
                                     "unsupported binary operator: ceil_div");
     return nullptr;
   }
 
-  SSAValue *visitConstantExpr(AffineConstantExpr expr) {
+  Value *visitConstantExpr(AffineConstantExpr expr) {
     auto valueAttr =
         builder.getIntegerAttr(builder.getIndexType(), expr.getValue());
     auto op =
@@ -85,7 +85,7 @@ public:
     return op->getResult();
   }
 
-  SSAValue *visitDimExpr(AffineDimExpr expr) {
+  Value *visitDimExpr(AffineDimExpr expr) {
     assert(expr.getPosition() < applyOp.getNumOperands() &&
            "affine dim position out of range");
     // FIXME: this assumes a certain order of AffineApplyOp operands, the
@@ -93,7 +93,7 @@ public:
     return applyOp.getOperand(expr.getPosition());
   }
 
-  SSAValue *visitSymbolExpr(AffineSymbolExpr expr) {
+  Value *visitSymbolExpr(AffineSymbolExpr expr) {
     // FIXME: this assumes a certain order of AffineApplyOp operands, the
     // cleaner interface would be to separate them at the op level.
     assert(expr.getPosition() + applyOp.getAffineMap().getNumDims() <
@@ -114,8 +114,8 @@ private:
 // Given an affine expression `expr` extracted from `op`, build the sequence of
 // primitive instructions that correspond to the affine expression in the
 // `builder`.
-static SSAValue *expandAffineExpr(FuncBuilder *builder, AffineExpr expr,
-                                  AffineApplyOp *op) {
+static mlir::Value *expandAffineExpr(FuncBuilder *builder, AffineExpr expr,
+                                     AffineApplyOp *op) {
   auto expander = AffineApplyExpander(builder, op);
   return expander.visit(expr);
 }
@@ -127,7 +127,7 @@ bool mlir::expandAffineApply(AffineApplyOp *op) {
   FuncBuilder builder(op->getOperation());
   auto affineMap = op->getAffineMap();
   for (auto numberedExpr : llvm::enumerate(affineMap.getResults())) {
-    SSAValue *expanded = expandAffineExpr(&builder, numberedExpr.value(), op);
+    Value *expanded = expandAffineExpr(&builder, numberedExpr.value(), op);
     if (!expanded)
       return true;
     op->getResult(numberedExpr.index())->replaceAllUsesWith(expanded);

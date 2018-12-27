@@ -277,7 +277,7 @@ struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
 /// Walk all of the code in this MLFunc and verify that the operands of any
 /// operations are properly dominated by their definitions.
 bool MLFuncVerifier::verifyDominance() {
-  using HashTable = llvm::ScopedHashTable<const SSAValue *, bool>;
+  using HashTable = llvm::ScopedHashTable<const Value *, bool>;
   HashTable liveValues;
   HashTable::ScopeTy topScope(liveValues);
 

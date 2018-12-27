@@ -30,13 +30,12 @@ struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
   ConstantFold() : FunctionPass(&ConstantFold::passID) {}
 
   // All constants in the function post folding.
-  SmallVector<SSAValue *, 8> existingConstants;
+  SmallVector<Value *, 8> existingConstants;
   // Operation statements that were folded and that need to be erased.
   std::vector<OperationStmt *> opStmtsToErase;
-  using ConstantFactoryType = std::function<SSAValue *(Attribute, Type)>;
+  using ConstantFactoryType = std::function<Value *(Attribute, Type)>;
 
-  bool foldOperation(Operation *op,
-                     SmallVectorImpl<SSAValue *> &existingConstants,
+  bool foldOperation(Operation *op, SmallVectorImpl<Value *> &existingConstants,
                      ConstantFactoryType constantFactory);
   void visitOperationStmt(OperationStmt *stmt);
   void visitForStmt(ForStmt *stmt);
@@ -54,9 +53,8 @@ char ConstantFold::passID = 0;
 ///
 /// This returns false if the operation was successfully folded.
 bool ConstantFold::foldOperation(Operation *op,
-                                 SmallVectorImpl<SSAValue *> &existingConstants,
+                                 SmallVectorImpl<Value *> &existingConstants,
                                  ConstantFactoryType constantFactory) {
-
   // If this operation is already a constant, just remember it for cleanup
   // later, and don't try to fold it.
   if (auto constant = op->dyn_cast<ConstantOp>()) {
@@ -114,7 +112,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
       if (!inst)
         continue;
 
-      auto constantFactory = [&](Attribute value, Type type) -> SSAValue * {
+      auto constantFactory = [&](Attribute value, Type type) -> Value * {
         builder.setInsertionPoint(inst);
         return builder.create<ConstantOp>(inst->getLoc(), value, type);
       };
@@ -142,7 +140,7 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
 
 // Override the walker's operation statement visit for constant folding.
 void ConstantFold::visitOperationStmt(OperationStmt *stmt) {
-  auto constantFactory = [&](Attribute value, Type type) -> SSAValue * {
+  auto constantFactory = [&](Attribute value, Type type) -> Value * {
     MLFuncBuilder builder(stmt);
     return builder.create<ConstantOp>(stmt->getLoc(), value, type);
   };

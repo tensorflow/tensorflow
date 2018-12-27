@@ -27,8 +27,6 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/MLValue.h"
-#include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
@@ -740,8 +738,8 @@ struct VectorizationState {
   DenseSet<OperationStmt *> vectorizedSet;
   // Map of old scalar OperationStmt to new vectorized OperationStmt.
   DenseMap<OperationStmt *, OperationStmt *> vectorizationMap;
-  // Map of old scalar MLValue to new vectorized MLValue.
-  DenseMap<const MLValue *, MLValue *> replacementMap;
+  // Map of old scalar Value to new vectorized Value.
+  DenseMap<const Value *, Value *> replacementMap;
   // The strategy drives which loop to vectorize by which amount.
   const VectorizationStrategy *strategy;
   // Use-def roots. These represent the starting points for the worklist in the
@@ -761,7 +759,7 @@ struct VectorizationState {
   void registerTerminator(OperationStmt *stmt);
 
 private:
-  void registerReplacement(const SSAValue *key, SSAValue *value);
+  void registerReplacement(const Value *key, Value *value);
 };
 
 } // end namespace
@@ -802,12 +800,9 @@ void VectorizationState::finishVectorizationPattern() {
   }
 }
 
-void VectorizationState::registerReplacement(const SSAValue *key,
-                                             SSAValue *value) {
-  assert(replacementMap.count(cast<MLValue>(key)) == 0 &&
-         "replacement already registered");
-  replacementMap.insert(
-      std::make_pair(cast<MLValue>(key), cast<MLValue>(value)));
+void VectorizationState::registerReplacement(const Value *key, Value *value) {
+  assert(replacementMap.count(key) == 0 && "replacement already registered");
+  replacementMap.insert(std::make_pair(key, value));
 }
 
 ////// TODO(ntv): Hoist to a VectorizationMaterialize.cpp when appropriate. ////
@@ -825,7 +820,7 @@ void VectorizationState::registerReplacement(const SSAValue *key,
 /// Such special cases force us to delay the vectorization of the stores
 /// until the last step. Here we merely register the store operation.
 template <typename LoadOrStoreOpPointer>
-static bool vectorizeRootOrTerminal(MLValue *iv, LoadOrStoreOpPointer memoryOp,
+static bool vectorizeRootOrTerminal(Value *iv, LoadOrStoreOpPointer memoryOp,
                                     VectorizationState *state) {
   auto memRefType =
       memoryOp->getMemRef()->getType().template cast<MemRefType>();
@@ -850,8 +845,7 @@ static bool vectorizeRootOrTerminal(MLValue *iv, LoadOrStoreOpPointer memoryOp,
     MLFuncBuilder b(opStmt);
     auto transfer = b.create<VectorTransferReadOp>(
         opStmt->getLoc(), vectorType, memoryOp->getMemRef(),
-        map(makePtrDynCaster<SSAValue>(), memoryOp->getIndices()),
-        permutationMap);
+        map(makePtrDynCaster<Value>(), memoryOp->getIndices()), permutationMap);
     state->registerReplacement(opStmt,
                                cast<OperationStmt>(transfer->getOperation()));
   } else {
@@ -970,8 +964,8 @@ static bool vectorizeNonRoot(MLFunctionMatches matches,
 /// element type.
 /// If `type` is not a valid vector type or if the scalar constant is not a
 /// valid vector element type, returns nullptr.
-static MLValue *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
-                                  Type type) {
+static Value *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
+                                Type type) {
   if (!type || !type.isa<VectorType>() ||
       !VectorType::isValidElementType(constant.getType())) {
     return nullptr;
@@ -988,7 +982,7 @@ static MLValue *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
       {make_pair(Identifier::get("value", b.getContext()), attr)});
 
   auto *splat = cast<OperationStmt>(b.createOperation(state));
-  return cast<MLValue>(splat->getResult(0));
+  return splat->getResult(0);
 }
 
 /// Returns a uniqu'ed VectorType.
@@ -996,7 +990,7 @@ static MLValue *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
 /// vectorizedSet, just returns the type of `v`.
 /// Otherwise, constructs a new VectorType of shape defined by `state.strategy`
 /// and of elemental type the type of `v`.
-static Type getVectorType(SSAValue *v, const VectorizationState &state) {
+static Type getVectorType(Value *v, const VectorizationState &state) {
   if (!VectorType::isValidElementType(v->getType())) {
     return Type();
   }
@@ -1028,23 +1022,23 @@ static Type getVectorType(SSAValue *v, const VectorizationState &state) {
 /// vectorization is possible with the above logic. Returns nullptr otherwise.
 ///
 /// TODO(ntv): handle more complex cases.
-static MLValue *vectorizeOperand(SSAValue *operand, Statement *stmt,
-                                 VectorizationState *state) {
+static Value *vectorizeOperand(Value *operand, Statement *stmt,
+                               VectorizationState *state) {
   LLVM_DEBUG(dbgs() << "\n[early-vect]vectorize operand: ");
   LLVM_DEBUG(operand->print(dbgs()));
   auto *definingStatement = cast<OperationStmt>(operand->getDefiningStmt());
   // 1. If this value has already been vectorized this round, we are done.
   if (state->vectorizedSet.count(definingStatement) > 0) {
     LLVM_DEBUG(dbgs() << " -> already vector operand");
-    return cast<MLValue>(operand);
+    return operand;
   }
   // 1.b. Delayed on-demand replacement of a use.
   //    Note that we cannot just call replaceAllUsesWith because it may result
   //    in ops with mixed types, for ops whose operands have not all yet
   //    been vectorized. This would be invalid IR.
-  auto it = state->replacementMap.find(cast<MLValue>(operand));
+  auto it = state->replacementMap.find(operand);
   if (it != state->replacementMap.end()) {
-    auto *res = cast<MLValue>(it->second);
+    auto *res = it->second;
     LLVM_DEBUG(dbgs() << "-> delayed replacement by: ");
     LLVM_DEBUG(res->print(dbgs()));
     return res;
@@ -1089,7 +1083,7 @@ static OperationStmt *vectorizeOneOperationStmt(MLFuncBuilder *b,
     auto *memRef = store->getMemRef();
     auto *value = store->getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opStmt, state);
-    auto indices = map(makePtrDynCaster<SSAValue>(), store->getIndices());
+    auto indices = map(makePtrDynCaster<Value>(), store->getIndices());
     MLFuncBuilder b(opStmt);
     auto permutationMap =
         makePermutationMap(opStmt, state->strategy->loopToVectorDim);
@@ -1104,14 +1098,14 @@ static OperationStmt *vectorizeOneOperationStmt(MLFuncBuilder *b,
     return res;
   }
 
-  auto types = map([state](SSAValue *v) { return getVectorType(v, *state); },
+  auto types = map([state](Value *v) { return getVectorType(v, *state); },
                    opStmt->getResults());
-  auto vectorizeOneOperand = [opStmt, state](SSAValue *op) -> SSAValue * {
+  auto vectorizeOneOperand = [opStmt, state](Value *op) -> Value * {
     return vectorizeOperand(op, opStmt, state);
   };
   auto operands = map(vectorizeOneOperand, opStmt->getOperands());
   // Check whether a single operand is null. If so, vectorization failed.
-  bool success = llvm::all_of(operands, [](SSAValue *op) { return op; });
+  bool success = llvm::all_of(operands, [](Value *op) { return op; });
   if (!success) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ an operand failed vectorize");
     return nullptr;
@@ -1207,7 +1201,7 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
       continue;
     }
     MLFuncBuilder builder(loop); // builder to insert in place of loop
-    DenseMap<const MLValue *, MLValue *> nomap;
+    DenseMap<const Value *, Value *> nomap;
     ForStmt *clonedLoop = cast<ForStmt>(builder.clone(*loop, nomap));
     auto fail = doVectorize(m, &state);
     /// Sets up error handling for this root loop. This is how the root match
@@ -1229,8 +1223,8 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
     // Form the root operationsthat have been set in the replacementMap.
     // For now, these roots are the loads for which vector_transfer_read
     // operations have been inserted.
-    auto getDefiningOperation = [](const MLValue *val) {
-      return const_cast<MLValue *>(val)->getDefiningOperation();
+    auto getDefiningOperation = [](const Value *val) {
+      return const_cast<Value *>(val)->getDefiningOperation();
     };
     using ReferenceTy = decltype(*(state.replacementMap.begin()));
     auto getKey = [](ReferenceTy it) { return it.first; };

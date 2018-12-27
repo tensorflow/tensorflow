@@ -38,7 +38,6 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
-
 using namespace mlir;
 
 void Identifier::print(raw_ostream &os) const { os << str(); }
@@ -967,7 +966,7 @@ public:
   void printFunctionAttributes(const Function *func) {
     return ModulePrinter::printFunctionAttributes(func);
   }
-  void printOperand(const SSAValue *value) { printValueID(value); }
+  void printOperand(const Value *value) { printValueID(value); }
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<const char *> elidedAttrs = {}) {
@@ -977,7 +976,7 @@ public:
   enum { nameSentinel = ~0U };
 
 protected:
-  void numberValueID(const SSAValue *value) {
+  void numberValueID(const Value *value) {
     assert(!valueIDs.count(value) && "Value numbered multiple times");
 
     SmallString<32> specialNameBuffer;
@@ -1004,7 +1003,7 @@ protected:
 
     if (specialNameBuffer.empty()) {
       switch (value->getKind()) {
-      case SSAValueKind::BlockArgument:
+      case Value::Kind::BlockArgument:
         // If this is an argument to the function, give it an 'arg' name.
         if (auto *block = cast<BlockArgument>(value)->getOwner())
           if (auto *fn = block->getFunction())
@@ -1015,12 +1014,12 @@ protected:
         // Otherwise number it normally.
         valueIDs[value] = nextValueID++;
         return;
-      case SSAValueKind::StmtResult:
+      case Value::Kind::StmtResult:
         // This is an uninteresting result, give it a boring number and be
         // done with it.
         valueIDs[value] = nextValueID++;
         return;
-      case SSAValueKind::ForStmt:
+      case Value::Kind::ForStmt:
         specialName << 'i' << nextLoopID++;
         break;
       }
@@ -1052,7 +1051,7 @@ protected:
     }
   }
 
-  void printValueID(const SSAValue *value, bool printResultNo = true) const {
+  void printValueID(const Value *value, bool printResultNo = true) const {
     int resultNo = -1;
     auto lookupValue = value;
 
@@ -1093,8 +1092,8 @@ protected:
 private:
   /// This is the value ID for each SSA value in the current function.  If this
   /// returns ~0, then the valueID has an entry in valueNames.
-  DenseMap<const SSAValue *, unsigned> valueIDs;
-  DenseMap<const SSAValue *, StringRef> valueNames;
+  DenseMap<const Value *, unsigned> valueIDs;
+  DenseMap<const Value *, StringRef> valueNames;
 
   /// This keeps track of all of the non-numeric names that are in flight,
   /// allowing us to check for duplicates.
@@ -1135,7 +1134,7 @@ void FunctionPrinter::printDefaultOp(const Operation *op) {
   os << "\"(";
 
   interleaveComma(op->getOperands(),
-                  [&](const SSAValue *value) { printValueID(value); });
+                  [&](const Value *value) { printValueID(value); });
 
   os << ')';
   auto attrs = op->getAttrs();
@@ -1144,16 +1143,15 @@ void FunctionPrinter::printDefaultOp(const Operation *op) {
   // Print the type signature of the operation.
   os << " : (";
   interleaveComma(op->getOperands(),
-                  [&](const SSAValue *value) { printType(value->getType()); });
+                  [&](const Value *value) { printType(value->getType()); });
   os << ") -> ";
 
   if (op->getNumResults() == 1) {
     printType(op->getResult(0)->getType());
   } else {
     os << '(';
-    interleaveComma(op->getResults(), [&](const SSAValue *result) {
-      printType(result->getType());
-    });
+    interleaveComma(op->getResults(),
+                    [&](const Value *result) { printType(result->getType()); });
     os << ')';
   }
 }
@@ -1297,11 +1295,10 @@ void CFGFunctionPrinter::printBranchOperands(const Range &range) {
 
   os << '(';
   interleaveComma(range,
-                  [this](const SSAValue *operand) { printValueID(operand); });
+                  [this](const Value *operand) { printValueID(operand); });
   os << " : ";
-  interleaveComma(range, [this](const SSAValue *operand) {
-    printType(operand->getType());
-  });
+  interleaveComma(
+      range, [this](const Value *operand) { printType(operand->getType()); });
   os << ')';
 }
 
@@ -1576,20 +1573,20 @@ void IntegerSet::print(raw_ostream &os) const {
   ModulePrinter(os, state).printIntegerSet(*this);
 }
 
-void SSAValue::print(raw_ostream &os) const {
+void Value::print(raw_ostream &os) const {
   switch (getKind()) {
-  case SSAValueKind::BlockArgument:
+  case Value::Kind::BlockArgument:
     // TODO: Improve this.
     os << "<block argument>\n";
     return;
-  case SSAValueKind::StmtResult:
+  case Value::Kind::StmtResult:
     return getDefiningStmt()->print(os);
-  case SSAValueKind::ForStmt:
+  case Value::Kind::ForStmt:
     return cast<ForStmt>(this)->print(os);
   }
 }
 
-void SSAValue::dump() const { print(llvm::errs()); }
+void Value::dump() const { print(llvm::errs()); }
 
 void Instruction::print(raw_ostream &os) const {
   auto *function = getFunction();

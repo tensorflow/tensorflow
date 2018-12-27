@@ -22,8 +22,8 @@
 #ifndef MLIR_IR_STATEMENT_H
 #define MLIR_IR_STATEMENT_H
 
-#include "mlir/IR/MLValue.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
@@ -84,8 +84,8 @@ public:
 
   // This is a verbose type used by the clone method below.
   using OperandMapTy =
-      DenseMap<const MLValue *, MLValue *, llvm::DenseMapInfo<const MLValue *>,
-               llvm::detail::DenseMapPair<const MLValue *, MLValue *>>;
+      DenseMap<const Value *, Value *, llvm::DenseMapInfo<const Value *>,
+               llvm::detail::DenseMapPair<const Value *, Value *>>;
 
   /// Create a deep copy of this statement, remapping any operands that use
   /// values outside of the statement using the map that is provided (leaving
@@ -136,12 +136,12 @@ public:
 
   unsigned getNumOperands() const;
 
-  MLValue *getOperand(unsigned idx);
-  const MLValue *getOperand(unsigned idx) const;
-  void setOperand(unsigned idx, MLValue *value);
+  Value *getOperand(unsigned idx);
+  const Value *getOperand(unsigned idx) const;
+  void setOperand(unsigned idx, Value *value);
 
   // Support non-const operand iteration.
-  using operand_iterator = OperandIterator<Statement, MLValue>;
+  using operand_iterator = OperandIterator<Statement, Value>;
 
   operand_iterator operand_begin() { return operand_iterator(this, 0); }
 
@@ -149,14 +149,13 @@ public:
     return operand_iterator(this, getNumOperands());
   }
 
-  /// Returns an iterator on the underlying MLValue's (MLValue *).
+  /// Returns an iterator on the underlying Value's (Value *).
   llvm::iterator_range<operand_iterator> getOperands() {
     return {operand_begin(), operand_end()};
   }
 
   // Support const operand iteration.
-  using const_operand_iterator =
-      OperandIterator<const Statement, const MLValue>;
+  using const_operand_iterator = OperandIterator<const Statement, const Value>;
 
   const_operand_iterator operand_begin() const {
     return const_operand_iterator(this, 0);
@@ -166,7 +165,7 @@ public:
     return const_operand_iterator(this, getNumOperands());
   }
 
-  /// Returns a const iterator on the underlying MLValue's (MLValue *).
+  /// Returns a const iterator on the underlying Value's (Value *).
   llvm::iterator_range<const_operand_iterator> getOperands() const {
     return {operand_begin(), operand_end()};
   }

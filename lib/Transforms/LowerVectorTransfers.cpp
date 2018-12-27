@@ -29,17 +29,14 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/MLValue.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
-#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/MLPatternLoweringPass.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -62,26 +59,26 @@ using namespace mlir;
 
 #define DEBUG_TYPE "lower-vector-transfers"
 
-/// Creates the SSAValue for the sum of `a` and `b` without building a
+/// Creates the Value for the sum of `a` and `b` without building a
 /// full-fledged AffineMap for all indices.
 ///
 /// Prerequisites:
 ///   `a` and `b` must be of IndexType.
-static SSAValue *add(MLFuncBuilder *b, Location loc, SSAValue *v, SSAValue *w) {
+static mlir::Value *add(MLFuncBuilder *b, Location loc, Value *v, Value *w) {
   assert(v->getType().isa<IndexType>() && "v must be of IndexType");
   assert(w->getType().isa<IndexType>() && "w must be of IndexType");
   auto *context = b->getContext();
   auto d0 = getAffineDimExpr(0, context);
   auto d1 = getAffineDimExpr(1, context);
   auto map = AffineMap::get(2, 0, {d0 + d1}, {});
-  return b->create<AffineApplyOp>(loc, map, ArrayRef<SSAValue *>{v, w})
+  return b->create<AffineApplyOp>(loc, map, ArrayRef<mlir::Value *>{v, w})
       ->getResult(0);
 }
 
 namespace {
 struct LowerVectorTransfersState : public MLFuncGlobalLoweringState {
   // Top of the function constant zero index.
-  SSAValue *zero;
+  Value *zero;
 };
 } // namespace
 
@@ -131,7 +128,8 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // case of GPUs.
   if (std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value) {
     b.create<StoreOp>(vecView->getLoc(), transfer->getVector(),
-                      vecView->getResult(), ArrayRef<SSAValue *>{state->zero});
+                      vecView->getResult(),
+                      ArrayRef<mlir::Value *>{state->zero});
   }
 
   // 3. Emit the loop-nest.
@@ -140,7 +138,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // TODO(ntv): Handle broadcast / slice properly.
   auto permutationMap = transfer->getPermutationMap();
   SetVector<ForStmt *> loops;
-  SmallVector<SSAValue *, 8> accessIndices(transfer->getIndices());
+  SmallVector<Value *, 8> accessIndices(transfer->getIndices());
   for (auto it : llvm::enumerate(transfer->getVectorType().getShape())) {
     auto composed = composeWithUnboundedMap(
         getAffineDimExpr(it.index(), b.getContext()), permutationMap);
@@ -168,17 +166,16 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
     // b. write scalar to local.
     auto scalarLoad = b.create<LoadOp>(transfer->getLoc(),
                                        transfer->getMemRef(), accessIndices);
-    b.create<StoreOp>(
-        transfer->getLoc(), scalarLoad->getResult(),
-        tmpScalarAlloc->getResult(),
-        functional::map([](SSAValue *val) { return val; }, loops));
+    b.create<StoreOp>(transfer->getLoc(), scalarLoad->getResult(),
+                      tmpScalarAlloc->getResult(),
+                      functional::map([](Value *val) { return val; }, loops));
   } else {
     // VectorTransferWriteOp.
     // a. read scalar from local;
     // b. write scalar to remote.
     auto scalarLoad = b.create<LoadOp>(
         transfer->getLoc(), tmpScalarAlloc->getResult(),
-        functional::map([](SSAValue *val) { return val; }, loops));
+        functional::map([](Value *val) { return val; }, loops));
     b.create<StoreOp>(transfer->getLoc(), scalarLoad->getResult(),
                       transfer->getMemRef(), accessIndices);
   }
@@ -186,11 +183,11 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // 5. Read the vector from local storage in case of a vector_transfer_read.
   // TODO(ntv): This vector_load operation should be further lowered in the
   // case of GPUs.
-  llvm::SmallVector<SSAValue *, 1> newResults = {};
+  llvm::SmallVector<Value *, 1> newResults = {};
   if (std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value) {
     b.setInsertionPoint(cast<OperationStmt>(transfer->getOperation()));
     auto *vector = b.create<LoadOp>(transfer->getLoc(), vecView->getResult(),
-                                    ArrayRef<SSAValue *>{state->zero})
+                                    ArrayRef<Value *>{state->zero})
                        ->getResult();
     newResults.push_back(vector);
   }

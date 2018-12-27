@@ -31,7 +31,6 @@
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
-
 #define DEBUG_TYPE "LoopUtils"
 
 using namespace mlir;
@@ -108,8 +107,7 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
       forStmt->replaceAllUsesWith(constOp);
     } else {
       const AffineBound lb = forStmt->getLowerBound();
-      SmallVector<SSAValue *, 4> lbOperands(lb.operand_begin(),
-                                            lb.operand_end());
+      SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
       MLFuncBuilder builder(forStmt->getBlock(), StmtBlock::iterator(forStmt));
       auto affineApplyOp = builder.create<AffineApplyOp>(
           forStmt->getLoc(), lb.getMap(), lbOperands);
@@ -149,8 +147,8 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
              const std::vector<std::pair<uint64_t, ArrayRef<Statement *>>>
                  &stmtGroupQueue,
              unsigned offset, ForStmt *srcForStmt, MLFuncBuilder *b) {
-  SmallVector<MLValue *, 4> lbOperands(srcForStmt->getLowerBoundOperands());
-  SmallVector<MLValue *, 4> ubOperands(srcForStmt->getUpperBoundOperands());
+  SmallVector<Value *, 4> lbOperands(srcForStmt->getLowerBoundOperands());
+  SmallVector<Value *, 4> ubOperands(srcForStmt->getUpperBoundOperands());
 
   assert(lbMap.getNumInputs() == lbOperands.size());
   assert(ubMap.getNumInputs() == ubOperands.size());
@@ -176,7 +174,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
                                srcForStmt->getStep() * shift)),
                            loopChunk)
                           ->getResult(0);
-      operandMap[srcForStmt] = cast<MLValue>(ivRemap);
+      operandMap[srcForStmt] = ivRemap;
     } else {
       operandMap[srcForStmt] = loopChunk;
     }
@@ -380,7 +378,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
 
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
   if (getLargestDivisorOfTripCount(*forStmt) % unrollFactor != 0) {
-    DenseMap<const MLValue *, MLValue *> operandMap;
+    DenseMap<const Value *, Value *> operandMap;
     MLFuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
     auto clLbMap = getCleanupLoopLowerBound(*forStmt, unrollFactor, &builder);
@@ -414,7 +412,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
 
   // Unroll the contents of 'forStmt' (append unrollFactor-1 additional copies).
   for (unsigned i = 1; i < unrollFactor; i++) {
-    DenseMap<const MLValue *, MLValue *> operandMap;
+    DenseMap<const Value *, Value *> operandMap;
 
     // If the induction variable is used, create a remapping to the value for
     // this unrolled instance.
@@ -425,7 +423,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
       auto *ivUnroll =
           builder.create<AffineApplyOp>(forStmt->getLoc(), bumpMap, forStmt)
               ->getResult(0);
-      operandMap[forStmt] = cast<MLValue>(ivUnroll);
+      operandMap[forStmt] = ivUnroll;
     }
 
     // Clone the original body of 'forStmt'.

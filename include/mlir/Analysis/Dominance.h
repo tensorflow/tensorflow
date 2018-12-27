@@ -58,10 +58,10 @@ public:
   }
 
   /// Return true if value A properly dominates instruction B.
-  bool properlyDominates(const SSAValue *a, const Instruction *b);
+  bool properlyDominates(const Value *a, const Instruction *b);
 
   /// Return true if instruction A dominates instruction B.
-  bool dominates(const SSAValue *a, const Instruction *b) {
+  bool dominates(const Value *a, const Instruction *b) {
     return (Instruction *)a->getDefiningInst() == b || properlyDominates(a, b);
   }
 

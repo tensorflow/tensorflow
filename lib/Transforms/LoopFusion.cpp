@@ -83,22 +83,22 @@ FunctionPass *mlir::createLoopFusionPass() { return new LoopFusion; }
 static void getSingleMemRefAccess(OperationStmt *loadOrStoreOpStmt,
                                   MemRefAccess *access) {
   if (auto loadOp = loadOrStoreOpStmt->dyn_cast<LoadOp>()) {
-    access->memref = cast<MLValue>(loadOp->getMemRef());
+    access->memref = loadOp->getMemRef();
     access->opStmt = loadOrStoreOpStmt;
     auto loadMemrefType = loadOp->getMemRefType();
     access->indices.reserve(loadMemrefType.getRank());
     for (auto *index : loadOp->getIndices()) {
-      access->indices.push_back(cast<MLValue>(index));
+      access->indices.push_back(index);
     }
   } else {
     assert(loadOrStoreOpStmt->isa<StoreOp>());
     auto storeOp = loadOrStoreOpStmt->dyn_cast<StoreOp>();
     access->opStmt = loadOrStoreOpStmt;
-    access->memref = cast<MLValue>(storeOp->getMemRef());
+    access->memref = storeOp->getMemRef();
     auto storeMemrefType = storeOp->getMemRefType();
     access->indices.reserve(storeMemrefType.getRank());
     for (auto *index : storeOp->getIndices()) {
-      access->indices.push_back(cast<MLValue>(index));
+      access->indices.push_back(index);
     }
   }
 }
@@ -178,20 +178,20 @@ public:
     Node(unsigned id, Statement *stmt) : id(id), stmt(stmt) {}
 
     // Returns the load op count for 'memref'.
-    unsigned getLoadOpCount(MLValue *memref) {
+    unsigned getLoadOpCount(Value *memref) {
       unsigned loadOpCount = 0;
       for (auto *loadOpStmt : loads) {
-        if (memref == cast<MLValue>(loadOpStmt->cast<LoadOp>()->getMemRef()))
+        if (memref == loadOpStmt->cast<LoadOp>()->getMemRef())
           ++loadOpCount;
       }
       return loadOpCount;
     }
 
     // Returns the store op count for 'memref'.
-    unsigned getStoreOpCount(MLValue *memref) {
+    unsigned getStoreOpCount(Value *memref) {
       unsigned storeOpCount = 0;
       for (auto *storeOpStmt : stores) {
-        if (memref == cast<MLValue>(storeOpStmt->cast<StoreOp>()->getMemRef()))
+        if (memref == storeOpStmt->cast<StoreOp>()->getMemRef())
           ++storeOpCount;
       }
       return storeOpCount;
@@ -203,7 +203,7 @@ public:
     // The id of the node at the other end of the edge.
     unsigned id;
     // The memref on which this edge represents a dependence.
-    MLValue *memref;
+    Value *memref;
   };
 
   // Map from node id to Node.
@@ -227,13 +227,13 @@ public:
   }
 
   // Adds an edge from node 'srcId' to node 'dstId' for 'memref'.
-  void addEdge(unsigned srcId, unsigned dstId, MLValue *memref) {
+  void addEdge(unsigned srcId, unsigned dstId, Value *memref) {
     outEdges[srcId].push_back({dstId, memref});
     inEdges[dstId].push_back({srcId, memref});
   }
 
   // Removes an edge from node 'srcId' to node 'dstId' for 'memref'.
-  void removeEdge(unsigned srcId, unsigned dstId, MLValue *memref) {
+  void removeEdge(unsigned srcId, unsigned dstId, Value *memref) {
     assert(inEdges.count(dstId) > 0);
     assert(outEdges.count(srcId) > 0);
     // Remove 'srcId' from 'inEdges[dstId]'.
@@ -253,7 +253,7 @@ public:
   }
 
   // Returns the input edge count for node 'id' and 'memref'.
-  unsigned getInEdgeCount(unsigned id, MLValue *memref) {
+  unsigned getInEdgeCount(unsigned id, Value *memref) {
     unsigned inEdgeCount = 0;
     if (inEdges.count(id) > 0)
       for (auto &inEdge : inEdges[id])
@@ -263,7 +263,7 @@ public:
   }
 
   // Returns the output edge count for node 'id' and 'memref'.
-  unsigned getOutEdgeCount(unsigned id, MLValue *memref) {
+  unsigned getOutEdgeCount(unsigned id, Value *memref) {
     unsigned outEdgeCount = 0;
     if (outEdges.count(id) > 0)
       for (auto &outEdge : outEdges[id])
@@ -347,7 +347,7 @@ public:
 // dependence graph at a different depth.
 bool MemRefDependenceGraph::init(MLFunction *f) {
   unsigned id = 0;
-  DenseMap<MLValue *, SetVector<unsigned>> memrefAccesses;
+  DenseMap<Value *, SetVector<unsigned>> memrefAccesses;
   for (auto &stmt : *f->getBody()) {
     if (auto *forStmt = dyn_cast<ForStmt>(&stmt)) {
       // Create graph node 'id' to represent top-level 'forStmt' and record
@@ -360,12 +360,12 @@ bool MemRefDependenceGraph::init(MLFunction *f) {
       Node node(id++, &stmt);
       for (auto *opStmt : collector.loadOpStmts) {
         node.loads.push_back(opStmt);
-        auto *memref = cast<MLValue>(opStmt->cast<LoadOp>()->getMemRef());
+        auto *memref = opStmt->cast<LoadOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
       }
       for (auto *opStmt : collector.storeOpStmts) {
         node.stores.push_back(opStmt);
-        auto *memref = cast<MLValue>(opStmt->cast<StoreOp>()->getMemRef());
+        auto *memref = opStmt->cast<StoreOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
       }
       nodes.insert({node.id, node});
@@ -375,7 +375,7 @@ bool MemRefDependenceGraph::init(MLFunction *f) {
         // Create graph node for top-level load op.
         Node node(id++, &stmt);
         node.loads.push_back(opStmt);
-        auto *memref = cast<MLValue>(opStmt->cast<LoadOp>()->getMemRef());
+        auto *memref = opStmt->cast<LoadOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
         nodes.insert({node.id, node});
       }
@@ -383,7 +383,7 @@ bool MemRefDependenceGraph::init(MLFunction *f) {
         // Create graph node for top-level store op.
         Node node(id++, &stmt);
         node.stores.push_back(opStmt);
-        auto *memref = cast<MLValue>(opStmt->cast<StoreOp>()->getMemRef());
+        auto *memref = opStmt->cast<StoreOp>()->getMemRef();
         memrefAccesses[memref].insert(node.id);
         nodes.insert({node.id, node});
       }
@@ -477,8 +477,7 @@ public:
       SmallVector<OperationStmt *, 4> loads = dstNode->loads;
       while (!loads.empty()) {
         auto *dstLoadOpStmt = loads.pop_back_val();
-        auto *memref =
-            cast<MLValue>(dstLoadOpStmt->cast<LoadOp>()->getMemRef());
+        auto *memref = dstLoadOpStmt->cast<LoadOp>()->getMemRef();
         // Skip 'dstLoadOpStmt' if multiple loads to 'memref' in 'dstNode'.
         if (dstNode->getLoadOpCount(memref) != 1)
           continue;

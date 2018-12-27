@@ -222,8 +222,8 @@ public:
   /// clients can specify a list of other nodes that this replacement may make
   /// (perhaps transitively) dead.  If any of those values are dead, this will
   /// remove them as well.
-  void replaceOp(Operation *op, ArrayRef<SSAValue *> newValues,
-                 ArrayRef<SSAValue *> valuesToRemoveIfDead = {});
+  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
+                 ArrayRef<Value *> valuesToRemoveIfDead = {});
 
   /// Replaces the result op with a new op that is created without verification.
   /// The result values of the two ops must be the same types.
@@ -237,8 +237,7 @@ public:
   /// The result values of the two ops must be the same types.  This allows
   /// specifying a list of ops that may be removed if dead.
   template <typename OpTy, typename... Args>
-  void replaceOpWithNewOp(Operation *op,
-                          ArrayRef<SSAValue *> valuesToRemoveIfDead,
+  void replaceOpWithNewOp(Operation *op, ArrayRef<Value *> valuesToRemoveIfDead,
                           Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
     replaceOpWithResultsOfAnotherOp(op, newOp->getOperation(),
@@ -254,7 +253,7 @@ public:
   /// rewriter should remove if they are dead at this point.
   ///
   void updatedRootInPlace(Operation *op,
-                          ArrayRef<SSAValue *> valuesToRemoveIfDead = {});
+                          ArrayRef<Value *> valuesToRemoveIfDead = {});
 
 protected:
   PatternRewriter(MLIRContext *context) : Builder(context) {}
@@ -284,9 +283,8 @@ protected:
 private:
   /// op and newOp are known to have the same number of results, replace the
   /// uses of op with uses of newOp
-  void
-  replaceOpWithResultsOfAnotherOp(Operation *op, Operation *newOp,
-                                  ArrayRef<SSAValue *> valuesToRemoveIfDead);
+  void replaceOpWithResultsOfAnotherOp(Operation *op, Operation *newOp,
+                                       ArrayRef<Value *> valuesToRemoveIfDead);
 };
 
 //===----------------------------------------------------------------------===//

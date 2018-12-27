@@ -23,7 +23,6 @@
 #define MLIR_ANALYSIS_LOOP_ANALYSIS_H
 
 #include "mlir/Support/LLVM.h"
-
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 
@@ -33,8 +32,8 @@ class AffineExpr;
 class AffineMap;
 class ForStmt;
 class MemRefType;
-class MLValue;
 class OperationStmt;
+class Value;
 
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
@@ -66,7 +65,7 @@ uint64_t getLargestDivisorOfTripCount(const ForStmt &forStmt);
 ///
 /// Returns false in cases with more than one AffineApplyOp, this is
 /// conservative.
-bool isAccessInvariant(const MLValue &iv, const MLValue &index);
+bool isAccessInvariant(const Value &iv, const Value &index);
 
 /// Given an induction variable `iv` of type ForStmt and `indices` of type
 /// IndexType, returns the set of `indices` that are independent of `iv`.
@@ -77,9 +76,8 @@ bool isAccessInvariant(const MLValue &iv, const MLValue &index);
 ///
 /// Returns false in cases with more than one AffineApplyOp, this is
 /// conservative.
-llvm::DenseSet<const MLValue *, llvm::DenseMapInfo<const MLValue *>>
-getInvariantAccesses(const MLValue &iv,
-                     llvm::ArrayRef<const MLValue *> indices);
+llvm::DenseSet<const Value *, llvm::DenseMapInfo<const Value *>>
+getInvariantAccesses(const Value &iv, llvm::ArrayRef<const Value *> indices);
 
 /// Checks whether the loop is structurally vectorizable; i.e.:
 /// 1. the loop has proper dependence semantics (parallel, reduction, etc);

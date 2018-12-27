@@ -25,7 +25,6 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/IR/MLValue.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseSet.h"
@@ -238,23 +237,23 @@ MutableIntegerSet::MutableIntegerSet(unsigned numDims, unsigned numSymbols,
 AffineValueMap::AffineValueMap(const AffineApplyOp &op)
     : map(op.getAffineMap()) {
   for (auto *operand : op.getOperands())
-    operands.push_back(cast<MLValue>(const_cast<SSAValue *>(operand)));
+    operands.push_back(const_cast<Value *>(operand));
   for (unsigned i = 0, e = op.getNumResults(); i < e; i++)
-    results.push_back(cast<MLValue>(const_cast<SSAValue *>(op.getResult(i))));
+    results.push_back(const_cast<Value *>(op.getResult(i)));
 }
 
-AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<MLValue *> operands)
+AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<Value *> operands)
     : map(map) {
-  for (MLValue *operand : operands) {
+  for (Value *operand : operands) {
     this->operands.push_back(operand);
   }
 }
 
-void AffineValueMap::reset(AffineMap map, ArrayRef<MLValue *> operands) {
+void AffineValueMap::reset(AffineMap map, ArrayRef<Value *> operands) {
   this->operands.clear();
   this->results.clear();
   this->map.reset(map);
-  for (MLValue *operand : operands) {
+  for (Value *operand : operands) {
     this->operands.push_back(operand);
   }
 }
@@ -275,7 +274,7 @@ void AffineValueMap::forwardSubstituteSingle(const AffineApplyOp &inputOp,
 
 // Returns true and sets 'indexOfMatch' if 'valueToMatch' is found in
 // 'valuesToSearch' beginning at 'indexStart'. Returns false otherwise.
-static bool findIndex(MLValue *valueToMatch, ArrayRef<MLValue *> valuesToSearch,
+static bool findIndex(Value *valueToMatch, ArrayRef<Value *> valuesToSearch,
                       unsigned indexStart, unsigned *indexOfMatch) {
   unsigned size = valuesToSearch.size();
   for (unsigned i = indexStart; i < size; ++i) {
@@ -324,8 +323,7 @@ void AffineValueMap::forwardSubstitute(
     for (unsigned j = 0; j < inputNumResults; ++j) {
       if (!inputResultsToSubstitute[j])
         continue;
-      if (operands[i] ==
-          cast<MLValue>(const_cast<SSAValue *>(inputOp.getResult(j)))) {
+      if (operands[i] == const_cast<Value *>(inputOp.getResult(j))) {
         currOperandToInputResult[i] = j;
         inputResultsUsed.insert(j);
       }
@@ -365,7 +363,7 @@ void AffineValueMap::forwardSubstitute(
   }
 
   // Build new output operands list and map update.
-  SmallVector<MLValue *, 4> outputOperands;
+  SmallVector<Value *, 4> outputOperands;
   unsigned outputOperandPosition = 0;
   AffineMapCompositionUpdate mapUpdate(inputOp.getAffineMap().getResults());
 
@@ -385,8 +383,7 @@ void AffineValueMap::forwardSubstitute(
     if (inputPositionsUsed.count(i) == 0)
       continue;
     // Check if input operand has a dup in current operand list.
-    auto *inputOperand =
-        cast<MLValue>(const_cast<SSAValue *>(inputOp.getOperand(i)));
+    auto *inputOperand = const_cast<Value *>(inputOp.getOperand(i));
     unsigned outputIndex;
     if (findIndex(inputOperand, outputOperands, /*indexStart=*/0,
                   &outputIndex)) {
@@ -418,8 +415,7 @@ void AffineValueMap::forwardSubstitute(
       continue;
     unsigned inputSymbolPosition = i - inputNumDims;
     // Check if input operand has a dup in current operand list.
-    auto *inputOperand =
-        cast<MLValue>(const_cast<SSAValue *>(inputOp.getOperand(i)));
+    auto *inputOperand = const_cast<Value *>(inputOp.getOperand(i));
     // Find output operand index of 'inputOperand' dup.
     unsigned outputIndex;
     // Start at index 'outputNumDims' so that only symbol operands are searched.
@@ -451,7 +447,7 @@ inline bool AffineValueMap::isMultipleOf(unsigned idx, int64_t factor) const {
 
 /// This method uses the invariant that operands are always positionally aligned
 /// with the AffineDimExpr in the underlying AffineMap.
-bool AffineValueMap::isFunctionOf(unsigned idx, MLValue *value) const {
+bool AffineValueMap::isFunctionOf(unsigned idx, Value *value) const {
   unsigned index;
   findIndex(value, operands, /*indexStart=*/0, &index);
   auto expr = const_cast<AffineValueMap *>(this)->getAffineMap().getResult(idx);
@@ -460,12 +456,12 @@ bool AffineValueMap::isFunctionOf(unsigned idx, MLValue *value) const {
   return expr.isFunctionOfDim(index);
 }
 
-SSAValue *AffineValueMap::getOperand(unsigned i) const {
-  return static_cast<SSAValue *>(operands[i]);
+Value *AffineValueMap::getOperand(unsigned i) const {
+  return static_cast<Value *>(operands[i]);
 }
 
-ArrayRef<MLValue *> AffineValueMap::getOperands() const {
-  return ArrayRef<MLValue *>(operands);
+ArrayRef<Value *> AffineValueMap::getOperands() const {
+  return ArrayRef<Value *>(operands);
 }
 
 AffineMap AffineValueMap::getAffineMap() const { return map.getAffineMap(); }
@@ -546,7 +542,7 @@ void FlatAffineConstraints::reset(unsigned numReservedInequalities,
                                   unsigned newNumReservedCols,
                                   unsigned newNumDims, unsigned newNumSymbols,
                                   unsigned newNumLocals,
-                                  ArrayRef<MLValue *> idArgs) {
+                                  ArrayRef<Value *> idArgs) {
   assert(newNumReservedCols >= newNumDims + newNumSymbols + newNumLocals + 1 &&
          "minimum 1 column");
   numReservedCols = newNumReservedCols;
@@ -570,7 +566,7 @@ void FlatAffineConstraints::reset(unsigned numReservedInequalities,
 
 void FlatAffineConstraints::reset(unsigned newNumDims, unsigned newNumSymbols,
                                   unsigned newNumLocals,
-                                  ArrayRef<MLValue *> idArgs) {
+                                  ArrayRef<Value *> idArgs) {
   reset(0, 0, newNumDims + newNumSymbols + newNumLocals + 1, newNumDims,
         newNumSymbols, newNumLocals, idArgs);
 }
@@ -597,17 +593,17 @@ void FlatAffineConstraints::addLocalId(unsigned pos) {
   addId(IdKind::Local, pos);
 }
 
-void FlatAffineConstraints::addDimId(unsigned pos, MLValue *id) {
+void FlatAffineConstraints::addDimId(unsigned pos, Value *id) {
   addId(IdKind::Dimension, pos, id);
 }
 
-void FlatAffineConstraints::addSymbolId(unsigned pos, MLValue *id) {
+void FlatAffineConstraints::addSymbolId(unsigned pos, Value *id) {
   addId(IdKind::Symbol, pos, id);
 }
 
 /// Adds a dimensional identifier. The added column is initialized to
 /// zero.
-void FlatAffineConstraints::addId(IdKind kind, unsigned pos, MLValue *id) {
+void FlatAffineConstraints::addId(IdKind kind, unsigned pos, Value *id) {
   if (kind == IdKind::Dimension) {
     assert(pos <= getNumDimIds());
   } else if (kind == IdKind::Symbol) {
@@ -755,7 +751,7 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
     // Dims and symbols.
     for (unsigned i = 0, e = vMap->getNumOperands(); i < e; i++) {
       unsigned loc;
-      bool ret = findId(*cast<MLValue>(vMap->getOperand(i)), &loc);
+      bool ret = findId(*vMap->getOperand(i), &loc);
       assert(ret && "value map's id can't be found");
       (void)ret;
       // We need to negate 'eq[r]' since the newly added dimension is going to
@@ -1231,7 +1227,7 @@ void FlatAffineConstraints::addUpperBound(ArrayRef<int64_t> expr,
   }
 }
 
-bool FlatAffineConstraints::findId(const MLValue &id, unsigned *pos) const {
+bool FlatAffineConstraints::findId(const Value &id, unsigned *pos) const {
   unsigned i = 0;
   for (const auto &mayBeId : ids) {
     if (mayBeId.hasValue() && mayBeId.getValue() == &id) {
@@ -1253,8 +1249,8 @@ void FlatAffineConstraints::setDimSymbolSeparation(unsigned newSymbolCount) {
 bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
   unsigned pos;
   // Pre-condition for this method.
-  if (!findId(*cast<MLValue>(&forStmt), &pos)) {
-    assert(0 && "MLValue not found");
+  if (!findId(forStmt, &pos)) {
+    assert(0 && "Value not found");
     return false;
   }
 
@@ -1270,7 +1266,7 @@ bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
       unsigned loc;
       if (!findId(*operand, &loc)) {
         if (operand->isValidSymbol()) {
-          addSymbolId(getNumSymbolIds(), const_cast<MLValue *>(operand));
+          addSymbolId(getNumSymbolIds(), const_cast<Value *>(operand));
           loc = getNumDimIds() + getNumSymbolIds() - 1;
           // Check if the symbol is a constant.
           if (auto *opStmt = operand->getDefiningStmt()) {
@@ -1279,7 +1275,7 @@ bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
             }
           }
         } else {
-          addDimId(getNumDimIds(), const_cast<MLValue *>(operand));
+          addDimId(getNumDimIds(), const_cast<Value *>(operand));
           loc = getNumDimIds() - 1;
         }
       }
@@ -1352,7 +1348,7 @@ void FlatAffineConstraints::setIdToConstant(unsigned pos, int64_t val) {
 
 /// Sets the specified identifer to a constant value; asserts if the id is not
 /// found.
-void FlatAffineConstraints::setIdToConstant(const MLValue &id, int64_t val) {
+void FlatAffineConstraints::setIdToConstant(const Value &id, int64_t val) {
   unsigned pos;
   if (!findId(id, &pos))
     // This is a pre-condition for this method.
@@ -1572,7 +1568,7 @@ void FlatAffineConstraints::print(raw_ostream &os) const {
     if (ids[i] == None)
       os << "None ";
     else
-      os << "MLValue ";
+      os << "Value ";
   }
   os << " const)\n";
   for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
@@ -1779,7 +1775,7 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   unsigned newNumDims = dimsSymbols.first;
   unsigned newNumSymbols = dimsSymbols.second;
 
-  SmallVector<Optional<MLValue *>, 8> newIds;
+  SmallVector<Optional<Value *>, 8> newIds;
   newIds.reserve(numIds - 1);
   newIds.insert(newIds.end(), ids.begin(), ids.begin() + pos);
   newIds.insert(newIds.end(), ids.begin() + pos + 1, ids.end());
@@ -1942,7 +1938,7 @@ void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
   normalizeConstraintsByGCD();
 }
 
-void FlatAffineConstraints::projectOut(MLValue *id) {
+void FlatAffineConstraints::projectOut(Value *id) {
   unsigned pos;
   bool ret = findId(*id, &pos);
   assert(ret);

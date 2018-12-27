@@ -127,10 +127,10 @@ void getBackwardSlice(
 /// **includes** the original statement.
 ///
 /// This allows building a slice (i.e. multi-root DAG where everything
-/// that is reachable from an SSAValue in forward and backward direction is
+/// that is reachable from an Value in forward and backward direction is
 /// contained in the slice).
 /// This is the abstraction we need to materialize all the instructions for
-/// supervectorization without worrying about orderings and SSAValue
+/// supervectorization without worrying about orderings and Value
 /// replacements.
 ///
 /// Example starting from any node

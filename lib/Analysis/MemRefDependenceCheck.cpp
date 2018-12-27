@@ -70,7 +70,7 @@ static void addMemRefAccessIndices(
     MemRefType memrefType, MemRefAccess *access) {
   access->indices.reserve(memrefType.getRank());
   for (auto *index : opIndices) {
-    access->indices.push_back(cast<MLValue>(const_cast<SSAValue *>(index)));
+    access->indices.push_back(const_cast<mlir::Value *>(index));
   }
 }
 
@@ -79,13 +79,13 @@ static void getMemRefAccess(const OperationStmt *loadOrStoreOpStmt,
                             MemRefAccess *access) {
   access->opStmt = loadOrStoreOpStmt;
   if (auto loadOp = loadOrStoreOpStmt->dyn_cast<LoadOp>()) {
-    access->memref = cast<MLValue>(loadOp->getMemRef());
+    access->memref = loadOp->getMemRef();
     addMemRefAccessIndices(loadOp->getIndices(), loadOp->getMemRefType(),
                            access);
   } else {
     assert(loadOrStoreOpStmt->isa<StoreOp>());
     auto storeOp = loadOrStoreOpStmt->dyn_cast<StoreOp>();
-    access->memref = cast<MLValue>(storeOp->getMemRef());
+    access->memref = storeOp->getMemRef();
     addMemRefAccessIndices(storeOp->getIndices(), storeOp->getMemRefType(),
                            access);
   }

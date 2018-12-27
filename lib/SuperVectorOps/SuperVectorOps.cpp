@@ -72,10 +72,10 @@ static bool verifyPermutationMap(AffineMap permutationMap,
 }
 
 void VectorTransferReadOp::build(Builder *builder, OperationState *result,
-                                 VectorType vectorType, SSAValue *srcMemRef,
-                                 ArrayRef<SSAValue *> srcIndices,
+                                 VectorType vectorType, Value *srcMemRef,
+                                 ArrayRef<Value *> srcIndices,
                                  AffineMap permutationMap,
-                                 Optional<SSAValue *> paddingValue) {
+                                 Optional<Value *> paddingValue) {
   result->addOperands(srcMemRef);
   result->addOperands(srcIndices);
   if (paddingValue) {
@@ -100,21 +100,20 @@ VectorTransferReadOp::getIndices() const {
   return {begin, end};
 }
 
-Optional<SSAValue *> VectorTransferReadOp::getPaddingValue() {
+Optional<Value *> VectorTransferReadOp::getPaddingValue() {
   auto memRefRank = getMemRefType().getRank();
   if (getNumOperands() <= Offsets::FirstIndexOffset + memRefRank) {
     return None;
   }
-  return Optional<SSAValue *>(
-      getOperand(Offsets::FirstIndexOffset + memRefRank));
+  return Optional<Value *>(getOperand(Offsets::FirstIndexOffset + memRefRank));
 }
 
-Optional<const SSAValue *> VectorTransferReadOp::getPaddingValue() const {
+Optional<const Value *> VectorTransferReadOp::getPaddingValue() const {
   auto memRefRank = getMemRefType().getRank();
   if (getNumOperands() <= Offsets::FirstIndexOffset + memRefRank) {
     return None;
   }
-  return Optional<const SSAValue *>(
+  return Optional<const Value *>(
       getOperand(Offsets::FirstIndexOffset + memRefRank));
 }
 
@@ -136,7 +135,7 @@ void VectorTransferReadOp::print(OpAsmPrinter *p) const {
   // Construct the FunctionType and print it.
   llvm::SmallVector<Type, 8> inputs{getMemRefType()};
   // Must have at least one actual index, see verify.
-  const SSAValue *firstIndex = *(getIndices().begin());
+  const Value *firstIndex = *(getIndices().begin());
   Type indexType = firstIndex->getType();
   inputs.append(getMemRefType().getRank(), indexType);
   if (optionalPaddingValue) {
@@ -295,8 +294,8 @@ bool VectorTransferReadOp::verify() const {
 // VectorTransferWriteOp
 //===----------------------------------------------------------------------===//
 void VectorTransferWriteOp::build(Builder *builder, OperationState *result,
-                                  SSAValue *srcVector, SSAValue *dstMemRef,
-                                  ArrayRef<SSAValue *> dstIndices,
+                                  Value *srcVector, Value *dstMemRef,
+                                  ArrayRef<Value *> dstIndices,
                                   AffineMap permutationMap) {
   result->addOperands({srcVector, dstMemRef});
   result->addOperands(dstIndices);
@@ -457,7 +456,7 @@ bool VectorTransferWriteOp::verify() const {
 // VectorTypeCastOp
 //===----------------------------------------------------------------------===//
 void VectorTypeCastOp::build(Builder *builder, OperationState *result,
-                             SSAValue *srcVector, Type dstType) {
+                             Value *srcVector, Type dstType) {
   result->addOperands(srcVector);
   result->addTypes(dstType);
 }

@@ -31,7 +31,6 @@
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
-
 using namespace mlir;
 
 /// Return true if this operation dereferences one or more memref's.
@@ -61,13 +60,12 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 //  extra operands, note that 'indexRemap' would just be applied to the existing
 //  indices (%i, %j).
 //
-// TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
+// TODO(mlir-team): extend this for Value/ CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
-bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
-                                    MLValue *newMemRef,
-                                    ArrayRef<SSAValue *> extraIndices,
+bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
+                                    ArrayRef<Value *> extraIndices,
                                     AffineMap indexRemap,
-                                    ArrayRef<SSAValue *> extraOperands,
+                                    ArrayRef<Value *> extraOperands,
                                     const Statement *domStmtFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
@@ -128,16 +126,15 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
       // operation.
       assert(extraIndex->getDefiningStmt()->getNumResults() == 1 &&
              "single result op's expected to generate these indices");
-      assert((cast<MLValue>(extraIndex)->isValidDim() ||
-              cast<MLValue>(extraIndex)->isValidSymbol()) &&
+      assert((extraIndex->isValidDim() || extraIndex->isValidSymbol()) &&
              "invalid memory op index");
-      state.operands.push_back(cast<MLValue>(extraIndex));
+      state.operands.push_back(extraIndex);
     }
 
     // Construct new indices as a remap of the old ones if a remapping has been
     // provided. The indices of a memref come right after it, i.e.,
     // at position memRefOperandPos + 1.
-    SmallVector<SSAValue *, 4> remapOperands;
+    SmallVector<Value *, 4> remapOperands;
     remapOperands.reserve(oldMemRefRank + extraOperands.size());
     remapOperands.insert(remapOperands.end(), extraOperands.begin(),
                          extraOperands.end());
@@ -149,11 +146,11 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
                                                    remapOperands);
       // Remapped indices.
       for (auto *index : remapOp->getOperation()->getResults())
-        state.operands.push_back(cast<MLValue>(index));
+        state.operands.push_back(index);
     } else {
       // No remapping specified.
       for (auto *index : remapOperands)
-        state.operands.push_back(cast<MLValue>(index));
+        state.operands.push_back(index);
     }
 
     // Insert the remaining operands unmodified.
@@ -191,9 +188,9 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
 // composed AffineApplyOp are returned in output parameter 'results'.
 OperationStmt *
 mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
-                                  ArrayRef<MLValue *> operands,
+                                  ArrayRef<Value *> operands,
                                   ArrayRef<OperationStmt *> affineApplyOps,
-                                  SmallVectorImpl<SSAValue *> *results) {
+                                  SmallVectorImpl<Value *> *results) {
   // Create identity map with same number of dimensions as number of operands.
   auto map = builder->getMultiDimIdentityMap(operands.size());
   // Initialize AffineValueMap with identity map.
@@ -208,7 +205,7 @@ mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
   // Compose affine maps from all ancestor AffineApplyOps.
   // Create new AffineApplyOp from 'valueMap'.
   unsigned numOperands = valueMap.getNumOperands();
-  SmallVector<SSAValue *, 4> outOperands(numOperands);
+  SmallVector<Value *, 4> outOperands(numOperands);
   for (unsigned i = 0; i < numOperands; ++i) {
     outOperands[i] = valueMap.getOperand(i);
   }
@@ -252,7 +249,7 @@ mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 /// otherwise.
 OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
   // Collect all operands that are results of affine apply ops.
-  SmallVector<MLValue *, 4> subOperands;
+  SmallVector<Value *, 4> subOperands;
   subOperands.reserve(opStmt->getNumOperands());
   for (auto *operand : opStmt->getOperands()) {
     auto *defStmt = operand->getDefiningStmt();
@@ -285,7 +282,7 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
     return nullptr;
 
   FuncBuilder builder(opStmt);
-  SmallVector<SSAValue *, 4> results;
+  SmallVector<Value *, 4> results;
   auto *affineApplyStmt = createComposedAffineApplyOp(
       &builder, opStmt->getLoc(), subOperands, affineApplyOps, &results);
   assert(results.size() == subOperands.size() &&
@@ -295,7 +292,7 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
   // affine apply op above instead of existing ones (subOperands). So, they
   // differ from opStmt's operands only for those operands in 'subOperands', for
   // which they will be replaced by the corresponding one from 'results'.
-  SmallVector<MLValue *, 4> newOperands(opStmt->getOperands());
+  SmallVector<Value *, 4> newOperands(opStmt->getOperands());
   for (unsigned i = 0, e = newOperands.size(); i < e; i++) {
     // Replace the subOperands from among the new operands.
     unsigned j, f;
@@ -304,7 +301,7 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
         break;
     }
     if (j < subOperands.size()) {
-      newOperands[i] = cast<MLValue>(results[j]);
+      newOperands[i] = results[j];
     }
   }
 
@@ -326,7 +323,7 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
   // into any uses which are AffineApplyOps.
   for (unsigned resultIndex = 0, e = opStmt->getNumResults(); resultIndex < e;
        ++resultIndex) {
-    const MLValue *result = opStmt->getResult(resultIndex);
+    const Value *result = opStmt->getResult(resultIndex);
     for (auto it = result->use_begin(); it != result->use_end();) {
       StmtOperand &use = *(it++);
       auto *useStmt = use.getOwner();
@@ -347,7 +344,7 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
 
       // Create new AffineApplyOp from 'valueMap'.
       unsigned numOperands = valueMap.getNumOperands();
-      SmallVector<SSAValue *, 4> operands(numOperands);
+      SmallVector<Value *, 4> operands(numOperands);
       for (unsigned i = 0; i < numOperands; ++i) {
         operands[i] = valueMap.getOperand(i);
       }

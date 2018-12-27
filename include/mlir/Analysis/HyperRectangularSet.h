@@ -38,10 +38,10 @@ class AffineCondition;
 class AffineMap;
 class IntegerSet;
 class MLIRContext;
-class MLValue;
 class MutableIntegerSet;
 class FlatAffineConstraints;
 class HyperRectangleList;
+class Value;
 
 /// A list of affine bounds.
 // Not using a MutableAffineMap here since numSymbols is the same as the
@@ -152,8 +152,8 @@ private:
   // expressions.
   std::vector<AffineBoundExprList> upperBounds;
 
-  Optional<SmallVector<MLValue *, 8>> dims = None;
-  Optional<SmallVector<MLValue *, 4>> symbols = None;
+  Optional<SmallVector<Value *, 8>> dims = None;
+  Optional<SmallVector<Value *, 4>> symbols = None;
 
   /// Number of real dimensions.
   unsigned numDims;

@@ -288,10 +288,10 @@ void OpEmitter::emitAttrGetters() {
 }
 
 void OpEmitter::emitNamedOperands() {
-  const auto operandMethods = R"(  SSAValue *{0}() {
+  const auto operandMethods = R"(  Value *{0}() {
     return this->getOperation()->getOperand({1});
   }
-  const SSAValue *{0}() const {
+  const Value *{0}() const {
     return this->getOperation()->getOperand({1});
   }
 )";
@@ -329,7 +329,7 @@ void OpEmitter::emitBuilder() {
 
   // Emit parameters for all operands
   for (const auto &pair : operands)
-    os << ", SSAValue* " << pair.first;
+    os << ", Value* " << pair.first;
 
   // Emit parameters for all attributes
   // TODO(antiagainst): Support default initializer for attributes
@@ -369,7 +369,7 @@ void OpEmitter::emitBuilder() {
 
   // Signature
   os << "  static void build(Builder* builder, OperationState* result, "
-     << "ArrayRef<Type> resultTypes, ArrayRef<SSAValue*> args, "
+     << "ArrayRef<Type> resultTypes, ArrayRef<Value*> args, "
         "ArrayRef<NamedAttribute> attributes) {\n";
 
   // Result types

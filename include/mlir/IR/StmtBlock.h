@@ -26,7 +26,6 @@
 
 namespace mlir {
 class IfStmt;
-class MLValue;
 class StmtBlockList;
 using CFGFunction = Function;
 using MLFunction = Function;
@@ -412,7 +411,7 @@ public:
   }
 
 private:
-  using BBUseIterator = SSAValueUseIterator<StmtBlockOperand, OperationStmt>;
+  using BBUseIterator = ValueUseIterator<StmtBlockOperand, OperationStmt>;
   BBUseIterator bbUseIterator;
 };
 

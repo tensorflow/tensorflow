@@ -32,7 +32,6 @@
 #include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
-
 #define DEBUG_TYPE "pipeline-data-transfer"
 
 using namespace mlir;
@@ -80,7 +79,7 @@ static unsigned getTagMemRefPos(const OperationStmt &dmaStmt) {
 /// of the old memref by the new one while indexing the newly added dimension by
 /// the loop IV of the specified 'for' statement modulo 2. Returns false if such
 /// a replacement cannot be performed.
-static bool doubleBuffer(MLValue *oldMemRef, ForStmt *forStmt) {
+static bool doubleBuffer(Value *oldMemRef, ForStmt *forStmt) {
   auto *forBody = forStmt->getBody();
   MLFuncBuilder bInner(forBody, forBody->begin());
   bInner.setInsertionPoint(forBody, forBody->begin());
@@ -103,7 +102,7 @@ static bool doubleBuffer(MLValue *oldMemRef, ForStmt *forStmt) {
 
   // Put together alloc operands for the dynamic dimensions of the memref.
   MLFuncBuilder bOuter(forStmt);
-  SmallVector<SSAValue *, 4> allocOperands;
+  SmallVector<Value *, 4> allocOperands;
   unsigned dynamicDimCount = 0;
   for (auto dimSize : oldMemRefType.getShape()) {
     if (dimSize == -1)
@@ -114,7 +113,7 @@ static bool doubleBuffer(MLValue *oldMemRef, ForStmt *forStmt) {
   // Create and place the alloc right before the 'for' statement.
   // TODO(mlir-team): we are assuming scoped allocation here, and aren't
   // inserting a dealloc -- this isn't the right thing.
-  SSAValue *newMemRef =
+  Value *newMemRef =
       bOuter.create<AllocOp>(forStmt->getLoc(), newMemRefType, allocOperands);
 
   // Create 'iv mod 2' value to index the leading dimension.
@@ -126,8 +125,8 @@ static bool doubleBuffer(MLValue *oldMemRef, ForStmt *forStmt) {
 
   // replaceAllMemRefUsesWith will always succeed unless the forStmt body has
   // non-deferencing uses of the memref.
-  if (!replaceAllMemRefUsesWith(oldMemRef, cast<MLValue>(newMemRef),
-                                ivModTwoOp->getResult(0), AffineMap::Null(), {},
+  if (!replaceAllMemRefUsesWith(oldMemRef, newMemRef, ivModTwoOp->getResult(0),
+                                AffineMap::Null(), {},
                                 &*forStmt->getBody()->begin())) {
     LLVM_DEBUG(llvm::dbgs()
                    << "memref replacement for double buffering failed\n";);
@@ -225,8 +224,7 @@ static void findMatchingStartFinishStmts(
       continue;
 
     // We only double buffer if the buffer is not live out of loop.
-    const MLValue *memref =
-        cast<MLValue>(dmaStartOp->getOperand(dmaStartOp->getFasterMemPos()));
+    auto *memref = dmaStartOp->getOperand(dmaStartOp->getFasterMemPos());
     bool escapingUses = false;
     for (const auto &use : memref->getUses()) {
       if (!dominates(*forStmt->getBody()->begin(), *use.getOwner())) {
@@ -280,8 +278,8 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   // dimension.
   for (auto &pair : startWaitPairs) {
     auto *dmaStartStmt = pair.first;
-    MLValue *oldMemRef = cast<MLValue>(dmaStartStmt->getOperand(
-        dmaStartStmt->cast<DmaStartOp>()->getFasterMemPos()));
+    Value *oldMemRef = dmaStartStmt->getOperand(
+        dmaStartStmt->cast<DmaStartOp>()->getFasterMemPos());
     if (!doubleBuffer(oldMemRef, forStmt)) {
       // Normally, double buffering should not fail because we already checked
       // that there are no uses outside.
@@ -302,8 +300,8 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   // Double the buffers for tag memrefs.
   for (auto &pair : startWaitPairs) {
     auto *dmaFinishStmt = pair.second;
-    MLValue *oldTagMemRef = cast<MLValue>(
-        dmaFinishStmt->getOperand(getTagMemRefPos(*dmaFinishStmt)));
+    Value *oldTagMemRef =
+        dmaFinishStmt->getOperand(getTagMemRefPos(*dmaFinishStmt));
     if (!doubleBuffer(oldTagMemRef, forStmt)) {
       LLVM_DEBUG(llvm::dbgs() << "tag double buffering failed\n";);
       return success();
@@ -332,7 +330,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
       // If a slice wasn't created, the reachable affine_apply op's from its
       // operands are the ones that go with it.
       SmallVector<OperationStmt *, 4> affineApplyStmts;
-      SmallVector<MLValue *, 4> operands(dmaStartStmt->getOperands());
+      SmallVector<Value *, 4> operands(dmaStartStmt->getOperands());
       getReachableAffineApplyOps(operands, affineApplyStmts);
       for (const auto *stmt : affineApplyStmts) {
         stmtShiftMap[stmt] = 0;

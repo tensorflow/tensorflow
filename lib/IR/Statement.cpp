@@ -85,18 +85,16 @@ MLFunction *Statement::getFunction() const {
   return block ? block->getFunction() : nullptr;
 }
 
-MLValue *Statement::getOperand(unsigned idx) {
+Value *Statement::getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+
+const Value *Statement::getOperand(unsigned idx) const {
   return getStmtOperand(idx).get();
 }
 
-const MLValue *Statement::getOperand(unsigned idx) const {
-  return getStmtOperand(idx).get();
-}
-
-// MLValue can be used as a dimension id if it is valid as a symbol, or
+// Value can be used as a dimension id if it is valid as a symbol, or
 // it is an induction variable, or it is a result of affine apply operation
 // with dimension id arguments.
-bool MLValue::isValidDim() const {
+bool Value::isValidDim() const {
   if (auto *stmt = getDefiningStmt()) {
     // Top level statement or constant operation is ok.
     if (stmt->getParentStmt() == nullptr || stmt->isa<ConstantOp>())
@@ -111,10 +109,10 @@ bool MLValue::isValidDim() const {
   return true;
 }
 
-// MLValue can be used as a symbol if it is a constant, or it is defined at
+// Value can be used as a symbol if it is a constant, or it is defined at
 // the top level, or it is a result of affine apply operation with symbol
 // arguments.
-bool MLValue::isValidSymbol() const {
+bool Value::isValidSymbol() const {
   if (auto *stmt = getDefiningStmt()) {
     // Top level statement or constant operation is ok.
     if (stmt->getParentStmt() == nullptr || stmt->isa<ConstantOp>())
@@ -129,7 +127,7 @@ bool MLValue::isValidSymbol() const {
   return isa<BlockArgument>(this);
 }
 
-void Statement::setOperand(unsigned idx, MLValue *value) {
+void Statement::setOperand(unsigned idx, Value *value) {
   getStmtOperand(idx).set(value);
 }
 
@@ -271,7 +269,7 @@ void Statement::dropAllReferences() {
 
 /// Create a new OperationStmt with the specific fields.
 OperationStmt *OperationStmt::create(Location location, OperationName name,
-                                     ArrayRef<MLValue *> operands,
+                                     ArrayRef<Value *> operands,
                                      ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
                                      ArrayRef<StmtBlock *> successors,
@@ -420,8 +418,8 @@ void OperationInst::eraseOperand(unsigned index) {
 // ForStmt
 //===----------------------------------------------------------------------===//
 
-ForStmt *ForStmt::create(Location location, ArrayRef<MLValue *> lbOperands,
-                         AffineMap lbMap, ArrayRef<MLValue *> ubOperands,
+ForStmt *ForStmt::create(Location location, ArrayRef<Value *> lbOperands,
+                         AffineMap lbMap, ArrayRef<Value *> ubOperands,
                          AffineMap ubMap, int64_t step) {
   assert(lbOperands.size() == lbMap.getNumInputs() &&
          "lower bound operand count does not match the affine map");
@@ -444,9 +442,9 @@ ForStmt *ForStmt::create(Location location, ArrayRef<MLValue *> lbOperands,
 
 ForStmt::ForStmt(Location location, unsigned numOperands, AffineMap lbMap,
                  AffineMap ubMap, int64_t step)
-    : Statement(Kind::For, location),
-      MLValue(MLValueKind::ForStmt,
-              Type::getIndex(lbMap.getResult(0).getContext())),
+    : Statement(Statement::Kind::For, location),
+      Value(Value::Kind::ForStmt,
+            Type::getIndex(lbMap.getResult(0).getContext())),
       body(this), lbMap(lbMap), ubMap(ubMap), step(step) {
 
   // The body of a for stmt always has one block.
@@ -462,11 +460,11 @@ const AffineBound ForStmt::getUpperBound() const {
   return AffineBound(*this, lbMap.getNumInputs(), getNumOperands(), ubMap);
 }
 
-void ForStmt::setLowerBound(ArrayRef<MLValue *> lbOperands, AffineMap map) {
+void ForStmt::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
   assert(lbOperands.size() == map.getNumInputs());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
 
-  SmallVector<MLValue *, 4> ubOperands(getUpperBoundOperands());
+  SmallVector<Value *, 4> ubOperands(getUpperBoundOperands());
 
   operands.clear();
   operands.reserve(lbOperands.size() + ubMap.getNumInputs());
@@ -479,11 +477,11 @@ void ForStmt::setLowerBound(ArrayRef<MLValue *> lbOperands, AffineMap map) {
   this->lbMap = map;
 }
 
-void ForStmt::setUpperBound(ArrayRef<MLValue *> ubOperands, AffineMap map) {
+void ForStmt::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
   assert(ubOperands.size() == map.getNumInputs());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
 
-  SmallVector<MLValue *, 4> lbOperands(getLowerBoundOperands());
+  SmallVector<Value *, 4> lbOperands(getLowerBoundOperands());
 
   operands.clear();
   operands.reserve(lbOperands.size() + ubOperands.size());
@@ -553,7 +551,7 @@ bool ForStmt::matchingBoundOperandList() const {
 
   unsigned numOperands = lbMap.getNumInputs();
   for (unsigned i = 0, e = lbMap.getNumInputs(); i < e; i++) {
-    // Compare MLValue *'s.
+    // Compare Value *'s.
     if (getOperand(i) != getOperand(numOperands + i))
       return false;
   }
@@ -581,7 +579,7 @@ IfStmt::~IfStmt() {
   // allocated through MLIRContext's bump pointer allocator.
 }
 
-IfStmt *IfStmt::create(Location location, ArrayRef<MLValue *> operands,
+IfStmt *IfStmt::create(Location location, ArrayRef<Value *> operands,
                        IntegerSet set) {
   unsigned numOperands = operands.size();
   assert(numOperands == set.getNumOperands() &&
@@ -617,16 +615,16 @@ MLIRContext *IfStmt::getContext() const {
 /// them alone if no entry is present).  Replaces references to cloned
 /// sub-statements to the corresponding statement that is copied, and adds
 /// those mappings to the map.
-Statement *Statement::clone(DenseMap<const MLValue *, MLValue *> &operandMap,
+Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
                             MLIRContext *context) const {
   // If the specified value is in operandMap, return the remapped value.
   // Otherwise return the value itself.
-  auto remapOperand = [&](const MLValue *value) -> MLValue * {
+  auto remapOperand = [&](const Value *value) -> Value * {
     auto it = operandMap.find(value);
-    return it != operandMap.end() ? it->second : const_cast<MLValue *>(value);
+    return it != operandMap.end() ? it->second : const_cast<Value *>(value);
   };
 
-  SmallVector<MLValue *, 8> operands;
+  SmallVector<Value *, 8> operands;
   SmallVector<StmtBlock *, 2> successors;
   if (auto *opStmt = dyn_cast<OperationStmt>(this)) {
     operands.reserve(getNumOperands() + opStmt->getNumSuccessors());
@@ -683,10 +681,9 @@ Statement *Statement::clone(DenseMap<const MLValue *, MLValue *> &operandMap,
     auto ubMap = forStmt->getUpperBoundMap();
 
     auto *newFor = ForStmt::create(
-        getLoc(),
-        ArrayRef<MLValue *>(operands).take_front(lbMap.getNumInputs()), lbMap,
-        ArrayRef<MLValue *>(operands).take_back(ubMap.getNumInputs()), ubMap,
-        forStmt->getStep());
+        getLoc(), ArrayRef<Value *>(operands).take_front(lbMap.getNumInputs()),
+        lbMap, ArrayRef<Value *>(operands).take_back(ubMap.getNumInputs()),
+        ubMap, forStmt->getStep());
 
     // Remember the induction variable mapping.
     operandMap[forStmt] = newFor;
@@ -716,6 +713,6 @@ Statement *Statement::clone(DenseMap<const MLValue *, MLValue *> &operandMap,
 }
 
 Statement *Statement::clone(MLIRContext *context) const {
-  DenseMap<const MLValue *, MLValue *> operandMap;
+  DenseMap<const Value *, Value *> operandMap;
   return clone(operandMap, context);
 }

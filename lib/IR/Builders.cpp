@@ -281,7 +281,7 @@ BasicBlock *CFGFuncBuilder::createBlock(BasicBlock *insertBefore) {
   // If we are supposed to insert before a specific block, do so, otherwise add
   // the block to the end of the function.
   if (insertBefore)
-    function->getBlocks().insert(CFGFunction::iterator(insertBefore), b);
+    function->getBlocks().insert(Function::iterator(insertBefore), b);
   else
     function->push_back(b);
 
@@ -291,16 +291,9 @@ BasicBlock *CFGFuncBuilder::createBlock(BasicBlock *insertBefore) {
 
 /// Create an operation given the fields represented as an OperationState.
 OperationStmt *CFGFuncBuilder::createOperation(const OperationState &state) {
-  SmallVector<CFGValue *, 8> operands;
-  operands.reserve(state.operands.size());
-  // Allow null operands as they act as sentinal barriers between successor
-  // operand lists.
-  for (auto elt : state.operands)
-    operands.push_back(cast_or_null<CFGValue>(elt));
-
-  auto *op =
-      OperationInst::create(state.location, state.name, operands, state.types,
-                            state.attributes, state.successors, context);
+  auto *op = OperationInst::create(state.location, state.name, state.operands,
+                                   state.types, state.attributes,
+                                   state.successors, context);
   block->getStatements().insert(insertPoint, op);
   return op;
 }
@@ -311,23 +304,17 @@ OperationStmt *CFGFuncBuilder::createOperation(const OperationState &state) {
 
 /// Create an operation given the fields represented as an OperationState.
 OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
-  SmallVector<MLValue *, 8> operands;
-  operands.reserve(state.operands.size());
-  for (auto elt : state.operands)
-    operands.push_back(cast<MLValue>(elt));
-
-  auto *op =
-      OperationStmt::create(state.location, state.name, operands, state.types,
-                            state.attributes, state.successors, context);
+  auto *op = OperationStmt::create(state.location, state.name, state.operands,
+                                   state.types, state.attributes,
+                                   state.successors, context);
   block->getStatements().insert(insertPoint, op);
   return op;
 }
 
 ForStmt *MLFuncBuilder::createFor(Location location,
-                                  ArrayRef<MLValue *> lbOperands,
-                                  AffineMap lbMap,
-                                  ArrayRef<MLValue *> ubOperands,
-                                  AffineMap ubMap, int64_t step) {
+                                  ArrayRef<Value *> lbOperands, AffineMap lbMap,
+                                  ArrayRef<Value *> ubOperands, AffineMap ubMap,
+                                  int64_t step) {
   auto *stmt =
       ForStmt::create(location, lbOperands, lbMap, ubOperands, ubMap, step);
   block->getStatements().insert(insertPoint, stmt);
@@ -341,7 +328,7 @@ ForStmt *MLFuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
   return createFor(location, {}, lbMap, {}, ubMap, step);
 }
 
-IfStmt *MLFuncBuilder::createIf(Location location, ArrayRef<MLValue *> operands,
+IfStmt *MLFuncBuilder::createIf(Location location, ArrayRef<Value *> operands,
                                 IntegerSet set) {
   auto *stmt = IfStmt::create(location, operands, set);
   block->getStatements().insert(insertPoint, stmt);

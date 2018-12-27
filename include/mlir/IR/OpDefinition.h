@@ -29,7 +29,7 @@
 #define MLIR_IR_OPDEFINITION_H
 
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/SSAValue.h"
+#include "mlir/IR/Value.h"
 #include <type_traits>
 
 namespace mlir {
@@ -78,11 +78,11 @@ public:
   }
 
   /// If the OpType operation includes the OneResult trait, then OpPointer can
-  /// be implicitly converted to an SSAValue*.  This yields the value of the
+  /// be implicitly converted to an Value*.  This yields the value of the
   /// only result.
   template <typename SFINAE = OpType>
   operator typename std::enable_if<IsSingleResult<SFINAE>::value,
-                                   SSAValue *>::type() {
+                                   Value *>::type() {
     return value.getResult();
   }
 
@@ -114,14 +114,14 @@ public:
   }
 
   /// If the OpType operation includes the OneResult trait, then OpPointer can
-  /// be implicitly converted to an const SSAValue*.  This yields the value of
+  /// be implicitly converted to an const Value*.  This yields the value of
   /// the only result.
   template <typename SFINAE = OpType>
   operator typename std::enable_if<
       std::is_convertible<
           SFINAE *,
           OpTrait::OneResult<typename SFINAE::ConcreteOpType> *>::value,
-      const SSAValue *>::type() const {
+      const Value *>::type() const {
     return value.getResult();
   }
 
@@ -346,15 +346,13 @@ private:
 template <typename ConcreteType>
 class OneOperand : public TraitBase<ConcreteType, OneOperand> {
 public:
-  const SSAValue *getOperand() const {
+  const Value *getOperand() const {
     return this->getOperation()->getOperand(0);
   }
 
-  SSAValue *getOperand() { return this->getOperation()->getOperand(0); }
+  Value *getOperand() { return this->getOperation()->getOperand(0); }
 
-  void setOperand(SSAValue *value) {
-    this->getOperation()->setOperand(0, value);
-  }
+  void setOperand(Value *value) { this->getOperation()->setOperand(0, value); }
 
   static bool verifyTrait(const Operation *op) {
     return impl::verifyOneOperand(op);
@@ -371,15 +369,15 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, NOperands<N>::Impl> {
   public:
-    const SSAValue *getOperand(unsigned i) const {
+    const Value *getOperand(unsigned i) const {
       return this->getOperation()->getOperand(i);
     }
 
-    SSAValue *getOperand(unsigned i) {
+    Value *getOperand(unsigned i) {
       return this->getOperation()->getOperand(i);
     }
 
-    void setOperand(unsigned i, SSAValue *value) {
+    void setOperand(unsigned i, Value *value) {
       this->getOperation()->setOperand(i, value);
     }
 
@@ -402,15 +400,15 @@ public:
     unsigned getNumOperands() const {
       return this->getOperation()->getNumOperands();
     }
-    const SSAValue *getOperand(unsigned i) const {
+    const Value *getOperand(unsigned i) const {
       return this->getOperation()->getOperand(i);
     }
 
-    SSAValue *getOperand(unsigned i) {
+    Value *getOperand(unsigned i) {
       return this->getOperation()->getOperand(i);
     }
 
-    void setOperand(unsigned i, SSAValue *value) {
+    void setOperand(unsigned i, Value *value) {
       this->getOperation()->setOperand(i, value);
     }
 
@@ -453,15 +451,13 @@ public:
     return this->getOperation()->getNumOperands();
   }
 
-  const SSAValue *getOperand(unsigned i) const {
+  const Value *getOperand(unsigned i) const {
     return this->getOperation()->getOperand(i);
   }
 
-  SSAValue *getOperand(unsigned i) {
-    return this->getOperation()->getOperand(i);
-  }
+  Value *getOperand(unsigned i) { return this->getOperation()->getOperand(i); }
 
-  void setOperand(unsigned i, SSAValue *value) {
+  void setOperand(unsigned i, Value *value) {
     this->getOperation()->setOperand(i, value);
   }
 
@@ -503,17 +499,15 @@ public:
 template <typename ConcreteType>
 class OneResult : public TraitBase<ConcreteType, OneResult> {
 public:
-  SSAValue *getResult() { return this->getOperation()->getResult(0); }
-  const SSAValue *getResult() const {
-    return this->getOperation()->getResult(0);
-  }
+  Value *getResult() { return this->getOperation()->getResult(0); }
+  const Value *getResult() const { return this->getOperation()->getResult(0); }
 
   Type getType() const { return getResult()->getType(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
   /// there are zero uses of 'this'.
-  void replaceAllUsesWith(SSAValue *newValue) {
+  void replaceAllUsesWith(Value *newValue) {
     getResult()->replaceAllUsesWith(newValue);
   }
 
@@ -548,13 +542,11 @@ public:
   public:
     static unsigned getNumResults() { return N; }
 
-    const SSAValue *getResult(unsigned i) const {
+    const Value *getResult(unsigned i) const {
       return this->getOperation()->getResult(i);
     }
 
-    SSAValue *getResult(unsigned i) {
-      return this->getOperation()->getResult(i);
-    }
+    Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
 
     Type getType(unsigned i) const { return getResult(i)->getType(); }
 
@@ -574,13 +566,11 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, AtLeastNResults<N>::Impl> {
   public:
-    const SSAValue *getResult(unsigned i) const {
+    const Value *getResult(unsigned i) const {
       return this->getOperation()->getResult(i);
     }
 
-    SSAValue *getResult(unsigned i) {
-      return this->getOperation()->getResult(i);
-    }
+    Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
 
     Type getType(unsigned i) const { return getResult(i)->getType(); }
 
@@ -599,13 +589,13 @@ public:
     return this->getOperation()->getNumResults();
   }
 
-  const SSAValue *getResult(unsigned i) const {
+  const Value *getResult(unsigned i) const {
     return this->getOperation()->getResult(i);
   }
 
-  SSAValue *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+  Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
 
-  void setResult(unsigned i, SSAValue *value) {
+  void setResult(unsigned i, Value *value) {
     this->getOperation()->setResult(i, value);
   }
 
@@ -762,10 +752,10 @@ public:
     return this->getOperation()->setSuccessor(block, index);
   }
 
-  void addSuccessorOperand(unsigned index, SSAValue *value) {
+  void addSuccessorOperand(unsigned index, Value *value) {
     return this->getOperation()->addSuccessorOperand(index, value);
   }
-  void addSuccessorOperands(unsigned index, ArrayRef<SSAValue *> values) {
+  void addSuccessorOperands(unsigned index, ArrayRef<Value *> values) {
     return this->getOperation()->addSuccessorOperand(index, values);
   }
 };
@@ -889,8 +879,8 @@ private:
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildBinaryOp(Builder *builder, OperationState *result, SSAValue *lhs,
-                   SSAValue *rhs);
+void buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
+                   Value *rhs);
 bool parseBinaryOp(OpAsmParser *parser, OperationState *result);
 void printBinaryOp(const Operation *op, OpAsmPrinter *p);
 } // namespace impl
@@ -906,8 +896,8 @@ class BinaryOp
     : public Op<ConcreteType, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
                 OpTrait::SameOperandsAndResultType, Traits...> {
 public:
-  static void build(Builder *builder, OperationState *result, SSAValue *lhs,
-                    SSAValue *rhs) {
+  static void build(Builder *builder, OperationState *result, Value *lhs,
+                    Value *rhs) {
     impl::buildBinaryOp(builder, result, lhs, rhs);
   }
   static bool parse(OpAsmParser *parser, OperationState *result) {
@@ -926,7 +916,7 @@ protected:
 // These functions are out-of-line implementations of the methods in CastOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {
-void buildCastOp(Builder *builder, OperationState *result, SSAValue *source,
+void buildCastOp(Builder *builder, OperationState *result, Value *source,
                  Type destType);
 bool parseCastOp(OpAsmParser *parser, OperationState *result);
 void printCastOp(const Operation *op, OpAsmPrinter *p);
@@ -942,7 +932,7 @@ template <typename ConcreteType, template <typename T> class... Traits>
 class CastOp : public Op<ConcreteType, OpTrait::OneOperand, OpTrait::OneResult,
                          OpTrait::HasNoSideEffect, Traits...> {
 public:
-  static void build(Builder *builder, OperationState *result, SSAValue *source,
+  static void build(Builder *builder, OperationState *result, Value *source,
                     Type destType) {
     impl::buildCastOp(builder, result, source, destType);
   }

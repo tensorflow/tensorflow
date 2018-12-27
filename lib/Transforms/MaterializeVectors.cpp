@@ -32,9 +32,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/MLValue.h"
 #include "mlir/IR/OperationSupport.h"
-#include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
@@ -192,7 +190,7 @@ struct MaterializationState {
   VectorType superVectorType;
   VectorType hwVectorType;
   SmallVector<unsigned, 8> hwVectorInstance;
-  DenseMap<const MLValue *, MLValue *> *substitutionsMap;
+  DenseMap<const Value *, Value *> *substitutionsMap;
 };
 
 struct MaterializeVectorsPass : public FunctionPass {
@@ -250,9 +248,9 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
 
 static OperationStmt *
 instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
-            DenseMap<const MLValue *, MLValue *> *substitutionsMap);
+            DenseMap<const Value *, Value *> *substitutionsMap);
 
-/// Not all SSAValue belong to a program slice scoped within the immediately
+/// Not all Values belong to a program slice scoped within the immediately
 /// enclosing loop.
 /// One simple example is constants defined outside the innermost loop scope.
 /// For such cases the substitutionsMap has no entry and we allow an additional
@@ -261,17 +259,16 @@ instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
 /// indices and will need to be extended in the future.
 ///
 /// If substitution fails, returns nullptr.
-static MLValue *
-substitute(SSAValue *v, VectorType hwVectorType,
-           DenseMap<const MLValue *, MLValue *> *substitutionsMap) {
-  auto it = substitutionsMap->find(cast<MLValue>(v));
+static Value *substitute(Value *v, VectorType hwVectorType,
+                         DenseMap<const Value *, Value *> *substitutionsMap) {
+  auto it = substitutionsMap->find(v);
   if (it == substitutionsMap->end()) {
     auto *opStmt = cast<OperationStmt>(v->getDefiningOperation());
     if (opStmt->isa<ConstantOp>()) {
       MLFuncBuilder b(opStmt);
       auto *inst = instantiate(&b, opStmt, hwVectorType, substitutionsMap);
-      auto res = substitutionsMap->insert(
-          std::make_pair(cast<MLValue>(v), cast<MLValue>(inst->getResult(0))));
+      auto res =
+          substitutionsMap->insert(std::make_pair(v, inst->getResult(0)));
       assert(res.second && "Insertion failed");
       return res.first->second;
     }
@@ -336,10 +333,10 @@ substitute(SSAValue *v, VectorType hwVectorType,
 /// TODO(ntv): support a concrete AffineMap and compose with it.
 /// TODO(ntv): these implementation details should be captured in a
 /// vectorization trait at the op level directly.
-static SmallVector<SSAValue *, 8>
+static SmallVector<mlir::Value *, 8>
 reindexAffineIndices(MLFuncBuilder *b, VectorType hwVectorType,
                      ArrayRef<unsigned> hwVectorInstance,
-                     ArrayRef<SSAValue *> memrefIndices) {
+                     ArrayRef<Value *> memrefIndices) {
   auto vectorShape = hwVectorType.getShape();
   assert(hwVectorInstance.size() >= vectorShape.size());
 
@@ -380,7 +377,7 @@ reindexAffineIndices(MLFuncBuilder *b, VectorType hwVectorType,
   // TODO(ntv): support a concrete map and composition.
   auto app = b->create<AffineApplyOp>(b->getInsertionPoint()->getLoc(),
                                       affineMap, memrefIndices);
-  return SmallVector<SSAValue *, 8>{app->getResults()};
+  return SmallVector<mlir::Value *, 8>{app->getResults()};
 }
 
 /// Returns attributes with the following substitutions applied:
@@ -402,21 +399,21 @@ materializeAttributes(OperationStmt *opStmt, VectorType hwVectorType) {
 
 /// Creates an instantiated version of `opStmt`.
 /// Ops other than VectorTransferReadOp/VectorTransferWriteOp require no
-/// affine reindexing. Just substitute their SSAValue* operands and be done. For
-/// this case the actual instance is irrelevant. Just use the SSA values in
+/// affine reindexing. Just substitute their Value operands and be done. For
+/// this case the actual instance is irrelevant. Just use the values in
 /// substitutionsMap.
 ///
 /// If the underlying substitution fails, this fails too and returns nullptr.
 static OperationStmt *
 instantiate(MLFuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
-            DenseMap<const MLValue *, MLValue *> *substitutionsMap) {
+            DenseMap<const Value *, Value *> *substitutionsMap) {
   assert(!opStmt->isa<VectorTransferReadOp>() &&
          "Should call the function specialized for VectorTransferReadOp");
   assert(!opStmt->isa<VectorTransferWriteOp>() &&
          "Should call the function specialized for VectorTransferWriteOp");
   bool fail = false;
   auto operands = map(
-      [hwVectorType, substitutionsMap, &fail](SSAValue *v) -> SSAValue * {
+      [hwVectorType, substitutionsMap, &fail](Value *v) -> Value * {
         auto *res =
             fail ? nullptr : substitute(v, hwVectorType, substitutionsMap);
         fail |= !res;
@@ -481,9 +478,9 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
 static OperationStmt *
 instantiate(MLFuncBuilder *b, VectorTransferReadOp *read,
             VectorType hwVectorType, ArrayRef<unsigned> hwVectorInstance,
-            DenseMap<const MLValue *, MLValue *> *substitutionsMap) {
-  SmallVector<SSAValue *, 8> indices =
-      map(makePtrDynCaster<SSAValue>(), read->getIndices());
+            DenseMap<const Value *, Value *> *substitutionsMap) {
+  SmallVector<Value *, 8> indices =
+      map(makePtrDynCaster<Value>(), read->getIndices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto cloned = b->create<VectorTransferReadOp>(
@@ -501,9 +498,9 @@ instantiate(MLFuncBuilder *b, VectorTransferReadOp *read,
 static OperationStmt *
 instantiate(MLFuncBuilder *b, VectorTransferWriteOp *write,
             VectorType hwVectorType, ArrayRef<unsigned> hwVectorInstance,
-            DenseMap<const MLValue *, MLValue *> *substitutionsMap) {
-  SmallVector<SSAValue *, 8> indices =
-      map(makePtrDynCaster<SSAValue>(), write->getIndices());
+            DenseMap<const Value *, Value *> *substitutionsMap) {
+  SmallVector<Value *, 8> indices =
+      map(makePtrDynCaster<Value>(), write->getIndices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto cloned = b->create<VectorTransferWriteOp>(
@@ -555,8 +552,8 @@ static bool instantiateMaterialization(Statement *stmt,
   } else if (auto read = opStmt->dyn_cast<VectorTransferReadOp>()) {
     auto *clone = instantiate(&b, read, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
-    state->substitutionsMap->insert(std::make_pair(
-        cast<MLValue>(read->getResult()), cast<MLValue>(clone->getResult(0))));
+    state->substitutionsMap->insert(
+        std::make_pair(read->getResult(), clone->getResult(0)));
     return false;
   }
   // The only op with 0 results reaching this point must, by construction, be
@@ -571,8 +568,8 @@ static bool instantiateMaterialization(Statement *stmt,
   if (!clone) {
     return true;
   }
-  state->substitutionsMap->insert(std::make_pair(
-      cast<MLValue>(opStmt->getResult(0)), cast<MLValue>(clone->getResult(0))));
+  state->substitutionsMap->insert(
+      std::make_pair(opStmt->getResult(0), clone->getResult(0)));
   return false;
 }
 
@@ -610,7 +607,7 @@ static bool emitSlice(MaterializationState *state,
     // Fresh RAII instanceIndices and substitutionsMap.
     MaterializationState scopedState = *state;
     scopedState.hwVectorInstance = delinearize(idx, *ratio);
-    DenseMap<const MLValue *, MLValue *> substitutionMap;
+    DenseMap<const Value *, Value *> substitutionMap;
     scopedState.substitutionsMap = &substitutionMap;
     // slice are topologically sorted, we can just clone them in order.
     for (auto *stmt : *slice) {

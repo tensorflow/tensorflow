@@ -30,7 +30,6 @@
 namespace mlir {
 class AffineMap;
 class Builder;
-class MLValue;
 
 class StandardOpsDialect : public Dialect {
 public:
@@ -48,8 +47,8 @@ class AddFOp
     : public BinaryOp<AddFOp, OpTrait::ResultsAreFloatLike,
                       OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
 public:
-  static void build(Builder *builder, OperationState *result, SSAValue *lhs,
-                    SSAValue *rhs);
+  static void build(Builder *builder, OperationState *result, Value *lhs,
+                    Value *rhs);
 
   static StringRef getOperationName() { return "addf"; }
 
@@ -116,7 +115,7 @@ public:
 
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
-                    MemRefType memrefType, ArrayRef<SSAValue *> operands = {});
+                    MemRefType memrefType, ArrayRef<Value *> operands = {});
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -140,7 +139,7 @@ public:
   static StringRef getOperationName() { return "call"; }
 
   static void build(Builder *builder, OperationState *result, Function *callee,
-                    ArrayRef<SSAValue *> operands);
+                    ArrayRef<Value *> operands);
 
   Function *getCallee() const {
     return getAttrOfType<FunctionAttr>("callee").getValue();
@@ -169,11 +168,11 @@ class CallIndirectOp : public Op<CallIndirectOp, OpTrait::VariadicOperands,
 public:
   static StringRef getOperationName() { return "call_indirect"; }
 
-  static void build(Builder *builder, OperationState *result, SSAValue *callee,
-                    ArrayRef<SSAValue *> operands);
+  static void build(Builder *builder, OperationState *result, Value *callee,
+                    ArrayRef<Value *> operands);
 
-  const SSAValue *getCallee() const { return getOperand(0); }
-  SSAValue *getCallee() { return getOperand(0); }
+  const Value *getCallee() const { return getOperand(0); }
+  Value *getCallee() { return getOperand(0); }
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -240,7 +239,7 @@ public:
   static CmpIPredicate getPredicateByName(StringRef name);
 
   static void build(Builder *builder, OperationState *result, CmpIPredicate,
-                    SSAValue *lhs, SSAValue *rhs);
+                    Value *lhs, Value *rhs);
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
@@ -263,14 +262,14 @@ private:
 class DeallocOp
     : public Op<DeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
 public:
-  SSAValue *getMemRef() { return getOperand(); }
-  const SSAValue *getMemRef() const { return getOperand(); }
-  void setMemRef(SSAValue *value) { setOperand(value); }
+  Value *getMemRef() { return getOperand(); }
+  const Value *getMemRef() const { return getOperand(); }
+  void setMemRef(Value *value) { setOperand(value); }
 
   static StringRef getOperationName() { return "dealloc"; }
 
   // Hooks to customize behavior of this op.
-  static void build(Builder *builder, OperationState *result, SSAValue *memref);
+  static void build(Builder *builder, OperationState *result, Value *memref);
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -292,7 +291,7 @@ class DimOp : public Op<DimOp, OpTrait::OneOperand, OpTrait::OneResult,
                         OpTrait::HasNoSideEffect> {
 public:
   static void build(Builder *builder, OperationState *result,
-                    SSAValue *memrefOrTensor, unsigned index);
+                    Value *memrefOrTensor, unsigned index);
 
   Attribute constantFold(ArrayRef<Attribute> operands,
                          MLIRContext *context) const;
@@ -354,15 +353,15 @@ private:
 class DmaStartOp
     : public Op<DmaStartOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  static void build(Builder *builder, OperationState *result,
-                    SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices,
-                    SSAValue *destMemRef, ArrayRef<SSAValue *> destIndices,
-                    SSAValue *numElements, SSAValue *tagMemRef,
-                    ArrayRef<SSAValue *> tagIndices, SSAValue *stride = nullptr,
-                    SSAValue *elementsPerStride = nullptr);
+  static void build(Builder *builder, OperationState *result, Value *srcMemRef,
+                    ArrayRef<Value *> srcIndices, Value *destMemRef,
+                    ArrayRef<Value *> destIndices, Value *numElements,
+                    Value *tagMemRef, ArrayRef<Value *> tagIndices,
+                    Value *stride = nullptr,
+                    Value *elementsPerStride = nullptr);
 
   // Returns the source MemRefType for this DMA operation.
-  const SSAValue *getSrcMemRef() const { return getOperand(0); }
+  const Value *getSrcMemRef() const { return getOperand(0); }
   // Returns the rank (number of indices) of the source MemRefType.
   unsigned getSrcMemRefRank() const {
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
@@ -375,7 +374,7 @@ public:
   }
 
   // Returns the destination MemRefType for this DMA operations.
-  const SSAValue *getDstMemRef() const {
+  const Value *getDstMemRef() const {
     return getOperand(1 + getSrcMemRefRank());
   }
   // Returns the rank (number of indices) of the destination MemRefType.
@@ -398,12 +397,12 @@ public:
   }
 
   // Returns the number of elements being transferred by this DMA operation.
-  const SSAValue *getNumElements() const {
+  const Value *getNumElements() const {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank());
   }
 
   // Returns the Tag MemRef for this DMA operation.
-  const SSAValue *getTagMemRef() const {
+  const Value *getTagMemRef() const {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1);
   }
   // Returns the rank (number of indices) of the tag MemRefType.
@@ -453,21 +452,21 @@ public:
                                    1 + 1 + getTagMemRefRank();
   }
 
-  SSAValue *getStride() {
+  Value *getStride() {
     if (!isStrided())
       return nullptr;
     return getOperand(getNumOperands() - 1 - 1);
   }
-  const SSAValue *getStride() const {
+  const Value *getStride() const {
     return const_cast<DmaStartOp *>(this)->getStride();
   }
 
-  SSAValue *getNumElementsPerStride() {
+  Value *getNumElementsPerStride() {
     if (!isStrided())
       return nullptr;
     return getOperand(getNumOperands() - 1);
   }
-  const SSAValue *getNumElementsPerStride() const {
+  const Value *getNumElementsPerStride() const {
     return const_cast<DmaStartOp *>(this)->getNumElementsPerStride();
   }
 
@@ -493,15 +492,14 @@ protected:
 class DmaWaitOp
     : public Op<DmaWaitOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
-  static void build(Builder *builder, OperationState *result,
-                    SSAValue *tagMemRef, ArrayRef<SSAValue *> tagIndices,
-                    SSAValue *numElements);
+  static void build(Builder *builder, OperationState *result, Value *tagMemRef,
+                    ArrayRef<Value *> tagIndices, Value *numElements);
 
   static StringRef getOperationName() { return "dma_wait"; }
 
   // Returns the Tag MemRef associated with the DMA operation being waited on.
-  const SSAValue *getTagMemRef() const { return getOperand(0); }
-  SSAValue *getTagMemRef() { return getOperand(0); }
+  const Value *getTagMemRef() const { return getOperand(0); }
+  Value *getTagMemRef() { return getOperand(0); }
 
   // Returns the tag memref index for this DMA operation.
   llvm::iterator_range<Operation::const_operand_iterator>
@@ -516,7 +514,7 @@ public:
   }
 
   // Returns the number of elements transferred in the associated DMA operation.
-  const SSAValue *getNumElements() const {
+  const Value *getNumElements() const {
     return getOperand(1 + getTagMemRefRank());
   }
 
@@ -545,11 +543,11 @@ class ExtractElementOp
     : public Op<ExtractElementOp, OpTrait::VariadicOperands, OpTrait::OneResult,
                 OpTrait::HasNoSideEffect> {
 public:
-  static void build(Builder *builder, OperationState *result,
-                    SSAValue *aggregate, ArrayRef<SSAValue *> indices = {});
+  static void build(Builder *builder, OperationState *result, Value *aggregate,
+                    ArrayRef<Value *> indices = {});
 
-  SSAValue *getAggregate() { return getOperand(0); }
-  const SSAValue *getAggregate() const { return getOperand(0); }
+  Value *getAggregate() { return getOperand(0); }
+  const Value *getAggregate() const { return getOperand(0); }
 
   llvm::iterator_range<Operation::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
@@ -583,12 +581,12 @@ class LoadOp
     : public Op<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
   // Hooks to customize behavior of this op.
-  static void build(Builder *builder, OperationState *result, SSAValue *memref,
-                    ArrayRef<SSAValue *> indices = {});
+  static void build(Builder *builder, OperationState *result, Value *memref,
+                    ArrayRef<Value *> indices = {});
 
-  SSAValue *getMemRef() { return getOperand(0); }
-  const SSAValue *getMemRef() const { return getOperand(0); }
-  void setMemRef(SSAValue *value) { setOperand(0, value); }
+  Value *getMemRef() { return getOperand(0); }
+  const Value *getMemRef() const { return getOperand(0); }
+  void setMemRef(Value *value) { setOperand(0, value); }
   MemRefType getMemRefType() const {
     return getMemRef()->getType().cast<MemRefType>();
   }
@@ -705,19 +703,18 @@ class SelectOp : public Op<SelectOp, OpTrait::NOperands<3>::Impl,
                            OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
   static StringRef getOperationName() { return "select"; }
-  static void build(Builder *builder, OperationState *result,
-                    SSAValue *condition, SSAValue *trueValue,
-                    SSAValue *falseValue);
+  static void build(Builder *builder, OperationState *result, Value *condition,
+                    Value *trueValue, Value *falseValue);
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
 
-  SSAValue *getCondition() { return getOperand(0); }
-  const SSAValue *getCondition() const { return getOperand(0); }
-  SSAValue *getTrueValue() { return getOperand(1); }
-  const SSAValue *getTrueValue() const { return getOperand(1); }
-  SSAValue *getFalseValue() { return getOperand(2); }
-  const SSAValue *getFalseValue() const { return getOperand(2); }
+  Value *getCondition() { return getOperand(0); }
+  const Value *getCondition() const { return getOperand(0); }
+  Value *getTrueValue() { return getOperand(1); }
+  const Value *getTrueValue() const { return getOperand(1); }
+  Value *getFalseValue() { return getOperand(2); }
+  const Value *getFalseValue() const { return getOperand(2); }
 
   Attribute constantFold(ArrayRef<Attribute> operands,
                          MLIRContext *context) const;
@@ -742,15 +739,15 @@ class StoreOp
 public:
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
-                    SSAValue *valueToStore, SSAValue *memref,
-                    ArrayRef<SSAValue *> indices = {});
+                    Value *valueToStore, Value *memref,
+                    ArrayRef<Value *> indices = {});
 
-  SSAValue *getValueToStore() { return getOperand(0); }
-  const SSAValue *getValueToStore() const { return getOperand(0); }
+  Value *getValueToStore() { return getOperand(0); }
+  const Value *getValueToStore() const { return getOperand(0); }
 
-  SSAValue *getMemRef() { return getOperand(1); }
-  const SSAValue *getMemRef() const { return getOperand(1); }
-  void setMemRef(SSAValue *value) { setOperand(1, value); }
+  Value *getMemRef() { return getOperand(1); }
+  const Value *getMemRef() const { return getOperand(1); }
+  void setMemRef(Value *value) { setOperand(1, value); }
   MemRefType getMemRefType() const {
     return getMemRef()->getType().cast<MemRefType>();
   }

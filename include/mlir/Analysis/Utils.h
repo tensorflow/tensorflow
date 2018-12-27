@@ -34,10 +34,10 @@ namespace mlir {
 
 class FlatAffineConstraints;
 class ForStmt;
-class MLValue;
 class MemRefAccess;
 class OperationStmt;
 class Statement;
+class Value;
 
 /// Returns true if statement 'a' dominates statement b.
 bool dominates(const Statement &a, const Statement &b);
@@ -92,7 +92,7 @@ struct MemRefRegion {
   unsigned getRank() const;
 
   /// Memref that this region corresponds to.
-  MLValue *memref;
+  Value *memref;
 
 private:
   /// Read or write.

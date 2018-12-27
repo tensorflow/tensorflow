@@ -50,28 +50,28 @@ public:
   void visitOperationStmt(OperationStmt *opStmt);
 
 private:
-  CFGValue *getConstantIndexValue(int64_t value);
+  Value *getConstantIndexValue(int64_t value);
   void visitStmtBlock(StmtBlock *stmtBlock);
-  CFGValue *buildMinMaxReductionSeq(
+  Value *buildMinMaxReductionSeq(
       Location loc, CmpIPredicate predicate,
       llvm::iterator_range<Operation::result_iterator> values);
 
   CFGFunction *cfgFunc;
   CFGFuncBuilder builder;
 
-  // Mapping between original MLValues and lowered CFGValues.
-  llvm::DenseMap<const MLValue *, CFGValue *> valueRemapping;
+  // Mapping between original Values and lowered Values.
+  llvm::DenseMap<const Value *, Value *> valueRemapping;
 };
 } // end anonymous namespace
 
-// Return a vector of OperationStmt's arguments as SSAValues.  For each
-// statement operands, represented as MLValue, lookup its CFGValue conterpart in
+// Return a vector of OperationStmt's arguments as Values.  For each
+// statement operands, represented as Value, lookup its Value conterpart in
 // the valueRemapping table.
-static llvm::SmallVector<SSAValue *, 4>
+static llvm::SmallVector<mlir::Value *, 4>
 operandsAs(Statement *opStmt,
-           const llvm::DenseMap<const MLValue *, CFGValue *> &valueRemapping) {
-  llvm::SmallVector<SSAValue *, 4> operands;
-  for (const MLValue *operand : opStmt->getOperands()) {
+           const llvm::DenseMap<const Value *, Value *> &valueRemapping) {
+  llvm::SmallVector<Value *, 4> operands;
+  for (const Value *operand : opStmt->getOperands()) {
     assert(valueRemapping.count(operand) != 0 && "operand is not defined");
     operands.push_back(valueRemapping.lookup(operand));
   }
@@ -81,8 +81,8 @@ operandsAs(Statement *opStmt,
 // Convert an operation statement into an operation instruction.
 //
 // The operation description (name, number and types of operands or results)
-// remains the same but the values must be updated to be CFGValues.  Update the
-// mapping MLValue->CFGValue as the conversion is performed.  The operation
+// remains the same but the values must be updated to be Values.  Update the
+// mapping Value->Value as the conversion is performed.  The operation
 // instruction is appended to current block (end of SESE region).
 void FunctionConverter::visitOperationStmt(OperationStmt *opStmt) {
   // Set up basic operation state (context, name, operands).
@@ -90,11 +90,10 @@ void FunctionConverter::visitOperationStmt(OperationStmt *opStmt) {
                        opStmt->getName());
   state.addOperands(operandsAs(opStmt, valueRemapping));
 
-  // Set up operation return types.  The corresponding SSAValues will become
+  // Set up operation return types.  The corresponding Values will become
   // available after the operation is created.
-  state.addTypes(
-      functional::map([](SSAValue *result) { return result->getType(); },
-                      opStmt->getResults()));
+  state.addTypes(functional::map(
+      [](Value *result) { return result->getType(); }, opStmt->getResults()));
 
   // Copy attributes.
   for (auto attr : opStmt->getAttrs()) {
@@ -112,10 +111,10 @@ void FunctionConverter::visitOperationStmt(OperationStmt *opStmt) {
   }
 }
 
-// Create a CFGValue for the given integer constant of index type.
-CFGValue *FunctionConverter::getConstantIndexValue(int64_t value) {
+// Create a Value for the given integer constant of index type.
+Value *FunctionConverter::getConstantIndexValue(int64_t value) {
   auto op = builder.create<ConstantIndexOp>(builder.getUnknownLoc(), value);
-  return cast<CFGValue>(op->getResult());
+  return op->getResult();
 }
 
 // Visit all statements in the given statement block.
@@ -135,18 +134,18 @@ void FunctionConverter::visitStmtBlock(StmtBlock *stmtBlock) {
 // Multiple values are scanned in a linear sequence.  This creates a data
 // dependences that wouldn't exist in a tree reduction, but is easier to
 // recognize as a reduction by the subsequent passes.
-CFGValue *FunctionConverter::buildMinMaxReductionSeq(
+Value *FunctionConverter::buildMinMaxReductionSeq(
     Location loc, CmpIPredicate predicate,
     llvm::iterator_range<Operation::result_iterator> values) {
   assert(!llvm::empty(values) && "empty min/max chain");
 
   auto valueIt = values.begin();
-  CFGValue *value = cast<CFGValue>(*valueIt++);
+  Value *value = *valueIt++;
   for (; valueIt != values.end(); ++valueIt) {
     auto cmpOp = builder.create<CmpIOp>(loc, predicate, value, *valueIt);
     auto selectOp =
         builder.create<SelectOp>(loc, cmpOp->getResult(), value, *valueIt);
-    value = cast<CFGValue>(selectOp->getResult());
+    value = selectOp->getResult();
   }
 
   return value;
@@ -231,9 +230,9 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   // The loop condition block has an argument for loop induction variable.
   // Create it upfront and make the loop induction variable -> basic block
   // argument remapping available to the following instructions.  ForStatement
-  // is-a MLValue corresponding to the loop induction variable.
+  // is-a Value corresponding to the loop induction variable.
   builder.setInsertionPoint(loopConditionBlock);
-  CFGValue *iv = loopConditionBlock->addArgument(builder.getIndexType());
+  Value *iv = loopConditionBlock->addArgument(builder.getIndexType());
   valueRemapping.insert(std::make_pair(forStmt, iv));
 
   // Recursively construct loop body region.
@@ -251,7 +250,7 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   auto affStepMap = builder.getAffineMap(1, 0, {affDim + affStep}, {});
   auto stepOp =
       builder.create<AffineApplyOp>(forStmt->getLoc(), affStepMap, iv);
-  CFGValue *nextIvValue = cast<CFGValue>(stepOp->getResult(0));
+  Value *nextIvValue = stepOp->getResult(0);
   builder.create<BranchOp>(builder.getUnknownLoc(), loopConditionBlock,
                            nextIvValue);
 
@@ -260,20 +259,19 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
 
   builder.setInsertionPoint(loopInitBlock);
   // Compute loop bounds using affine_apply after remapping its operands.
-  auto remapOperands = [this](const SSAValue *value) -> SSAValue * {
-    const MLValue *mlValue = dyn_cast<MLValue>(value);
-    return valueRemapping.lookup(mlValue);
+  auto remapOperands = [this](const Value *value) -> Value * {
+    return valueRemapping.lookup(value);
   };
   auto operands =
       functional::map(remapOperands, forStmt->getLowerBoundOperands());
   auto lbAffineApply = builder.create<AffineApplyOp>(
       forStmt->getLoc(), forStmt->getLowerBoundMap(), operands);
-  CFGValue *lowerBound = buildMinMaxReductionSeq(
+  Value *lowerBound = buildMinMaxReductionSeq(
       forStmt->getLoc(), CmpIPredicate::SGT, lbAffineApply->getResults());
   operands = functional::map(remapOperands, forStmt->getUpperBoundOperands());
   auto ubAffineApply = builder.create<AffineApplyOp>(
       forStmt->getLoc(), forStmt->getUpperBoundMap(), operands);
-  CFGValue *upperBound = buildMinMaxReductionSeq(
+  Value *upperBound = buildMinMaxReductionSeq(
       forStmt->getLoc(), CmpIPredicate::SLT, ubAffineApply->getResults());
   builder.create<BranchOp>(builder.getUnknownLoc(), loopConditionBlock,
                            lowerBound);
@@ -281,10 +279,10 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   builder.setInsertionPoint(loopConditionBlock);
   auto comparisonOp = builder.create<CmpIOp>(
       forStmt->getLoc(), CmpIPredicate::SLT, iv, upperBound);
-  auto comparisonResult = cast<CFGValue>(comparisonOp->getResult());
+  auto comparisonResult = comparisonOp->getResult();
   builder.create<CondBranchOp>(builder.getUnknownLoc(), comparisonResult,
-                               loopBodyFirstBlock, ArrayRef<SSAValue *>(),
-                               postLoopBlock, ArrayRef<SSAValue *>());
+                               loopBodyFirstBlock, ArrayRef<Value *>(),
+                               postLoopBlock, ArrayRef<Value *>());
 
   // Finally, make sure building can continue by setting the post-loop block
   // (end of loop SESE region) as the insertion point.
@@ -401,7 +399,7 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
   // If the test succeeds, jump to the next block testing testing the next
   // conjunct of the condition in the similar way.  When all conjuncts have been
   // handled, jump to the 'then' block instead.
-  SSAValue *zeroConstant = getConstantIndexValue(0);
+  Value *zeroConstant = getConstantIndexValue(0);
   ifConditionExtraBlocks.push_back(thenBlock);
   for (auto tuple :
        llvm::zip(integerSet.getConstraints(), integerSet.getEqFlags(),
@@ -416,16 +414,16 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
                              integerSet.getNumSymbols(), constraintExpr, {});
     auto affineApplyOp = builder.create<AffineApplyOp>(
         ifStmt->getLoc(), affineMap, operandsAs(ifStmt, valueRemapping));
-    SSAValue *affResult = affineApplyOp->getResult(0);
+    Value *affResult = affineApplyOp->getResult(0);
 
     // Compare the result of the apply and branch.
     auto comparisonOp = builder.create<CmpIOp>(
         ifStmt->getLoc(), isEquality ? CmpIPredicate::EQ : CmpIPredicate::SGE,
         affResult, zeroConstant);
     builder.create<CondBranchOp>(ifStmt->getLoc(), comparisonOp->getResult(),
-                                 nextBlock, /*trueArgs*/ ArrayRef<SSAValue *>(),
+                                 nextBlock, /*trueArgs*/ ArrayRef<Value *>(),
                                  elseBlock,
-                                 /*falseArgs*/ ArrayRef<SSAValue *>());
+                                 /*falseArgs*/ ArrayRef<Value *>());
     builder.setInsertionPoint(nextBlock);
   }
   ifConditionExtraBlocks.pop_back();
@@ -468,10 +466,10 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
 // of the current region.  The SESE invariant allows us to easily handle nested
 // structures of arbitrary complexity.
 //
-// During the conversion, we maintain a mapping between the MLValues present in
-// the original function and their CFGValue images in the function under
-// construction.  When an MLValue is used, it gets replaced with the
-// corresponding CFGValue that has been defined previously.  The value flow
+// During the conversion, we maintain a mapping between the Values present in
+// the original function and their Value images in the function under
+// construction.  When an Value is used, it gets replaced with the
+// corresponding Value that has been defined previously.  The value flow
 // starts with function arguments converted to basic block arguments.
 CFGFunction *FunctionConverter::convert(MLFunction *mlFunc) {
   auto outerBlock = builder.createBlock();
@@ -482,8 +480,8 @@ CFGFunction *FunctionConverter::convert(MLFunction *mlFunc) {
   outerBlock->addArguments(mlFunc->getType().getInputs());
   assert(mlFunc->getNumArguments() == outerBlock->getNumArguments());
   for (unsigned i = 0, n = mlFunc->getNumArguments(); i < n; ++i) {
-    const MLValue *mlArgument = mlFunc->getArgument(i);
-    CFGValue *cfgArgument = outerBlock->getArgument(i);
+    const Value *mlArgument = mlFunc->getArgument(i);
+    Value *cfgArgument = outerBlock->getArgument(i);
     valueRemapping.insert(std::make_pair(mlArgument, cfgArgument));
   }
 

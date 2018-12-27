@@ -157,14 +157,14 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   //
   //   static void build(Builder* builder, OperationState* result,
   //                     Type resultType0, Type resultType1, ...,
-  //                     SSAValue* arg0, SSAValue* arg1, ...,
+  //                     Value arg0, Value arg1, ...,
   //                     Attribute <attr0-name>, Attribute <attr1-name>, ...);
   //
   //   * where the attributes follow the same declaration order as in the op.
   //
   //   static void build(Builder* builder, OperationState* result,
   //                     ArrayRef<Type> resultTypes,
-  //                     ArrayRef<SSAValue*> args,
+  //                     ArrayRef<Value> args,
   //                     ArrayRef<NamedAttribute> attributes);
   code builder = ?;
 

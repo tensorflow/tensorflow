@@ -150,21 +150,21 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
   OpPointer<LoadOp> loadOp;
   OpPointer<StoreOp> storeOp;
   unsigned rank;
-  SmallVector<MLValue *, 4> indices;
+  SmallVector<Value *, 4> indices;
 
   if ((loadOp = opStmt->dyn_cast<LoadOp>())) {
     rank = loadOp->getMemRefType().getRank();
     for (auto *index : loadOp->getIndices()) {
-      indices.push_back(cast<MLValue>(index));
+      indices.push_back(index);
     }
-    region->memref = cast<MLValue>(loadOp->getMemRef());
+    region->memref = loadOp->getMemRef();
     region->setWrite(false);
   } else if ((storeOp = opStmt->dyn_cast<StoreOp>())) {
     rank = storeOp->getMemRefType().getRank();
     for (auto *index : storeOp->getIndices()) {
-      indices.push_back(cast<MLValue>(index));
+      indices.push_back(index);
     }
-    region->memref = cast<MLValue>(storeOp->getMemRef());
+    region->memref = storeOp->getMemRef();
     region->setWrite(true);
   } else {
     return false;
@@ -201,7 +201,7 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
         return false;
     } else {
       // Has to be a valid symbol.
-      auto *symbol = cast<MLValue>(accessValueMap.getOperand(i));
+      auto *symbol = accessValueMap.getOperand(i);
       assert(symbol->isValidSymbol());
       // Check if the symbol is a constant.
       if (auto *opStmt = symbol->getDefiningStmt()) {
@@ -405,7 +405,7 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
 
   // Solve for src IVs in terms of dst IVs, symbols and constants.
   SmallVector<AffineMap, 4> srcIvMaps(srcLoopNestSize, AffineMap::Null());
-  std::vector<SmallVector<MLValue *, 2>> srcIvOperands(srcLoopNestSize);
+  std::vector<SmallVector<Value *, 2>> srcIvOperands(srcLoopNestSize);
   for (unsigned i = 0; i < srcLoopNestSize; ++i) {
     // Skip IVs which are greater than requested loop depth.
     if (i >= srcLoopDepth) {
@@ -442,7 +442,7 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
       srcIvOperands[i].push_back(dstLoopNest[dimId - 1]);
     }
     // TODO(andydavis) Add symbols from the access function. Ideally, we
-    // should be able to query the constaint system for the MLValue associated
+    // should be able to query the constaint system for the Value associated
     // with a symbol identifiers in 'nonZeroSymbolIds'.
   }
 
@@ -454,7 +454,7 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   // of the loop at 'dstLoopDepth' in 'dstLoopNest'.
   auto *dstForStmt = dstLoopNest[dstLoopDepth - 1];
   MLFuncBuilder b(dstForStmt->getBody(), dstForStmt->getBody()->begin());
-  DenseMap<const MLValue *, MLValue *> operandMap;
+  DenseMap<const Value *, Value *> operandMap;
   auto *sliceLoopNest = cast<ForStmt>(b.clone(*srcLoopNest[0], operandMap));
 
   // Lookup stmt in cloned 'sliceLoopNest' at 'positions'.

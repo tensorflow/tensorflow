@@ -76,7 +76,7 @@ struct DmaGeneration : public FunctionPass, StmtWalker<DmaGeneration> {
 
   // Map from original memref's to the DMA buffers that their accesses are
   // replaced with.
-  DenseMap<SSAValue *, SSAValue *> fastBufferMap;
+  DenseMap<Value *, Value *> fastBufferMap;
 
   // Slow memory space associated with DMAs.
   const unsigned slowMemorySpace;
@@ -195,11 +195,11 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
 
   // Indices to use for the DmaStart op.
   // Indices for the original memref being DMAed from/to.
-  SmallVector<SSAValue *, 4> memIndices;
+  SmallVector<Value *, 4> memIndices;
   // Indices for the faster buffer being DMAed into/from.
-  SmallVector<SSAValue *, 4> bufIndices;
+  SmallVector<Value *, 4> bufIndices;
 
-  SSAValue *zeroIndex = top.create<ConstantIndexOp>(loc, 0);
+  Value *zeroIndex = top.create<ConstantIndexOp>(loc, 0);
 
   unsigned rank = memRefType.getRank();
   SmallVector<int, 4> fastBufferShape;
@@ -226,10 +226,10 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   // DMA generation is being done.
   const FlatAffineConstraints *cst = region.getConstraints();
   auto ids = cst->getIds();
-  SmallVector<SSAValue *, 8> outerIVs;
+  SmallVector<Value *, 8> outerIVs;
   for (unsigned i = rank, e = ids.size(); i < e; i++) {
     auto id = cst->getIds()[i];
-    assert(id.hasValue() && "MLValue id expected");
+    assert(id.hasValue() && "Value id expected");
     outerIVs.push_back(id.getValue());
   }
 
@@ -253,15 +253,15 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
     // Set DMA start location for this dimension in the lower memory space
     // memref.
     if (auto caf = offset.dyn_cast<AffineConstantExpr>()) {
-      memIndices.push_back(cast<MLValue>(
-          top.create<ConstantIndexOp>(loc, caf.getValue())->getResult()));
+      memIndices.push_back(
+          top.create<ConstantIndexOp>(loc, caf.getValue())->getResult());
     } else {
       // The coordinate for the start location is just the lower bound along the
       // corresponding dimension on the memory region (stored in 'offset').
       auto map = top.getAffineMap(
           cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset, {});
-      memIndices.push_back(cast<MLValue>(
-          b->create<AffineApplyOp>(loc, map, outerIVs)->getResult(0)));
+      memIndices.push_back(
+          b->create<AffineApplyOp>(loc, map, outerIVs)->getResult(0));
     }
     // The fast buffer is DMAed into at location zero; addressing is relative.
     bufIndices.push_back(zeroIndex);
@@ -272,7 +272,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   }
 
   // The faster memory space buffer.
-  SSAValue *fastMemRef;
+  Value *fastMemRef;
 
   // Check if a buffer was already created.
   // TODO(bondhugula): union across all memory op's per buffer. For now assuming
@@ -321,8 +321,8 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
     return false;
   }
 
-  SSAValue *stride = nullptr;
-  SSAValue *numEltPerStride = nullptr;
+  Value *stride = nullptr;
+  Value *numEltPerStride = nullptr;
   if (!strideInfos.empty()) {
     stride = top.create<ConstantIndexOp>(loc, strideInfos[0].stride);
     numEltPerStride =
@@ -362,7 +362,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   }
   auto indexRemap = b->getAffineMap(outerIVs.size() + rank, 0, remapExprs, {});
   // *Only* those uses within the body of 'forStmt' are replaced.
-  replaceAllMemRefUsesWith(memref, cast<MLValue>(fastMemRef),
+  replaceAllMemRefUsesWith(memref, fastMemRef,
                            /*extraIndices=*/{}, indexRemap,
                            /*extraOperands=*/outerIVs,
                            /*domStmtFilter=*/&*forStmt->getBody()->begin());

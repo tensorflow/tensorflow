@@ -35,10 +35,9 @@ namespace mlir {
 class ForStmt;
 class FuncBuilder;
 class Location;
-class MLValue;
 class Module;
 class OperationStmt;
-class SSAValue;
+
 class Function;
 using CFGFunction = Function;
 
@@ -52,12 +51,12 @@ using CFGFunction = Function;
 /// Returns true on success and false if the replacement is not possible
 /// (whenever a memref is used as an operand in a non-deferencing scenario). See
 /// comments at function definition for an example.
-// TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
+// TODO(mlir-team): extend this for Value/ CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
-bool replaceAllMemRefUsesWith(const MLValue *oldMemRef, MLValue *newMemRef,
-                              ArrayRef<SSAValue *> extraIndices = {},
+bool replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
+                              ArrayRef<Value *> extraIndices = {},
                               AffineMap indexRemap = AffineMap::Null(),
-                              ArrayRef<SSAValue *> extraOperands = {},
+                              ArrayRef<Value *> extraOperands = {},
                               const Statement *domStmtFilter = nullptr);
 
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
@@ -69,9 +68,9 @@ bool replaceAllMemRefUsesWith(const MLValue *oldMemRef, MLValue *newMemRef,
 /// parameter 'results'. Returns the affine apply op created.
 OperationStmt *
 createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
-                            ArrayRef<MLValue *> operands,
+                            ArrayRef<Value *> operands,
                             ArrayRef<OperationStmt *> affineApplyOps,
-                            SmallVectorImpl<SSAValue *> *results);
+                            SmallVectorImpl<Value *> *results);
 
 /// Given an operation statement, inserts a new single affine apply operation,
 /// that is exclusively used by this operation statement, and that provides all
@@ -104,7 +103,7 @@ OperationStmt *createAffineComputationSlice(OperationStmt *opStmt);
 /// Forward substitutes results from 'AffineApplyOp' into any users which
 /// are also AffineApplyOps.
 // NOTE: This method may modify users of results of this operation.
-// TODO(mlir-team): extend this for SSAValue / CFGFunctions.
+// TODO(mlir-team): extend this for Value/ CFGFunctions.
 void forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp);
 
 /// Folds the lower and upper bounds of a 'for' stmt to constants if possible.

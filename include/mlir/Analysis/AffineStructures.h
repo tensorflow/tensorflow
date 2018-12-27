@@ -25,7 +25,6 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace mlir {
@@ -37,7 +36,7 @@ class AffineMap;
 class ForStmt;
 class IntegerSet;
 class MLIRContext;
-class MLValue;
+class Value;
 class HyperRectangularSet;
 
 /// A mutable affine map. Its affine expressions are however unique.
@@ -132,7 +131,7 @@ public:
   AffineValueMap(const AffineApplyOp &op);
   AffineValueMap(const AffineBound &bound);
   AffineValueMap(AffineMap map);
-  AffineValueMap(AffineMap map, ArrayRef<MLValue *> operands);
+  AffineValueMap(AffineMap map, ArrayRef<Value *> operands);
 
   ~AffineValueMap();
 
@@ -155,13 +154,13 @@ public:
   // substitutions).
 
   // Resets this AffineValueMap with 'map' and 'operands'.
-  void reset(AffineMap map, ArrayRef<MLValue *> operands);
+  void reset(AffineMap map, ArrayRef<Value *> operands);
   /// Return true if the idx^th result can be proved to be a multiple of
   /// 'factor', false otherwise.
   inline bool isMultipleOf(unsigned idx, int64_t factor) const;
 
   /// Return true if the idx^th result depends on 'value', false otherwise.
-  bool isFunctionOf(unsigned idx, MLValue *value) const;
+  bool isFunctionOf(unsigned idx, Value *value) const;
 
   /// Return true if the result at 'idx' is a constant, false
   /// otherwise.
@@ -175,8 +174,8 @@ public:
   inline unsigned getNumSymbols() const { return map.getNumSymbols(); }
   inline unsigned getNumResults() const { return map.getNumResults(); }
 
-  SSAValue *getOperand(unsigned i) const;
-  ArrayRef<MLValue *> getOperands() const;
+  Value *getOperand(unsigned i) const;
+  ArrayRef<Value *> getOperands() const;
   AffineMap getAffineMap() const;
 
 private:
@@ -187,9 +186,9 @@ private:
 
   // TODO: make these trailing objects?
   /// The SSA operands binding to the dim's and symbols of 'map'.
-  SmallVector<MLValue *, 4> operands;
+  SmallVector<Value *, 4> operands;
   /// The SSA results binding to the results of 'map'.
-  SmallVector<MLValue *, 4> results;
+  SmallVector<Value *, 4> results;
 };
 
 /// An IntegerValueSet is an integer set plus its operands.
@@ -218,7 +217,7 @@ private:
   // 'AffineCondition'.
   MutableIntegerSet set;
   /// The SSA operands binding to the dim's and symbols of 'set'.
-  SmallVector<MLValue *, 4> operands;
+  SmallVector<Value *, 4> operands;
 };
 
 /// A flat list of affine equalities and inequalities in the form.
@@ -250,7 +249,7 @@ public:
                         unsigned numReservedEqualities,
                         unsigned numReservedCols, unsigned numDims = 0,
                         unsigned numSymbols = 0, unsigned numLocals = 0,
-                        ArrayRef<Optional<MLValue *>> idArgs = {})
+                        ArrayRef<Optional<Value *>> idArgs = {})
       : numReservedCols(numReservedCols), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
@@ -269,7 +268,7 @@ public:
   /// dimensions and symbols.
   FlatAffineConstraints(unsigned numDims = 0, unsigned numSymbols = 0,
                         unsigned numLocals = 0,
-                        ArrayRef<Optional<MLValue *>> idArgs = {})
+                        ArrayRef<Optional<Value *>> idArgs = {})
       : numReservedCols(numDims + numSymbols + numLocals + 1), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
@@ -309,10 +308,10 @@ public:
   // Clears any existing data and reserves memory for the specified constraints.
   void reset(unsigned numReservedInequalities, unsigned numReservedEqualities,
              unsigned numReservedCols, unsigned numDims, unsigned numSymbols,
-             unsigned numLocals = 0, ArrayRef<MLValue *> idArgs = {});
+             unsigned numLocals = 0, ArrayRef<Value *> idArgs = {});
 
   void reset(unsigned numDims = 0, unsigned numSymbols = 0,
-             unsigned numLocals = 0, ArrayRef<MLValue *> idArgs = {});
+             unsigned numLocals = 0, ArrayRef<Value *> idArgs = {});
 
   /// Appends constraints from 'other' into this. This is equivalent to an
   /// intersection with no simplification of any sort attempted.
@@ -393,7 +392,7 @@ public:
   // Returns AffineMap::Null on error (i.e. if coefficient is zero or does
   // not divide other coefficients in the equality constraint).
   // TODO(andydavis) Remove 'nonZeroDimIds' and 'nonZeroSymbolIds' from this
-  // API when we can manage the mapping of MLValues and ids in the constraint
+  // API when we can manage the mapping of Values and ids in the constraint
   // system.
   AffineMap toAffineMapFromEq(unsigned idx, unsigned pos, MLIRContext *context,
                               SmallVectorImpl<unsigned> *nonZeroDimIds,
@@ -413,10 +412,10 @@ public:
   void addLowerBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> lb);
 
   /// Adds constraints (lower and upper bounds) for the specified 'for'
-  /// statement's MLValue using IR information stored in its bound maps. The
-  /// right identifier is first looked up using forStmt's MLValue. Returns
+  /// statement's Value using IR information stored in its bound maps. The
+  /// right identifier is first looked up using forStmt's Value. Returns
   /// false for the yet unimplemented/unsupported cases, and true if the
-  /// information is succesfully added. Asserts if the MLValue corresponding to
+  /// information is succesfully added. Asserts if the Value corresponding to
   /// the 'for' statement isn't found in the constraint system. Any new
   /// identifiers that are found in the bound operands of the 'for' statement
   /// are added as trailing identifiers (either dimensional or symbolic
@@ -435,28 +434,28 @@ public:
   /// Sets the identifier at the specified position to a constant.
   void setIdToConstant(unsigned pos, int64_t val);
 
-  /// Sets the identifier corresponding to the specified MLValue id to a
+  /// Sets the identifier corresponding to the specified Value id to a
   /// constant. Asserts if the 'id' is not found.
-  void setIdToConstant(const MLValue &id, int64_t val);
+  void setIdToConstant(const Value &id, int64_t val);
 
-  /// Looks up the identifier with the specified MLValue. Returns false if not
+  /// Looks up the identifier with the specified Value. Returns false if not
   /// found, true if found. pos is set to the (column) position of the
   /// identifier.
-  bool findId(const MLValue &id, unsigned *pos) const;
+  bool findId(const Value &id, unsigned *pos) const;
 
   // Add identifiers of the specified kind - specified positions are relative to
-  // the kind of identifier. 'id' is the MLValue corresponding to the
+  // the kind of identifier. 'id' is the Value corresponding to the
   // identifier that can optionally be provided.
-  void addDimId(unsigned pos, MLValue *id = nullptr);
-  void addSymbolId(unsigned pos, MLValue *id = nullptr);
+  void addDimId(unsigned pos, Value *id = nullptr);
+  void addSymbolId(unsigned pos, Value *id = nullptr);
   void addLocalId(unsigned pos);
-  void addId(IdKind kind, unsigned pos, MLValue *id = nullptr);
+  void addId(IdKind kind, unsigned pos, Value *id = nullptr);
 
   /// Composes the affine value map with this FlatAffineConstrains, adding the
   /// results of the map as dimensions at the front [0, vMap->getNumResults())
   /// and with the dimensions set to the equalities specified by the value map.
   /// Returns false if the composition fails (when vMap is a semi-affine map).
-  /// The vMap's operand MLValue's are used to look up the right positions in
+  /// The vMap's operand Value's are used to look up the right positions in
   /// the FlatAffineConstraints with which to associate. The dimensional and
   /// symbolic operands of vMap should match 1:1 (in the same order) with those
   /// of this constraint system, but the latter could have additional trailing
@@ -471,8 +470,8 @@ public:
   void projectOut(unsigned pos, unsigned num);
   inline void projectOut(unsigned pos) { return projectOut(pos, 1); }
 
-  /// Projects out the identifier that is associate with MLValue *.
-  void projectOut(MLValue *id);
+  /// Projects out the identifier that is associate with Value *.
+  void projectOut(Value *id);
 
   void removeId(IdKind idKind, unsigned pos);
   void removeId(unsigned pos);
@@ -510,24 +509,24 @@ public:
     return numIds - numDims - numSymbols;
   }
 
-  inline ArrayRef<Optional<MLValue *>> getIds() const {
+  inline ArrayRef<Optional<Value *>> getIds() const {
     return {ids.data(), ids.size()};
   }
 
-  /// Returns the MLValue's associated with the identifiers. Asserts if
-  /// no MLValue was associated with an identifier.
-  inline void getIdValues(SmallVectorImpl<MLValue *> *values) const {
+  /// Returns the Value's associated with the identifiers. Asserts if
+  /// no Value was associated with an identifier.
+  inline void getIdValues(SmallVectorImpl<Value *> *values) const {
     values->clear();
     values->reserve(numIds);
     for (unsigned i = 0; i < numIds; i++) {
-      assert(ids[i].hasValue() && "identifier's MLValue not set");
+      assert(ids[i].hasValue() && "identifier's Value not set");
       values->push_back(ids[i].getValue());
     }
   }
 
-  /// Returns the MLValue associated with the pos^th identifier. Asserts if
-  /// no MLValue identifier was associated.
-  inline MLValue *getIdValue(unsigned pos) const {
+  /// Returns the Value associated with the pos^th identifier. Asserts if
+  /// no Value identifier was associated.
+  inline Value *getIdValue(unsigned pos) const {
     assert(ids[pos].hasValue() && "identifier's ML Value not set");
     return ids[pos].getValue();
   }
@@ -630,11 +629,11 @@ private:
   /// analysis).
   unsigned numSymbols;
 
-  /// MLValues corresponding to the (column) identifiers of this constraint
+  /// Values corresponding to the (column) identifiers of this constraint
   /// system appearing in the order the identifiers correspond to columns.
-  /// Temporary ones or those that aren't associated to any MLValue are to be
+  /// Temporary ones or those that aren't associated to any Value are to be
   /// set to None.
-  SmallVector<Optional<MLValue *>, 8> ids;
+  SmallVector<Optional<Value *>, 8> ids;
 };
 
 } // end namespace mlir.

@@ -85,10 +85,8 @@ static void constructTiledIndexSetHyperRect(ArrayRef<ForStmt *> origLoops,
   for (unsigned i = 0; i < width; i++) {
     auto lbOperands = origLoops[i]->getLowerBoundOperands();
     auto ubOperands = origLoops[i]->getUpperBoundOperands();
-    SmallVector<MLValue *, 4> newLbOperands(lbOperands.begin(),
-                                            lbOperands.end());
-    SmallVector<MLValue *, 4> newUbOperands(ubOperands.begin(),
-                                            ubOperands.end());
+    SmallVector<Value *, 4> newLbOperands(lbOperands.begin(), lbOperands.end());
+    SmallVector<Value *, 4> newUbOperands(ubOperands.begin(), ubOperands.end());
     newLoops[i]->setLowerBound(newLbOperands, origLoops[i]->getLowerBoundMap());
     newLoops[i]->setUpperBound(newUbOperands, origLoops[i]->getUpperBoundMap());
     newLoops[i]->setStep(tileSizes[i]);
@@ -112,8 +110,7 @@ static void constructTiledIndexSetHyperRect(ArrayRef<ForStmt *> origLoops,
       // Construct the upper bound map; the operands are the original operands
       // with 'i' (tile-space loop) appended to it. The new upper bound map is
       // the original one with an additional expression i + tileSize appended.
-      SmallVector<MLValue *, 4> ubOperands(
-          origLoops[i]->getUpperBoundOperands());
+      SmallVector<Value *, 4> ubOperands(origLoops[i]->getUpperBoundOperands());
       ubOperands.push_back(newLoops[i]);
 
       auto origUbMap = origLoops[i]->getUpperBoundMap();
@@ -191,8 +188,8 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
   // Move the loop body of the original nest to the new one.
   moveLoopBody(origLoops[origLoops.size() - 1], innermostPointLoop);
 
-  SmallVector<MLValue *, 6> origLoopIVs(band.begin(), band.end());
-  SmallVector<Optional<MLValue *>, 6> ids(band.begin(), band.end());
+  SmallVector<Value *, 6> origLoopIVs(band.begin(), band.end());
+  SmallVector<Optional<Value *>, 6> ids(band.begin(), band.end());
   FlatAffineConstraints cst;
   getIndexSet(band, &cst);
 

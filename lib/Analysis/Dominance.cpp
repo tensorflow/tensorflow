@@ -70,7 +70,7 @@ bool DominanceInfo::properlyDominates(const Instruction *a,
 }
 
 /// Return true if value A properly dominates instruction B.
-bool DominanceInfo::properlyDominates(const SSAValue *a, const Instruction *b) {
+bool DominanceInfo::properlyDominates(const Value *a, const Instruction *b) {
   if (auto *aInst = a->getDefiningInst())
     return properlyDominates(aInst, b);
 

@@ -124,14 +124,14 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
   return tripCountExpr.getLargestKnownDivisor();
 }
 
-bool mlir::isAccessInvariant(const MLValue &iv, const MLValue &index) {
+bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
   assert(isa<ForStmt>(iv) && "iv must be a ForStmt");
   assert(index.getType().isa<IndexType>() && "index must be of IndexType");
   SmallVector<OperationStmt *, 4> affineApplyOps;
-  getReachableAffineApplyOps({const_cast<MLValue *>(&index)}, affineApplyOps);
+  getReachableAffineApplyOps({const_cast<Value *>(&index)}, affineApplyOps);
 
   if (affineApplyOps.empty()) {
-    // Pointer equality test because of MLValue pointer semantics.
+    // Pointer equality test because of Value pointer semantics.
     return &index != &iv;
   }
 
@@ -155,13 +155,13 @@ bool mlir::isAccessInvariant(const MLValue &iv, const MLValue &index) {
   }
   assert(idx < std::numeric_limits<unsigned>::max());
   return !AffineValueMap(*composeOp)
-              .isFunctionOf(idx, &const_cast<MLValue &>(iv));
+              .isFunctionOf(idx, &const_cast<Value &>(iv));
 }
 
-llvm::DenseSet<const MLValue *>
-mlir::getInvariantAccesses(const MLValue &iv,
-                           llvm::ArrayRef<const MLValue *> indices) {
-  llvm::DenseSet<const MLValue *> res;
+llvm::DenseSet<const Value *>
+mlir::getInvariantAccesses(const Value &iv,
+                           llvm::ArrayRef<const Value *> indices) {
+  llvm::DenseSet<const Value *> res;
   for (unsigned idx = 0, n = indices.size(); idx < n; ++idx) {
     auto *val = indices[idx];
     if (isAccessInvariant(iv, *val)) {
@@ -191,7 +191,7 @@ mlir::getInvariantAccesses(const MLValue &iv,
 ///
 // TODO(ntv): check strides.
 template <typename LoadOrStoreOp>
-static bool isContiguousAccess(const MLValue &iv, const LoadOrStoreOp &memoryOp,
+static bool isContiguousAccess(const Value &iv, const LoadOrStoreOp &memoryOp,
                                unsigned fastestVaryingDim) {
   static_assert(std::is_same<LoadOrStoreOp, LoadOp>::value ||
                     std::is_same<LoadOrStoreOp, StoreOp>::value,
@@ -220,7 +220,7 @@ static bool isContiguousAccess(const MLValue &iv, const LoadOrStoreOp &memoryOp,
     if (fastestVaryingDim == (numIndices - 1) - d++) {
       continue;
     }
-    if (!isAccessInvariant(iv, cast<MLValue>(*index))) {
+    if (!isAccessInvariant(iv, *index)) {
       return false;
     }
   }
@@ -316,7 +316,7 @@ bool mlir::isStmtwiseShiftValid(const ForStmt &forStmt,
     // outside).
     if (const auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
       for (unsigned i = 0, e = opStmt->getNumResults(); i < e; ++i) {
-        const MLValue *result = opStmt->getResult(i);
+        const Value *result = opStmt->getResult(i);
         for (const StmtOperand &use : result->getUses()) {
           // If an ancestor statement doesn't lie in the block of forStmt, there
           // is no shift to check.

@@ -23,8 +23,8 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/SSAValue.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -78,8 +78,8 @@ struct MemRefCastFolder : public RewritePattern {
 // AddFOp
 //===----------------------------------------------------------------------===//
 
-void AddFOp::build(Builder *builder, OperationState *result, SSAValue *lhs,
-                   SSAValue *rhs) {
+void AddFOp::build(Builder *builder, OperationState *result, Value *lhs,
+                   Value *rhs) {
   assert(lhs->getType() == rhs->getType());
   result->addOperands({lhs, rhs});
   result->types.push_back(lhs->getType());
@@ -146,7 +146,7 @@ void AddIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void AllocOp::build(Builder *builder, OperationState *result,
-                    MemRefType memrefType, ArrayRef<SSAValue *> operands) {
+                    MemRefType memrefType, ArrayRef<Value *> operands) {
   result->addOperands(operands);
   result->types.push_back(memrefType);
 }
@@ -247,8 +247,8 @@ struct SimplifyAllocConst : public RewritePattern {
     // and keep track of the resultant memref type to build.
     SmallVector<int, 4> newShapeConstants;
     newShapeConstants.reserve(memrefType.getRank());
-    SmallVector<SSAValue *, 4> newOperands;
-    SmallVector<SSAValue *, 4> droppedOperands;
+    SmallVector<Value *, 4> newOperands;
+    SmallVector<Value *, 4> droppedOperands;
 
     unsigned dynamicDimPos = 0;
     for (unsigned dim = 0, e = memrefType.getRank(); dim < e; ++dim) {
@@ -301,7 +301,7 @@ void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void CallOp::build(Builder *builder, OperationState *result, Function *callee,
-                   ArrayRef<SSAValue *> operands) {
+                   ArrayRef<Value *> operands) {
   result->addOperands(operands);
   result->addAttribute("callee", builder->getFunctionAttr(callee));
   result->addTypes(callee->getType().getResults());
@@ -370,7 +370,7 @@ bool CallOp::verify() const {
 //===----------------------------------------------------------------------===//
 
 void CallIndirectOp::build(Builder *builder, OperationState *result,
-                           SSAValue *callee, ArrayRef<SSAValue *> operands) {
+                           Value *callee, ArrayRef<Value *> operands) {
   auto fnType = callee->getType().cast<FunctionType>();
   result->operands.push_back(callee);
   result->addOperands(operands);
@@ -507,7 +507,7 @@ CmpIPredicate CmpIOp::getPredicateByName(StringRef name) {
 }
 
 void CmpIOp::build(Builder *build, OperationState *result,
-                   CmpIPredicate predicate, SSAValue *lhs, SSAValue *rhs) {
+                   CmpIPredicate predicate, Value *lhs, Value *rhs) {
   result->addOperands({lhs, rhs});
   result->types.push_back(getI1SameShape(build, lhs->getType()));
   result->addAttribute(getPredicateAttrName(),
@@ -580,8 +580,7 @@ bool CmpIOp::verify() const {
 // DeallocOp
 //===----------------------------------------------------------------------===//
 
-void DeallocOp::build(Builder *builder, OperationState *result,
-                      SSAValue *memref) {
+void DeallocOp::build(Builder *builder, OperationState *result, Value *memref) {
   result->addOperands(memref);
 }
 
@@ -615,7 +614,7 @@ void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void DimOp::build(Builder *builder, OperationState *result,
-                  SSAValue *memrefOrTensor, unsigned index) {
+                  Value *memrefOrTensor, unsigned index) {
   result->addOperands(memrefOrTensor);
   auto type = builder->getIndexType();
   result->addAttribute("index", builder->getIntegerAttr(type, index));
@@ -689,11 +688,11 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
 // ---------------------------------------------------------------------------
 
 void DmaStartOp::build(Builder *builder, OperationState *result,
-                       SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices,
-                       SSAValue *destMemRef, ArrayRef<SSAValue *> destIndices,
-                       SSAValue *numElements, SSAValue *tagMemRef,
-                       ArrayRef<SSAValue *> tagIndices, SSAValue *stride,
-                       SSAValue *elementsPerStride) {
+                       Value *srcMemRef, ArrayRef<Value *> srcIndices,
+                       Value *destMemRef, ArrayRef<Value *> destIndices,
+                       Value *numElements, Value *tagMemRef,
+                       ArrayRef<Value *> tagIndices, Value *stride,
+                       Value *elementsPerStride) {
   result->addOperands(srcMemRef);
   result->addOperands(srcIndices);
   result->addOperands(destMemRef);
@@ -836,8 +835,8 @@ void DmaStartOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // ---------------------------------------------------------------------------
 
 void DmaWaitOp::build(Builder *builder, OperationState *result,
-                      SSAValue *tagMemRef, ArrayRef<SSAValue *> tagIndices,
-                      SSAValue *numElements) {
+                      Value *tagMemRef, ArrayRef<Value *> tagIndices,
+                      Value *numElements) {
   result->addOperands(tagMemRef);
   result->addOperands(tagIndices);
   result->addOperands(numElements);
@@ -896,8 +895,7 @@ void DmaWaitOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 void ExtractElementOp::build(Builder *builder, OperationState *result,
-                             SSAValue *aggregate,
-                             ArrayRef<SSAValue *> indices) {
+                             Value *aggregate, ArrayRef<Value *> indices) {
   auto aggregateType = aggregate->getType().cast<VectorOrTensorType>();
   result->addOperands(aggregate);
   result->addOperands(indices);
@@ -955,8 +953,8 @@ bool ExtractElementOp::verify() const {
 // LoadOp
 //===----------------------------------------------------------------------===//
 
-void LoadOp::build(Builder *builder, OperationState *result, SSAValue *memref,
-                   ArrayRef<SSAValue *> indices) {
+void LoadOp::build(Builder *builder, OperationState *result, Value *memref,
+                   ArrayRef<Value *> indices) {
   auto memrefType = memref->getType().cast<MemRefType>();
   result->addOperands(memref);
   result->addOperands(indices);
@@ -1130,9 +1128,8 @@ void MulIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // SelectOp
 //===----------------------------------------------------------------------===//
 
-void SelectOp::build(Builder *builder, OperationState *result,
-                     SSAValue *condition, SSAValue *trueValue,
-                     SSAValue *falseValue) {
+void SelectOp::build(Builder *builder, OperationState *result, Value *condition,
+                     Value *trueValue, Value *falseValue) {
   result->addOperands({condition, trueValue, falseValue});
   result->addTypes(trueValue->getType());
 }
@@ -1201,8 +1198,8 @@ Attribute SelectOp::constantFold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 void StoreOp::build(Builder *builder, OperationState *result,
-                    SSAValue *valueToStore, SSAValue *memref,
-                    ArrayRef<SSAValue *> indices) {
+                    Value *valueToStore, Value *memref,
+                    ArrayRef<Value *> indices) {
   result->addOperands(valueToStore);
   result->addOperands(memref);
   result->addOperands(indices);

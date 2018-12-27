@@ -30,7 +30,6 @@
 
 namespace mlir {
 class Builder;
-class MLValue;
 
 class BuiltinDialect : public Dialect {
 public:
@@ -57,7 +56,7 @@ class AffineApplyOp
 public:
   /// Builds an affine apply op with the specified map and operands.
   static void build(Builder *builder, OperationState *result, AffineMap map,
-                    ArrayRef<SSAValue *> operands);
+                    ArrayRef<Value *> operands);
 
   /// Returns the affine map to be applied by this operation.
   AffineMap getAffineMap() const {
@@ -101,7 +100,7 @@ public:
   static StringRef getOperationName() { return "br"; }
 
   static void build(Builder *builder, OperationState *result, BasicBlock *dest,
-                    ArrayRef<SSAValue *> operands = {});
+                    ArrayRef<Value *> operands = {});
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -144,10 +143,9 @@ class CondBranchOp : public Op<CondBranchOp, OpTrait::AtLeastNOperands<1>::Impl,
 public:
   static StringRef getOperationName() { return "cond_br"; }
 
-  static void build(Builder *builder, OperationState *result,
-                    SSAValue *condition, BasicBlock *trueDest,
-                    ArrayRef<SSAValue *> trueOperands, BasicBlock *falseDest,
-                    ArrayRef<SSAValue *> falseOperands);
+  static void build(Builder *builder, OperationState *result, Value *condition,
+                    BasicBlock *trueDest, ArrayRef<Value *> trueOperands,
+                    BasicBlock *falseDest, ArrayRef<Value *> falseOperands);
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -155,8 +153,8 @@ public:
   bool verify() const;
 
   // The condition operand is the first operand in the list.
-  SSAValue *getCondition() { return getOperand(0); }
-  const SSAValue *getCondition() const { return getOperand(0); }
+  Value *getCondition() { return getOperand(0); }
+  const Value *getCondition() const { return getOperand(0); }
 
   /// Return the destination if the condition is true.
   BasicBlock *getTrueDest() const;
@@ -165,14 +163,14 @@ public:
   BasicBlock *getFalseDest() const;
 
   // Accessors for operands to the 'true' destination.
-  SSAValue *getTrueOperand(unsigned idx) {
+  Value *getTrueOperand(unsigned idx) {
     assert(idx < getNumTrueOperands());
     return getOperand(getTrueDestOperandIndex() + idx);
   }
-  const SSAValue *getTrueOperand(unsigned idx) const {
+  const Value *getTrueOperand(unsigned idx) const {
     return const_cast<CondBranchOp *>(this)->getTrueOperand(idx);
   }
-  void setTrueOperand(unsigned idx, SSAValue *value) {
+  void setTrueOperand(unsigned idx, Value *value) {
     assert(idx < getNumTrueOperands());
     setOperand(getTrueDestOperandIndex() + idx, value);
   }
@@ -199,14 +197,14 @@ public:
   void eraseTrueOperand(unsigned index);
 
   // Accessors for operands to the 'false' destination.
-  SSAValue *getFalseOperand(unsigned idx) {
+  Value *getFalseOperand(unsigned idx) {
     assert(idx < getNumFalseOperands());
     return getOperand(getFalseDestOperandIndex() + idx);
   }
-  const SSAValue *getFalseOperand(unsigned idx) const {
+  const Value *getFalseOperand(unsigned idx) const {
     return const_cast<CondBranchOp *>(this)->getFalseOperand(idx);
   }
-  void setFalseOperand(unsigned idx, SSAValue *value) {
+  void setFalseOperand(unsigned idx, Value *value) {
     assert(idx < getNumFalseOperands());
     setOperand(getFalseDestOperandIndex() + idx, value);
   }
@@ -361,7 +359,7 @@ public:
   static StringRef getOperationName() { return "return"; }
 
   static void build(Builder *builder, OperationState *result,
-                    ArrayRef<SSAValue *> results = {});
+                    ArrayRef<Value *> results = {});
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -380,7 +378,7 @@ void printDimAndSymbolList(Operation::const_operand_iterator begin,
 
 // Parses dimension and symbol list and returns true if parsing failed.
 bool parseDimAndSymbolList(OpAsmParser *parser,
-                           SmallVector<SSAValue *, 4> &operands,
+                           SmallVector<Value *, 4> &operands,
                            unsigned &numDims);
 
 } // end namespace mlir

@@ -23,7 +23,6 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Statements.h"
-
 using namespace mlir;
 
 /// Form the OperationName for an op with the specified string.  This either is
@@ -96,13 +95,13 @@ unsigned Operation::getNumOperands() const {
   return llvm::cast<OperationStmt>(this)->getNumOperands();
 }
 
-SSAValue *Operation::getOperand(unsigned idx) {
+Value *Operation::getOperand(unsigned idx) {
   return llvm::cast<OperationStmt>(this)->getOperand(idx);
 }
 
-void Operation::setOperand(unsigned idx, SSAValue *value) {
+void Operation::setOperand(unsigned idx, Value *value) {
   auto *stmt = llvm::cast<OperationStmt>(this);
-  stmt->setOperand(idx, llvm::cast<MLValue>(value));
+  stmt->setOperand(idx, value);
 }
 
 /// Return the number of results this operation has.
@@ -111,7 +110,7 @@ unsigned Operation::getNumResults() const {
 }
 
 /// Return the indicated result.
-SSAValue *Operation::getResult(unsigned idx) {
+Value *Operation::getResult(unsigned idx) {
   return llvm::cast<OperationStmt>(this)->getResult(idx);
 }
 
@@ -585,8 +584,8 @@ bool OpTrait::impl::verifyResultsAreIntegerLike(const Operation *op) {
 // These functions are out-of-line implementations of the methods in BinaryOp,
 // which avoids them being template instantiated/duplicated.
 
-void impl::buildBinaryOp(Builder *builder, OperationState *result,
-                         SSAValue *lhs, SSAValue *rhs) {
+void impl::buildBinaryOp(Builder *builder, OperationState *result, Value *lhs,
+                         Value *rhs) {
   assert(lhs->getType() == rhs->getType());
   result->addOperands({lhs, rhs});
   result->types.push_back(lhs->getType());
@@ -613,8 +612,8 @@ void impl::printBinaryOp(const Operation *op, OpAsmPrinter *p) {
 // CastOp implementation
 //===----------------------------------------------------------------------===//
 
-void impl::buildCastOp(Builder *builder, OperationState *result,
-                       SSAValue *source, Type destType) {
+void impl::buildCastOp(Builder *builder, OperationState *result, Value *source,
+                       Type destType) {
   result->addOperands(source);
   result->addTypes(destType);
 }
