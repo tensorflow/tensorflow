@@ -42,6 +42,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.util.tf_export import tf_export
 
 
 @keras_export('keras.layers.BatchNormalization', v1=[])
@@ -797,7 +798,22 @@ class BatchNormalizationV1(BatchNormalizationV2):
   _USE_V2_BEHAVIOR = False
 
 
-if tf2.enabled():
+BatchNormalization = None  # pylint: disable=invalid-name
+
+
+@tf_export(v1=['enable_v2_batch_normalization'])
+def enable_v2_batch_normalization():
+  global BatchNormalization  # pylint: disable=invalid-name
   BatchNormalization = BatchNormalizationV2
-else:
+
+
+@tf_export(v1=['disable_v2_batch_normalization'])
+def disable_v2_batch_normalization():
+  global BatchNormalization  # pylint: disable=invalid-name
   BatchNormalization = BatchNormalizationV1
+
+
+if tf2.enabled():
+  enable_v2_batch_normalization()
+else:
+  disable_v2_batch_normalization()

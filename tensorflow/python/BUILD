@@ -168,6 +168,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/python:lite",
         "//tensorflow/python/compat",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:estimator_training",
