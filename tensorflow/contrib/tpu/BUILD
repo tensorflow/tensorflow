@@ -70,12 +70,15 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":async_checkpoint",
+        ":functional",
         ":tpu_lib",
+        ":tpu_ordinal_selector_py",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:function",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -152,6 +155,24 @@ tf_gen_op_wrapper_py(
         ":replication_ops_op_lib",
         ":tpu_configuration_ops_op_lib",
         ":tpu_embedding_ops_op_lib",
+    ],
+)
+
+tf_custom_op_library(
+    name = "python/ops/_tpu_ordinal_selector.so",
+    srcs = ["ops/tpu_ordinal_selector_op.cc"],
+)
+
+tf_custom_op_py_library(
+    name = "tpu_ordinal_selector_py",
+    srcs = ["ops/gen_tpu_ordinal_selector_op.py"],
+    dso = [":python/ops/_tpu_ordinal_selector.so"],
+    kernels = [
+        ":tpu_ordinal_selector_op_op_lib",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":tpu_ordinal_selector_op",
     ],
 )
 
