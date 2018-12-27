@@ -21,7 +21,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import functools
 
 import six
 
@@ -42,6 +41,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -442,15 +442,11 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     if weight is None:
       if isinstance(initializer, six.string_types) or callable(initializer):
         initializer = initializers.get(initializer)
-        initial_value = functools.partial(
-            initializer, shape=var.shape, dtype=var.dtype)
+        weight = slot_creator.create_slot_with_initializer(
+            var, initializer, shape=var.shape, dtype=var.dtype,
+            name=slot_name)
       else:
-        initial_value = initializer
-      weight = tf_variables.Variable(
-          name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
-          dtype=var.dtype,
-          trainable=False,
-          initial_value=initial_value)
+        weight = slot_creator.create_slot(var, initializer, slot_name)
       backend.track_variable(weight)
       slot_dict[slot_name] = weight
       self._restore_slot_variable(
