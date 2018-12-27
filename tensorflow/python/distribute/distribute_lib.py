@@ -99,7 +99,7 @@ def _require_cross_replica_context_extended(extended):
     return
   strategy = extended._container_strategy()  # pylint: disable=protected-access
   # We have an error to report, figure out the right message.
-  if context.distribution_strategy is not strategy:
+  if context.strategy is not strategy:
     _wrong_strategy_scope(strategy, context)
   assert cross_replica is None
   raise RuntimeError("Method requires being in cross-replica context, use "
@@ -108,14 +108,14 @@ def _require_cross_replica_context_extended(extended):
 
 def _wrong_strategy_scope(strategy, context):
   # Figure out the right error message.
-  if not distribution_strategy_context.has_distribution_strategy():
+  if not distribution_strategy_context.has_strategy():
     raise RuntimeError(
         'Need to be inside "with strategy.scope()" for %s' %
         (strategy,))
   else:
     raise RuntimeError(
         "Mixing different tf.distribute.Strategy objects: %s is not %s" %
-        (context.distribution_strategy, strategy))
+        (context.strategy, strategy))
 
 
 def require_replica_context(replica_ctx):
@@ -125,25 +125,25 @@ def require_replica_context(replica_ctx):
   # We have an error to report, figure out the right message.
   if context.replica_context is None:
     raise RuntimeError("Need to be inside `call_for_each_replica()`")
-  if context.distribution_strategy is replica_ctx.distribution_strategy:
+  if context.strategy is replica_ctx.strategy:
     # Two different ReplicaContexts with the same tf.distribute.Strategy.
     raise RuntimeError("Mismatching ReplicaContext.")
   raise RuntimeError(
       "Mismatching tf.distribute.Strategy objects: %s is not %s." %
-      (context.distribution_strategy, replica_ctx.distribution_strategy))
+      (context.strategy, replica_ctx.strategy))
 
 
-def _require_distribution_strategy_scope_strategy(strategy):
+def _require_strategy_scope_strategy(strategy):
   """Verify in a `strategy.scope()` in this thread."""
   context = _get_per_thread_mode()
-  if context.distribution_strategy is strategy: return
+  if context.strategy is strategy: return
   _wrong_strategy_scope(strategy, context)
 
 
-def _require_distribution_strategy_scope_extended(extended):
+def _require_strategy_scope_extended(extended):
   """Verify in a `distribution_strategy.scope()` in this thread."""
   context = _get_per_thread_mode()
-  if context.distribution_strategy.extended is extended: return
+  if context.strategy.extended is extended: return
   # Report error.
   strategy = extended._container_strategy()  # pylint: disable=protected-access
   _wrong_strategy_scope(strategy, context)
@@ -181,7 +181,7 @@ class _CurrentDistributionContext(object):
     self._var_creator_scope.__enter__()
     if self._device_scope:
       self._device_scope.__enter__()
-    return self._context.distribution_strategy
+    return self._context.strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
     if self._device_scope:
@@ -196,10 +196,10 @@ class _SameScopeAgainContext(object):
   """Trivial context manager when you are already in `scope()`."""
 
   def __init__(self, strategy):
-    self._distribution_strategy = strategy
+    self._strategy = strategy
 
   def __enter__(self):
-    return self._distribution_strategy
+    return self._strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
     del exception_type, exception_value, traceback
@@ -323,11 +323,6 @@ class DistributionStrategy(object):
       A context manager.
     """
     return self._extended._scope(self)  # pylint: disable=protected-access
-
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def read_var(self, v):
-    """DEPRECATED: use extended.read_var() instead."""
-    return self._extended.read_var(v)
 
   @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
   def colocate_vars_with(self, colocate_with_variable):
@@ -969,13 +964,14 @@ class DistributionStrategyExtended(object):
 
   def _scope(self, strategy):
     """Implementation of DistributionStrategy.scope()."""
-    if distribution_strategy_context.has_distribution_strategy():
+    if distribution_strategy_context.has_strategy():
       _require_cross_replica_context_extended(self)
       return _SameScopeAgainContext(strategy)
 
     def creator_with_resource_vars(*args, **kwargs):
-      _require_distribution_strategy_scope_extended(self)
+      _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
+      kwargs["distribute_strategy"] = strategy
       return self._create_variable(*args, **kwargs)
 
     def distributed_getter(getter, *args, **kwargs):
@@ -1030,7 +1026,7 @@ class DistributionStrategyExtended(object):
     ```
     with strategy.scope():
       var1 = tf.get_variable(...)
-      with strategy.extended.colocate_vars_with(v1):
+      with strategy.extended.colocate_vars_with(var1):
         # var2 and var3 will be created on the same device(s) as var1
         var2 = tf.get_variable(...)
         var3 = tf.get_variable(...)
@@ -1038,26 +1034,32 @@ class DistributionStrategyExtended(object):
       def fn(v1, v2, v3):
         # operates on v1 from var1, v2 from var2, and v3 from var3
 
-      # `fn` runs on every device `v1` is on, `v2` and `v3` will be there too.
-      strategy.extended.update(v1, fn, args=(v2, v3))
+      # `fn` runs on every device `var1` is on, `var2` and `var3` will be there
+      # too.
+      strategy.extended.update(var1, fn, args=(var2, var3))
     ```
 
     Args:
-      colocate_with_variable: A created in `self.scope()`. Variables created
-        while in the returned context manager will be on the same set of
-        devices as `colocate_with_variable`.
+      colocate_with_variable: A variable created in this strategy's `scope()`.
+        Variables created while in the returned context manager will be on the
+        same set of devices as `colocate_with_variable`.
 
     Returns:
       A context manager.
     """
     def create_colocated_variable(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope_extended(self)
+      _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
       kwargs["colocate_with"] = colocate_with_variable
       return next_creator(*args, **kwargs)
 
-    _require_distribution_strategy_scope_extended(self)
+    _require_strategy_scope_extended(self)
+    self._validate_colocate_with_variable(colocate_with_variable)
     return variable_scope.variable_creator_scope(create_colocated_variable)
+
+  def _validate_colocate_with_variable(self, colocate_with_variable):
+    """Validate `colocate_with_variable` argument to `colocate_vars_with`."""
+    pass
 
   def _call_dataset_fn(self, dataset_fn):
     """Call the `dataset_fn` with `input_context` as argument."""
@@ -1470,7 +1472,7 @@ class ReplicaContext(object):
   """
 
   def __init__(self, strategy, replica_id_in_sync_group):
-    self._distribution_strategy = strategy
+    self._strategy = strategy
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     self._replica_id_in_sync_group = replica_id_in_sync_group
@@ -1518,17 +1520,16 @@ class ReplicaContext(object):
   def _merge_call(self, merge_fn, args, kwargs):
     """Default implementation for single replica."""
     _push_per_thread_mode(  # thread-local, so not needed with multiple threads
-        distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
-            self._distribution_strategy))
+        distribution_strategy_context._CrossReplicaThreadMode(self._strategy))  # pylint: disable=protected-access
     try:
-      return merge_fn(self._distribution_strategy, *args, **kwargs)
+      return merge_fn(self._strategy, *args, **kwargs)
     finally:
       _pop_per_thread_mode()
 
   @property
   def num_replicas_in_sync(self):
     """Returns number of replicas over which gradients are aggregated."""
-    return self._distribution_strategy.num_replicas_in_sync
+    return self._strategy.num_replicas_in_sync
 
   @property
   def replica_id_in_sync_group(self):
@@ -1539,13 +1540,13 @@ class ReplicaContext(object):
   @property
   @doc_controls.do_not_generate_docs  # DEPRECATED, use `strategy`
   def distribution_strategy(self):
-    """DEPRECATED: use `self.stratgey` instead."""
-    return self._distribution_strategy
+    """DEPRECATED: use `self.strategy` instead."""
+    return self._strategy
 
   @property
   def strategy(self):
     """The current `tf.distribute.Strategy` object."""
-    return self._distribution_strategy
+    return self._strategy
 
   @property
   def devices(self):
@@ -1579,11 +1580,11 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
 
   def _scope(self, strategy):
     """Context manager setting a variable creator and `self` as current."""
-    if distribution_strategy_context.has_distribution_strategy():
+    if distribution_strategy_context.has_strategy():
       raise RuntimeError("Must not nest tf.distribute.Strategy scopes.")
 
     def creator(next_creator, *args, **kwargs):
-      _require_distribution_strategy_scope_strategy(strategy)
+      _require_strategy_scope_strategy(strategy)
       return next_creator(*args, **kwargs)
 
     return _CurrentDistributionContext(
@@ -1591,7 +1592,7 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
 
   def colocate_vars_with(self, colocate_with_variable):
     """Does not require `self.scope`."""
-    _require_distribution_strategy_scope_extended(self)
+    _require_strategy_scope_extended(self)
     return ops.colocate_with(colocate_with_variable)
 
   def _distribute_dataset(self, dataset_fn):
@@ -1700,7 +1701,7 @@ _original_from_proto = resource_variable_ops._from_proto_fn
 
 
 def _from_proto_fn(v, import_scope=None):
-  if distribution_strategy_context.has_distribution_strategy():
+  if distribution_strategy_context.has_strategy():
     raise NotImplementedError(
         "Deserialization of variables is not yet supported when using a "
         "tf.distribute.Strategy.")

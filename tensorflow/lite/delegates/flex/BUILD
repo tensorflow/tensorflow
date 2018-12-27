@@ -157,6 +157,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:string",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:tensor_handle",

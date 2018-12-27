@@ -196,9 +196,9 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
                dim_nums.rhs_batch_dimensions_size());
       CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
-               ShapeUtil::Rank(instruction->shape()));
+               instruction->shape().rank());
       for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
-        CHECK_LT(batch_dim, ShapeUtil::Rank(instruction->shape()) - 2);
+        CHECK_LT(batch_dim, instruction->shape().rank() - 2);
       }
 
       // Set both inputs and the output to default layout.
@@ -215,18 +215,18 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kSort &&
-               ShapeUtil::Rank(instruction->operand(0)->shape()) > 1) {
+               instruction->operand(0)->shape().rank() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.
       Shape keys_shape = instruction->operand(0)->shape();
       Layout keys_layout =
-          LayoutUtil::GetDefaultLayoutForRank(ShapeUtil::Rank(keys_shape));
+          LayoutUtil::GetDefaultLayoutForRank(keys_shape.rank());
       for (int64 i = 0; i < instruction->operand_count(); ++i) {
         Shape shape = instruction->operand(i)->shape();
         *shape.mutable_layout() = keys_layout;
         TF_RETURN_IF_ERROR(
             constraints->SetOperandLayout(shape, instruction, i));
         const LogicalBuffer* output_buffer;
-        if (ShapeUtil::IsArray(instruction->shape())) {
+        if (instruction->shape().IsArray()) {
           TF_ASSIGN_OR_RETURN(
               output_buffer,
               constraints->points_to_analysis().GetBufferDefinedAt(instruction,

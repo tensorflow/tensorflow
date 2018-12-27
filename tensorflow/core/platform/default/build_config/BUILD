@@ -296,8 +296,3 @@ alias(
     actual = ":mobile_srcs",
     visibility = ["//visibility:public"],
 )
-
-alias(
-    name = "logger",
-    actual = "//tensorflow/core:default_logger",
-)

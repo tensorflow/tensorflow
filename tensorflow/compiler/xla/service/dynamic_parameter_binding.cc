@@ -121,10 +121,11 @@ Status DynamicParameterBinding::Verify(const HloModule& module) const {
         dynamic_dimension.parameter_index));
     TF_RET_CHECK(
         dynamic_dimension.dimension <
-        ShapeUtil::Rank(ShapeUtil::GetSubshape(
+        ShapeUtil::GetSubshape(
             entry->parameter_instruction(dynamic_dimension.parameter_num)
                 ->shape(),
-            dynamic_dimension.parameter_index)));
+            dynamic_dimension.parameter_index)
+            .rank());
     return Status::OK();
   });
 }

@@ -140,6 +140,12 @@ TokKind HloLexer::LexToken() {
         return LexNumberOrPattern();
       case '=':
         return TokKind::kEqual;
+      case '<':
+        if (current_char == '<' && PeekCurrentChar() == '=') {
+          current_ptr_++;
+          return TokKind::kLeq;
+        }
+        return TokKind::kError;
       case ',':
         return TokKind::kComma;
       case '%':
@@ -462,6 +468,8 @@ string TokKindToString(TokKind kind) {
       return "kRparen";
     case TokKind::kArrow:
       return "kArrow";
+    case TokKind::kLeq:
+      return "kLeq";
     case TokKind::kw_HloModule:
       return "kw_HloModule";
     case TokKind::kw_ENTRY:

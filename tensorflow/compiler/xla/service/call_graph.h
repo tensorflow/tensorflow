@@ -121,6 +121,11 @@ class CallGraphNode {
   // Returns the context in which this computation is called.
   CallContext context() const { return context_; }
 
+  // Returns the depth of this node in the call graph. The depth is defined as
+  // the length of the longest call chain from a computation with no callers
+  // (usually the entry computation node) to this node.
+  int depth() const { return depth_; }
+
   string ToString() const;
 
  private:
@@ -129,6 +134,9 @@ class CallGraphNode {
 
   // Sets the context in which this computation is called.
   void set_context(CallContext value) { context_ = value; }
+
+  // Sets the depth of this node in the graph.
+  void set_depth(int value) { depth_ = value; }
 
   // Adds a callsite which calls this computation. Updates callers to include
   // the calling computation.
@@ -164,6 +172,9 @@ class CallGraphNode {
 
   // The context in which this computation is called.
   CallContext context_ = CallContext::kNone;
+
+  // The depth of this node in the call graph.
+  int depth_ = 0;
 };
 
 // The call graph for an HLO module. The graph includes a node for each
@@ -247,6 +258,9 @@ class CallGraph {
 
   // Sets the call contexts for every node in the graph.
   void SetCallContexts();
+
+  // Sets the call node depths for every node in the graph.
+  void SetNodeDepths();
 
   // Helper method for VisitNodes(). Traverses the call graph from 'node' in DFS
   // post order (callee before caller) calling visitor_func on each node. Adds

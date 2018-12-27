@@ -49,6 +49,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
+nextafter = gen_math_ops.next_after
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment

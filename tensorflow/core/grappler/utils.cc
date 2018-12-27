@@ -473,7 +473,8 @@ Status SimpleGraphView::Initialize(
 
 void SimpleGraphView::DepthFirstSearch(
     const std::unordered_set<string>& op_types_to_traverse, int root_node,
-    std::set<int>* nodes_found) const {
+    std::set<int>* nodes_found,
+    SimpleGraphView::SearchDirection direction) const {
   nodes_found->clear();
   const string& op_type = graph_->node(root_node).op();
   if (!op_types_to_traverse.empty() &&
@@ -483,6 +484,16 @@ void SimpleGraphView::DepthFirstSearch(
   std::vector<int> stack;
   stack.reserve(32);
   stack.push_back(root_node);
+
+  auto push_neighbors = [&stack,
+                         &nodes_found](absl::Span<const int> neighbors) {
+    for (auto output_idx : neighbors) {
+      if (nodes_found->find(output_idx) == nodes_found->end()) {
+        stack.push_back(output_idx);
+      }
+    }
+  };
+
   while (!stack.empty()) {
     const int node_idx = stack.back();
     stack.pop_back();
@@ -490,10 +501,51 @@ void SimpleGraphView::DepthFirstSearch(
     const string& op_type = graph_->node(node_idx).op();
     if (op_types_to_traverse.empty() ||
         op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
-      for (auto output_idx : this->outputs(node_idx)) {
-        if (nodes_found->find(output_idx) == nodes_found->end()) {
-          stack.push_back(output_idx);
-        }
+      if (direction == kFollowOutputs) {
+        push_neighbors(this->outputs(node_idx));
+      } else {
+        push_neighbors(this->inputs(node_idx));
+      }
+    }
+  }
+}
+
+void SimpleGraphView::DepthFirstSearchWithCallback(
+    const std::unordered_set<string>& op_types_to_traverse, int node_idx,
+    SimpleGraphView::DFSCallback callback,
+    SimpleGraphView::SearchDirection direction) const {
+  std::set<int> nodes_found;
+  nodes_found.clear();
+  const string& op_type = graph_->node(node_idx).op();
+  if (!op_types_to_traverse.empty() &&
+      op_types_to_traverse.find(op_type) == op_types_to_traverse.end()) {
+    return;
+  }
+  std::vector<int> stack;
+  stack.reserve(32);
+  stack.push_back(node_idx);
+  auto push_neighbors = [&stack,
+                         &nodes_found](absl::Span<const int> neighbors) {
+    for (auto output_idx : neighbors) {
+      if (nodes_found.find(output_idx) == nodes_found.end()) {
+        stack.push_back(output_idx);
+      }
+    }
+  };
+  while (!stack.empty()) {
+    const int node_idx = stack.back();
+    stack.pop_back();
+    if (callback(graph_->node(node_idx))) {
+      return;
+    }
+    nodes_found.insert(node_idx);
+    const string& op_type = graph_->node(node_idx).op();
+    if (op_types_to_traverse.empty() ||
+        op_types_to_traverse.find(op_type) != op_types_to_traverse.end()) {
+      if (direction == kFollowOutputs) {
+        push_neighbors(this->outputs(node_idx));
+      } else {
+        push_neighbors(this->inputs(node_idx));
       }
     }
   }

@@ -32,6 +32,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
@@ -63,6 +64,8 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_v2  # pylint: disable=unused-import
@@ -1077,7 +1080,7 @@ class ControlFlowTest(test.TestCase):
     with self.cached_session():
       v = variables.Variable(0.0)
       v.initializer.run()
-      increment = v.assign_add(1.0)
+      increment = v.assign_add(1.0).read_value()
 
       def body_fn(i):
         with ops.control_dependencies([increment]):
@@ -1094,7 +1097,8 @@ class ControlFlowTest(test.TestCase):
     with self.cached_session():
       v = variables.Variable(0.0)
       v.initializer.run()
-      increment = v.assign_add(1.0)
+      # TODO(apassos): figure out why the reading is necessary here.
+      increment = v.assign_add(1.0).read_value()
 
       def body_fn(unused_i):
         with ops.control_dependencies([increment]):
@@ -2396,6 +2400,24 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
 
+  @test_util.run_gpu_only
+  def testGpuResourceAccess(self):
+    with ops.device(test.gpu_device_name()):
+      var = resource_variable_ops.ResourceVariable(constant_op.constant(3.0))
+
+    @def_function.function
+    def foo():
+      return control_flow_ops.while_loop(
+          lambda i, _: i < 3,
+          lambda i, x: (i + 1, control_flow_ops.cond(
+              constant_op.constant(True),
+              lambda: x + var,
+              lambda: x)),
+          [0, 0.0])[1]
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertEqual(self.evaluate(foo()), 9.0)
+
   def testNestedResourceAccess(self):
     var = resource_variable_ops.ResourceVariable(constant_op.constant(3.0))
 
@@ -2918,6 +2940,38 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n0, y0], parallel_iterations=1)
       r = gradients_impl.gradients(r, param)[0]
       self.assertAllClose(107520.0, self.evaluate(r))
+
+  @test_util.run_deprecated_v1
+  def testNestedWhileAndTensorArray(self):
+    n = constant_op.constant(3.0)
+
+    def Body(row, ta, n):
+
+      def InnerBody(row, col, ta, n):
+        # Note: row and col are 1-based.
+        ta = ta.write(
+            math_ops.cast(n * (row - 1.) + col - 1., dtypes.int32), row * col)
+        return row, col + 1., ta, n
+
+      # TODO(b/118457764): Remove n from loop_vars from both loops once fixed.
+      ta = control_flow_ops.while_loop(
+          lambda _, col, _1, n: col <= n,
+          InnerBody, [row, constant_op.constant(1.), ta, n],
+          return_same_structure=False)[2]
+      return row + 1., ta, n
+
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
+    ta = control_flow_ops.while_loop(
+        lambda row, _, _1: row <= n,
+        Body, [constant_op.constant(1.), ta, n],
+        return_same_structure=False)[1]
+
+    output = array_ops.reshape(ta.stack(), [3, 3])
+    self.assertAllEqual(
+        self.evaluate(output), [[1., 2., 3.], [2., 4., 6.], [3., 6., 9.]])
+    # TODO(b/117675481): This does not work with current TA. Enable with new TA.
+    # grad = gradients_impl.gradients(output, [n])
+    # self.assertEqual(self.evaluate(grad), 3.5)
 
   @test_util.run_deprecated_v1
   def testWhileGrad_StopGrad(self):

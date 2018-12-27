@@ -58,10 +58,19 @@ def _create_slot_var(primary, val, scope, validate_shape, shape, dtype):
   # When init from val instead of callable initializer, the shape is expected to
   # be None, not <unknown> or any fully defined shape.
   shape = shape if callable(val) else None
+  if resource_variable_ops.is_resource_variable(primary):
+    use_resource = True
+  elif isinstance(primary, variables.RefVariable):
+    use_resource = False
+  else:
+    use_resource = None
   slot = variable_scope.get_variable(
-      scope, initializer=val, trainable=False,
-      use_resource=resource_variable_ops.is_resource_variable(primary),
-      shape=shape, dtype=dtype,
+      scope,
+      initializer=val,
+      trainable=False,
+      use_resource=use_resource,
+      shape=shape,
+      dtype=dtype,
       validate_shape=validate_shape)
   variable_scope.get_variable_scope().set_partitioner(current_partitioner)
 

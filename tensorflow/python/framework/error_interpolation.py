@@ -29,7 +29,6 @@ import re
 
 import six
 
-from tensorflow.python.framework.ops import Tensor
 from tensorflow.python.util import tf_stack
 
 _NAME_REGEX = r"[A-Za-z0-9.][A-Za-z0-9_.\-/]*?"
@@ -178,9 +177,9 @@ def _compute_colocation_summary_from_op(op, prefix=""):
 
 
 def _find_index_of_defining_frame_for_op(op):
-  """Return index in op._traceback with first 'useful' frame.
+  """Return index in op.traceback with first 'useful' frame.
 
-  This method reads through the stack stored in op._traceback looking for the
+  This method reads through the stack stored in op.traceback looking for the
   innermost frame which (hopefully) belongs to the caller.  It accomplishes this
   by rejecting frames whose filename appears to come from TensorFlow (see
   error_interpolation._BAD_FILE_SUBSTRINGS for the list of rejected substrings).
@@ -190,15 +189,13 @@ def _find_index_of_defining_frame_for_op(op):
         location.
 
   Returns:
-    Integer index into op._traceback where the first non-TF file was found
+    Integer index into op.traceback where the first non-TF file was found
     (innermost to outermost), or 0 (for the outermost stack frame) if all files
     came from TensorFlow.
   """
-  # pylint: disable=protected-access
   # Index 0 of tf_traceback is the outermost frame.
-  tf_traceback = tf_stack.convert_stack(op._traceback)
+  tf_traceback = op.traceback
   size = len(tf_traceback)
-  # pylint: enable=protected-access
   filenames = [frame[tf_stack.TB_FILENAME] for frame in tf_traceback]
   # We process the filenames from the innermost frame to outermost.
   for idx, filename in enumerate(reversed(filenames)):
@@ -211,10 +208,7 @@ def _find_index_of_defining_frame_for_op(op):
 def _get_defining_frame_from_op(op):
   """Find and return stack frame where op was defined."""
   frame_index = _find_index_of_defining_frame_for_op(op)
-  # pylint: disable=protected-access
-  frame = op._traceback[frame_index]
-  # pylint: enable=protected-access
-  return frame
+  return op.traceback[frame_index]
 
 
 def compute_field_dict(op, strip_file_prefix=""):
@@ -270,7 +264,7 @@ def compute_field_dict(op, strip_file_prefix=""):
   return field_dict
 
 
-def _common_prefix(all_ops):
+def traceback_files_common_prefix(all_ops):
   """Determines the common prefix from the paths of the stacktrace of 'all_ops'.
 
   For example, if the paths are '/foo/bar/baz/' and '/foo/car', this would
@@ -287,10 +281,7 @@ def _common_prefix(all_ops):
     if ops is None:
       continue
     for op in ops:
-      # pylint: disable=protected-access
-      tf_traceback = tf_stack.convert_stack(op._traceback)
-      # pylint: enable=protected-access
-      for frame in tf_traceback:
+      for frame in op.traceback:
         filename = frame[tf_stack.TB_FILENAME]
         if "<embedded" not in filename:
           files.add(filename)
@@ -315,11 +306,13 @@ def _sources_for_node(name, graph):
     if name.startswith("^"):
       name = name[1:]
     try:
-      op = graph.as_graph_element(name)
-    except KeyError:
-      return
-    if isinstance(op, Tensor):
-      op = op.op
+      tensor = graph.get_tensor_by_name(name)
+      op = tensor.op
+    except (KeyError, ValueError):
+      try:
+        op = graph.get_operation_by_name(name)
+      except KeyError:
+        return
     name = op.name
     if name in seen_names:
       return
@@ -398,7 +391,7 @@ def interpolate(error_message, graph):
     else:
       tagged_ops.append([op] + _sources_for_node(op.name, graph))
 
-  common_prefix = _common_prefix(tagged_ops)
+  common_prefix = traceback_files_common_prefix(tagged_ops)
   for tag, ops in zip(tags, tagged_ops):
     msg = "{{%s %s}}" % (tag.type, tag.name)
     if ops is not None:

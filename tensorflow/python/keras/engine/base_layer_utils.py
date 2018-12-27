@@ -224,12 +224,8 @@ def collect_previous_mask(input_tensors):
   return masks
 
 
-def have_all_keras_metadata(iterable_or_element):
-  if not isinstance(iterable_or_element, (list, tuple)):
-    iterable = [iterable_or_element]
-  else:
-    iterable = nest.flatten(iterable_or_element)
-  return all(hasattr(x, '_keras_history') for x in iterable)
+def have_all_keras_metadata(tensors):
+  return all(hasattr(x, '_keras_history') for x in nest.flatten(tensors))
 
 
 def generate_placeholders_from_shape(shape):

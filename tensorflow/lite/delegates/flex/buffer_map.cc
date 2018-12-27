@@ -173,5 +173,19 @@ void BufferMap::SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor) {
   owned_by_tf_.insert(tensor_index);
 }
 
+void BufferMap::RemoveTensor(int tensor_index) {
+  id_to_tensor_.erase(tensor_index);
+}
+
+void BufferMap::RemoveTensorsNotInSet(const std::set<int>& keep) {
+  for (auto it = id_to_tensor_.begin(); it != id_to_tensor_.end();) {
+    if (keep.count(it->first) == 0 && IsTensorFlowTensor(it->first)) {
+      it = id_to_tensor_.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 }  // namespace flex
 }  // namespace tflite

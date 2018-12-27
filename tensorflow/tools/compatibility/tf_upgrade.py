@@ -182,7 +182,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_warnings = {}
 
   @staticmethod
-  def _reverse_handler(file_edit_recorder, node):
+  def _reverse_handler(file_edit_recorder, node, lines):
+    del lines
     # TODO(aselle): Could check for a literal list of bools and try to convert
     # them to indices.
     comment = ("ERROR: tf.reverse has had its argument semantics changed "

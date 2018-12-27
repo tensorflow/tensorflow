@@ -183,9 +183,7 @@ class XRTAllocateOp : public OpKernel {
     // We are guaranteed that the underlying device object won't be deleted out
     // from under us, while the ScopedRef is live.
     class DeviceAccessor::ScopedRef device_ref;
-    OP_REQUIRES_OK(ctx,
-                   DeviceAccessor::InitScopedRef(
-                       ctx, allocation_proto.device_ordinal(), &device_ref));
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
 
     XRTTupleAllocation* allocation;
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::CreateAndTransfer(

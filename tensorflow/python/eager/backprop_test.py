@@ -270,6 +270,38 @@ class BackpropTest(test.TestCase):
       z = y * y
     self.assertAllEqual(t.gradient([x, y, z], [x, y]), [1.0, 11.0])
 
+  def testTapeGradientStringTarget(self):
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+    x = constant_op.constant(3.0)
+
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      t.watch(s)
+    grads = t.gradient(s, x)
+    self.assertEqual(grads, None)
+
+  def testTapeNoOpGradientStringSourceAndTarget(self):
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+
+    with backprop.GradientTape() as t:
+      t.watch(s)
+    grads = t.gradient(s, s)
+    self.assertEqual(grads, None)
+
+  def testTapeNoOpGradientWithMultiTargetMultiSourceIncludeString(self):
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(5.0)
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      t.watch(y)
+      t.watch(s)
+      z = y * y
+    grads = t.gradient([x, y, z, s], [x, y, s])
+    self.assertAllEqual(grads[:2], [1.0, 11.0])
+    self.assertEqual(grads[2], None)
+
   def testTapeNoOpOnVariableIsIdentity(self):
     v0 = resource_variable_ops.ResourceVariable(1.0)
     with backprop.GradientTape() as t:

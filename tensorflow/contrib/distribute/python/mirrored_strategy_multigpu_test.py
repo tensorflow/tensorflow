@@ -221,11 +221,13 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
   # TODO(priyag): Modify more tests to use this helper and check more
   # properties.
-  def _test_mv_properties(self, var, name):
+  def _test_mv_properties(self, var, name, strategy):
     self.assertIsInstance(var, values.MirroredVariable)
     self.assertEqual(name, var.name)
+    self.assertIs(strategy, var.distribute_strategy)
     for d in var.devices:
       self.assertEqual(d, var.get(d).device)
+      self.assertIs(strategy, var.get(d).distribute_strategy)
 
   def testVariableInFuncGraph(self, distribution):
     def model_fn():
@@ -237,8 +239,8 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       v1 = variable_scope.variable(1.0, name="foo")
       v2 = distribution.extended.call_for_each_replica(model_fn)
 
-    self._test_mv_properties(v1, "foo:0")
-    self._test_mv_properties(v2, "bar:0")
+    self._test_mv_properties(v1, "foo:0", distribution)
+    self._test_mv_properties(v2, "bar:0", distribution)
 
   def testSingleVariable(self, distribution):
     def model_fn():
@@ -251,7 +253,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self._test_mv_properties(result, "foo:0")
+      self._test_mv_properties(result, "foo:0", distribution)
 
   def testUnnamedVariable(self, distribution):
     def model_fn():
@@ -261,7 +263,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self._test_mv_properties(result, "Variable:0")
+      self._test_mv_properties(result, "Variable:0", distribution)
 
   def testMultipleVariables(self, distribution):
     def model_fn():
@@ -274,7 +276,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
       for i, v in enumerate(result):
-        self._test_mv_properties(v, "foo" + str(i) + ":0")
+        self._test_mv_properties(v, "foo" + str(i) + ":0", distribution)
 
   def testMultipleVariablesWithSameCanonicalName(self, distribution):
     def model_fn():
@@ -558,10 +560,8 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       return v
 
     with distribution.scope():
-      names = values.DistributedValues({
-          "/device:CPU:0": "foo",
-          "/device:GPU:0": "bar"
-      })
+      device_map = values.ReplicaDeviceMap(("/device:CPU:0", "/device:GPU:0"))
+      names = values.DistributedValues(device_map, ("foo", "bar"))
       with self.assertRaises(RuntimeError):
         _ = distribution.extended.call_for_each_replica(model_fn, args=(names,))
 
@@ -694,6 +694,15 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       self.assertEqual(5.0, self.evaluate(ret_v_sum.get(
           distribution.extended.worker_devices[0]).read_value()))
       self.assertEqual(10.0, self.evaluate(ret_v_sum))
+
+  def testVarDistributeStrategy(self, distribution):
+    with distribution.scope():
+      mirrored = variable_scope.variable(1.0)
+      replica_local = variable_scope.variable(
+          1.0,
+          synchronization=variable_scope.VariableSynchronization.ON_READ)
+      self.assertIs(distribution, mirrored.distribute_strategy)
+      self.assertIs(distribution, replica_local.distribute_strategy)
 
 
 @combinations.generate(combinations.combine(
@@ -1123,7 +1132,7 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       # When we read the value using `read_var` we should see the SUM of each of
       # values on each of the replicas.
       self.assertEqual(2.0, self.evaluate(
-          distribution.read_var(replica_local_var)))
+          distribution.extended.read_var(replica_local_var)))
       # Assigning 6.0 in cross replica context will assign a value of
       # 6.0/num_replicas to each replica.
       tlv_ops = replica_local_var.assign(6.0)
@@ -1132,7 +1141,7 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       # The value on all the replicas are added before being returned by
       # `read_var`.
       self.assertEqual(6.0, self.evaluate(
-          distribution.read_var(replica_local_var)))
+          distribution.extended.read_var(replica_local_var)))
 
   def testAssignReplicaLocalVarMeanAggregation(self, distribution):
     def model_fn():
@@ -1151,13 +1160,13 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       # When we read the value using `read_var` we should see the MEAN of values
       # on all replicas which is the value assigned in replica context.
       self.assertEqual(1.0, self.evaluate(
-          distribution.read_var(replica_local_var)))
+          distribution.extended.read_var(replica_local_var)))
       tlv_ops = replica_local_var.assign(6.0)
       self.evaluate(tlv_ops)
       # On reading the replica local var we should get the MEAN of all values
       # which is equal to the value assigned.
       self.assertEqual(6.0, self.evaluate(
-          distribution.read_var(replica_local_var)))
+          distribution.extended.read_var(replica_local_var)))
 
 
 class MockModel(object):
@@ -1210,9 +1219,9 @@ class MirroredStrategyDefunTest(test.TestCase):
 
       result = distribution.extended.call_for_each_replica(
           model_fn, args=[mock_model] + inputs)
-      for device in devices:
-        device_result = values.select_device(device, result)
-        device_expected_result = values.select_device(device, expected_result)
+      for r in range(len(devices)):
+        device_result = values.select_replica(r, result)
+        device_expected_result = values.select_replica(r, expected_result)
         self.assertAllClose(device_expected_result,
                             self.evaluate(device_result))
 
@@ -1293,9 +1302,9 @@ class MirroredStrategyDefunTest(test.TestCase):
     def fn1(mock_model, factor):
       return mock_model(factor)
 
-    factors = values.PerReplica({"CPU:0": 5.0, "GPU:0": 3.0})
-    expected_result = values.PerReplica({"CPU:0": 5.0 * 1.25,
-                                         "GPU:0": 3.0 * 1.25})
+    device_map = values.ReplicaDeviceMap(("/device:CPU:0", "/device:GPU:0"))
+    factors = values.PerReplica(device_map, (5.0, 3.0))
+    expected_result = values.PerReplica(device_map, (5.0 * 1.25, 3.0 * 1.25))
     self._call_and_check(distribution, fn1, [factors], expected_result, [fn1])
 
   def testTrain(self, distribution):

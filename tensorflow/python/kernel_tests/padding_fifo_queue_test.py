@@ -35,7 +35,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("PaddingFIFOQueue removed from v2")
 class PaddingFIFOQueueTest(test.TestCase):
 
   def testConstructor(self):

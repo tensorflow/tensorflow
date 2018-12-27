@@ -627,5 +627,42 @@ class XdivyTest(test_util.TensorFlowTestCase):
         self.assertAllClose(x_over_y, xdivy_tf_np[1])
 
 
+class NextAfterTest(test_util.TensorFlowTestCase):
+
+  # Basic NextAfter tests that replicate numpy nextafter tests.
+  @test_util.run_in_graph_and_eager_modes
+  def testBasic(self):
+
+    for dtype in [dtypes.float32, dtypes.float64]:
+      one = constant_op.constant([1], dtype=dtype)
+      two = constant_op.constant([2], dtype=dtype)
+      zero = constant_op.constant([0], dtype=dtype)
+      nan = constant_op.constant([np.nan], dtype=dtype)
+
+      eps = constant_op.constant([np.finfo(dtype.as_numpy_dtype).eps],
+                                 dtype=dtype)
+
+      self.assertAllEqual(math_ops.nextafter(one, two) - one, eps)
+      self.assertAllLess(math_ops.nextafter(one, zero) - one, 0)
+      self.assertAllEqual(
+          math_ops.is_nan(math_ops.nextafter(nan, one)), [True])
+      self.assertAllEqual(
+          math_ops.is_nan(math_ops.nextafter(one, nan)), [True])
+      self.assertAllEqual(math_ops.nextafter(one, one), one)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBroadcasting(self):
+
+    for dtype in [dtypes.float32, dtypes.float64]:
+      one = constant_op.constant([1, 1], dtype=dtype)
+      two = constant_op.constant([2], dtype=dtype)
+
+      eps = np.finfo(dtype.as_numpy_dtype).eps
+
+      eps_const = constant_op.constant([eps, eps], dtype=dtype)
+
+      self.assertAllEqual(math_ops.nextafter(one, two) - one, eps_const)
+
+
 if __name__ == "__main__":
   googletest.main()

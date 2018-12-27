@@ -186,7 +186,7 @@ Status GatherComputationsByAllocationType(
             worklist.push_back(std::make_pair(subcomputation,
                                               false));  // Not thread local.
             break;
-          case HloOpcode::kCrossReplicaSum:
+          case HloOpcode::kAllReduce:
           case HloOpcode::kMap:
           case HloOpcode::kReduce:
           case HloOpcode::kReduceWindow:
@@ -1036,7 +1036,7 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    if (ShapeUtil::IsTuple(buffer->shape())) {
+    if (buffer->shape().IsTuple()) {
       BufferAllocation* allocation =
           assignment->NewAllocation(*buffer, buffer_size);
       allocation->set_is_tuple(true);

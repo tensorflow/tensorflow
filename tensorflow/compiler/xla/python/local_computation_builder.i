@@ -1010,6 +1010,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::InitializeReplicaCount;
 %unignore xla::swig::InitializePlatformName;
 %unignore xla::swig::GetReplicaCount;
+%unignore xla::swig::RegisterCpuCustomCallTarget;
 %unignore xla::swig::TransferToInfeedLocal;
 %unignore xla::swig::TransferToInfeedLocalReplica;
 %unignore xla::swig::TransferFromOutfeedLocalReplica;

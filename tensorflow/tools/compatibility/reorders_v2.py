@@ -28,6 +28,7 @@ from __future__ import print_function
 reorders = {
     'tf.argmax': ['input', 'axis', 'name', 'dimension', 'output_type'],
     'tf.argmin': ['input', 'axis', 'name', 'dimension', 'output_type'],
+    'tf.batch_gather': ['params', 'indices', 'name'],
     'tf.batch_to_space': ['input', 'crops', 'block_size', 'name'],
     'tf.boolean_mask': ['tensor', 'mask', 'name', 'axis'],
     'tf.confusion_matrix': ['labels', 'predictions', 'num_classes', 'dtype', 'name', 'weights'],

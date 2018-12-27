@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
@@ -104,6 +105,12 @@ tensorflow::Status ExecuteFlexOp(tensorflow::EagerContext* eager_context,
         buffer_map->GetTensor(input_index), nullptr, nullptr, nullptr);
     op.AddInput(handle);
     handle->Unref();
+
+    if (buffer_map->IsForwardable(input_index)) {
+      // Take it out of the map, so Eager/TF can reuse the buffer for an output
+      // tensor of the op.
+      buffer_map->RemoveTensor(input_index);
+    }
   }
 
   int num_retvals = outputs.size();
@@ -131,6 +138,8 @@ tensorflow::Status ExecuteFlexOp(tensorflow::EagerContext* eager_context,
 struct OpNode {
   // The name of the TensorFlow op to execute.
   string name;
+  // Index of this node into TF Lite's operator list.
+  int index;
   // The corresponding NodeDef, containing the attributes for the op.
   tensorflow::NodeDef nodedef;
   // List of inputs, as TF Lite tensor indices.
@@ -181,6 +190,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     op_data->nodes.push_back(OpNode());
     OpNode& node_data = op_data->nodes.back();
 
+    node_data.index = node_index;
     node_data.name = "";
     if (node->custom_initial_data) {
       // The flexbuffer contains a vector where the first elements is the
@@ -229,6 +239,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       "device has not been registered, presumably because some symbols from "
       "tensorflow/core:core_cpu_impl were not linked into the binary.");
 
+  // We will keep track of the number of references to each tensor in the
+  // graph, so we can make them "forwardable" if there is only one reference.
+  std::map<int, int> tensor_ref_count;
+
   // Whenever we find a constant tensor, insert it in the buffer map.
   BufferMap* buffer_map = op_data->buffer_map;
   for (auto tensor_index : op_data->subgraph_inputs) {
@@ -238,12 +252,29 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         buffer_map->SetFromTfLite(tensor_index, tensor);
       }
     }
+    ++tensor_ref_count[tensor_index];
   }
 
   // All output tensors are allocated by TensorFlow/Eager, so we
   // mark them as kTfLiteDynamic.
   for (auto tensor_index : op_data->subgraph_outputs) {
     SetTensorToDynamic(&context->tensors[tensor_index]);
+    ++tensor_ref_count[tensor_index];
+  }
+
+  for (const auto& node_data : op_data->nodes) {
+    for (int tensor_index : node_data.inputs) {
+      ++tensor_ref_count[tensor_index];
+    }
+  }
+
+  for (const auto& x : tensor_ref_count) {
+    if (x.second == 1) {
+      // This tensor is referenced once by a single op. We can allow the TF
+      // kernel to "forward" it to the output, meaning its buffer will be
+      // reused and overwritten.
+      buffer_map->SetForwardable(x.first);
+    }
   }
 
   return kTfLiteOk;
@@ -270,6 +301,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Execute the TensorFlow Ops sequentially.
   for (const auto& node_data : op_data->nodes) {
+    SCOPED_TAGGED_OPERATOR_PROFILE(
+        reinterpret_cast<profiling::Profiler*>(context->profiler),
+        node_data.name.c_str(), node_data.index);
     if (node_data.nodedef.op().empty()) {
       context->ReportError(context, "Invalid NodeDef in Flex op '%s'",
                            node_data.name.c_str());
@@ -295,6 +329,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     tensor->buffer_handle = tensor_index;
     tensor->data_is_stale = true;
   }
+
+  // We don't need to keep track of internal TF tensors any longer, so take
+  // them out of the buffer_map, but make sure we keep all the one we might
+  // need for other subgraphs, or as final output of inference.
+  const auto& outputs = op_data->subgraph_outputs;
+  std::set<int> keep(outputs.begin(), outputs.end());
+  buffer_map->RemoveTensorsNotInSet(keep);
 
   return kTfLiteOk;
 }

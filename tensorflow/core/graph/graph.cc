@@ -306,17 +306,12 @@ Status Node::input_tensor(int idx, OutputTensor* t) const {
 // NodeDebugInfo
 
 NodeDebugInfo::NodeDebugInfo(const Node& n) : NodeDebugInfo(n.def()) {}
-NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef)
-    : name(ndef.name()),
-      original_node_names(
-          ndef.has_experimental_debug_info()
-              ? std::vector<string>({ndef.experimental_debug_info()
-                                         .original_node_names()
-                                         .begin(),
-                                     ndef.experimental_debug_info()
-                                         .original_node_names()
-                                         .end()})
-              : std::vector<string>()) {}
+NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef) : name(ndef.name()) {
+  if (ndef.has_experimental_debug_info()) {
+    const auto& names = ndef.experimental_debug_info().original_node_names();
+    original_node_names.assign(names.begin(), names.end());
+  }
+}
 
 // InputTensor
 

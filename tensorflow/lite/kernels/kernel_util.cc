@@ -103,6 +103,16 @@ void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
                                         act_max);
 }
 
+void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
+                                  TfLiteTensor* output, int32_t* act_min,
+                                  int32_t* act_max) {
+  const int32_t qmin = std::numeric_limits<int8_t>::min();
+  const int32_t qmax = std::numeric_limits<int8_t>::max();
+
+  CalculateActivationRangeQuantizedImpl(activation, qmin, qmax, output, act_min,
+                                        act_max);
+}
+
 bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }

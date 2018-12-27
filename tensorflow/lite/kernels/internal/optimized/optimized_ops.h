@@ -1906,7 +1906,20 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   MatrixRef matrix_c(c, m, n);
   ConstMatrixRef matrix_a(a, m, k);
   ConstMatrixRef matrix_b(b, n, k);
-  matrix_c.noalias() = matrix_a * matrix_b.transpose();
+
+  // The following special casing for when a or b is a vector is required
+  // as Eigen seem to fail to make this optimization on its own.
+  if (n == 1) {
+    gemmlowp::ScopedProfilingLabel label("GEMV");
+    matrix_c.col(0).noalias() = matrix_a * matrix_b.row(0).transpose();
+  } else if (m == 1) {
+    gemmlowp::ScopedProfilingLabel label("GEMV");
+    matrix_c.row(0).noalias() = matrix_a.row(0) * matrix_b.transpose();
+  } else {
+    gemmlowp::ScopedProfilingLabel label("GEMM");
+    matrix_c.noalias() = matrix_a * matrix_b.transpose();
+  }
+
 #endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 
   optimized_ops::AddBiasAndEvalActivationFunction(

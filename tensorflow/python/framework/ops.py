@@ -4523,7 +4523,11 @@ class Graph(object):
     control_ops = []
     current = self._current_control_dependencies()
     for c in control_inputs:
-      if isinstance(c, IndexedSlices):
+      # The hasattr(handle) is designed to match ResourceVariables. This is so
+      # control dependencies on a variable or on an unread variable don't
+      # trigger reads.
+      if (isinstance(c, IndexedSlices) or
+          (hasattr(c, "_handle") and hasattr(c, "op"))):
         c = c.op
       c = self.as_graph_element(c)
       if isinstance(c, Tensor):
@@ -5988,7 +5992,7 @@ name_scope_cache = {}
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
-@tf_export("name_scope", "keras.backend.name_scope")
+@tf_export("name_scope")
 class name_scope(object):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 

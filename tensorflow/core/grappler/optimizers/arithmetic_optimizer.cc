@@ -3316,25 +3316,6 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   return true;
 }
 
-namespace {
-
-bool FeedsInPlaceOp(const SimpleGraphView& graph_view, const NodeDef& node) {
-  const std::unordered_set<string> op_types_to_traverse = {
-      node.op(),    "Identity", "IdentityN", "Reshape",
-      "ExpandDims", "Enter",    "Switch",    "Merge"};
-  int node_idx = graph_view.index(node.name());
-  std::set<int> node_fanout;
-  graph_view.DepthFirstSearch(op_types_to_traverse, node_idx, &node_fanout);
-  for (int fanout : node_fanout) {
-    if (ModifiesInputsInPlace(graph_view.graph()->node(fanout))) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
-
 bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -3361,12 +3342,28 @@ void ArithmeticOptimizer::DedupComputations() {
   }
   std::set<int> duplicates;
   // Populate feed_inplace_op;
-  std::unordered_set<NodeDef*> feeds_inplace_op;
+  std::unordered_set<const NodeDef*> feeds_inplace_op;
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    if (FeedsInPlaceOp(graph_view, optimized_graph_->node(i))) {
-      feeds_inplace_op.insert(optimized_graph_->mutable_node(i));
+    const NodeDef& root = optimized_graph_->node(i);
+    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) {
+      continue;
+    }
+
+    if (ModifiesInputsInPlace(root)) {
+      const std::unordered_set<string> op_types_to_traverse = {
+          root.op(),    "Identity", "IdentityN", "Reshape",
+          "ExpandDims", "Enter",    "Switch",    "Merge"};
+
+      graph_view.DepthFirstSearchWithCallback(
+          op_types_to_traverse, i,
+          [&](const NodeDef& node) {
+            feeds_inplace_op.insert(&node);
+            return false;
+          },
+          SimpleGraphView::kFollowInputs /* search through inputs */);
     }
   }
+
   do {
     stop = true;
     UniqueNodes nodes;

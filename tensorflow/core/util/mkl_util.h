@@ -111,6 +111,35 @@ typedef enum {
   Dim3d_I = 1
 } MklDnnDims3D;
 
+// Enum for the order of dimensions of a TF 2D filter with shape [filter_height,
+// filter_width, in_channels, out_channels]
+typedef enum {
+  TF_2DFILTER_DIM_H = 0,
+  TF_2DFILTER_DIM_W = 1,
+  TF_2DFILTER_DIM_I = 2,
+  TF_2DFILTER_DIM_O = 3
+} TFFilterDims2d;
+
+// Enum for the order of dimensions of a TF 3D filter with shape [filter_depth,
+// filter_height, filter_width, in_channels, out_channels]
+typedef enum {
+  TF_3DFILTER_DIM_P = 0,
+  TF_3DFILTER_DIM_H = 1,
+  TF_3DFILTER_DIM_W = 2,
+  TF_3DFILTER_DIM_I = 3,
+  TF_3DFILTER_DIM_O = 4
+} TFFilterDims3d;
+
+// The dimensions order that MKL DNN requires for the filter in a grouped
+// convolution (2D only)
+typedef enum {
+  MKL_GROUP_FILTER_DIM_G = 0,
+  MKL_GROUP_FILTER_DIM_O = 1,
+  MKL_GROUP_FILTER_DIM_I = 2,
+  MKL_GROUP_FILTER_DIM_H = 3,
+  MKL_GROUP_FILTER_DIM_W = 4
+} MklDnnFilterGroupDims;
+
 // Enum used to templatize MklOp kernel implementations
 // that support both fp32 and int8 versions.
 enum class MklQuantization {

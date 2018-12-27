@@ -19,45 +19,194 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import enum  # pylint: disable=g-bad-import-order
 import numpy as np
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
-from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
-# TODO(sourabhbajaj): Check if we can merge the test and prediction graphs
-class _Mode(enum.Enum):
-  TRAIN = 'train'
-  TEST = 'test'
-  PREDICT = 'predict'
-# TODO(priyag, sourabhbajaj): Refactor this file to address code duplication.
+def fit_distributed(model,
+                    x=None,
+                    y=None,
+                    batch_size=None,
+                    epochs=1,
+                    verbose=1,
+                    callbacks=None,
+                    validation_split=0.,
+                    validation_data=None,
+                    shuffle=True,
+                    class_weight=None,
+                    sample_weight=None,
+                    initial_epoch=0,
+                    steps_per_epoch=None,
+                    validation_steps=None):
+  """Fit loop for Distribution Strategies."""
+  distributed_training_utils.validate_callbacks(callbacks, model.optimizer)
+  distributed_training_utils.validate_inputs(
+      x, y, model._distribution_strategy)
+
+  first_x_value = nest.flatten(x)[0]
+  if isinstance(first_x_value, np.ndarray):
+    steps_per_epoch, batch_size = (
+        distributed_training_utils.get_input_params(
+            model._distribution_strategy, first_x_value, steps_per_epoch,
+            batch_size, is_training=True))
+  batch_size = model._validate_or_infer_batch_size(
+      batch_size, steps_per_epoch, x)
+  iterator = model._distribution_standardize_user_data(
+      x, y,
+      sample_weight=sample_weight,
+      class_weight=class_weight,
+      batch_size=batch_size,
+      check_steps=True,
+      steps_name='steps_per_epoch',
+      steps=steps_per_epoch,
+      validation_split=validation_split,
+      shuffle=shuffle)
+
+  val_iterator = None
+  if validation_data:
+    val_x, val_y, val_sample_weights = model._unpack_validation_data(
+        validation_data)
+    distributed_training_utils.validate_inputs(
+        val_x, val_y, model._distribution_strategy)
+    first_valx_value = nest.flatten(val_x)[0]
+    if isinstance(first_valx_value, np.ndarray):
+      validation_steps, _ = distributed_training_utils.get_input_params(
+          model._distribution_strategy, first_valx_value, validation_steps,
+          batch_size)
+    val_iterator = model._distribution_standardize_user_data(
+        val_x, val_y,
+        sample_weight=val_sample_weights,
+        class_weight=None,
+        batch_size=batch_size,
+        check_steps=True,
+        steps_name='validation_steps',
+        steps=validation_steps,
+        validation_split=validation_split,
+        shuffle=shuffle)
+  elif validation_split:
+    raise ValueError('validation_split argument is not supported with '
+                     'distribution strategies.')
+
+  if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
+    return experimental_tpu_fit_loop(
+        model,
+        iterator,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
+        val_iterator=val_iterator,
+        initial_epoch=initial_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps)
+  else:
+    return training_arrays.fit_loop(
+        model,
+        iterator,
+        batch_size=batch_size,
+        epochs=epochs,
+        verbose=verbose,
+        callbacks=callbacks,
+        val_inputs=val_iterator,
+        shuffle=shuffle,
+        initial_epoch=initial_epoch,
+        steps_per_epoch=steps_per_epoch,
+        validation_steps=validation_steps)
 
 
-def experimental_fit_loop(model,
-                          iterator,
-                          epochs=100,
-                          verbose=1,
-                          callbacks=None,
-                          initial_epoch=0,
-                          steps_per_epoch=None,
-                          val_iterator=None,
-                          validation_steps=None):
+def evaluate_distributed(model,
+                         x=None,
+                         y=None,
+                         batch_size=None,
+                         verbose=1,
+                         sample_weight=None,
+                         steps=None,
+                         callbacks=None):
+  """Evaluate loop for Distribution Strategies."""
+  distributed_training_utils.validate_inputs(x, y, model._distribution_strategy)
+  first_x_value = nest.flatten(x)[0]
+  if isinstance(first_x_value, np.ndarray):
+    steps, batch_size = distributed_training_utils.get_input_params(
+        model._distribution_strategy, first_x_value, steps, batch_size)
+  batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+  iterator = model._distribution_standardize_user_data(
+      x, y,
+      sample_weight=sample_weight,
+      batch_size=batch_size,
+      check_steps=True,
+      steps_name='steps',
+      steps=steps)
+
+  if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
+    # TODO(fchollet): why aren't callbacks supported here?
+    return experimental_tpu_test_loop(
+        model, iterator=iterator, verbose=verbose, steps=steps)
+  else:
+    return training_arrays.test_loop(
+        model,
+        inputs=iterator,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks)
+
+
+def predict_distributed(model,
+                        x=None,
+                        batch_size=None,
+                        verbose=0,
+                        steps=None,
+                        callbacks=None):
+  """Predict loop for Distribution Strategies."""
+  distributed_training_utils.validate_inputs(
+      x, None, model._distribution_strategy)
+  first_x_value = nest.flatten(x)[0]
+  if isinstance(first_x_value, np.ndarray):
+    steps, batch_size = distributed_training_utils.get_input_params(
+        model._distribution_strategy, first_x_value, steps, batch_size)
+  batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
+  iterator = model._distribution_standardize_user_data(
+      x,
+      batch_size=batch_size,
+      check_steps=True,
+      steps_name='steps',
+      steps=steps)
+  if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
+    # TODO(fchollet): why aren't callbacks supported here?
+    return experimental_tpu_predict_loop(
+        model, iterator, verbose=verbose, steps=steps)
+  else:
+    return training_arrays.predict_loop(
+        model,
+        iterator,
+        batch_size=batch_size,
+        verbose=verbose,
+        steps=steps,
+        callbacks=callbacks)
+
+
+def experimental_tpu_fit_loop(model,
+                              iterator,
+                              epochs=100,
+                              verbose=1,
+                              callbacks=None,
+                              initial_epoch=0,
+                              steps_per_epoch=None,
+                              val_iterator=None,
+                              validation_steps=None):
   """Fit loop for training with TPU DistributionStrategy.
 
   Arguments:
@@ -83,8 +232,8 @@ def experimental_fit_loop(model,
       ValueError: in case of invalid arguments.
   """
   current_strategy = model._distribution_strategy
-
-  K.get_session().run(current_strategy.initialize())
+  scope = current_strategy.scope()
+  scope.__enter__()
 
   def _per_device_fit_function(model):
     model._make_fit_function()
@@ -97,21 +246,20 @@ def experimental_fit_loop(model,
 
   def step_fn(ctx, inputs):
     """Clones the model and calls make_fit_function."""
-    # TODO(priyag, sourabhbajaj): The model gets cloned every time
-    # fit/test/predict is called. We should look into caching this keyed on
-    # input shapes.
     inputs, targets = inputs
-    clone_model_on_replicas(
-        model,
-        current_strategy,
-        make_callback_model=True,
-        inputs=inputs,
-        targets=targets,
-        mode=_Mode.TRAIN)
+    if model._compile_distribution:
+      distributed_training_utils.clone_model_on_replicas(
+          model, current_strategy,
+          make_callback_model=True, inputs=inputs,
+          targets=targets, mode=distributed_training_utils.ModeKeys.TRAIN)
+    else:
+      distributed_training_utils._build_distributed_network(
+          model, current_strategy, inputs,
+          targets, mode=distributed_training_utils.ModeKeys.TRAIN)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_fit_function, args=(model._grouped_model_train,))
+         _per_device_fit_function, args=(model._distributed_model_train,))
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs,
@@ -162,9 +310,10 @@ def experimental_fit_loop(model,
 
   do_validation = bool(validation_steps)
 
-  # Copy the weights from the original model to each of the replicated models.
-  with current_strategy.scope():
-    _copy_weights_to_distributed_model(model, model._grouped_model_train)
+  if model._compile_distribution:
+    with current_strategy.scope():
+      distributed_training_utils._copy_weights_to_distributed_model(
+          model, model._distributed_model_train)
 
   callbacks = cbks.configure_callbacks(
       callbacks,
@@ -184,7 +333,8 @@ def experimental_fit_loop(model,
   callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
     with current_strategy.scope():
-      _reset_metrics(model, model._grouped_model_train)
+      distributed_training_utils._reset_metrics(
+          model, model._distributed_model_train)
     callbacks.on_epoch_begin(epoch)
     epoch_logs = {}
     step_index = 0
@@ -214,18 +364,18 @@ def experimental_fit_loop(model,
     if do_validation:
       logging.info('Running validation at fit epoch: %s', epoch)
 
-      # Since we create a new clone from the original model we need to copy
-      # the weights back to the original model before we can run validation.
-      with current_strategy.scope():
-        _copy_weights_to_original_model(model, model._grouped_model_train,
-                                        'train')
+      if model._compile_distribution:
+        # Since we create a new clone from the original model we need to copy
+        # the weights back to the original model before we can run validation.
+        with current_strategy.scope():
+          distributed_training_utils._copy_weights_to_original_model(
+              model, model._distributed_model_train, ModeKeys.TRAIN)
 
-      val_outs = experimental_test_loop(  # pylint: disable=undefined-variable
+      val_outs = experimental_tpu_test_loop(  # pylint: disable=undefined-variable
           model,
           val_iterator,
           steps=validation_steps,
-          verbose=verbose,
-          initialize_finalize_strategy=False)
+          verbose=verbose)
       if not isinstance(val_outs, list):
         val_outs = [val_outs]
       # Same labels assumed.
@@ -237,19 +387,19 @@ def experimental_fit_loop(model,
       break
   callbacks.on_train_end()
 
-  # Copy the weights back from the replicated model to the original model.
-  with current_strategy.scope():
-    _copy_weights_to_original_model(model, model._grouped_model_train, 'train')
-
-  K.get_session().run(current_strategy.finalize())
+  if model._compile_distribution:
+    # Copy the weights back from the replicated model to the original model.
+    with current_strategy.scope():
+      distributed_training_utils._copy_weights_to_original_model(
+          model, model._distributed_model_train, ModeKeys.TRAIN)
+  scope.__exit__(None, None, None)
   return model.history
 
 
-def experimental_test_loop(model,
-                           iterator,
-                           verbose=0,
-                           steps=None,
-                           initialize_finalize_strategy=True):
+def experimental_tpu_test_loop(model,
+                               iterator,
+                               verbose=0,
+                               steps=None):
   """Test loop for evaluating with TPU DistributionStrategy.
 
   Arguments:
@@ -259,8 +409,6 @@ def experimental_test_loop(model,
       steps: Total number of steps (batches of samples)
           before declaring predictions finished.
           Ignored with the default value of `None`.
-      initialize_finalize_strategy: Should the strategy initialize and finalize
-          functions be called.
 
   Returns:
       Scalar loss (if the model has a single output and no metrics)
@@ -269,8 +417,8 @@ def experimental_test_loop(model,
       the display labels for the outputs.
   """
   current_strategy = model._distribution_strategy
-  if initialize_finalize_strategy:
-    K.get_session().run(current_strategy.initialize())
+  scope = current_strategy.scope()
+  scope.__enter__()
 
   def _per_device_eval_function(model):
     model._make_eval_function()
@@ -283,21 +431,20 @@ def experimental_test_loop(model,
 
   def step_fn(ctx, inputs):
     """Clones the model and calls make_eval_function."""
-    # TODO(priyag, sourabhbajaj): The model gets cloned every time
-    # fit/test/predict is called. We should look into caching this keyed on
-    # input shapes.
     inputs, targets = inputs
-    clone_model_on_replicas(
-        model,
-        current_strategy,
-        make_callback_model=False,
-        inputs=inputs,
-        targets=targets,
-        mode=_Mode.TEST)
+    if model._compile_distribution:
+      distributed_training_utils. clone_model_on_replicas(
+          model, current_strategy,
+          make_callback_model=False, inputs=inputs,
+          targets=targets, mode=distributed_training_utils.ModeKeys.TEST)
+    else:
+      distributed_training_utils._build_distributed_network(
+          model, current_strategy, inputs, targets,
+          mode=distributed_training_utils.ModeKeys.TEST)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_eval_function, args=(model._grouped_model_test,))
+         _per_device_eval_function, args=(model._distributed_model_test,))
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -341,10 +488,14 @@ def experimental_test_loop(model,
   if verbose == 1:
     progbar = Progbar(target=steps)
 
-  # Copy the weights from the original model to each of the replicated models.
+  if model._compile_distribution:
+    with current_strategy.scope():
+      distributed_training_utils._copy_weights_to_distributed_model(
+          model, model._distributed_model_test)
   with current_strategy.scope():
-    _copy_weights_to_distributed_model(model, model._grouped_model_test)
-    _reset_metrics(model, model._grouped_model_test)
+    distributed_training_utils._reset_metrics(
+        model, model._distributed_model_test)
+
   assert steps is not None
   outs = [0.] * len(model.metrics_names)
   for step in range(steps):
@@ -360,18 +511,16 @@ def experimental_test_loop(model,
     if verbose >= 1:
       progbar.update(step + 1)
 
+  scope.__exit__(None, None, None)
   if len(outs) >= 0:
     outs[0] /= (steps)
-
-  if initialize_finalize_strategy:
-    K.get_session().run(current_strategy.finalize())
 
   if len(outs) == 1:
     return outs[0]
   return outs
 
 
-def experimental_predict_loop(model, iterator, verbose=0, steps=None):
+def experimental_tpu_predict_loop(model, iterator, verbose=0, steps=None):
   """Predict loop for predicting with TPU DistributionStrategy.
 
   Arguments:
@@ -388,7 +537,8 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
       (if the model has multiple outputs).
   """
   current_strategy = model._distribution_strategy
-  K.get_session().run(current_strategy.initialize())
+  scope = current_strategy.scope()
+  scope.__enter__()
 
   # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
   K.set_learning_phase(0)
@@ -402,20 +552,19 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
 
   def step_fn(ctx, inputs):
     """Clones the model and calls make_predict_function."""
-
-    # TODO(priyag, sourabhbajaj): The model gets cloned every time
-    # fit/test/predict is called. We should look into caching this keyed on
-    # input shapes.
-    clone_model_on_replicas(
-        model,
-        current_strategy,
-        make_callback_model=False,
-        inputs=inputs,
-        mode=_Mode.PREDICT)
+    if model._compile_distribution:
+      distributed_training_utils. clone_model_on_replicas(
+          model, current_strategy,
+          make_callback_model=False, inputs=inputs,
+          mode=distributed_training_utils.ModeKeys.PREDICT)
+    else:
+      distributed_training_utils._build_distributed_network(
+          model, current_strategy, inputs,
+          mode=distributed_training_utils.ModeKeys.PREDICT)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_predict_function, args=(model._grouped_model_predict,))
+         _per_device_predict_function, args=(model._distributed_model_predict,))
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -455,10 +604,14 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
   if verbose == 1:
     progbar = Progbar(target=steps)
 
-  # Copy the weights from the original model to each of the replicated models.
+  if model._compile_distribution:
+    with current_strategy.scope():
+      distributed_training_utils._copy_weights_to_distributed_model(
+          model, model._distributed_model_predict)
   with current_strategy.scope():
-    _copy_weights_to_distributed_model(model, model._grouped_model_predict)
-    _reset_metrics(model, model._grouped_model_predict)
+    distributed_training_utils._reset_metrics(
+        model, model._distributed_model_predict)
+
   assert steps is not None
   # Since we do not know how many samples we will see, we cannot pre-allocate
   # the returned Numpy arrays. Instead, we store one array per batch seen
@@ -472,259 +625,10 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
     if verbose >= 1:
       progbar.update(step + 1)
 
-  K.get_session().run(current_strategy.finalize())
-
+  scope.__exit__(None, None, None)
   if len(unconcatenated_outs) == 1:
     return np.concatenate(unconcatenated_outs[0], axis=0)
   return [
       np.concatenate(unconcatenated_outs[i], axis=0)
       for i in range(len(unconcatenated_outs))
   ]
-
-
-def _custom_compile_for_predict(model):
-  """Custom compile for TPU predict mode."""
-  model.total_loss = None
-  model._fit_function = None
-  model._eval_function = None
-  model.train_function = None
-  model.test_function = None
-  model.predict_function = None
-
-
-def _clone_and_build_model(model, inputs=None, targets=None, mode=None):
-  """Clone and build the given keras_model."""
-  # We need to set the import here since we run into a circular dependency
-  # error.
-  from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
-  cloned_model = models.clone_model(model, input_tensors=inputs)
-
-  # Compile and build model.
-  if isinstance(model.optimizer, optimizers.TFOptimizer):
-    optimizer = model.optimizer
-  else:
-    optimizer_config = model.optimizer.get_config()
-    optimizer = model.optimizer.__class__.from_config(optimizer_config)
-
-  # Recast all low precision outputs back to float32 since we only casted
-  # the inputs to bfloat16 and not targets. This is done so that we can preserve
-  # precision when calculating the loss value.
-  def _upcast_low_precision_outputs(output):
-    if output.dtype == dtypes.bfloat16:
-      return math_ops.cast(output, dtypes.float32)
-    else:
-      return output
-  cloned_model.outputs = [_upcast_low_precision_outputs(o)
-                          for o in cloned_model.outputs]
-
-  if isinstance(targets, tuple):
-    targets = nest.flatten(targets)
-  if mode == _Mode.PREDICT:
-    _custom_compile_for_predict(cloned_model)
-  else:
-    cloned_model.compile(
-        optimizer,
-        model.loss,
-        metrics=metrics_module.clone_metrics(model._compile_metrics),
-        loss_weights=model.loss_weights,
-        sample_weight_mode=model.sample_weight_mode,
-        weighted_metrics=metrics_module.clone_metrics(
-            model._compile_weighted_metrics),
-        target_tensors=targets)
-  return cloned_model
-
-
-def clone_model_on_replicas(model, strategy, make_callback_model=False,
-                            inputs=None, targets=None, mode=None):
-  """Create a cloned model on each replica."""
-  with K.get_graph().as_default(), strategy.scope():
-    grouped_model = strategy.extended.call_for_each_replica(
-        _clone_and_build_model, args=(model, inputs, targets, mode))
-    if mode is _Mode.TRAIN:
-      model._grouped_model_train = grouped_model
-    elif mode is _Mode.TEST:
-      model._grouped_model_test = grouped_model
-    elif mode is _Mode.PREDICT:
-      model._grouped_model_predict = grouped_model
-    else:
-      model._grouped_model = grouped_model
-  if make_callback_model:
-    model._make_callback_model(grouped_model)
-
-
-def _get_input_from_iterator(iterator, model):
-  """Get elements from the iterator and verify the input shape and type."""
-  next_element = iterator.get_next()
-
-  if len(nest.flatten(next_element)) == len(model.inputs):
-    x = next_element
-    y = None
-    sample_weights = None
-  elif len(nest.flatten(next_element)) == (len(model.inputs) +
-                                           len(model.outputs)):
-    x, y = next_element
-    sample_weights = None
-  else:
-    x, y, sample_weights = next_element
-
-  # Validate that all the elements in x and y are of the same type and shape.
-  # We can then pass the first element of x and y to `_standardize_weights`
-  # below and be confident of the output.
-  distributed_training_utils.validate_distributed_dataset_inputs(
-      model._distribution_strategy, x, y, sample_weights)
-  return x, y, sample_weights
-
-
-def _make_execution_function(model, mode):
-  """Makes function to run one step of distributed model execution."""
-  if context.executing_eagerly():
-    return _make_eager_execution_function(model, mode)
-
-  strategy = model._distribution_strategy
-  if not model._grouped_model:
-    clone_model_on_replicas(
-        model, strategy, make_callback_model=(mode == 'train'))
-
-  def _per_device_function(model):
-    f = model._make_execution_function(mode)
-    return (f.inputs, f.outputs, f.updates_op, f.session_kwargs)
-
-  with strategy.scope():
-    # Create train ops on each of the devices when we call
-    # `_per_device_fit_function`.
-    (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = strategy.extended.call_for_each_replica(
-         _per_device_function, args=(model._grouped_model,))
-
-    if mode == 'train':
-      # Initialize the variables in the replicated model. This is necessary for
-      # multi-worker training because on some workers, initialization is not
-      # needed. This method does initialization or waiting for initialization
-      # according to the context object of distribute coordinator.
-      distributed_training_utils.init_restore_or_wait_for_variables()
-
-    # Unwrap all the per device values returned from `call_for_each_replica`.
-    # Unwrapping per device values gives you a list of values that can be
-    # used to construct a new train function that is composed of update ops on
-    # all the devices over which the model is distributed.
-    (all_inputs, all_outputs, all_updates,
-     all_session_args) = distributed_training_utils.unwrap_values(
-         strategy,
-         grouped_inputs,
-         grouped_outputs,
-         grouped_updates,
-         grouped_session_args,
-         with_loss_tensor=(mode != 'predict'))
-
-    return K.function(
-        all_inputs,
-        all_outputs,
-        updates=all_updates,
-        name='distributed_{}_function'.format(mode),
-        **all_session_args)
-
-
-def _make_eager_execution_function(model, mode):
-  """Makes function to run one step of distributed model eager execution."""
-  strategy = model._distribution_strategy
-  if not model._grouped_model:
-    clone_model_on_replicas(
-        model, strategy, make_callback_model=(mode == 'train'))
-
-  def _per_device_function(model):
-    f = model._make_execution_function(mode)
-    return (f.inputs, f.outputs)
-
-  # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
-  # the global one.
-  with K.get_graph().as_default(), strategy.scope():
-    # Create train ops on each of the devices when we call
-    # `_per_device_fit_function`.
-    (grouped_inputs, grouped_outputs) = strategy.call_for_each_replica(
-        _per_device_function, args=(model._grouped_model,))
-
-    # Unwrap all the per device values returned from `call_for_each_replica`.
-    # Unwrapping per device values gives you a list of values that can be
-    # used to construct a new train function that is composed of inptus/outputs
-    # on all the devices over which the model is distributed.
-    (all_inputs, all_outputs, _, _) = distributed_training_utils.unwrap_values(
-        strategy,
-        grouped_inputs,
-        grouped_outputs,
-        with_loss_tensor=(mode != 'predict'))
-
-    return K.function(
-        all_inputs,
-        all_outputs,
-        name='eager_distributed_{}_function'.format(mode))
-
-
-def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
-  """Prepare feed values to the model execution function.
-
-  Arguments:
-    model: Model to prepare feed values for.
-    inputs: List or dict of model inputs.
-    targets: Optional list of model targets.
-    sample_weights: Optional list of sample weight arrays.
-    mode: One of 'train'/'test'/'predict'.
-
-  Returns:
-    Feed values for the model in the given mode.
-  """
-  strategy = model._distribution_strategy
-  inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
-  inputs = distributed_training_utils.flatten_perdevice_values(strategy, inputs)
-  targets = distributed_training_utils.flatten_perdevice_values(
-      strategy, targets)
-  if mode == 'predict':
-    sample_weights = []
-    targets = []
-  else:
-    sample_weights = [
-        None for _ in range(len(model.outputs) * strategy.num_replicas_in_sync)
-    ]
-  ins = inputs + targets + sample_weights
-  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
-    ins += [True]
-  return ins
-
-
-def _copy_weights_to_distributed_model(original_model, grouped_model):
-  """Copies weights from original model to distributed models."""
-  strategy = original_model._distribution_strategy
-  if strategy:
-    # Copy the weights from the original model to each of the replicated
-    # models.
-    orig_model_weights = original_model.get_weights()
-    distributed_model = strategy.unwrap(grouped_model)[0]
-    distributed_training_utils.set_weights(strategy, distributed_model,
-                                           orig_model_weights)
-
-
-def _copy_weights_to_original_model(model, grouped_model, mode):
-  """Copies weights from first distributed model back to original model."""
-  if model._distribution_strategy and mode == 'train':
-    updated_weights = model._distribution_strategy.unwrap(
-        grouped_model)[0].get_weights()
-    model.set_weights(updated_weights)
-
-
-def _per_device_aggregate_batch(batch_outs, model, mode):
-  """Aggregates the per-device batch-level outputs from a distributed step."""
-  if model._distribution_strategy is not None and mode == 'predict':
-    total_batch_outs = []
-    for i in range(len(model.outputs)):
-      num_replicas = model._distribution_strategy.num_replicas_in_sync
-      nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
-      total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
-    return total_batch_outs
-  return batch_outs
-
-
-def _reset_metrics(model, distributed_model=None):
-  if model._distribution_strategy:
-    distributed_model = (
-        distributed_model or
-        model._distribution_strategy.unwrap(model._grouped_model)[0])
-    distributed_model.reset_metrics()

@@ -667,7 +667,8 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
 
   if (parsed.dtype() == DT_VARIANT) {
     const Variant* from = parsed.flat<Variant>().data();
-    Tensor copy(cpu_allocator(), DT_VARIANT, parsed.shape());
+    int numa_node = attributes().locality().numa_node();
+    Tensor copy(cpu_allocator(numa_node), DT_VARIANT, parsed.shape());
     Variant* copy_variant = copy.flat<Variant>().data();
 
     std::list<Notification> notifications;

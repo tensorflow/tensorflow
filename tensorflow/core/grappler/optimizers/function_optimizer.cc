@@ -1374,7 +1374,24 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   const string prefix = strings::StrCat(func_node.name(), "/");
 
   // ------------------------------------------------------------------------ //
-  // First we need to assign device placements to all function body nodes.
+  // Before placing the function body nodes we pin input placeholders to the
+  // same device as their corresponding input nodes.
+
+  for (NodeDef& func_body_node : *item.graph.mutable_node()) {
+    if (item.IsInputPlaceholder(func_body_node.name())) {
+      const int input_idx = input_placeholders_idx[func_body_node.name()];
+      const GraphView::OutputPort output_port =
+          ctx->graph_view().GetRegularFanin({&func_node, input_idx});
+
+      VLOG(3) << "Pin inlined function input node '" << func_body_node.name()
+              << "' to the '" << output_port.node->device() << "' device.";
+      func_body_node.set_device(output_port.node->device());
+    }
+  }
+
+  // ------------------------------------------------------------------------ //
+  // After placing nodes corresponding to the function inputs, we need to assign
+  // device placements to all other function body nodes.
 
   GraphDef placed_graph_def;
 
@@ -1432,7 +1449,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
       (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
       func_body_node.mutable_attr()->erase("dtype");
       func_body_node.mutable_attr()->erase("shape");
-      int input_idx = input_placeholders_idx[func_body_node.name()];
+      const int input_idx = input_placeholders_idx[func_body_node.name()];
       func_body_node.add_input(strings::StrCat(inputs[input_idx].ToString()));
 
       // All side effects must happen before inputs can start executing.

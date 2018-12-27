@@ -30,7 +30,7 @@ from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.metrics import Metric
 from tensorflow.python.keras.models import model_from_json
-from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -44,10 +44,10 @@ from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.experimental.export')
+@keras_export('keras.experimental.export')
 def export(
     model, saved_model_path, custom_objects=None, as_text=None,
     input_signature=None, serving_only=False):
@@ -331,7 +331,7 @@ def _create_signature_def_map(model, mode):
     inputs_dict.update(targets_dict)
   outputs_dict = {name: x
                   for name, x in zip(model.output_names, model.outputs)}
-  metrics = metrics_utils.extract_model_metrics_as_v1_metrics(model)
+  metrics = saving_utils.extract_model_metrics(model)
 
   # Add metric variables to the `LOCAL_VARIABLES` collection. Metric variables
   # are by default not added to any collections. We are doing this here, so
@@ -367,7 +367,7 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
   return True
 
 
-@tf_export('keras.experimental.load_from_saved_model')
+@keras_export('keras.experimental.load_from_saved_model')
 def load_from_saved_model(saved_model_path):
   """Loads a keras.Model from a SavedModel created by keras export().
 

@@ -622,7 +622,6 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         the input data. If specified, only this subset of columns will be
         parsed. Defaults to parsing all columns.
     """
-    super(CsvDatasetV2, self).__init__()
     self._filenames = ops.convert_to_tensor(
         filenames, dtype=dtypes.string, name="filenames")
     self._compression_type = convert.optional_param_to_tensor(
@@ -655,10 +654,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     self._structure = structure.NestedStructure(
         tuple(structure.TensorStructure(d.dtype, [])
               for d in self._record_defaults))
-
-  def _as_variant_tensor(self):
-    # Constructs graph node for the dataset op.
-    return gen_experimental_dataset_ops.experimental_csv_dataset(
+    variant_tensor = gen_experimental_dataset_ops.experimental_csv_dataset(
         filenames=self._filenames,
         record_defaults=self._record_defaults,
         buffer_size=self._buffer_size,
@@ -668,8 +664,8 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
         use_quote_delim=self._use_quote_delim,
         na_value=self._na_value,
         select_cols=self._select_cols,
-        compression_type=self._compression_type,
-    )
+        compression_type=self._compression_type)
+    super(CsvDatasetV2, self).__init__(variant_tensor)
 
   @property
   def _element_structure(self):
@@ -944,7 +940,6 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
       output_types: A tuple of `tf.DType` objects representing the types of the
         columns returned by `query`.
     """
-    super(SqlDatasetV2, self).__init__()
     self._driver_name = ops.convert_to_tensor(
         driver_name, dtype=dtypes.string, name="driver_name")
     self._data_source_name = ops.convert_to_tensor(
@@ -954,11 +949,10 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     self._structure = structure.NestedStructure(
         nest.map_structure(
             lambda dtype: structure.TensorStructure(dtype, []), output_types))
-
-  def _as_variant_tensor(self):
-    return gen_experimental_dataset_ops.experimental_sql_dataset(
+    variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
         self._driver_name, self._data_source_name, self._query,
         nest.flatten(self.output_types), nest.flatten(self.output_shapes))
+    super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property
   def _element_structure(self):

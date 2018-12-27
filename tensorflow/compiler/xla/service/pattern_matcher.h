@@ -775,7 +775,7 @@ class ShapePatternIsArrayImpl {
   explicit constexpr ShapePatternIsArrayImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (!ShapeUtil::IsArray(*shape)) {
+    if (!shape->IsArray()) {
       EXPLAIN << "Shape is not an array";
       return false;
     }
@@ -793,7 +793,7 @@ class ShapePatternIsTupleImpl {
   explicit constexpr ShapePatternIsTupleImpl() {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (!ShapeUtil::IsTuple(*shape)) {
+    if (!shape->IsTuple()) {
       EXPLAIN << "Shape is not a tuple";
       return false;
     }
@@ -831,7 +831,7 @@ class ShapePatternRankImpl {
   explicit constexpr ShapePatternRankImpl(int64 rank) : rank_(rank) {}
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (ShapeUtil::Rank(*shape) != rank_) {
+    if (shape->rank() != rank_) {
       if (rank_ == 0) {
         EXPLAIN << "Shape is not a scalar";
       } else {
@@ -2036,7 +2036,7 @@ XLA_UNOP_PATTERN(Ceil)
 XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)
-XLA_UNOP_PATTERN(CrossReplicaSum)
+XLA_UNOP_PATTERN(AllReduce)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)

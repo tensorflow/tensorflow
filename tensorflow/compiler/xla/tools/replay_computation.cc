@@ -157,7 +157,9 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
               << "--generate_fake_infeed only works if the model has 0 or 1 "
                  "infeed ops, but this one has >= 2.";
           provide_infeed = true;
-          infeed_shape = Shape(instruction.shape());
+          // The kInfeed instruction should have a shape (buffer, token).  We
+          // want to infeed just `buffer`.
+          infeed_shape = Shape(instruction.shape()).tuple_shapes(0);
           LOG(INFO) << "Generating fake infeed shape for inferred shape: "
                     << ShapeUtil::HumanString(infeed_shape);
         }

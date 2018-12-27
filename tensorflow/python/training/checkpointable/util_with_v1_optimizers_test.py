@@ -45,6 +45,8 @@ from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
+if not test.is_built_with_rocm():
+  from tensorflow.python.distribute import mirrored_strategy
 
 class NonLayerCheckpointable(tracking.Checkpointable):
 
@@ -279,6 +281,72 @@ class CheckpointingTests(test.TestCase):
       root.save(file_prefix=checkpoint_prefix)
       self.assertEqual((training_continuation + 1) * num_training_steps,
                        root.optimizer_step.numpy())
+
+  def testEagerDistributionStrategy(self):
+    if test.is_built_with_rocm():
+      self.skipTest('ROCm does not yet support mirrored_strategy')
+    num_training_steps = 10
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+
+    def _train_fn(optimizer, model):
+      input_value = constant_op.constant([[3.]])
+      optimizer.minimize(
+          functools.partial(model, input_value),
+          global_step=root.optimizer_step)
+
+    for training_continuation in range(3):
+      strategy = mirrored_strategy.MirroredStrategy()
+      with strategy.scope():
+        model = MyModel()
+        optimizer = adam.AdamOptimizer(0.001)
+        root = checkpointable_utils.Checkpoint(
+            optimizer=optimizer, model=model,
+            optimizer_step=training_util.get_or_create_global_step())
+        root.restore(checkpoint_management.latest_checkpoint(
+            checkpoint_directory))
+
+        for _ in range(num_training_steps):
+          strategy.extended.call_for_each_replica(
+              functools.partial(_train_fn, optimizer, model))
+        root.save(file_prefix=checkpoint_prefix)
+        self.assertEqual((training_continuation + 1) * num_training_steps,
+                         root.optimizer_step.numpy())
+
+  def testGraphDistributionStrategy(self):
+    self.skipTest("b/121381184")
+    num_training_steps = 10
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+
+    def _train_fn(optimizer, model):
+      input_value = constant_op.constant([[3.]])
+      return optimizer.minimize(
+          functools.partial(model, input_value),
+          global_step=root.optimizer_step)
+
+    for training_continuation in range(3):
+      with ops.Graph().as_default():
+        strategy = mirrored_strategy.MirroredStrategy()
+        with strategy.scope():
+          model = MyModel()
+          optimizer = adam.AdamOptimizer(0.001)
+          root = checkpointable_utils.Checkpoint(
+              optimizer=optimizer, model=model,
+              optimizer_step=training_util.get_or_create_global_step())
+          status = root.restore(checkpoint_management.latest_checkpoint(
+              checkpoint_directory))
+          train_op = strategy.extended.call_for_each_replica(
+              functools.partial(_train_fn, optimizer, model))
+          with self.session() as session:
+            if training_continuation > 0:
+              status.assert_consumed()
+            status.initialize_or_restore()
+            for _ in range(num_training_steps):
+              session.run(train_op)
+            root.save(file_prefix=checkpoint_prefix)
+        self.assertEqual((training_continuation + 1) * num_training_steps,
+                         root.optimizer_step.numpy())
 
   def testUsageGraph(self):
     """Expected usage when graph building."""

@@ -52,8 +52,8 @@ class BufferLivenessTest : public HloTestBase {
   // interfere. Precondition: 'a' and 'b' are array-shaped.
   bool InstructionsMayInterfere(const BufferLiveness& liveness,
                                 HloInstruction* a, HloInstruction* b) {
-    EXPECT_FALSE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_FALSE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_FALSE(a->shape().IsTuple());
+    EXPECT_FALSE(b->shape().IsTuple());
     return liveness.MayInterfere(
         GetBuffer(liveness, /*instruction=*/a, /*index=*/{}),
         GetBuffer(liveness, /*instruction=*/b, /*index=*/{}));
@@ -66,8 +66,8 @@ class BufferLivenessTest : public HloTestBase {
                                  HloInstruction* a, HloInstruction* b,
                                  const ShapeIndex& index) {
     // Check that top-level shapes are tuple and tuple element shapes are equal.
-    EXPECT_TRUE(ShapeUtil::IsTuple(a->shape()));
-    EXPECT_TRUE(ShapeUtil::IsTuple(b->shape()));
+    EXPECT_TRUE(a->shape().IsTuple());
+    EXPECT_TRUE(b->shape().IsTuple());
     EXPECT_TRUE(
         ShapeUtil::Compatible(ShapeUtil::GetSubshape(a->shape(), index),
                               ShapeUtil::GetSubshape(b->shape(), index)));

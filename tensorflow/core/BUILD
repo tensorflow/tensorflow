@@ -450,7 +450,8 @@ cc_library(
 )
 
 cc_library(
-    name = "logger_interface",
+    name = "logger",
+    srcs = ["platform/logger.cc"],
     hdrs = ["platform/logger.h"],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
@@ -458,23 +459,6 @@ cc_library(
         ":lib_proto_parsing",
         "@protobuf_archive//:protobuf",
     ],
-)
-
-cc_library(
-    name = "default_logger",
-    srcs = ["platform/default/logger.cc"],
-    hdrs = ["platform/logger.h"],
-    deps = [
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:logger_interface",
-    ],
-)
-
-cc_library(
-    name = "logger",
-    hdrs = ["platform/logger.h"],
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/platform/default/build_config:logger"],
 )
 
 filegroup(
@@ -2791,6 +2775,7 @@ cc_library(
 # in this library.
 GRAPH_HDRS = [
     "graph/algorithm.h",
+    "graph/collective_order.h",
     "graph/colors.h",
     "graph/control_flow.h",
     "graph/costmodel.h",
@@ -2818,6 +2803,7 @@ tf_cuda_library(
     name = "graph",
     srcs = [
         "graph/algorithm.cc",
+        "graph/collective_order.cc",
         "graph/colors.cc",
         "graph/control_flow.cc",
         "graph/costmodel.cc",
@@ -3860,6 +3846,27 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_tests(
+    name = "collective_order_test",
+    size = "small",
+    srcs = [
+        "graph/collective_order_test.cc",
+    ],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
