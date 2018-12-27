@@ -121,15 +121,16 @@ class OpKernel {
   // Initial time (in CPU cycles) we expect an operation to take.  Used to
   // determine whether an operation should be place in a threadpool.  Operations
   // start out "expensive".
-  static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-  static const uint64 kOpIsExpensiveThresholdCycles = 25000;
-  static const uint64 kCostDecay = 10;
+  static const uint64 kInitialCostEstimateCycles;
+  static const uint64 kOpIsExpensiveThresholdCycles;
+  static const uint64 kCostDecay;
 
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
   virtual bool IsExpensive() {
-    return expensive_ && (cost_estimate_ > kOpIsExpensiveThresholdCycles);
+    return expensive_ && (cost_estimate_.load(std::memory_order_relaxed) >
+                          kOpIsExpensiveThresholdCycles);
   }
 
   // Updates the dynamic cost estimate, which is used to determine whether this
