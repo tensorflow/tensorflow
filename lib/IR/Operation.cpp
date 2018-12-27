@@ -99,7 +99,7 @@ void Operation::setLoc(Location loc) {
 Function *Operation::getOperationFunction() {
   if (auto *inst = llvm::dyn_cast<Instruction>(this))
     return inst->getFunction();
-  return llvm::cast<OperationStmt>(this)->findFunction();
+  return llvm::cast<OperationStmt>(this)->getFunction();
 }
 
 /// Return the number of operands this operation has.

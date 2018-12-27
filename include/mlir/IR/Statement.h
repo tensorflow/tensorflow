@@ -104,7 +104,7 @@ public:
   /// Returns the function that this statement is part of.
   /// The function is determined by traversing the chain of parent statements.
   /// Returns nullptr if the statement is unlinked.
-  MLFunction *findFunction() const;
+  MLFunction *getFunction() const;
 
   /// Destroys this statement and its subclass data.
   void destroy();

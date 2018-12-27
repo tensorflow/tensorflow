@@ -474,7 +474,7 @@ void ReturnOp::print(OpAsmPrinter *p) const {
 bool ReturnOp::verify() const {
   const Function *function;
   if (auto *stmt = dyn_cast<OperationStmt>(getOperation()))
-    function = stmt->getBlock()->findFunction();
+    function = stmt->getFunction();
   else
     function = cast<Instruction>(getOperation())->getFunction();
 

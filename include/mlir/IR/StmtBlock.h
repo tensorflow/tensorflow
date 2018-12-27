@@ -62,11 +62,11 @@ public:
     return const_cast<StmtBlock *>(this)->getContainingStmt();
   }
 
-  /// Returns the function that this statement block is part of.
-  /// The function is determined by traversing the chain of parent statements.
-  MLFunction *findFunction();
-  const MLFunction *findFunction() const {
-    return const_cast<StmtBlock *>(this)->findFunction();
+  /// Returns the function that this statement block is part of.  The function
+  /// is determined by traversing the chain of parent statements.
+  MLFunction *getFunction();
+  const MLFunction *getFunction() const {
+    return const_cast<StmtBlock *>(this)->getFunction();
   }
 
   //===--------------------------------------------------------------------===//

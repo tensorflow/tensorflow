@@ -39,7 +39,7 @@ bool mlir::properlyDominates(const Statement &a, const Statement &b) {
   if (&a == &b)
     return false;
 
-  if (a.findFunction() != b.findFunction())
+  if (a.getFunction() != b.getFunction())
     return false;
 
   if (a.getBlock() == b.getBlock()) {

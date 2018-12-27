@@ -289,20 +289,20 @@ public:
   /// Create ML function builder and set insertion point to the given statement,
   /// which will cause subsequent insertions to go right before it.
   MLFuncBuilder(Statement *stmt)
-      // TODO: Eliminate findFunction from this.
-      : MLFuncBuilder(stmt->findFunction()) {
+      // TODO: Eliminate getFunction from this.
+      : MLFuncBuilder(stmt->getFunction()) {
     setInsertionPoint(stmt);
   }
 
   MLFuncBuilder(StmtBlock *block)
-      // TODO: Eliminate findFunction from this.
-      : MLFuncBuilder(block->findFunction()) {
+      // TODO: Eliminate getFunction from this.
+      : MLFuncBuilder(block->getFunction()) {
     setInsertionPoint(block, block->end());
   }
 
   MLFuncBuilder(StmtBlock *block, StmtBlock::iterator insertPoint)
-      // TODO: Eliminate findFunction from this.
-      : MLFuncBuilder(block->findFunction()) {
+      // TODO: Eliminate getFunction from this.
+      : MLFuncBuilder(block->getFunction()) {
     setInsertionPoint(block, insertPoint);
   }
 

@@ -1015,7 +1015,7 @@ protected:
       case SSAValueKind::BlockArgument:
         // If this is an argument to the function, give it an 'arg' name.
         if (auto *block = cast<BlockArgument>(value)->getOwner())
-          if (auto *fn = block->findFunction())
+          if (auto *fn = block->getFunction())
             if (&fn->getBlockList().front() == block) {
               specialName << "arg" << nextArgumentID++;
               break;
@@ -1639,7 +1639,7 @@ void BasicBlock::printAsOperand(raw_ostream &os, bool printType) {
 }
 
 void Statement::print(raw_ostream &os) const {
-  MLFunction *function = findFunction();
+  MLFunction *function = getFunction();
   if (!function) {
     os << "<<UNLINKED STATEMENT>>\n";
     return;
@@ -1653,7 +1653,7 @@ void Statement::print(raw_ostream &os) const {
 void Statement::dump() const { print(llvm::errs()); }
 
 void StmtBlock::printBlock(raw_ostream &os) const {
-  const MLFunction *function = findFunction();
+  const MLFunction *function = getFunction();
   ModuleState state(function->getContext());
   ModulePrinter modulePrinter(os, state);
   MLFunctionPrinter(function, modulePrinter).print(this);

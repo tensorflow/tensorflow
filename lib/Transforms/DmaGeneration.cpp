@@ -180,7 +180,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   MLFuncBuilder *b = region.isWrite() ? &epilogue : &prologue;
 
   // Builder to create constants at the top level.
-  MLFuncBuilder top(forStmt->findFunction());
+  MLFuncBuilder top(forStmt->getFunction());
 
   auto loc = forStmt->getLoc();
   auto *memref = region.memref;

@@ -32,7 +32,7 @@ Statement *StmtBlock::getContainingStmt() {
   return parent ? parent->getContainingStmt() : nullptr;
 }
 
-MLFunction *StmtBlock::findFunction() {
+MLFunction *StmtBlock::getFunction() {
   StmtBlock *block = this;
   while (auto *stmt = block->getContainingStmt()) {
     block = stmt->getBlock();

@@ -81,8 +81,8 @@ Statement *Statement::getParentStmt() const {
   return block ? block->getContainingStmt() : nullptr;
 }
 
-MLFunction *Statement::findFunction() const {
-  return block ? block->findFunction() : nullptr;
+MLFunction *Statement::getFunction() const {
+  return block ? block->getFunction() : nullptr;
 }
 
 MLValue *Statement::getOperand(unsigned idx) {
@@ -368,7 +368,7 @@ MLIRContext *OperationStmt::getContext() const {
 
   // In the very odd case where we have no operands or results, fall back to
   // doing a find.
-  return findFunction()->getContext();
+  return getFunction()->getContext();
 }
 
 bool OperationStmt::isReturn() const { return isa<ReturnOp>(); }
@@ -560,7 +560,7 @@ MLIRContext *IfStmt::getContext() const {
   // Check for degenerate case of if statement with no operands.
   // This is unlikely, but legal.
   if (operands.empty())
-    return findFunction()->getContext();
+    return getFunction()->getContext();
 
   return getOperand(0)->getType().getContext();
 }

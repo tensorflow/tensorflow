@@ -101,7 +101,7 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
   // Replaces all IV uses to its single iteration value.
   if (!forStmt->use_empty()) {
     if (forStmt->hasConstantLowerBound()) {
-      auto *mlFunc = forStmt->findFunction();
+      auto *mlFunc = forStmt->getFunction();
       MLFuncBuilder topBuilder(&mlFunc->getBody()->front());
       auto constOp = topBuilder.create<ConstantIndexOp>(
           forStmt->getLoc(), forStmt->getConstantLowerBound());

@@ -290,7 +290,7 @@ public:
   }
 
   /// Resolve base class ambiguity.
-  using Statement::findFunction;
+  using Statement::getFunction;
 
   /// Operand iterators.
   using operand_iterator = OperandIterator<ForStmt, MLValue>;
