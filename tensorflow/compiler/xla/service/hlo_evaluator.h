@@ -53,11 +53,13 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // (Dummy template arg is to reduce the overloading priority of one overload
   // so that Evaluate(module, {}) resolves unambiguously.)
   StatusOr<Literal> Evaluate(const HloModule& module,
-                             absl::Span<const Literal* const> arg_literals);
+                             absl::Span<const Literal* const> arg_literals) {
+    return Evaluate(*module.entry_computation(), arg_literals);
+  }
   template <typename Dummy = void>
   StatusOr<Literal> Evaluate(const HloModule& module,
                              absl::Span<const Literal> arg_literals) {
-    return Evaluate(module, VectorOfPointersTo(arg_literals));
+    return Evaluate(*module.entry_computation(), arg_literals);
   }
 
   // Evaluates an HLO computation and an array of pointers to literals.
@@ -84,22 +86,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   template <typename Dummy = void>
   StatusOr<Literal> Evaluate(const HloComputation& computation,
                              absl::Span<const Literal> arg_literals) {
-    return Evaluate(computation, VectorOfPointersTo(arg_literals));
+    std::vector<const Literal*> arg_literal_ptrs;
+    for (const auto& l : arg_literals) {
+      arg_literal_ptrs.push_back(&l);
+    }
+    return Evaluate(computation, arg_literal_ptrs);
   }
 
-  // Evaluates a single HLO instruction and an array of pointers to literals.
-  // Return the evaluated result as literal if successful.
-  // Precondition:
-  // 1. argument literals correspond to the input instruction's parameters in
-  // their post-ordering.
-  // 2. the instruction's operands must be of either Parameter or Constant type.
-  StatusOr<Literal> Evaluate(HloInstruction* instruction,
-                             absl::Span<const Literal* const> arg_literals);
-  StatusOr<Literal> Evaluate(HloInstruction* instruction,
-                             absl::Span<const Literal> arg_literals);
-
-  // Convenience overload to resolve ambiguity in Evaluate(instruction, {}).
-  // Requires all of the instruction's operands to be constants.
+  // Gets the value of running a single HLO instruction.
+  //
+  // All of the operands to this instruction must be constants.
   StatusOr<Literal> Evaluate(HloInstruction* instruction);
 
   // Same as Evaluate, except returning false on error and accepts an output
@@ -242,17 +238,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   bool use_fast_path_ = false;
 
  private:
-  // Returns a vector<const T*> whose elements point to the elements of a
-  // Span<const T>.
-  template <typename T>
-  static std::vector<const T*> VectorOfPointersTo(absl::Span<const T> elems) {
-    std::vector<const T*> ret;
-    for (const auto& elem : elems) {
-      ret.push_back(&elem);
-    }
-    return ret;
-  }
-
   template <typename ReturnT, typename NativeT>
   static StatusOr<Literal> ElementWiseUnaryOpImpl(
       HloInstruction* instruction,
