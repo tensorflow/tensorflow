@@ -1,4 +1,4 @@
-//===- mlir-rewriter-gen.cpp - MLIR pattern rewriter generator ------------===//
+//===- RewriterGen.cpp - MLIR pattern rewriter generator ------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,11 +15,11 @@
 // limitations under the License.
 // =============================================================================
 //
-// This is a command line utility that generates rewrite patterns from
-// declaritive description.
+// RewriterGen uses pattern rewrite definitions to generate rewriter matchers.
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/TableGen/GenInfo.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -31,13 +31,6 @@
 #include "llvm/TableGen/TableGenBackend.h"
 
 using namespace llvm;
-
-enum ActionType { GenRewriters };
-
-static cl::opt<ActionType>
-    action(cl::desc("Action to perform:"),
-           cl::values(clEnumValN(GenRewriters, "gen-rewriters",
-                                 "Generate rewriter definitions")));
 
 static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
   emitSourceFileHeader("Rewriters", os);
@@ -187,19 +180,9 @@ static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
   os << "}\n";
 }
 
-static bool MlirOpTableGenMain(raw_ostream &os, RecordKeeper &records) {
-  switch (action) {
-  case GenRewriters:
-    emitRewriters(records, os);
-    return false;
-  }
-}
-
-int main(int argc, char **argv) {
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
-  PrettyStackTraceProgram X(argc, argv);
-  cl::ParseCommandLineOptions(argc, argv);
-
-  llvm_shutdown_obj Y;
-  return TableGenMain(argv[0], &MlirOpTableGenMain);
-}
+mlir::GenRegistration
+    genRewriters("gen-rewriters", "Generate pattern rewriters",
+                 [](const RecordKeeper &records, raw_ostream &os) {
+                   emitRewriters(records, os);
+                   return false;
+                 });

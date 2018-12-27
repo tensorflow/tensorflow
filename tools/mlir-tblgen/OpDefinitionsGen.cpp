@@ -1,4 +1,4 @@
-//===- mlir-op-gen.cpp - MLIR op generator --------------------------------===//
+//===- OpDefinitionsGen.cpp - MLIR op definitions generator ---------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,34 +15,20 @@
 // limitations under the License.
 // =============================================================================
 //
-// This is a command line utility that generates C++ definitions for ops
-// declared in a op database.
+// OpDefinitionsGen uses the description of operations to generate C++
+// definitions for ops.
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/TableGen/GenInfo.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
-#include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
 
 using namespace llvm;
-
-enum ActionType { PrintRecords, GenDefFile, GenOpDefinitions };
-
-static cl::opt<ActionType> action(
-    cl::desc("Action to perform:"),
-    cl::values(clEnumValN(PrintRecords, "print-records",
-                          "Print all records to stdout (default)"),
-               clEnumValN(GenDefFile, "gen-def-file", "Generate def file"),
-               clEnumValN(GenOpDefinitions, "gen-op-definitions",
-                          "Generate op definitions")));
-static cl::opt<std::string> opcodeClass("opcode-enum",
-                                        cl::desc("The opcode enum to use"));
 
 static const char *const generatedArgName = "_arg";
 
@@ -535,7 +521,7 @@ static void emitOpClasses(const RecordKeeper &recordKeeper,
   IfDefScope scope("GET_OP_CLASSES", os);
 
   // Enumeration of all the ops defined.
-  os << "enum " << opcodeClass << " {\n";
+  os << "enum class OpCode {\n";
   for (int i = 0, e = defs.size(); i != e; ++i) {
     auto &def = defs[i];
     os << (i != 0 ? "," : "") << "k" << def->getName();
@@ -583,25 +569,9 @@ static void emitOpDefFile(const RecordKeeper &recordKeeper, raw_ostream &os) {
   os << "#undef ALL_OPS";
 }
 
-static bool MlirOpTableGenMain(raw_ostream &os, RecordKeeper &records) {
-  switch (action) {
-  case PrintRecords:
-    os << records;
-    return false;
-  case GenOpDefinitions:
-    emitOpDefinitions(records, os);
-    return false;
-  case GenDefFile:
-    emitOpDefFile(records, os);
-    return false;
-  }
-}
-
-int main(int argc, char **argv) {
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
-  PrettyStackTraceProgram X(argc, argv);
-  cl::ParseCommandLineOptions(argc, argv);
-
-  llvm_shutdown_obj Y;
-  return TableGenMain(argv[0], &MlirOpTableGenMain);
-}
+mlir::GenRegistration
+    genOpDefinitions("gen-op-definitions", "Generate op definitions",
+                     [](const RecordKeeper &records, raw_ostream &os) {
+                       emitOpDefinitions(records, os);
+                       return false;
+                     });
