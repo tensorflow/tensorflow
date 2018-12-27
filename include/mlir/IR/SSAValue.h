@@ -28,14 +28,14 @@
 
 namespace mlir {
 class Function;
-class Instruction;
 class OperationStmt;
 class Operation;
+class Statement;
+using Instruction = Statement;
+using OperationInst = OperationStmt;
 
 /// This enumerates all of the SSA value kinds in the MLIR system.
 enum class SSAValueKind {
-  BBArgument,     // basic block argument
-  InstResult,     // instruction result
   BlockArgument,  // Block argument
   StmtResult,     // statement result
   ForStmt,        // for statement induction variable
@@ -69,8 +69,8 @@ public:
 
   /// If this value is the result of an Instruction, return the instruction
   /// that defines it.
-  Instruction *getDefiningInst();
-  const Instruction *getDefiningInst() const {
+  OperationInst *getDefiningInst();
+  const OperationInst *getDefiningInst() const {
     return const_cast<SSAValue *>(this)->getDefiningInst();
   }
 

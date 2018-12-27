@@ -23,9 +23,8 @@
 
 #include "mlir/Analysis/Passes.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"

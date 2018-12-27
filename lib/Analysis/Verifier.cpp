@@ -35,8 +35,7 @@
 
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
@@ -63,7 +62,8 @@ public:
   bool failure(const Twine &message, const BasicBlock &bb) {
     // Take the location information for the first instruction in the block.
     if (!bb.empty())
-      return failure(message, bb.front());
+      if (auto *op = dyn_cast<OperationStmt>(&bb.front()))
+        return failure(message, *op);
 
     // Worst case, fall back to using the function's location.
     return failure(message, fn);
@@ -224,7 +224,11 @@ bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
   }
 
   for (auto &inst : block) {
-    if (verifyOperation(inst) || verifyInstOperands(inst))
+    if (auto *opInst = dyn_cast<OperationInst>(&inst))
+      if (verifyOperation(*opInst))
+        return true;
+
+    if (verifyInstOperands(inst))
       return true;
   }
   return false;

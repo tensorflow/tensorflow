@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/Dominance.h"
+#include "mlir/IR/Statements.h"
 #include "llvm/Support/GenericDomTreeConstruction.h"
 using namespace mlir;
 
@@ -31,7 +32,7 @@ template class llvm::DomTreeNodeBase<BasicBlock>;
 /// Compute the immediate-dominators map.
 DominanceInfo::DominanceInfo(CFGFunction *function) : DominatorTreeBase() {
   // Build the dominator tree for the function.
-  recalculate(*function);
+  recalculate(function->getBlockList());
 }
 
 /// Return true if instruction A properly dominates instruction B.

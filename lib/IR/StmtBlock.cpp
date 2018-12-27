@@ -16,8 +16,8 @@
 // =============================================================================
 
 #include "mlir/IR/StmtBlock.h"
-#include "mlir/IR/MLFunction.h"
-#include "mlir/IR/Statements.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 using namespace mlir;
 
 StmtBlock::~StmtBlock() {
@@ -140,19 +140,62 @@ StmtBlock *StmtBlock::getSinglePredecessor() {
 }
 
 //===----------------------------------------------------------------------===//
+// Other
+//===----------------------------------------------------------------------===//
+
+/// Unlink this BasicBlock from its CFGFunction and delete it.
+void BasicBlock::eraseFromFunction() {
+  assert(getFunction() && "BasicBlock has no parent");
+  getFunction()->getBlocks().erase(this);
+}
+
+/// Split the basic block into two basic blocks before the specified
+/// instruction or iterator.
+///
+/// Note that all instructions BEFORE the specified iterator stay as part of
+/// the original basic block, an unconditional branch is added to the original
+/// block (going to the new block), and the rest of the instructions in the
+/// original block are moved to the new BB, including the old terminator.  The
+/// newly formed BasicBlock is returned.
+///
+/// This function invalidates the specified iterator.
+BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
+  // Start by creating a new basic block, and insert it immediate after this
+  // one in the containing function.
+  auto newBB = new BasicBlock();
+  getFunction()->getBlocks().insert(++CFGFunction::iterator(this), newBB);
+  auto branchLoc =
+      splitBefore == end() ? getTerminator()->getLoc() : splitBefore->getLoc();
+
+  // Move all of the operations from the split point to the end of the function
+  // into the new block.
+  newBB->getStatements().splice(newBB->end(), getStatements(), splitBefore,
+                                end());
+
+  // Create an unconditional branch to the new block, and move our terminator
+  // to the new block.
+  CFGFuncBuilder(this).create<BranchOp>(branchLoc, newBB);
+  return newBB;
+}
+
+//===----------------------------------------------------------------------===//
 // StmtBlockList
 //===----------------------------------------------------------------------===//
 
-StmtBlockList::StmtBlockList(MLFunction *container) : container(container) {}
+StmtBlockList::StmtBlockList(Function *container) : container(container) {}
 
 StmtBlockList::StmtBlockList(Statement *container) : container(container) {}
+
+CFGFunction *StmtBlockList::getFunction() {
+  return dyn_cast_or_null<CFGFunction>(getContainingFunction());
+}
 
 Statement *StmtBlockList::getContainingStmt() {
   return container.dyn_cast<Statement *>();
 }
 
-MLFunction *StmtBlockList::getContainingFunction() {
-  return container.dyn_cast<MLFunction *>();
+Function *StmtBlockList::getContainingFunction() {
+  return container.dyn_cast<Function *>();
 }
 
 StmtBlockList *llvm::ilist_traits<::mlir::StmtBlock>::getContainingBlockList() {

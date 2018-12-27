@@ -21,8 +21,6 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StmtVisitor.h"
@@ -552,8 +550,8 @@ PassResult ModuleConverter::runOnModule(Module *m) {
 
 void ModuleConverter::convertMLFunctions() {
   for (Function &fn : *module) {
-    if (auto *mlFunc = dyn_cast<MLFunction>(&fn))
-      generatedFuncs[mlFunc] = convert(mlFunc);
+    if (fn.isML())
+      generatedFuncs[&fn] = convert(&fn);
   }
 }
 
@@ -562,8 +560,8 @@ CFGFunction *ModuleConverter::convert(MLFunction *mlFunc) {
   // Use the same name as for ML function; do not add the converted function to
   // the module yet to avoid collision.
   auto name = mlFunc->getName().str();
-  auto *cfgFunc = new CFGFunction(mlFunc->getLoc(), name, mlFunc->getType(),
-                                  mlFunc->getAttrs());
+  auto *cfgFunc = new Function(Function::Kind::CFGFunc, mlFunc->getLoc(), name,
+                               mlFunc->getType(), mlFunc->getAttrs());
 
   // Generates the body of the CFG function.
   return FunctionConverter(cfgFunc).convert(mlFunc);
@@ -580,14 +578,13 @@ void ModuleConverter::replaceReferences() {
   // functions.
   llvm::DenseMap<Attribute, FunctionAttr> remappingTable;
   for (const Function &fn : *module) {
-    const auto *mlFunc = dyn_cast<MLFunction>(&fn);
-    if (!mlFunc)
+    if (!fn.isML())
       continue;
-    CFGFunction *convertedFunc = generatedFuncs.lookup(mlFunc);
+    CFGFunction *convertedFunc = generatedFuncs.lookup(&fn);
     assert(convertedFunc && "ML function was not converted");
 
     MLIRContext *context = module->getContext();
-    auto mlFuncAttr = FunctionAttr::get(mlFunc, context);
+    auto mlFuncAttr = FunctionAttr::get(&fn, context);
     auto cfgFuncAttr = FunctionAttr::get(convertedFunc, module->getContext());
     remappingTable.insert({mlFuncAttr, cfgFuncAttr});
   }
@@ -607,12 +604,11 @@ void ModuleConverter::replaceReferences() {
 static inline void replaceMLFunctionAttr(
     Operation &op, Identifier name, const Function *func,
     const llvm::DenseMap<MLFunction *, CFGFunction *> &generatedFuncs) {
-  const auto *mlFunc = dyn_cast<MLFunction>(func);
-  if (!mlFunc)
+  if (!func->isML())
     return;
 
   Builder b(op.getContext());
-  auto cfgFunc = generatedFuncs.lookup(mlFunc);
+  auto *cfgFunc = generatedFuncs.lookup(func);
   op.setAttr(name, b.getFunctionAttr(cfgFunc));
 }
 

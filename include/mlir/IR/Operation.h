@@ -24,7 +24,6 @@
 
 namespace mlir {
 class AttributeListStorage;
-class BasicBlock;
 template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
@@ -32,8 +31,9 @@ template <typename ObjectType, typename ElementType> class ResultIterator;
 template <typename ObjectType, typename ElementType> class ResultTypeIterator;
 class Function;
 class IROperandOwner;
-class Instruction;
 class Statement;
+class OperationStmt;
+using Instruction = Statement;
 
 /// Operations represent all of the arithmetic and other basic computation in
 /// MLIR.  This class is the common implementation details behind Instruction

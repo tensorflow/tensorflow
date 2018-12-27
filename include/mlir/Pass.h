@@ -25,8 +25,8 @@
 
 namespace mlir {
 class Function;
-class CFGFunction;
-class MLFunction;
+using CFGFunction = Function;
+using MLFunction = Function;
 class Module;
 
 // Values that can be used by to signal success/failure. This can be implicitly

@@ -27,7 +27,7 @@
 namespace mlir {
 class ForStmt;
 class MLValue;
-class MLFunction;
+using MLFunction = Function;
 class Statement;
 class StmtBlock;
 
@@ -58,10 +58,6 @@ public:
     case SSAValueKind::StmtResult:
     case SSAValueKind::ForStmt:
       return true;
-
-    case SSAValueKind::BBArgument:
-    case SSAValueKind::InstResult:
-      return false;
     }
   }
 
@@ -126,6 +122,11 @@ private:
   /// through bitpacking shenanigans.
   OperationStmt *const owner;
 };
+
+// TODO(clattner) clean all this up.
+using CFGValue = MLValue;
+using BBArgument = BlockArgument;
+using InstResult = StmtResult;
 
 } // namespace mlir
 

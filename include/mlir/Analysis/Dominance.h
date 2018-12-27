@@ -62,7 +62,7 @@ public:
 
   /// Return true if instruction A dominates instruction B.
   bool dominates(const SSAValue *a, const Instruction *b) {
-    return a->getDefiningInst() == b || properlyDominates(a, b);
+    return (Instruction *)a->getDefiningInst() == b || properlyDominates(a, b);
   }
 
   // dominates/properlyDominates for basic blocks.

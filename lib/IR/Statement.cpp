@@ -18,8 +18,8 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
@@ -177,6 +177,13 @@ bool Statement::emitError(const Twine &message) const {
   return getContext()->emitError(getLoc(), message);
 }
 
+// Returns whether the Statement is a terminator.
+bool Statement::isTerminator() const {
+  if (auto *op = dyn_cast<OperationStmt>(this))
+    return op->isTerminator();
+  return false;
+}
+
 //===----------------------------------------------------------------------===//
 // ilist_traits for Statement
 //===----------------------------------------------------------------------===//
@@ -246,6 +253,18 @@ void Statement::moveBefore(StmtBlock *block,
                                 getIterator());
 }
 
+/// This drops all operand uses from this instruction, which is an essential
+/// step in breaking cyclic dependences between references when they are to
+/// be deleted.
+void Statement::dropAllReferences() {
+  for (auto &op : getStmtOperands())
+    op.drop();
+
+  if (isTerminator())
+    for (auto &dest : cast<OperationInst>(this)->getBlockOperands())
+      dest.drop();
+}
+
 //===----------------------------------------------------------------------===//
 // OperationStmt
 //===----------------------------------------------------------------------===//
@@ -258,14 +277,19 @@ OperationStmt *OperationStmt::create(Location location, OperationName name,
                                      ArrayRef<StmtBlock *> successors,
                                      MLIRContext *context) {
   unsigned numSuccessors = successors.size();
+
+  // Input operands are nullptr-separated for each successors in the case of
+  // terminators, the nullptr aren't actually stored.
+  unsigned numOperands = operands.size() - numSuccessors;
+
   auto byteSize =
       totalSizeToAlloc<StmtResult, StmtBlockOperand, unsigned, StmtOperand>(
-          resultTypes.size(), numSuccessors, numSuccessors, operands.size());
+          resultTypes.size(), numSuccessors, numSuccessors, numOperands);
   void *rawMem = malloc(byteSize);
 
   // Initialize the OperationStmt part of the statement.
   auto stmt = ::new (rawMem)
-      OperationStmt(location, name, operands.size(), resultTypes.size(),
+      OperationStmt(location, name, numOperands, resultTypes.size(),
                     numSuccessors, attributes, context);
 
   // Initialize the results and operands.
@@ -292,7 +316,6 @@ OperationStmt *OperationStmt::create(Location location, OperationName name,
     // Verify that the amount of sentinal operands is equivalent to the number
     // of successors.
     assert(currentSuccNum == numSuccessors);
-
     return stmt;
   }
 
@@ -350,6 +373,11 @@ OperationStmt::~OperationStmt() {
 
   for (auto &result : getStmtResults())
     result.~StmtResult();
+
+  // Explicitly run the destructors for the successors.
+  if (isTerminator())
+    for (auto &successor : getBlockOperands())
+      successor.~StmtBlockOperand();
 }
 
 void OperationStmt::destroy() {
@@ -372,6 +400,21 @@ MLIRContext *OperationStmt::getContext() const {
 }
 
 bool OperationStmt::isReturn() const { return isa<ReturnOp>(); }
+
+void OperationStmt::setSuccessor(BasicBlock *block, unsigned index) {
+  assert(index < getNumSuccessors());
+  getBlockOperands()[index].set(block);
+}
+
+void OperationInst::eraseOperand(unsigned index) {
+  assert(index < getNumOperands());
+  auto Operands = getStmtOperands();
+  // Shift all operands down by 1.
+  std::rotate(&Operands[index], &Operands[index + 1],
+              &Operands[numOperands - 1]);
+  --numOperands;
+  Operands[getNumOperands()].~StmtOperand();
+}
 
 //===----------------------------------------------------------------------===//
 // ForStmt
@@ -670,4 +713,9 @@ Statement *Statement::clone(DenseMap<const MLValue *, MLValue *> &operandMap,
   }
 
   return newIf;
+}
+
+Statement *Statement::clone(MLIRContext *context) const {
+  DenseMap<const MLValue *, MLValue *> operandMap;
+  return clone(operandMap, context);
 }

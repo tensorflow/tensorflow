@@ -30,7 +30,7 @@
 
 namespace mlir {
 class Location;
-class MLFunction;
+using MLFunction = Function;
 class StmtBlock;
 class ForStmt;
 class MLIRContext;
@@ -93,6 +93,7 @@ public:
   /// sub-statements to the corresponding statement that is copied, and adds
   /// those mappings to the map.
   Statement *clone(OperandMapTy &operandMap, MLIRContext *context) const;
+  Statement *clone(MLIRContext *context) const;
 
   /// Returns the statement block that contains this statement.
   StmtBlock *getBlock() const { return block; }
@@ -109,6 +110,11 @@ public:
   /// Destroys this statement and its subclass data.
   void destroy();
 
+  /// This drops all operand uses from this instruction, which is an essential
+  /// step in breaking cyclic dependences between references when they are to
+  /// be deleted.
+  void dropAllReferences();
+
   /// Unlink this statement from its current block and insert it right before
   /// `existingStmt` which may be in the same or another block in the same
   /// function.
@@ -117,6 +123,9 @@ public:
   /// Unlink this operation instruction from its current basic block and insert
   /// it right before `iterator` in the specified basic block.
   void moveBefore(StmtBlock *block, llvm::iplist<Statement>::iterator iterator);
+
+  // Returns whether the Statement is a terminator.
+  bool isTerminator() const;
 
   void print(raw_ostream &os) const;
   void dump() const;

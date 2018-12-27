@@ -15,10 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/IR/Function.h"
 #include "AttributeListStorage.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StmtVisitor.h"
@@ -30,11 +29,29 @@ using namespace mlir;
 Function::Function(Kind kind, Location location, StringRef name,
                    FunctionType type, ArrayRef<NamedAttribute> attrs)
     : nameAndKind(Identifier::get(name, type.getContext()), kind),
-      location(location), type(type) {
+      location(location), type(type), blocks(this) {
   this->attrs = AttributeListStorage::get(attrs, getContext());
+
+  // Creating of an MLFunction automatically populates the entry block and
+  // arguments.
+  // TODO(clattner): Unify this behavior.
+  if (kind == Kind::MLFunc) {
+    // The body of an MLFunction always has one block.
+    auto *entry = new StmtBlock();
+    blocks.push_back(entry);
+
+    // Initialize the arguments.
+    entry->addArguments(type.getInputs());
+  }
 }
 
 Function::~Function() {
+  // Instructions may have cyclic references, which need to be dropped before we
+  // can start deleting them.
+  for (auto &bb : *this)
+    for (auto &inst : bb)
+      inst.dropAllReferences();
+
   // Clean up function attributes referring to this function.
   FunctionAttr::dropFunctionReference(this);
 }
@@ -47,21 +64,6 @@ ArrayRef<NamedAttribute> Function::getAttrs() const {
 }
 
 MLIRContext *Function::getContext() const { return getType().getContext(); }
-
-/// Delete this object.
-void Function::destroy() {
-  switch (getKind()) {
-  case Kind::ExtFunc:
-    delete cast<ExtFunction>(this);
-    break;
-  case Kind::MLFunc:
-    delete cast<MLFunction>(this);
-    break;
-  case Kind::CFGFunc:
-    delete cast<CFGFunction>(this);
-    break;
-  }
-}
 
 Module *llvm::ilist_traits<Function>::getContainingModule() {
   size_t Offset(
@@ -128,7 +130,7 @@ void llvm::ilist_traits<Function>::transferNodesFromList(
 }
 
 /// Unlink this function from its Module and delete it.
-void Function::eraseFromModule() {
+void Function::erase() {
   assert(getModule() && "Function has no parent");
   getModule()->getFunctions().erase(this);
 }
@@ -154,52 +156,10 @@ void Function::emitWarning(const Twine &message) const {
 bool Function::emitError(const Twine &message) const {
   return getContext()->emitError(getLoc(), message);
 }
-//===----------------------------------------------------------------------===//
-// ExtFunction implementation.
-//===----------------------------------------------------------------------===//
-
-ExtFunction::ExtFunction(Location location, StringRef name, FunctionType type,
-                         ArrayRef<NamedAttribute> attrs)
-    : Function(Kind::ExtFunc, location, name, type, attrs) {}
-
-//===----------------------------------------------------------------------===//
-// CFGFunction implementation.
-//===----------------------------------------------------------------------===//
-
-CFGFunction::CFGFunction(Location location, StringRef name, FunctionType type,
-                         ArrayRef<NamedAttribute> attrs)
-    : Function(Kind::CFGFunc, location, name, type, attrs) {}
-
-CFGFunction::~CFGFunction() {
-  // Instructions may have cyclic references, which need to be dropped before we
-  // can start deleting them.
-  for (auto &bb : *this)
-    for (auto &inst : bb)
-      inst.dropAllReferences();
-}
 
 //===----------------------------------------------------------------------===//
 // MLFunction implementation.
 //===----------------------------------------------------------------------===//
-
-MLFunction::MLFunction(Location location, StringRef name, FunctionType type,
-                       ArrayRef<NamedAttribute> attrs)
-    : Function(Kind::MLFunc, location, name, type, attrs), body(this) {
-
-  // The body of an MLFunction always has one block.
-  auto *entry = new StmtBlock();
-  body.push_back(entry);
-
-  // Initialize the arguments.
-  entry->addArguments(type.getInputs());
-}
-
-MLFunction::~MLFunction() {
-  // Explicitly erase statements instead of relying of 'StmtBlock' destructor
-  // since child statements need to be destroyed before function arguments
-  // are destroyed.
-  getBody()->clear();
-}
 
 const OperationStmt *MLFunction::getReturnStmt() const {
   return cast<OperationStmt>(&getBody()->back());

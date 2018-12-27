@@ -16,7 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
@@ -110,20 +110,22 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
 
   for (auto &bb : *f) {
     for (auto instIt = bb.begin(), e = bb.end(); instIt != e;) {
-      auto &inst = *instIt++;
+      auto *inst = dyn_cast<OperationInst>(&*instIt++);
+      if (!inst)
+        continue;
 
       auto constantFactory = [&](Attribute value, Type type) -> SSAValue * {
-        builder.setInsertionPoint(&inst);
-        return builder.create<ConstantOp>(inst.getLoc(), value, type);
+        builder.setInsertionPoint(inst);
+        return builder.create<ConstantOp>(inst->getLoc(), value, type);
       };
 
-      if (!foldOperation(&inst, existingConstants, constantFactory)) {
+      if (!foldOperation(inst, existingConstants, constantFactory)) {
         // At this point the operation is dead, remove it.
         // TODO: This is assuming that all constant foldable operations have no
         // side effects.  When we have side effect modeling, we should verify
         // that the operation is effect-free before we remove it.  Until then
         // this is close enough.
-        inst.erase();
+        inst->erase();
       }
     }
   }

@@ -438,18 +438,18 @@ void mlir::remapFunctionAttrs(
 void mlir::remapFunctionAttrs(
     Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
   // Look at all instructions in a CFGFunction.
-  if (auto *cfgFn = dyn_cast<CFGFunction>(&fn)) {
-    for (auto &bb : *cfgFn) {
+  if (fn.isCFG()) {
+    for (auto &bb : fn.getBlockList()) {
       for (auto &inst : bb) {
-        remapFunctionAttrs(inst, remappingTable);
+        if (auto *op = dyn_cast<OperationInst>(&inst))
+          remapFunctionAttrs(*op, remappingTable);
       }
     }
     return;
   }
 
-  // Otherwise, look at MLFunctions.  We ignore ExtFunctions.
-  auto *mlFn = dyn_cast<MLFunction>(&fn);
-  if (!mlFn)
+  // Otherwise, look at MLFunctions.  We ignore external functions.
+  if (!fn.isML())
     return;
 
   struct MLFnWalker : public StmtWalker<MLFnWalker> {
@@ -462,7 +462,7 @@ void mlir::remapFunctionAttrs(
     const DenseMap<Attribute, FunctionAttr> &remappingTable;
   };
 
-  MLFnWalker(remappingTable).walk(mlFn);
+  MLFnWalker(remappingTable).walk(&fn);
 }
 
 void mlir::remapFunctionAttrs(

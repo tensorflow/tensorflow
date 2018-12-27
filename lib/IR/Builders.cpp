@@ -290,18 +290,18 @@ BasicBlock *CFGFuncBuilder::createBlock(BasicBlock *insertBefore) {
 }
 
 /// Create an operation given the fields represented as an OperationState.
-Instruction *CFGFuncBuilder::createOperation(const OperationState &state) {
+OperationStmt *CFGFuncBuilder::createOperation(const OperationState &state) {
   SmallVector<CFGValue *, 8> operands;
   operands.reserve(state.operands.size());
   // Allow null operands as they act as sentinal barriers between successor
   // operand lists.
   for (auto elt : state.operands)
-    operands.push_back(elt ? cast<CFGValue>(elt) : nullptr);
+    operands.push_back(cast_or_null<CFGValue>(elt));
 
   auto *op =
-      Instruction::create(state.location, state.name, operands, state.types,
-                          state.attributes, state.successors, context);
-  block->getOperations().insert(insertPoint, op);
+      OperationInst::create(state.location, state.name, operands, state.types,
+                            state.attributes, state.successors, context);
+  block->getStatements().insert(insertPoint, op);
   return op;
 }
 
@@ -318,7 +318,7 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
 
   auto *op =
       OperationStmt::create(state.location, state.name, operands, state.types,
-                            state.attributes, state.successorsS, context);
+                            state.attributes, state.successors, context);
   block->getStatements().insert(insertPoint, op);
   return op;
 }

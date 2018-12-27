@@ -23,8 +23,6 @@
 //
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/LoweringUtils.h"
 #include "mlir/Transforms/Passes.h"
@@ -58,10 +56,11 @@ PassResult LowerAffineApply::runOnCFGFunction(CFGFunction *f) {
     // Handle iterators with care because we erase in the same loop.
     // In particular, step to the next element before erasing the current one.
     for (auto it = bb.begin(); it != bb.end();) {
-      Instruction &inst = *it;
-      OpPointer<AffineApplyOp> affineApplyOp = inst.dyn_cast<AffineApplyOp>();
-      ++it;
+      auto *inst = dyn_cast<OperationInst>(&*it++);
+      if (!inst)
+        continue;
 
+      auto affineApplyOp = inst->dyn_cast<AffineApplyOp>();
       if (!affineApplyOp)
         continue;
       if (expandAffineApply(&*affineApplyOp))

@@ -25,10 +25,11 @@
 #include "mlir/IR/Statement.h"
 
 namespace mlir {
-class MLFunction;
 class IfStmt;
 class MLValue;
 class StmtBlockList;
+using CFGFunction = Function;
+using MLFunction = Function;
 
 // TODO(clattner): drop the Stmt prefixes on these once BasicBlock's versions of
 // these go away.
@@ -218,14 +219,40 @@ public:
   succ_iterator succ_end();
   llvm::iterator_range<succ_iterator> getSuccessors();
 
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
+
+  /// Unlink this BasicBlock from its CFGFunction and delete it.
+  void eraseFromFunction();
+
+  /// Split the basic block into two basic blocks before the specified
+  /// instruction or iterator.
+  ///
+  /// Note that all instructions BEFORE the specified iterator stay as part of
+  /// the original basic block, an unconditional branch is added to the original
+  /// block (going to the new block), and the rest of the instructions in the
+  /// original block are moved to the new BB, including the old terminator.  The
+  /// newly formed BasicBlock is returned.
+  ///
+  /// This function invalidates the specified iterator.
+  BasicBlock *splitBasicBlock(iterator splitBefore);
+  BasicBlock *splitBasicBlock(Instruction *splitBeforeInst) {
+    return splitBasicBlock(iterator(splitBeforeInst));
+  }
+
   /// getSublistAccess() - Returns pointer to member of statement list
   static StmtListType StmtBlock::*getSublistAccess(Statement *) {
     return &StmtBlock::statements;
   }
 
-  /// These have unconventional names to avoid derive class ambiguities.
-  void printBlock(raw_ostream &os) const;
-  void dumpBlock() const;
+  void print(raw_ostream &os) const;
+  void dump() const;
+
+  /// Print out the name of the basic block without printing its body.
+  /// NOTE: The printType argument is ignored.  We keep it for compatibility
+  /// with LLVM dominator machinery that expects it to exist.
+  void printAsOperand(raw_ostream &os, bool printType = true);
 
 private:
   /// This is the parent function/IfStmt/ForStmt that owns this block.
@@ -273,7 +300,7 @@ namespace mlir {
 /// is part of - an MLFunction or IfStmt or ForStmt.
 class StmtBlockList {
 public:
-  explicit StmtBlockList(MLFunction *container);
+  explicit StmtBlockList(Function *container);
   explicit StmtBlockList(Statement *container);
 
   using BlockListType = llvm::iplist<StmtBlock>;
@@ -314,25 +341,32 @@ public:
     return &StmtBlockList::blocks;
   }
 
-  /// A StmtBlockList is part of a MLFunction or and IfStmt/ForStmt.  If it is
+  /// A StmtBlockList is part of a Function or and IfStmt/ForStmt.  If it is
   /// part of an IfStmt/ForStmt, then return it, otherwise return null.
   Statement *getContainingStmt();
   const Statement *getContainingStmt() const {
     return const_cast<StmtBlockList *>(this)->getContainingStmt();
   }
 
-  /// A StmtBlockList is part of a MLFunction or and IfStmt/ForStmt.  If it is
-  /// part of an MLFunction, then return it, otherwise return null.
-  MLFunction *getContainingFunction();
-  const MLFunction *getContainingFunction() const {
+  /// A StmtBlockList is part of a Function or and IfStmt/ForStmt.  If it is
+  /// part of an Function, then return it, otherwise return null.
+  Function *getContainingFunction();
+  const Function *getContainingFunction() const {
     return const_cast<StmtBlockList *>(this)->getContainingFunction();
+  }
+
+  // TODO(clattner): This is only to help ML -> CFG migration, remove in the
+  // near future.  This makes StmtBlockList work more like BasicBlock did.
+  CFGFunction *getFunction();
+  const CFGFunction *getFunction() const {
+    return const_cast<StmtBlockList *>(this)->getFunction();
   }
 
 private:
   BlockListType blocks;
 
   /// This is the object we are part of.
-  llvm::PointerUnion<MLFunction *, Statement *> container;
+  llvm::PointerUnion<Function *, Statement *> container;
 };
 
 //===----------------------------------------------------------------------===//

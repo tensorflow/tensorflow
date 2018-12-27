@@ -24,8 +24,7 @@
 #ifndef MLIR_IR_CFGFUNCTIONGRAPHTRAITS_H
 #define MLIR_IR_CFGFUNCTIONGRAPHTRAITS_H
 
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Function.h"
 #include "llvm/ADT/GraphTraits.h"
 
 namespace llvm {
@@ -154,135 +153,71 @@ struct GraphTraits<Inverse<const mlir::CFGFunction *>>
   }
 };
 
-template <> struct GraphTraits<mlir::StmtBlock *> {
-  using ChildIteratorType = mlir::StmtBlock::succ_iterator;
-  using Node = mlir::StmtBlock;
-  using NodeRef = Node *;
-
-  static NodeRef getEntryNode(NodeRef bb) { return bb; }
-
-  static ChildIteratorType child_begin(NodeRef node) {
-    return node->succ_begin();
-  }
-  static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
-};
-
-template <> struct GraphTraits<const mlir::StmtBlock *> {
-  using ChildIteratorType = mlir::StmtBlock::const_succ_iterator;
-  using Node = const mlir::StmtBlock;
-  using NodeRef = Node *;
-
-  static NodeRef getEntryNode(NodeRef bb) { return bb; }
-
-  static ChildIteratorType child_begin(NodeRef node) {
-    return node->succ_begin();
-  }
-  static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
-};
-
-template <> struct GraphTraits<Inverse<mlir::StmtBlock *>> {
-  using ChildIteratorType = mlir::StmtBlock::pred_iterator;
-  using Node = mlir::StmtBlock;
-  using NodeRef = Node *;
-  static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
-    return inverseGraph.Graph;
-  }
-  static inline ChildIteratorType child_begin(NodeRef node) {
-    return node->pred_begin();
-  }
-  static inline ChildIteratorType child_end(NodeRef node) {
-    return node->pred_end();
-  }
-};
-
-template <> struct GraphTraits<Inverse<const mlir::StmtBlock *>> {
-  using ChildIteratorType = mlir::StmtBlock::const_pred_iterator;
-  using Node = const mlir::StmtBlock;
-  using NodeRef = Node *;
-
-  static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
-    return inverseGraph.Graph;
-  }
-  static inline ChildIteratorType child_begin(NodeRef node) {
-    return node->pred_begin();
-  }
-  static inline ChildIteratorType child_end(NodeRef node) {
-    return node->pred_end();
-  }
-};
-
 template <>
-struct GraphTraits<mlir::MLFunction *> : public GraphTraits<mlir::StmtBlock *> {
-  using GraphType = mlir::MLFunction *;
-  using NodeRef = mlir::StmtBlock *;
+struct GraphTraits<mlir::StmtBlockList *>
+    : public GraphTraits<mlir::BasicBlock *> {
+  using GraphType = mlir::StmtBlockList *;
+  using NodeRef = mlir::BasicBlock *;
 
-  static NodeRef getEntryNode(GraphType fn) {
-    return &fn->getBlockList().front();
-  }
+  static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::StmtBlockList::iterator>;
+  using nodes_iterator = pointer_iterator<mlir::CFGFunction::iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn->getBlockList().begin());
+    return nodes_iterator(fn->begin());
   }
   static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn->getBlockList().end());
+    return nodes_iterator(fn->end());
   }
 };
 
 template <>
-struct GraphTraits<const mlir::MLFunction *>
-    : public GraphTraits<const mlir::StmtBlock *> {
-  using GraphType = const mlir::MLFunction *;
-  using NodeRef = const mlir::StmtBlock *;
+struct GraphTraits<const mlir::StmtBlockList *>
+    : public GraphTraits<const mlir::BasicBlock *> {
+  using GraphType = const mlir::StmtBlockList *;
+  using NodeRef = const mlir::BasicBlock *;
 
-  static NodeRef getEntryNode(GraphType fn) {
-    return &fn->getBlockList().front();
-  }
+  static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::StmtBlockList::const_iterator>;
+  using nodes_iterator = pointer_iterator<mlir::CFGFunction::const_iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn->getBlockList().begin());
+    return nodes_iterator(fn->begin());
   }
   static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn->getBlockList().end());
+    return nodes_iterator(fn->end());
   }
 };
 
 template <>
-struct GraphTraits<Inverse<mlir::MLFunction *>>
-    : public GraphTraits<Inverse<mlir::StmtBlock *>> {
-  using GraphType = Inverse<mlir::MLFunction *>;
+struct GraphTraits<Inverse<mlir::StmtBlockList *>>
+    : public GraphTraits<Inverse<mlir::BasicBlock *>> {
+  using GraphType = Inverse<mlir::StmtBlockList *>;
   using NodeRef = NodeRef;
 
-  static NodeRef getEntryNode(GraphType fn) {
-    return &fn.Graph->getBlockList().front();
-  }
+  static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::StmtBlockList::iterator>;
+  using nodes_iterator = pointer_iterator<mlir::CFGFunction::iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn.Graph->getBlockList().begin());
+    return nodes_iterator(fn.Graph->begin());
   }
   static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn.Graph->getBlockList().end());
+    return nodes_iterator(fn.Graph->end());
   }
 };
 
 template <>
-struct GraphTraits<Inverse<const mlir::MLFunction *>>
-    : public GraphTraits<Inverse<const mlir::StmtBlock *>> {
-  using GraphType = Inverse<const mlir::MLFunction *>;
+struct GraphTraits<Inverse<const mlir::StmtBlockList *>>
+    : public GraphTraits<Inverse<const mlir::BasicBlock *>> {
+  using GraphType = Inverse<const mlir::StmtBlockList *>;
   using NodeRef = NodeRef;
 
-  static NodeRef getEntryNode(GraphType fn) {
-    return &fn.Graph->getBlockList().front();
-  }
+  static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::StmtBlockList::const_iterator>;
+  using nodes_iterator = pointer_iterator<mlir::CFGFunction::const_iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn.Graph->getBlockList().begin());
+    return nodes_iterator(fn.Graph->begin());
   }
   static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn.Graph->getBlockList().end());
+    return nodes_iterator(fn.Graph->end());
   }
 };
 

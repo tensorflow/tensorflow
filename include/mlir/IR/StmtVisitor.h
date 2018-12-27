@@ -65,7 +65,7 @@
 #ifndef MLIR_IR_STMTVISITOR_H
 #define MLIR_IR_STMTVISITOR_H
 
-#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Statements.h"
 
 namespace mlir {

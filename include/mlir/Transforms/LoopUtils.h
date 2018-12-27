@@ -30,7 +30,8 @@ namespace mlir {
 
 class AffineMap;
 class ForStmt;
-class MLFunction;
+class Function;
+using MLFunction = Function;
 class MLFuncBuilder;
 
 // Values that can be used to signal success/failure. This can be implicitly

@@ -31,7 +31,6 @@
 #include <memory>
 
 namespace mlir {
-class BasicBlock;
 class Dialect;
 class Operation;
 class OperationState;
@@ -43,6 +42,7 @@ class RewritePattern;
 class StmtBlock;
 class SSAValue;
 class Type;
+using BasicBlock = StmtBlock;
 
 /// This is a vector that owns the patterns inside of it.
 using OwningPatternList = std::vector<std::unique_ptr<Pattern>>;
@@ -208,10 +208,7 @@ struct OperationState {
   SmallVector<Type, 4> types;
   SmallVector<NamedAttribute, 4> attributes;
   /// Successors of this operation and their respective operands.
-  SmallVector<BasicBlock *, 1> successors;
-
-  // TODO: rename to successors when CFG and ML Functions are merged.
-  SmallVector<StmtBlock *, 1> successorsS;
+  SmallVector<StmtBlock *, 1> successors;
 
 public:
   OperationState(MLIRContext *context, Location location, StringRef name)
@@ -222,23 +219,13 @@ public:
 
   OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<SSAValue *> operands, ArrayRef<Type> types,
-                 ArrayRef<NamedAttribute> attributes = {},
-                 ArrayRef<BasicBlock *> successors = {})
+                 ArrayRef<NamedAttribute> attributes,
+                 ArrayRef<StmtBlock *> successors = {})
       : context(context), location(location), name(name, context),
         operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),
         attributes(attributes.begin(), attributes.end()),
         successors(successors.begin(), successors.end()) {}
-
-  OperationState(MLIRContext *context, Location location, StringRef name,
-                 ArrayRef<SSAValue *> operands, ArrayRef<Type> types,
-                 ArrayRef<NamedAttribute> attributes,
-                 ArrayRef<StmtBlock *> successors)
-      : context(context), location(location), name(name, context),
-        operands(operands.begin(), operands.end()),
-        types(types.begin(), types.end()),
-        attributes(attributes.begin(), attributes.end()),
-        successorsS(successors.begin(), successors.end()) {}
 
   void addOperands(ArrayRef<SSAValue *> newOperands) {
     assert(successors.empty() &&
@@ -260,7 +247,7 @@ public:
     attributes.push_back({name, attr});
   }
 
-  void addSuccessor(BasicBlock *successor, ArrayRef<SSAValue *> succOperands) {
+  void addSuccessor(StmtBlock *successor, ArrayRef<SSAValue *> succOperands) {
     successors.push_back(successor);
     // Insert a sentinal operand to mark a barrier between successor operands.
     operands.push_back(nullptr);

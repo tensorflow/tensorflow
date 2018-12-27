@@ -33,7 +33,6 @@
 #include <type_traits>
 
 namespace mlir {
-class BasicBlock;
 class Builder;
 
 namespace OpTrait {

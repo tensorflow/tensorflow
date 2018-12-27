@@ -15,8 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/IR/StmtVisitor.h"
@@ -65,7 +64,8 @@ PassResult PrintOpStatsPass::runOnModule(Module *m) {
 PassResult PrintOpStatsPass::runOnCFGFunction(CFGFunction *function) {
   for (const auto &bb : *function)
     for (const auto &inst : bb)
-      ++opCount[inst.getName().getStringRef()];
+      if (auto *op = dyn_cast<OperationInst>(&inst))
+        ++opCount[op->getName().getStringRef()];
   return success();
 }
 

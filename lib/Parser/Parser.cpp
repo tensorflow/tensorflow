@@ -28,7 +28,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
@@ -68,7 +67,7 @@ public:
   ~ParserState() {
     // Destroy the forward references upon error.
     for (auto forwardRef : functionForwardRefs)
-      forwardRef.second->destroy();
+      delete forwardRef.second;
     functionForwardRefs.clear();
   }
 
@@ -785,8 +784,9 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
   if (!function) {
     auto &entry = state.functionForwardRefs[name];
     if (!entry)
-      entry = new ExtFunction(getEncodedSourceLocation(nameLoc), name, type,
-                              /*attrs=*/{});
+      entry = new Function(Function::Kind::ExtFunc,
+                           getEncodedSourceLocation(nameLoc), name, type,
+                           /*attrs=*/{});
     function = entry;
   }
 
@@ -1959,10 +1959,10 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
   // cannot be created through normal user input, allowing us to distinguish
   // them.
   auto name = OperationName("placeholder", getContext());
-  auto *inst = Instruction::create(getEncodedSourceLocation(loc), name,
-                                   /*operands=*/{}, type,
-                                   /*attributes=*/{},
-                                   /*successors=*/{}, getContext());
+  auto *inst = OperationInst::create(getEncodedSourceLocation(loc), name,
+                                     /*operands=*/{}, type,
+                                     /*attributes=*/{},
+                                     /*successors=*/{}, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);
 }
@@ -3383,7 +3383,8 @@ ParseResult ModuleParser::parseExtFunc() {
 
   // Okay, the external function definition was parsed correctly.
   auto *function =
-      new ExtFunction(getEncodedSourceLocation(loc), name, type, attrs);
+      new Function(Function::Kind::ExtFunc, getEncodedSourceLocation(loc), name,
+                   type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -3416,7 +3417,8 @@ ParseResult ModuleParser::parseCFGFunc() {
   // Okay, the CFG function signature was parsed correctly, create the
   // function.
   auto *function =
-      new CFGFunction(getEncodedSourceLocation(loc), name, type, attrs);
+      new Function(Function::Kind::CFGFunc, getEncodedSourceLocation(loc), name,
+                   type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -3451,8 +3453,8 @@ ParseResult ModuleParser::parseMLFunc() {
 
   // Okay, the ML function signature was parsed correctly, create the
   // function.
-  auto *function =
-      new MLFunction(getEncodedSourceLocation(loc), name, type, attrs);
+  auto *function = new Function(
+      Function::Kind::MLFunc, getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -3504,7 +3506,7 @@ ParseResult ModuleParser::finalizeModule() {
   // Now that all references to the forward definition placeholders are
   // resolved, we can deallocate the placeholders.
   for (auto forwardRef : getState().functionForwardRefs)
-    forwardRef.second->destroy();
+    delete forwardRef.second;
   getState().functionForwardRefs.clear();
   return ParseSuccess;
 }

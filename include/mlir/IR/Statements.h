@@ -32,6 +32,7 @@ class AffineBound;
 class IntegerSet;
 class AffineCondition;
 class OperationStmt;
+using OperationInst = OperationStmt;
 
 /// Operation statements represent operations inside ML functions.
 class OperationStmt final
@@ -49,6 +50,7 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
+  using Operation::isTerminator;
   using Statement::dump;
   using Statement::emitError;
   using Statement::emitNote;
@@ -220,6 +222,15 @@ public:
   }
   void setSuccessor(BasicBlock *block, unsigned index);
 
+  /// Erase a specific operand from the operand list of the successor at
+  /// 'index'.
+  void eraseSuccessorOperand(unsigned succIndex, unsigned opIndex) {
+    assert(succIndex < getNumSuccessors());
+    assert(opIndex < getNumSuccessorOperands(succIndex));
+    eraseOperand(getSuccessorOperandIndex(succIndex) + opIndex);
+    --getTrailingObjects<unsigned>()[succIndex];
+  }
+
   /// Get the index of the first operand of the successor at the provided
   /// index.
   unsigned getSuccessorOperandIndex(unsigned index) const {
@@ -252,12 +263,16 @@ public:
   }
 
 private:
-  const unsigned numOperands, numResults, numSuccs;
+  unsigned numOperands;
+  const unsigned numResults, numSuccs;
 
   OperationStmt(Location location, OperationName name, unsigned numOperands,
                 unsigned numResults, unsigned numSuccessors,
                 ArrayRef<NamedAttribute> attributes, MLIRContext *context);
   ~OperationStmt();
+
+  /// Erase the operand at 'index'.
+  void eraseOperand(unsigned index);
 
   // This stuff is used by the TrailingObjects template.
   friend llvm::TrailingObjects<OperationStmt, StmtResult, StmtBlockOperand,

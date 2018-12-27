@@ -29,7 +29,6 @@
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
-class BasicBlock;
 class Builder;
 class MLValue;
 

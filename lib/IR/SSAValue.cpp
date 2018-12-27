@@ -16,16 +16,14 @@
 // =============================================================================
 
 #include "mlir/IR/SSAValue.h"
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/Instructions.h"
-#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Statements.h"
 
 using namespace mlir;
 
 /// If this value is the result of an Instruction, return the instruction
 /// that defines it.
-Instruction *SSAValue::getDefiningInst() {
+OperationInst *SSAValue::getDefiningInst() {
   if (auto *result = dyn_cast<InstResult>(this))
     return result->getOwner();
   return nullptr;
@@ -50,10 +48,6 @@ Operation *SSAValue::getDefiningOperation() {
 /// Return the function that this SSAValue is defined in.
 Function *SSAValue::getFunction() {
   switch (getKind()) {
-  case SSAValueKind::BBArgument:
-    return cast<BBArgument>(this)->getFunction();
-  case SSAValueKind::InstResult:
-    return getDefiningInst()->getFunction();
   case SSAValueKind::BlockArgument:
     return cast<BlockArgument>(this)->getFunction();
   case SSAValueKind::StmtResult:
@@ -66,6 +60,16 @@ Function *SSAValue::getFunction() {
 //===----------------------------------------------------------------------===//
 // IROperandOwner implementation.
 //===----------------------------------------------------------------------===//
+
+/// Replace all uses of 'this' value with the new value, updating anything in
+/// the IR that uses 'this' to use the other value instead.  When this returns
+/// there are zero uses of 'this'.
+void IRObjectWithUseList::replaceAllUsesWith(IRObjectWithUseList *newValue) {
+  assert(this != newValue && "cannot RAUW a value with itself");
+  while (!use_empty()) {
+    use_begin()->set(newValue);
+  }
+}
 
 /// Return the context this operation is associated with.
 MLIRContext *IROperandOwner::getContext() const {
@@ -83,26 +87,6 @@ MLIRContext *IROperandOwner::getContext() const {
     auto *fn = cast<Instruction>(this)->getFunction();
     return fn ? fn->getContext() : nullptr;
   }
-}
-
-//===----------------------------------------------------------------------===//
-// CFGValue implementation.
-//===----------------------------------------------------------------------===//
-
-/// Return the function that this CFGValue is defined in.
-CFGFunction *CFGValue::getFunction() {
-  return cast<CFGFunction>(static_cast<SSAValue *>(this)->getFunction());
-}
-
-//===----------------------------------------------------------------------===//
-// BBArgument implementation.
-//===----------------------------------------------------------------------===//
-
-/// Return the function that this argument is defined in.
-CFGFunction *BBArgument::getFunction() {
-  if (auto *owner = getOwner())
-    return owner->getFunction();
-  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

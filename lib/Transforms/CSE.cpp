@@ -23,7 +23,7 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Support/Functional.h"
@@ -201,7 +201,8 @@ struct CFGCSE : public CSEImpl {
 
   void simplifyBasicBlock(BasicBlock *bb) {
     for (auto &i : *bb)
-      simplifyOperation(&i);
+      if (auto *opInst = dyn_cast<OperationInst>(&i))
+        simplifyOperation(opInst);
   }
 };
 

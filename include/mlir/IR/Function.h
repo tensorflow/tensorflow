@@ -27,6 +27,9 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/MLValue.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/StmtBlock.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
@@ -36,6 +39,7 @@ class AttributeListStorage;
 class FunctionType;
 class MLIRContext;
 class Module;
+template <typename ObjectType, typename ElementType> class ArgumentIterator;
 
 /// NamedAttribute is used for function attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute
@@ -47,7 +51,14 @@ class Function : public llvm::ilist_node_with_parent<Function, Module> {
 public:
   enum class Kind { ExtFunc, CFGFunc, MLFunc };
 
+  Function(Kind kind, Location location, StringRef name, FunctionType type,
+           ArrayRef<NamedAttribute> attrs = {});
+  ~Function();
+
   Kind getKind() const { return (Kind)nameAndKind.getInt(); }
+
+  bool isCFG() const { return getKind() == Kind::CFGFunc; }
+  bool isML() const { return getKind() == Kind::MLFunc; }
 
   /// The source location the operation was defined or derived from.
   Location getLoc() const { return location; }
@@ -65,11 +76,103 @@ public:
   Module *getModule() { return module; }
   const Module *getModule() const { return module; }
 
-  /// Unlink this instruction from its module and delete it.
-  void eraseFromModule();
+  /// Unlink this function from its module and delete it.
+  void erase();
 
-  /// Delete this object.
-  void destroy();
+  //===--------------------------------------------------------------------===//
+  // Body Handling
+  //===--------------------------------------------------------------------===//
+
+  StmtBlockList &getBlockList() { return blocks; }
+  const StmtBlockList &getBlockList() const { return blocks; }
+
+  /// This is the list of blocks in the function.
+  using BlockListType = llvm::iplist<BasicBlock>;
+  BlockListType &getBlocks() { return blocks.getBlocks(); }
+  const BlockListType &getBlocks() const { return blocks.getBlocks(); }
+
+  // Iteration over the block in the function.
+  using iterator = BlockListType::iterator;
+  using const_iterator = BlockListType::const_iterator;
+  using reverse_iterator = BlockListType::reverse_iterator;
+  using const_reverse_iterator = BlockListType::const_reverse_iterator;
+
+  iterator begin() { return blocks.begin(); }
+  iterator end() { return blocks.end(); }
+  const_iterator begin() const { return blocks.begin(); }
+  const_iterator end() const { return blocks.end(); }
+  reverse_iterator rbegin() { return blocks.rbegin(); }
+  reverse_iterator rend() { return blocks.rend(); }
+  const_reverse_iterator rbegin() const { return blocks.rbegin(); }
+  const_reverse_iterator rend() const { return blocks.rend(); }
+
+  bool empty() const { return blocks.empty(); }
+  void push_back(BasicBlock *block) { blocks.push_back(block); }
+  void push_front(BasicBlock *block) { blocks.push_front(block); }
+
+  BasicBlock &back() { return blocks.back(); }
+  const BasicBlock &back() const {
+    return const_cast<CFGFunction *>(this)->back();
+  }
+
+  BasicBlock &front() { return blocks.front(); }
+  const BasicBlock &front() const {
+    return const_cast<CFGFunction *>(this)->front();
+  }
+
+  /// Return the 'return' statement of this MLFunction.
+  const OperationStmt *getReturnStmt() const;
+  OperationStmt *getReturnStmt();
+
+  // These should only be used on MLFunctions.
+  StmtBlock *getBody() {
+    assert(isML());
+    return &blocks.front();
+  }
+  const StmtBlock *getBody() const {
+    return const_cast<Function *>(this)->getBody();
+  }
+
+  /// Walk the statements in the function in preorder, calling the callback for
+  /// each Operation statement.
+  void walk(std::function<void(OperationStmt *)> callback);
+
+  /// Walk the statements in the function in postorder, calling the callback for
+  /// each Operation statement.
+  void walkPostOrder(std::function<void(OperationStmt *)> callback);
+
+  //===--------------------------------------------------------------------===//
+  // Arguments
+  //===--------------------------------------------------------------------===//
+
+  /// Returns number of arguments.
+  unsigned getNumArguments() const { return getType().getInputs().size(); }
+
+  /// Gets argument.
+  BlockArgument *getArgument(unsigned idx) {
+    return getBlocks().front().getArgument(idx);
+  }
+
+  const BlockArgument *getArgument(unsigned idx) const {
+    return getBlocks().front().getArgument(idx);
+  }
+
+  // Supports non-const operand iteration.
+  using args_iterator = ArgumentIterator<MLFunction, BlockArgument>;
+  args_iterator args_begin();
+  args_iterator args_end();
+  llvm::iterator_range<args_iterator> getArguments();
+
+  // Supports const operand iteration.
+  using const_args_iterator =
+      ArgumentIterator<const MLFunction, const BlockArgument>;
+  const_args_iterator args_begin() const;
+  const_args_iterator args_end() const;
+  llvm::iterator_range<const_args_iterator> getArguments() const;
+
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
 
   /// Perform (potentially expensive) checks of invariants, used to detect
   /// compiler bugs.  On error, this reports the error through the MLIRContext
@@ -93,10 +196,11 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message) const;
 
-protected:
-  Function(Kind kind, Location location, StringRef name, FunctionType type,
-           ArrayRef<NamedAttribute> attrs = {});
-  ~Function();
+  /// Displays the CFG in a window. This is for use from the debugger and
+  /// depends on Graphviz to generate the graph.
+  /// This function is defined in CFGFunctionViewGraph and only works with that
+  /// target linked.
+  void viewGraph() const;
 
 private:
   /// The name of the function and the kind of function this is.
@@ -114,22 +218,69 @@ private:
   /// This holds general named attributes for the function.
   AttributeListStorage *attrs;
 
+  /// The contents of the body.
+  StmtBlockList blocks;
+
   void operator=(const Function &) = delete;
   friend struct llvm::ilist_traits<Function>;
 };
 
-/// An extfunc declaration is a declaration of a function signature that is
-/// defined in some other module.
-class ExtFunction : public Function {
-public:
-  ExtFunction(Location location, StringRef name, FunctionType type,
-              ArrayRef<NamedAttribute> attrs = {});
+//===--------------------------------------------------------------------===//
+// ArgumentIterator
+//===--------------------------------------------------------------------===//
 
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Function *func) {
-    return func->getKind() == Kind::ExtFunc;
+/// This template implements the argument iterator in terms of getArgument(idx).
+template <typename ObjectType, typename ElementType>
+class ArgumentIterator final
+    : public IndexedAccessorIterator<ArgumentIterator<ObjectType, ElementType>,
+                                     ObjectType, ElementType> {
+public:
+  /// Initializes the result iterator to the specified index.
+  ArgumentIterator(ObjectType *object, unsigned index)
+      : IndexedAccessorIterator<ArgumentIterator<ObjectType, ElementType>,
+                                ObjectType, ElementType>(object, index) {}
+
+  /// Support converting to the const variant. This will be a no-op for const
+  /// variant.
+  operator ArgumentIterator<const ObjectType, const ElementType>() const {
+    return ArgumentIterator<const ObjectType, const ElementType>(this->object,
+                                                                 this->index);
+  }
+
+  ElementType *operator*() const {
+    return this->object->getArgument(this->index);
   }
 };
+
+//===--------------------------------------------------------------------===//
+// MLFunction iterator methods.
+//===--------------------------------------------------------------------===//
+
+inline MLFunction::args_iterator MLFunction::args_begin() {
+  return args_iterator(this, 0);
+}
+
+inline MLFunction::args_iterator MLFunction::args_end() {
+  return args_iterator(this, getNumArguments());
+}
+
+inline llvm::iterator_range<MLFunction::args_iterator>
+MLFunction::getArguments() {
+  return {args_begin(), args_end()};
+}
+
+inline MLFunction::const_args_iterator MLFunction::args_begin() const {
+  return const_args_iterator(this, 0);
+}
+
+inline MLFunction::const_args_iterator MLFunction::args_end() const {
+  return const_args_iterator(this, getNumArguments());
+}
+
+inline llvm::iterator_range<MLFunction::const_args_iterator>
+MLFunction::getArguments() const {
+  return {args_begin(), args_end()};
+}
 
 } // end namespace mlir
 
@@ -145,7 +296,7 @@ struct ilist_traits<::mlir::Function>
   using Function = ::mlir::Function;
   using function_iterator = simple_ilist<Function>::iterator;
 
-  static void deleteNode(Function *function) { function->destroy(); }
+  static void deleteNode(Function *function) { delete function; }
 
   void addNodeToList(Function *function);
   void removeNodeFromList(Function *function);

@@ -21,9 +21,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/Statements.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/FileUtilities.h"
@@ -55,7 +55,7 @@ private:
   bool convertBasicBlock(const BasicBlock &bb, bool ignoreArguments = false);
   bool convertCFGFunction(const CFGFunction &cfgFunc, llvm::Function &llvmFunc);
   bool convertFunctions(const Module &mlirModule, llvm::Module &llvmModule);
-  bool convertInstruction(const Instruction &inst);
+  bool convertInstruction(const OperationInst &inst);
 
   void connectPHINodes(const CFGFunction &cfgFunc);
 
@@ -517,7 +517,7 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(CmpIPredicate p) {
 // FIXME(zinenko): this should eventually become a separate MLIR pass that
 // converts MLIR standard operations into LLVM IR dialect; the translation in
 // that case would become a simple 1:1 instruction and value remapping.
-bool ModuleLowerer::convertInstruction(const Instruction &inst) {
+bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
   if (auto op = inst.dyn_cast<AddIOp>())
     return valueMapping[op->getResult()] =
                builder.CreateAdd(valueMapping[op->getOperand(0)],
@@ -766,7 +766,11 @@ bool ModuleLowerer::convertBasicBlock(const BasicBlock &bb,
 
   // Traverse instructions.
   for (const auto &inst : bb) {
-    if (convertInstruction(inst))
+    auto *op = dyn_cast<OperationInst>(&inst);
+    if (!op)
+      return inst.emitError("unsupported operation");
+
+    if (convertInstruction(*op))
       return true;
   }
 
@@ -779,7 +783,7 @@ static const SSAValue *getPHISourceValue(const BasicBlock *current,
                                          const BasicBlock *pred,
                                          unsigned numArguments,
                                          unsigned index) {
-  const Instruction &terminator = *pred->getTerminator();
+  auto &terminator = *pred->getTerminator();
   if (terminator.isa<BranchOp>()) {
     return terminator.getOperand(index);
   }
@@ -849,7 +853,7 @@ bool ModuleLowerer::convertFunctions(const Module &mlirModule,
   // call graph with cycles.  We don't expect MLFunctions here.
   for (const Function &function : mlirModule) {
     const Function *functionPtr = &function;
-    if (!isa<ExtFunction>(functionPtr) && !isa<CFGFunction>(functionPtr))
+    if (functionPtr->isML())
       continue;
     llvm::Constant *llvmFuncCst = llvmModule.getOrInsertFunction(
         function.getName(), convertFunctionType(function.getType()));
@@ -860,21 +864,20 @@ bool ModuleLowerer::convertFunctions(const Module &mlirModule,
   // Convert CFG functions.
   for (const Function &function : mlirModule) {
     const Function *functionPtr = &function;
-    auto cfgFunction = dyn_cast<CFGFunction>(functionPtr);
-    if (!cfgFunction)
+    if (!functionPtr->isCFG())
       continue;
-    llvm::Function *llvmFunc = functionMapping[cfgFunction];
+    llvm::Function *llvmFunc = functionMapping[functionPtr];
 
     // Add function arguments to the value remapping table.  In CFGFunction,
     // arguments of the first block are those of the function.
-    assert(!cfgFunction->getBlocks().empty() &&
+    assert(!functionPtr->getBlocks().empty() &&
            "expected at least one basic block in a CFGFunction");
-    const BasicBlock &firstBlock = *cfgFunction->begin();
+    const BasicBlock &firstBlock = *functionPtr->begin();
     for (auto arg : llvm::enumerate(llvmFunc->args())) {
       valueMapping[firstBlock.getArgument(arg.index())] = &arg.value();
     }
 
-    if (convertCFGFunction(*cfgFunction, *functionMapping[cfgFunction]))
+    if (convertCFGFunction(*functionPtr, *functionMapping[functionPtr]))
       return true;
   }
   return false;

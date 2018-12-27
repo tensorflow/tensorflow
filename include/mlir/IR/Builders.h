@@ -18,8 +18,7 @@
 #ifndef MLIR_IR_BUILDERS_H
 #define MLIR_IR_BUILDERS_H
 
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Statements.h"
 
 namespace mlir {
@@ -222,7 +221,7 @@ public:
   }
 
   void insert(Instruction *opInst) {
-    block->getOperations().insert(insertPoint, opInst);
+    block->getStatements().insert(insertPoint, opInst);
   }
 
   /// Add new basic block and set the insertion point to the end of it.  If an
@@ -232,7 +231,7 @@ public:
   BasicBlock *createBlock(BasicBlock *insertBefore = nullptr);
 
   /// Create an operation given the fields represented as an OperationState.
-  Instruction *createOperation(const OperationState &state);
+  OperationStmt *createOperation(const OperationState &state);
 
   /// Create operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
@@ -268,8 +267,8 @@ public:
     return OpPointer<OpTy>();
   }
 
-  Instruction *cloneOperation(const Instruction &srcOpInst) {
-    auto *op = srcOpInst.clone();
+  OperationStmt *cloneOperation(const OperationStmt &srcOpInst) {
+    auto *op = cast<OperationStmt>(srcOpInst.clone(getContext()));
     insert(op);
     return op;
   }
@@ -439,11 +438,11 @@ public:
       : Builder(mlFuncBuilder.getContext()), builder(mlFuncBuilder),
         kind(Function::Kind::MLFunc) {}
   FuncBuilder(Operation *op) : Builder(op->getContext()) {
-    if (auto *inst = dyn_cast<Instruction>(op)) {
-      builder = builderUnion(inst);
+    if (op->getOperationFunction()->isCFG()) {
+      builder = builderUnion(CFGFuncBuilder(cast<OperationInst>(op)));
       kind = Function::Kind::CFGFunc;
     } else {
-      builder = builderUnion(cast<OperationStmt>(op));
+      builder = builderUnion(MLFuncBuilder(cast<OperationStmt>(op)));
       kind = Function::Kind::MLFunc;
     }
   }
@@ -479,7 +478,7 @@ public:
   /// OperationStmt when building a ML function.
   void setInsertionPoint(Operation *op) {
     if (kind == Function::Kind::CFGFunc)
-      builder.cfg.setInsertionPoint(cast<Instruction>(op));
+      builder.cfg.setInsertionPoint(cast<OperationStmt>(op));
     else
       builder.ml.setInsertionPoint(cast<OperationStmt>(op));
   }
@@ -489,8 +488,6 @@ private:
   union builderUnion {
     builderUnion(CFGFuncBuilder cfg) : cfg(cfg) {}
     builderUnion(MLFuncBuilder ml) : ml(ml) {}
-    builderUnion(Instruction *op) : cfg(op) {}
-    builderUnion(OperationStmt *op) : ml(op) {}
     // Default initializer to allow deferring initialization of member.
     builderUnion() {}
 

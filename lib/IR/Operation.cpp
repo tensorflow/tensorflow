@@ -17,10 +17,8 @@
 
 #include "mlir/IR/Operation.h"
 #include "AttributeListStorage.h"
-#include "mlir/IR/CFGFunction.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/Instructions.h"
-#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
@@ -74,115 +72,77 @@ Operation::~Operation() {}
 
 /// Return the context this operation is associated with.
 MLIRContext *Operation::getContext() const {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getContext();
   return llvm::cast<OperationStmt>(this)->getContext();
 }
 
 /// The source location the operation was defined or derived from.  Note that
 /// it is possible for this pointer to be null.
 Location Operation::getLoc() const {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getLoc();
   return llvm::cast<OperationStmt>(this)->getLoc();
 }
 
 /// Set the source location the operation was defined or derived from.
 void Operation::setLoc(Location loc) {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    inst->setLoc(loc);
-  else
-    llvm::cast<OperationStmt>(this)->setLoc(loc);
+  llvm::cast<OperationStmt>(this)->setLoc(loc);
 }
 
 /// Return the function this operation is defined in.
 Function *Operation::getOperationFunction() {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getFunction();
   return llvm::cast<OperationStmt>(this)->getFunction();
 }
 
 /// Return the number of operands this operation has.
 unsigned Operation::getNumOperands() const {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getNumOperands();
-
   return llvm::cast<OperationStmt>(this)->getNumOperands();
 }
 
 SSAValue *Operation::getOperand(unsigned idx) {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getOperand(idx);
-
   return llvm::cast<OperationStmt>(this)->getOperand(idx);
 }
 
 void Operation::setOperand(unsigned idx, SSAValue *value) {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this)) {
-    inst->setOperand(idx, llvm::cast<CFGValue>(value));
-  } else {
-    auto *stmt = llvm::cast<OperationStmt>(this);
-    stmt->setOperand(idx, llvm::cast<MLValue>(value));
-  }
+  auto *stmt = llvm::cast<OperationStmt>(this);
+  stmt->setOperand(idx, llvm::cast<MLValue>(value));
 }
 
 /// Return the number of results this operation has.
 unsigned Operation::getNumResults() const {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getNumResults();
-
   return llvm::cast<OperationStmt>(this)->getNumResults();
 }
 
 /// Return the indicated result.
 SSAValue *Operation::getResult(unsigned idx) {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getResult(idx);
-
   return llvm::cast<OperationStmt>(this)->getResult(idx);
 }
 
 unsigned Operation::getNumSuccessors() const {
   assert(isTerminator() && "Only terminators have successors.");
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getNumSuccessors();
-
   return llvm::cast<OperationStmt>(this)->getNumSuccessors();
 }
 
 unsigned Operation::getNumSuccessorOperands(unsigned index) const {
   assert(isTerminator() && "Only terminators have successors.");
-
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->getNumSuccessorOperands(index);
-
   return llvm::cast<OperationStmt>(this)->getNumSuccessorOperands(index);
 }
 BasicBlock *Operation::getSuccessor(unsigned index) {
-  assert(isTerminator() && "Only terminators have successors.");
-  assert(llvm::isa<Instruction>(this) &&
-         "Only instructions have basic block successors.");
-  return llvm::cast<Instruction>(this)->getSuccessor(index);
+  assert(isTerminator() && "Only terminators have successors");
+  return llvm::cast<OperationStmt>(this)->getSuccessor(index);
 }
 void Operation::setSuccessor(BasicBlock *block, unsigned index) {
-  assert(isTerminator() && "Only terminators have successors.");
-  assert(llvm::isa<Instruction>(this) &&
-         "Only instructions have basic block successors.");
-  llvm::cast<Instruction>(this)->setSuccessor(block, index);
+  assert(isTerminator() && "Only terminators have successors");
+  llvm::cast<OperationStmt>(this)->setSuccessor(block, index);
 }
 
 void Operation::eraseSuccessorOperand(unsigned succIndex, unsigned opIndex) {
-  assert(isTerminator() && "Only terminators have successors.");
-  assert(llvm::isa<Instruction>(this) && "Only instructions have successors.");
-  return llvm::cast<Instruction>(this)->eraseSuccessorOperand(succIndex,
-                                                              opIndex);
+  assert(isTerminator() && "Only terminators have successors");
+  return llvm::cast<OperationStmt>(this)->eraseSuccessorOperand(succIndex,
+                                                                opIndex);
 }
 auto Operation::getSuccessorOperands(unsigned index) const
     -> llvm::iterator_range<const_operand_iterator> {
   assert(isTerminator() && "Only terminators have successors.");
-  assert(llvm::isa<Instruction>(this) && "Only instructions have successors.");
   unsigned succOperandIndex =
-      llvm::cast<Instruction>(this)->getSuccessorOperandIndex(index);
+      llvm::cast<OperationStmt>(this)->getSuccessorOperandIndex(index);
   return {const_operand_iterator(this, succOperandIndex),
           const_operand_iterator(this, succOperandIndex +
                                            getNumSuccessorOperands(index))};
@@ -190,9 +150,8 @@ auto Operation::getSuccessorOperands(unsigned index) const
 auto Operation::getSuccessorOperands(unsigned index)
     -> llvm::iterator_range<operand_iterator> {
   assert(isTerminator() && "Only terminators have successors.");
-  assert(llvm::isa<Instruction>(this) && "Only instructions have successors.");
   unsigned succOperandIndex =
-      llvm::cast<Instruction>(this)->getSuccessorOperandIndex(index);
+      llvm::cast<OperationStmt>(this)->getSuccessorOperandIndex(index);
   return {operand_iterator(this, succOperandIndex),
           operand_iterator(this,
                            succOperandIndex + getNumSuccessorOperands(index))};
@@ -207,8 +166,6 @@ bool Operation::use_empty() const {
 }
 
 void Operation::moveBefore(Operation *existingOp) {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->moveBefore(llvm::cast<Instruction>(existingOp));
   return llvm::cast<OperationStmt>(this)->moveBefore(
       llvm::cast<OperationStmt>(existingOp));
 }
@@ -288,8 +245,6 @@ bool Operation::emitOpError(const Twine &message) const {
 
 /// Remove this operation from its parent block and delete it.
 void Operation::erase() {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->erase();
   return llvm::cast<OperationStmt>(this)->erase();
 }
 
@@ -319,14 +274,10 @@ bool Operation::constantFold(ArrayRef<Attribute> operands,
 }
 
 void Operation::print(raw_ostream &os) const {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->print(os);
   return llvm::cast<OperationStmt>(this)->print(os);
 }
 
 void Operation::dump() const {
-  if (auto *inst = llvm::dyn_cast<Instruction>(this))
-    return inst->dump();
   return llvm::cast<OperationStmt>(this)->dump();
 }
 
@@ -347,11 +298,10 @@ Operation *
 llvm::cast_convert_val<mlir::Operation, mlir::IROperandOwner *,
                        mlir::IROperandOwner *>::doit(const mlir::IROperandOwner
                                                          *value) {
+  // TODO(clattner): obsolete this.
   const Operation *op;
-  if (auto *ptr = dyn_cast<OperationStmt>(value))
-    op = ptr;
-  else
-    op = cast<Instruction>(value);
+  auto *ptr = cast<OperationStmt>(value);
+  op = ptr;
   return const_cast<Operation *>(op);
 }
 
@@ -579,12 +529,13 @@ static bool verifyTerminatorSuccessors(const Operation *op) {
 
 bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
   // Verify that the operation is at the end of the respective parent block.
-  if (auto *stmt = dyn_cast<OperationStmt>(op)) {
+  if (op->getOperationFunction()->isML()) {
+    auto *stmt = cast<OperationStmt>(op);
     StmtBlock *block = stmt->getBlock();
     if (!block || block->getContainingStmt() || &block->back() != stmt)
       return op->emitOpError("must be the last statement in the ML function");
   } else {
-    const Instruction *inst = cast<Instruction>(op);
+    auto *inst = cast<OperationInst>(op);
     const BasicBlock *block = inst->getBlock();
     if (!block || &block->back() != inst)
       return op->emitOpError(

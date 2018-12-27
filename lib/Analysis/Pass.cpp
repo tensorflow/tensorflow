@@ -20,8 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Pass.h"
-#include "mlir/IR/CFGFunction.h"
-#include "mlir/IR/MLFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Support/PassNameParser.h"
 #include "llvm/ADT/DenseMap.h"
@@ -47,10 +46,10 @@ PassResult FunctionPass::runOnModule(Module *m) {
 }
 
 PassResult FunctionPass::runOnFunction(Function *fn) {
-  if (auto *mlFunc = dyn_cast<MLFunction>(fn))
-    return runOnMLFunction(mlFunc);
-  if (auto *cfgFunc = dyn_cast<CFGFunction>(fn))
-    return runOnCFGFunction(cfgFunc);
+  if (fn->isML())
+    return runOnMLFunction(fn);
+  if (fn->isCFG())
+    return runOnCFGFunction(fn);
 
   return success();
 }

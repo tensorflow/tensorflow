@@ -24,9 +24,8 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/IR/MLFunction.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Statements.h"
@@ -116,7 +115,7 @@ private:
 
   // Visit functions.
   void visitFunction(const Function *fn);
-  void visitExtFunction(const ExtFunction *fn);
+  void visitExtFunction(const Function *fn);
   void visitCFGFunction(const CFGFunction *fn);
   void visitMLFunction(const MLFunction *fn);
   void visitStatement(const Statement *stmt);
@@ -175,15 +174,19 @@ void ModuleState::visitOperation(const Operation *op) {
     visitAttribute(elt.second);
 }
 
-void ModuleState::visitExtFunction(const ExtFunction *fn) {
+void ModuleState::visitExtFunction(const Function *fn) {
   visitType(fn->getType());
 }
 
 void ModuleState::visitCFGFunction(const CFGFunction *fn) {
   visitType(fn->getType());
   for (auto &block : *fn) {
-    for (auto &op : block.getOperations()) {
-      visitOperation(&op);
+    for (auto &op : block.getStatements()) {
+      if (auto *opInst = dyn_cast<OperationInst>(&op))
+        visitOperation(opInst);
+      else {
+        llvm_unreachable("IfStmt/ForStmt in a CFGFunction isn't supported");
+      }
     }
   }
 }
@@ -238,11 +241,11 @@ void ModuleState::visitMLFunction(const MLFunction *fn) {
 void ModuleState::visitFunction(const Function *fn) {
   switch (fn->getKind()) {
   case Function::Kind::ExtFunc:
-    return visitExtFunction(cast<ExtFunction>(fn));
+    return visitExtFunction(fn);
   case Function::Kind::CFGFunc:
-    return visitCFGFunction(cast<CFGFunction>(fn));
+    return visitCFGFunction(fn);
   case Function::Kind::MLFunc:
-    return visitMLFunction(cast<MLFunction>(fn));
+    return visitMLFunction(fn);
   }
 }
 
@@ -274,9 +277,9 @@ public:
   void printAttribute(Attribute attr);
   void printType(Type type);
   void print(const Function *fn);
-  void print(const ExtFunction *fn);
-  void print(const CFGFunction *fn);
-  void print(const MLFunction *fn);
+  void printExt(const Function *fn);
+  void printCFG(const Function *fn);
+  void printML(const Function *fn);
 
   void printAffineMap(AffineMap map);
   void printAffineExpr(AffineExpr expr);
@@ -314,11 +317,11 @@ protected:
 void ModulePrinter::print(const Function *fn) {
   switch (fn->getKind()) {
   case Function::Kind::ExtFunc:
-    return print(cast<ExtFunction>(fn));
+    return printExt(fn);
   case Function::Kind::CFGFunc:
-    return print(cast<CFGFunction>(fn));
+    return printCFG(fn);
   case Function::Kind::MLFunc:
-    return print(cast<MLFunction>(fn));
+    return printML(fn);
   }
 }
 
@@ -927,7 +930,7 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
   os << '}';
 }
 
-void ModulePrinter::print(const ExtFunction *fn) {
+void ModulePrinter::printExt(const Function *fn) {
   os << "extfunc ";
   printFunctionSignature(fn);
   printFunctionAttributes(fn);
@@ -1001,17 +1004,6 @@ protected:
 
     if (specialNameBuffer.empty()) {
       switch (value->getKind()) {
-      case SSAValueKind::BBArgument:
-        // If this is an argument to the function, give it an 'arg' name.
-        if (auto *bb = cast<BBArgument>(value)->getOwner())
-          if (auto *fn = bb->getFunction())
-            if (&fn->front() == bb) {
-              specialName << "arg" << nextArgumentID++;
-              break;
-            }
-        // Otherwise number it normally.
-        valueIDs[value] = nextValueID++;
-        return;
       case SSAValueKind::BlockArgument:
         // If this is an argument to the function, give it an 'arg' name.
         if (auto *block = cast<BlockArgument>(value)->getOwner())
@@ -1023,7 +1015,6 @@ protected:
         // Otherwise number it normally.
         valueIDs[value] = nextValueID++;
         return;
-      case SSAValueKind::InstResult:
       case SSAValueKind::StmtResult:
         // This is an uninteresting result, give it a boring number and be
         // done with it.
@@ -1222,8 +1213,9 @@ void CFGFunctionPrinter::numberValuesInBlock(const BasicBlock *block) {
   for (auto &op : *block) {
     // We number instruction that have results, and we only number the first
     // result.
-    if (op.getNumResults() != 0)
-      numberValueID(op.getResult(0));
+    if (auto *opInst = dyn_cast<OperationInst>(&op))
+      if (opInst->getNumResults() != 0)
+        numberValueID(opInst->getResult(0));
   }
 
   // Terminators do not define values.
@@ -1278,7 +1270,7 @@ void CFGFunctionPrinter::print(const BasicBlock *block) {
   }
   os << '\n';
 
-  for (auto &inst : block->getOperations()) {
+  for (auto &inst : block->getStatements()) {
     os << "  ";
     print(&inst);
     os << '\n';
@@ -1290,7 +1282,9 @@ void CFGFunctionPrinter::print(const Instruction *inst) {
     os << "<<null instruction>>\n";
     return;
   }
-  printOperation(inst);
+  auto *opInst = dyn_cast<OperationInst>(inst);
+  assert(opInst && "IfStmt/ForStmt aren't supported in CFG functions yet");
+  printOperation(opInst);
 }
 
 // Print the operands from "container" to "os", followed by a colon and their
@@ -1317,7 +1311,7 @@ void CFGFunctionPrinter::printSuccessorAndUseList(const Operation *term,
   printBranchOperands(term->getSuccessorOperands(index));
 }
 
-void ModulePrinter::print(const CFGFunction *fn) {
+void ModulePrinter::printCFG(const Function *fn) {
   CFGFunctionPrinter(fn, *this).print();
 }
 
@@ -1530,7 +1524,7 @@ void MLFunctionPrinter::print(const IfStmt *stmt) {
   }
 }
 
-void ModulePrinter::print(const MLFunction *fn) {
+void ModulePrinter::printML(const Function *fn) {
   MLFunctionPrinter(fn, *this).print();
 }
 
@@ -1584,13 +1578,10 @@ void IntegerSet::print(raw_ostream &os) const {
 
 void SSAValue::print(raw_ostream &os) const {
   switch (getKind()) {
-  case SSAValueKind::BBArgument:
   case SSAValueKind::BlockArgument:
     // TODO: Improve this.
     os << "<block argument>\n";
     return;
-  case SSAValueKind::InstResult:
-    return getDefiningInst()->print(os);
   case SSAValueKind::StmtResult:
     return getDefiningStmt()->print(os);
   case SSAValueKind::ForStmt:
@@ -1601,13 +1592,20 @@ void SSAValue::print(raw_ostream &os) const {
 void SSAValue::dump() const { print(llvm::errs()); }
 
 void Instruction::print(raw_ostream &os) const {
-  if (!getFunction()) {
+  auto *function = getFunction();
+  if (!function) {
     os << "<<UNLINKED INSTRUCTION>>\n";
     return;
   }
-  ModuleState state(getFunction()->getContext());
-  ModulePrinter modulePrinter(os, state);
-  CFGFunctionPrinter(getFunction(), modulePrinter).print(this);
+  if (function->isCFG()) {
+    ModuleState state(function->getContext());
+    ModulePrinter modulePrinter(os, state);
+    CFGFunctionPrinter(function, modulePrinter).print(this);
+  } else {
+    ModuleState state(function->getContext());
+    ModulePrinter modulePrinter(os, state);
+    MLFunctionPrinter(function, modulePrinter).print(this);
+  }
 }
 
 void Instruction::dump() const {
@@ -1616,19 +1614,27 @@ void Instruction::dump() const {
 }
 
 void BasicBlock::print(raw_ostream &os) const {
-  if (!getFunction()) {
+  auto *function = getFunction();
+  if (!function) {
     os << "<<UNLINKED BLOCK>>\n";
     return;
   }
-  ModuleState state(getFunction()->getContext());
-  ModulePrinter modulePrinter(os, state);
-  CFGFunctionPrinter(getFunction(), modulePrinter).print(this);
+
+  if (function->isCFG()) {
+    ModuleState state(function->getContext());
+    ModulePrinter modulePrinter(os, state);
+    CFGFunctionPrinter(function, modulePrinter).print(this);
+  } else {
+    ModuleState state(function->getContext());
+    ModulePrinter modulePrinter(os, state);
+    MLFunctionPrinter(function, modulePrinter).print(this);
+  }
 }
 
 void BasicBlock::dump() const { print(llvm::errs()); }
 
 /// Print out the name of the basic block without printing its body.
-void BasicBlock::printAsOperand(raw_ostream &os, bool printType) {
+void StmtBlock::printAsOperand(raw_ostream &os, bool printType) {
   if (!getFunction()) {
     os << "<<UNLINKED BLOCK>>\n";
     return;
@@ -1637,29 +1643,6 @@ void BasicBlock::printAsOperand(raw_ostream &os, bool printType) {
   ModulePrinter modulePrinter(os, state);
   CFGFunctionPrinter(getFunction(), modulePrinter).printBBName(this);
 }
-
-void Statement::print(raw_ostream &os) const {
-  MLFunction *function = getFunction();
-  if (!function) {
-    os << "<<UNLINKED STATEMENT>>\n";
-    return;
-  }
-
-  ModuleState state(function->getContext());
-  ModulePrinter modulePrinter(os, state);
-  MLFunctionPrinter(function, modulePrinter).print(this);
-}
-
-void Statement::dump() const { print(llvm::errs()); }
-
-void StmtBlock::printBlock(raw_ostream &os) const {
-  const MLFunction *function = getFunction();
-  ModuleState state(function->getContext());
-  ModulePrinter modulePrinter(os, state);
-  MLFunctionPrinter(function, modulePrinter).print(this);
-}
-
-void StmtBlock::dumpBlock() const { printBlock(llvm::errs()); }
 
 void Function::print(raw_ostream &os) const {
   ModuleState state(getContext());
