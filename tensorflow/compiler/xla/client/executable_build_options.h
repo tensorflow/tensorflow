@@ -63,6 +63,16 @@ class ExecutableBuildOptions {
       DeviceMemoryAllocator* allocator);
   DeviceMemoryAllocator* device_allocator() const;
 
+  // An indicator of the number of resource variable inputs
+  ExecutableBuildOptions& set_resource_input_count(int count);
+  int resource_input_count() const;
+
+  // An indicator of the number of resource variables updated by this
+  // executable.
+  ExecutableBuildOptions& set_resource_update_to_input_index(
+      const std::vector<int>& resource_update_to_input_index);
+  const std::vector<int>& resource_update_to_input_index() const;
+
   // Returns a string representation of the build options, suitable for
   // debugging.
   string ToString() const;
@@ -73,6 +83,9 @@ class ExecutableBuildOptions {
   bool result_layout_set_ = false;
   absl::optional<DebugOptions> debug_options_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
+
+  int resource_input_count_ = 0;
+  std::vector<int> resource_update_to_input_index_ = std::vector<int>{};
 };
 
 }  // namespace xla

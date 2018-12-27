@@ -41,13 +41,13 @@ TEST_F(WideConstFinderTest, ReplaceWideConstants) {
   auto add1 = builder.AddInstruction(
       HloInstruction::CreateBinary(s1, HloOpcode::kAdd, i1, c1));
   auto add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(s1, HloOpcode::kAdd, i2, c2));
+      HloInstruction::CreateBinary(s2, HloOpcode::kAdd, i2, c2));
 
   builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   EXPECT_THAT(hlo_module->computation_count(), 1);
@@ -96,7 +96,7 @@ TEST_F(WideConstFinderTest, DontReplaceScalars) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   EXPECT_THAT(hlo_module->computation_count(), 1);

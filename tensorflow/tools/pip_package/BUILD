@@ -91,6 +91,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
     "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
+    "//tensorflow/contrib/ipu",
 ]
 
 COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
@@ -103,7 +104,6 @@ COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
     "//tensorflow/contrib/eager/python:evaluator",
     "//tensorflow/contrib/gan:gan",
     "//tensorflow/contrib/graph_editor:graph_editor_pip",
-    "//tensorflow/contrib/ipu",
     "//tensorflow/contrib/keras:keras",
     "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
     "//tensorflow/contrib/nn:nn_py",

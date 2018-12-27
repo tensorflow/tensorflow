@@ -13,17 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace xla {
 
 StatusOr<bool> HloSubcomputationUnification::Run(HloModule* module) {
+  auto call_graph = CallGraph::Build(module);
+
+  // Only computations which are not fusions, or called by fusions, can be
+  // unified.
+  std::vector<HloComputation*> computations;
+  for (const auto& node : call_graph->nodes()) {
+    auto* comp = node.computation();
+    if (comp->IsFusionComputation()) {
+      continue;
+    }
+    auto& callers = node.callers();
+    if (std::any_of(callers.begin(), callers.end(),
+                    [](HloComputation* c) {
+                      return c->IsFusionComputation();
+                    })) {
+      continue;
+    }
+  }
+
   // For each computation C in the module, find the first computation C0 in the
   // computations_ list that is identical to C, and adds canon[C] = C0.
   std::unordered_map<HloComputation*, HloComputation*> canon;
-  const auto& computations = module->computations();
   for (auto i = computations.begin(); i != computations.end(); ++i) {
     for (auto j = computations.begin(); j != i; ++j) {
       // Do not waste time comparing `*i` with `*j` if `*j` is not canonical.

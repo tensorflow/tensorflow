@@ -118,13 +118,7 @@ Status FullVisitor::HandleReduce(HloInstruction* inst) {
 }
 
 Status FullVisitor::HandleBitcast(HloInstruction* inst) {
-  VLOG(1) << "Processing " << inst->name();
-  if (LayoutUtil::LayoutsInShapesEqual(inst->operand(0)->shape(),
-                                       GetOutputShape(inst))) {
-    return HandleReshape(inst);
-  } else {
-    return HandleTranspose(inst);
-  }
+  return HandleReshape(inst);
 }
 
 Status FullVisitor::HandleBroadcast(HloInstruction* inst) {

@@ -13,7 +13,7 @@ from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.ops.summary_ops import tensor_summary
+from tensorflow.python.summary.summary import tensor_summary
 
 import contextlib
 import fnmatch

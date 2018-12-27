@@ -63,7 +63,7 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleConvolution(HloInstruction* inst) override;
 
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* crs) override;
 
   Status HandleRng(HloInstruction* inst) override;
 
@@ -144,6 +144,10 @@ class BaseVisitor : public DfsHloVisitor {
   Status HandleAllToAll(HloInstruction* hlo) override;
 
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+
+  Status HandleGetDimensionSize(HloInstruction* hlo) override;
+
+  Status HandleAddDependency(HloInstruction* hlo) override;
 
   TensorMap tensor_map;
 

@@ -37,7 +37,7 @@ class GraphCompileIoMapTest : public HloTestBase {
     return e->GetInputOutputAliasingMap();
   }
 
-  static std::unique_ptr<HloModule> CreateNewModuleWithConfig(
+  static std::unique_ptr<HloModule> CreateNewVerifiedModuleWithConfig(
       const HloModuleConfig& config, const string& name = TestName()) {
     return absl::make_unique<HloModule>(name, config);
   }
@@ -59,7 +59,7 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -71,10 +71,6 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
   EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
 
   PoplarCompiler compiler;
-
-  hlo_module =
-      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
-          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
       compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
@@ -114,7 +110,7 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   auto config = GetModuleConfigForTest();
   config.set_resource_input_count(1);
   config.set_resource_update_to_input_index({1});
-  auto hlo_module = CreateNewModuleWithConfig(config);
+  auto hlo_module = CreateNewVerifiedModuleWithConfig(config);
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -126,10 +122,6 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
 
   PoplarCompiler compiler;
-
-  hlo_module =
-      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
-          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
       compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
@@ -179,7 +171,7 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -191,10 +183,6 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
   EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
 
   PoplarCompiler compiler;
-
-  hlo_module =
-      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
-          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
       compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
@@ -236,7 +224,7 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
@@ -248,10 +236,6 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
 
   PoplarCompiler compiler;
-
-  hlo_module =
-      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
-          .ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
       compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)

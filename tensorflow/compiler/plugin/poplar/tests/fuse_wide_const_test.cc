@@ -35,7 +35,7 @@ TEST_F(FuseWideConstTest, ReplaceWithWideConstant) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   EXPECT_THAT(hlo_module->computation_count(), 1);

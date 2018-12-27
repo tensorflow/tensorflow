@@ -87,8 +87,9 @@ static absl::optional<HloInstruction*> reduce_to_one_with_no_dependencies(
   // targets with no dependency between we still allocate it with some layout
   // and add a control dependency.
   absl::flat_hash_set<HloInstruction*> result_no_deps;
-  absl::c_set_difference(
-      result, has_dependency,
+  std::set_difference(
+      result.begin(), result.end(), has_dependency.begin(),
+      has_dependency.end(),
       std::inserter(result_no_deps, std::begin(result_no_deps)));
   return result_no_deps.size() == 1
              ? absl::optional<HloInstruction*>(*std::begin(result_no_deps))
@@ -207,7 +208,7 @@ StatusOr<bool> ForwardAllocation::Run(
   const auto layout_producing_ops = g.FindVertices(is_layout_producer);
 
   std::unique_ptr<HloReachabilityMap> reachability_map =
-      comp->ComputeReachability();
+      HloReachabilityMap::Build(comp);
 
   // Get everything that depends upon an op with a special layout
   const auto get_consumers = [is_layout_producer, &g](HloInstruction* inst) {
@@ -296,8 +297,7 @@ StatusOr<bool> ForwardAllocation::Run(
               // Make sure the layout_producer is executed before the source
               // instruction.
               layout_producer->AddControlDependencyTo(source);
-              comp->UpdateReachabilityThroughInstruction(
-                  source, reachability_map.get());
+              reachability_map->UpdateReachabilityThroughInstruction(source);
               found_targets = true;
             }
           }

@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 
 namespace xla {
 namespace poplarplugin {

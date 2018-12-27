@@ -31,6 +31,7 @@ namespace xla {
 class HloInstruction;
 class HloComputation;
 class Literal;
+class Shape;
 
 namespace poplarplugin {
 

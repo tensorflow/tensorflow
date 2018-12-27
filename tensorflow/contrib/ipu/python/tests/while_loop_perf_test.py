@@ -58,9 +58,9 @@ class WhileLoopPerfTest(test_util.TensorFlowTestCase):
 
         events = ipu.utils.extract_all_events(rep)
 
-        # Check that there is only one compile (plus one empty graph compile)
+        # Check that there is only one compile
         self.assertEqual(count_event_type(events,
-                                          IpuTraceEvent.COMPILE_BEGIN), 2)
+                                          IpuTraceEvent.COMPILE_BEGIN), 1)
 
         # Check that there is only one execute
         self.assertEqual(count_event_type(events, IpuTraceEvent.EXECUTE), 1)

@@ -21,7 +21,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.variable_scope import variable_scope
-from tensorflow.python.ops.summary_ops import tensor_summary
+from tensorflow.python.summary.summary import tensor_summary
 from tensorflow.python.util import tf_contextlib
 from tensorflow.contrib.compiler.jit import experimental_jit_scope
 

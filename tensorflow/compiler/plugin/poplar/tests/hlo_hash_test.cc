@@ -93,9 +93,9 @@ void CreateWhileLoop(HloModule* module, std::string test_name) {
 }
 
 TEST_F(HloHashTest, SameWhileLoopsSameHash) {
-  auto module0 = CreateNewModule();
+  auto module0 = CreateNewVerifiedModule();
   CreateWhileLoop(module0.get(), TestName());
-  auto module1 = CreateNewModule();
+  auto module1 = CreateNewVerifiedModule();
   CreateWhileLoop(module1.get(), TestName());
   HloHash hash0(module0.get());
   HloHash hash1(module1.get());

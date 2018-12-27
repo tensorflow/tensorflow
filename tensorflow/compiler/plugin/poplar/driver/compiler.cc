@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
@@ -226,10 +227,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
   std::unique_ptr<HloProfilePrinterData> profile_printer;
   if (module->config().hlo_profiling_enabled()) {
+    const auto& name = module->entry_computation()->name();
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
     profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
     profile_printer =
-        CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
+        CreateHloProfilePrinterData(*profile_index_map, cost_analysis, name);
   }
 
   std::string filename;
@@ -287,18 +289,24 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   {
+    AlgebraicSimplifierOptions simplifier_opts(
+        [](const Shape&, const Shape&) { return false; });
+    simplifier_opts.set_is_layout_sensitive(false);
+    simplifier_opts.set_enable_conv_simplification(false);
+    simplifier_opts.set_enable_dot_strength_reduction(false);
+    simplifier_opts.set_enable_permutation_sort_replacement(false);
+
     HloPassPipeline pipeline("IPU");
+    pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<GatherExpander>();
     pipeline.AddPass<ScatterExpander>();
     pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<HloPassFix<FuseOpsEarly>>(resources.annotations);
     pipeline.AddPass<HloCSE>(false);
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        false, [](const Shape&, const Shape&) { return false; }, false, false);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
     pipeline.AddPass<ReshapeMover>();
     pipeline.AddPass<MapInliner>();
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        false, [](const Shape&, const Shape&) { return false; }, false, false);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
     pipeline.AddPass<ZeroSizedHloElimination>();
     pipeline.AddPass<ComputationFlattener>();
     pipeline.AddPass<TupleSimplifier>(true);
@@ -311,8 +319,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<WhileLoopConstantSinking>();
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        false, [](const Shape&, const Shape&) { return false; }, false, false);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
     pipeline.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
     pipeline.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
     pipeline.AddPass<FuseWideConst>(resources.annotations);
@@ -463,7 +470,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 }
 
 Status PoplarCompiler::RunHloPassesOnModuleGroup(
-    HloModuleGroup* module_group, se::StreamExecutor* executor,
+    HloModuleGroup* module_group,
+    absl::Span<se::StreamExecutor* const> executors,
     DeviceMemoryAllocator* device_allocator) {
   return xla::InvalidArgument("Module groups not supported on Poplar");
 }

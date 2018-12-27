@@ -161,7 +161,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'Copy_XLA_Args/arg0*_to_Slice/slice*.clone',
+            'Copy_XLA_Args/arg*_to_Slice/*/slice*.clone',
             'add/add.*/AddTo',
             'truediv/divide.*/Op/Divide',
             'add_1/add.*/AddTo']

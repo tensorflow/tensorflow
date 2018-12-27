@@ -47,3 +47,13 @@ StatelessRandomOpsTest.testDistributionOfStatelessRandomUniform # As above
 AdjustContrastTest # Currently taking too long when run alongside other processes
 AdjustHueTest
 AdjustSaturationTest
+ResamplerOpsTest # Don't support the op
+ListDiffTest.testNonOverlapping # no int64 iota
+ListDiffTest.testEmptyY # no int64 iota
+CategoricalTest.testDeterminismMultinomial # No int64 iota
+CumsumTest.test6D # Too long
+CumsumTest.test3D # Too long
+CumprodTest.test6D # Too long
+CumprodTest.test3D # Too long
+QuantizedOpsTest # No bfloat16
+DeuantizedOpsTest # No bfloat16

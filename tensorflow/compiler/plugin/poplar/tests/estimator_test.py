@@ -42,8 +42,9 @@ def model_fn(features, labels, mode):
 
       if (mode == model_fn_lib.ModeKeys.TRAIN or
               mode == model_fn_lib.ModeKeys.EVAL):
+        labels = array_ops.stop_gradient(labels)
         loss = math_ops.reduce_mean(
-          nn.softmax_cross_entropy_with_logits(logits=x, labels=labels))
+          nn.softmax_cross_entropy_with_logits_v2(logits=x, labels=labels))
       else:
         loss = None
 
@@ -62,20 +63,21 @@ def model_fn(features, labels, mode):
     train_op=train)
 
 def input_fn():
-  def gen_input():
+
+  t_data = []
+  v_data = []
+  for _ in range(16*4):
     type = random.randint(0, 2)
     t = [random.random(), random.random(), random.random(), random.random()]
     t[type] += random.uniform(1.0, 3.0)
     v = [0,0,0]
     v[type] = 1.0
-    yield (t, v)
+    t_data.append(t)
+    v_data.append(v)
 
-  dataset = dataset_ops.Dataset.from_generator(
-    gen_input,
-    (np.float32, np.float32),
-    (tensor_shape.TensorShape([4]), tensor_shape.TensorShape([3])))
+  dataset = dataset_ops.Dataset.from_tensor_slices((t_data, v_data))
   dataset = dataset.batch(4)
-  return dataset.make_one_shot_iterator().get_next()
+  return dataset
 
 
 
@@ -95,8 +97,8 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
     run_cfg = run_config.RunConfig(session_config=sess_cfg)
 
     classifier = estimator.Estimator(model_fn=model_fn,
-                                        config=run_cfg,
-                                        model_dir="testlogs")
+                                     config=run_cfg,
+                                     model_dir="testlogs")
 
     classifier.train(input_fn=input_fn, steps=16)
 

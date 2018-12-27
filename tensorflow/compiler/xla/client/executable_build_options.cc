@@ -69,4 +69,28 @@ string ExecutableBuildOptions::ToString() const {
       device_ordinal_, result_layout, debug_options().xla_generate_hlo_graph());
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_resource_input_count(
+    int count) {
+  resource_input_count_ = count;
+  return *this;
+}
+
+int ExecutableBuildOptions::resource_input_count() const {
+  return resource_input_count_;
+}
+
+ExecutableBuildOptions&
+ExecutableBuildOptions::set_resource_update_to_input_index(
+    const std::vector<int>& resource_update_to_input_index) {
+  std::copy(resource_update_to_input_index.begin(),
+            resource_update_to_input_index.end(),
+            std::back_inserter(resource_update_to_input_index_));
+  return *this;
+}
+
+const std::vector<int>& ExecutableBuildOptions::resource_update_to_input_index()
+    const {
+  return resource_update_to_input_index_;
+}
+
 }  // namespace xla

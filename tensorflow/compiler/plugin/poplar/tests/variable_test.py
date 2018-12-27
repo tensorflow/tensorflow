@@ -263,7 +263,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       # Find of the names of compute sets
       r = sess.run(report)
-      self.assertTrue(len(r) == 5)
+      self.assertTrue(len(r) == 3) # compile,load,execute
 
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
@@ -295,7 +295,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       # Find of the names of compute sets
       r = sess.run(report)
-      self.assertTrue(len(r) == 5)
+      self.assertTrue(len(r) == 3) # compile,load,execute
 
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
@@ -326,7 +326,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       # Find of the names of compute sets
       r = sess.run(report)
-      self.assertTrue(len(r) == 5)
+      self.assertTrue(len(r) == 3) # compile,load,execute
 
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
@@ -354,7 +354,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       # Find of the names of compute sets
       r = sess.run(report)
-      self.assertTrue(len(r) == 5)
+      self.assertTrue(len(r) == 3) # compile,load,execute
 
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)

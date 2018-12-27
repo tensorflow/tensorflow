@@ -198,8 +198,8 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
             'Sum/reduce.*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
             'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
             'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropInput/convolution.*.clone/WeightTranspose',
-            'gradients/vs/conv3/Conv2D_grad/Conv2DBackpropFilter/convolution.*.clone/Conv_4x4',
-            'GradientDescent/update_vs/conv3/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo']
+            'gradients/vs/conv2/Conv2D_grad/Conv2DBackpropFilter/convolution.*.clone/Conv_4x4',
+            'GradientDescent/update_vs/conv2/kernel/ResourceApplyGradientDescent/subtract.*.clone/AddTo']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

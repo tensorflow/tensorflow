@@ -166,8 +166,7 @@ ENTRY c1 {
   Scheduler scheduler;
   EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
 
-  std::vector<const HloInstruction*> instruction_order =
-      module0->schedule().sequence(entry).instructions();
+  auto instruction_order = module0->schedule().sequence(entry).instructions();
 
   EXPECT_THAT(instruction_order.size(), 10);
 
@@ -233,8 +232,7 @@ TEST_F(HloInplaceDependencyTest, MultipleUpdateInPlacePeers) {
   Scheduler scheduler;
   EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
 
-  std::vector<const HloInstruction*> instruction_order =
-      module0->schedule().sequence(entry).instructions();
+  auto instruction_order = module0->schedule().sequence(entry).instructions();
   EXPECT_THAT(instruction_order.size(), 5);
 
   std::map<std::string, unsigned int> order;
@@ -289,8 +287,7 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithInterdependency) {
   Scheduler scheduler;
   EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
 
-  std::vector<const HloInstruction*> instruction_order =
-      module0->schedule().sequence(entry).instructions();
+  auto instruction_order = module0->schedule().sequence(entry).instructions();
 
   EXPECT_THAT(instruction_order.size(), 5);
 
@@ -346,8 +343,7 @@ TEST_F(HloInplaceDependencyTest, MultipleInplaceWithRightOrder) {
   Scheduler scheduler;
   EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
 
-  std::vector<const HloInstruction*> instruction_order =
-      module0->schedule().sequence(entry).instructions();
+  auto instruction_order = module0->schedule().sequence(entry).instructions();
 
   EXPECT_THAT(instruction_order.size(), 6);
 
@@ -400,8 +396,7 @@ TEST_F(HloInplaceDependencyTest, InplaceCorrectDependencies) {
   Scheduler scheduler;
   EXPECT_TRUE(scheduler.Run(module0).ValueOrDie());
 
-  std::vector<const HloInstruction*> instruction_order =
-      module0->schedule().sequence(entry).instructions();
+  auto instruction_order = module0->schedule().sequence(entry).instructions();
 
   EXPECT_THAT(instruction_order.size(), 5);
 

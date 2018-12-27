@@ -181,7 +181,7 @@ Status BaseVisitor::HandleConvolution(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status BaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
+Status BaseVisitor::HandleAllReduce(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
@@ -467,6 +467,14 @@ Status BaseVisitor::HandleAllToAll(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleCollectivePermute(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleGetDimensionSize(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleAddDependency(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 

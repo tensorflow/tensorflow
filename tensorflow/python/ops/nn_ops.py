@@ -2452,7 +2452,7 @@ def softmax_cross_entropy_with_logits_v2_helper(
                 math_ops.range(dim_index + 1, rank), [dim_index]
             ], 0))
 
-      precise_logits = _move_dim_to_end(precise_logits, axis, input_rank)
+      precise_logits = _move_dim_to_end(logits, axis, input_rank)
       labels = _move_dim_to_end(labels, axis, input_rank)
 
     input_shape = array_ops.shape(logits)

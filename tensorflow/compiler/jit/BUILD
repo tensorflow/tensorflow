@@ -641,7 +641,7 @@ tf_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-    ] + if_cuda_is_configured([
+    ] + if_cuda([
         ":xla_gpu_device",
     ]),
 )

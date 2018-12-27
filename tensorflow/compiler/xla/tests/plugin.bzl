@@ -24,6 +24,7 @@ plugins = {
     "copts": [
       "-DXLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64",
       "-DXLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX",
+      "-DXLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16",
     ],
     "tags": [],
     "args": [],

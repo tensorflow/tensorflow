@@ -263,6 +263,12 @@ bool PoplarExecutor::HostCallback(se::Stream* stream,
   return true;
 }
 
+bool PoplarExecutor::HostCallback(se::Stream *stream,
+                                  std::function<Status()> callback) {
+  AsPoplarStream(stream)->EnqueueTask(callback);
+}
+
+
 bool PoplarExecutor::CreateStreamDependency(se::Stream* dependent,
                                             se::Stream* other) {
   AsPoplarStream(dependent)->EnqueueTask(

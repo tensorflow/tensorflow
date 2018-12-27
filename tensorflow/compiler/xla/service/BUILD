@@ -3121,6 +3121,7 @@ cc_library(
     srcs = ["hlo_subcomputation_unification.cc"],
     hdrs = ["hlo_subcomputation_unification.h"],
     deps = [
+	":call_graph",
         ":hlo_pass",
     ],
 )

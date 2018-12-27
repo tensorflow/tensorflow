@@ -37,25 +37,23 @@ static const std::vector<HloMatcherPattern> patterns = {
   // DepthwiseConv2DBackpropFilter
   HloMatcherPattern(
     PatternType("depthwise_filter"),
-    PatternMetaTarget(14),
-    PatternInputs({15, 16}),
+    PatternMetaTarget(12),
+    PatternInputs({13, 14}),
     PatternOutputs({0}),
     Pattern({
       {HloOpcode::kReshape, NodeOperands({1})},
       {HloOpcode::kReduce, NodeOperands({3, 2})},
       {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloOpcode::kSelect, NodeOperands({6, 14, 4})},
+      {HloOpcode::kSelect, NodeOperands({6, 12, 4})},
       {HloOpcode::kBroadcast, NodeOperands({5})},
       {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloOpcode::kEq, NodeOperands({9, 7})},
-      {HloOpcode::kBroadcast, NodeOperands({8})},
+      {HloOpcode::kEq, NodeOperands({8, 7})},
       {HloOpcode::kIota, NodeOperands({})},
+      {HloOpcode::kDivide, NodeOperands({11, 9})},
       {HloOpcode::kBroadcast, NodeOperands({10})},
-      {HloOpcode::kDivide, NodeOperands({13, 11})},
-      {HloOpcode::kBroadcast, NodeOperands({12})},
       {HloOpcode::kConstant, NodeOperands({})},
       {HloOpcode::kIota, NodeOperands({})},
-      {HloOpcode::kConvolution, NodeOperands({15, 16}), IsOpWithWindowNoBaseDilation},
+      {HloOpcode::kConvolution, NodeOperands({13, 14}), IsOpWithWindowNoBaseDilation},
       {HloOpcode::kParameter, NodeOperands({})},
       {HloOpcode::kParameter, NodeOperands({})}
     })

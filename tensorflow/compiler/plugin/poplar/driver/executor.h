@@ -152,6 +152,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   bool HostCallback(se::Stream* stream,
                     std::function<void()> callback) override;
+  bool HostCallback(se::Stream *stream,
+                    std::function<Status()> callback) override;
 
   Status AllocateEvent(se::Event* event) override {
     return xla::Unimplemented("Not implemented");

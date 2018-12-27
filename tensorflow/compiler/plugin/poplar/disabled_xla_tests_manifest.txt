@@ -40,6 +40,7 @@ PrngTest.ScalarBF16Tests POPLAR
 PrngTest.ScalarBF16CountTests POPLAR
 DynamicUpdateSliceTest.Int32R0BF16 POPLAR
 ConvertTest.ConvertBF16F32 POPLAR
+DepthwiseConvolution2DTest POPLAR
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR
@@ -197,6 +198,7 @@ LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
 LocalClientExecuteTest.InfeedTest POPLAR
 OutfeedInNestedComputationTest POPLAR
 WhileTest.WhileInfeedCondition POPLAR
+TupleHloTest.NonAmbiguousTopLevelAllocation POPLAR
 
 DeconstructTupleTest.DeconstructTupleFromParam POPLAR // Bad test
 
@@ -219,6 +221,7 @@ DynamicUpdateSliceTest.R3ContiguousTooLarge POPLAR
 R4ReduceWindowLargeTest POPLAR
 SliceR1LargeTest POPLAR
 SelectAndScatterTest.ParamTest POPLAR
+ConcatTest.ConcatDeeplyNested POPLAR
 
 ScalarComputationsTest.MinPropagatesNan POPLAR // NaN passing
 ScalarComputationsTest.MaxPropagatesNan POPLAR
@@ -259,10 +262,13 @@ ReduceTest.ReduceR2_1000x1500_To_R0 POPLAR
 ReduceTest.ReduceR2_1024x1024_To_R0 POPLAR
 ReduceR3ToR2Test.ReduceR3ToR2 POPLAR
 
-TokenHloTest.TokenInWhileLoop POPLAR // Don't do tokens
-TokenHloTest.SingleTokenInstruction POPLAR
-TokenHloTest.TokenTree POPLAR
-TokenHloTest.TokenInConditional POPLAR
-TupleHloTest.NonAmbiguousTopLevelAllocation POPLAR
+TokenHloTest POPLAR // Don't do tokens
 
 IntegerDivideOpTest.SignedOverflow POPLAR // Crashes - find out why
+
+ConvolutionHloTest.ConvolveF32ForwardReversed POPLAR // Need to support reversed kernels
+
+DotOperationTest_F16F32F64CF64.GeneralMatMulR3LhsR2Rhs POPLAR // Need to support all dimension options
+DotOperationTest_F16F32F64CF64.GeneralMatMulR2LhsR3Rhs POPLAR
+
+IotaR3PredTest POPLAR // iota PRED support

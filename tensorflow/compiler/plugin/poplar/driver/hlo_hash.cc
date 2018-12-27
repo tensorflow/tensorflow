@@ -114,7 +114,7 @@ void HloHash::SerializeHloInstructionProto(HloInstructionProto* proto) {
   proto->set_name(name);
 }
 
-void HloHash::SerializeComputeProgramShape(ProgramShape* program_shape,
+void HloHash::SerializeComputeProgramShape(ProgramShapeProto* program_shape,
                                            const HloComputation* computation) {
   // Replace parameter names with unique ids
   uint64 serial_id = 0;

@@ -35,7 +35,6 @@ bool IsNotDependencyOfPeers(HloInstruction* inplace,
                             HloInstruction* inplace_parent,
                             HloReachabilityMap* reachability_map,
                             std::vector<HloInstruction*>& added_dependencies) {
-  HloComputation* comp = inplace->parent();
   for (auto* peer : inplace_parent->users()) {
     if (peer == inplace) {
       continue;
@@ -56,7 +55,7 @@ bool IsNotDependencyOfPeers(HloInstruction* inplace,
         // If there already wasn't a control dependency then insert it
         if (!reachability_map->IsReachable(peer, inplace)) {
           peer->AddControlDependencyTo(inplace);
-          comp->UpdateReachabilityThroughInstruction(inplace, reachability_map);
+	  reachability_map->UpdateReachabilityThroughInstruction(inplace);
           added_dependencies.push_back(peer);
         }
       }
@@ -241,7 +240,7 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     // Unimplemented ops.
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kDomain:
     case HloOpcode::kFft:
     case HloOpcode::kGather:
@@ -278,7 +277,6 @@ bool IsInPlace(HloInstruction* inst, HloReachabilityMap* reachability_map) {
 
   // Keep track of all control dependencies we add.
   std::vector<HloInstruction*> added_dependencies;
-  HloComputation* comp = inst->parent();
 
   bool is_inplace = true;
   // Go trough all the inplace operands.
@@ -298,7 +296,7 @@ bool IsInPlace(HloInstruction* inst, HloReachabilityMap* reachability_map) {
     for (auto* depenency : added_dependencies) {
       depenency->RemoveControlDependencyTo(inst);
     }
-    comp->UpdateReachabilityThroughInstruction(inst, reachability_map);
+    reachability_map->UpdateReachabilityThroughInstruction(inst);
   }
   return is_inplace;
 }

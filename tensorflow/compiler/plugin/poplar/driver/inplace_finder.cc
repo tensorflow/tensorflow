@@ -123,7 +123,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
     // in order to allow for inplace ops to be executed after other instructions
     // which are using the inplace input.
     std::unique_ptr<HloReachabilityMap> reachability_map =
-        comp->ComputeReachability();
+        HloReachabilityMap::Build(comp);
 
     // For each input
     const auto& params = comp->parameter_instructions();

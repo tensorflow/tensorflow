@@ -24,7 +24,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with ops.device("/device:IPU:0"):
       with session_lib.Session() as sess:
         pa = array_ops.placeholder(np.float32, [2, 7, 7, 32], name="a")
-        output = math_ops.reduce_mean(pa, reduction_indices=[1, 2])
+        output = math_ops.reduce_mean(pa, axis=[1, 2])
 
         fd = {
           pa: np.ones([2, 7, 7, 32])
@@ -37,7 +37,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with ops.device("/device:IPU:0"):
       with session_lib.Session() as sess:
         pa = array_ops.placeholder(np.float32, [2, 7, 7, 32], name="a")
-        output = math_ops.reduce_mean(pa, reduction_indices=[0, 3])
+        output = math_ops.reduce_mean(pa, axis=[0, 3])
 
         fd = {
           pa: np.ones([2, 7, 7, 32])
@@ -50,7 +50,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with ops.device("/device:IPU:0"):
       with session_lib.Session() as sess:
         pa = array_ops.placeholder(np.float32, [2, 7, 7, 32], name="a")
-        output = math_ops.reduce_mean(pa, reduction_indices=[1, 3])
+        output = math_ops.reduce_mean(pa, axis=[1, 3])
 
         fd = {
           pa: np.ones([2, 7, 7, 32])
@@ -63,7 +63,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with ops.device("/device:IPU:0"):
       with session_lib.Session() as sess:
         pa = array_ops.placeholder(np.float32, [2, 7, 7, 32], name="a")
-        output = math_ops.reduce_mean(pa, reduction_indices=[2, 3])
+        output = math_ops.reduce_mean(pa, axis=[2, 3])
 
         fd = {
           pa: np.ones([2, 7, 7, 32])

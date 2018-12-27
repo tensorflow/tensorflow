@@ -49,7 +49,7 @@ class HloHash {
   void SerializeHloComputationProto(HloComputationProto*,
                                     const HloComputation*);
   void SerializeHloInstructionProto(HloInstructionProto*);
-  void SerializeComputeProgramShape(ProgramShape*, const HloComputation*);
+  void SerializeComputeProgramShape(ProgramShapeProto*, const HloComputation*);
 };
 
 }  // namespace poplarplugin

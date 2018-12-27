@@ -44,7 +44,6 @@ tf_proto_library(
     cc_api_version = 2,
     default_header = True,
     j2objc_api_version = 1,
-    java_api_version = 2,
 )
 
 cc_library(
@@ -222,6 +221,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
@@ -697,18 +697,6 @@ py_test(
 )
 
 py_test(
-    name = "constant_test",
-    size = "large",
-    srcs = ["tests/constant_test.py"],
-    deps = [
-        ":ipu_ops_py",
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:constant_op",
-    ],
-    srcs_version = "PY2AND3",
-)
-
-py_test(
     name = "variable_test",
     size = "small",
     srcs = ["tests/variable_test.py"],
@@ -1006,7 +994,6 @@ test_suite(
         "conv3d_test",
         "ipu_engine_cache_test",
         "inplace_test",
-        "constant_test",
         "commutative_instruction_reorder_operands_test",
         "casts_elimination_test",
         "update_op_dependencies_test",

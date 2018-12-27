@@ -34,22 +34,6 @@ namespace xp = ::xla::poplarplugin;
 
 namespace tensorflow {
 
-namespace {
-
-Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
-  const tensorflow::XlaTensor* xla_tensor =
-      tensorflow::XlaTensor::FromTensor(&tensor);
-  if (xla_tensor == nullptr) {
-    return TensorShapeToXLAShape(tensor.dtype(), tensor.shape(), shape);
-  }
-
-  const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
-  *shape = shaped_buffer.on_device_shape();
-  return Status::OK();
-}
-
-}  // namespace
-
 class IpuDevice : public XlaDevice {
  public:
   IpuDevice(const SessionOptions& options, const XlaDevice::Options& devopts)
@@ -71,21 +55,22 @@ class IpuDevice : public XlaDevice {
 
 class XlaIpuDeviceFactory : public DeviceFactory {
  public:
-  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
+  Status CreateDevices( const SessionOptions& options, const string& name_prefix,
+                       std::vector<std::unique_ptr<Device>>* devices) override;
 };
 
-Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
-                                          const string& name_prefix,
-                                          std::vector<Device*>* devices) {
+Status XlaIpuDeviceFactory::CreateDevices(
+		const SessionOptions& options,
+                const string& name_prefix,
+                std::vector<std::unique_ptr<Device>>* devices) {
   static XlaDeviceOpRegistrations* registrations =
       RegisterXlaDeviceKernels(DEVICE_XLA_IPU, DEVICE_IPU_XLA_JIT);
   (void)registrations;
 
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_IPU_XLA_JIT;
-  registration.requires_compilation = true;
-  registration.enable_jit_by_default = false;
+  registration.autoclustering_policy =
+      XlaOpRegistry::AutoclusteringPolicy::kAlways;
   registration.compile_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_IPU, registration);
 
@@ -113,7 +98,9 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
     auto* device = new IpuDevice(options, devopts);
     TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
-    devices->push_back(device);
+
+    std::unique_ptr<Device> dev(device);
+    devices->push_back(std::move(dev));
   }
 
   return Status::OK();

@@ -39,7 +39,7 @@ TEST_F(CommutativeInstructionReorderOperandsTest, ReorderUnary) {
       HloInstruction::CreateBinary(s2, HloOpcode::kAdd, b1, i2));
 
   auto computation = builder.Build();
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   {
@@ -70,7 +70,7 @@ TEST_F(CommutativeInstructionReorderOperandsTest, DontReorderUnaryElementwise) {
       HloInstruction::CreateBinary(s, HloOpcode::kAdd, e1, i2));
 
   auto computation = builder.Build();
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   {
@@ -93,13 +93,15 @@ TEST_F(CommutativeInstructionReorderOperandsTest, ReorderBinary) {
   Shape s1 = ShapeUtil::MakeShape(F32, {2, 1});
   Shape s2 = ShapeUtil::MakeShape(F32, {2, 2});
 
-  PaddingConfig no_padding;
-  for (int i = 0; i < 2; ++i) {
-    auto dimension = no_padding.add_dimensions();
-    dimension->set_edge_padding_low(0);
-    dimension->set_edge_padding_high(0);
-    dimension->set_interior_padding(0);
-  }
+  PaddingConfig padding;
+  auto dimension = padding.add_dimensions();
+  dimension->set_edge_padding_low(0);
+  dimension->set_edge_padding_high(0);
+  dimension->set_interior_padding(0);
+  dimension = padding.add_dimensions();
+  dimension->set_edge_padding_low(0);
+  dimension->set_edge_padding_high(1);
+  dimension->set_interior_padding(0);
 
   auto builder = HloComputation::Builder(TestName());
   auto zero = builder.AddInstruction(
@@ -109,12 +111,12 @@ TEST_F(CommutativeInstructionReorderOperandsTest, ReorderBinary) {
   auto i2 =
       builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "i2"));
   auto pad = builder.AddInstruction(
-      HloInstruction::CreatePad(s2, i1, zero, no_padding));
+      HloInstruction::CreatePad(s2, i1, zero, padding));
   builder.AddInstruction(
       HloInstruction::CreateBinary(s2, HloOpcode::kMultiply, pad, i2));
 
   auto computation = builder.Build();
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   {
@@ -146,7 +148,7 @@ TEST_F(CommutativeInstructionReorderOperandsTest, DontReorderBinary) {
       HloInstruction::CreateBinary(s, HloOpcode::kMultiply, add, i2));
 
   auto computation = builder.Build();
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   {
@@ -180,7 +182,7 @@ TEST_F(CommutativeInstructionReorderOperandsTest, DontReorderBothReshaping) {
       HloInstruction::CreateBinary(s2, HloOpcode::kAdd, b1, b2));
 
   auto computation = builder.Build();
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   {

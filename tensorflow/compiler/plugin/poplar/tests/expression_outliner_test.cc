@@ -61,7 +61,7 @@ TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompilerAnnotations annotations(hlo_module.get());
@@ -106,7 +106,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeWithSharedInputs) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompilerAnnotations annotations(hlo_module.get());
@@ -136,7 +136,7 @@ TEST_F(ExpressionOutlinerTest, DontOutlineSingleOps) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompilerAnnotations annotations(hlo_module.get());
@@ -186,7 +186,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTreeInDAG) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompilerAnnotations annotations(hlo_module.get());
@@ -230,7 +230,7 @@ TEST_F(ExpressionOutlinerTest, DontOutlineOpsWithOutputsOutsideOfTheSubgraph) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompilerAnnotations annotations(hlo_module.get());
@@ -268,7 +268,7 @@ TEST_F(ExpressionOutlinerTest, OutlineTwoSubgraphs) {
 
   auto computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompilerAnnotations annotations(hlo_module.get());

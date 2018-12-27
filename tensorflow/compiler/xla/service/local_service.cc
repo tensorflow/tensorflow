@@ -101,6 +101,11 @@ ExecutionOptions CreateExecutionOptions(
   if (build_options.has_debug_options()) {
     *execution_options.mutable_debug_options() = build_options.debug_options();
   }
+  execution_options.set_resource_input_count(
+      build_options.resource_input_count());
+  for (const int input_index : build_options.resource_update_to_input_index()) {
+    execution_options.add_resource_update_to_input_index(input_index);
+  }
   if (build_options.result_layout() != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
         build_options.result_layout()->ToProto();

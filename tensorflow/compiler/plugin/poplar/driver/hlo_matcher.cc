@@ -426,6 +426,8 @@ OutlinedInfo HloMatcher::OutlineExpressionFromComputation(
   HloInstruction* call = matched.computation->AddInstruction(
       HloInstruction::CreateCall(root->shape(), arguments, nested_computation));
 
+  nested_computation->SetFusionInstruction(call);
+
   auto* old = instructions_to_outline[metadata_index];
   annotations_.fusion_map[nested_computation] = outlined.at(old);
 

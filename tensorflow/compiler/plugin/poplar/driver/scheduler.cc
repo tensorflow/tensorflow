@@ -74,6 +74,8 @@ class SequenceCosts {
       case 0x3:
         return costs.at(a) > costs.at(b);
     }
+
+    return false;
   }
 
  private:
@@ -91,7 +93,7 @@ StatusOr<bool> Scheduler::Run(HloModule* module) {
     costs.FindCosts(comp->root_instruction());
     costs.AddDisconnectedInstructions(comp->MakeInstructionPostOrder());
 
-    std::vector<const HloInstruction*> sequence;
+    HloInstructionSequence sequence;
     FunctionVisitor visitor([&sequence](HloInstruction* hlo) {
       sequence.push_back(hlo);
       return Status::OK();

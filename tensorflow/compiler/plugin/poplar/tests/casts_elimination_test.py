@@ -19,7 +19,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
   def testReductionSumVectorF16NoConverts(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float16, [4096], name="a")
-      output = math_ops.reduce_sum(pa, reduction_indices=[0])
+      output = math_ops.reduce_sum(pa, axis=[0])
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
