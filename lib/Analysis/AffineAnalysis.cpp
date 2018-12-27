@@ -128,7 +128,7 @@ public:
   // In future, consider adding a prepass to determine how big the SmallVector's
   // will be, and linearize this to std::vector<int64_t> to prevent
   // SmallVector moves on re-allocation.
-  std::vector<SmallVector<int64_t, 32>> operandExprStack;
+  std::vector<SmallVector<int64_t, 8>> operandExprStack;
   // Constraints connecting newly introduced local variables (for mod's and
   // div's) to existing (dimensional and symbolic) ones. These are always
   // inequalities.
@@ -426,16 +426,11 @@ static bool getFlattenedAffineExprs(
       return false;
 
     flattener.walkPostOrder(expr);
-
-    SmallVector<int64_t, 8> flattenedExpr;
-    flattenedExpr.reserve(flattener.numDims + flattener.numSymbols +
-                          flattener.numLocals + 1);
-    for (auto v : flattener.operandExprStack.back()) {
-      flattenedExpr.push_back(v);
-    }
-    flattenedExprs->push_back(flattenedExpr);
-    flattener.operandExprStack.pop_back();
   }
+
+  flattenedExprs->insert(flattenedExprs->end(),
+                         flattener.operandExprStack.begin(),
+                         flattener.operandExprStack.end());
   if (localVarCst)
     localVarCst->clearAndCopyFrom(flattener.localVarCst);
 
@@ -861,7 +856,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   // Add equality constraints for any dst symbols defined by constant ops.
   addEqForConstOperands(dstOperands);
 
-  // TODO(bondhugula): add srcLocalVarCst, destLocalVarCst to the dependence
+  // TODO(b/122081337): add srcLocalVarCst, destLocalVarCst to the dependence
   // domain.
   return true;
 }
