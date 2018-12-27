@@ -1407,6 +1407,12 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     if (override_device || ndef.device().empty()) {
       ndef.set_device(caller->def().device());
     }
+    for (auto& attr : *ndef.mutable_attr()) {
+      if (attr.first == "_class") {
+        attr.second.set_s(
+            strings::StrCat(caller->name(), "/", attr.second.s()));
+      }
+    }
     Node* clone = g->AddNode(ndef, &s);
     TF_CHECK_OK(s);
     node_map[n->id()] = clone;

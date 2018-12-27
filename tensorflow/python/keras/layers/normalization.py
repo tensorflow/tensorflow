@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
 from tensorflow.python import tf2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
@@ -34,7 +32,6 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -425,15 +422,7 @@ class BatchNormalizationV2(Layer):
         if distribute.__class__.__name__ == 'TPUStrategy':
           is_tpu_strategy = True
 
-      # TODO(apassos,srbs,skyewm): the colocation constraints here are disabled
-      # because of a bug which leads cond_v2/while_v2 to skip rewriting them
-      # creating conflicts.
-      if (control_flow_util.EnableControlFlowV2(ops.get_default_graph()) or
-          is_tpu_strategy):
-        cm = contextlib.contextmanager(lambda: (yield))()
-      else:
-        cm = ops.colocate_with(variable)
-      with cm:
+      with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
