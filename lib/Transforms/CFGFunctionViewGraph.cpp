@@ -16,7 +16,7 @@
 // =============================================================================
 
 #include "mlir/Transforms/CFGFunctionViewGraph.h"
-#include "mlir/IR/CFGFunctionGraphTraits.h"
+#include "mlir/IR/FunctionGraphTraits.h"
 
 using namespace mlir;
 

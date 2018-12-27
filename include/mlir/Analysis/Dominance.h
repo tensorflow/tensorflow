@@ -18,7 +18,7 @@
 #ifndef MLIR_ANALYSIS_DOMINANCE_H
 #define MLIR_ANALYSIS_DOMINANCE_H
 
-#include "mlir/IR/CFGFunctionGraphTraits.h"
+#include "mlir/IR/FunctionGraphTraits.h"
 #include "llvm/Support/GenericDomTree.h"
 
 extern template class llvm::DominatorTreeBase<mlir::BasicBlock, false>;

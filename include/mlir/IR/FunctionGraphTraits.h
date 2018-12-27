@@ -25,6 +25,7 @@
 #define MLIR_IR_CFGFUNCTIONGRAPHTRAITS_H
 
 #include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/MLFunction.h"
 #include "llvm/ADT/GraphTraits.h"
 
 namespace llvm {
@@ -58,7 +59,7 @@ template <> struct GraphTraits<Inverse<mlir::BasicBlock *>> {
   using ChildIteratorType = mlir::BasicBlock::pred_iterator;
   using Node = mlir::BasicBlock;
   using NodeRef = Node *;
-  static NodeRef getEntryNode(Inverse<mlir::BasicBlock *> inverseGraph) {
+  static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
     return inverseGraph.Graph;
   }
   static inline ChildIteratorType child_begin(NodeRef node) {
@@ -74,7 +75,7 @@ template <> struct GraphTraits<Inverse<const mlir::BasicBlock *>> {
   using Node = const mlir::BasicBlock;
   using NodeRef = Node *;
 
-  static NodeRef getEntryNode(Inverse<const mlir::BasicBlock *> inverseGraph) {
+  static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
     return inverseGraph.Graph;
   }
   static inline ChildIteratorType child_begin(NodeRef node) {
@@ -152,6 +153,139 @@ struct GraphTraits<Inverse<const mlir::CFGFunction *>>
     return nodes_iterator(fn.Graph->end());
   }
 };
+
+template <> struct GraphTraits<mlir::StmtBlock *> {
+  using ChildIteratorType = mlir::StmtBlock::succ_iterator;
+  using Node = mlir::StmtBlock;
+  using NodeRef = Node *;
+
+  static NodeRef getEntryNode(NodeRef bb) { return bb; }
+
+  static ChildIteratorType child_begin(NodeRef node) {
+    return node->succ_begin();
+  }
+  static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
+};
+
+template <> struct GraphTraits<const mlir::StmtBlock *> {
+  using ChildIteratorType = mlir::StmtBlock::const_succ_iterator;
+  using Node = const mlir::StmtBlock;
+  using NodeRef = Node *;
+
+  static NodeRef getEntryNode(NodeRef bb) { return bb; }
+
+  static ChildIteratorType child_begin(NodeRef node) {
+    return node->succ_begin();
+  }
+  static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
+};
+
+template <> struct GraphTraits<Inverse<mlir::StmtBlock *>> {
+  using ChildIteratorType = mlir::StmtBlock::pred_iterator;
+  using Node = mlir::StmtBlock;
+  using NodeRef = Node *;
+  static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
+    return inverseGraph.Graph;
+  }
+  static inline ChildIteratorType child_begin(NodeRef node) {
+    return node->pred_begin();
+  }
+  static inline ChildIteratorType child_end(NodeRef node) {
+    return node->pred_end();
+  }
+};
+
+template <> struct GraphTraits<Inverse<const mlir::StmtBlock *>> {
+  using ChildIteratorType = mlir::StmtBlock::const_pred_iterator;
+  using Node = const mlir::StmtBlock;
+  using NodeRef = Node *;
+
+  static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
+    return inverseGraph.Graph;
+  }
+  static inline ChildIteratorType child_begin(NodeRef node) {
+    return node->pred_begin();
+  }
+  static inline ChildIteratorType child_end(NodeRef node) {
+    return node->pred_end();
+  }
+};
+
+template <>
+struct GraphTraits<mlir::MLFunction *> : public GraphTraits<mlir::StmtBlock *> {
+  using GraphType = mlir::MLFunction *;
+  using NodeRef = mlir::StmtBlock *;
+
+  static NodeRef getEntryNode(GraphType fn) {
+    return &fn->getBlockList().front();
+  }
+
+  using nodes_iterator = pointer_iterator<mlir::StmtBlockList::iterator>;
+  static nodes_iterator nodes_begin(GraphType fn) {
+    return nodes_iterator(fn->getBlockList().begin());
+  }
+  static nodes_iterator nodes_end(GraphType fn) {
+    return nodes_iterator(fn->getBlockList().end());
+  }
+};
+
+template <>
+struct GraphTraits<const mlir::MLFunction *>
+    : public GraphTraits<const mlir::StmtBlock *> {
+  using GraphType = const mlir::MLFunction *;
+  using NodeRef = const mlir::StmtBlock *;
+
+  static NodeRef getEntryNode(GraphType fn) {
+    return &fn->getBlockList().front();
+  }
+
+  using nodes_iterator = pointer_iterator<mlir::StmtBlockList::const_iterator>;
+  static nodes_iterator nodes_begin(GraphType fn) {
+    return nodes_iterator(fn->getBlockList().begin());
+  }
+  static nodes_iterator nodes_end(GraphType fn) {
+    return nodes_iterator(fn->getBlockList().end());
+  }
+};
+
+template <>
+struct GraphTraits<Inverse<mlir::MLFunction *>>
+    : public GraphTraits<Inverse<mlir::StmtBlock *>> {
+  using GraphType = Inverse<mlir::MLFunction *>;
+  using NodeRef = NodeRef;
+
+  static NodeRef getEntryNode(GraphType fn) {
+    return &fn.Graph->getBlockList().front();
+  }
+
+  using nodes_iterator = pointer_iterator<mlir::StmtBlockList::iterator>;
+  static nodes_iterator nodes_begin(GraphType fn) {
+    return nodes_iterator(fn.Graph->getBlockList().begin());
+  }
+  static nodes_iterator nodes_end(GraphType fn) {
+    return nodes_iterator(fn.Graph->getBlockList().end());
+  }
+};
+
+template <>
+struct GraphTraits<Inverse<const mlir::MLFunction *>>
+    : public GraphTraits<Inverse<const mlir::StmtBlock *>> {
+  using GraphType = Inverse<const mlir::MLFunction *>;
+  using NodeRef = NodeRef;
+
+  static NodeRef getEntryNode(GraphType fn) {
+    return &fn.Graph->getBlockList().front();
+  }
+
+  using nodes_iterator = pointer_iterator<mlir::StmtBlockList::const_iterator>;
+  static nodes_iterator nodes_begin(GraphType fn) {
+    return nodes_iterator(fn.Graph->getBlockList().begin());
+  }
+  static nodes_iterator nodes_end(GraphType fn) {
+    return nodes_iterator(fn.Graph->getBlockList().end());
+  }
+};
+
 } // namespace llvm
 
 #endif
