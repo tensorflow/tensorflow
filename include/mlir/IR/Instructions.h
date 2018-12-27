@@ -63,17 +63,19 @@ using BasicBlockOperand = IROperandImpl<BasicBlock, Instruction>;
 
 // The trailing objects of an instruction are layed out as follows:
 //   - InstResult        : The results of the instruction.
+//   - InstOperand       : The operands of the instruction. For terminators, the
+//                         operands for all successors are concatenated here.
 //   - BasicBlockOperand : Use-list of successor blocks if this is a terminator.
 //   - unsigned          : Count of operands held for each of the successors.
 //
-// Note: For Terminators, we rely on the assumption that all non successor
+// Note: For Terminators, we rely on the assumption that all non-successor
 // operands are placed at the beginning of the operands list.
 class Instruction final
     : public Operation,
       public IROperandOwner,
       public llvm::ilist_node_with_parent<Instruction, BasicBlock>,
-      private llvm::TrailingObjects<Instruction, InstResult, BasicBlockOperand,
-                                    unsigned> {
+      private llvm::TrailingObjects<Instruction, InstResult, InstOperand,
+                                    BasicBlockOperand, unsigned> {
 public:
   using IROperandOwner::getContext;
   using IROperandOwner::getLoc;
@@ -83,7 +85,7 @@ public:
   // Operands
   //===--------------------------------------------------------------------===//
 
-  unsigned getNumOperands() const { return operands.size(); }
+  unsigned getNumOperands() const { return numOperands; }
 
   CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const CFGValue *getOperand(unsigned idx) const {
@@ -122,8 +124,13 @@ public:
     return {operand_begin(), operand_end()};
   }
 
-  MutableArrayRef<InstOperand> getInstOperands() { return operands; }
-  ArrayRef<InstOperand> getInstOperands() const { return operands; }
+  ArrayRef<InstOperand> getInstOperands() const {
+    return {getTrailingObjects<InstOperand>(), numOperands};
+  }
+
+  MutableArrayRef<InstOperand> getInstOperands() {
+    return {getTrailingObjects<InstOperand>(), numOperands};
+  }
 
   // Accessors to InstOperand.
   InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
@@ -210,7 +217,7 @@ public:
     assert(isTerminator() && "Only terminators have successors.");
     assert(index < getNumSuccessors());
     unsigned succOpIndex = getSuccessorOperandIndex(index);
-    auto *operandBegin = operands.data() + succOpIndex;
+    auto *operandBegin = getInstOperands().data() + succOpIndex;
     return {operandBegin, getNumSuccessorOperands(index)};
   }
   ArrayRef<InstOperand> getSuccessorInstOperands(unsigned index) const {
@@ -329,12 +336,13 @@ public:
 
 private:
   const unsigned numResults, numSuccs;
-  std::vector<InstOperand> operands;
+  /// The number of operands tail-allocated, mutable to support erasing.
+  unsigned numOperands;
   BasicBlock *block = nullptr;
 
   Instruction(Location location, OperationName name, unsigned numResults,
-              unsigned numSuccessors, ArrayRef<NamedAttribute> attributes,
-              MLIRContext *context);
+              unsigned numOperands, unsigned numSuccessors,
+              ArrayRef<NamedAttribute> attributes, MLIRContext *context);
 
   // Instructions are deleted through the destroy() member because this class
   // does not have a virtual destructor.
@@ -347,10 +355,13 @@ private:
   friend class BasicBlock;
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<Instruction, InstResult, BasicBlockOperand,
-                               unsigned>;
+  friend llvm::TrailingObjects<Instruction, InstResult, InstOperand,
+                               BasicBlockOperand, unsigned>;
   size_t numTrailingObjects(OverloadToken<InstResult>) const {
     return numResults;
+  }
+  size_t numTrailingObjects(OverloadToken<InstOperand>) const {
+    return numOperands;
   }
   size_t numTrailingObjects(OverloadToken<BasicBlockOperand>) const {
     return numSuccs;

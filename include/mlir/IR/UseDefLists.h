@@ -151,6 +151,10 @@ public:
   /// We support a move constructor so IROperand's can be in vectors, but this
   /// shouldn't be used by general clients.
   IROperand(IROperand &&other) : owner(other.owner) {
+    *this = std::move(other);
+  }
+  IROperand &operator=(IROperand &&other) {
+    removeFromCurrent();
     other.removeFromCurrent();
     value = other.value;
     other.value = nullptr;
@@ -158,6 +162,7 @@ public:
     nextUse = nullptr;
     back = nullptr;
     insertIntoCurrent();
+    return *this;
   }
 
 private:
@@ -219,10 +224,6 @@ public:
 
   /// Return which operand this is in the operand list of the User.
   unsigned getOperandNumber() const;
-
-  /// We support a move constructor so IROperand's can be in vectors, but this
-  /// shouldn't be used by general clients.
-  IROperandImpl(IROperandImpl &&other) : IROperand(std::move(other)) {}
 };
 
 /// An iterator over all uses of a ValueBase.

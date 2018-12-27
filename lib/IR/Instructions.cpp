@@ -64,34 +64,42 @@ Instruction *Instruction::create(Location location, OperationName name,
                                  ArrayRef<BasicBlock *> successors,
                                  MLIRContext *context) {
   unsigned numSuccessors = successors.size();
-  auto byteSize = totalSizeToAlloc<InstResult, BasicBlockOperand, unsigned>(
-      resultTypes.size(), numSuccessors, numSuccessors);
+  // Input operands are nullptr-separated for each successors in the case of
+  // terminators, the nullptr aren't actually stored.
+  unsigned numOperands = operands.size() - llvm::count(operands, nullptr);
+
+  auto byteSize =
+      totalSizeToAlloc<InstResult, InstOperand, BasicBlockOperand, unsigned>(
+          resultTypes.size(), numOperands, numSuccessors, numSuccessors);
   void *rawMem = malloc(byteSize);
 
   // Initialize the Instruction part of the instruction.
-  auto inst = ::new (rawMem) Instruction(location, name, resultTypes.size(),
-                                         numSuccessors, attributes, context);
+  auto inst = ::new (rawMem)
+      Instruction(location, name, resultTypes.size(), numOperands,
+                  numSuccessors, attributes, context);
 
   // Initialize the results and operands.
   auto instResults = inst->getInstResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
     new (&instResults[i]) InstResult(resultTypes[i], inst);
 
+  // instOperandIt is the iterator in the tail-allocated memory for the
+  // operands, and operandIt is the iterator in the input operands array.
+  // operandIt skips nullptr in the input that acts as sentinels marking the
+  // separation between multiple basic block successors for terminators.
+  auto instOperandIt = inst->getInstOperands().begin();
   unsigned operandIt = 0, operandE = operands.size();
   for (; operandIt != operandE; ++operandIt) {
-    // Null operands are used as sentinals between successor operand lists. If
-    // we encounter one here, break and handle the successor operands lists
-    // separately below.
     if (!operands[operandIt])
       break;
-    inst->operands.push_back(InstOperand(inst, operands[operandIt]));
+    new (instOperandIt++) InstOperand(inst, operands[operandIt]);
   }
 
-  // Check to see if a sentinal operand was encountered.
+  // Check to see if a sentinel (nullptr) operand was encountered.
   unsigned currentSuccNum = 0;
   if (operandIt != operandE) {
     assert(inst->isTerminator() &&
-           "Sentinal operand found in non terminator operand list.");
+           "Sentinel operand found in non terminator operand list.");
     auto instBlockOperands = inst->getBasicBlockOperands();
     unsigned *succOperandCountIt = inst->getTrailingObjects<unsigned>();
     unsigned *succOperandCountE = succOperandCountIt + numSuccessors;
@@ -117,7 +125,7 @@ Instruction *Instruction::create(Location location, OperationName name,
         ++currentSuccNum;
         continue;
       }
-      inst->operands.push_back(InstOperand(inst, operands[operandIt]));
+      new (instOperandIt++) InstOperand(inst, operands[operandIt]);
       ++(*succOperandCountIt);
     }
   }
@@ -174,33 +182,40 @@ Instruction *Instruction::clone() const {
 }
 
 Instruction::Instruction(Location location, OperationName name,
-                         unsigned numResults, unsigned numSuccessors,
+                         unsigned numResults, unsigned numOperands,
+                         unsigned numSuccessors,
                          ArrayRef<NamedAttribute> attributes,
                          MLIRContext *context)
     : Operation(/*isInstruction=*/true, name, attributes, context),
       IROperandOwner(IROperandOwner::Kind::Instruction, location),
-      numResults(numResults), numSuccs(numSuccessors) {}
+      numResults(numResults), numSuccs(numSuccessors),
+      numOperands(numOperands) {}
 
 Instruction::~Instruction() {
   assert(block == nullptr && "instruction destroyed but still in a block");
 
-  // Explicitly run the destructors for the results and successors.
+  // Explicitly run the destructors for the results
   for (auto &result : getInstResults())
     result.~InstResult();
 
+  // Explicitly run the destructors for the operands.
+  for (auto &result : getInstOperands())
+    result.~InstOperand();
+
+  // Explicitly run the destructors for the successors.
   if (isTerminator())
     for (auto &successor : getBasicBlockOperands())
       successor.~BasicBlockOperand();
 }
 
 void Instruction::eraseOperand(unsigned index) {
-  assert(index < operands.size());
-
+  assert(index < getNumOperands());
+  auto Operands = getInstOperands();
   // Shift all operands down by 1.
-  for (unsigned i = index, e = operands.size() - 1; i != e; ++i)
-    operands[i].set(operands[i + 1].get());
-  // Drop the last operand.
-  operands.pop_back();
+  std::rotate(&Operands[index], &Operands[index + 1],
+              &Operands[numOperands - 1]);
+  --numOperands;
+  Operands[getNumOperands()].~InstOperand();
 }
 
 /// Destroy this instruction.
