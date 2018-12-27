@@ -54,8 +54,6 @@ Function *SSAValue::getFunction() {
     return cast<BBArgument>(this)->getFunction();
   case SSAValueKind::InstResult:
     return getDefiningInst()->getFunction();
-  case SSAValueKind::MLFuncArgument:
-    return cast<MLFuncArgument>(this)->getFunction();
   case SSAValueKind::BlockArgument:
     return cast<BlockArgument>(this)->getFunction();
   case SSAValueKind::StmtResult:

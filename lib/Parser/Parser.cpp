@@ -3452,7 +3452,7 @@ ParseResult ModuleParser::parseMLFunc() {
   // Okay, the ML function signature was parsed correctly, create the
   // function.
   auto *function =
-      MLFunction::create(getEncodedSourceLocation(loc), name, type, attrs);
+      new MLFunction(getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.

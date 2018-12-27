@@ -34,23 +34,23 @@ template <typename ObjectType, typename ElementType> class ArgumentIterator;
 
 // MLFunction is defined as a sequence of statements that may
 // include nested affine for loops, conditionals and operations.
-class MLFunction final
-    : public Function,
-      private llvm::TrailingObjects<MLFunction, MLFuncArgument> {
+class MLFunction final : public Function {
 public:
-  /// Creates a new MLFunction with the specific type.
+  MLFunction(Location location, StringRef name, FunctionType type,
+             ArrayRef<NamedAttribute> attrs = {});
+
+  // TODO(clattner): drop this, it is redundant.
   static MLFunction *create(Location location, StringRef name,
                             FunctionType type,
-                            ArrayRef<NamedAttribute> attrs = {});
+                            ArrayRef<NamedAttribute> attrs = {}) {
+    return new MLFunction(location, name, type, attrs);
+  }
 
-  StmtBlockList &getStatementList() { return body; }
-  const StmtBlockList &getStatementList() const { return body; }
+  StmtBlockList &getBlockList() { return body; }
+  const StmtBlockList &getBlockList() const { return body; }
 
   StmtBlock *getBody() { return &body.front(); }
   const StmtBlock *getBody() const { return &body.front(); }
-
-  /// Destroys this statement and its subclass data.
-  void destroy();
 
   //===--------------------------------------------------------------------===//
   // Arguments
@@ -60,23 +60,23 @@ public:
   unsigned getNumArguments() const { return getType().getInputs().size(); }
 
   /// Gets argument.
-  MLFuncArgument *getArgument(unsigned idx) {
-    return &getArgumentsInternal()[idx];
+  BlockArgument *getArgument(unsigned idx) {
+    return getBlockList().front().getArgument(idx);
   }
 
-  const MLFuncArgument *getArgument(unsigned idx) const {
-    return &getArgumentsInternal()[idx];
+  const BlockArgument *getArgument(unsigned idx) const {
+    return getBlockList().front().getArgument(idx);
   }
 
   // Supports non-const operand iteration.
-  using args_iterator = ArgumentIterator<MLFunction, MLFuncArgument>;
+  using args_iterator = ArgumentIterator<MLFunction, BlockArgument>;
   args_iterator args_begin();
   args_iterator args_end();
   llvm::iterator_range<args_iterator> getArguments();
 
   // Supports const operand iteration.
   using const_args_iterator =
-      ArgumentIterator<const MLFunction, const MLFuncArgument>;
+      ArgumentIterator<const MLFunction, const BlockArgument>;
   const_args_iterator args_begin() const;
   const_args_iterator args_end() const;
   llvm::iterator_range<const_args_iterator> getArguments() const;
@@ -105,23 +105,6 @@ public:
   }
 
 private:
-  MLFunction(Location location, StringRef name, FunctionType type,
-             ArrayRef<NamedAttribute> attrs = {});
-
-  // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<MLFunction, MLFuncArgument>;
-  size_t numTrailingObjects(OverloadToken<MLFuncArgument>) const {
-    return getType().getInputs().size();
-  }
-
-  // Internal functions to get argument list used by getArgument() methods.
-  ArrayRef<MLFuncArgument> getArgumentsInternal() const {
-    return {getTrailingObjects<MLFuncArgument>(), getNumArguments()};
-  }
-  MutableArrayRef<MLFuncArgument> getArgumentsInternal() {
-    return {getTrailingObjects<MLFuncArgument>(), getNumArguments()};
-  }
-
   StmtBlockList body;
 };
 

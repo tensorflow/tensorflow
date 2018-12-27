@@ -126,7 +126,7 @@ bool MLValue::isValidSymbol() const {
   }
   // This value is either a function argument or an induction variable.
   // Function argument is ok, induction variable is not.
-  return isa<MLFuncArgument>(this);
+  return isa<BlockArgument>(this);
 }
 
 void Statement::setOperand(unsigned idx, MLValue *value) {

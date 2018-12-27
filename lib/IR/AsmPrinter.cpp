@@ -1010,17 +1010,25 @@ protected:
               break;
             }
         // Otherwise number it normally.
-        LLVM_FALLTHROUGH;
+        valueIDs[value] = nextValueID++;
+        return;
       case SSAValueKind::BlockArgument:
+        // If this is an argument to the function, give it an 'arg' name.
+        if (auto *block = cast<BlockArgument>(value)->getOwner())
+          if (auto *fn = block->findFunction())
+            if (&fn->getBlockList().front() == block) {
+              specialName << "arg" << nextArgumentID++;
+              break;
+            }
+        // Otherwise number it normally.
+        valueIDs[value] = nextValueID++;
+        return;
       case SSAValueKind::InstResult:
       case SSAValueKind::StmtResult:
         // This is an uninteresting result, give it a boring number and be
         // done with it.
         valueIDs[value] = nextValueID++;
         return;
-      case SSAValueKind::MLFuncArgument:
-        specialName << "arg" << nextArgumentID++;
-        break;
       case SSAValueKind::ForStmt:
         specialName << 'i' << nextLoopID++;
         break;
@@ -1583,10 +1591,6 @@ void SSAValue::print(raw_ostream &os) const {
     return;
   case SSAValueKind::InstResult:
     return getDefiningInst()->print(os);
-  case SSAValueKind::MLFuncArgument:
-    // TODO: Improve this.
-    os << "<function argument>\n";
-    return;
   case SSAValueKind::StmtResult:
     return getDefiningStmt()->print(os);
   case SSAValueKind::ForStmt:

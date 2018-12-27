@@ -50,7 +50,6 @@ public:
     case SSAValueKind::InstResult:
       return true;
 
-    case SSAValueKind::MLFuncArgument:
     case SSAValueKind::BlockArgument:
     case SSAValueKind::StmtResult:
     case SSAValueKind::ForStmt:

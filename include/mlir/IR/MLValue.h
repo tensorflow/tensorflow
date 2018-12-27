@@ -35,7 +35,6 @@ class StmtBlock;
 /// function.  This should be kept as a proper subtype of SSAValueKind,
 /// including having all of the values of the enumerators align.
 enum class MLValueKind {
-  MLFuncArgument = (int)SSAValueKind::MLFuncArgument,
   BlockArgument = (int)SSAValueKind::BlockArgument,
   StmtResult = (int)SSAValueKind::StmtResult,
   ForStmt = (int)SSAValueKind::ForStmt,
@@ -55,7 +54,6 @@ public:
 
   static bool classof(const SSAValue *value) {
     switch (value->getKind()) {
-    case SSAValueKind::MLFuncArgument:
     case SSAValueKind::BlockArgument:
     case SSAValueKind::StmtResult:
     case SSAValueKind::ForStmt:
@@ -77,32 +75,6 @@ public:
 
 protected:
   MLValue(MLValueKind kind, Type type) : SSAValueImpl(kind, type) {}
-};
-
-/// This is the value defined by an argument of an ML function.
-class MLFuncArgument : public MLValue {
-public:
-  static bool classof(const SSAValue *value) {
-    return value->getKind() == SSAValueKind::MLFuncArgument;
-  }
-
-  MLFunction *getOwner() { return owner; }
-  const MLFunction *getOwner() const { return owner; }
-
-  /// Return the function that this MLFuncArgument is defined in.
-  const MLFunction *getFunction() const { return getOwner(); }
-
-  MLFunction *getFunction() { return getOwner(); }
-
-private:
-  friend class MLFunction; // For access to private constructor.
-  MLFuncArgument(Type type, MLFunction *owner)
-      : MLValue(MLValueKind::MLFuncArgument, type), owner(owner) {}
-
-  /// The owner of this operand.
-  /// TODO: can encode this more efficiently to avoid the space hit of this
-  /// through bitpacking shenanigans.
-  MLFunction *const owner;
 };
 
 /// Block arguments are ML Values.

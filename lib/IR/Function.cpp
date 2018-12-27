@@ -55,7 +55,7 @@ void Function::destroy() {
     delete cast<ExtFunction>(this);
     break;
   case Kind::MLFunc:
-    cast<MLFunction>(this)->destroy();
+    delete cast<MLFunction>(this);
     break;
   case Kind::CFGFunc:
     delete cast<CFGFunction>(this);
@@ -182,29 +182,16 @@ CFGFunction::~CFGFunction() {
 // MLFunction implementation.
 //===----------------------------------------------------------------------===//
 
-/// Create a new MLFunction with the specific fields.
-MLFunction *MLFunction::create(Location location, StringRef name,
-                               FunctionType type,
-                               ArrayRef<NamedAttribute> attrs) {
-  const auto &argTypes = type.getInputs();
-  auto byteSize = totalSizeToAlloc<MLFuncArgument>(argTypes.size());
-  void *rawMem = malloc(byteSize);
-
-  // Initialize the MLFunction part of the function object.
-  auto function = ::new (rawMem) MLFunction(location, name, type, attrs);
-
-  // Initialize the arguments.
-  auto arguments = function->getArgumentsInternal();
-  for (unsigned i = 0, e = argTypes.size(); i != e; ++i)
-    new (&arguments[i]) MLFuncArgument(argTypes[i], function);
-  return function;
-}
-
 MLFunction::MLFunction(Location location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs)
     : Function(Kind::MLFunc, location, name, type, attrs), body(this) {
+
   // The body of an MLFunction always has one block.
-  body.push_back(new StmtBlock());
+  auto *entry = new StmtBlock();
+  body.push_back(entry);
+
+  // Initialize the arguments.
+  entry->addArguments(type.getInputs());
 }
 
 MLFunction::~MLFunction() {
@@ -212,15 +199,6 @@ MLFunction::~MLFunction() {
   // since child statements need to be destroyed before function arguments
   // are destroyed.
   getBody()->clear();
-
-  // Explicitly run the destructors for the function arguments.
-  for (auto &arg : getArgumentsInternal())
-    arg.~MLFuncArgument();
-}
-
-void MLFunction::destroy() {
-  this->~MLFunction();
-  free(this);
 }
 
 const OperationStmt *MLFunction::getReturnStmt() const {

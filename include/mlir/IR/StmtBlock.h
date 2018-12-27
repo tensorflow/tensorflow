@@ -75,6 +75,8 @@ public:
 
   // This is the list of arguments to the block.
   using BlockArgListType = ArrayRef<BlockArgument *>;
+
+  // FIXME: Not const correct.
   BlockArgListType getArguments() const { return arguments; }
 
   using args_iterator = BlockArgListType::iterator;
