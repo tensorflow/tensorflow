@@ -121,9 +121,9 @@ class OpKernel {
   // Initial time (in CPU cycles) we expect an operation to take.  Used to
   // determine whether an operation should be place in a threadpool.  Operations
   // start out "expensive".
-  static const uint64 kInitialCostEstimateCycles;
-  static const uint64 kOpIsExpensiveThresholdCycles;
-  static const uint64 kCostDecay;
+  static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
+  static const uint64 kOpIsExpensiveThresholdCycles = 5000;
+  static const uint64 kCostDecay = 10;
 
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
