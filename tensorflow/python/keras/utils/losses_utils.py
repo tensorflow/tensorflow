@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.ops import array_ops
@@ -167,8 +168,8 @@ def compute_weighted_loss(losses,
         losses, None, sample_weight)
     losses = ops.convert_to_tensor(losses)
     input_dtype = losses.dtype
-    losses = math_ops.to_float(losses)
-    sample_weight = math_ops.to_float(sample_weight)
+    losses = math_ops.cast(losses, dtypes.float32)
+    sample_weight = math_ops.cast(sample_weight, dtypes.float32)
 
     try:
       # Broadcast weights if possible.
