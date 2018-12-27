@@ -2441,7 +2441,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   std::vector<int32> strides;
   std::vector<int32> dilations;
   string data_format_pred, data_format_succ;
-  bool use_cudnn_on_gnu;
+  bool use_cudnn_on_gpu;
   TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "padding", &padding));
@@ -2449,7 +2449,7 @@ Status MklLayoutRewritePass::MergeConv2DWithBiasAdd(std::unique_ptr<Graph>* g,
   TF_CHECK_OK(GetNodeAttr(pred->def(), "dilations", &dilations));
   TF_CHECK_OK(GetNodeAttr(pred->def(), "data_format", &data_format_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
-  TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
+  TF_CHECK_OK(GetNodeAttr(pred->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
   // We check to ensure that data formats of both succ and pred are same.
   // We expect them to be same, so we can enforce this as assert.
   // But assert can be too strict, so we enforce this as a check.
@@ -2589,7 +2589,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   std::vector<int32> strides;
   std::vector<int32> dilations;
   string data_format_pred, data_format_succ;
-  bool use_cudnn_on_gnu;
+  bool use_cudnn_on_gpu;
   TF_CHECK_OK(GetNodeAttr(pred->def(), "T", &T_pred));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "T", &T_succ));
   TF_CHECK_OK(GetNodeAttr(succ->def(), "padding", &padding));
@@ -2598,7 +2598,7 @@ Status MklLayoutRewritePass::MergePadWithConv2D(std::unique_ptr<Graph>* g,
   // Data format for pad is not available and not necessary, thus
   // dont need to match data format for Pad
   TF_CHECK_OK(GetNodeAttr(succ->def(), "data_format", &data_format_succ));
-  TF_CHECK_OK(GetNodeAttr(succ->def(), "use_cudnn_on_gpu", &use_cudnn_on_gnu));
+  TF_CHECK_OK(GetNodeAttr(succ->def(), "use_cudnn_on_gpu", &use_cudnn_on_gpu));
   // Check if the data types and devices of both succ and pred are the same.
   // Assert is not used,  because it can be too strict.
   // Don't need to check for data formats because it is not available in Pad.
