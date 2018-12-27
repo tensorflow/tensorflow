@@ -322,6 +322,16 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose([0.], self.evaluate(var))
 
   @test_util.run_in_graph_and_eager_modes
+  def testInvalidClipNorm(self):
+    with self.assertRaisesRegexp(ValueError, '>= 0'):
+      gradient_descent.SGD(learning_rate=1.0, clipnorm=-1.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidKwargs(self):
+    with self.assertRaisesRegexp(TypeError, 'Unexpected keyword argument'):
+      gradient_descent.SGD(learning_rate=1.0, invalidkwargs=1.0)
+
+  @test_util.run_in_graph_and_eager_modes
   def testWeights(self):
     with self.cached_session():
       opt1 = adam.Adam(learning_rate=1.0)
@@ -395,6 +405,31 @@ class OptimizerTest(test.TestCase):
 
     with self.assertRaises(AttributeError):
       opt.not_an_attr += 3
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGettingHyperParametersWithLrInConstructor(self):
+    opt = gradient_descent.SGD(lr=3.0)
+    var = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                 dtype=dtypes.float32)
+    loss = lambda: 3 * var
+    opt_op = opt.minimize(loss, [var])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+
+    self.assertTrue(isinstance(opt.lr, resource_variable_ops.ResourceVariable))
+    self.assertTrue(
+        isinstance(opt.learning_rate, resource_variable_ops.ResourceVariable))
+
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(3.0, lr)
+
+    opt.lr = 2.0
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(2.0, lr)
+
+    self.evaluate(opt.lr.assign(4.0))
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(4.0, lr)
 
   @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithKerasModel(self):

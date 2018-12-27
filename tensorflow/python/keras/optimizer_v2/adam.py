@@ -124,7 +124,11 @@ class Adam(optimizer_v2.OptimizerV2):
         a callable that takes no arguments and returns the actual value to use.
         This can be useful for changing these values across different
         invocations of optimizer functions. @end_compatibility
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
     """
 
     super(Adam, self).__init__(name, **kwargs)

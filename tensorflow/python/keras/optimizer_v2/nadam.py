@@ -76,7 +76,11 @@ class Nadam(optimizer_v2.OptimizerV2):
       epsilon: A small constant for numerical stability.
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adamax".
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
     """
 
     # Backwards compatiblity with keras NAdam optimizer.

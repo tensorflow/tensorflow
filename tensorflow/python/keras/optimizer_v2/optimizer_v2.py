@@ -156,13 +156,26 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     Args:
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     Raises:
       ValueError: If name is malformed.
       RuntimeError: If _create_slots has been overridden instead of
           _create_vars.
     """
+    allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay"}
+    for k in kwargs:
+      if k not in allowed_kwargs:
+        raise TypeError("Unexpected keyword argument "
+                        "passed to optimizer: " + str(k))
+      # checks that all keyword arguments are non-negative.
+      if kwargs[k] < 0:
+        raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
+
     self._use_locking = True
     self._name = name
     self._hyper = {}
@@ -184,7 +197,10 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     if decay < 0.:
       raise ValueError("decay cannot be less than 0: {}".format(decay))
     self._initial_decay = decay
-    self.__dict__.update(kwargs)
+    if "clipnorm" in kwargs:
+      self.clipnorm = kwargs.pop("clipnorm")
+    if "clipvalue" in kwargs:
+      self.clipvalue = kwargs.pop("clipvalue")
 
     self._hypers_created = False
 

@@ -1242,7 +1242,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # Make sure initialization doesn't clobber later restores
     with test_util.device(use_gpu=True):
       model = MyModel()
-      optimizer = adam.Adam(0.001, beta1=1.0)
+      optimizer = adam.Adam(0.001, beta_1=1.0)
       root = checkpointable_utils.Checkpoint(
           optimizer=optimizer, model=model)
       opt_root = checkpointable_utils.Checkpoint(

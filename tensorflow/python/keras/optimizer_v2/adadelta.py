@@ -77,7 +77,11 @@ class Adadelta(optimizer_v2.OptimizerV2):
                to better conditioning the grad update.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     @compatibility(eager)
     When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
