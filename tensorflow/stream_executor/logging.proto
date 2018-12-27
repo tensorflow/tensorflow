@@ -23,4 +23,7 @@ message CudaInfo {
 message ConvLogEntry {
   CudaInfo cuda_info = 1;
   dnn.ConvolutionProto convolution = 2;
+
+  // Profiled time in ms. 0.0 if the convolution is not profiled.
+  float profile_time_ms = 3;
 }
