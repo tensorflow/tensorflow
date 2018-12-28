@@ -63,6 +63,9 @@ def all_strategy_combinations_with_graph_mode():
 
 
 def strategy_and_input_combinations():
+  def cnn_model_with_batch_norm(**kwargs):
+    return _create_cnn_model(with_batch_norm=True, **kwargs)
+
   return (
       combinations.times(
           combinations.combine(distribution=all_strategies),
@@ -72,6 +75,10 @@ def strategy_and_input_combinations():
           combinations.combine(model_with_data=[
               ModelWithData('dnn', _create_dnn_model, _dnn_training_data),
               ModelWithData('cnn', _create_cnn_model, _cnn_training_data),
+              ModelWithData('cnn_batch_norm',
+                            cnn_model_with_batch_norm,
+                            _cnn_training_data,
+                            with_batch_norm=True),
           ])))
 
 
@@ -99,10 +106,11 @@ class ModelWithData(object):
   The model_fn must take two arguments: initial_weights and distribution.
   """
 
-  def __init__(self, name, model_fn, data_fn):
+  def __init__(self, name, model_fn, data_fn, with_batch_norm=False):
     self.name = name
     self.model_fn = model_fn
     self.data_fn = data_fn
+    self.with_batch_norm = with_batch_norm
 
   def __repr__(self):
     return self.name
@@ -158,16 +166,15 @@ def _cnn_training_data(count=_GLOBAL_BATCH_SIZE * _EVAL_STEPS,
   return x_train, y_train, x_predict
 
 
-def _create_cnn_model(initial_weights=None, distribution=None):
+def _create_cnn_model(initial_weights=None, distribution=None,
+                      with_batch_norm=False):
   with MaybeDistributionScope(distribution):
     image = keras.layers.Input(shape=(28, 28, 3), name='image')
     c1 = keras.layers.Conv2D(
         name='conv1', filters=16, kernel_size=(3, 3), strides=(4, 4))(
             image)
-    # TODO(xiejw): Consider to enable the batch norm layer even it is not easy
-    # to test with TPU.
-    #
-    #   c1 = keras.layers.BatchNormalization(name='bn1')(image)
+    if with_batch_norm:
+      c1 = keras.layers.BatchNormalization(name='bn1')(c1)
     c1 = keras.layers.MaxPooling2D(pool_size=(2, 2))(c1)
     logits = keras.layers.Dense(
         10, activation='softmax', name='pred')(
@@ -470,8 +477,17 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       results_without_ds = fit_eval_and_predict(
           initial_weights, input_fn=input_fn, model_fn=model_fn,
           distribution=None)
-      compare_results(results_with_ds, results_without_ds, distribution,
-                      testcase=self)
+
+      # First, special case, for multi-replica distributed training, batch norm
+      # is not aggregated globally. So it is expected to have different weights.
+      if (model_with_data.with_batch_norm and
+          distribution.num_replicas_in_sync > 1):
+        with self.assertRaises(AssertionError):
+          compare_results(results_with_ds, results_without_ds, distribution,
+                          testcase=self)
+      else:
+        compare_results(results_with_ds, results_without_ds, distribution,
+                        testcase=self)
 
   @combinations.generate(all_strategy_combinations_with_graph_mode())
   def test_dynamic_lr(self, distribution):
