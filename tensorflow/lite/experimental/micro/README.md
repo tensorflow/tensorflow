@@ -187,5 +187,53 @@ You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
 02:25:22.4253 [DEBUG] uart0: [+0.16ms host +0s virt 0.28s virt from start]   Progam has exited with code:0x00000000
 ```
 
+## Building for Apollo3
 
+Follow these steps to get the pushbutton yes/no example working on Apollo 3:
 
+1.  Make sure to run the "Getting Started" section before performing the
+    following steps
+2.  Download Apollo3-SDK-2018.08.13 and place in
+    `tensorflow/lite/experimental/micro/tools/make/downloads`. This is not yet
+    publicly released, but you can contact ashah@ambiqmicro.com to request a
+    copy.
+3.  Compile the project with the following command: make -f
+    tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb
+    pushbutton_cmsis_speech_test_bin
+4.  Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
+5.  Connect the Apollo3 EVB (with mic shield) to the computer and power it on
+6.  Start the GDB server in a new terminal with the following command:
+    JLinkGDBServer -select USB -device AMA3B1KK-KBR -endian little -if SWD
+    -speed 1000 -noir -noLocalhostOnly
+    1.  The command has run successfully if you see the message "Waiting for GDB
+        connection"
+7.  Back in the original terminal, run the program via the debugger
+    1.  Navigate to
+        tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
+    2.  Start gdb by entering the following command: arm-none-eabi-gdb
+    3.  Run the command script by entering the following command: source
+        pushbutton_cmsis_scores.cmd. This script does the following:
+        1.  Load the binary created in step 6
+        2.  Set a breakpoint after inference scores have been computed
+        3.  Tell the debugger what variables should be printed out at this
+            breakpoint
+        4.  Begin program execution
+        5.  Press Ctrl+c to exit
+    4.  Press BTN2. An LED will flash for 1 second. Speak your utterance during
+        this one second
+    5.  The debugger will print out four numbers. They are the probabilites for
+        1) no speech, 2) unknown speech, 3) yes, 4) no
+    6.  The EVB LEDs will indicate detection.
+        1.  LED0 (rightmost LED) - ON when capturing 1sec of audio
+        2.  LED1 - ON when detecting silence
+        3.  LED2 - ON when detecting UNKNOWN utterance
+        4.  LED3 - ON when detecting YES utterance
+        5.  LED4 (leftmost LED) - ON when detecting NO utterance
+
+### Additional Apollo3 Instructions
+
+To flash a part with JFlash Lite, do the following: 1. At the command line:
+JFlashLiteExe 2. Device = AMA3B1KK-KBR 3. Interface = SWD at 1000 kHz 4. Data
+file =
+tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin
+5. Prog Addr = 0x0000C000

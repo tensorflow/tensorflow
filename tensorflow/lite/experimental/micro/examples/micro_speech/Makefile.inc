@@ -171,3 +171,6 @@ $(MICRO_SPEECH_BINARY): $(MICRO_SPEECH_OBJS) $(MICROLITE_LIB_PATH)
 	$(LIBFLAGS) $(MICROLITE_LIB_PATH) $(LDFLAGS) $(MICROLITE_LIBS)
 micro_speech: $(MICRO_SPEECH_BINARY)
 micro_speech_bin: $(MICRO_SPEECH_BINARY).bin
+
+# Find any platform-specific rules for this example.
+include $(wildcard tensorflow/lite/experimental/micro/examples/micro_speech/*/Makefile.inc)
