@@ -770,7 +770,15 @@ class FusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    // NOTE(intel-tf): When filter_size is equal to the input image size,
+    // conv2d essentially is element-wise multiplication followed by
+    // a full sum reduction, which causes larger numerical error
+    // than usual cases.
+    if (image_width == filter_size && image_height == filter_size) {
+      test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-4);
+    } else {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    }
   }
 
   void VerifyFusedBatchNormTensorsNear(int depth, int image_width,
@@ -812,7 +820,15 @@ class FusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    // NOTE(intel-tf): When filter_size is equal to the input image size,
+    // conv2d essentially is element-wise multiplication followed by
+    // a full sum reduction, which causes larger numerical error
+    // than usual cases.
+    if (image_width == filter_size && image_height == filter_size) {
+      test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-4);
+    } else {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    }
   }
 
   // Verifies that computing Conv2D+BiasAdd in a graph is identical to
@@ -821,16 +837,15 @@ class FusedConv2DOpTest : public OpsTestBase {
                             int depth = kDepth, int image_width = kImageWidth,
                             int image_height = kImageHeight,
                             int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBias(input_data, filter_data, bias_data, out);
-        };
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunConv2DWithBias(input_data, filter_data, bias_data, out);
+    };
 
-    const BiasAddGraphRunner run_fused = [this](const Tensor& input_data,
-                                                const Tensor& filter_data,
-                                                const Tensor& bias_data,
-                                                Tensor* out) {
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
       RunFusedConv2DOp(input_data, filter_data, {bias_data}, {"BiasAdd"}, out);
     };
 
@@ -846,19 +861,19 @@ class FusedConv2DOpTest : public OpsTestBase {
                                    int image_width = kImageWidth,
                                    int image_height = kImageHeight,
                                    int image_batch_count = kImageBatchCount) {
-    const BiasAddGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out,
-                                   /*allow_gpu_device=*/true);
-        };
+    const BiasAddGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunConv2DWithBiasAndRelu(input_data, filter_data, bias_data, out,
+                               /*allow_gpu_device=*/true);
+    };
 
-    const BiasAddGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& bias_data, Tensor* out) {
-          RunFusedConv2DOp(input_data, filter_data, {bias_data},
-                           {"BiasAdd", "Relu"}, out, /*allow_gpu_device=*/true);
-        };
+    const BiasAddGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& bias_data, Tensor* out) {
+      RunFusedConv2DOp(input_data, filter_data, {bias_data},
+                       {"BiasAdd", "Relu"}, out, /*allow_gpu_device=*/true);
+    };
 
     VerifyBiasAddTensorsNear(depth, image_width, image_height,
                              image_batch_count, filter_size, filter_count,
@@ -872,24 +887,22 @@ class FusedConv2DOpTest : public OpsTestBase {
                                  int image_width = kImageWidth,
                                  int image_height = kImageHeight,
                                  int image_batch_count = kImageBatchCount) {
-    const BatchNormGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& scale_data, const Tensor& offset_data,
-               const Tensor& mean_data, const Tensor& variance_data,
-               Tensor* out) {
-          RunConv2DWithBatchNorm(input_data, filter_data, scale_data,
-                                 offset_data, mean_data, variance_data, out);
-        };
+    const BatchNormGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& scale_data, const Tensor& offset_data,
+        const Tensor& mean_data, const Tensor& variance_data, Tensor* out) {
+      RunConv2DWithBatchNorm(input_data, filter_data, scale_data, offset_data,
+                             mean_data, variance_data, out);
+    };
 
-    const BatchNormGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& scale_data, const Tensor& offset_data,
-               const Tensor& mean_data, const Tensor& variance_data,
-               Tensor* out) {
-          RunFusedConv2DOp(input_data, filter_data,
-                           {scale_data, offset_data, mean_data, variance_data},
-                           {"FusedBatchNorm"}, out);
-        };
+    const BatchNormGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& scale_data, const Tensor& offset_data,
+        const Tensor& mean_data, const Tensor& variance_data, Tensor* out) {
+      RunFusedConv2DOp(input_data, filter_data,
+                       {scale_data, offset_data, mean_data, variance_data},
+                       {"FusedBatchNorm"}, out);
+    };
 
     VerifyFusedBatchNormTensorsNear(depth, image_width, image_height,
                                     image_batch_count, filter_size,
@@ -902,25 +915,22 @@ class FusedConv2DOpTest : public OpsTestBase {
       int filter_size, int filter_count, int depth = kDepth,
       int image_width = kImageWidth, int image_height = kImageHeight,
       int image_batch_count = kImageBatchCount) {
-    const BatchNormGraphRunner run_default =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& scale_data, const Tensor& offset_data,
-               const Tensor& mean_data, const Tensor& variance_data,
-               Tensor* out) {
-          RunConv2DWithBatchNormAndRelu(input_data, filter_data, scale_data,
-                                        offset_data, mean_data, variance_data,
-                                        out);
-        };
+    const BatchNormGraphRunner run_default = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& scale_data, const Tensor& offset_data,
+        const Tensor& mean_data, const Tensor& variance_data, Tensor* out) {
+      RunConv2DWithBatchNormAndRelu(input_data, filter_data, scale_data,
+                                    offset_data, mean_data, variance_data, out);
+    };
 
-    const BatchNormGraphRunner run_fused =
-        [this](const Tensor& input_data, const Tensor& filter_data,
-               const Tensor& scale_data, const Tensor& offset_data,
-               const Tensor& mean_data, const Tensor& variance_data,
-               Tensor* out) {
-          RunFusedConv2DOp(input_data, filter_data,
-                           {scale_data, offset_data, mean_data, variance_data},
-                           {"FusedBatchNorm", "Relu"}, out);
-        };
+    const BatchNormGraphRunner run_fused = [this](
+        const Tensor& input_data, const Tensor& filter_data,
+        const Tensor& scale_data, const Tensor& offset_data,
+        const Tensor& mean_data, const Tensor& variance_data, Tensor* out) {
+      RunFusedConv2DOp(input_data, filter_data,
+                       {scale_data, offset_data, mean_data, variance_data},
+                       {"FusedBatchNorm", "Relu"}, out);
+    };
 
     VerifyFusedBatchNormTensorsNear(depth, image_width, image_height,
                                     image_batch_count, filter_size,
