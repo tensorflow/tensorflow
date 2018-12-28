@@ -42,10 +42,10 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       ok = [
         'progIdCopy',
         'host-exchange-local-copy-',
-        'Sum/reduce/ReduceOnTile/InToIntermediateNoExchange/Reduce',
-        'Sum/reduce/ReduceStage*/IntermediateToIntermediate/Reduce',
-        'Sum/reduce/ReduceFinalStage/IntermediateToOutput/Reduce',
-        'Sum/reduce/ReduceFinalStage/Cast']
+        'Sum/reduce*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
+        'Sum/reduce*/ReduceStage*/IntermediateToIntermediate/Reduce',
+        'Sum/reduce*/ReduceFinalStage/IntermediateToOutput/Reduce',
+        'Sum/reduce*/ReduceFinalStage/Cast']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

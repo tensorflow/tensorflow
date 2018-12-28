@@ -109,23 +109,24 @@ bool IsPoplibsPool(const HloInstruction* inst,
   return (reduction_count <= 2);
 }
 
-static Literal GetIdentityConstantLiteral(const HloInstruction* root) {
+static Literal GetIdentityConstantLiteral(const HloInstruction* root,
+                                          const HloInstruction* reduce) {
   switch (root->opcode()) {
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     default:
-      return LiteralUtil::Zero(root->shape().element_type());
+      return LiteralUtil::Zero(reduce->shape().element_type());
     case HloOpcode::kMultiply:
     case HloOpcode::kOr:
-      return LiteralUtil::One(root->shape().element_type());
+      return LiteralUtil::One(reduce->shape().element_type());
     case HloOpcode::kMaximum:
     case HloOpcode::kGe:
     case HloOpcode::kGt:
-      return LiteralUtil::MinValue(root->shape().element_type());
+      return LiteralUtil::MinValue(reduce->shape().element_type());
     case HloOpcode::kMinimum:
     case HloOpcode::kLe:
     case HloOpcode::kLt:
-      return LiteralUtil::MaxValue(root->shape().element_type());
+      return LiteralUtil::MaxValue(reduce->shape().element_type());
   }
 }
 
@@ -301,7 +302,7 @@ StatusOr<poplar::program::Program> CreateSimpleReduction(
                                         seq, GetDebugName(inst));
 
     // Apply initial value
-    Literal identity_literal = GetIdentityConstantLiteral(root);
+    Literal identity_literal = GetIdentityConstantLiteral(root, inst);
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
@@ -411,7 +412,7 @@ StatusOr<poplar::program::Program> CreateSimpleWindowReduction(
     seq.add(poplar::program::Execute(cs));
 
     // Apply initial value
-    Literal identity_literal = GetIdentityConstantLiteral(root);
+    Literal identity_literal = GetIdentityConstantLiteral(root, inst);
     auto* init_inst = inst->operand(1);
     if (!(init_inst->IsConstant() &&
           init_inst->literal() == identity_literal)) {
@@ -516,7 +517,7 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     HloInstruction* root(pooling_inst->to_apply()->root_instruction());
 
     // What is the default base case for the op, MAX: -largest, SUM: 0, etc.
-    Literal identity_literal = GetIdentityConstantLiteral(root);
+    Literal identity_literal = GetIdentityConstantLiteral(root, inst);
     auto* init_inst = pooling_inst->operand(1);
 
     // Apply the base case if necessary
@@ -595,7 +596,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
   LayoutUtil::ClearLayout(&partial_shape);
   partial_shape.mutable_layout()->set_format(DENSE);
 
-  Literal identity_literal = GetIdentityConstantLiteral(scatter_root);
+  Literal identity_literal = GetIdentityConstantLiteral(scatter_root, inst);
 
   poplar::Tensor identity_val;
   TF_ASSIGN_OR_RETURN(
