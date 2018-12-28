@@ -220,27 +220,27 @@ static std::vector<string>* CreatePrimordialRpaths() {
 
 /* static */ string DsoLoader::GetCudaLibraryDirPath() {
 #if defined(__APPLE__)
-  return "third_party/gpus/cuda/lib";
+  return "external/local_config_cuda/cuda/lib";
 #else
-  return "third_party/gpus/cuda/lib64";
+  return "external/local_config_cuda/cuda/lib64";
 #endif
 }
 
 /* static */ string DsoLoader::GetCudaDriverLibraryPath() {
 #if defined(__APPLE__)
-  return "third_party/gpus/cuda/driver/lib";
+  return "external/local_config_cuda/cuda/driver/lib";
 #elif defined(PLATFORM_WINDOWS)
   return "";
 #else
-  return "third_party/gpus/cuda/driver/lib64";
+  return "external/local_config_cuda/cuda/driver/lib64";
 #endif
 }
 
 /* static */ string DsoLoader::GetCudaCuptiLibraryPath() {
 #if defined(__APPLE__)
-  return "third_party/gpus/cuda/extras/CUPTI/lib";
+  return "external/local_config_cuda/cuda/extras/CUPTI/lib";
 #else
-  return "third_party/gpus/cuda/extras/CUPTI/lib64";
+  return "external/local_config_cuda/cuda/extras/CUPTI/lib64";
 #endif
 }
 
