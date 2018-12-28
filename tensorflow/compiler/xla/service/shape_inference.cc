@@ -2087,35 +2087,81 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferDynamicSliceShape(
-    const Shape& operand_shape, const Shape& start_indices_shape,
-    absl::Span<const int64> slice_sizes) {
+    const Shape& operand_shape, absl::Span<const Shape> start_index_shapes,
+    absl::Span<const int64> slice_sizes, bool allow_scalar_indices) {
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of dynamic slice"));
-  TF_RETURN_IF_ERROR(
-      ExpectArray(start_indices_shape, "start indices of dynamic slice"));
+  auto number_of_indices = start_index_shapes.size();
+  // TODO(b/118437727): Remove this path.
+  if (!allow_scalar_indices ||
+      (number_of_indices >= 1 && start_index_shapes[0].rank() == 1)) {
+    if (number_of_indices != 1) {
+      return InvalidArgument(
+          "Dynamic slice should have exactly 1 index operand, has %d.",
+          number_of_indices);
+    }
 
-  VLOG(2) << StrFormat(
-      "slicing shape %s at dynamic start_indices %s with slice_sizes={%s}",
-      ShapeUtil::HumanString(operand_shape),
-      ShapeUtil::HumanString(start_indices_shape), StrJoin(slice_sizes, ", "));
+    const Shape& start_indices_shape = start_index_shapes[0];
+    TF_RETURN_IF_ERROR(
+        ExpectArray(start_indices_shape, "start indices of dynamic slice"));
 
-  if (start_indices_shape.rank() != 1) {
-    return InvalidArgument(
-        "Dynamic slice start indices of rank %d must be rank1.",
-        start_indices_shape.rank());
-  }
+    VLOG(2) << StrFormat(
+        "slicing shape %s at dynamic start_indices %s with slice_sizes={%s}",
+        ShapeUtil::HumanString(operand_shape),
+        ShapeUtil::HumanString(start_indices_shape),
+        StrJoin(slice_sizes, ", "));
 
-  if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
-    return InvalidArgument(
-        "Dynamic slice start indices must be of integral type.");
-  }
+    if (start_indices_shape.rank() != 1) {
+      return InvalidArgument(
+          "Dynamic slice start indices of rank %d must be rank1.",
+          start_indices_shape.rank());
+    }
 
-  const int64 start_num_dims = start_indices_shape.dimensions(0);
-  if (operand_shape.rank() != start_num_dims) {
-    return InvalidArgument(
-        "Dynamic slice start number of dimensions %d (%s) must match rank "
-        "%d of slice input (%s).",
-        start_num_dims, ShapeUtil::HumanString(start_indices_shape),
-        operand_shape.rank(), ShapeUtil::HumanString(operand_shape));
+    if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
+      return InvalidArgument(
+          "Dynamic slice start indices must be of integral type.");
+    }
+
+    const int64 start_num_dims = start_indices_shape.dimensions(0);
+    if (operand_shape.rank() != start_num_dims) {
+      return InvalidArgument(
+          "Dynamic slice start number of dimensions %d (%s) must match rank "
+          "%d of slice input (%s).",
+          start_num_dims, ShapeUtil::HumanString(start_indices_shape),
+          operand_shape.rank(), ShapeUtil::HumanString(operand_shape));
+    }
+  } else {
+    VLOG(2) << StrFormat("slicing shape %s a with slice_sizes={%s}",
+                         ShapeUtil::HumanString(operand_shape),
+                         StrJoin(slice_sizes, ", "));
+
+    if (operand_shape.rank() != number_of_indices) {
+      return InvalidArgument(
+          "Dynamic slice start number of dimensions %d must match rank "
+          "%d of slice input (%s).",
+          number_of_indices, operand_shape.rank(),
+          ShapeUtil::HumanString(operand_shape));
+    }
+
+    if (number_of_indices > 0) {
+      const Shape& first_index_shape = start_index_shapes[0];
+      if (!ShapeUtil::IsScalar(first_index_shape)) {
+        return InvalidArgument("Dynamic slice indices must be scalar, not %s.",
+                               ShapeUtil::HumanString(first_index_shape));
+      }
+      if (!ShapeUtil::ElementIsIntegral(first_index_shape)) {
+        return InvalidArgument(
+            "Dynamic slice start indices must be of integral type.");
+      }
+      for (const Shape& index_shape : start_index_shapes) {
+        if (!ShapeUtil::Equal(first_index_shape, index_shape)) {
+          return InvalidArgument(
+              "Dynamic slice start indices must all have the same shape, got "
+              "mismatching indices with shapes %s and %s.",
+              ShapeUtil::HumanString(first_index_shape),
+              ShapeUtil::HumanString(index_shape));
+        }
+      }
+    }
   }
 
   if (slice_sizes.size() != operand_shape.rank()) {
@@ -2144,39 +2190,85 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferDynamicUpdateSliceShape(
     const Shape& operand_shape, const Shape& update_shape,
-    const Shape& start_indices_shape) {
+    absl::Span<const Shape> start_index_shapes, bool allow_scalar_indices) {
   TF_RETURN_IF_ERROR(
       ExpectArray(operand_shape, "operand of dynamic update slice"));
   TF_RETURN_IF_ERROR(
       ExpectArray(update_shape, "update of dynamic update slice"));
-  TF_RETURN_IF_ERROR(ExpectArray(start_indices_shape,
-                                 "start indices of dynamic update slice"));
 
-  VLOG(2) << StrFormat(
-      "updating slice of shape %s at dynamic start_indices %s with update "
-      "shape %s",
-      ShapeUtil::HumanString(operand_shape),
-      ShapeUtil::HumanString(start_indices_shape),
-      ShapeUtil::HumanString(update_shape));
+  auto number_of_indices = start_index_shapes.size();
+  // TODO(b/118437727): Remove this path.
+  if (!allow_scalar_indices ||
+      (number_of_indices >= 1 && start_index_shapes[0].rank() == 1)) {
+    if (number_of_indices != 1) {
+      return InvalidArgument(
+          "Dynamic update slice should have exactly 1 index operand, has %d.",
+          number_of_indices);
+    }
+    const Shape& start_indices_shape = start_index_shapes[0];
+    TF_RETURN_IF_ERROR(ExpectArray(start_indices_shape,
+                                   "start indices of dynamic update slice"));
 
-  if (start_indices_shape.rank() != 1) {
-    return InvalidArgument(
-        "Dynamic update slice start indices of rank %d must be rank1.",
-        start_indices_shape.rank());
-  }
+    VLOG(2) << StrFormat(
+        "updating slice of shape %s at dynamic start_indices %s with update "
+        "shape %s",
+        ShapeUtil::HumanString(operand_shape),
+        ShapeUtil::HumanString(start_indices_shape),
+        ShapeUtil::HumanString(update_shape));
 
-  if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
-    return InvalidArgument(
-        "Dynamic update slice start indices must be of integral type.");
-  }
+    if (start_indices_shape.rank() != 1) {
+      return InvalidArgument(
+          "Dynamic update slice start indices of rank %d must be rank1.",
+          start_indices_shape.rank());
+    }
 
-  const int64 start_num_dims = start_indices_shape.dimensions(0);
-  if (operand_shape.rank() != start_num_dims) {
-    return InvalidArgument(
-        "Dynamic update slice start number of dimensions %d (%s) must match "
-        "rank %d of slice input (%s).",
-        start_num_dims, ShapeUtil::HumanString(start_indices_shape),
-        operand_shape.rank(), ShapeUtil::HumanString(operand_shape));
+    if (!ShapeUtil::ElementIsIntegral(start_indices_shape)) {
+      return InvalidArgument(
+          "Dynamic update slice start indices must be of integral type.");
+    }
+
+    const int64 start_num_dims = start_indices_shape.dimensions(0);
+    if (operand_shape.rank() != start_num_dims) {
+      return InvalidArgument(
+          "Dynamic update slice start number of dimensions %d (%s) must match "
+          "rank %d of slice input (%s).",
+          start_num_dims, ShapeUtil::HumanString(start_indices_shape),
+          operand_shape.rank(), ShapeUtil::HumanString(operand_shape));
+    }
+  } else {
+    VLOG(2) << StrFormat("updating slice of shape %s with update shape %s",
+                         ShapeUtil::HumanString(operand_shape),
+                         ShapeUtil::HumanString(update_shape));
+
+    if (operand_shape.rank() != number_of_indices) {
+      return InvalidArgument(
+          "Dynamic update slice start number of dimensions %d must match rank "
+          "%d of slice input (%s).",
+          number_of_indices, operand_shape.rank(),
+          ShapeUtil::HumanString(operand_shape));
+    }
+
+    if (number_of_indices > 0) {
+      const Shape& first_index_shape = start_index_shapes[0];
+      if (!ShapeUtil::IsScalar(first_index_shape)) {
+        return InvalidArgument(
+            "Dynamic update slice indices must be scalar, not %s.",
+            ShapeUtil::HumanString(first_index_shape));
+      }
+      if (!ShapeUtil::ElementIsIntegral(first_index_shape)) {
+        return InvalidArgument(
+            "Dynamic update slice start indices must be of integral type.");
+      }
+      for (const Shape& index_shape : start_index_shapes) {
+        if (!ShapeUtil::Equal(first_index_shape, index_shape)) {
+          return InvalidArgument(
+              "Dynamic update slice start indices must all have the same "
+              "shape, got mismatching indices with shapes %s and %s.",
+              ShapeUtil::HumanString(first_index_shape),
+              ShapeUtil::HumanString(index_shape));
+        }
+      }
+    }
   }
 
   if (update_shape.rank() != operand_shape.rank()) {

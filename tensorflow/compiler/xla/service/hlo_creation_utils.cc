@@ -108,7 +108,7 @@ StatusOr<HloInstruction*> MakeDynamicSliceHlo(
   TF_ASSIGN_OR_RETURN(
       Shape dynamic_slice_shape,
       ShapeInference::InferDynamicSliceShape(
-          operand->shape(), start_indices->shape(), slice_sizes));
+          operand->shape(), {start_indices->shape()}, slice_sizes));
   return computation->AddInstruction(HloInstruction::CreateDynamicSlice(
       dynamic_slice_shape, operand, start_indices, slice_sizes));
 }
@@ -122,7 +122,7 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
   TF_ASSIGN_OR_RETURN(
       Shape dynamic_update_slice_shape,
       ShapeInference::InferDynamicUpdateSliceShape(
-          operand->shape(), update->shape(), start_indices->shape()));
+          operand->shape(), update->shape(), {start_indices->shape()}));
   return computation->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       dynamic_update_slice_shape, operand, update, start_indices));
 }

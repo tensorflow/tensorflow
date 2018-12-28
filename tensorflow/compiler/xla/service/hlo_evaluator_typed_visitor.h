@@ -1406,10 +1406,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto operand = dynamic_slice->operand(0);
     auto start_indices = dynamic_slice->operand(1);
     auto result_shape = dynamic_slice->shape();
-    TF_ASSIGN_OR_RETURN(auto inferred_return_shape,
-                        ShapeInference::InferDynamicSliceShape(
-                            operand->shape(), start_indices->shape(),
-                            dynamic_slice->dynamic_slice_sizes()));
+    TF_ASSIGN_OR_RETURN(
+        auto inferred_return_shape,
+        ShapeInference::InferDynamicSliceShape(
+            operand->shape(),
+            Cast<HloDynamicSliceInstruction>(dynamic_slice)->index_shapes(),
+            dynamic_slice->dynamic_slice_sizes()));
     TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
@@ -1464,7 +1466,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         auto inferred_return_shape,
         ShapeInference::InferDynamicUpdateSliceShape(
-            operand->shape(), update->shape(), start_indices->shape()));
+            operand->shape(), update->shape(),
+            Cast<HloDynamicUpdateSliceInstruction>(dynamic_update_slice)
+                ->index_shapes()));
     TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
