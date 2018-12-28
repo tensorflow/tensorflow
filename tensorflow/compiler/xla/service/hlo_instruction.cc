@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -452,13 +453,50 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           CreatePad(shape, operands(0), operands(1), proto.padding_config());
       break;
     case HloOpcode::kDynamicSlice: {
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "DynamicSlice instruction should have 2 operands but sees "
-          << proto.operand_ids_size();
       std::vector<int64> slice_sizes(proto.dynamic_slice_sizes_size());
       absl::c_copy(proto.dynamic_slice_sizes(), slice_sizes.begin());
-      instruction =
-          CreateDynamicSlice(shape, operands(0), operands(1), slice_sizes);
+      TF_RET_CHECK(proto.operand_ids_size() >= 1)
+          << "DynamicSlice instruction should have at least 1 operands but "
+             "sees "
+          << proto.operand_ids_size();
+      if (proto.operand_ids_size() == 2 && operands(1)->shape().rank() == 1) {
+        // TODO(b/118437727): Old form, remove this path.
+        instruction =
+            CreateDynamicSlice(shape, operands(0), operands(1), slice_sizes);
+      } else {
+        // New form
+        auto expected_operands = 1 + operands(0)->shape().rank();
+        TF_RET_CHECK(proto.operand_ids_size() == expected_operands)
+            << "DynamicSlice instruction should have " << expected_operands
+            << " operands, but has " << proto.operand_ids_size();
+        const auto& operand_vector = all_operands();
+        instruction = CreateDynamicSlice(
+            shape, operands(0), absl::MakeSpan(operand_vector).subspan(1),
+            slice_sizes);
+      }
+      break;
+    }
+    case HloOpcode::kDynamicUpdateSlice: {
+      TF_RET_CHECK(proto.operand_ids_size() >= 2)
+          << "DynamicUpdateSlice instruction should have at least 2 operands "
+             "but sees "
+          << proto.operand_ids_size();
+      if (proto.operand_ids_size() == 3 && operands(2)->shape().rank() == 1) {
+        // TODO(b/118437727): Old form, remove this path.
+        instruction = CreateDynamicUpdateSlice(shape, operands(0), operands(1),
+                                               operands(2));
+      } else {
+        // New form
+        auto expected_operands = 2 + operands(0)->shape().rank();
+        TF_RET_CHECK(proto.operand_ids_size() == expected_operands)
+            << "DynamicUpdateSlice instruction should have "
+            << expected_operands << " operands, but has "
+            << proto.operand_ids_size();
+        const auto& operand_vector = all_operands();
+        instruction =
+            CreateDynamicUpdateSlice(shape, operands(0), operands(1),
+                                     absl::MakeSpan(operand_vector).subspan(2));
+      }
       break;
     }
     case HloOpcode::kGather: {
@@ -917,11 +955,27 @@ HloInstruction::CreateAddDependency(HloInstruction* data_operand,
       shape, operand, start_indices, slice_sizes);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDynamicSlice(
+    const Shape& shape, HloInstruction* operand,
+    absl::Span<HloInstruction* const> start_indices,
+    absl::Span<const int64> slice_sizes) {
+  return absl::make_unique<HloDynamicSliceInstruction>(
+      shape, operand, start_indices, slice_sizes);
+}
+
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
                                          HloInstruction* operand,
                                          HloInstruction* update,
                                          HloInstruction* start_indices) {
+  return absl::make_unique<HloDynamicUpdateSliceInstruction>(
+      shape, operand, update, start_indices);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateDynamicUpdateSlice(
+    const Shape& shape, HloInstruction* operand, HloInstruction* update,
+    absl::Span<HloInstruction* const> start_indices) {
   return absl::make_unique<HloDynamicUpdateSliceInstruction>(
       shape, operand, update, start_indices);
 }
@@ -1382,9 +1436,8 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       clone = CreateReshape(shape, new_operands[0]);
       break;
     case HloOpcode::kDynamicUpdateSlice:
-      CHECK_EQ(new_operands.size(), 3);
       clone = CreateDynamicUpdateSlice(shape, new_operands[0], new_operands[1],
-                                       new_operands[2]);
+                                       new_operands.subspan(2));
       break;
     case HloOpcode::kTuple:
       clone = CreateTuple(new_operands);
@@ -2824,7 +2877,7 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       }
       return UseKind::kReuse;
     case HloOpcode::kDynamicUpdateSlice:
-      // Dynamic-update-slice reuses only operand 2 (start_indices).
+      // Dynamic-update-slice reuses only start_indices.
       if (i == 0 || i == 1) {
         return UseKind::kUse;
       }

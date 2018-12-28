@@ -1183,7 +1183,22 @@ class HloDynamicIndexInstruction : public HloInstruction {
  public:
   explicit HloDynamicIndexInstruction(HloOpcode opcode, const Shape& shape)
       : HloInstruction(opcode, shape) {}
-  virtual int64 index_operand_number() const = 0;
+  virtual int64 first_index_operand_number() const = 0;
+
+  // Returns a subspan of operands which represent the start indices.
+  absl::Span<HloInstruction* const> index_operands() {
+    return absl::MakeSpan(operands()).subspan(first_index_operand_number());
+  }
+
+  // Returns the shapes of the index operands.
+  std::vector<Shape> index_shapes() {
+    std::vector<Shape> shapes;
+    auto indices = index_operands();
+    for (const HloInstruction* index : indices) {
+      shapes.push_back(index->shape());
+    }
+    return shapes;
+  }
 };
 
 class HloDynamicSliceInstruction : public HloDynamicIndexInstruction {
@@ -1192,6 +1207,10 @@ class HloDynamicSliceInstruction : public HloDynamicIndexInstruction {
                                       HloInstruction* operand,
                                       HloInstruction* start_indices,
                                       absl::Span<const int64> slice_sizes);
+  explicit HloDynamicSliceInstruction(
+      const Shape& shape, HloInstruction* operand,
+      absl::Span<HloInstruction* const> start_indices,
+      absl::Span<const int64> slice_sizes);
   // Old methods kept for smooth subclassing transition END.
   // Returns the size of the slice in the given dimension for a dynamic
   // slice node.
@@ -1204,7 +1223,7 @@ class HloDynamicSliceInstruction : public HloDynamicIndexInstruction {
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
-  int64 index_operand_number() const override { return 1; }
+  int64 first_index_operand_number() const override { return 1; }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -1229,8 +1248,11 @@ class HloDynamicUpdateSliceInstruction : public HloDynamicIndexInstruction {
                                             HloInstruction* operand,
                                             HloInstruction* update,
                                             HloInstruction* start_indices);
+  explicit HloDynamicUpdateSliceInstruction(
+      const Shape& shape, HloInstruction* operand, HloInstruction* update,
+      absl::Span<HloInstruction* const> start_indices);
 
-  int64 index_operand_number() const override { return 2; }
+  int64 first_index_operand_number() const override { return 2; }
 };
 
 class HloGatherInstruction : public HloInstruction {
