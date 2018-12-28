@@ -1186,12 +1186,12 @@ class HloDynamicIndexInstruction : public HloInstruction {
   virtual int64 first_index_operand_number() const = 0;
 
   // Returns a subspan of operands which represent the start indices.
-  absl::Span<HloInstruction* const> index_operands() {
+  absl::Span<HloInstruction* const> index_operands() const {
     return absl::MakeSpan(operands()).subspan(first_index_operand_number());
   }
 
   // Returns the shapes of the index operands.
-  std::vector<Shape> index_shapes() {
+  std::vector<Shape> index_shapes() const {
     std::vector<Shape> shapes;
     auto indices = index_operands();
     for (const HloInstruction* index : indices) {
