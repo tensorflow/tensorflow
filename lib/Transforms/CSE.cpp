@@ -43,8 +43,8 @@ namespace {
 struct CSE : public FunctionPass {
   CSE() : FunctionPass(&CSE::passID) {}
 
-  PassResult runOnCFGFunction(CFGFunction *f) override;
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnCFGFunction(Function *f) override;
+  PassResult runOnMLFunction(Function *f) override;
 
   static char passID;
 };
@@ -162,7 +162,7 @@ struct CFGCSE : public CSEImpl {
     bool processed;
   };
 
-  void run(CFGFunction *f) {
+  void run(Function *f) {
     // Note, deque is being used here because there was significant performance
     // gains over vector when the container becomes very large due to the
     // specific access patterns. If/when these performance issues are no
@@ -210,7 +210,7 @@ struct CFGCSE : public CSEImpl {
 struct MLCSE : public CSEImpl, StmtWalker<MLCSE> {
   using StmtWalker<MLCSE>::walk;
 
-  void run(MLFunction *f) {
+  void run(Function *f) {
     // Walk the function statements.
     walk(f);
 
@@ -231,12 +231,12 @@ struct MLCSE : public CSEImpl, StmtWalker<MLCSE> {
 
 char CSE::passID = 0;
 
-PassResult CSE::runOnCFGFunction(CFGFunction *f) {
+PassResult CSE::runOnCFGFunction(Function *f) {
   CFGCSE().run(f);
   return success();
 }
 
-PassResult CSE::runOnMLFunction(MLFunction *f) {
+PassResult CSE::runOnMLFunction(Function *f) {
   MLCSE().run(f);
   return success();
 }

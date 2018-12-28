@@ -41,9 +41,8 @@ namespace {
 // Generates CFG function equivalent to the given ML function.
 class FunctionConverter : public StmtVisitor<FunctionConverter> {
 public:
-  FunctionConverter(CFGFunction *cfgFunc)
-      : cfgFunc(cfgFunc), builder(cfgFunc) {}
-  CFGFunction *convert(MLFunction *mlFunc);
+  FunctionConverter(Function *cfgFunc) : cfgFunc(cfgFunc), builder(cfgFunc) {}
+  Function *convert(Function *mlFunc);
 
   void visitForStmt(ForStmt *forStmt);
   void visitIfStmt(IfStmt *ifStmt);
@@ -56,7 +55,7 @@ private:
       Location loc, CmpIPredicate predicate,
       llvm::iterator_range<OperationInst::result_iterator> values);
 
-  CFGFunction *cfgFunc;
+  Function *cfgFunc;
   FuncBuilder builder;
 
   // Mapping between original Values and lowered Values.
@@ -455,7 +454,7 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
 
 // Entry point of the function convertor.
 //
-// Conversion is performed by recursively visiting statements of an MLFunction.
+// Conversion is performed by recursively visiting statements of a Function.
 // It reasons in terms of single-entry single-exit (SESE) regions that are not
 // materialized in the code.  Instead, the pointer to the last block of the
 // region is maintained throughout the conversion as the insertion point of the
@@ -471,11 +470,11 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
 // construction.  When an Value is used, it gets replaced with the
 // corresponding Value that has been defined previously.  The value flow
 // starts with function arguments converted to basic block arguments.
-CFGFunction *FunctionConverter::convert(MLFunction *mlFunc) {
+Function *FunctionConverter::convert(Function *mlFunc) {
   auto outerBlock = builder.createBlock();
 
   // CFGFunctions do not have explicit arguments but use the arguments to the
-  // first basic block instead.  Create those from the MLFunction arguments and
+  // first basic block instead.  Create those from the Function arguments and
   // set up the value remapping.
   outerBlock->addArguments(mlFunc->getType().getInputs());
   assert(mlFunc->getNumArguments() == outerBlock->getNumArguments());
@@ -511,17 +510,17 @@ private:
   // Generates CFG functions for all ML functions in the module.
   void convertMLFunctions();
   // Generates CFG function for the given ML function.
-  CFGFunction *convert(MLFunction *mlFunc);
+  Function *convert(Function *mlFunc);
   // Replaces all ML function references in the module
   // with references to the generated CFG functions.
   void replaceReferences();
   // Replaces function references in the given function.
-  void replaceReferences(CFGFunction *cfgFunc);
+  void replaceReferences(Function *cfgFunc);
   // Replaces MLFunctions with their CFG counterparts in the module.
   void replaceFunctions();
 
   // Map from ML functions to generated CFG functions.
-  llvm::DenseMap<MLFunction *, CFGFunction *> generatedFuncs;
+  llvm::DenseMap<Function *, Function *> generatedFuncs;
   Module *module = nullptr;
 };
 } // end anonymous namespace
@@ -554,7 +553,7 @@ void ModuleConverter::convertMLFunctions() {
 }
 
 // Creates CFG function equivalent to the given ML function.
-CFGFunction *ModuleConverter::convert(MLFunction *mlFunc) {
+Function *ModuleConverter::convert(Function *mlFunc) {
   // Use the same name as for ML function; do not add the converted function to
   // the module yet to avoid collision.
   auto name = mlFunc->getName().str();
@@ -578,7 +577,7 @@ void ModuleConverter::replaceReferences() {
   for (const Function &fn : *module) {
     if (!fn.isML())
       continue;
-    CFGFunction *convertedFunc = generatedFuncs.lookup(&fn);
+    Function *convertedFunc = generatedFuncs.lookup(&fn);
     assert(convertedFunc && "ML function was not converted");
 
     MLIRContext *context = module->getContext();
@@ -597,11 +596,11 @@ void ModuleConverter::replaceReferences() {
 }
 
 // Replace the value of a function attribute named "name" attached to the
-// operation "op" and containing an MLFunction-typed value with the result of
-// converting "func" to a CFGFunction.
+// operation "op" and containing a Function-typed value with the result of
+// converting "func" to a Function.
 static inline void replaceMLFunctionAttr(
     OperationInst &op, Identifier name, const Function *func,
-    const llvm::DenseMap<MLFunction *, CFGFunction *> &generatedFuncs) {
+    const llvm::DenseMap<Function *, Function *> &generatedFuncs) {
   if (!func->isML())
     return;
 
@@ -610,8 +609,8 @@ static inline void replaceMLFunctionAttr(
   op.setAttr(name, b.getFunctionAttr(cfgFunc));
 }
 
-// The CFG and ML functions have the same name.  First, erase the MLFunction.
-// Then insert the CFGFunction at the same place.
+// The CFG and ML functions have the same name.  First, erase the Function.
+// Then insert the Function at the same place.
 void ModuleConverter::replaceFunctions() {
   for (auto pair : generatedFuncs) {
     auto &functions = module->getFunctions();

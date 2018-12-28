@@ -30,7 +30,7 @@ template class llvm::DominatorTreeBase<BasicBlock, true>;
 template class llvm::DomTreeNodeBase<BasicBlock>;
 
 /// Compute the immediate-dominators map.
-DominanceInfo::DominanceInfo(CFGFunction *function) : DominatorTreeBase() {
+DominanceInfo::DominanceInfo(Function *function) : DominatorTreeBase() {
   // Build the dominator tree for the function.
   recalculate(function->getBlockList());
 }

@@ -122,9 +122,9 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
   return true;
 }
 
-/// Promotes all single iteration for stmt's in the MLFunction, i.e., moves
+/// Promotes all single iteration for stmt's in the Function, i.e., moves
 /// their body into the containing StmtBlock.
-void mlir::promoteSingleIterationLoops(MLFunction *f) {
+void mlir::promoteSingleIterationLoops(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
   class LoopBodyPromoter : public StmtWalker<LoopBodyPromoter> {
   public:
@@ -357,8 +357,8 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
   auto ubMap = forStmt->getUpperBoundMap();
 
   // Loops with max/min expressions won't be unrolled here (the output can't be
-  // expressed as an MLFunction in the general case). However, the right way to
-  // do such unrolling for an MLFunction would be to specialize the loop for the
+  // expressed as a Function in the general case). However, the right way to
+  // do such unrolling for a Function would be to specialize the loop for the
   // 'hotspot' case and unroll that hotspot.
   if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
     return false;

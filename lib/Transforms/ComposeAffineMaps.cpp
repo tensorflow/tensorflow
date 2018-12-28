@@ -16,7 +16,7 @@
 // =============================================================================
 //
 // This file implements a testing pass which composes affine maps from
-// AffineApplyOps in an MLFunction, by forward subtituting results from an
+// AffineApplyOps in a Function, by forward subtituting results from an
 // AffineApplyOp into any of its users which are also AffineApplyOps.
 //
 //===----------------------------------------------------------------------===//
@@ -36,7 +36,7 @@ using namespace mlir;
 
 namespace {
 
-// ComposeAffineMaps walks stmt blocks in an MLFunction, and for each
+// ComposeAffineMaps walks stmt blocks in a Function, and for each
 // AffineApplyOp, forward substitutes its results into any users which are
 // also AffineApplyOps. After forward subtituting its results, AffineApplyOps
 // with no remaining uses are collected and erased after the walk.
@@ -48,7 +48,7 @@ struct ComposeAffineMaps : public FunctionPass, StmtWalker<ComposeAffineMaps> {
   using StmtListType = llvm::iplist<Statement>;
   void walk(StmtListType::iterator Start, StmtListType::iterator End);
   void visitOperationInst(OperationInst *stmt);
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
   using StmtWalker<ComposeAffineMaps>::walk;
 
   static char passID;
@@ -88,7 +88,7 @@ void ComposeAffineMaps::visitOperationInst(OperationInst *opStmt) {
   }
 }
 
-PassResult ComposeAffineMaps::runOnMLFunction(MLFunction *f) {
+PassResult ComposeAffineMaps::runOnMLFunction(Function *f) {
   affineApplyOpsToErase.clear();
   walk(f);
   for (auto *opStmt : affineApplyOpsToErase) {

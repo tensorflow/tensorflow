@@ -111,15 +111,15 @@ public:
 
   BasicBlock &back() { return blocks.back(); }
   const BasicBlock &back() const {
-    return const_cast<CFGFunction *>(this)->back();
+    return const_cast<Function *>(this)->back();
   }
 
   BasicBlock &front() { return blocks.front(); }
   const BasicBlock &front() const {
-    return const_cast<CFGFunction *>(this)->front();
+    return const_cast<Function *>(this)->front();
   }
 
-  /// Return the 'return' statement of this MLFunction.
+  /// Return the 'return' statement of this Function.
   const OperationInst *getReturnStmt() const;
   OperationInst *getReturnStmt();
 
@@ -157,14 +157,14 @@ public:
   }
 
   // Supports non-const operand iteration.
-  using args_iterator = ArgumentIterator<MLFunction, BlockArgument>;
+  using args_iterator = ArgumentIterator<Function, BlockArgument>;
   args_iterator args_begin();
   args_iterator args_end();
   llvm::iterator_range<args_iterator> getArguments();
 
   // Supports const operand iteration.
   using const_args_iterator =
-      ArgumentIterator<const MLFunction, const BlockArgument>;
+      ArgumentIterator<const Function, const BlockArgument>;
   const_args_iterator args_begin() const;
   const_args_iterator args_end() const;
   llvm::iterator_range<const_args_iterator> getArguments() const;
@@ -252,32 +252,31 @@ public:
 };
 
 //===--------------------------------------------------------------------===//
-// MLFunction iterator methods.
+// Function iterator methods.
 //===--------------------------------------------------------------------===//
 
-inline MLFunction::args_iterator MLFunction::args_begin() {
+inline Function::args_iterator Function::args_begin() {
   return args_iterator(this, 0);
 }
 
-inline MLFunction::args_iterator MLFunction::args_end() {
+inline Function::args_iterator Function::args_end() {
   return args_iterator(this, getNumArguments());
 }
 
-inline llvm::iterator_range<MLFunction::args_iterator>
-MLFunction::getArguments() {
+inline llvm::iterator_range<Function::args_iterator> Function::getArguments() {
   return {args_begin(), args_end()};
 }
 
-inline MLFunction::const_args_iterator MLFunction::args_begin() const {
+inline Function::const_args_iterator Function::args_begin() const {
   return const_args_iterator(this, 0);
 }
 
-inline MLFunction::const_args_iterator MLFunction::args_end() const {
+inline Function::const_args_iterator Function::args_end() const {
   return const_args_iterator(this, getNumArguments());
 }
 
-inline llvm::iterator_range<MLFunction::const_args_iterator>
-MLFunction::getArguments() const {
+inline llvm::iterator_range<Function::const_args_iterator>
+Function::getArguments() const {
   return {args_begin(), args_end()};
 }
 

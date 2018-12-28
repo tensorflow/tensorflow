@@ -25,16 +25,15 @@ namespace llvm {
 
 // Specialize DOTGraphTraits to produce more readable output.
 template <>
-struct llvm::DOTGraphTraits<const CFGFunction *>
-    : public DefaultDOTGraphTraits {
+struct llvm::DOTGraphTraits<const Function *> : public DefaultDOTGraphTraits {
   using DefaultDOTGraphTraits::DefaultDOTGraphTraits;
 
   static std::string getNodeLabel(const BasicBlock *basicBlock,
-                                  const CFGFunction *);
+                                  const Function *);
 };
 
-std::string llvm::DOTGraphTraits<const CFGFunction *>::getNodeLabel(
-    const BasicBlock *basicBlock, const CFGFunction *) {
+std::string llvm::DOTGraphTraits<const Function *>::getNodeLabel(
+    const BasicBlock *basicBlock, const Function *) {
   // Reuse the print output for the node labels.
   std::string outStreamStr;
   raw_string_ostream os(outStreamStr);
@@ -57,19 +56,19 @@ std::string llvm::DOTGraphTraits<const CFGFunction *>::getNodeLabel(
 
 } // end namespace llvm
 
-void mlir::viewGraph(const CFGFunction &function, const llvm::Twine &name,
+void mlir::viewGraph(const Function &function, const llvm::Twine &name,
                      bool shortNames, const llvm::Twine &title,
                      llvm::GraphProgram::Name program) {
   llvm::ViewGraph(&function, name, shortNames, title, program);
 }
 
 llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os,
-                                    const CFGFunction *function,
-                                    bool shortNames, const llvm::Twine &title) {
+                                    const Function *function, bool shortNames,
+                                    const llvm::Twine &title) {
   return llvm::WriteGraph(os, function, shortNames, title);
 }
 
-void mlir::CFGFunction::viewGraph() const {
+void mlir::Function::viewGraph() const {
   ::mlir::viewGraph(*this, llvm::Twine("cfgfunc ") + getName().str());
 }
 
@@ -79,7 +78,7 @@ struct PrintCFGPass : public FunctionPass {
                const llvm::Twine &title = "")
       : FunctionPass(&PrintCFGPass::passID), os(os), shortNames(shortNames),
         title(title) {}
-  PassResult runOnCFGFunction(CFGFunction *function) override {
+  PassResult runOnCFGFunction(Function *function) override {
     mlir::writeGraph(os, function, shortNames, title);
     return success();
   }

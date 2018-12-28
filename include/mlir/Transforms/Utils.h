@@ -39,7 +39,6 @@ class Module;
 class OperationInst;
 
 class Function;
-using CFGFunction = Function;
 
 /// Replace all uses of oldMemRef with newMemRef while optionally remapping the
 /// old memref's indices using the supplied affine map and adding any additional

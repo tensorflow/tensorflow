@@ -46,9 +46,9 @@ private:
   FuncBuilder *builder;
 };
 
-/// Base class for the MLFunction-wise lowering state.  A pointer to the same
+/// Base class for the Function-wise lowering state.  A pointer to the same
 /// instance of the subclass will be passed to all `rewrite` calls on operations
-/// that belong to the same MLFunction.
+/// that belong to the same Function.
 class MLFuncGlobalLoweringState {
 public:
   virtual ~MLFuncGlobalLoweringState() {}
@@ -58,7 +58,7 @@ protected:
   MLFuncGlobalLoweringState() {}
 };
 
-/// Base class for MLFunction lowering patterns.
+/// Base class for Function lowering patterns.
 class MLLoweringPattern : public Pattern {
 public:
   /// Subclasses must override this function to implement rewriting.  It will be
@@ -104,11 +104,11 @@ public:
   explicit MLPatternLoweringPass(void *ID) : FunctionPass(ID) {}
 
   virtual std::unique_ptr<MLFuncGlobalLoweringState>
-  makeFuncWiseState(MLFunction *f) const {
+  makeFuncWiseState(Function *f) const {
     return nullptr;
   }
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -135,7 +135,7 @@ template <typename Pattern> struct ListAdder<Pattern> {
 } // namespace detail
 
 template <typename... Patterns>
-PassResult MLPatternLoweringPass<Patterns...>::runOnMLFunction(MLFunction *f) {
+PassResult MLPatternLoweringPass<Patterns...>::runOnMLFunction(Function *f) {
   detail::OwningMLLoweringPatternList patterns;
   detail::ListAdder<Patterns...>::addPatternsToList(&patterns, f->getContext());
   auto funcWiseState = makeFuncWiseState(f);

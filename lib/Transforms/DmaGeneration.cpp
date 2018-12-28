@@ -63,8 +63,8 @@ struct DmaGeneration : public FunctionPass, StmtWalker<DmaGeneration> {
   }
 
   // Not applicable to CFG functions.
-  PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnCFGFunction(Function *f) override { return success(); }
+  PassResult runOnMLFunction(Function *f) override;
   void runOnForStmt(ForStmt *forStmt);
 
   void visitOperationInst(OperationInst *opStmt);
@@ -425,7 +425,7 @@ void DmaGeneration::runOnForStmt(ForStmt *forStmt) {
                           << " KiB of DMA buffers in fast memory space\n";);
 }
 
-PassResult DmaGeneration::runOnMLFunction(MLFunction *f) {
+PassResult DmaGeneration::runOnMLFunction(Function *f) {
   for (auto &stmt : *f->getBody()) {
     if (auto *forStmt = dyn_cast<ForStmt>(&stmt)) {
       runOnForStmt(forStmt);

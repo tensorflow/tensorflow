@@ -32,7 +32,7 @@ Statement *StmtBlock::getContainingStmt() {
   return parent ? parent->getContainingStmt() : nullptr;
 }
 
-MLFunction *StmtBlock::getFunction() {
+Function *StmtBlock::getFunction() {
   StmtBlock *block = this;
   while (auto *stmt = block->getContainingStmt()) {
     block = stmt->getBlock();
@@ -143,7 +143,7 @@ StmtBlock *StmtBlock::getSinglePredecessor() {
 // Other
 //===----------------------------------------------------------------------===//
 
-/// Unlink this BasicBlock from its CFGFunction and delete it.
+/// Unlink this BasicBlock from its Function and delete it.
 void BasicBlock::eraseFromFunction() {
   assert(getFunction() && "BasicBlock has no parent");
   getFunction()->getBlocks().erase(this);
@@ -163,7 +163,7 @@ BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
   // Start by creating a new basic block, and insert it immediate after this
   // one in the containing function.
   auto newBB = new BasicBlock();
-  getFunction()->getBlocks().insert(++CFGFunction::iterator(this), newBB);
+  getFunction()->getBlocks().insert(++Function::iterator(this), newBB);
   auto branchLoc =
       splitBefore == end() ? getTerminator()->getLoc() : splitBefore->getLoc();
 
@@ -186,9 +186,7 @@ StmtBlockList::StmtBlockList(Function *container) : container(container) {}
 
 StmtBlockList::StmtBlockList(Statement *container) : container(container) {}
 
-CFGFunction *StmtBlockList::getFunction() {
-  return dyn_cast_or_null<CFGFunction>(getContainingFunction());
-}
+Function *StmtBlockList::getFunction() { return getContainingFunction(); }
 
 Statement *StmtBlockList::getContainingStmt() {
   return container.dyn_cast<Statement *>();

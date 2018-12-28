@@ -92,7 +92,7 @@ static MLFunctionMatches combine(ArrayRef<MLFunctionMatches> matches) {
 }
 
 /// Calls walk on `function`.
-MLFunctionMatches MLFunctionMatcher::match(MLFunction *function) {
+MLFunctionMatches MLFunctionMatcher::match(Function *function) {
   assert(!matches && "MLFunctionMatcher already matched!");
   this->walkPostOrder(function);
   return matches;

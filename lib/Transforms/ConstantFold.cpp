@@ -40,8 +40,8 @@ struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
                      ConstantFactoryType constantFactory);
   void visitOperationInst(OperationInst *stmt);
   void visitForStmt(ForStmt *stmt);
-  PassResult runOnCFGFunction(CFGFunction *f) override;
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnCFGFunction(Function *f) override;
+  PassResult runOnMLFunction(Function *f) override;
 
   static char passID;
 };
@@ -103,7 +103,7 @@ bool ConstantFold::foldOperation(OperationInst *op,
 // For now, we do a simple top-down pass over a function folding constants.  We
 // don't handle conditional control flow, constant PHI nodes, folding
 // conditional branches, or anything else fancy.
-PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
+PassResult ConstantFold::runOnCFGFunction(Function *f) {
   existingConstants.clear();
   FuncBuilder builder(f);
 
@@ -155,7 +155,7 @@ void ConstantFold::visitForStmt(ForStmt *forStmt) {
   constantFoldBounds(forStmt);
 }
 
-PassResult ConstantFold::runOnMLFunction(MLFunction *f) {
+PassResult ConstantFold::runOnMLFunction(Function *f) {
   existingConstants.clear();
   opStmtsToErase.clear();
 

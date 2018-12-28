@@ -129,7 +129,7 @@ Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
 
 /// Computes the memory region accessed by this memref with the region
 /// represented as constraints symbolic/parameteric in 'loopDepth' loops
-/// surrounding opStmt and any additional MLFunction symbols. Returns false if
+/// surrounding opStmt and any additional Function symbols. Returns false if
 /// this fails due to yet unimplemented cases.
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:

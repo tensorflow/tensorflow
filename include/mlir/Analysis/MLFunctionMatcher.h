@@ -29,7 +29,7 @@ struct MLFunctionMatchesStorage;
 class Statement;
 
 /// An MLFunctionMatcher is a recursive matcher that captures nested patterns in
-/// an MLFunction. It is used in conjunction with a scoped
+/// an ML Function. It is used in conjunction with a scoped
 /// MLFunctionMatcherContext that handles the memory allocations efficiently.
 ///
 /// In order to use MLFunctionMatchers creates a scoped context and uses
@@ -47,7 +47,7 @@ class Statement;
 ///
 
 /// Recursive abstraction for matching results.
-/// Provides iteration over the MLFunction Statement* captured by a Matcher.
+/// Provides iteration over the Statement* captured by a Matcher.
 ///
 /// Implemented as a POD value-type with underlying storage pointer.
 /// The underlying storage lives in a scoped bumper allocator whose lifetime
@@ -99,7 +99,7 @@ struct MLFunctionMatcher : public StmtWalker<MLFunctionMatcher> {
                     FilterFunctionType filter = defaultFilterFunction);
 
   /// Returns all the matches in `function`.
-  MLFunctionMatches match(MLFunction *function);
+  MLFunctionMatches match(Function *function);
 
   /// Returns all the matches nested under `statement`.
   MLFunctionMatches match(Statement *statement);

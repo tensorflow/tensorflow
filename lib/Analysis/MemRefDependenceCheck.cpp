@@ -37,16 +37,16 @@ using namespace mlir;
 namespace {
 
 // TODO(andydavis) Add common surrounding loop depth-wise dependence checks.
-/// Checks dependences between all pairs of memref accesses in an MLFunction.
+/// Checks dependences between all pairs of memref accesses in a Function.
 struct MemRefDependenceCheck : public FunctionPass,
                                StmtWalker<MemRefDependenceCheck> {
   SmallVector<OperationInst *, 4> loadsAndStores;
   explicit MemRefDependenceCheck()
       : FunctionPass(&MemRefDependenceCheck::passID) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
   // Not applicable to CFG functions.
-  PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
+  PassResult runOnCFGFunction(Function *f) override { return success(); }
 
   void visitOperationInst(OperationInst *opStmt) {
     if (opStmt->isa<LoadOp>() || opStmt->isa<StoreOp>()) {
@@ -166,9 +166,9 @@ static void checkDependences(ArrayRef<OperationInst *> loadsAndStores) {
   }
 }
 
-// Walks the MLFunction 'f' adding load and store ops to 'loadsAndStores'.
+// Walks the Function 'f' adding load and store ops to 'loadsAndStores'.
 // Runs pair-wise dependence checks.
-PassResult MemRefDependenceCheck::runOnMLFunction(MLFunction *f) {
+PassResult MemRefDependenceCheck::runOnMLFunction(Function *f) {
   loadsAndStores.clear();
   walk(f);
   checkDependences(loadsAndStores);

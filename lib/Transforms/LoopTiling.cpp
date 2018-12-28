@@ -38,10 +38,10 @@ static llvm::cl::opt<unsigned>
 
 namespace {
 
-/// A pass to perform loop tiling on all suitable loop nests of an MLFunction.
+/// A pass to perform loop tiling on all suitable loop nests of a Function.
 struct LoopTiling : public FunctionPass {
   LoopTiling() : FunctionPass(&LoopTiling::passID) {}
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
   constexpr static unsigned kDefaultTileSize = 4;
 
   static char passID;
@@ -52,7 +52,7 @@ struct LoopTiling : public FunctionPass {
 char LoopTiling::passID = 0;
 
 /// Creates a pass to perform loop tiling on all suitable loop nests of an
-/// MLFunction.
+/// Function.
 FunctionPass *mlir::createLoopTilingPass() { return new LoopTiling(); }
 
 // Move the loop body of ForStmt 'src' from 'src' into the specified location in
@@ -214,7 +214,7 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
 // Identify valid and profitable bands of loops to tile. This is currently just
 // a temporary placeholder to test the mechanics of tiled code generation.
 // Returns all maximal outermost perfect loop nests to tile.
-static void getTileableBands(MLFunction *f,
+static void getTileableBands(Function *f,
                              std::vector<SmallVector<ForStmt *, 6>> *bands) {
   // Get maximal perfect nest of 'for' stmts starting from root (inclusive).
   auto getMaximalPerfectLoopNest = [&](ForStmt *root) {
@@ -235,7 +235,7 @@ static void getTileableBands(MLFunction *f,
   }
 }
 
-PassResult LoopTiling::runOnMLFunction(MLFunction *f) {
+PassResult LoopTiling::runOnMLFunction(Function *f) {
   std::vector<SmallVector<ForStmt *, 6>> bands;
   getTileableBands(f, &bands);
 

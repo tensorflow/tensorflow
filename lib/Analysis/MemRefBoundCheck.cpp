@@ -41,9 +41,9 @@ namespace {
 struct MemRefBoundCheck : public FunctionPass, StmtWalker<MemRefBoundCheck> {
   explicit MemRefBoundCheck() : FunctionPass(&MemRefBoundCheck::passID) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
   // Not applicable to CFG functions.
-  PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
+  PassResult runOnCFGFunction(Function *f) override { return success(); }
 
   void visitOperationInst(OperationInst *opStmt);
 
@@ -67,10 +67,10 @@ void MemRefBoundCheck::visitOperationInst(OperationInst *opStmt) {
   // TODO(bondhugula): do this for DMA ops as well.
 }
 
-PassResult MemRefBoundCheck::runOnMLFunction(MLFunction *f) {
+PassResult MemRefBoundCheck::runOnMLFunction(Function *f) {
   return walk(f), success();
 }
 
 static PassRegistration<MemRefBoundCheck>
     memRefBoundCheck("memref-bound-check",
-                     "Check memref access bounds in an MLFunction");
+                     "Check memref access bounds in a Function");

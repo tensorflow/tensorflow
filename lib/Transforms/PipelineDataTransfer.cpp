@@ -41,7 +41,7 @@ namespace {
 struct PipelineDataTransfer : public FunctionPass,
                               StmtWalker<PipelineDataTransfer> {
   PipelineDataTransfer() : FunctionPass(&PipelineDataTransfer::passID) {}
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
   PassResult runOnForStmt(ForStmt *forStmt);
 
   // Collect all 'for' statements.
@@ -137,7 +137,7 @@ static bool doubleBuffer(Value *oldMemRef, ForStmt *forStmt) {
 }
 
 /// Returns success if the IR is in a valid state.
-PassResult PipelineDataTransfer::runOnMLFunction(MLFunction *f) {
+PassResult PipelineDataTransfer::runOnMLFunction(Function *f) {
   // Do a post order walk so that inner loop DMAs are processed first. This is
   // necessary since 'for' statements nested within would otherwise become
   // invalid (erased) when the outer loop is pipelined (the pipelined one gets

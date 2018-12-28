@@ -1005,7 +1005,7 @@ bool LoadOp::verify() const {
 
   // TODO: Verify we have the right number of indices.
 
-  // TODO: in MLFunction verify that the indices are parameters, IV's, or the
+  // TODO: in Function verify that the indices are parameters, IV's, or the
   // result of an affine_apply.
   return false;
 }
@@ -1255,7 +1255,7 @@ bool StoreOp::verify() const {
 
   // TODO: Verify we have the right number of indices.
 
-  // TODO: in MLFunction verify that the indices are parameters, IV's, or the
+  // TODO: in Function verify that the indices are parameters, IV's, or the
   // result of an affine_apply.
   return false;
 }

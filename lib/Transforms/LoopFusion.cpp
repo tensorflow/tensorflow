@@ -70,7 +70,7 @@ namespace {
 struct LoopFusion : public FunctionPass {
   LoopFusion() : FunctionPass(&LoopFusion::passID) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
   static char passID;
 };
 
@@ -158,7 +158,7 @@ public:
 };
 
 // MemRefDependenceGraph is a graph data structure where graph nodes are
-// top-level statements in an MLFunction which contain load/store ops, and edges
+// top-level statements in a Function which contain load/store ops, and edges
 // are memref dependences between the nodes.
 // TODO(andydavis) Add a depth parameter to dependence graph construction.
 struct MemRefDependenceGraph {
@@ -217,7 +217,7 @@ public:
 
   // Initializes the dependence graph based on operations in 'f'.
   // Returns true on success, false otherwise.
-  bool init(MLFunction *f);
+  bool init(Function *f);
 
   // Returns the graph node for 'id'.
   Node *getNode(unsigned id) {
@@ -345,7 +345,7 @@ public:
 // Assigns each node in the graph a node id based on program order in 'f'.
 // TODO(andydavis) Add support for taking a StmtBlock arg to construct the
 // dependence graph at a different depth.
-bool MemRefDependenceGraph::init(MLFunction *f) {
+bool MemRefDependenceGraph::init(Function *f) {
   unsigned id = 0;
   DenseMap<Value *, SetVector<unsigned>> memrefAccesses;
   for (auto &stmt : *f->getBody()) {
@@ -415,7 +415,7 @@ bool MemRefDependenceGraph::init(MLFunction *f) {
 // GreedyFusion greedily fuses loop nests which have a producer/consumer
 // relationship on a memref, with the goal of improving locality. Currently,
 // this the producer/consumer relationship is required to be unique in the
-// MLFunction (there are TODOs to relax this constraint in the future).
+// Function (there are TODOs to relax this constraint in the future).
 //
 // The steps of the algorithm are as follows:
 //
@@ -425,7 +425,7 @@ bool MemRefDependenceGraph::init(MLFunction *f) {
 //      destination ForStmt into which fusion will be attempted.
 //   *) Add each LoadOp currently in 'dstForStmt' into list 'dstLoadOps'.
 //   *) For each LoadOp in 'dstLoadOps' do:
-//      *) Lookup dependent loop nests at earlier positions in the MLFunction
+//      *) Lookup dependent loop nests at earlier positions in the Function
 //         which have a single store op to the same memref.
 //      *) Check if dependences would be violated by the fusion. For example,
 //         the src loop nest may load from memrefs which are different than
@@ -549,7 +549,7 @@ public:
 
 } // end anonymous namespace
 
-PassResult LoopFusion::runOnMLFunction(MLFunction *f) {
+PassResult LoopFusion::runOnMLFunction(Function *f) {
   MemRefDependenceGraph g;
   if (g.init(f))
     GreedyFusion(&g).run();

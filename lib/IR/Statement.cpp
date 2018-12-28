@@ -82,7 +82,7 @@ Statement *Statement::getParentStmt() const {
   return block ? block->getContainingStmt() : nullptr;
 }
 
-MLFunction *Statement::getFunction() const {
+Function *Statement::getFunction() const {
   return block ? block->getFunction() : nullptr;
 }
 

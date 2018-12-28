@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements Analysis functions specific to slicing in MLFunction.
+// This file implements Analysis functions specific to slicing in Function.
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,7 +30,7 @@
 #include <type_traits>
 
 ///
-/// Implements Analysis functions specific to slicing in MLFunction.
+/// Implements Analysis functions specific to slicing in Function.
 ///
 
 using namespace mlir;

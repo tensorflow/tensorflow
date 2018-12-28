@@ -25,8 +25,6 @@
 
 namespace mlir {
 class Function;
-using CFGFunction = Function;
-using MLFunction = Function;
 class Module;
 
 // Values that can be used by to signal success/failure. This can be implicitly
@@ -93,11 +91,11 @@ public:
   /// runOnCFGFunction or runOnMLFunction.
   virtual PassResult runOnFunction(Function *fn);
 
-  /// Implement this function if you want to see CFGFunction's specifically.
-  virtual PassResult runOnCFGFunction(CFGFunction *fn) { return success(); }
+  /// Implement this function if you want to see CFG Function's specifically.
+  virtual PassResult runOnCFGFunction(Function *fn) { return success(); }
 
-  /// Implement this function if you want to see MLFunction's specifically.
-  virtual PassResult runOnMLFunction(MLFunction *fn) { return success(); }
+  /// Implement this function if you want to see ML Function's specifically.
+  virtual PassResult runOnMLFunction(Function *fn) { return success(); }
 
   // Iterates over all functions in a module, halting upon failure.
   virtual PassResult runOnModule(Module *m) override;

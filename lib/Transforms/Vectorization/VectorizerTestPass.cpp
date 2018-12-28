@@ -73,12 +73,12 @@ struct VectorizerTestPass : public FunctionPass {
   static constexpr auto kTestAffineMapAttrName = "affine_map";
   VectorizerTestPass() : FunctionPass(&VectorizerTestPass::passID) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
-  void testVectorShapeRatio(MLFunction *f);
-  void testForwardSlicing(MLFunction *f);
-  void testBackwardSlicing(MLFunction *f);
-  void testSlicing(MLFunction *f);
-  void testComposeMaps(MLFunction *f);
+  PassResult runOnMLFunction(Function *f) override;
+  void testVectorShapeRatio(Function *f);
+  void testForwardSlicing(Function *f);
+  void testBackwardSlicing(Function *f);
+  void testSlicing(Function *f);
+  void testComposeMaps(Function *f);
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext MLContext;
@@ -90,7 +90,7 @@ struct VectorizerTestPass : public FunctionPass {
 
 char VectorizerTestPass::passID = 0;
 
-void VectorizerTestPass::testVectorShapeRatio(MLFunction *f) {
+void VectorizerTestPass::testVectorShapeRatio(Function *f) {
   using matcher::Op;
   SmallVector<int, 8> shape(clTestVectorShapeRatio.begin(),
                             clTestVectorShapeRatio.end());
@@ -139,7 +139,7 @@ static std::string toString(Statement *stmt) {
   return res;
 }
 
-static MLFunctionMatches matchTestSlicingOps(MLFunction *f) {
+static MLFunctionMatches matchTestSlicingOps(Function *f) {
   // Just use a custom op name for this test, it makes life easier.
   constexpr auto kTestSlicingOpName = "slicing-test-op";
   using functional::map;
@@ -153,7 +153,7 @@ static MLFunctionMatches matchTestSlicingOps(MLFunction *f) {
   return pat.match(f);
 }
 
-void VectorizerTestPass::testBackwardSlicing(MLFunction *f) {
+void VectorizerTestPass::testBackwardSlicing(Function *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
     SetVector<Statement *> backwardSlice;
@@ -166,7 +166,7 @@ void VectorizerTestPass::testBackwardSlicing(MLFunction *f) {
   }
 }
 
-void VectorizerTestPass::testForwardSlicing(MLFunction *f) {
+void VectorizerTestPass::testForwardSlicing(Function *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
     SetVector<Statement *> forwardSlice;
@@ -179,7 +179,7 @@ void VectorizerTestPass::testForwardSlicing(MLFunction *f) {
   }
 }
 
-void VectorizerTestPass::testSlicing(MLFunction *f) {
+void VectorizerTestPass::testSlicing(Function *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
     SetVector<Statement *> staticSlice = getSlice(m.first);
@@ -197,7 +197,7 @@ bool customOpWithAffineMapAttribute(const Statement &stmt) {
          VectorizerTestPass::kTestAffineMapOpName;
 }
 
-void VectorizerTestPass::testComposeMaps(MLFunction *f) {
+void VectorizerTestPass::testComposeMaps(Function *f) {
   using matcher::Op;
   auto pattern = Op(customOpWithAffineMapAttribute);
   auto matches = pattern.match(f);
@@ -218,7 +218,7 @@ void VectorizerTestPass::testComposeMaps(MLFunction *f) {
   res.print(outs() << "\nComposed map: ");
 }
 
-PassResult VectorizerTestPass::runOnMLFunction(MLFunction *f) {
+PassResult VectorizerTestPass::runOnMLFunction(Function *f) {
   if (!clTestVectorShapeRatio.empty()) {
     testVectorShapeRatio(f);
   }

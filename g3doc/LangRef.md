@@ -1519,9 +1519,9 @@ each followed by its indices, size of the data transfer in terms of the number
 of elements (of the elemental type of the memref), and a tag memref with its
 indices. The tag location is used by a dma_wait operation to check for
 completion. The indices of the source memref, destination memref, and the tag
-memref have the same restrictions as any load/store instruction in an MLFunction
-(whenever DMA operations appear in ML Functions). This allows powerful static
-analysis and transformations in the presence of such DMAs including
+memref have the same restrictions as any load/store instruction in an ML
+Function (whenever DMA operations appear in ML Functions). This allows powerful
+static analysis and transformations in the presence of such DMAs including
 rescheduling, pipelining / overlap with computation, and checking for matching
 start/end operations. The source and destination memref need not be of the same
 dimensionality, but need to have the same elemental type.
@@ -1599,7 +1599,7 @@ The arity of indices is the rank of the memref (i.e., if the memref loaded from
 is of rank 3, then 3 indices are required for the load following the memref
 identifier).
 
-In an MLFunction, the indices of a load are restricted to SSA values bound to
+In an ML Function, the indices of a load are restricted to SSA values bound to
 surrounding loop induction variables, [symbols](#dimensions-and-symbols),
 results of a [`constant` operation](#'constant'-operation), or the results of an
 `affine_apply` operation that can in turn take as arguments all of the
@@ -1641,7 +1641,7 @@ Store value to memref location given by indices. The value stored should have
 the same type as the elemental type of the memref. The number of arguments
 provided within brackets need to match the rank of the memref.
 
-In an MLFunction, the indices of a store are restricted to SSA values bound to
+In an ML Function, the indices of a store are restricted to SSA values bound to
 surrounding loop induction variables, [symbols](#dimensions-and-symbols),
 results of a [`constant` operation](#'constant'-operation), or the results of an
 [`affine_apply`](#'affine_apply'-operation) operation that can in turn take as

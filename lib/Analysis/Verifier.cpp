@@ -146,11 +146,11 @@ bool Verifier::verifyOperation(const OperationInst &op) {
 
 namespace {
 struct CFGFuncVerifier : public Verifier {
-  const CFGFunction &fn;
+  const Function &fn;
   DominanceInfo domInfo;
 
-  CFGFuncVerifier(const CFGFunction &fn)
-      : Verifier(fn), fn(fn), domInfo(const_cast<CFGFunction *>(&fn)) {}
+  CFGFuncVerifier(const Function &fn)
+      : Verifier(fn), fn(fn), domInfo(const_cast<Function *>(&fn)) {}
 
   bool verify();
   bool verifyBlock(const BasicBlock &block);
@@ -240,10 +240,10 @@ bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
 
 namespace {
 struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
-  const MLFunction &fn;
+  const Function &fn;
   bool hadError = false;
 
-  MLFuncVerifier(const MLFunction &fn) : Verifier(fn), fn(fn) {}
+  MLFuncVerifier(const Function &fn) : Verifier(fn), fn(fn) {}
 
   void visitOperationInst(OperationInst *opStmt) {
     hadError |= verifyOperation(*opStmt);
@@ -254,7 +254,7 @@ struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
                                      fn.getName().c_str());
 
     // Check basic structural properties.
-    walk(const_cast<MLFunction *>(&fn));
+    walk(const_cast<Function *>(&fn));
     if (hadError)
       return true;
 
@@ -366,9 +366,9 @@ bool Function::verify() const {
     // No body, nothing can be wrong here.
     return false;
   case Kind::CFGFunc:
-    return CFGFuncVerifier(*cast<CFGFunction>(this)).verify();
+    return CFGFuncVerifier(*this).verify();
   case Kind::MLFunc:
-    return MLFuncVerifier(*cast<MLFunction>(this)).verify();
+    return MLFuncVerifier(*this).verify();
   }
 }
 

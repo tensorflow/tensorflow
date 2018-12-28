@@ -28,8 +28,6 @@
 namespace mlir {
 class IfStmt;
 class StmtBlockList;
-using CFGFunction = Function;
-using MLFunction = Function;
 
 template <typename BlockType> class PredecessorIterator;
 template <typename BlockType> class SuccessorIterator;
@@ -61,8 +59,8 @@ public:
 
   /// Returns the function that this statement block is part of.  The function
   /// is determined by traversing the chain of parent statements.
-  MLFunction *getFunction();
-  const MLFunction *getFunction() const {
+  Function *getFunction();
+  const Function *getFunction() const {
     return const_cast<StmtBlock *>(this)->getFunction();
   }
 
@@ -293,7 +291,7 @@ private:
 namespace mlir {
 
 /// This class contains a list of basic blocks and has a notion of the object it
-/// is part of - an MLFunction or IfStmt or ForStmt.
+/// is part of - a Function or IfStmt or ForStmt.
 class StmtBlockList {
 public:
   explicit StmtBlockList(Function *container);
@@ -345,7 +343,7 @@ public:
   }
 
   /// A StmtBlockList is part of a Function or and IfStmt/ForStmt.  If it is
-  /// part of an Function, then return it, otherwise return null.
+  /// part of a Function, then return it, otherwise return null.
   Function *getContainingFunction();
   const Function *getContainingFunction() const {
     return const_cast<StmtBlockList *>(this)->getContainingFunction();
@@ -353,8 +351,8 @@ public:
 
   // TODO(clattner): This is only to help ML -> CFG migration, remove in the
   // near future.  This makes StmtBlockList work more like BasicBlock did.
-  CFGFunction *getFunction();
-  const CFGFunction *getFunction() const {
+  Function *getFunction();
+  const Function *getFunction() const {
     return const_cast<StmtBlockList *>(this)->getFunction();
   }
 

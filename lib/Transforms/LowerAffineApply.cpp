@@ -35,8 +35,8 @@ struct LowerAffineApply : public FunctionPass {
 
   explicit LowerAffineApply() : FunctionPass(&LowerAffineApply::passID) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
-  PassResult runOnCFGFunction(CFGFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnCFGFunction(Function *f) override;
 
   static char passID;
 };
@@ -45,13 +45,13 @@ struct LowerAffineApply : public FunctionPass {
 
 char LowerAffineApply::passID = 0;
 
-PassResult LowerAffineApply::runOnMLFunction(MLFunction *f) {
+PassResult LowerAffineApply::runOnMLFunction(Function *f) {
   f->emitError("ML Functions contain syntactically hidden affine_apply's that "
                "cannot be expanded");
   return failure();
 }
 
-PassResult LowerAffineApply::runOnCFGFunction(CFGFunction *f) {
+PassResult LowerAffineApply::runOnCFGFunction(Function *f) {
   for (BasicBlock &bb : *f) {
     // Handle iterators with care because we erase in the same loop.
     // In particular, step to the next element before erasing the current one.

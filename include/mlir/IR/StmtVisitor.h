@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines the base classes for MLFunction's statement visitors and
+// This file defines the base classes for Function's statement visitors and
 // walkers. A visit is a O(1) operation that visits just the node in question. A
 // walk visits the node it's called on as well as the node's descendants.
 //
@@ -29,7 +29,7 @@
 // resolved overloading, not virtual functions.
 //
 // For example, here is a walker that counts the number of for loops in an
-// MLFunction.
+// Function.
 //
 //  /// Declare the class.  Note that we derive from StmtWalker instantiated
 //  /// with _our new subclasses_ type.
@@ -45,7 +45,7 @@
 //    numLoops = lc.numLoops;
 //
 // There  are 'visit' methods for OperationInst, ForStmt, IfStmt, and
-// MLFunction, which recursively process all contained statements.
+// Function, which recursively process all contained statements.
 //
 // Note that if you don't implement visitXXX for some statement type,
 // the visitXXX method for Statement superclass will be invoked.
@@ -129,14 +129,14 @@ public:
     }
   }
 
-  // Define walkers for MLFunction and all MLFunction statement kinds.
-  void walk(MLFunction *f) {
+  // Define walkers for Function and all Function statement kinds.
+  void walk(Function *f) {
     static_cast<SubClass *>(this)->visitMLFunction(f);
     static_cast<SubClass *>(this)->walk(f->getBody()->begin(),
                                         f->getBody()->end());
   }
 
-  void walkPostOrder(MLFunction *f) {
+  void walkPostOrder(Function *f) {
     static_cast<SubClass *>(this)->walkPostOrder(f->getBody()->begin(),
                                                  f->getBody()->end());
     static_cast<SubClass *>(this)->visitMLFunction(f);
@@ -219,7 +219,7 @@ public:
   // called. These are typically O(1) complexity and shouldn't be recursively
   // processing their descendants in some way. When using RetTy, all of these
   // need to be overridden.
-  void visitMLFunction(MLFunction *f) {}
+  void visitMLFunction(Function *f) {}
   void visitForStmt(ForStmt *forStmt) {}
   void visitIfStmt(IfStmt *ifStmt) {}
   void visitOperationInst(OperationInst *opStmt) {}

@@ -62,7 +62,7 @@ using AffineBoundExprList = SmallVector<AffineExpr, 4>;
 //   0          <= d0 <=  511
 //   max(128,M) <= d1 <=  min(N-1,256)
 //
-// Symbols here aren't necessarily associated with MLFunction's symbols; they
+// Symbols here aren't necessarily associated with Function's symbols; they
 // could also correspond to outer loop IVs for example or anything abstract. The
 // binding to SSA values for dimensions/symbols is optional, and these are in an
 // abstract integer domain. As an example, to describe data accessed in a tile

@@ -70,7 +70,7 @@ struct LoopUnroll : public FunctionPass {
       : FunctionPass(&LoopUnroll::passID), unrollFactor(unrollFactor),
         unrollFull(unrollFull), getUnrollFactor(getUnrollFactor) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
 
   /// Unroll this for stmt. Returns false if nothing was done.
   bool runOnForStmt(ForStmt *forStmt);
@@ -83,7 +83,7 @@ struct LoopUnroll : public FunctionPass {
 
 char LoopUnroll::passID = 0;
 
-PassResult LoopUnroll::runOnMLFunction(MLFunction *f) {
+PassResult LoopUnroll::runOnMLFunction(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
   class InnermostLoopGatherer : public StmtWalker<InnermostLoopGatherer, bool> {
   public:

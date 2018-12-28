@@ -115,8 +115,8 @@ private:
   // Visit functions.
   void visitFunction(const Function *fn);
   void visitExtFunction(const Function *fn);
-  void visitCFGFunction(const CFGFunction *fn);
-  void visitMLFunction(const MLFunction *fn);
+  void visitCFGFunction(const Function *fn);
+  void visitMLFunction(const Function *fn);
   void visitStatement(const Statement *stmt);
   void visitForStmt(const ForStmt *forStmt);
   void visitIfStmt(const IfStmt *ifStmt);
@@ -177,14 +177,14 @@ void ModuleState::visitExtFunction(const Function *fn) {
   visitType(fn->getType());
 }
 
-void ModuleState::visitCFGFunction(const CFGFunction *fn) {
+void ModuleState::visitCFGFunction(const Function *fn) {
   visitType(fn->getType());
   for (auto &block : *fn) {
     for (auto &op : block.getStatements()) {
       if (auto *opInst = dyn_cast<OperationInst>(&op))
         visitOperation(opInst);
       else {
-        llvm_unreachable("IfStmt/ForStmt in a CFGFunction isn't supported");
+        llvm_unreachable("IfStmt/ForStmt in a CFG Function isn't supported");
       }
     }
   }
@@ -230,7 +230,7 @@ void ModuleState::visitStatement(const Statement *stmt) {
   }
 }
 
-void ModuleState::visitMLFunction(const MLFunction *fn) {
+void ModuleState::visitMLFunction(const Function *fn) {
   visitType(fn->getType());
   for (auto &stmt : *fn->getBody()) {
     ModuleState::visitStatement(&stmt);
@@ -1103,7 +1103,7 @@ private:
   unsigned nextValueID = 0;
   /// This is the ID to assign to the next induction variable.
   unsigned nextLoopID = 0;
-  /// This is the next ID to assign to an MLFunction argument.
+  /// This is the next ID to assign to a Function argument.
   unsigned nextArgumentID = 0;
 
   /// This is the next ID to assign when a name conflict is detected.
@@ -1163,9 +1163,9 @@ void FunctionPrinter::printDefaultOp(const OperationInst *op) {
 namespace {
 class CFGFunctionPrinter : public FunctionPrinter {
 public:
-  CFGFunctionPrinter(const CFGFunction *function, const ModulePrinter &other);
+  CFGFunctionPrinter(const Function *function, const ModulePrinter &other);
 
-  const CFGFunction *getFunction() const { return function; }
+  const Function *getFunction() const { return function; }
 
   void print();
   void print(const BasicBlock *block);
@@ -1183,7 +1183,7 @@ public:
   }
 
 private:
-  const CFGFunction *function;
+  const Function *function;
   DenseMap<const BasicBlock *, unsigned> basicBlockIDs;
 
   void numberValuesInBlock(const BasicBlock *block);
@@ -1192,7 +1192,7 @@ private:
 };
 } // end anonymous namespace
 
-CFGFunctionPrinter::CFGFunctionPrinter(const CFGFunction *function,
+CFGFunctionPrinter::CFGFunctionPrinter(const Function *function,
                                        const ModulePrinter &other)
     : FunctionPrinter(other), function(function) {
   // Each basic block gets a unique ID per function.
@@ -1319,9 +1319,9 @@ void ModulePrinter::printCFG(const Function *fn) {
 namespace {
 class MLFunctionPrinter : public FunctionPrinter {
 public:
-  MLFunctionPrinter(const MLFunction *function, const ModulePrinter &other);
+  MLFunctionPrinter(const Function *function, const ModulePrinter &other);
 
-  const MLFunction *getFunction() const { return function; }
+  const Function *getFunction() const { return function; }
 
   // Prints ML function.
   void print();
@@ -1349,12 +1349,12 @@ public:
 private:
   void numberValues();
 
-  const MLFunction *function;
+  const Function *function;
   int numSpaces;
 };
 } // end anonymous namespace
 
-MLFunctionPrinter::MLFunctionPrinter(const MLFunction *function,
+MLFunctionPrinter::MLFunctionPrinter(const Function *function,
                                      const ModulePrinter &other)
     : FunctionPrinter(other), function(function), numSpaces(0) {
   assert(function && "Cannot print nullptr function");
@@ -1381,7 +1381,7 @@ void MLFunctionPrinter::numberValues() {
 
   NumberValuesPass pass(this);
   // TODO: it'd be cleaner to have constant visitor instead of using const_cast.
-  pass.walk(const_cast<MLFunction *>(function));
+  pass.walk(const_cast<Function *>(function));
 }
 
 void MLFunctionPrinter::print() {

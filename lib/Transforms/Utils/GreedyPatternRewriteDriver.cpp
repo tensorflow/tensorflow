@@ -255,7 +255,7 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
   uniquedConstants.clear();
 }
 
-static void processMLFunction(MLFunction *fn,
+static void processMLFunction(Function *fn,
                               OwningRewritePatternList &&patterns) {
   class MLFuncRewriter : public WorklistRewriter {
   public:
@@ -287,7 +287,7 @@ static void processMLFunction(MLFunction *fn,
   driver.simplifyFunction(fn, rewriter);
 }
 
-static void processCFGFunction(CFGFunction *fn,
+static void processCFGFunction(Function *fn,
                                OwningRewritePatternList &&patterns) {
   class CFGFuncRewriter : public WorklistRewriter {
   public:

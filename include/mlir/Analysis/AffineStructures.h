@@ -417,7 +417,7 @@ public:
   /// the 'for' statement isn't found in the constraint system. Any new
   /// identifiers that are found in the bound operands of the 'for' statement
   /// are added as trailing identifiers (either dimensional or symbolic
-  /// depending on whether the operand is a valid MLFunction symbol).
+  /// depending on whether the operand is a valid ML Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.
   bool addForStmtDomain(const ForStmt &forStmt);
 

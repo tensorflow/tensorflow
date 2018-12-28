@@ -86,14 +86,13 @@ template <> struct GraphTraits<Inverse<const mlir::BasicBlock *>> {
 };
 
 template <>
-struct GraphTraits<mlir::CFGFunction *>
-    : public GraphTraits<mlir::BasicBlock *> {
-  using GraphType = mlir::CFGFunction *;
+struct GraphTraits<mlir::Function *> : public GraphTraits<mlir::BasicBlock *> {
+  using GraphType = mlir::Function *;
   using NodeRef = mlir::BasicBlock *;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::CFGFunction::iterator>;
+  using nodes_iterator = pointer_iterator<mlir::Function::iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn->begin());
   }
@@ -103,14 +102,14 @@ struct GraphTraits<mlir::CFGFunction *>
 };
 
 template <>
-struct GraphTraits<const mlir::CFGFunction *>
+struct GraphTraits<const mlir::Function *>
     : public GraphTraits<const mlir::BasicBlock *> {
-  using GraphType = const mlir::CFGFunction *;
+  using GraphType = const mlir::Function *;
   using NodeRef = const mlir::BasicBlock *;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::CFGFunction::const_iterator>;
+  using nodes_iterator = pointer_iterator<mlir::Function::const_iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn->begin());
   }
@@ -120,14 +119,14 @@ struct GraphTraits<const mlir::CFGFunction *>
 };
 
 template <>
-struct GraphTraits<Inverse<mlir::CFGFunction *>>
+struct GraphTraits<Inverse<mlir::Function *>>
     : public GraphTraits<Inverse<mlir::BasicBlock *>> {
-  using GraphType = Inverse<mlir::CFGFunction *>;
+  using GraphType = Inverse<mlir::Function *>;
   using NodeRef = NodeRef;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::CFGFunction::iterator>;
+  using nodes_iterator = pointer_iterator<mlir::Function::iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn.Graph->begin());
   }
@@ -137,14 +136,14 @@ struct GraphTraits<Inverse<mlir::CFGFunction *>>
 };
 
 template <>
-struct GraphTraits<Inverse<const mlir::CFGFunction *>>
+struct GraphTraits<Inverse<const mlir::Function *>>
     : public GraphTraits<Inverse<const mlir::BasicBlock *>> {
-  using GraphType = Inverse<const mlir::CFGFunction *>;
+  using GraphType = Inverse<const mlir::Function *>;
   using NodeRef = NodeRef;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::CFGFunction::const_iterator>;
+  using nodes_iterator = pointer_iterator<mlir::Function::const_iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn.Graph->begin());
   }
@@ -161,7 +160,7 @@ struct GraphTraits<mlir::StmtBlockList *>
 
   static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::CFGFunction::iterator>;
+  using nodes_iterator = pointer_iterator<mlir::Function::iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn->begin());
   }
@@ -178,7 +177,7 @@ struct GraphTraits<const mlir::StmtBlockList *>
 
   static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::CFGFunction::const_iterator>;
+  using nodes_iterator = pointer_iterator<mlir::Function::const_iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn->begin());
   }
@@ -195,7 +194,7 @@ struct GraphTraits<Inverse<mlir::StmtBlockList *>>
 
   static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::CFGFunction::iterator>;
+  using nodes_iterator = pointer_iterator<mlir::Function::iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn.Graph->begin());
   }
@@ -212,7 +211,7 @@ struct GraphTraits<Inverse<const mlir::StmtBlockList *>>
 
   static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
 
-  using nodes_iterator = pointer_iterator<mlir::CFGFunction::const_iterator>;
+  using nodes_iterator = pointer_iterator<mlir::Function::const_iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn.Graph->begin());
   }

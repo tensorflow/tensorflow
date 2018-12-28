@@ -32,11 +32,11 @@ Function::Function(Kind kind, Location location, StringRef name,
       location(location), type(type), blocks(this) {
   this->attrs = AttributeListStorage::get(attrs, getContext());
 
-  // Creating of an MLFunction automatically populates the entry block and
+  // Creating of a Function automatically populates the entry block and
   // arguments.
   // TODO(clattner): Unify this behavior.
   if (kind == Kind::MLFunc) {
-    // The body of an MLFunction always has one block.
+    // The body of an ML Function always has one block.
     auto *entry = new StmtBlock();
     blocks.push_back(entry);
 
@@ -158,18 +158,18 @@ bool Function::emitError(const Twine &message) const {
 }
 
 //===----------------------------------------------------------------------===//
-// MLFunction implementation.
+// Function implementation.
 //===----------------------------------------------------------------------===//
 
-const OperationInst *MLFunction::getReturnStmt() const {
+const OperationInst *Function::getReturnStmt() const {
   return cast<OperationInst>(&getBody()->back());
 }
 
-OperationInst *MLFunction::getReturnStmt() {
+OperationInst *Function::getReturnStmt() {
   return cast<OperationInst>(&getBody()->back());
 }
 
-void MLFunction::walk(std::function<void(OperationInst *)> callback) {
+void Function::walk(std::function<void(OperationInst *)> callback) {
   struct Walker : public StmtWalker<Walker> {
     std::function<void(OperationInst *)> const &callback;
     Walker(std::function<void(OperationInst *)> const &callback)
@@ -182,7 +182,7 @@ void MLFunction::walk(std::function<void(OperationInst *)> callback) {
   v.walk(this);
 }
 
-void MLFunction::walkPostOrder(std::function<void(OperationInst *)> callback) {
+void Function::walkPostOrder(std::function<void(OperationInst *)> callback) {
   struct Walker : public StmtWalker<Walker> {
     std::function<void(OperationInst *)> const &callback;
     Walker(std::function<void(OperationInst *)> const &callback)

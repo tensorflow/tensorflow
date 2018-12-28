@@ -34,10 +34,10 @@ struct PrintOpStatsPass : public FunctionPass, StmtWalker<PrintOpStatsPass> {
   PassResult runOnModule(Module *m) override;
 
   // Process CFG function considering the instructions in basic blocks.
-  PassResult runOnCFGFunction(CFGFunction *function) override;
+  PassResult runOnCFGFunction(Function *function) override;
 
   // Process ML functions and operation statments in ML functions.
-  PassResult runOnMLFunction(MLFunction *function) override;
+  PassResult runOnMLFunction(Function *function) override;
   void visitOperationInst(OperationInst *stmt);
 
   // Print summary of op stats.
@@ -61,7 +61,7 @@ PassResult PrintOpStatsPass::runOnModule(Module *m) {
   return result;
 }
 
-PassResult PrintOpStatsPass::runOnCFGFunction(CFGFunction *function) {
+PassResult PrintOpStatsPass::runOnCFGFunction(Function *function) {
   for (const auto &bb : *function)
     for (const auto &inst : bb)
       if (auto *op = dyn_cast<OperationInst>(&inst))
@@ -73,7 +73,7 @@ void PrintOpStatsPass::visitOperationInst(OperationInst *stmt) {
   ++opCount[stmt->getName().getStringRef()];
 }
 
-PassResult PrintOpStatsPass::runOnMLFunction(MLFunction *function) {
+PassResult PrintOpStatsPass::runOnMLFunction(Function *function) {
   walk(function);
   return success();
 }

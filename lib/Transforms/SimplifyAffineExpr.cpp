@@ -33,7 +33,7 @@ using llvm::report_fatal_error;
 namespace {
 
 /// Simplifies all affine expressions appearing in the operation statements of
-/// the MLFunction. This is mainly to test the simplifyAffineExpr method.
+/// the Function. This is mainly to test the simplifyAffineExpr method.
 //  TODO(someone): Gradually, extend this to all affine map references found in
 //  ML functions and CFG functions.
 struct SimplifyAffineStructures : public FunctionPass,
@@ -41,10 +41,10 @@ struct SimplifyAffineStructures : public FunctionPass,
   explicit SimplifyAffineStructures()
       : FunctionPass(&SimplifyAffineStructures::passID) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
   // Does nothing on CFG functions for now. No reusable walkers/visitors exist
   // for this yet? TODO(someone).
-  PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
+  PassResult runOnCFGFunction(Function *f) override { return success(); }
 
   void visitIfStmt(IfStmt *ifStmt);
   void visitOperationInst(OperationInst *opStmt);
@@ -86,7 +86,7 @@ void SimplifyAffineStructures::visitOperationInst(OperationInst *opStmt) {
   }
 }
 
-PassResult SimplifyAffineStructures::runOnMLFunction(MLFunction *f) {
+PassResult SimplifyAffineStructures::runOnMLFunction(Function *f) {
   walk(f);
   return success();
 }

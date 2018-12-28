@@ -53,11 +53,11 @@ public:
 
 private:
   bool convertBasicBlock(const BasicBlock &bb, bool ignoreArguments = false);
-  bool convertCFGFunction(const CFGFunction &cfgFunc, llvm::Function &llvmFunc);
+  bool convertCFGFunction(const Function &cfgFunc, llvm::Function &llvmFunc);
   bool convertFunctions(const Module &mlirModule, llvm::Module &llvmModule);
   bool convertInstruction(const OperationInst &inst);
 
-  void connectPHINodes(const CFGFunction &cfgFunc);
+  void connectPHINodes(const Function &cfgFunc);
 
   /// Type conversion functions.  If any conversion fails, report errors to the
   /// context of the MLIR type and return nullptr.
@@ -799,7 +799,7 @@ static const Value *getPHISourceValue(const BasicBlock *current,
   return nullptr;
 }
 
-void ModuleLowerer::connectPHINodes(const CFGFunction &cfgFunc) {
+void ModuleLowerer::connectPHINodes(const Function &cfgFunc) {
   // Skip the first block, it cannot be branched to and its arguments correspond
   // to the arguments of the LLVM function.
   for (auto it = std::next(cfgFunc.begin()), eit = cfgFunc.end(); it != eit;
@@ -821,7 +821,7 @@ void ModuleLowerer::connectPHINodes(const CFGFunction &cfgFunc) {
   }
 }
 
-bool ModuleLowerer::convertCFGFunction(const CFGFunction &cfgFunc,
+bool ModuleLowerer::convertCFGFunction(const Function &cfgFunc,
                                        llvm::Function &llvmFunc) {
   // Clear the block mapping.  Blocks belong to a function, no need to keep
   // blocks from the previous functions around.  Furthermore, we use this
@@ -868,10 +868,10 @@ bool ModuleLowerer::convertFunctions(const Module &mlirModule,
       continue;
     llvm::Function *llvmFunc = functionMapping[functionPtr];
 
-    // Add function arguments to the value remapping table.  In CFGFunction,
+    // Add function arguments to the value remapping table.  In Function,
     // arguments of the first block are those of the function.
     assert(!functionPtr->getBlocks().empty() &&
-           "expected at least one basic block in a CFGFunction");
+           "expected at least one basic block in a Function");
     const BasicBlock &firstBlock = *functionPtr->begin();
     for (auto arg : llvm::enumerate(llvmFunc->args())) {
       valueMapping[firstBlock.getArgument(arg.index())] = &arg.value();

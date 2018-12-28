@@ -77,7 +77,7 @@
 /// words, this pass operates on a scoped program slice. Furthermore, since we
 /// do not vectorize in the presence of conditionals for now, sliced chains are
 /// guaranteed not to escape the innermost scope, which has to be either the top
-/// MLFunction scope of the innermost loop scope, by construction. As a
+/// Function scope of the innermost loop scope, by construction. As a
 /// consequence, the implementation just starts from vector_transfer_write
 /// operations and builds the slice scoped the innermost loop enclosing the
 /// current vector_transfer_write. These assumptions and the implementation
@@ -196,7 +196,7 @@ struct MaterializationState {
 struct MaterializeVectorsPass : public FunctionPass {
   MaterializeVectorsPass() : FunctionPass(&MaterializeVectorsPass::passID) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext mlContext;
@@ -650,7 +650,7 @@ static bool emitSlice(MaterializationState *state,
 /// Additionally, this set is limited to statements in the same lexical scope
 /// because we currently disallow vectorization of defs that come from another
 /// scope.
-static bool materialize(MLFunction *f,
+static bool materialize(Function *f,
                         const SetVector<OperationInst *> &terminators,
                         MaterializationState *state) {
   DenseSet<Statement *> seen;
@@ -709,9 +709,9 @@ static bool materialize(MLFunction *f,
   return false;
 }
 
-PassResult MaterializeVectorsPass::runOnMLFunction(MLFunction *f) {
+PassResult MaterializeVectorsPass::runOnMLFunction(Function *f) {
   using matcher::Op;
-  LLVM_DEBUG(dbgs() << "\nMaterializeVectors on MLFunction\n");
+  LLVM_DEBUG(dbgs() << "\nMaterializeVectors on Function\n");
   LLVM_DEBUG(f->print(dbgs()));
 
   MaterializationState state;

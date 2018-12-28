@@ -47,7 +47,7 @@ class DominanceInfo : public DominatorTreeBase {
   using super = DominatorTreeBase;
 
 public:
-  DominanceInfo(CFGFunction *F);
+  DominanceInfo(Function *F);
 
   /// Return true if instruction A properly dominates instruction B.
   bool properlyDominates(const Instruction *a, const Instruction *b);

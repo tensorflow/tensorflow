@@ -2560,11 +2560,11 @@ OperationInst *FunctionParser::parseCustomOperation(
 
 namespace {
 
-/// This is a specialized parser for CFGFunction's, maintaining the state
+/// This is a specialized parser for Function's, maintaining the state
 /// transient to their bodies.
 class CFGFunctionParser : public FunctionParser {
 public:
-  CFGFunctionParser(ParserState &state, CFGFunction *function)
+  CFGFunctionParser(ParserState &state, Function *function)
       : FunctionParser(state, Kind::CFGFunc), function(function),
         builder(function) {}
 
@@ -2574,7 +2574,7 @@ public:
                                 SmallVectorImpl<Value *> &operands);
 
 private:
-  CFGFunction *function;
+  Function *function;
   llvm::StringMap<std::pair<BasicBlock *, SMLoc>> blocksByName;
   DenseMap<BasicBlock *, SMLoc> forwardRef;
 
@@ -2770,17 +2770,17 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// Refined parser for MLFunction bodies.
+/// Refined parser for Function bodies.
 class MLFunctionParser : public FunctionParser {
 public:
-  MLFunctionParser(ParserState &state, MLFunction *function)
+  MLFunctionParser(ParserState &state, Function *function)
       : FunctionParser(state, Kind::MLFunc), function(function),
         builder(function->getBody()) {}
 
   ParseResult parseFunctionBody();
 
 private:
-  MLFunction *function;
+  Function *function;
 
   /// This builder intentionally shadows the builder in the base class, with a
   /// more specific builder type.
@@ -3271,7 +3271,7 @@ ParseResult ModuleParser::parseAffineStructureDef() {
   return ParseSuccess;
 }
 
-/// Parse a (possibly empty) list of MLFunction arguments with types.
+/// Parse a (possibly empty) list of Function arguments with types.
 ///
 /// ml-argument      ::= ssa-id `:` type
 /// ml-argument-list ::= ml-argument (`,` ml-argument)* | /*empty*/

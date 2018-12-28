@@ -47,7 +47,7 @@
 using namespace mlir;
 
 ///
-/// Implements a high-level vectorization strategy on an MLFunction.
+/// Implements a high-level vectorization strategy on a Function.
 /// The abstraction used is that of super-vectors, which provide a single,
 /// compact, representation in the vector types, information that is expected
 /// to reduce the impact of the phase ordering problem
@@ -382,7 +382,7 @@ using namespace mlir;
 ///
 /// Examples:
 /// =========
-/// Consider the following MLFunction:
+/// Consider the following Function:
 /// ```mlir
 /// mlfunc @vector_add_2d(%M : index, %N : index) -> f32 {
 ///   %A = alloc (%M, %N) : memref<?x?xf32, 0>
@@ -651,7 +651,7 @@ namespace {
 struct Vectorize : public FunctionPass {
   Vectorize() : FunctionPass(&Vectorize::passID) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext MLContext;
@@ -1264,13 +1264,13 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
   return false;
 }
 
-/// Applies vectorization to the current MLFunction by searching over a bunch of
+/// Applies vectorization to the current Function by searching over a bunch of
 /// predetermined patterns.
-PassResult Vectorize::runOnMLFunction(MLFunction *f) {
+PassResult Vectorize::runOnMLFunction(Function *f) {
   for (auto pat : makePatterns()) {
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n******************************************");
-    LLVM_DEBUG(dbgs() << "\n[early-vect] new pattern on MLFunction\n");
+    LLVM_DEBUG(dbgs() << "\n[early-vect] new pattern on Function\n");
     LLVM_DEBUG(f->print(dbgs()));
     unsigned patternDepth = pat.getDepth();
     auto matches = pat.match(f);

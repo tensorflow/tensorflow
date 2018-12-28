@@ -65,7 +65,7 @@ static llvm::cl::opt<unsigned>
 
 namespace {
 /// Loop unroll jam pass. Currently, this just unroll jams the first
-/// outer loop in an MLFunction.
+/// outer loop in a Function.
 struct LoopUnrollAndJam : public FunctionPass {
   Optional<unsigned> unrollJamFactor;
   static const unsigned kDefaultUnrollJamFactor = 4;
@@ -74,7 +74,7 @@ struct LoopUnrollAndJam : public FunctionPass {
       : FunctionPass(&LoopUnrollAndJam::passID),
         unrollJamFactor(unrollJamFactor) {}
 
-  PassResult runOnMLFunction(MLFunction *f) override;
+  PassResult runOnMLFunction(Function *f) override;
   bool runOnForStmt(ForStmt *forStmt);
 
   static char passID;
@@ -88,7 +88,7 @@ FunctionPass *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }
 
-PassResult LoopUnrollAndJam::runOnMLFunction(MLFunction *f) {
+PassResult LoopUnrollAndJam::runOnMLFunction(Function *f) {
   // Currently, just the outermost loop from the first loop nest is
   // unroll-and-jammed by this pass. However, runOnForStmt can be called on any
   // for Stmt.
@@ -165,8 +165,8 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
   auto ubMap = forStmt->getUpperBoundMap();
 
   // Loops with max/min expressions won't be unrolled here (the output can't be
-  // expressed as an MLFunction in the general case). However, the right way to
-  // do such unrolling for an MLFunction would be to specialize the loop for the
+  // expressed as a Function in the general case). However, the right way to
+  // do such unrolling for a Function would be to specialize the loop for the
   // 'hotspot' case and unroll that hotspot.
   if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
     return false;

@@ -565,7 +565,7 @@ bool mlir::getIndexSet(ArrayRef<ForStmt *> forStmts,
 
 // Computes the iteration domain for 'opStmt' and populates 'indexSet', which
 // encapsulates the constraints involving loops surrounding 'opStmt' and
-// potentially involving any MLFunction symbols. The dimensional identifiers in
+// potentially involving any Function symbols. The dimensional identifiers in
 // 'indexSet' correspond to the loops surounding 'stmt' from outermost to
 // innermost.
 // TODO(andydavis) Add support to handle IfStmts surrounding 'stmt'.

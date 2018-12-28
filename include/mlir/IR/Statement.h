@@ -29,7 +29,6 @@
 
 namespace mlir {
 class Location;
-using MLFunction = Function;
 class StmtBlock;
 class ForStmt;
 class MLIRContext;
@@ -105,7 +104,7 @@ public:
   /// Returns the function that this statement is part of.
   /// The function is determined by traversing the chain of parent statements.
   /// Returns nullptr if the statement is unlinked.
-  MLFunction *getFunction() const;
+  Function *getFunction() const;
 
   /// Destroys this statement and its subclass data.
   void destroy();

@@ -108,7 +108,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   auto vectorMemRefType = MemRefType::get({1}, vectorType, {}, 0);
 
   // Get the ML function builder.
-  // We need access to the MLFunction builder stored internally in the
+  // We need access to the Function builder stored internally in the
   // MLFunctionLoweringRewriter general rewriting API does not provide
   // ML-specific functions (ForStmt and StmtBlock manipulation).  While we could
   // forward them or define a whole rewriting chain based on MLFunctionBuilder
@@ -233,7 +233,7 @@ struct LowerVectorTransfersPass
       : MLPatternLoweringPass(&LowerVectorTransfersPass::passID) {}
 
   std::unique_ptr<MLFuncGlobalLoweringState>
-  makeFuncWiseState(MLFunction *f) const override {
+  makeFuncWiseState(Function *f) const override {
     auto state = llvm::make_unique<LowerVectorTransfersState>();
     auto builder = FuncBuilder(f);
     builder.setInsertionPointToStart(f->getBody());

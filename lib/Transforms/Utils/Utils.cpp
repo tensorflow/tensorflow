@@ -434,7 +434,7 @@ void mlir::remapFunctionAttrs(
 
 void mlir::remapFunctionAttrs(
     Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
-  // Look at all instructions in a CFGFunction.
+  // Look at all instructions in a Function.
   if (fn.isCFG()) {
     for (auto &bb : fn.getBlockList()) {
       for (auto &inst : bb) {

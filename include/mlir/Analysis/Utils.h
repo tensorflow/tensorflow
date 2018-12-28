@@ -115,7 +115,7 @@ private:
 /// cases. The computed region's 'cst' field has exactly as many dimensional
 /// identifiers as the rank of the memref, and *potentially* additional symbolic
 /// identifiers which could include any of the loop IVs surrounding opStmt up
-/// until 'loopDepth' and another additional MLFunction symbols involved with
+/// until 'loopDepth' and another additional Function symbols involved with
 /// the access (for eg., those appear in affine_apply's, loop bounds, etc.).
 ///  For example, the memref region for this operation at loopDepth = 1 will be:
 ///

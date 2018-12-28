@@ -31,7 +31,6 @@ namespace mlir {
 class AffineMap;
 class ForStmt;
 class Function;
-using MLFunction = Function;
 class FuncBuilder;
 
 // Values that can be used to signal success/failure. This can be implicitly
@@ -66,9 +65,9 @@ bool loopUnrollJamUpToFactor(ForStmt *forStmt, uint64_t unrollJamFactor);
 /// was known to have a single iteration. Returns false otherwise.
 bool promoteIfSingleIteration(ForStmt *forStmt);
 
-/// Promotes all single iteration ForStmt's in the MLFunction, i.e., moves
+/// Promotes all single iteration ForStmt's in the Function, i.e., moves
 /// their body into the containing StmtBlock.
-void promoteSingleIterationLoops(MLFunction *f);
+void promoteSingleIterationLoops(Function *f);
 
 /// Returns the lower bound of the cleanup loop when unrolling a loop
 /// with the specified unroll factor.

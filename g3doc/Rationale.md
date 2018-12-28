@@ -580,7 +580,7 @@ consideration on demand. We will revisit these discussions when we have more
 implementation experience and learn more about the challenges and limitations of
 our current design in practice.
 
-### MLFunction representation alternatives: polyhedral schedule lists vs polyhedral schedules trees vs affine loop/If forms {#mlfunction-representation-alternatives-polyhedral-schedule-lists-vs-polyhedral-schedules-trees-vs-affine-loop-if-forms}
+### ML Function representation alternatives: polyhedral schedule lists vs polyhedral schedules trees vs affine loop/If forms {#mlfunction-representation-alternatives-polyhedral-schedule-lists-vs-polyhedral-schedules-trees-vs-affine-loop-if-forms}
 
 The current MLIR uses a representation of polyhedral schedules using a tree of
 if/for loops. We extensively debated the tradeoffs involved in the typical
@@ -609,8 +609,9 @@ At a high level, we have two alternatives here:
 1.  Having two different forms of MLFunctions: an affine loop tree form
     (AffineLoopTreeFunction) and a polyhedral schedule tree form as two
     different forms of MLFunctions. Or in effect, having four different forms
-    for functions in MLIR instead of three: CFGFunction, AffineLoopTreeFunction,
-    Polyhedral Schedule Tree function, and external functions.
+    for functions in MLIR instead of three: CFG Function,
+    AffineLoopTreeFunction, Polyhedral Schedule Tree function, and external
+    functions.
 
 #### Schedule Tree Representation for MLFunctions {#schedule-tree-representation-for-mlfunctions}
 
@@ -785,7 +786,7 @@ extfunc @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
     representation. 2(b) requires no change, but impacts how cost models look at
     index and layout maps.
 
-### MLFunction Extensions for "Escaping Scalars" {#mlfunction-extensions-for-"escaping-scalars"}
+### ML Function Extensions for "Escaping Scalars" {#mlfunction-extensions-for-"escaping-scalars"}
 
 We considered providing a representation for SSA values that are live out of
 if/else conditional bodies or for loops of ML functions. We ultimately abandoned

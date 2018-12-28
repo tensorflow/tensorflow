@@ -71,7 +71,7 @@ MLIRContext *IROperandOwner::getContext() const {
 //===----------------------------------------------------------------------===//
 
 /// Return the function that this argument is defined in.
-MLFunction *BlockArgument::getFunction() {
+Function *BlockArgument::getFunction() {
   if (auto *owner = getOwner())
     return owner->getFunction();
   return nullptr;

@@ -29,10 +29,10 @@ namespace mlir {
 
 class FunctionPass;
 
-/// Creates a pass to check memref accesses in an MLFunction.
+/// Creates a pass to check memref accesses in an ML Function.
 FunctionPass *createMemRefBoundCheckPass();
 
-/// Creates a pass to check memref access dependences in an MLFunction.
+/// Creates a pass to check memref access dependences in an ML Function.
 FunctionPass *createMemRefDependenceCheckPass();
 
 } // end namespace mlir
