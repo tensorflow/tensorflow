@@ -625,9 +625,8 @@ mlfunc @mod_deps() {
   %c7 = constant 7.0 : f32
   for %i0 = 0 to 10 {
     %a0 = affine_apply (d0) -> (d0 mod 2) (%i0)
-    // Results are conservative here since constraint information after
-    // flattening isn't being completely added. Will be done in the next CL.
-    // The third and the fifth dependence below shouldn't have existed.
+    // Results are conservative here since we currently don't have a way to
+    // represent strided sets in FlatAffineConstraints.
     %v0 = load %m[%a0] : memref<100xf32>
     // expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
     // expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
@@ -688,14 +687,15 @@ mlfunc @mod_div_3d() {
     for %i1 = 0 to 8 {
       for %i2 = 0 to 8 {
         %idx = affine_apply (d0, d1, d2) -> (d0 floordiv 4, d1 mod 2, d2 floordiv 4) (%i0, %i1, %i2)
-        // Dependences below are conservative due to TODO(b/122081337).
         store %c0, %M[%idx#0, %idx#1, %idx#2] : memref<2 x 2 x 2 x i32>
-        // expected-note@-1 {{dependence from 0 to 0 at depth 1 = [1, 7][-7, 7][-7, 7]}}
-        // expected-note@-2 {{dependence from 0 to 0 at depth 2 = [0, 0][2, 7][-7, 7]}}
-        // expected-note@-3 {{dependence from 0 to 0 at depth 3 = [0, 0][0, 0][1, 7]}}
+        // expected-note@-1 {{dependence from 0 to 0 at depth 1 = [1, 3][-7, 7][-3, 3]}}
+        // expected-note@-2 {{dependence from 0 to 0 at depth 2 = [0, 0][2, 7][-3, 3]}}
+        // expected-note@-3 {{dependence from 0 to 0 at depth 3 = [0, 0][0, 0][1, 3]}}
         // expected-note@-4 {{dependence from 0 to 0 at depth 4 = false}}
       }
     }
   }
   return
 }
+
+// TODO(bondhugula): add more test cases exercising mod/div affine_apply's.

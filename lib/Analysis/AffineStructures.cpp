@@ -1102,13 +1102,15 @@ AffineMap FlatAffineConstraints::toAffineMapFromEq(
     unsigned idx, unsigned pos, MLIRContext *context,
     SmallVectorImpl<unsigned> *nonZeroDimIds,
     SmallVectorImpl<unsigned> *nonZeroSymbolIds) {
-  assert(getNumLocalIds() == 0);
-  assert(idx < getNumEqualities());
+  assert(getNumLocalIds() == 0 && "local ids not supported");
+  assert(idx < getNumEqualities() && "invalid equality position");
+
   int64_t v = atEq(idx, pos);
   // Return if coefficient at (idx, pos) is zero or does not divide constant.
   if (v == 0 || (atEq(idx, getNumIds()) % v != 0))
     return AffineMap::Null();
-  // Check that coefficient at 'pos' divides all other coefficient in row 'idx'.
+  // Check that coefficient at 'pos' divides all other coefficients in row
+  // 'idx'.
   for (unsigned j = 0, e = getNumIds(); j < e; ++j) {
     if (j != pos && (atEq(idx, j) % v != 0))
       return AffineMap::Null();
@@ -1441,7 +1443,7 @@ void FlatAffineConstraints::constantFoldIdRange(unsigned pos, unsigned num) {
 //       i + s0 + 16 <= d0 <= i + s0  + 31, returns 16.
 Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
     unsigned pos, SmallVectorImpl<int64_t> *lb) const {
-  assert(pos < getNumDimIds() && "Invalid position");
+  assert(pos < getNumDimIds() && "Invalid identifier position");
   assert(getNumLocalIds() == 0);
 
   // TODO(bondhugula): eliminate all remaining dimensional identifiers (other
