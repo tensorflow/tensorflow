@@ -163,10 +163,13 @@ protected:
 /// automatically inserted at an insertion point.  The builder is copyable.
 class FuncBuilder : public Builder {
 public:
-  /// Create an ML function builder and set the insertion point to the start of
+  /// Create a function builder and set the insertion point to the start of
   /// the function.
   FuncBuilder(Function *func) : Builder(func->getContext()), function(func) {
-    setInsertionPoint(&func->front(), func->front().begin());
+    if (!func->empty())
+      setInsertionPoint(&func->front(), func->front().begin());
+    else
+      clearInsertionPoint();
   }
 
   /// Create a function builder and set insertion point to the given statement,
