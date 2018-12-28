@@ -373,6 +373,85 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         ["test.py:1: tf.train.piecewise_constant_decay requires manual check."])
     self.assertIn("tf.train.piecewise_constant_decay has been changed", report)
 
+  def testMetrics(self):
+    metrics = [
+        "accuracy",
+        "auc",
+        "average_precision_at_k",
+        "false_negatives",
+        "false_negatives_at_thresholds",
+        "false_positives",
+        "false_positives_at_thresholds",
+        "mean",
+        "mean_absolute_error",
+        "mean_cosine_distance",
+        "mean_iou",
+        "mean_per_class_accuracy",
+        "mean_relative_error",
+        "mean_squared_error",
+        "mean_tensor",
+        "percentage_below",
+        "precision",
+        "precision_at_k",
+        "precision_at_thresholds",
+        "precision_at_top_k",
+        "recall",
+        "recall_at_k",
+        "recall_at_thresholds",
+        "recall_at_top_k",
+        "root_mean_squared_error",
+        "sensitivity_at_specificity",
+        "sparse_average_precision_at_k",
+        "sparse_precision_at_k",
+        "specificity_at_sensitivity",
+        "true_negatives",
+        "true_negatives_at_thresholds",
+        "true_positives",
+        "true_positives_at_thresholds",
+    ]
+    for m in metrics:
+      ns = "tf.metrics." + m
+      text = ns + "(a, b)"
+      _, report, errors, new_text = self._upgrade(text)
+      self.assertEqual("tf.compat.v1.metrics." + m + "(a, b)", new_text)
+      self.assertEqual(errors, ["test.py:1: %s requires manual check." % ns])
+      self.assertIn(
+          "WARNING: tf.metrics have been converted to object oriented"
+          " versions in TF 2.0 and after. The metric function calls have been "
+          "converted to compat.v1 for backward compatibility. Please update "
+          "these calls to the TF 2.0 versions.", report)
+
+  def testLosses(self):
+    losses = [
+        "absolute_difference",
+        "add_loss",
+        "compute_weighted_loss",
+        "cosine_distance",
+        "get_losses",
+        "get_regularization_loss",
+        "get_regularization_losses",
+        "get_total_loss",
+        "hinge_loss",
+        "huber_loss",
+        "log_loss",
+        "mean_pairwise_squared_error",
+        "mean_squared_error",
+        "sigmoid_cross_entropy",
+        "softmax_cross_entropy",
+        "sparse_softmax_cross_entropy",
+    ]
+    for l in losses:
+      ns = "tf.losses." + l
+      text = ns + "(a, b)"
+      _, report, errors, new_text = self._upgrade(text)
+      self.assertEqual("tf.compat.v1.losses." + l + "(a, b)", new_text)
+      self.assertEqual(errors, ["test.py:1: %s requires manual check." % ns])
+      self.assertIn(
+          "WARNING: tf.losses have been converted to object oriented"
+          " versions in TF 2.0 and after. The loss function calls have been "
+          "converted to compat.v1 for backward compatibility. Please update "
+          "these calls to the TF 2.0 versions.", report)
+
   def testEstimatorLossReductionChange(self):
     classes = [
         "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
@@ -778,4 +857,3 @@ class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
 if __name__ == "__main__":
   test_lib.main()
-
