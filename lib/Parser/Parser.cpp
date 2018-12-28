@@ -899,8 +899,8 @@ Attribute Parser::parseAttribute(Type type) {
           if (!(type = parseType()))
             return nullptr;
         } else {
-          // Default to F32 when no type is specified.
-          type = builder.getF32Type();
+          // Default to F64 when no type is specified.
+          type = builder.getF64Type();
         }
       }
       if (!type.isa<FloatType>())

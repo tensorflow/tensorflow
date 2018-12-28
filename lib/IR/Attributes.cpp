@@ -88,7 +88,16 @@ APFloat FloatAttr::getValue() const {
 
 Type FloatAttr::getType() const { return static_cast<ImplType *>(attr)->type; }
 
-double FloatAttr::getDouble() const { return getValue().convertToDouble(); }
+double FloatAttr::getValueAsDouble() const {
+  const auto &semantics = getType().cast<FloatType>().getFloatSemantics();
+  auto value = getValue();
+  bool losesInfo = false; // ignored
+  if (&semantics != &APFloat::IEEEdouble()) {
+    value.convert(APFloat::IEEEdouble(), APFloat::rmNearestTiesToEven,
+                  &losesInfo);
+  }
+  return value.convertToDouble();
+}
 
 StringAttr::StringAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 

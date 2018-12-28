@@ -184,7 +184,9 @@ public:
 
   APFloat getValue() const;
 
-  double getDouble() const;
+  /// This function is used to convert the value to a double, even if it loses
+  /// precision.
+  double getValueAsDouble() const;
 
   Type getType() const;
 
