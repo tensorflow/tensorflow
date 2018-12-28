@@ -56,9 +56,9 @@ OpAsmParser::~OpAsmParser() {}
 // Operation class
 //===----------------------------------------------------------------------===//
 
-Operation::Operation(bool isInstruction, OperationName name,
-                     ArrayRef<NamedAttribute> attrs, MLIRContext *context)
-    : nameAndIsInstruction(name, isInstruction) {
+Operation::Operation(OperationName name, ArrayRef<NamedAttribute> attrs,
+                     Location location, MLIRContext *context)
+    : Statement(Kind::Operation, location), name(name) {
   this->attrs = AttributeListStorage::get(attrs, context);
 
 #ifndef NDEBUG
@@ -69,39 +69,10 @@ Operation::Operation(bool isInstruction, OperationName name,
 
 Operation::~Operation() {}
 
-/// Return the context this operation is associated with.
-MLIRContext *Operation::getContext() const {
-  return llvm::cast<OperationStmt>(this)->getContext();
-}
-
-/// The source location the operation was defined or derived from.  Note that
-/// it is possible for this pointer to be null.
-Location Operation::getLoc() const {
-  return llvm::cast<OperationStmt>(this)->getLoc();
-}
-
-/// Set the source location the operation was defined or derived from.
-void Operation::setLoc(Location loc) {
-  llvm::cast<OperationStmt>(this)->setLoc(loc);
-}
 
 /// Return the function this operation is defined in.
 Function *Operation::getOperationFunction() {
   return llvm::cast<OperationStmt>(this)->getFunction();
-}
-
-/// Return the number of operands this operation has.
-unsigned Operation::getNumOperands() const {
-  return llvm::cast<OperationStmt>(this)->getNumOperands();
-}
-
-Value *Operation::getOperand(unsigned idx) {
-  return llvm::cast<OperationStmt>(this)->getOperand(idx);
-}
-
-void Operation::setOperand(unsigned idx, Value *value) {
-  auto *stmt = llvm::cast<OperationStmt>(this);
-  stmt->setOperand(idx, value);
 }
 
 /// Return the number of results this operation has.
@@ -162,11 +133,6 @@ bool Operation::use_empty() const {
     if (!result->use_empty())
       return false;
   return true;
-}
-
-void Operation::moveBefore(Operation *existingOp) {
-  return llvm::cast<OperationStmt>(this)->moveBefore(
-      llvm::cast<OperationStmt>(existingOp));
 }
 
 ArrayRef<NamedAttribute> Operation::getAttrs() const {
@@ -272,36 +238,12 @@ bool Operation::constantFold(ArrayRef<Attribute> operands,
   return true;
 }
 
-void Operation::print(raw_ostream &os) const {
-  return llvm::cast<OperationStmt>(this)->print(os);
-}
-
-void Operation::dump() const {
-  return llvm::cast<OperationStmt>(this)->dump();
-}
-
 /// Methods for support type inquiry through isa, cast, and dyn_cast.
 bool Operation::classof(const Statement *stmt) {
   return stmt->getKind() == Statement::Kind::Operation;
 }
 bool Operation::classof(const IROperandOwner *ptr) {
-  return ptr->getKind() == IROperandOwner::Kind::Instruction ||
-         ptr->getKind() == IROperandOwner::Kind::OperationStmt;
-}
-
-/// We need to teach the LLVM cast/dyn_cast etc logic how to cast from an
-/// IROperandOwner* to Operation*.  This can't be done with a simple pointer to
-/// pointer cast because the pointer adjustment depends on whether the Owner is
-/// dynamically an Instruction or Statement, because of multiple inheritance.
-Operation *
-llvm::cast_convert_val<mlir::Operation, mlir::IROperandOwner *,
-                       mlir::IROperandOwner *>::doit(const mlir::IROperandOwner
-                                                         *value) {
-  // TODO(clattner): obsolete this.
-  const Operation *op;
-  auto *ptr = cast<OperationStmt>(value);
-  op = ptr;
-  return const_cast<Operation *>(op);
+  return ptr->getKind() == IROperandOwner::Kind::OperationStmt;
 }
 
 //===----------------------------------------------------------------------===//

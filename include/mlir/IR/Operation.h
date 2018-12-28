@@ -20,7 +20,6 @@
 
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Statement.h"
-#include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/Twine.h"
 
 namespace mlir {
@@ -40,16 +39,8 @@ using Instruction = Statement;
 /// MLIR.  This class is the common implementation details behind Instruction
 /// and OperationStmt.
 ///
-class Operation {
+class Operation : public Statement {
 public:
-  /// Return the context this operation is associated with.
-  MLIRContext *getContext() const;
-
-  /// The source location the operation was defined or derived from.
-  Location getLoc() const;
-
-  /// Set the source location the operation was defined or derived from.
-  void setLoc(Location loc);
 
   /// Return the function this operation is defined in.  This has a verbose
   /// name to avoid name lookup ambiguities.
@@ -60,16 +51,7 @@ public:
   }
 
   /// The name of an operation is the key identifier for it.
-  OperationName getName() const { return nameAndIsInstruction.getPointer(); }
-
-  /// Return the number of operands this operation has.
-  unsigned getNumOperands() const;
-
-  Value *getOperand(unsigned idx);
-  const Value *getOperand(unsigned idx) const {
-    return const_cast<Operation *>(this)->getOperand(idx);
-  }
-  void setOperand(unsigned idx, Value *value);
+  OperationName getName() const { return name; }
 
   // Support non-const operand iteration.
   using operand_iterator = OperandIterator<Operation, Value>;
@@ -125,11 +107,6 @@ public:
 
   /// Return true if there are no users of any results of this operation.
   bool use_empty() const;
-
-  /// Unlink this operation from its current block and insert it right before
-  /// `existingOp` which may be in the same or another block of the same
-  /// function.
-  void moveBefore(Operation *existingOp);
 
   // Attributes.  Operations may optionally carry a list of attributes that
   // associate constants to names.  Attributes may be dynamically added and
@@ -252,14 +229,6 @@ public:
     return OpClass::isClassFor(this);
   }
 
-  enum class OperationKind { Instruction, Statement };
-  // This is used to implement the dynamic casting logic, but you shouldn't
-  // call it directly.  Use something like isa<Instruction>(someOp) instead.
-  OperationKind getOperationKind() const {
-    return nameAndIsInstruction.getInt() ? OperationKind::Instruction
-                                         : OperationKind::Statement;
-  }
-
   // Returns whether the operation is commutative.
   bool isCommutative() const {
     if (auto *absOp = getAbstractOperation())
@@ -292,25 +261,21 @@ public:
   bool constantFold(ArrayRef<Attribute> operands,
                     SmallVectorImpl<Attribute> &results) const;
 
-  void print(raw_ostream &os) const;
-  void dump() const;
-
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const Statement *stmt);
   static bool classof(const IROperandOwner *ptr);
 
 protected:
-  Operation(bool isInstruction, OperationName name,
-            ArrayRef<NamedAttribute> attrs, MLIRContext *context);
+  Operation(OperationName name, ArrayRef<NamedAttribute> attrs,
+            Location location, MLIRContext *context);
   ~Operation();
 
 private:
   Operation(const Operation&) = delete;
   void operator=(const Operation&) = delete;
 
-  /// This holds the name of the operation, and a bool.  The bool is true if
-  /// this operation is an Instruction, false if it is a OperationStmt.
-  llvm::PointerIntPair<OperationName, 1, bool> nameAndIsInstruction;
+  /// This holds the name of the operation.
+  OperationName name;
 
   /// This holds general named attributes for the operation.
   AttributeListStorage *attrs;
@@ -430,29 +395,5 @@ inline auto Operation::getResultTypes() const
   return {result_type_begin(), result_type_end()};
 }
 } // end namespace mlir
-
-/// We need to teach the LLVM cast/dyn_cast etc logic how to cast from an
-/// IROperandOwner* to Operation*.  This can't be done with a simple pointer to
-/// pointer cast because the pointer adjustment depends on whether the Owner is
-/// dynamically an Instruction or Statement, because of multiple inheritance.
-namespace llvm {
-template <>
-struct cast_convert_val<mlir::Operation, mlir::IROperandOwner *,
-                        mlir::IROperandOwner *> {
-  static mlir::Operation *doit(const mlir::IROperandOwner *value);
-};
-template <typename From>
-struct cast_convert_val<mlir::Operation, From *, From *> {
-  template <typename FromImpl,
-            typename std::enable_if<std::is_base_of<
-                mlir::IROperandOwner, FromImpl>::value>::type * = nullptr>
-  static mlir::Operation *doit_impl(const FromImpl *value) {
-    return cast_convert_val<mlir::Operation, mlir::IROperandOwner *,
-                            mlir::IROperandOwner *>::doit(value);
-  }
-
-  static mlir::Operation *doit(const From *value) { return doit_impl(value); }
-};
-} // namespace llvm
 
 #endif

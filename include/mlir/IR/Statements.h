@@ -38,7 +38,6 @@ using OperationInst = OperationStmt;
 /// Operation statements represent operations inside ML functions.
 class OperationStmt final
     : public Operation,
-      public Statement,
       private llvm::TrailingObjects<OperationStmt, StmtResult, StmtBlockOperand,
                                     unsigned, StmtOperand> {
 public:
@@ -50,16 +49,6 @@ public:
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
-
-  using Operation::isTerminator;
-  using Statement::dump;
-  using Statement::emitError;
-  using Statement::emitNote;
-  using Statement::emitWarning;
-  using Statement::getLoc;
-  using Statement::moveBefore;
-  using Statement::print;
-  using Statement::setLoc;
 
   /// Check if this statement is a return statement.
   bool isReturn() const;
@@ -259,9 +248,7 @@ public:
   static bool classof(const IROperandOwner *ptr) {
     return ptr->getKind() == IROperandOwner::Kind::OperationStmt;
   }
-  static bool classof(const Operation *op) {
-    return op->getOperationKind() == OperationKind::Statement;
-  }
+  static bool classof(const Operation *op) { return true; }
 
 private:
   unsigned numOperands;

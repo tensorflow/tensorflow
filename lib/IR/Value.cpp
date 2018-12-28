@@ -79,12 +79,6 @@ MLIRContext *IROperandOwner::getContext() const {
     return cast<ForStmt>(this)->getContext();
   case Kind::IfStmt:
     return cast<IfStmt>(this)->getContext();
-
-  case Kind::Instruction:
-    // If we have an instruction, we can efficiently get this from the function
-    // the instruction is in.
-    auto *fn = cast<Instruction>(this)->getFunction();
-    return fn ? fn->getContext() : nullptr;
   }
 }
 

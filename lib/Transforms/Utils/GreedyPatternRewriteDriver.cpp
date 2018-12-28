@@ -169,19 +169,8 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
       // top of the function.
       entry = op;
 
-      // TODO: If we make terminators into Operations then we could turn this
-      // into a nice Operation::moveBefore(Operation*) method.  We just need the
-      // guarantee that a block is non-empty.
-      // TODO(clattner): This can all be simplified away now.
-      if (currentFunction->isCFG()) {
-        auto &entryBB = currentFunction->front();
-        cast<OperationInst>(op)->moveBefore(&entryBB, entryBB.begin());
-      } else {
-        auto *mlFunc = cast<MLFunction>(currentFunction);
-        cast<OperationStmt>(op)->moveBefore(mlFunc->getBody(),
-                                            mlFunc->getBody()->begin());
-      }
-
+      auto &entryBB = currentFunction->front();
+      op->moveBefore(&entryBB, entryBB.begin());
       continue;
     }
 

@@ -360,8 +360,7 @@ OperationStmt::OperationStmt(Location location, OperationName name,
                              unsigned numSuccessors,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
-    : Operation(/*isInstruction=*/false, name, attributes, context),
-      Statement(Kind::Operation, location), numOperands(numOperands),
+    : Operation(name, attributes, location, context), numOperands(numOperands),
       numResults(numResults), numSuccs(numSuccessors) {}
 
 OperationStmt::~OperationStmt() {

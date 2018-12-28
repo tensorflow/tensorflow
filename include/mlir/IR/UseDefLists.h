@@ -79,7 +79,6 @@ public:
     OperationStmt,
     ForStmt,
     IfStmt,
-    Instruction,
 
     /// These enums define ranges used for classof implementations.
     STMT_LAST = IfStmt,
