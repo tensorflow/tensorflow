@@ -2815,12 +2815,16 @@ CORE_CPU_BASE_HDRS = GRAPH_HDRS + [
     "framework/versions.h",
     "common_runtime/process_function_library_runtime.h",
     "common_runtime/function.h",
+    "common_runtime/scoped_allocator.h",
+    "common_runtime/scoped_allocator_mgr.h",
 ]
 
 tf_cuda_library(
     name = "core_cpu_base",
     srcs = [
         "common_runtime/eval_const_tensor.cc",
+        "common_runtime/scoped_allocator.cc",
+        "common_runtime/scoped_allocator_mgr.cc",
         "common_runtime/shape_refiner.cc",
         "common_runtime/shape_refiner.h",
         "framework/versions.h",
@@ -2888,8 +2892,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/rendezvous_mgr.h",
     "common_runtime/rendezvous_util.h",
     "common_runtime/ring_reducer.h",
-    "common_runtime/scoped_allocator.h",
-    "common_runtime/scoped_allocator_mgr.h",
     "common_runtime/session_factory.h",
     "common_runtime/single_threaded_cpu_device.h",
     "common_runtime/stats_publisher_interface.h",
@@ -2947,8 +2949,6 @@ tf_cuda_library(
         "common_runtime/rendezvous_mgr.cc",
         "common_runtime/rendezvous_util.cc",
         "common_runtime/ring_reducer.cc",
-        "common_runtime/scoped_allocator.cc",
-        "common_runtime/scoped_allocator_mgr.cc",
         "common_runtime/session.cc",
         "common_runtime/session_factory.cc",
         "common_runtime/session_options.cc",
@@ -2976,8 +2976,9 @@ tf_cuda_library(
         ":proto_text",
         ":protos_all_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "//third_party/eigen3",
-        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/utils:functions",
     ] + mkl_deps(),
     alwayslink = 1,
 )
@@ -4200,7 +4201,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "common_runtime_process_function_library_runtime_test",
     size = "small",
     srcs = ["common_runtime/process_function_library_runtime_test.cc"],
@@ -4209,6 +4210,7 @@ tf_cc_test(
         ":core_cpu",
         ":core_cpu_internal",
         ":framework",
+        ":framework_internal",
         ":lib",
         ":test",
         ":test_main",
@@ -4217,6 +4219,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:resource_variable_ops",
     ],
 )
 
