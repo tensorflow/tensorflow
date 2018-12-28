@@ -775,7 +775,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     // a full sum reduction, which causes larger numerical error
     // than usual cases.
     if (image_width == filter_size && image_height == filter_size) {
-      test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-4);
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
       test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
     }
@@ -825,7 +825,7 @@ class FusedConv2DOpTest : public OpsTestBase {
     // a full sum reduction, which causes larger numerical error
     // than usual cases.
     if (image_width == filter_size && image_height == filter_size) {
-      test::ExpectTensorNear<T>(conv_2d, fused_conv_2d, 1e-4);
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
     } else {
       test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
     }
