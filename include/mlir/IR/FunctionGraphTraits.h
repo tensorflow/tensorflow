@@ -28,9 +28,9 @@
 #include "llvm/ADT/GraphTraits.h"
 
 namespace llvm {
-template <> struct GraphTraits<mlir::BasicBlock *> {
-  using ChildIteratorType = mlir::BasicBlock::succ_iterator;
-  using Node = mlir::BasicBlock;
+template <> struct GraphTraits<mlir::Block *> {
+  using ChildIteratorType = mlir::Block::succ_iterator;
+  using Node = mlir::Block;
   using NodeRef = Node *;
 
   static NodeRef getEntryNode(NodeRef bb) { return bb; }
@@ -41,9 +41,9 @@ template <> struct GraphTraits<mlir::BasicBlock *> {
   static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
 };
 
-template <> struct GraphTraits<const mlir::BasicBlock *> {
-  using ChildIteratorType = mlir::BasicBlock::const_succ_iterator;
-  using Node = const mlir::BasicBlock;
+template <> struct GraphTraits<const mlir::Block *> {
+  using ChildIteratorType = mlir::Block::const_succ_iterator;
+  using Node = const mlir::Block;
   using NodeRef = Node *;
 
   static NodeRef getEntryNode(NodeRef bb) { return bb; }
@@ -54,9 +54,9 @@ template <> struct GraphTraits<const mlir::BasicBlock *> {
   static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
 };
 
-template <> struct GraphTraits<Inverse<mlir::BasicBlock *>> {
-  using ChildIteratorType = mlir::BasicBlock::pred_iterator;
-  using Node = mlir::BasicBlock;
+template <> struct GraphTraits<Inverse<mlir::Block *>> {
+  using ChildIteratorType = mlir::Block::pred_iterator;
+  using Node = mlir::Block;
   using NodeRef = Node *;
   static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
     return inverseGraph.Graph;
@@ -69,9 +69,9 @@ template <> struct GraphTraits<Inverse<mlir::BasicBlock *>> {
   }
 };
 
-template <> struct GraphTraits<Inverse<const mlir::BasicBlock *>> {
-  using ChildIteratorType = mlir::BasicBlock::const_pred_iterator;
-  using Node = const mlir::BasicBlock;
+template <> struct GraphTraits<Inverse<const mlir::Block *>> {
+  using ChildIteratorType = mlir::Block::const_pred_iterator;
+  using Node = const mlir::Block;
   using NodeRef = Node *;
 
   static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
@@ -86,9 +86,9 @@ template <> struct GraphTraits<Inverse<const mlir::BasicBlock *>> {
 };
 
 template <>
-struct GraphTraits<mlir::Function *> : public GraphTraits<mlir::BasicBlock *> {
+struct GraphTraits<mlir::Function *> : public GraphTraits<mlir::Block *> {
   using GraphType = mlir::Function *;
-  using NodeRef = mlir::BasicBlock *;
+  using NodeRef = mlir::Block *;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
@@ -103,9 +103,9 @@ struct GraphTraits<mlir::Function *> : public GraphTraits<mlir::BasicBlock *> {
 
 template <>
 struct GraphTraits<const mlir::Function *>
-    : public GraphTraits<const mlir::BasicBlock *> {
+    : public GraphTraits<const mlir::Block *> {
   using GraphType = const mlir::Function *;
-  using NodeRef = const mlir::BasicBlock *;
+  using NodeRef = const mlir::Block *;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
@@ -120,7 +120,7 @@ struct GraphTraits<const mlir::Function *>
 
 template <>
 struct GraphTraits<Inverse<mlir::Function *>>
-    : public GraphTraits<Inverse<mlir::BasicBlock *>> {
+    : public GraphTraits<Inverse<mlir::Block *>> {
   using GraphType = Inverse<mlir::Function *>;
   using NodeRef = NodeRef;
 
@@ -137,7 +137,7 @@ struct GraphTraits<Inverse<mlir::Function *>>
 
 template <>
 struct GraphTraits<Inverse<const mlir::Function *>>
-    : public GraphTraits<Inverse<const mlir::BasicBlock *>> {
+    : public GraphTraits<Inverse<const mlir::Block *>> {
   using GraphType = Inverse<const mlir::Function *>;
   using NodeRef = NodeRef;
 
@@ -153,10 +153,9 @@ struct GraphTraits<Inverse<const mlir::Function *>>
 };
 
 template <>
-struct GraphTraits<mlir::StmtBlockList *>
-    : public GraphTraits<mlir::BasicBlock *> {
-  using GraphType = mlir::StmtBlockList *;
-  using NodeRef = mlir::BasicBlock *;
+struct GraphTraits<mlir::BlockList *> : public GraphTraits<mlir::Block *> {
+  using GraphType = mlir::BlockList *;
+  using NodeRef = mlir::Block *;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
@@ -170,10 +169,10 @@ struct GraphTraits<mlir::StmtBlockList *>
 };
 
 template <>
-struct GraphTraits<const mlir::StmtBlockList *>
-    : public GraphTraits<const mlir::BasicBlock *> {
-  using GraphType = const mlir::StmtBlockList *;
-  using NodeRef = const mlir::BasicBlock *;
+struct GraphTraits<const mlir::BlockList *>
+    : public GraphTraits<const mlir::Block *> {
+  using GraphType = const mlir::BlockList *;
+  using NodeRef = const mlir::Block *;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
 
@@ -187,9 +186,9 @@ struct GraphTraits<const mlir::StmtBlockList *>
 };
 
 template <>
-struct GraphTraits<Inverse<mlir::StmtBlockList *>>
-    : public GraphTraits<Inverse<mlir::BasicBlock *>> {
-  using GraphType = Inverse<mlir::StmtBlockList *>;
+struct GraphTraits<Inverse<mlir::BlockList *>>
+    : public GraphTraits<Inverse<mlir::Block *>> {
+  using GraphType = Inverse<mlir::BlockList *>;
   using NodeRef = NodeRef;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
@@ -204,9 +203,9 @@ struct GraphTraits<Inverse<mlir::StmtBlockList *>>
 };
 
 template <>
-struct GraphTraits<Inverse<const mlir::StmtBlockList *>>
-    : public GraphTraits<Inverse<const mlir::BasicBlock *>> {
-  using GraphType = Inverse<const mlir::StmtBlockList *>;
+struct GraphTraits<Inverse<const mlir::BlockList *>>
+    : public GraphTraits<Inverse<const mlir::Block *>> {
+  using GraphType = Inverse<const mlir::BlockList *>;
   using NodeRef = NodeRef;
 
   static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }

@@ -182,7 +182,7 @@ struct CFGCSE : public CSEImpl {
       // Check to see if we need to process this node.
       if (!currentNode->processed) {
         currentNode->processed = true;
-        simplifyBasicBlock(currentNode->node->getBlock());
+        simplifyBlock(currentNode->node->getBlock());
         // Otherwise, check to see if we need to process a child node.
       } else if (currentNode->childIterator != currentNode->node->end()) {
         auto *childNode = *(currentNode->childIterator++);
@@ -199,7 +199,7 @@ struct CFGCSE : public CSEImpl {
     eraseDeadOperations();
   }
 
-  void simplifyBasicBlock(BasicBlock *bb) {
+  void simplifyBlock(Block *bb) {
     for (auto &i : *bb)
       if (auto *opInst = dyn_cast<OperationInst>(&i))
         simplifyOperation(opInst);

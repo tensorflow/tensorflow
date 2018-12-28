@@ -44,8 +44,8 @@ bool mlir::properlyDominates(const Statement &a, const Statement &b) {
 
   if (a.getBlock() == b.getBlock()) {
     // Do a linear scan to determine whether b comes after a.
-    auto aIter = StmtBlock::const_iterator(a);
-    auto bIter = StmtBlock::const_iterator(b);
+    auto aIter = Block::const_iterator(a);
+    auto bIter = Block::const_iterator(b);
     auto aBlockStart = a.getBlock()->begin();
     while (bIter != aBlockStart) {
       --bIter;
@@ -56,7 +56,7 @@ bool mlir::properlyDominates(const Statement &a, const Statement &b) {
   }
 
   // Traverse up b's hierarchy to check if b's block is contained in a's.
-  if (const auto *bAncestor = a.getBlock()->findAncestorStmtInBlock(b))
+  if (const auto *bAncestor = a.getBlock()->findAncestorInstInBlock(b))
     // a and bAncestor are in the same block; check if the former dominates it.
     return dominates(a, *bAncestor);
 
@@ -333,26 +333,26 @@ template bool mlir::boundCheckLoadOrStoreOp(OpPointer<LoadOp> loadOp,
 template bool mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
                                             bool emitError);
 
-// Returns in 'positions' the StmtBlock positions of 'stmt' in each ancestor
-// StmtBlock from the StmtBlock containing statement, stopping at 'limitBlock'.
-static void findStmtPosition(const Statement *stmt, StmtBlock *limitBlock,
+// Returns in 'positions' the Block positions of 'stmt' in each ancestor
+// Block from the Block containing statement, stopping at 'limitBlock'.
+static void findStmtPosition(const Statement *stmt, Block *limitBlock,
                              SmallVectorImpl<unsigned> *positions) {
-  StmtBlock *block = stmt->getBlock();
+  Block *block = stmt->getBlock();
   while (block != limitBlock) {
-    int stmtPosInBlock = block->findStmtPosInBlock(*stmt);
+    int stmtPosInBlock = block->findInstPositionInBlock(*stmt);
     assert(stmtPosInBlock >= 0);
     positions->push_back(stmtPosInBlock);
-    stmt = block->getContainingStmt();
+    stmt = block->getContainingInst();
     block = stmt->getBlock();
   }
   std::reverse(positions->begin(), positions->end());
 }
 
-// Returns the Statement in a possibly nested set of StmtBlocks, where the
+// Returns the Statement in a possibly nested set of Blocks, where the
 // position of the statement is represented by 'positions', which has a
-// StmtBlock position for each level of nesting.
+// Block position for each level of nesting.
 static Statement *getStmtAtPosition(ArrayRef<unsigned> positions,
-                                    unsigned level, StmtBlock *block) {
+                                    unsigned level, Block *block) {
   unsigned i = 0;
   for (auto &stmt : *block) {
     if (i != positions[level]) {

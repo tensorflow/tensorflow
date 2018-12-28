@@ -1,4 +1,4 @@
-//===- StmtBlock.cpp - MLIR Statement Instruction Classes -----------------===//
+//===- Block.cpp - MLIR Block and BlockList Classes -----------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,12 +15,12 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/StmtBlock.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 using namespace mlir;
 
-StmtBlock::~StmtBlock() {
+Block::~Block() {
   clear();
 
   llvm::DeleteContainerPointers(arguments);
@@ -28,13 +28,13 @@ StmtBlock::~StmtBlock() {
 
 /// Returns the closest surrounding statement that contains this block or
 /// nullptr if this is a top-level statement block.
-Statement *StmtBlock::getContainingStmt() {
-  return parent ? parent->getContainingStmt() : nullptr;
+Statement *Block::getContainingInst() {
+  return parent ? parent->getContainingInst() : nullptr;
 }
 
-Function *StmtBlock::getFunction() {
-  StmtBlock *block = this;
-  while (auto *stmt = block->getContainingStmt()) {
+Function *Block::getFunction() {
+  Block *block = this;
+  while (auto *stmt = block->getContainingInst()) {
     block = stmt->getBlock();
     if (!block)
       return nullptr;
@@ -44,34 +44,34 @@ Function *StmtBlock::getFunction() {
   return nullptr;
 }
 
-/// Returns 'stmt' if 'stmt' lies in this block, or otherwise finds the ancestor
-/// statement of 'stmt' that lies in this block. Returns nullptr if the latter
-/// fails.
-const Statement *
-StmtBlock::findAncestorStmtInBlock(const Statement &stmt) const {
+/// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
+/// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
+/// the latter fails.
+const Instruction *
+Block::findAncestorInstInBlock(const Instruction &inst) const {
   // Traverse up the statement hierarchy starting from the owner of operand to
   // find the ancestor statement that resides in the block of 'forStmt'.
-  const auto *currStmt = &stmt;
-  while (currStmt->getBlock() != this) {
-    currStmt = currStmt->getParentStmt();
-    if (!currStmt)
+  const auto *currInst = &inst;
+  while (currInst->getBlock() != this) {
+    currInst = currInst->getParentStmt();
+    if (!currInst)
       return nullptr;
   }
-  return currStmt;
+  return currInst;
 }
 
 //===----------------------------------------------------------------------===//
 // Argument list management.
 //===----------------------------------------------------------------------===//
 
-BlockArgument *StmtBlock::addArgument(Type type) {
+BlockArgument *Block::addArgument(Type type) {
   auto *arg = new BlockArgument(type, this);
   arguments.push_back(arg);
   return arg;
 }
 
 /// Add one argument to the argument list for each type specified in the list.
-auto StmtBlock::addArguments(ArrayRef<Type> types)
+auto Block::addArguments(ArrayRef<Type> types)
     -> llvm::iterator_range<args_iterator> {
   arguments.reserve(arguments.size() + types.size());
   auto initialSize = arguments.size();
@@ -81,7 +81,7 @@ auto StmtBlock::addArguments(ArrayRef<Type> types)
   return {arguments.data() + initialSize, arguments.data() + arguments.size()};
 }
 
-void StmtBlock::eraseArgument(unsigned index) {
+void Block::eraseArgument(unsigned index) {
   assert(index < arguments.size());
 
   // Delete the argument.
@@ -100,12 +100,12 @@ void StmtBlock::eraseArgument(unsigned index) {
 // Terminator management
 //===----------------------------------------------------------------------===//
 
-OperationInst *StmtBlock::getTerminator() {
+OperationInst *Block::getTerminator() {
   if (empty())
     return nullptr;
 
   // Check if the last instruction is a terminator.
-  auto &backInst = statements.back();
+  auto &backInst = back();
   auto *opStmt = dyn_cast<OperationInst>(&backInst);
   if (!opStmt || !opStmt->isTerminator())
     return nullptr;
@@ -113,14 +113,14 @@ OperationInst *StmtBlock::getTerminator() {
 }
 
 /// Return true if this block has no predecessors.
-bool StmtBlock::hasNoPredecessors() const { return pred_begin() == pred_end(); }
+bool Block::hasNoPredecessors() const { return pred_begin() == pred_end(); }
 
 // Indexed successor access.
-unsigned StmtBlock::getNumSuccessors() const {
+unsigned Block::getNumSuccessors() const {
   return getTerminator()->getNumSuccessors();
 }
 
-StmtBlock *StmtBlock::getSuccessor(unsigned i) {
+Block *Block::getSuccessor(unsigned i) {
   return getTerminator()->getSuccessor(i);
 }
 
@@ -130,7 +130,7 @@ StmtBlock *StmtBlock::getSuccessor(unsigned i) {
 /// Note that multiple edges from a single block (e.g. if you have a cond
 /// branch with the same block as the true/false destinations) is not
 /// considered to be a single predecessor.
-StmtBlock *StmtBlock::getSinglePredecessor() {
+Block *Block::getSinglePredecessor() {
   auto it = pred_begin();
   if (it == pred_end())
     return nullptr;
@@ -143,9 +143,9 @@ StmtBlock *StmtBlock::getSinglePredecessor() {
 // Other
 //===----------------------------------------------------------------------===//
 
-/// Unlink this BasicBlock from its Function and delete it.
-void BasicBlock::eraseFromFunction() {
-  assert(getFunction() && "BasicBlock has no parent");
+/// Unlink this Block from its Function and delete it.
+void Block::eraseFromFunction() {
+  assert(getFunction() && "Block has no parent");
   getFunction()->getBlocks().erase(this);
 }
 
@@ -156,21 +156,21 @@ void BasicBlock::eraseFromFunction() {
 /// the original basic block, an unconditional branch is added to the original
 /// block (going to the new block), and the rest of the instructions in the
 /// original block are moved to the new BB, including the old terminator.  The
-/// newly formed BasicBlock is returned.
+/// newly formed Block is returned.
 ///
 /// This function invalidates the specified iterator.
-BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
+Block *Block::splitBlock(iterator splitBefore) {
   // Start by creating a new basic block, and insert it immediate after this
   // one in the containing function.
-  auto newBB = new BasicBlock();
+  auto newBB = new Block();
   getFunction()->getBlocks().insert(++Function::iterator(this), newBB);
   auto branchLoc =
       splitBefore == end() ? getTerminator()->getLoc() : splitBefore->getLoc();
 
   // Move all of the operations from the split point to the end of the function
   // into the new block.
-  newBB->getStatements().splice(newBB->end(), getStatements(), splitBefore,
-                                end());
+  newBB->getInstructions().splice(newBB->end(), getInstructions(), splitBefore,
+                                  end());
 
   // Create an unconditional branch to the new block, and move our terminator
   // to the new block.
@@ -179,58 +179,54 @@ BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
 }
 
 //===----------------------------------------------------------------------===//
-// StmtBlockList
+// BlockList
 //===----------------------------------------------------------------------===//
 
-StmtBlockList::StmtBlockList(Function *container) : container(container) {}
+BlockList::BlockList(Function *container) : container(container) {}
 
-StmtBlockList::StmtBlockList(Statement *container) : container(container) {}
+BlockList::BlockList(Statement *container) : container(container) {}
 
-Function *StmtBlockList::getFunction() { return getContainingFunction(); }
-
-Statement *StmtBlockList::getContainingStmt() {
+Statement *BlockList::getContainingInst() {
   return container.dyn_cast<Statement *>();
 }
 
-Function *StmtBlockList::getContainingFunction() {
+Function *BlockList::getContainingFunction() {
   return container.dyn_cast<Function *>();
 }
 
-StmtBlockList *llvm::ilist_traits<::mlir::StmtBlock>::getContainingBlockList() {
-  size_t Offset(size_t(
-      &((StmtBlockList *)nullptr->*StmtBlockList::getSublistAccess(nullptr))));
-  iplist<StmtBlock> *Anchor(static_cast<iplist<StmtBlock> *>(this));
-  return reinterpret_cast<StmtBlockList *>(reinterpret_cast<char *>(Anchor) -
-                                           Offset);
+BlockList *llvm::ilist_traits<::mlir::Block>::getContainingBlockList() {
+  size_t Offset(
+      size_t(&((BlockList *)nullptr->*BlockList::getSublistAccess(nullptr))));
+  iplist<Block> *Anchor(static_cast<iplist<Block> *>(this));
+  return reinterpret_cast<BlockList *>(reinterpret_cast<char *>(Anchor) -
+                                       Offset);
 }
 
 /// This is a trait method invoked when a basic block is added to a function.
 /// We keep the function pointer up to date.
-void llvm::ilist_traits<::mlir::StmtBlock>::addNodeToList(StmtBlock *block) {
+void llvm::ilist_traits<::mlir::Block>::addNodeToList(Block *block) {
   assert(!block->parent && "already in a function!");
   block->parent = getContainingBlockList();
 }
 
 /// This is a trait method invoked when an instruction is removed from a
 /// function.  We keep the function pointer up to date.
-void llvm::ilist_traits<::mlir::StmtBlock>::removeNodeFromList(
-    StmtBlock *block) {
+void llvm::ilist_traits<::mlir::Block>::removeNodeFromList(Block *block) {
   assert(block->parent && "not already in a function!");
   block->parent = nullptr;
 }
 
 /// This is a trait method invoked when an instruction is moved from one block
 /// to another.  We keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::StmtBlock>::transferNodesFromList(
-    ilist_traits<StmtBlock> &otherList, block_iterator first,
-    block_iterator last) {
+void llvm::ilist_traits<::mlir::Block>::transferNodesFromList(
+    ilist_traits<Block> &otherList, block_iterator first, block_iterator last) {
   // If we are transferring instructions within the same function, the parent
   // pointer doesn't need to be updated.
   auto *curParent = getContainingBlockList();
   if (curParent == otherList.getContainingBlockList())
     return;
 
-  // Update the 'parent' member of each StmtBlock.
+  // Update the 'parent' member of each Block.
   for (; first != last; ++first)
     first->parent = curParent;
 }

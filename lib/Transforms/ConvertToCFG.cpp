@@ -50,7 +50,7 @@ public:
 
 private:
   Value *getConstantIndexValue(int64_t value);
-  void visitStmtBlock(StmtBlock *stmtBlock);
+  void visitBlock(Block *Block);
   Value *buildMinMaxReductionSeq(
       Location loc, CmpIPredicate predicate,
       llvm::iterator_range<OperationInst::result_iterator> values);
@@ -117,8 +117,8 @@ Value *FunctionConverter::getConstantIndexValue(int64_t value) {
 }
 
 // Visit all statements in the given statement block.
-void FunctionConverter::visitStmtBlock(StmtBlock *stmtBlock) {
-  for (auto &stmt : *stmtBlock)
+void FunctionConverter::visitBlock(Block *Block) {
+  for (auto &stmt : *Block)
     this->visit(&stmt);
 }
 
@@ -214,13 +214,13 @@ Value *FunctionConverter::buildMinMaxReductionSeq(
 void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   // First, store the loop insertion location so that we can go back to it after
   // creating the new blocks (block creation updates the insertion point).
-  BasicBlock *loopInsertionPoint = builder.getInsertionBlock();
+  Block *loopInsertionPoint = builder.getInsertionBlock();
 
   // Create blocks so that they appear in more human-readable order in the
   // output.
-  BasicBlock *loopInitBlock = builder.createBlock();
-  BasicBlock *loopConditionBlock = builder.createBlock();
-  BasicBlock *loopBodyFirstBlock = builder.createBlock();
+  Block *loopInitBlock = builder.createBlock();
+  Block *loopConditionBlock = builder.createBlock();
+  Block *loopBodyFirstBlock = builder.createBlock();
 
   // At the loop insertion location, branch immediately to the loop init block.
   builder.setInsertionPointToEnd(loopInsertionPoint);
@@ -238,7 +238,7 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   // Walking manually because we need custom logic before and after traversing
   // the list of children.
   builder.setInsertionPointToEnd(loopBodyFirstBlock);
-  visitStmtBlock(forStmt->getBody());
+  visitBlock(forStmt->getBody());
 
   // Builder point is currently at the last block of the loop body.  Append the
   // induction variable stepping to this block and branch back to the exit
@@ -254,7 +254,7 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
                            nextIvValue);
 
   // Create post-loop block here so that it appears after all loop body blocks.
-  BasicBlock *postLoopBlock = builder.createBlock();
+  Block *postLoopBlock = builder.createBlock();
 
   builder.setInsertionPointToEnd(loopInitBlock);
   // Compute loop bounds using affine_apply after remapping its operands.
@@ -378,15 +378,15 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
   // the false branch as soon as one condition fails.  `cond_br` requires
   // another block as a target when the condition is true, and that block will
   // contain the next condition.
-  BasicBlock *ifInsertionBlock = builder.getInsertionBlock();
-  SmallVector<BasicBlock *, 4> ifConditionExtraBlocks;
+  Block *ifInsertionBlock = builder.getInsertionBlock();
+  SmallVector<Block *, 4> ifConditionExtraBlocks;
   unsigned numConstraints = integerSet.getNumConstraints();
   ifConditionExtraBlocks.reserve(numConstraints - 1);
   for (unsigned i = 0, e = numConstraints - 1; i < e; ++i) {
     ifConditionExtraBlocks.push_back(builder.createBlock());
   }
-  BasicBlock *thenBlock = builder.createBlock();
-  BasicBlock *elseBlock = builder.createBlock();
+  Block *thenBlock = builder.createBlock();
+  Block *elseBlock = builder.createBlock();
   builder.setInsertionPointToEnd(ifInsertionBlock);
 
   // Implement short-circuit logic.  For each affine expression in the 'if'
@@ -405,7 +405,7 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
                  ifConditionExtraBlocks)) {
     AffineExpr constraintExpr = std::get<0>(tuple);
     bool isEquality = std::get<1>(tuple);
-    BasicBlock *nextBlock = std::get<2>(tuple);
+    Block *nextBlock = std::get<2>(tuple);
 
     // Build and apply an affine map.
     auto affineMap =
@@ -429,19 +429,19 @@ void FunctionConverter::visitIfStmt(IfStmt *ifStmt) {
 
   // Recursively traverse the 'then' block.
   builder.setInsertionPointToEnd(thenBlock);
-  visitStmtBlock(ifStmt->getThen());
-  BasicBlock *lastThenBlock = builder.getInsertionBlock();
+  visitBlock(ifStmt->getThen());
+  Block *lastThenBlock = builder.getInsertionBlock();
 
   // Recursively traverse the 'else' block if present.
   builder.setInsertionPointToEnd(elseBlock);
   if (ifStmt->hasElse())
-    visitStmtBlock(ifStmt->getElse());
-  BasicBlock *lastElseBlock = builder.getInsertionBlock();
+    visitBlock(ifStmt->getElse());
+  Block *lastElseBlock = builder.getInsertionBlock();
 
   // Create the continuation block here so that it appears lexically after the
   // 'then' and 'else' blocks, branch from end of 'then' and 'else' SESE regions
   // to the continuation block.
-  BasicBlock *continuationBlock = builder.createBlock();
+  Block *continuationBlock = builder.createBlock();
   builder.setInsertionPointToEnd(lastThenBlock);
   builder.create<BranchOp>(ifStmt->getLoc(), continuationBlock);
   builder.setInsertionPointToEnd(lastElseBlock);

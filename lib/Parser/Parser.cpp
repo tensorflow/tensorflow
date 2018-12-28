@@ -1921,7 +1921,7 @@ public:
   parseCustomOperation(const CreateOperationFunction &createOpFunc);
 
   /// Parse a single operation successor and it's operand list.
-  virtual bool parseSuccessorAndUseList(BasicBlock *&dest,
+  virtual bool parseSuccessorAndUseList(Block *&dest,
                                         SmallVectorImpl<Value *> &operands) = 0;
 
 protected:
@@ -2398,7 +2398,7 @@ public:
     return false;
   }
 
-  bool parseSuccessorAndUseList(BasicBlock *&dest,
+  bool parseSuccessorAndUseList(Block *&dest,
                                 SmallVectorImpl<Value *> &operands) override {
     // Defer successor parsing to the function parsers.
     return parser.parseSuccessorAndUseList(dest, operands);
@@ -2570,13 +2570,13 @@ public:
 
   ParseResult parseFunctionBody();
 
-  bool parseSuccessorAndUseList(BasicBlock *&dest,
+  bool parseSuccessorAndUseList(Block *&dest,
                                 SmallVectorImpl<Value *> &operands);
 
 private:
   Function *function;
-  llvm::StringMap<std::pair<BasicBlock *, SMLoc>> blocksByName;
-  DenseMap<BasicBlock *, SMLoc> forwardRef;
+  llvm::StringMap<std::pair<Block *, SMLoc>> blocksByName;
+  DenseMap<Block *, SMLoc> forwardRef;
 
   /// This builder intentionally shadows the builder in the base class, with a
   /// more specific builder type.
@@ -2585,10 +2585,10 @@ private:
   /// Get the basic block with the specified name, creating it if it doesn't
   /// already exist.  The location specified is the point of use, which allows
   /// us to diagnose references to blocks that are not defined precisely.
-  BasicBlock *getBlockNamed(StringRef name, SMLoc loc) {
+  Block *getBlockNamed(StringRef name, SMLoc loc) {
     auto &blockAndLoc = blocksByName[name];
     if (!blockAndLoc.first) {
-      blockAndLoc.first = new BasicBlock();
+      blockAndLoc.first = new Block();
       forwardRef[blockAndLoc.first] = loc;
       function->push_back(blockAndLoc.first);
       blockAndLoc.second = loc;
@@ -2597,9 +2597,9 @@ private:
     return blockAndLoc.first;
   }
 
-  // Define the basic block with the specified name. Returns the BasicBlock* or
+  // Define the basic block with the specified name. Returns the Block* or
   // nullptr in the case of redefinition.
-  BasicBlock *defineBlockNamed(StringRef name, SMLoc loc) {
+  Block *defineBlockNamed(StringRef name, SMLoc loc) {
     auto &blockAndLoc = blocksByName[name];
     if (!blockAndLoc.first) {
       blockAndLoc.first = builder.createBlock();
@@ -2621,10 +2621,10 @@ private:
   }
 
   ParseResult
-  parseOptionalBasicBlockArgList(SmallVectorImpl<BlockArgument *> &results,
-                                 BasicBlock *owner);
+  parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
+                            Block *owner);
 
-  ParseResult parseBasicBlock();
+  ParseResult parseBlock();
 };
 } // end anonymous namespace
 
@@ -2634,7 +2634,7 @@ private:
 ///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
 ///
 bool CFGFunctionParser::parseSuccessorAndUseList(
-    BasicBlock *&dest, SmallVectorImpl<Value *> &operands) {
+    Block *&dest, SmallVectorImpl<Value *> &operands) {
   // Verify branch is identifier and get the matching block.
   if (!getToken().is(Token::bare_identifier))
     return emitError("expected basic block name");
@@ -2656,8 +2656,8 @@ bool CFGFunctionParser::parseSuccessorAndUseList(
 ///
 ///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
 ///
-ParseResult CFGFunctionParser::parseOptionalBasicBlockArgList(
-    SmallVectorImpl<BlockArgument *> &results, BasicBlock *owner) {
+ParseResult CFGFunctionParser::parseOptionalBlockArgList(
+    SmallVectorImpl<BlockArgument *> &results, Block *owner) {
   if (getToken().is(Token::r_brace))
     return ParseSuccess;
 
@@ -2684,12 +2684,12 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
 
   // Parse the list of blocks.
   while (!consumeIf(Token::r_brace))
-    if (parseBasicBlock())
+    if (parseBlock())
       return ParseFailure;
 
   // Verify that all referenced blocks were defined.
   if (!forwardRef.empty()) {
-    SmallVector<std::pair<const char *, BasicBlock *>, 4> errors;
+    SmallVector<std::pair<const char *, Block *>, 4> errors;
     // Iteration over the map isn't deterministic, so sort by source location.
     for (auto entry : forwardRef)
       errors.push_back({entry.second.getPointer(), entry.first});
@@ -2721,7 +2721,7 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
 ///   bb-id       ::= bare-id
 ///   bb-arg-list ::= `(` ssa-id-and-type-list? `)`
 ///
-ParseResult CFGFunctionParser::parseBasicBlock() {
+ParseResult CFGFunctionParser::parseBlock() {
   SMLoc nameLoc = getToken().getLoc();
   auto name = getTokenSpelling();
   if (parseToken(Token::bare_identifier, "expected basic block name"))
@@ -2736,7 +2736,7 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
   // If an argument list is present, parse it.
   if (consumeIf(Token::l_paren)) {
     SmallVector<BlockArgument *, 8> bbArgs;
-    if (parseOptionalBasicBlockArgList(bbArgs, block) ||
+    if (parseOptionalBlockArgList(bbArgs, block) ||
         parseToken(Token::r_paren, "expected ')' to end argument list"))
       return ParseFailure;
   }
@@ -2794,11 +2794,11 @@ private:
   ParseResult parseBound(SmallVectorImpl<Value *> &operands, AffineMap &map,
                          bool isLower);
   ParseResult parseIfStmt();
-  ParseResult parseElseClause(StmtBlock *elseClause);
-  ParseResult parseStatements(StmtBlock *block);
-  ParseResult parseStmtBlock(StmtBlock *block);
+  ParseResult parseElseClause(Block *elseClause);
+  ParseResult parseStatements(Block *block);
+  ParseResult parseBlock(Block *block);
 
-  bool parseSuccessorAndUseList(BasicBlock *&dest,
+  bool parseSuccessorAndUseList(Block *&dest,
                                 SmallVectorImpl<Value *> &operands) {
     assert(false && "MLFunctions do not have terminators with successors.");
     return true;
@@ -2810,7 +2810,7 @@ ParseResult MLFunctionParser::parseFunctionBody() {
   auto braceLoc = getToken().getLoc();
 
   // Parse statements in this function.
-  if (parseStmtBlock(function->getBody()))
+  if (parseBlock(function->getBody()))
     return ParseFailure;
 
   return finalizeFunction(function, braceLoc);
@@ -2874,7 +2874,7 @@ ParseResult MLFunctionParser::parseForStmt() {
   // If parsing of the for statement body fails,
   // MLIR contains for statement with those nested statements that have been
   // successfully parsed.
-  if (parseStmtBlock(forStmt->getBody()))
+  if (parseBlock(forStmt->getBody()))
     return ParseFailure;
 
   // Reset insertion point to the current block.
@@ -3118,12 +3118,12 @@ ParseResult MLFunctionParser::parseIfStmt() {
   IfStmt *ifStmt =
       builder.createIf(getEncodedSourceLocation(loc), operands, set);
 
-  StmtBlock *thenClause = ifStmt->getThen();
+  Block *thenClause = ifStmt->getThen();
 
   // When parsing of an if statement body fails, the IR contains
   // the if statement with the portion of the body that has been
   // successfully parsed.
-  if (parseStmtBlock(thenClause))
+  if (parseBlock(thenClause))
     return ParseFailure;
 
   if (consumeIf(Token::kw_else)) {
@@ -3138,19 +3138,19 @@ ParseResult MLFunctionParser::parseIfStmt() {
   return ParseSuccess;
 }
 
-ParseResult MLFunctionParser::parseElseClause(StmtBlock *elseClause) {
+ParseResult MLFunctionParser::parseElseClause(Block *elseClause) {
   if (getToken().is(Token::kw_if)) {
     builder.setInsertionPointToEnd(elseClause);
     return parseIfStmt();
   }
 
-  return parseStmtBlock(elseClause);
+  return parseBlock(elseClause);
 }
 
 ///
 /// Parse a list of statements ending with `return` or `}`
 ///
-ParseResult MLFunctionParser::parseStatements(StmtBlock *block) {
+ParseResult MLFunctionParser::parseStatements(Block *block) {
   auto createOpFunc = [&](const OperationState &state) -> OperationInst * {
     return builder.createOperation(state);
   };
@@ -3188,7 +3188,7 @@ ParseResult MLFunctionParser::parseStatements(StmtBlock *block) {
 ///
 /// Parse `{` ml-stmt* `}`
 ///
-ParseResult MLFunctionParser::parseStmtBlock(StmtBlock *block) {
+ParseResult MLFunctionParser::parseBlock(Block *block) {
   if (parseToken(Token::l_brace, "expected '{' before statement list") ||
       parseStatements(block) ||
       parseToken(Token::r_brace, "expected '}' after statement list"))

@@ -264,7 +264,7 @@ public:
   virtual bool parseOperand(OperandType &result) = 0;
 
   /// Parse a single operation successor and it's operand list.
-  virtual bool parseSuccessorAndUseList(BasicBlock *&dest,
+  virtual bool parseSuccessorAndUseList(Block *&dest,
                                         SmallVectorImpl<Value *> &operands) = 0;
 
   /// These are the supported delimiters around operand lists, used by

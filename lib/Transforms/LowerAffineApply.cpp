@@ -52,7 +52,7 @@ PassResult LowerAffineApply::runOnMLFunction(Function *f) {
 }
 
 PassResult LowerAffineApply::runOnCFGFunction(Function *f) {
-  for (BasicBlock &bb : *f) {
+  for (Block &bb : *f) {
     // Handle iterators with care because we erase in the same loop.
     // In particular, step to the next element before erasing the current one.
     for (auto it = bb.begin(); it != bb.end();) {

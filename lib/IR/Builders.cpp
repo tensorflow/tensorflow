@@ -275,8 +275,8 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 /// 'insertBefore' basic block is passed, the block will be placed before the
 /// specified block.  If not, the block will be appended to the end of the
 /// current function.
-StmtBlock *FuncBuilder::createBlock(StmtBlock *insertBefore) {
-  StmtBlock *b = new StmtBlock();
+Block *FuncBuilder::createBlock(Block *insertBefore) {
+  Block *b = new Block();
 
   // If we are supposed to insert before a specific block, do so, otherwise add
   // the block to the end of the function.
@@ -294,7 +294,7 @@ OperationInst *FuncBuilder::createOperation(const OperationState &state) {
   auto *op = OperationInst::create(state.location, state.name, state.operands,
                                    state.types, state.attributes,
                                    state.successors, context);
-  block->getStatements().insert(insertPoint, op);
+  block->getInstructions().insert(insertPoint, op);
   return op;
 }
 
@@ -303,7 +303,7 @@ ForStmt *FuncBuilder::createFor(Location location, ArrayRef<Value *> lbOperands,
                                 AffineMap ubMap, int64_t step) {
   auto *stmt =
       ForStmt::create(location, lbOperands, lbMap, ubOperands, ubMap, step);
-  block->getStatements().insert(insertPoint, stmt);
+  block->getInstructions().insert(insertPoint, stmt);
   return stmt;
 }
 
@@ -317,6 +317,6 @@ ForStmt *FuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
 IfStmt *FuncBuilder::createIf(Location location, ArrayRef<Value *> operands,
                               IntegerSet set) {
   auto *stmt = IfStmt::create(location, operands, set);
-  block->getStatements().insert(insertPoint, stmt);
+  block->getInstructions().insert(insertPoint, stmt);
   return stmt;
 }

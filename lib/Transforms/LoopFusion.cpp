@@ -343,7 +343,7 @@ public:
 
 // Intializes the data dependence graph by walking statements in 'f'.
 // Assigns each node in the graph a node id based on program order in 'f'.
-// TODO(andydavis) Add support for taking a StmtBlock arg to construct the
+// TODO(andydavis) Add support for taking a Block arg to construct the
 // dependence graph at a different depth.
 bool MemRefDependenceGraph::init(Function *f) {
   unsigned id = 0;

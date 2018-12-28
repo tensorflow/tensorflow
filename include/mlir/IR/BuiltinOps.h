@@ -99,7 +99,7 @@ class BranchOp : public Op<BranchOp, OpTrait::VariadicOperands,
 public:
   static StringRef getOperationName() { return "br"; }
 
-  static void build(Builder *builder, OperationState *result, BasicBlock *dest,
+  static void build(Builder *builder, OperationState *result, Block *dest,
                     ArrayRef<Value *> operands = {});
 
   // Hooks to customize behavior of this op.
@@ -108,11 +108,11 @@ public:
   bool verify() const;
 
   /// Return the block this branch jumps to.
-  BasicBlock *getDest();
-  const BasicBlock *getDest() const {
+  Block *getDest();
+  const Block *getDest() const {
     return const_cast<BranchOp *>(this)->getDest();
   }
-  void setDest(BasicBlock *block);
+  void setDest(Block *block);
 
   /// Erase the operand at 'index' from the operand list.
   void eraseOperand(unsigned index);
@@ -147,8 +147,8 @@ public:
   static StringRef getOperationName() { return "cond_br"; }
 
   static void build(Builder *builder, OperationState *result, Value *condition,
-                    BasicBlock *trueDest, ArrayRef<Value *> trueOperands,
-                    BasicBlock *falseDest, ArrayRef<Value *> falseOperands);
+                    Block *trueDest, ArrayRef<Value *> trueOperands,
+                    Block *falseDest, ArrayRef<Value *> falseOperands);
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -160,14 +160,14 @@ public:
   const Value *getCondition() const { return getOperand(0); }
 
   /// Return the destination if the condition is true.
-  BasicBlock *getTrueDest();
-  const BasicBlock *getTrueDest() const {
+  Block *getTrueDest();
+  const Block *getTrueDest() const {
     return const_cast<CondBranchOp *>(this)->getTrueDest();
   }
 
   /// Return the destination if the condition is false.
-  BasicBlock *getFalseDest();
-  const BasicBlock *getFalseDest() const {
+  Block *getFalseDest();
+  const Block *getFalseDest() const {
     return const_cast<CondBranchOp *>(this)->getFalseDest();
   }
 

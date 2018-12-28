@@ -25,9 +25,9 @@
 #define MLIR_IR_FUNCTION_H
 
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/StmtBlock.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
@@ -38,7 +38,6 @@ class FunctionType;
 class MLIRContext;
 class Module;
 template <typename ObjectType, typename ElementType> class ArgumentIterator;
-using BasicBlock = StmtBlock;
 
 /// NamedAttribute is used for function attribute lists, it holds an
 /// identifier for the name and a value for the attribute.  The attribute
@@ -82,11 +81,11 @@ public:
   // Body Handling
   //===--------------------------------------------------------------------===//
 
-  StmtBlockList &getBlockList() { return blocks; }
-  const StmtBlockList &getBlockList() const { return blocks; }
+  BlockList &getBlockList() { return blocks; }
+  const BlockList &getBlockList() const { return blocks; }
 
   /// This is the list of blocks in the function.
-  using BlockListType = llvm::iplist<BasicBlock>;
+  using BlockListType = llvm::iplist<Block>;
   BlockListType &getBlocks() { return blocks.getBlocks(); }
   const BlockListType &getBlocks() const { return blocks.getBlocks(); }
 
@@ -106,29 +105,25 @@ public:
   const_reverse_iterator rend() const { return blocks.rend(); }
 
   bool empty() const { return blocks.empty(); }
-  void push_back(BasicBlock *block) { blocks.push_back(block); }
-  void push_front(BasicBlock *block) { blocks.push_front(block); }
+  void push_back(Block *block) { blocks.push_back(block); }
+  void push_front(Block *block) { blocks.push_front(block); }
 
-  BasicBlock &back() { return blocks.back(); }
-  const BasicBlock &back() const {
-    return const_cast<Function *>(this)->back();
-  }
+  Block &back() { return blocks.back(); }
+  const Block &back() const { return const_cast<Function *>(this)->back(); }
 
-  BasicBlock &front() { return blocks.front(); }
-  const BasicBlock &front() const {
-    return const_cast<Function *>(this)->front();
-  }
+  Block &front() { return blocks.front(); }
+  const Block &front() const { return const_cast<Function *>(this)->front(); }
 
   /// Return the 'return' statement of this Function.
   const OperationInst *getReturnStmt() const;
   OperationInst *getReturnStmt();
 
   // These should only be used on MLFunctions.
-  StmtBlock *getBody() {
+  Block *getBody() {
     assert(isML());
     return &blocks.front();
   }
-  const StmtBlock *getBody() const {
+  const Block *getBody() const {
     return const_cast<Function *>(this)->getBody();
   }
 
@@ -218,7 +213,7 @@ private:
   AttributeListStorage *attrs;
 
   /// The contents of the body.
-  StmtBlockList blocks;
+  BlockList blocks;
 
   void operator=(const Function &) = delete;
   friend struct llvm::ilist_traits<Function>;

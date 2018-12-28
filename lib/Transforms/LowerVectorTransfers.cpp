@@ -110,7 +110,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // Get the ML function builder.
   // We need access to the Function builder stored internally in the
   // MLFunctionLoweringRewriter general rewriting API does not provide
-  // ML-specific functions (ForStmt and StmtBlock manipulation).  While we could
+  // ML-specific functions (ForStmt and Block manipulation).  While we could
   // forward them or define a whole rewriting chain based on MLFunctionBuilder
   // instead of Builer, the code for it would be duplicate boilerplate.  As we
   // go towards unifying ML and CFG functions, this separation will disappear.

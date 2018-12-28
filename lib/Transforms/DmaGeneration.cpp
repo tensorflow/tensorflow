@@ -176,7 +176,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt,
   FuncBuilder prologue(forStmt);
   // DMAs for write regions are going to be inserted just after the for loop.
   FuncBuilder epilogue(forStmt->getBlock(),
-                       std::next(StmtBlock::iterator(forStmt)));
+                       std::next(Block::iterator(forStmt)));
   FuncBuilder *b = region.isWrite() ? &epilogue : &prologue;
 
   // Builder to create constants at the top level.
@@ -382,7 +382,7 @@ static unsigned getNestingDepth(const Statement &stmt) {
   return depth;
 }
 
-// TODO(bondhugula): make this run on a StmtBlock instead of a 'for' stmt.
+// TODO(bondhugula): make this run on a Block instead of a 'for' stmt.
 void DmaGeneration::runOnForStmt(ForStmt *forStmt) {
   // For now (for testing purposes), we'll run this on the outermost among 'for'
   // stmt's with unit stride, i.e., right at the top of the tile if tiling has

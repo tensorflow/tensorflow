@@ -345,7 +345,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   }
 
   // Get shifts stored in map.
-  std::vector<uint64_t> shifts(forStmt->getBody()->getStatements().size());
+  std::vector<uint64_t> shifts(forStmt->getBody()->getInstructions().size());
   unsigned s = 0;
   for (auto &stmt : *forStmt->getBody()) {
     assert(stmtShiftMap.find(&stmt) != stmtShiftMap.end());

@@ -130,13 +130,13 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
   // tree).
   class JamBlockGatherer : public StmtWalker<JamBlockGatherer> {
   public:
-    using StmtListType = llvm::iplist<Statement>;
+    using InstListType = llvm::iplist<Statement>;
 
     // Store iterators to the first and last stmt of each sub-block found.
-    std::vector<std::pair<StmtBlock::iterator, StmtBlock::iterator>> subBlocks;
+    std::vector<std::pair<Block::iterator, Block::iterator>> subBlocks;
 
     // This is a linear time walk.
-    void walk(StmtListType::iterator Start, StmtListType::iterator End) {
+    void walk(InstListType::iterator Start, InstListType::iterator End) {
       for (auto it = Start; it != End;) {
         auto subBlockStart = it;
         while (it != End && !isa<ForStmt>(it))
@@ -194,7 +194,7 @@ bool mlir::loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor) {
     DenseMap<const Value *, Value *> operandMap;
     // Insert the cleanup loop right after 'forStmt'.
     FuncBuilder builder(forStmt->getBlock(),
-                        std::next(StmtBlock::iterator(forStmt)));
+                        std::next(Block::iterator(forStmt)));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
     cleanupForStmt->setLowerBoundMap(
         getCleanupLoopLowerBound(*forStmt, unrollJamFactor, &builder));

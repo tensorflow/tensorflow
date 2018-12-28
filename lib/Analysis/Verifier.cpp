@@ -59,7 +59,7 @@ public:
     return fn.emitError(message);
   }
 
-  bool failure(const Twine &message, const BasicBlock &bb) {
+  bool failure(const Twine &message, const Block &bb) {
     // Take the location information for the first instruction in the block.
     if (!bb.empty())
       if (auto *op = dyn_cast<OperationInst>(&bb.front()))
@@ -153,7 +153,7 @@ struct CFGFuncVerifier : public Verifier {
       : Verifier(fn), fn(fn), domInfo(const_cast<Function *>(&fn)) {}
 
   bool verify();
-  bool verifyBlock(const BasicBlock &block);
+  bool verifyBlock(const Block &block);
   bool verifyInstOperands(const Instruction &inst);
 };
 } // end anonymous namespace
@@ -214,7 +214,7 @@ bool CFGFuncVerifier::verifyInstOperands(const Instruction &inst) {
   return false;
 }
 
-bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
+bool CFGFuncVerifier::verifyBlock(const Block &block) {
   if (!block.getTerminator())
     return failure("basic block with no terminator", block);
 
@@ -287,12 +287,12 @@ bool MLFuncVerifier::verifyDominance() {
 
   // This recursive function walks the statement list pushing scopes onto the
   // stack as it goes, and popping them to remove them from the table.
-  std::function<bool(const StmtBlock &block)> walkBlock;
-  walkBlock = [&](const StmtBlock &block) -> bool {
+  std::function<bool(const Block &block)> walkBlock;
+  walkBlock = [&](const Block &block) -> bool {
     HashTable::ScopeTy blockScope(liveValues);
 
     // The induction variable of a for statement is live within its body.
-    if (auto *forStmt = dyn_cast_or_null<ForStmt>(block.getContainingStmt()))
+    if (auto *forStmt = dyn_cast_or_null<ForStmt>(block.getContainingInst()))
       liveValues.insert(forStmt, true);
 
     for (auto &stmt : block) {
@@ -340,10 +340,10 @@ bool MLFuncVerifier::verifyDominance() {
 bool MLFuncVerifier::verifyReturn() {
   // TODO: fold return verification in the pass that verifies all statements.
   const char missingReturnMsg[] = "ML function must end with return statement";
-  if (fn.getBody()->getStatements().empty())
+  if (fn.getBody()->getInstructions().empty())
     return failure(missingReturnMsg, fn);
 
-  const auto &stmt = fn.getBody()->getStatements().back();
+  const auto &stmt = fn.getBody()->getInstructions().back();
   if (const auto *op = dyn_cast<OperationInst>(&stmt)) {
     if (!op->isReturn())
       return failure(missingReturnMsg, fn);

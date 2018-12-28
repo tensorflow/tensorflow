@@ -878,15 +878,15 @@ static unsigned getNumCommonLoops(const FlatAffineConstraints &srcDomain,
   return numCommonLoops;
 }
 
-// Returns StmtBlock common to 'srcAccess.opStmt' and 'dstAccess.opStmt'.
-static StmtBlock *getCommonStmtBlock(const MemRefAccess &srcAccess,
-                                     const MemRefAccess &dstAccess,
-                                     const FlatAffineConstraints &srcDomain,
-                                     unsigned numCommonLoops) {
+// Returns Block common to 'srcAccess.opStmt' and 'dstAccess.opStmt'.
+static Block *getCommonBlock(const MemRefAccess &srcAccess,
+                             const MemRefAccess &dstAccess,
+                             const FlatAffineConstraints &srcDomain,
+                             unsigned numCommonLoops) {
   if (numCommonLoops == 0) {
     auto *block = srcAccess.opStmt->getBlock();
-    while (block->getContainingStmt()) {
-      block = block->getContainingStmt()->getBlock();
+    while (block->getContainingInst()) {
+      block = block->getContainingInst()->getBlock();
     }
     return block;
   }
@@ -906,14 +906,14 @@ static bool srcMayExecuteBeforeDst(const MemRefAccess &srcAccess,
                                    const MemRefAccess &dstAccess,
                                    const FlatAffineConstraints &srcDomain,
                                    unsigned numCommonLoops) {
-  // Get StmtBlock common to 'srcAccess.opStmt' and 'dstAccess.opStmt'.
+  // Get Block common to 'srcAccess.opStmt' and 'dstAccess.opStmt'.
   auto *commonBlock =
-      getCommonStmtBlock(srcAccess, dstAccess, srcDomain, numCommonLoops);
+      getCommonBlock(srcAccess, dstAccess, srcDomain, numCommonLoops);
   // Check the dominance relationship between the respective ancestors of the
-  // src and dst in the StmtBlock of the innermost among the common loops.
-  auto *srcStmt = commonBlock->findAncestorStmtInBlock(*srcAccess.opStmt);
+  // src and dst in the Block of the innermost among the common loops.
+  auto *srcStmt = commonBlock->findAncestorInstInBlock(*srcAccess.opStmt);
   assert(srcStmt != nullptr);
-  auto *dstStmt = commonBlock->findAncestorStmtInBlock(*dstAccess.opStmt);
+  auto *dstStmt = commonBlock->findAncestorInstInBlock(*dstAccess.opStmt);
   assert(dstStmt != nullptr);
   return mlir::properlyDominates(*srcStmt, *dstStmt);
 }

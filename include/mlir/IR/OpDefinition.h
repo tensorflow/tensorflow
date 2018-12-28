@@ -752,14 +752,14 @@ public:
     return this->getInstruction()->getNumSuccessorOperands(index);
   }
 
-  const BasicBlock *getSuccessor(unsigned index) const {
+  const Block *getSuccessor(unsigned index) const {
     return this->getInstruction()->getSuccessor(index);
   }
-  BasicBlock *getSuccessor(unsigned index) {
+  Block *getSuccessor(unsigned index) {
     return this->getInstruction()->getSuccessor(index);
   }
 
-  void setSuccessor(BasicBlock *block, unsigned index) {
+  void setSuccessor(Block *block, unsigned index) {
     return this->getInstruction()->setSuccessor(block, index);
   }
 

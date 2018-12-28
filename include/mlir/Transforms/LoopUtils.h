@@ -66,7 +66,7 @@ bool loopUnrollJamUpToFactor(ForStmt *forStmt, uint64_t unrollJamFactor);
 bool promoteIfSingleIteration(ForStmt *forStmt);
 
 /// Promotes all single iteration ForStmt's in the Function, i.e., moves
-/// their body into the containing StmtBlock.
+/// their body into the containing Block.
 void promoteSingleIterationLoops(Function *f);
 
 /// Returns the lower bound of the cleanup loop when unrolling a loop

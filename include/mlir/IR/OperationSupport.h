@@ -31,6 +31,7 @@
 #include <memory>
 
 namespace mlir {
+class Block;
 class Dialect;
 class OperationInst;
 class OperationState;
@@ -39,10 +40,8 @@ class OpAsmParserResult;
 class OpAsmPrinter;
 class Pattern;
 class RewritePattern;
-class StmtBlock;
 class Type;
 class Value;
-using BasicBlock = StmtBlock;
 
 /// This is a vector that owns the patterns inside of it.
 using OwningPatternList = std::vector<std::unique_ptr<Pattern>>;
@@ -209,7 +208,7 @@ struct OperationState {
   SmallVector<Type, 4> types;
   SmallVector<NamedAttribute, 4> attributes;
   /// Successors of this operation and their respective operands.
-  SmallVector<StmtBlock *, 1> successors;
+  SmallVector<Block *, 1> successors;
 
 public:
   OperationState(MLIRContext *context, Location location, StringRef name)
@@ -221,7 +220,7 @@ public:
   OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<Value *> operands, ArrayRef<Type> types,
                  ArrayRef<NamedAttribute> attributes,
-                 ArrayRef<StmtBlock *> successors = {})
+                 ArrayRef<Block *> successors = {})
       : context(context), location(location), name(name, context),
         operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),
@@ -248,7 +247,7 @@ public:
     attributes.push_back({name, attr});
   }
 
-  void addSuccessor(StmtBlock *successor, ArrayRef<Value *> succOperands) {
+  void addSuccessor(Block *successor, ArrayRef<Value *> succOperands) {
     successors.push_back(successor);
     // Insert a sentinal operand to mark a barrier between successor operands.
     operands.push_back(nullptr);

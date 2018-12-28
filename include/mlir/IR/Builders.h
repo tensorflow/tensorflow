@@ -178,11 +178,11 @@ public:
     setInsertionPoint(stmt);
   }
 
-  FuncBuilder(StmtBlock *block) : FuncBuilder(block->getFunction()) {
+  FuncBuilder(Block *block) : FuncBuilder(block->getFunction()) {
     setInsertionPoint(block, block->end());
   }
 
-  FuncBuilder(StmtBlock *block, StmtBlock::iterator insertPoint)
+  FuncBuilder(Block *block, Block::iterator insertPoint)
       : FuncBuilder(block->getFunction()) {
     setInsertionPoint(block, insertPoint);
   }
@@ -195,11 +195,11 @@ public:
   /// current insertion point a builder refers to is being removed.
   void clearInsertionPoint() {
     this->block = nullptr;
-    insertPoint = StmtBlock::iterator();
+    insertPoint = Block::iterator();
   }
 
   /// Set the insertion point to the specified location.
-  void setInsertionPoint(StmtBlock *block, StmtBlock::iterator insertPoint) {
+  void setInsertionPoint(Block *block, Block::iterator insertPoint) {
     // TODO: check that insertPoint is in this rather than some other block.
     this->block = block;
     this->insertPoint = insertPoint;
@@ -208,31 +208,31 @@ public:
   /// Sets the insertion point to the specified operation, which will cause
   /// subsequent insertions to go right before it.
   void setInsertionPoint(Statement *stmt) {
-    setInsertionPoint(stmt->getBlock(), StmtBlock::iterator(stmt));
+    setInsertionPoint(stmt->getBlock(), Block::iterator(stmt));
   }
 
   /// Sets the insertion point to the start of the specified block.
-  void setInsertionPointToStart(StmtBlock *block) {
+  void setInsertionPointToStart(Block *block) {
     setInsertionPoint(block, block->begin());
   }
 
   /// Sets the insertion point to the end of the specified block.
-  void setInsertionPointToEnd(StmtBlock *block) {
+  void setInsertionPointToEnd(Block *block) {
     setInsertionPoint(block, block->end());
   }
 
   /// Return the block the current insertion point belongs to.  Note that the
   /// the insertion point is not necessarily the end of the block.
-  BasicBlock *getInsertionBlock() const { return block; }
+  Block *getInsertionBlock() const { return block; }
 
   /// Returns the current insertion point of the builder.
-  StmtBlock::iterator getInsertionPoint() const { return insertPoint; }
+  Block::iterator getInsertionPoint() const { return insertPoint; }
 
   /// Add new block and set the insertion point to the end of it.  If an
   /// 'insertBefore' block is passed, the block will be placed before the
   /// specified block.  If not, the block will be appended to the end of the
   /// current function.
-  StmtBlock *createBlock(StmtBlock *insertBefore = nullptr);
+  Block *createBlock(Block *insertBefore = nullptr);
 
   /// Returns a builder for the body of a for Stmt.
   static FuncBuilder getForStmtBodyBuilder(ForStmt *forStmt) {
@@ -240,7 +240,7 @@ public:
   }
 
   /// Returns the current block of the builder.
-  StmtBlock *getBlock() const { return block; }
+  Block *getBlock() const { return block; }
 
   /// Creates an operation given the fields represented as an OperationState.
   OperationInst *createOperation(const OperationState &state);
@@ -286,7 +286,7 @@ public:
   Statement *clone(const Statement &stmt,
                    OperationInst::OperandMapTy &operandMapping) {
     Statement *cloneStmt = stmt.clone(operandMapping, getContext());
-    block->getStatements().insert(insertPoint, cloneStmt);
+    block->getInstructions().insert(insertPoint, cloneStmt);
     return cloneStmt;
   }
 
@@ -305,8 +305,8 @@ public:
 
 private:
   Function *function;
-  StmtBlock *block = nullptr;
-  StmtBlock::iterator insertPoint;
+  Block *block = nullptr;
+  Block::iterator insertPoint;
 };
 
 } // namespace mlir

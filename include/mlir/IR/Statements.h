@@ -23,10 +23,10 @@
 #define MLIR_IR_STATEMENTS_H
 
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Statement.h"
-#include "mlir/IR/StmtBlock.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/TrailingObjects.h"
 
@@ -46,14 +46,14 @@ class Function;
 ///
 class OperationInst final
     : public Statement,
-      private llvm::TrailingObjects<OperationInst, InstResult, StmtBlockOperand,
+      private llvm::TrailingObjects<OperationInst, InstResult, BlockOperand,
                                     unsigned, InstOperand> {
 public:
   /// Create a new OperationInst with the specific fields.
   static OperationInst *
   create(Location location, OperationName name, ArrayRef<Value *> operands,
          ArrayRef<Type> resultTypes, ArrayRef<NamedAttribute> attributes,
-         ArrayRef<StmtBlock *> successors, MLIRContext *context);
+         ArrayRef<Block *> successors, MLIRContext *context);
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
@@ -229,11 +229,11 @@ public:
   // Terminators
   //===--------------------------------------------------------------------===//
 
-  MutableArrayRef<StmtBlockOperand> getBlockOperands() {
+  MutableArrayRef<BlockOperand> getBlockOperands() {
     assert(isTerminator() && "Only terminators have a block operands list");
-    return {getTrailingObjects<StmtBlockOperand>(), numSuccs};
+    return {getTrailingObjects<BlockOperand>(), numSuccs};
   }
-  ArrayRef<StmtBlockOperand> getBlockOperands() const {
+  ArrayRef<BlockOperand> getBlockOperands() const {
     return const_cast<OperationInst *>(this)->getBlockOperands();
   }
 
@@ -248,14 +248,14 @@ public:
     return getTrailingObjects<unsigned>()[index];
   }
 
-  StmtBlock *getSuccessor(unsigned index) {
+  Block *getSuccessor(unsigned index) {
     assert(index < getNumSuccessors());
     return getBlockOperands()[index].get();
   }
-  const StmtBlock *getSuccessor(unsigned index) const {
+  const Block *getSuccessor(unsigned index) const {
     return const_cast<OperationInst *>(this)->getSuccessor(index);
   }
-  void setSuccessor(BasicBlock *block, unsigned index);
+  void setSuccessor(Block *block, unsigned index);
 
   /// Erase a specific operand from the operand list of the successor at
   /// 'index'.
@@ -404,7 +404,7 @@ private:
   void eraseOperand(unsigned index);
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<OperationInst, InstResult, StmtBlockOperand,
+  friend llvm::TrailingObjects<OperationInst, InstResult, BlockOperand,
                                unsigned, InstOperand>;
   size_t numTrailingObjects(OverloadToken<InstOperand>) const {
     return numOperands;
@@ -412,7 +412,7 @@ private:
   size_t numTrailingObjects(OverloadToken<InstResult>) const {
     return numResults;
   }
-  size_t numTrailingObjects(OverloadToken<StmtBlockOperand>) const {
+  size_t numTrailingObjects(OverloadToken<BlockOperand>) const {
     return numSuccs;
   }
   size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
@@ -515,7 +515,7 @@ public:
                          AffineMap ubMap, int64_t step);
 
   ~ForStmt() {
-    // Explicitly erase statements instead of relying of 'StmtBlock' destructor
+    // Explicitly erase statements instead of relying of 'Block' destructor
     // since child statements need to be destroyed before the Value that this
     // for stmt represents is destroyed. Affine maps are immortal objects and
     // don't need to be deleted.
@@ -534,10 +534,10 @@ public:
   using const_operand_range = llvm::iterator_range<const_operand_iterator>;
 
   /// Get the body of the ForStmt.
-  StmtBlock *getBody() { return &body.front(); }
+  Block *getBody() { return &body.front(); }
 
   /// Get the body of the ForStmt.
-  const StmtBlock *getBody() const { return &body.front(); }
+  const Block *getBody() const { return &body.front(); }
 
   //===--------------------------------------------------------------------===//
   // Bounds and step
@@ -664,8 +664,8 @@ public:
   }
 
 private:
-  // The StmtBlock for the body.
-  StmtBlockList body;
+  // The Block for the body.
+  BlockList body;
 
   // Affine map for the lower bound.
   AffineMap lbMap;
@@ -746,18 +746,18 @@ public:
   // Then, else, condition.
   //===--------------------------------------------------------------------===//
 
-  StmtBlock *getThen() { return &thenClause.front(); }
-  const StmtBlock *getThen() const { return &thenClause.front(); }
-  StmtBlock *getElse() { return elseClause ? &elseClause->front() : nullptr; }
-  const StmtBlock *getElse() const {
+  Block *getThen() { return &thenClause.front(); }
+  const Block *getThen() const { return &thenClause.front(); }
+  Block *getElse() { return elseClause ? &elseClause->front() : nullptr; }
+  const Block *getElse() const {
     return elseClause ? &elseClause->front() : nullptr;
   }
   bool hasElse() const { return elseClause != nullptr; }
 
-  StmtBlock *createElse() {
+  Block *createElse() {
     assert(elseClause == nullptr && "already has an else clause!");
-    elseClause = new StmtBlockList(this);
-    elseClause->push_back(new StmtBlock());
+    elseClause = new BlockList(this);
+    elseClause->push_back(new Block());
     return &elseClause->front();
   }
 
@@ -823,9 +823,9 @@ public:
 
 private:
   // it is always present.
-  StmtBlockList thenClause;
+  BlockList thenClause;
   // 'else' clause of the if statement. 'nullptr' if there is no else clause.
-  StmtBlockList *elseClause;
+  BlockList *elseClause;
 
   // The integer set capturing the conditional guard.
   IntegerSet set;

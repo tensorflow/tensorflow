@@ -45,8 +45,8 @@ struct ComposeAffineMaps : public FunctionPass, StmtWalker<ComposeAffineMaps> {
   std::vector<OperationInst *> affineApplyOpsToErase;
 
   explicit ComposeAffineMaps() : FunctionPass(&ComposeAffineMaps::passID) {}
-  using StmtListType = llvm::iplist<Statement>;
-  void walk(StmtListType::iterator Start, StmtListType::iterator End);
+  using InstListType = llvm::iplist<Statement>;
+  void walk(InstListType::iterator Start, InstListType::iterator End);
   void visitOperationInst(OperationInst *stmt);
   PassResult runOnMLFunction(Function *f) override;
   using StmtWalker<ComposeAffineMaps>::walk;
@@ -62,8 +62,8 @@ FunctionPass *mlir::createComposeAffineMapsPass() {
   return new ComposeAffineMaps();
 }
 
-void ComposeAffineMaps::walk(StmtListType::iterator Start,
-                             StmtListType::iterator End) {
+void ComposeAffineMaps::walk(InstListType::iterator Start,
+                             InstListType::iterator End) {
   while (Start != End) {
     walk(&(*Start));
     // Increment iterator after walk as visit function can mutate stmt list

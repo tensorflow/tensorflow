@@ -245,7 +245,7 @@ bool OpTrait::impl::verifySameOperandsAndResultType(const OperationInst *op) {
 
 static bool verifyBBArguments(
     llvm::iterator_range<OperationInst::const_operand_iterator> operands,
-    const BasicBlock *destBB, const OperationInst *op) {
+    const Block *destBB, const OperationInst *op) {
   unsigned operandCount = std::distance(operands.begin(), operands.end());
   if (operandCount != destBB->getNumArguments())
     return op->emitError("branch has " + Twine(operandCount) +
@@ -277,11 +277,11 @@ static bool verifyTerminatorSuccessors(const OperationInst *op) {
 bool OpTrait::impl::verifyIsTerminator(const OperationInst *op) {
   // Verify that the operation is at the end of the respective parent block.
   if (op->getFunction()->isML()) {
-    StmtBlock *block = op->getBlock();
-    if (!block || block->getContainingStmt() || &block->back() != op)
+    Block *block = op->getBlock();
+    if (!block || block->getContainingInst() || &block->back() != op)
       return op->emitOpError("must be the last statement in the ML function");
   } else {
-    const BasicBlock *block = op->getBlock();
+    const Block *block = op->getBlock();
     if (!block || &block->back() != op)
       return op->emitOpError(
           "must be the last instruction in the parent basic block.");

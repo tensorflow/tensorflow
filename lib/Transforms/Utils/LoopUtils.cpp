@@ -108,7 +108,7 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
     } else {
       const AffineBound lb = forStmt->getLowerBound();
       SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
-      FuncBuilder builder(forStmt->getBlock(), StmtBlock::iterator(forStmt));
+      FuncBuilder builder(forStmt->getBlock(), Block::iterator(forStmt));
       auto affineApplyOp = builder.create<AffineApplyOp>(
           forStmt->getLoc(), lb.getMap(), lbOperands);
       forStmt->replaceAllUsesWith(affineApplyOp->getResult(0));
@@ -116,14 +116,14 @@ bool mlir::promoteIfSingleIteration(ForStmt *forStmt) {
   }
   // Move the loop body statements to the loop's containing block.
   auto *block = forStmt->getBlock();
-  block->getStatements().splice(StmtBlock::iterator(forStmt),
-                                forStmt->getBody()->getStatements());
+  block->getInstructions().splice(Block::iterator(forStmt),
+                                  forStmt->getBody()->getInstructions());
   forStmt->erase();
   return true;
 }
 
 /// Promotes all single iteration for stmt's in the Function, i.e., moves
-/// their body into the containing StmtBlock.
+/// their body into the containing Block.
 void mlir::promoteSingleIterationLoops(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
   class LoopBodyPromoter : public StmtWalker<LoopBodyPromoter> {
@@ -223,7 +223,7 @@ UtilResult mlir::stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> shifts,
 
   int64_t step = forStmt->getStep();
 
-  unsigned numChildStmts = forStmt->getBody()->getStatements().size();
+  unsigned numChildStmts = forStmt->getBody()->getInstructions().size();
 
   // Do a linear time (counting) sort for the shifts.
   uint64_t maxShift = 0;
@@ -379,7 +379,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
   if (getLargestDivisorOfTripCount(*forStmt) % unrollFactor != 0) {
     DenseMap<const Value *, Value *> operandMap;
-    FuncBuilder builder(forStmt->getBlock(), ++StmtBlock::iterator(forStmt));
+    FuncBuilder builder(forStmt->getBlock(), ++Block::iterator(forStmt));
     auto *cleanupForStmt = cast<ForStmt>(builder.clone(*forStmt, operandMap));
     auto clLbMap = getCleanupLoopLowerBound(*forStmt, unrollFactor, &builder);
     assert(clLbMap &&
@@ -408,7 +408,7 @@ bool mlir::loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor) {
 
   // Keep a pointer to the last statement in the original block so that we know
   // what to clone (since we are doing this in-place).
-  StmtBlock::iterator srcBlockEnd = std::prev(forStmt->getBody()->end());
+  Block::iterator srcBlockEnd = std::prev(forStmt->getBody()->end());
 
   // Unroll the contents of 'forStmt' (append unrollFactor-1 additional copies).
   for (unsigned i = 1; i < unrollFactor; i++) {

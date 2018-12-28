@@ -21,15 +21,15 @@
 #include "mlir/IR/FunctionGraphTraits.h"
 #include "llvm/Support/GenericDomTree.h"
 
-extern template class llvm::DominatorTreeBase<mlir::BasicBlock, false>;
-extern template class llvm::DominatorTreeBase<mlir::BasicBlock, true>;
-extern template class llvm::DomTreeNodeBase<mlir::BasicBlock>;
+extern template class llvm::DominatorTreeBase<mlir::Block, false>;
+extern template class llvm::DominatorTreeBase<mlir::Block, true>;
+extern template class llvm::DomTreeNodeBase<mlir::Block>;
 
 namespace llvm {
 namespace DomTreeBuilder {
 
-using MLIRDomTree = llvm::DomTreeBase<mlir::BasicBlock>;
-using MLIRPostDomTree = llvm::PostDomTreeBase<mlir::BasicBlock>;
+using MLIRDomTree = llvm::DomTreeBase<mlir::Block>;
+using MLIRPostDomTree = llvm::PostDomTreeBase<mlir::Block>;
 
 // extern template void Calculate<MLIRDomTree>(MLIRDomTree &DT);
 // extern template void Calculate<MLIRPostDomTree>(MLIRPostDomTree &DT);
@@ -38,9 +38,9 @@ using MLIRPostDomTree = llvm::PostDomTreeBase<mlir::BasicBlock>;
 } // namespace llvm
 
 namespace mlir {
-using DominatorTreeBase = llvm::DominatorTreeBase<BasicBlock, false>;
-using PostDominatorTreeBase = llvm::DominatorTreeBase<BasicBlock, true>;
-using DominanceInfoNode = llvm::DomTreeNodeBase<BasicBlock>;
+using DominatorTreeBase = llvm::DominatorTreeBase<Block, false>;
+using PostDominatorTreeBase = llvm::DominatorTreeBase<Block, true>;
+using DominanceInfoNode = llvm::DomTreeNodeBase<Block>;
 
 /// A class for computing basic dominance information.
 class DominanceInfo : public DominatorTreeBase {

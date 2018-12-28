@@ -25,9 +25,9 @@
 #include "llvm/Support/GenericDomTreeConstruction.h"
 using namespace mlir;
 
-template class llvm::DominatorTreeBase<BasicBlock, false>;
-template class llvm::DominatorTreeBase<BasicBlock, true>;
-template class llvm::DomTreeNodeBase<BasicBlock>;
+template class llvm::DominatorTreeBase<Block, false>;
+template class llvm::DominatorTreeBase<Block, true>;
+template class llvm::DomTreeNodeBase<Block>;
 
 /// Compute the immediate-dominators map.
 DominanceInfo::DominanceInfo(Function *function) : DominatorTreeBase() {
@@ -57,8 +57,8 @@ bool DominanceInfo::properlyDominates(const Instruction *a,
     return true;
 
   // Otherwise, do a linear scan to determine whether B comes after A.
-  auto aIter = BasicBlock::const_iterator(a);
-  auto bIter = BasicBlock::const_iterator(b);
+  auto aIter = Block::const_iterator(a);
+  auto bIter = Block::const_iterator(b);
   auto fIter = aBlock->begin();
   while (bIter != fIter) {
     --bIter;

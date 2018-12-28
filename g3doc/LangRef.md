@@ -33,8 +33,8 @@ list of [Functions](#functions), and there are two types of function
 definitions, a "[CFG Function](#cfg-functions)" and an
 "[ML Function](#ml-functions)". Both kinds of functions are represented as a
 composition of [operations](#operations), but represent control flow in
-different ways: A CFG Function control flow using a CFG of
-[BasicBlocks](#basic-blocks), which contain instructions and end with
+different ways: A CFG Function control flow using a CFG of [Blocks](#blocks),
+which contain instructions and end with
 [control flow terminator statements](#terminator-instructions) (like branches).
 ML Functions represents control flow with a nest of affine loops and if
 conditions, and are said to contain statements. Both types of functions can call
@@ -65,7 +65,7 @@ Here's an example of an MLIR module:
 // result using a TensorFlow op. The dimensions of A and B are partially
 // known. The shapes are assumed to match.
 cfgfunc @mul(tensor<100x?xf32>, tensor<?x50xf32>) -> (tensor<100x50xf32>) {
-// Basic block bb0. %A and %B come from function arguments.
+// Block bb0. %A and %B come from function arguments.
 bb0(%A: tensor<100x?xf32>, %B: tensor<?x50xf32>):
   // Compute the inner dimension of %A using the dim operation.
   %n = dim %A, 1 : tensor<100x?xf32>
@@ -606,9 +606,8 @@ function-type ::= type-list-parens `->` type-list
 MLIR supports first-class functions: the
 [`constant` operation](#'constant'-operation) produces the address of a function
 as an SSA value. This SSA value may be passed to and returned from functions,
-merged across control flow boundaries with
-[basic block arguments](#basic-blocks), and called with the
-[`call_indirect` instruction](#'call_indirect'-operation).
+merged across control flow boundaries with [block arguments](#blocks), and
+called with the [`call_indirect` instruction](#'call_indirect'-operation).
 
 Function types are also used to indicate the arguments and results of
 [operations](#operations).
@@ -916,7 +915,7 @@ Syntax:
 
 ``` {.ebnf}
 cfg-func ::= `cfgfunc` function-signature
-             (`attributes` attribute-dict)? `{` basic-block+ `}`
+             (`attributes` attribute-dict)? `{` block+ `}`
 ```
 
 A simple CFG function that returns its argument twice looks like this:
@@ -935,14 +934,14 @@ TensorFlow dataflow graph, where the instructions are TensorFlow "ops" producing
 values of Tensor type. It can also represent scalar math, and can be used as a
 way to lower [ML Functions](#ml-functions) before late code generation.
 
-#### Basic Blocks {#basic-blocks}
+#### Blocks {#blocks}
 
 Syntax:
 
 ``` {.ebnf}
-basic-block ::= bb-label operation* terminator-stmt
-bb-label    ::= bb-id bb-arg-list? `:`
-bb-id       ::= bare-id
+block           ::= bb-label operation* terminator-stmt
+bb-label        ::= bb-id bb-arg-list? `:`
+bb-id           ::= bare-id
 ssa-id-and-type ::= ssa-id `:` type
 
 // Non-empty list of names and types.
@@ -954,14 +953,14 @@ bb-arg-list ::= `(` ssa-id-and-type-list? `)`
 A [basic block](https://en.wikipedia.org/wiki/Basic_block) is a sequential list
 of operation instructions without control flow (calls are not considered control
 flow for this purpose) that are executed from top to bottom. The last
-instruction in a basic block is a
-[terminator instruction](#terminator-instructions), which ends the block.
+instruction in a block is a [terminator instruction](#terminator-instructions),
+which ends the block.
 
-Basic blocks in MLIR take a list of arguments, which represent SSA PHI nodes in
-a functional notation. The arguments are defined by the block, and values are
-provided for these basic block arguments by branches that go to the block.
+Blocks in MLIR take a list of arguments, which represent SSA PHI nodes in a
+functional notation. The arguments are defined by the block, and values are
+provided for these block arguments by branches that go to the block.
 
-Here is a simple example function showing branches, returns, and basic block
+Here is a simple example function showing branches, returns, and block
 arguments:
 
 ```mlir {.mlir}
@@ -987,13 +986,13 @@ bb4(%d : i64, %e : i64):
 }
 ```
 
-**Context:** The "basic block argument" representation eliminates a number of
-special cases from the IR compared to traditional "PHI nodes are instructions"
-SSA IRs (like LLVM). For example, the
+**Context:** The "block argument" representation eliminates a number of special
+cases from the IR compared to traditional "PHI nodes are instructions" SSA IRs
+(like LLVM). For example, the
 [parallel copy semantics](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.524.5461&rep=rep1&type=pdf)
 of SSA is immediately apparent, and function arguments are no longer a special
 case: they become arguments to the entry block
-[[more rationale](Rationale.md#basic-block-arguments-vs-phi-nodes)].
+[[more rationale](Rationale.md#block-arguments-vs-phi-nodes)].
 
 Control flow within a CFG function is implemented with unconditional branches,
 conditional branches, and a return statement.
@@ -1014,9 +1013,9 @@ terminator-stmt ::= `br` bb-id branch-use-list?
 branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
 ```
 
-The `br` terminator statement represents an unconditional jump to a target basic
+The `br` terminator statement represents an unconditional jump to a target
 block. The count and types of operands to the branch must align with the
-arguments in the target basic block.
+arguments in the target block.
 
 The MLIR branch instruction is not allowed to target the entry block for a
 function.
@@ -1040,7 +1039,7 @@ for a function. The two destinations of the conditional branch instruction are
 allowed to be the same.
 
 The following example illustrates a CFG function with a conditional branch
-instruction that targets the same basic block:
+instruction that targets the same block:
 
 ```mlir {.mlir}
 cfgfunc @select(%a : i32, %b :i32, %flag : i1) -> i32 {
@@ -1318,8 +1317,8 @@ operation ::= ssa-id `=` `call_indirect` ssa-use
 
 The `call_indirect` operation represents an indirect call to a value of function
 type. Functions are first class types in MLIR, and may be passed as arguments
-and merged together with basic block arguments. The operands and result types of
-the call must match the specified function type.
+and merged together with block arguments. The operands and result types of the
+call must match the specified function type.
 
 Function values can be created with the
 [`constant` operation](#'constant'-operation).

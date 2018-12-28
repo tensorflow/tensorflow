@@ -167,13 +167,13 @@ bool AffineApplyOp::constantFold(ArrayRef<Attribute> operandConstants,
 // BranchOp
 //===----------------------------------------------------------------------===//
 
-void BranchOp::build(Builder *builder, OperationState *result, BasicBlock *dest,
+void BranchOp::build(Builder *builder, OperationState *result, Block *dest,
                      ArrayRef<Value *> operands) {
   result->addSuccessor(dest, operands);
 }
 
 bool BranchOp::parse(OpAsmParser *parser, OperationState *result) {
-  BasicBlock *dest;
+  Block *dest;
   SmallVector<Value *, 4> destOperands;
   if (parser->parseSuccessorAndUseList(dest, destOperands))
     return true;
@@ -193,9 +193,9 @@ bool BranchOp::verify() const {
   return false;
 }
 
-BasicBlock *BranchOp::getDest() { return getInstruction()->getSuccessor(0); }
+Block *BranchOp::getDest() { return getInstruction()->getSuccessor(0); }
 
-void BranchOp::setDest(BasicBlock *block) {
+void BranchOp::setDest(Block *block) {
   return getInstruction()->setSuccessor(block, 0);
 }
 
@@ -208,8 +208,8 @@ void BranchOp::eraseOperand(unsigned index) {
 //===----------------------------------------------------------------------===//
 
 void CondBranchOp::build(Builder *builder, OperationState *result,
-                         Value *condition, BasicBlock *trueDest,
-                         ArrayRef<Value *> trueOperands, BasicBlock *falseDest,
+                         Value *condition, Block *trueDest,
+                         ArrayRef<Value *> trueOperands, Block *falseDest,
                          ArrayRef<Value *> falseOperands) {
   result->addOperands(condition);
   result->addSuccessor(trueDest, trueOperands);
@@ -218,7 +218,7 @@ void CondBranchOp::build(Builder *builder, OperationState *result,
 
 bool CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<Value *, 4> destOperands;
-  BasicBlock *dest;
+  Block *dest;
   OpAsmParser::OperandType condInfo;
 
   // Parse the condition.
@@ -263,11 +263,11 @@ bool CondBranchOp::verify() const {
   return false;
 }
 
-BasicBlock *CondBranchOp::getTrueDest() {
+Block *CondBranchOp::getTrueDest() {
   return getInstruction()->getSuccessor(trueIndex);
 }
 
-BasicBlock *CondBranchOp::getFalseDest() {
+Block *CondBranchOp::getFalseDest() {
   return getInstruction()->getSuccessor(falseIndex);
 }
 

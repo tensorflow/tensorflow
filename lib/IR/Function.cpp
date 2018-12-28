@@ -37,7 +37,7 @@ Function::Function(Kind kind, Location location, StringRef name,
   // TODO(clattner): Unify this behavior.
   if (kind == Kind::MLFunc) {
     // The body of an ML Function always has one block.
-    auto *entry = new StmtBlock();
+    auto *entry = new Block();
     blocks.push_back(entry);
 
     // Initialize the arguments.

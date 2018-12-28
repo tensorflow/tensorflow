@@ -28,13 +28,13 @@
 #include "llvm/ADT/ilist_node.h"
 
 namespace mlir {
+class Block;
 class Location;
-class StmtBlock;
 class ForStmt;
 class MLIRContext;
 
-/// The operand of a Terminator contains a StmtBlock.
-using StmtBlockOperand = IROperandImpl<StmtBlock, OperationInst>;
+/// Terminator operations can have Block operands to represent successors.
+using BlockOperand = IROperandImpl<Block, OperationInst>;
 
 } // namespace mlir
 
@@ -55,7 +55,7 @@ template <> struct ilist_traits<::mlir::Statement> {
                              stmt_iterator first, stmt_iterator last);
 
 private:
-  mlir::StmtBlock *getContainingBlock();
+  mlir::Block *getContainingBlock();
 };
 
 } // end namespace llvm
@@ -66,9 +66,9 @@ template <typename ObjectType, typename ElementType> class OperandIterator;
 /// Statement is a basic unit of execution within an ML function.
 /// Statements can be nested within for and if statements effectively
 /// forming a tree. Child statements are organized into statement blocks
-/// represented by a 'StmtBlock' class.
+/// represented by a 'Block' class.
 class Statement : public IROperandOwner,
-                  public llvm::ilist_node_with_parent<Statement, StmtBlock> {
+                  public llvm::ilist_node_with_parent<Statement, Block> {
 public:
   enum class Kind {
     OperationInst = (int)IROperandOwner::Kind::OperationInst,
@@ -95,7 +95,7 @@ public:
   Statement *clone(MLIRContext *context) const;
 
   /// Returns the statement block that contains this statement.
-  StmtBlock *getBlock() const { return block; }
+  Block *getBlock() const { return block; }
 
   /// Returns the closest surrounding statement that contains this statement
   /// or nullptr if this is a top-level statement.
@@ -121,7 +121,7 @@ public:
 
   /// Unlink this operation instruction from its current basic block and insert
   /// it right before `iterator` in the specified basic block.
-  void moveBefore(StmtBlock *block, llvm::iplist<Statement>::iterator iterator);
+  void moveBefore(Block *block, llvm::iplist<Statement>::iterator iterator);
 
   // Returns whether the Statement is a terminator.
   bool isTerminator() const;
@@ -198,7 +198,7 @@ protected:
 
 private:
   /// The statement block that containts this statement.
-  StmtBlock *block = nullptr;
+  Block *block = nullptr;
 
   // allow ilist_traits access to 'block' field.
   friend struct llvm::ilist_traits<Statement>;

@@ -58,8 +58,9 @@ FunctionPass *mlir::createLoopTilingPass() { return new LoopTiling(); }
 // Move the loop body of ForStmt 'src' from 'src' into the specified location in
 // destination's body.
 static inline void moveLoopBody(ForStmt *src, ForStmt *dest,
-                                StmtBlock::iterator loc) {
-  dest->getBody()->getStatements().splice(loc, src->getBody()->getStatements());
+                                Block::iterator loc) {
+  dest->getBody()->getInstructions().splice(loc,
+                                            src->getBody()->getInstructions());
 }
 
 // Move the loop body of ForStmt 'src' from 'src' to the start of dest's body.
@@ -164,8 +165,8 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
     FuncBuilder b(topLoop);
     // Loop bounds will be set later.
     auto *pointLoop = b.createFor(loc, 0, 0);
-    pointLoop->getBody()->getStatements().splice(
-        pointLoop->getBody()->begin(), topLoop->getBlock()->getStatements(),
+    pointLoop->getBody()->getInstructions().splice(
+        pointLoop->getBody()->begin(), topLoop->getBlock()->getInstructions(),
         topLoop);
     newLoops[2 * width - 1 - i] = pointLoop;
     topLoop = pointLoop;
@@ -178,9 +179,9 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
     FuncBuilder b(topLoop);
     // Loop bounds will be set later.
     auto *tileSpaceLoop = b.createFor(loc, 0, 0);
-    tileSpaceLoop->getBody()->getStatements().splice(
-        tileSpaceLoop->getBody()->begin(), topLoop->getBlock()->getStatements(),
-        topLoop);
+    tileSpaceLoop->getBody()->getInstructions().splice(
+        tileSpaceLoop->getBody()->begin(),
+        topLoop->getBlock()->getInstructions(), topLoop);
     newLoops[2 * width - i - 1] = tileSpaceLoop;
     topLoop = tileSpaceLoop;
   }
@@ -222,7 +223,7 @@ static void getTileableBands(Function *f,
     ForStmt *currStmt = root;
     do {
       band.push_back(currStmt);
-    } while (currStmt->getBody()->getStatements().size() == 1 &&
+    } while (currStmt->getBody()->getInstructions().size() == 1 &&
              (currStmt = dyn_cast<ForStmt>(&*currStmt->getBody()->begin())));
     bands->push_back(band);
   };

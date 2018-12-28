@@ -27,10 +27,10 @@
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
+class Block;
 class Function;
 class OperationInst;
 class Statement;
-class StmtBlock;
 class Value;
 using Instruction = Statement;
 
@@ -136,18 +136,18 @@ public:
     return const_cast<BlockArgument *>(this)->getFunction();
   }
 
-  StmtBlock *getOwner() { return owner; }
-  const StmtBlock *getOwner() const { return owner; }
+  Block *getOwner() { return owner; }
+  const Block *getOwner() const { return owner; }
 
 private:
-  friend class StmtBlock; // For access to private constructor.
-  BlockArgument(Type type, StmtBlock *owner)
+  friend class Block; // For access to private constructor.
+  BlockArgument(Type type, Block *owner)
       : Value(Value::Kind::BlockArgument, type), owner(owner) {}
 
   /// The owner of this operand.
   /// TODO: can encode this more efficiently to avoid the space hit of this
   /// through bitpacking shenanigans.
-  StmtBlock *const owner;
+  Block *const owner;
 };
 
 /// This is a value defined by a result of an operation instruction.

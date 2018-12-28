@@ -52,7 +52,7 @@ public:
   bool runOnModule(Module &m, llvm::Module &llvmModule);
 
 private:
-  bool convertBasicBlock(const BasicBlock &bb, bool ignoreArguments = false);
+  bool convertBlock(const Block &bb, bool ignoreArguments = false);
   bool convertCFGFunction(const Function &cfgFunc, llvm::Function &llvmFunc);
   bool convertFunctions(const Module &mlirModule, llvm::Module &llvmModule);
   bool convertInstruction(const OperationInst &inst);
@@ -142,7 +142,7 @@ private:
 
   llvm::DenseMap<const Function *, llvm::Function *> functionMapping;
   llvm::DenseMap<const Value *, llvm::Value *> valueMapping;
-  llvm::DenseMap<const BasicBlock *, llvm::BasicBlock *> blockMapping;
+  llvm::DenseMap<const Block *, llvm::BasicBlock *> blockMapping;
   llvm::LLVMContext &llvmContext;
   llvm::IRBuilder<llvm::ConstantFolder, llvm::IRBuilderDefaultInserter> builder;
   llvm::IntegerType *indexType;
@@ -742,8 +742,7 @@ bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
   return inst.emitError("unsupported operation");
 }
 
-bool ModuleLowerer::convertBasicBlock(const BasicBlock &bb,
-                                      bool ignoreArguments) {
+bool ModuleLowerer::convertBlock(const Block &bb, bool ignoreArguments) {
   builder.SetInsertPoint(blockMapping[&bb]);
 
   // Before traversing instructions, make block arguments available through
@@ -780,8 +779,7 @@ bool ModuleLowerer::convertBasicBlock(const BasicBlock &bb,
 
 // Get the SSA value passed to the current block from the terminator instruction
 // of its predecessor.
-static const Value *getPHISourceValue(const BasicBlock *current,
-                                      const BasicBlock *pred,
+static const Value *getPHISourceValue(const Block *current, const Block *pred,
                                       unsigned numArguments, unsigned index) {
   auto &terminator = *pred->getTerminator();
   if (terminator.isa<BranchOp>()) {
@@ -804,7 +802,7 @@ void ModuleLowerer::connectPHINodes(const Function &cfgFunc) {
   // to the arguments of the LLVM function.
   for (auto it = std::next(cfgFunc.begin()), eit = cfgFunc.end(); it != eit;
        ++it) {
-    const BasicBlock *bb = &*it;
+    const Block *bb = &*it;
     llvm::BasicBlock *llvmBB = blockMapping[bb];
     auto phis = llvmBB->phis();
     auto numArguments = bb->getNumArguments();
@@ -837,7 +835,7 @@ bool ModuleLowerer::convertCFGFunction(const Function &cfgFunc,
   // Then, convert blocks one by one.
   for (auto indexedBB : llvm::enumerate(cfgFunc)) {
     const auto &bb = indexedBB.value();
-    if (convertBasicBlock(bb, /*ignoreArguments=*/indexedBB.index() == 0))
+    if (convertBlock(bb, /*ignoreArguments=*/indexedBB.index() == 0))
       return true;
   }
 
@@ -872,7 +870,7 @@ bool ModuleLowerer::convertFunctions(const Module &mlirModule,
     // arguments of the first block are those of the function.
     assert(!functionPtr->getBlocks().empty() &&
            "expected at least one basic block in a Function");
-    const BasicBlock &firstBlock = *functionPtr->begin();
+    const Block &firstBlock = *functionPtr->begin();
     for (auto arg : llvm::enumerate(llvmFunc->args())) {
       valueMapping[firstBlock.getArgument(arg.index())] = &arg.value();
     }

@@ -180,7 +180,7 @@ void ModuleState::visitExtFunction(const Function *fn) {
 void ModuleState::visitCFGFunction(const Function *fn) {
   visitType(fn->getType());
   for (auto &block : *fn) {
-    for (auto &op : block.getStatements()) {
+    for (auto &op : block.getInstructions()) {
       if (auto *opInst = dyn_cast<OperationInst>(&op))
         visitOperation(opInst);
       else {
@@ -914,7 +914,7 @@ public:
   void print(const OperationInst *inst);
   void print(const ForStmt *stmt);
   void print(const IfStmt *stmt);
-  void print(const StmtBlock *block);
+  void print(const Block *block);
 
   void printOperation(const OperationInst *op);
   void printDefaultOp(const OperationInst *op);
@@ -944,11 +944,11 @@ public:
 
   enum { nameSentinel = ~0U };
 
-  void printBBName(const BasicBlock *block) { os << "bb" << getBBID(block); }
+  void printBlockName(const Block *block) { os << "bb" << getBlockID(block); }
 
-  unsigned getBBID(const BasicBlock *block) {
-    auto it = basicBlockIDs.find(block);
-    assert(it != basicBlockIDs.end() && "Block not in this function?");
+  unsigned getBlockID(const Block *block) {
+    auto it = blockIDs.find(block);
+    assert(it != blockIDs.end() && "Block not in this function?");
     return it->second;
   }
 
@@ -964,7 +964,7 @@ public:
 
 protected:
   void numberValueID(const Value *value);
-  void numberValuesInBlock(const StmtBlock &block);
+  void numberValuesInBlock(const Block &block);
   void printValueID(const Value *value, bool printResultNo = true) const;
 
 private:
@@ -976,7 +976,7 @@ private:
   DenseMap<const Value *, StringRef> valueNames;
 
   /// This is the block ID for each  block in the current function.
-  DenseMap<const BasicBlock *, unsigned> basicBlockIDs;
+  DenseMap<const Block *, unsigned> blockIDs;
 
   /// This keeps track of all of the non-numeric names that are in flight,
   /// allowing us to check for duplicates.
@@ -1007,10 +1007,10 @@ FunctionPrinter::FunctionPrinter(const Function *function,
 }
 
 /// Number all of the SSA values in the specified block list.
-void FunctionPrinter::numberValuesInBlock(const StmtBlock &block) {
+void FunctionPrinter::numberValuesInBlock(const Block &block) {
   // Each block gets a unique ID, and all of the instructions within it get
   // numbered as well.
-  basicBlockIDs[&block] = nextBlockID++;
+  blockIDs[&block] = nextBlockID++;
 
   for (auto *arg : block.getArguments())
     numberValueID(arg);
@@ -1154,6 +1154,7 @@ void FunctionPrinter::printMLFunctionSignature() {
     os << " : ";
     printType(arg->getType());
   }
+
   os << ')';
   printFunctionResultType(type);
 }
@@ -1174,11 +1175,11 @@ void FunctionPrinter::printOtherFunctionSignature() {
   printFunctionResultType(type);
 }
 
-void FunctionPrinter::print(const StmtBlock *block) {
+void FunctionPrinter::print(const Block *block) {
   // Print the block label and argument list, unless we are in an ML function.
   if (!block->getFunction()->isML()) {
     os.indent(currentIndent);
-    printBBName(block);
+    printBlockName(block);
 
     // Print the argument list if non-empty.
     if (!block->args_empty()) {
@@ -1201,13 +1202,13 @@ void FunctionPrinter::print(const StmtBlock *block) {
         os << "\t// no predecessors";
     } else if (auto *pred = block->getSinglePredecessor()) {
       os << "\t// pred: ";
-      printBBName(pred);
+      printBlockName(pred);
     } else {
       // We want to print the predecessors in increasing numeric order, not in
       // whatever order the use-list is in, so gather and sort them.
       SmallVector<unsigned, 4> predIDs;
       for (auto *pred : block->getPredecessors())
-        predIDs.push_back(getBBID(pred));
+        predIDs.push_back(getBlockID(pred));
       llvm::array_pod_sort(predIDs.begin(), predIDs.end());
 
       os << "\t// " << predIDs.size() << " preds: ";
@@ -1218,7 +1219,8 @@ void FunctionPrinter::print(const StmtBlock *block) {
   }
 
   currentIndent += indentWidth;
-  for (auto &stmt : block->getStatements()) {
+
+  for (auto &stmt : block->getInstructions()) {
     print(&stmt);
     os << '\n';
   }
@@ -1358,10 +1360,9 @@ void FunctionPrinter::printDefaultOp(const OperationInst *op) {
 
 void FunctionPrinter::printSuccessorAndUseList(const OperationInst *term,
                                                unsigned index) {
-  printBBName(term->getSuccessor(index));
+  printBlockName(term->getSuccessor(index));
 
   auto succOperands = term->getSuccessorOperands(index);
-
   if (succOperands.begin() == succOperands.end())
     return;
 
@@ -1516,7 +1517,7 @@ void Instruction::dump() const {
   llvm::errs() << "\n";
 }
 
-void BasicBlock::print(raw_ostream &os) const {
+void Block::print(raw_ostream &os) const {
   auto *function = getFunction();
   if (!function) {
     os << "<<UNLINKED BLOCK>>\n";
@@ -1528,17 +1529,17 @@ void BasicBlock::print(raw_ostream &os) const {
   FunctionPrinter(function, modulePrinter).print(this);
 }
 
-void BasicBlock::dump() const { print(llvm::errs()); }
+void Block::dump() const { print(llvm::errs()); }
 
 /// Print out the name of the basic block without printing its body.
-void StmtBlock::printAsOperand(raw_ostream &os, bool printType) {
+void Block::printAsOperand(raw_ostream &os, bool printType) {
   if (!getFunction()) {
     os << "<<UNLINKED BLOCK>>\n";
     return;
   }
   ModuleState state(getFunction()->getContext());
   ModulePrinter modulePrinter(os, state);
-  FunctionPrinter(getFunction(), modulePrinter).printBBName(this);
+  FunctionPrinter(getFunction(), modulePrinter).printBlockName(this);
 }
 
 void Function::print(raw_ostream &os) const {

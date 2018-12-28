@@ -49,7 +49,7 @@ template <> unsigned InstOperand::getOperandNumber() const {
 }
 
 /// Return which operand this is in the operand list.
-template <> unsigned StmtBlockOperand::getOperandNumber() const {
+template <> unsigned BlockOperand::getOperandNumber() const {
   return this - &getOwner()->getBlockOperands()[0];
 }
 
@@ -79,7 +79,7 @@ void Statement::destroy() {
 }
 
 Statement *Statement::getParentStmt() const {
-  return block ? block->getContainingStmt() : nullptr;
+  return block ? block->getContainingInst() : nullptr;
 }
 
 Function *Statement::getFunction() const {
@@ -191,12 +191,10 @@ void llvm::ilist_traits<::mlir::Statement>::deleteNode(Statement *stmt) {
   stmt->destroy();
 }
 
-StmtBlock *llvm::ilist_traits<::mlir::Statement>::getContainingBlock() {
-  size_t Offset(
-      size_t(&((StmtBlock *)nullptr->*StmtBlock::getSublistAccess(nullptr))));
+Block *llvm::ilist_traits<::mlir::Statement>::getContainingBlock() {
+  size_t Offset(size_t(&((Block *)nullptr->*Block::getSublistAccess(nullptr))));
   iplist<Statement> *Anchor(static_cast<iplist<Statement> *>(this));
-  return reinterpret_cast<StmtBlock *>(reinterpret_cast<char *>(Anchor) -
-                                       Offset);
+  return reinterpret_cast<Block *>(reinterpret_cast<char *>(Anchor) - Offset);
 }
 
 /// This is a trait method invoked when a statement is added to a block.  We
@@ -221,7 +219,7 @@ void llvm::ilist_traits<::mlir::Statement>::transferNodesFromList(
     stmt_iterator last) {
   // If we are transferring statements within the same block, the block
   // pointer doesn't need to be updated.
-  StmtBlock *curParent = getContainingBlock();
+  Block *curParent = getContainingBlock();
   if (curParent == otherList.getContainingBlock())
     return;
 
@@ -230,11 +228,11 @@ void llvm::ilist_traits<::mlir::Statement>::transferNodesFromList(
     first->block = curParent;
 }
 
-/// Remove this statement (and its descendants) from its StmtBlock and delete
+/// Remove this statement (and its descendants) from its Block and delete
 /// all of them.
 void Statement::erase() {
   assert(getBlock() && "Statement has no block");
-  getBlock()->getStatements().erase(this);
+  getBlock()->getInstructions().erase(this);
 }
 
 /// Unlink this statement from its current block and insert it right before
@@ -246,10 +244,10 @@ void Statement::moveBefore(Statement *existingStmt) {
 
 /// Unlink this operation instruction from its current basic block and insert
 /// it right before `iterator` in the specified basic block.
-void Statement::moveBefore(StmtBlock *block,
+void Statement::moveBefore(Block *block,
                            llvm::iplist<Statement>::iterator iterator) {
-  block->getStatements().splice(iterator, getBlock()->getStatements(),
-                                getIterator());
+  block->getInstructions().splice(iterator, getBlock()->getInstructions(),
+                                  getIterator());
 }
 
 /// This drops all operand uses from this instruction, which is an essential
@@ -273,7 +271,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
                                      ArrayRef<Value *> operands,
                                      ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
-                                     ArrayRef<StmtBlock *> successors,
+                                     ArrayRef<Block *> successors,
                                      MLIRContext *context) {
   unsigned numSuccessors = successors.size();
 
@@ -282,7 +280,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
   unsigned numOperands = operands.size() - numSuccessors;
 
   auto byteSize =
-      totalSizeToAlloc<InstResult, StmtBlockOperand, unsigned, InstOperand>(
+      totalSizeToAlloc<InstResult, BlockOperand, unsigned, InstOperand>(
           resultTypes.size(), numSuccessors, numSuccessors, numOperands);
   void *rawMem = malloc(byteSize);
 
@@ -340,7 +338,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
       }
 
       new (&instBlockOperands[currentSuccNum])
-          StmtBlockOperand(stmt, successors[currentSuccNum]);
+          BlockOperand(stmt, successors[currentSuccNum]);
       *succOperandCountIt = 0;
       ++currentSuccNum;
       continue;
@@ -382,7 +380,7 @@ OperationInst::~OperationInst() {
   // Explicitly run the destructors for the successors.
   if (isTerminator())
     for (auto &successor : getBlockOperands())
-      successor.~StmtBlockOperand();
+      successor.~BlockOperand();
 }
 
 /// Return true if there are no users of any results of this operation.
@@ -420,7 +418,7 @@ MLIRContext *OperationInst::getContext() const {
 
 bool OperationInst::isReturn() const { return isa<ReturnOp>(); }
 
-void OperationInst::setSuccessor(BasicBlock *block, unsigned index) {
+void OperationInst::setSuccessor(Block *block, unsigned index) {
   assert(index < getNumSuccessors());
   getBlockOperands()[index].set(block);
 }
@@ -559,7 +557,7 @@ ForStmt::ForStmt(Location location, unsigned numOperands, AffineMap lbMap,
       body(this), lbMap(lbMap), ubMap(ubMap), step(step) {
 
   // The body of a for stmt always has one block.
-  body.push_back(new StmtBlock());
+  body.push_back(new Block());
   operands.reserve(numOperands);
 }
 
@@ -679,7 +677,7 @@ IfStmt::IfStmt(Location location, unsigned numOperands, IntegerSet set)
   operands.reserve(numOperands);
 
   // The then of an 'if' stmt always has one block.
-  thenClause.push_back(new StmtBlock());
+  thenClause.push_back(new Block());
 }
 
 IfStmt::~IfStmt() {
@@ -736,7 +734,7 @@ Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
   };
 
   SmallVector<Value *, 8> operands;
-  SmallVector<StmtBlock *, 2> successors;
+  SmallVector<Block *, 2> successors;
   if (auto *opStmt = dyn_cast<OperationInst>(this)) {
     operands.reserve(getNumOperands() + opStmt->getNumSuccessors());
 
@@ -758,8 +756,7 @@ Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
       successors.reserve(opStmt->getNumSuccessors());
       for (unsigned succ = 0, e = opStmt->getNumSuccessors(); succ != e;
            ++succ) {
-        successors.push_back(
-            const_cast<StmtBlock *>(opStmt->getSuccessor(succ)));
+        successors.push_back(const_cast<Block *>(opStmt->getSuccessor(succ)));
 
         // Add sentinel to delineate successor operands.
         operands.push_back(nullptr);

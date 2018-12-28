@@ -171,15 +171,14 @@ type - memref<8x%Nxf32>. We went for the current approach in MLIR because it
 simplifies the design --- types remain immutable when the values of symbols
 change.
 
-### Basic Block Arguments vs PHI nodes {#basic-block-arguments-vs-phi-nodes}
+### Block Arguments vs PHI nodes {#block-arguments-vs-phi-nodes}
 
-MLIR CFG Functions represent SSA using
-"[basic block arguments](LangRef.md#basic-blocks)" rather than
-[PHI instructions](http://llvm.org/docs/LangRef.html#i-phi) used in LLVM. This
-choice is representationally identical (the same constructs can be represented
-in either form) but basic block arguments have several advantages:
+MLIR CFG Functions represent SSA using "[block arguments](LangRef.md#blocks)"
+rather than [PHI instructions](http://llvm.org/docs/LangRef.html#i-phi) used in
+LLVM. This choice is representationally identical (the same constructs can be
+represented in either form) but block arguments have several advantages:
 
-1.  LLVM PHI nodes always have to be kept at the top of a basic block, and
+1.  LLVM PHI nodes always have to be kept at the top of a block, and
     transformations frequently have to manually skip over them. This is defined
     away with BB arguments.
 1.  LLVM has a separate function Argument node. This is defined away with BB
@@ -202,7 +201,7 @@ in either form) but basic block arguments have several advantages:
     but SIL uses it extensively, e.g. in the
     [switch_enum instruction](https://github.com/apple/swift/blob/master/docs/SIL.rst#switch-enum).
 
-For more context, basic block arguments were previously used in the Swift
+For more context, block arguments were previously used in the Swift
 [SIL Intermediate Representation](https://github.com/apple/swift/blob/master/docs/SIL.rst),
 and described in
 [a talk on YouTube](https://www.youtube.com/watch?v=Ntj8ab-5cvE). The section of
@@ -474,7 +473,7 @@ for (i=0; i <N; i++)
     // non-affine loop bound for k loop
     for (k=0; k<pow(2,j); k++)
        for (l=0; l<N; l++) {
-        // basic block loop body
+        // block loop body
         ...
        }
 ```
