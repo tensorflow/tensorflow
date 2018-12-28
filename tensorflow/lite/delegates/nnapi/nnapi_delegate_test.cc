@@ -27,6 +27,16 @@ using ::testing::ElementsAreArray;
 // TODO(b/110368244): figure out how to share the existing tests in kernels/ but
 // with the delegation on. Also, add more unit tests to improve code coverage.
 
+// This matcher uses 1 as maximum tolerance.
+MATCHER(QuantizedNear, "") {
+  const int diff = abs(std::get<0>(arg) - std::get<1>(arg));
+  if (diff > 1) {
+    *result_listener << "Quantized values can be at most off by one: " << diff;
+    return false;
+  }
+  return true;
+}
+
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() {
@@ -1326,7 +1336,8 @@ TEST(NNAPIDelegate, LogisticQuantized) {
                   },
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
-              ElementsAreArray({128, 1, 227, 251, 244, 32, 255, 188}));
+              testing::Pointwise(QuantizedNear(),
+                                 {128, 1, 227, 251, 244, 32, 255, 188}));
 }
 
 #if 0
