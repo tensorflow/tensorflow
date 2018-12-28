@@ -31,13 +31,14 @@ struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
 
   // All constants in the function post folding.
   SmallVector<Value *, 8> existingConstants;
-  // Operation statements that were folded and that need to be erased.
-  std::vector<OperationStmt *> opStmtsToErase;
+  // Operations that were folded and that need to be erased.
+  std::vector<OperationInst *> opStmtsToErase;
   using ConstantFactoryType = std::function<Value *(Attribute, Type)>;
 
-  bool foldOperation(Operation *op, SmallVectorImpl<Value *> &existingConstants,
+  bool foldOperation(OperationInst *op,
+                     SmallVectorImpl<Value *> &existingConstants,
                      ConstantFactoryType constantFactory);
-  void visitOperationStmt(OperationStmt *stmt);
+  void visitOperationInst(OperationInst *stmt);
   void visitForStmt(ForStmt *stmt);
   PassResult runOnCFGFunction(CFGFunction *f) override;
   PassResult runOnMLFunction(MLFunction *f) override;
@@ -52,7 +53,7 @@ char ConstantFold::passID = 0;
 /// constants are found, we keep track of them in the existingConstants list.
 ///
 /// This returns false if the operation was successfully folded.
-bool ConstantFold::foldOperation(Operation *op,
+bool ConstantFold::foldOperation(OperationInst *op,
                                  SmallVectorImpl<Value *> &existingConstants,
                                  ConstantFactoryType constantFactory) {
   // If this operation is already a constant, just remember it for cleanup
@@ -67,7 +68,7 @@ bool ConstantFold::foldOperation(Operation *op,
   SmallVector<Attribute, 8> operandConstants;
   for (auto *operand : op->getOperands()) {
     Attribute operandCst = nullptr;
-    if (auto *operandOp = operand->getDefiningOperation()) {
+    if (auto *operandOp = operand->getDefiningInst()) {
       if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
         operandCst = operandConstantOp->getValue();
     }
@@ -138,8 +139,8 @@ PassResult ConstantFold::runOnCFGFunction(CFGFunction *f) {
   return success();
 }
 
-// Override the walker's operation statement visit for constant folding.
-void ConstantFold::visitOperationStmt(OperationStmt *stmt) {
+// Override the walker's operation visiter for constant folding.
+void ConstantFold::visitOperationInst(OperationInst *stmt) {
   auto constantFactory = [&](Attribute value, Type type) -> Value * {
     FuncBuilder builder(stmt);
     return builder.create<ConstantOp>(stmt->getLoc(), value, type);
@@ -172,7 +173,7 @@ PassResult ConstantFold::runOnMLFunction(MLFunction *f) {
   // around dead constants.  Check for them now and remove them.
   for (auto *cst : existingConstants) {
     if (cst->use_empty())
-      cst->getDefiningStmt()->erase();
+      cst->getDefiningInst()->erase();
   }
 
   return success();

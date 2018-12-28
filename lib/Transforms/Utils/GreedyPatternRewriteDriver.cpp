@@ -39,7 +39,7 @@ public:
 
   void simplifyFunction(Function *currentFunction, WorklistRewriter &rewriter);
 
-  void addToWorklist(Operation *op) {
+  void addToWorklist(OperationInst *op) {
     // Check to see if the worklist already contains this op.
     if (worklistMap.count(op))
       return;
@@ -48,7 +48,7 @@ public:
     worklist.push_back(op);
   }
 
-  Operation *popFromWorklist() {
+  OperationInst *popFromWorklist() {
     auto *op = worklist.back();
     worklist.pop_back();
 
@@ -60,7 +60,7 @@ public:
 
   /// If the specified operation is in the worklist, remove it.  If not, this is
   /// a no-op.
-  void removeFromWorklist(Operation *op) {
+  void removeFromWorklist(OperationInst *op) {
     auto it = worklistMap.find(op);
     if (it != worklistMap.end()) {
       assert(worklist[it->second] == op && "malformed worklist data structure");
@@ -76,13 +76,13 @@ private:
   /// need to be revisited, plus their index in the worklist.  This allows us to
   /// efficiently remove operations from the worklist when they are removed even
   /// if they aren't the root of a pattern.
-  std::vector<Operation *> worklist;
-  DenseMap<Operation *, unsigned> worklistMap;
+  std::vector<OperationInst *> worklist;
+  DenseMap<OperationInst *, unsigned> worklistMap;
 
   /// As part of canonicalization, we move constants to the top of the entry
   /// block of the current function and de-duplicate them.  This keeps track of
   /// constants we have done this for.
-  DenseMap<std::pair<Attribute, Type>, Operation *> uniquedConstants;
+  DenseMap<std::pair<Attribute, Type>, OperationInst *> uniquedConstants;
 };
 }; // end anonymous namespace
 
@@ -94,22 +94,22 @@ public:
   WorklistRewriter(GreedyPatternRewriteDriver &driver, MLIRContext *context)
       : PatternRewriter(context), driver(driver) {}
 
-  virtual void setInsertionPoint(Operation *op) = 0;
+  virtual void setInsertionPoint(OperationInst *op) = 0;
 
   // If an operation is about to be removed, make sure it is not in our
   // worklist anymore because we'd get dangling references to it.
-  void notifyOperationRemoved(Operation *op) override {
+  void notifyOperationRemoved(OperationInst *op) override {
     driver.removeFromWorklist(op);
   }
 
   // When the root of a pattern is about to be replaced, it can trigger
   // simplifications to its users - make sure to add them to the worklist
   // before the root is changed.
-  void notifyRootReplaced(Operation *op) override {
+  void notifyRootReplaced(OperationInst *op) override {
     for (auto *result : op->getResults())
       // TODO: Add a result->getUsers() iterator.
       for (auto &user : result->getUses()) {
-        if (auto *op = dyn_cast<Operation>(user.getOwner()))
+        if (auto *op = dyn_cast<OperationInst>(user.getOwner()))
           driver.addToWorklist(op);
       }
 
@@ -168,7 +168,6 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
       // canonical version.  To ensure safe dominance, move the operation to the
       // top of the function.
       entry = op;
-
       auto &entryBB = currentFunction->front();
       op->moveBefore(&entryBB, entryBB.begin());
       continue;
@@ -186,7 +185,7 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
     operandConstants.clear();
     for (auto *operand : op->getOperands()) {
       Attribute operandCst;
-      if (auto *operandOp = operand->getDefiningOperation()) {
+      if (auto *operandOp = operand->getDefiningInst()) {
         if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
           operandCst = operandConstantOp->getValue();
       }
@@ -219,7 +218,7 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
         //
         // TODO: Add a result->getUsers() iterator.
         for (auto &operand : op->getResult(i)->getUses()) {
-          if (auto *op = dyn_cast<Operation>(operand.getOwner()))
+          if (auto *op = dyn_cast<OperationInst>(operand.getOwner()))
             addToWorklist(op);
         }
 
@@ -265,15 +264,15 @@ static void processMLFunction(MLFunction *fn,
 
     // Implement the hook for creating operations, and make sure that newly
     // created ops are added to the worklist for processing.
-    Operation *createOperation(const OperationState &state) override {
+    OperationInst *createOperation(const OperationState &state) override {
       auto *result = builder.createOperation(state);
       driver.addToWorklist(result);
       return result;
     }
 
-    void setInsertionPoint(Operation *op) override {
+    void setInsertionPoint(OperationInst *op) override {
       // Any new operations should be added before this statement.
-      builder.setInsertionPoint(cast<OperationStmt>(op));
+      builder.setInsertionPoint(cast<OperationInst>(op));
     }
 
   private:
@@ -281,7 +280,7 @@ static void processMLFunction(MLFunction *fn,
   };
 
   GreedyPatternRewriteDriver driver(std::move(patterns));
-  fn->walk([&](OperationStmt *stmt) { driver.addToWorklist(stmt); });
+  fn->walk([&](OperationInst *stmt) { driver.addToWorklist(stmt); });
 
   FuncBuilder mlBuilder(fn);
   MLFuncRewriter rewriter(driver, mlBuilder);
@@ -297,13 +296,13 @@ static void processCFGFunction(CFGFunction *fn,
 
     // Implement the hook for creating operations, and make sure that newly
     // created ops are added to the worklist for processing.
-    Operation *createOperation(const OperationState &state) override {
+    OperationInst *createOperation(const OperationState &state) override {
       auto *result = builder.createOperation(state);
       driver.addToWorklist(result);
       return result;
     }
 
-    void setInsertionPoint(Operation *op) override {
+    void setInsertionPoint(OperationInst *op) override {
       // Any new operations should be added before this instruction.
       builder.setInsertionPoint(cast<OperationInst>(op));
     }
@@ -315,7 +314,7 @@ static void processCFGFunction(CFGFunction *fn,
   GreedyPatternRewriteDriver driver(std::move(patterns));
   for (auto &bb : *fn)
     for (auto &op : bb)
-      if (auto *opInst = dyn_cast<OperationStmt>(&op))
+      if (auto *opInst = dyn_cast<OperationInst>(&op))
         driver.addToWorklist(opInst);
 
   FuncBuilder cfgBuilder(fn);

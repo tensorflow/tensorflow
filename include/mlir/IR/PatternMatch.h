@@ -108,7 +108,7 @@ public:
   /// returns a None value.  On success it a (possibly null) pattern-specific
   /// state wrapped in a Some.  This state is passed back into its rewrite
   /// function if this match is selected.
-  virtual PatternMatchResult match(Operation *op) const = 0;
+  virtual PatternMatchResult match(OperationInst *op) const = 0;
 
   virtual ~Pattern() {}
 
@@ -148,7 +148,7 @@ public:
   /// rewriter.  If an unexpected error is encountered (an internal
   /// compiler error), it is emitted through the normal MLIR diagnostic
   /// hooks and the IR is left in a valid state.
-  virtual void rewrite(Operation *op, std::unique_ptr<PatternState> state,
+  virtual void rewrite(OperationInst *op, std::unique_ptr<PatternState> state,
                        PatternRewriter &rewriter) const;
 
   /// Rewrite the IR rooted at the specified operation with the result of
@@ -156,7 +156,7 @@ public:
   /// builder.  If an unexpected error is encountered (an internal
   /// compiler error), it is emitted through the normal MLIR diagnostic
   /// hooks and the IR is left in a valid state.
-  virtual void rewrite(Operation *op, PatternRewriter &rewriter) const;
+  virtual void rewrite(OperationInst *op, PatternRewriter &rewriter) const;
 
 protected:
   /// Patterns must specify the root operation name they match against, and can
@@ -222,13 +222,13 @@ public:
   /// clients can specify a list of other nodes that this replacement may make
   /// (perhaps transitively) dead.  If any of those values are dead, this will
   /// remove them as well.
-  void replaceOp(Operation *op, ArrayRef<Value *> newValues,
+  void replaceOp(OperationInst *op, ArrayRef<Value *> newValues,
                  ArrayRef<Value *> valuesToRemoveIfDead = {});
 
   /// Replaces the result op with a new op that is created without verification.
   /// The result values of the two ops must be the same types.
   template <typename OpTy, typename... Args>
-  void replaceOpWithNewOp(Operation *op, Args... args) {
+  void replaceOpWithNewOp(OperationInst *op, Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
     replaceOpWithResultsOfAnotherOp(op, newOp->getOperation(), {});
   }
@@ -237,7 +237,8 @@ public:
   /// The result values of the two ops must be the same types.  This allows
   /// specifying a list of ops that may be removed if dead.
   template <typename OpTy, typename... Args>
-  void replaceOpWithNewOp(Operation *op, ArrayRef<Value *> valuesToRemoveIfDead,
+  void replaceOpWithNewOp(OperationInst *op,
+                          ArrayRef<Value *> valuesToRemoveIfDead,
                           Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
     replaceOpWithResultsOfAnotherOp(op, newOp->getOperation(),
@@ -252,7 +253,7 @@ public:
   /// The valuesToRemoveIfDead list is an optional list of values that the
   /// rewriter should remove if they are dead at this point.
   ///
-  void updatedRootInPlace(Operation *op,
+  void updatedRootInPlace(OperationInst *op,
                           ArrayRef<Value *> valuesToRemoveIfDead = {});
 
 protected:
@@ -264,26 +265,26 @@ protected:
 
   /// This is implemented to create the specified operations and serves as a
   /// notification hook for rewriters that want to know about new operations.
-  virtual Operation *createOperation(const OperationState &state) = 0;
+  virtual OperationInst *createOperation(const OperationState &state) = 0;
 
   /// Notify the pattern rewriter that the specified operation has been mutated
   /// in place.  This is called after the mutation is done.
-  virtual void notifyRootUpdated(Operation *op) {}
+  virtual void notifyRootUpdated(OperationInst *op) {}
 
   /// Notify the pattern rewriter that the specified operation is about to be
   /// replaced with another set of operations.  This is called before the uses
   /// of the operation have been changed.
-  virtual void notifyRootReplaced(Operation *op) {}
+  virtual void notifyRootReplaced(OperationInst *op) {}
 
   /// This is called on an operation that a pattern match is removing, right
   /// before the operation is deleted.  At this point, the operation has zero
   /// uses.
-  virtual void notifyOperationRemoved(Operation *op) {}
+  virtual void notifyOperationRemoved(OperationInst *op) {}
 
 private:
   /// op and newOp are known to have the same number of results, replace the
   /// uses of op with uses of newOp
-  void replaceOpWithResultsOfAnotherOp(Operation *op, Operation *newOp,
+  void replaceOpWithResultsOfAnotherOp(OperationInst *op, OperationInst *newOp,
                                        ArrayRef<Value *> valuesToRemoveIfDead);
 };
 
@@ -316,7 +317,7 @@ public:
   /// Find the highest benefit pattern available in the pattern set for the DAG
   /// rooted at the specified node.  This returns the pattern (and any state it
   /// needs) if found, or null if there are no matches.
-  MatchResult findMatch(Operation *op);
+  MatchResult findMatch(OperationInst *op);
 
 private:
   PatternMatcher(const PatternMatcher &) = delete;

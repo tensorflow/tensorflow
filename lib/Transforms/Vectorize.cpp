@@ -722,22 +722,22 @@ namespace {
 
 struct VectorizationState {
   /// Adds an entry of pre/post vectorization statements in the state.
-  void registerReplacement(OperationStmt *key, OperationStmt *value);
+  void registerReplacement(OperationInst *key, OperationInst *value);
   /// When the current vectorization pattern is successful, this erases the
   /// instructions that were marked for erasure in the proper order and resets
   /// the internal state for the next pattern.
   void finishVectorizationPattern();
 
-  // In-order tracking of original OperationStmt that have been vectorized.
+  // In-order tracking of original OperationInst that have been vectorized.
   // Erase in reverse order.
-  SmallVector<OperationStmt *, 16> toErase;
-  // Set of OperationStmt that have been vectorized (the values in the
+  SmallVector<OperationInst *, 16> toErase;
+  // Set of OperationInst that have been vectorized (the values in the
   // vectorizationMap for hashed access). The vectorizedSet is used in
   // particular to filter the statements that have already been vectorized by
   // this pattern, when iterating over nested loops in this pattern.
-  DenseSet<OperationStmt *> vectorizedSet;
-  // Map of old scalar OperationStmt to new vectorized OperationStmt.
-  DenseMap<OperationStmt *, OperationStmt *> vectorizationMap;
+  DenseSet<OperationInst *> vectorizedSet;
+  // Map of old scalar OperationInst to new vectorized OperationInst.
+  DenseMap<OperationInst *, OperationInst *> vectorizationMap;
   // Map of old scalar Value to new vectorized Value.
   DenseMap<const Value *, Value *> replacementMap;
   // The strategy drives which loop to vectorize by which amount.
@@ -746,17 +746,17 @@ struct VectorizationState {
   // vectorizeOperations function. They consist of the subset of load operations
   // that have been vectorized. They can be retrieved from `vectorizationMap`
   // but it is convenient to keep track of them in a separate data structure.
-  DenseSet<OperationStmt *> roots;
+  DenseSet<OperationInst *> roots;
   // Terminator statements for the worklist in the vectorizeOperations function.
   // They consist of the subset of store operations that have been vectorized.
   // They can be retrieved from `vectorizationMap` but it is convenient to keep
   // track of them in a separate data structure. Since they do not necessarily
   // belong to use-def chains starting from loads (e.g storing a constant), we
   // need to handle them in a post-pass.
-  DenseSet<OperationStmt *> terminators;
+  DenseSet<OperationInst *> terminators;
   // Checks that the type of `stmt` is StoreOp and adds it to the terminators
   // set.
-  void registerTerminator(OperationStmt *stmt);
+  void registerTerminator(OperationInst *stmt);
 
 private:
   void registerReplacement(const Value *key, Value *value);
@@ -764,8 +764,8 @@ private:
 
 } // end namespace
 
-void VectorizationState::registerReplacement(OperationStmt *key,
-                                             OperationStmt *value) {
+void VectorizationState::registerReplacement(OperationInst *key,
+                                             OperationInst *value) {
   LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ commit vectorized op: ");
   LLVM_DEBUG(key->print(dbgs()));
   LLVM_DEBUG(dbgs() << "  into  ");
@@ -784,7 +784,7 @@ void VectorizationState::registerReplacement(OperationStmt *key,
   }
 }
 
-void VectorizationState::registerTerminator(OperationStmt *stmt) {
+void VectorizationState::registerTerminator(OperationInst *stmt) {
   assert(stmt->isa<StoreOp>() && "terminator must be a StoreOp");
   assert(terminators.count(stmt) == 0 &&
          "terminator was already inserted previously");
@@ -832,7 +832,7 @@ static bool vectorizeRootOrTerminal(Value *iv, LoadOrStoreOpPointer memoryOp,
   auto vectorType = VectorType::get(state->strategy->vectorSizes, elementType);
 
   // Materialize a MemRef with 1 vector.
-  auto *opStmt = cast<OperationStmt>(memoryOp->getOperation());
+  auto *opStmt = cast<OperationInst>(memoryOp->getOperation());
   // For now, vector_transfers must be aligned, operate only on indices with an
   // identity subset of AffineMap and do not change layout.
   // TODO(ntv): increase the expressiveness power of vector_transfer operations
@@ -847,7 +847,7 @@ static bool vectorizeRootOrTerminal(Value *iv, LoadOrStoreOpPointer memoryOp,
         opStmt->getLoc(), vectorType, memoryOp->getMemRef(),
         map(makePtrDynCaster<Value>(), memoryOp->getIndices()), permutationMap);
     state->registerReplacement(opStmt,
-                               cast<OperationStmt>(transfer->getOperation()));
+                               cast<OperationInst>(transfer->getOperation()));
   } else {
     state->registerTerminator(opStmt);
   }
@@ -866,7 +866,7 @@ static bool vectorizeForStmt(ForStmt *loop, int64_t step,
     if (!matcher::isLoadOrStore(stmt)) {
       return false;
     }
-    auto *opStmt = cast<OperationStmt>(&stmt);
+    auto *opStmt = cast<OperationInst>(&stmt);
     return state->vectorizationMap.count(opStmt) == 0 &&
            state->vectorizedSet.count(opStmt) == 0 &&
            state->roots.count(opStmt) == 0 &&
@@ -875,7 +875,7 @@ static bool vectorizeForStmt(ForStmt *loop, int64_t step,
   auto loadAndStores = matcher::Op(notVectorizedThisPattern);
   auto matches = loadAndStores.match(loop);
   for (auto ls : matches) {
-    auto *opStmt = cast<OperationStmt>(ls.first);
+    auto *opStmt = cast<OperationInst>(ls.first);
     auto load = opStmt->dyn_cast<LoadOp>();
     auto store = opStmt->dyn_cast<StoreOp>();
     LLVM_DEBUG(opStmt->print(dbgs()));
@@ -974,14 +974,14 @@ static Value *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
   Location loc = stmt->getLoc();
   auto vectorType = type.cast<VectorType>();
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
-  auto *constantOpStmt = cast<OperationStmt>(constant.getOperation());
+  auto *constantOpStmt = cast<OperationInst>(constant.getOperation());
 
   OperationState state(
       b.getContext(), loc, constantOpStmt->getName().getStringRef(), {},
       {vectorType},
       {make_pair(Identifier::get("value", b.getContext()), attr)});
 
-  auto *splat = cast<OperationStmt>(b.createOperation(state));
+  auto *splat = cast<OperationInst>(b.createOperation(state));
   return splat->getResult(0);
 }
 
@@ -994,7 +994,7 @@ static Type getVectorType(Value *v, const VectorizationState &state) {
   if (!VectorType::isValidElementType(v->getType())) {
     return Type();
   }
-  auto *definingOpStmt = cast<OperationStmt>(v->getDefiningStmt());
+  auto *definingOpStmt = cast<OperationInst>(v->getDefiningInst());
   if (state.vectorizedSet.count(definingOpStmt) > 0) {
     return v->getType().cast<VectorType>();
   }
@@ -1026,7 +1026,7 @@ static Value *vectorizeOperand(Value *operand, Statement *stmt,
                                VectorizationState *state) {
   LLVM_DEBUG(dbgs() << "\n[early-vect]vectorize operand: ");
   LLVM_DEBUG(operand->print(dbgs()));
-  auto *definingStatement = cast<OperationStmt>(operand->getDefiningStmt());
+  auto *definingStatement = cast<OperationInst>(operand->getDefiningInst());
   // 1. If this value has already been vectorized this round, we are done.
   if (state->vectorizedSet.count(definingStatement) > 0) {
     LLVM_DEBUG(dbgs() << " -> already vector operand");
@@ -1049,7 +1049,7 @@ static Value *vectorizeOperand(Value *operand, Statement *stmt,
     return nullptr;
   }
   // 3. vectorize constant.
-  if (auto constant = operand->getDefiningStmt()->dyn_cast<ConstantOp>()) {
+  if (auto constant = operand->getDefiningInst()->dyn_cast<ConstantOp>()) {
     return vectorizeConstant(stmt, *constant,
                              getVectorType(operand, *state).cast<VectorType>());
   }
@@ -1059,17 +1059,17 @@ static Value *vectorizeOperand(Value *operand, Statement *stmt,
   return nullptr;
 };
 
-/// Encodes OperationStmt-specific behavior for vectorization. In general we
+/// Encodes OperationInst-specific behavior for vectorization. In general we
 /// assume that all operands of an op must be vectorized but this is not always
 /// true. In the future, it would be nice to have a trait that describes how a
 /// particular operation vectorizes. For now we implement the case distinction
 /// here.
-/// Returns a vectorized form of stmt or nullptr if vectorization fails.
+/// Returns a vectorized form of an operation or nullptr if vectorization fails.
 /// TODO(ntv): consider adding a trait to Op to describe how it gets vectorized.
 /// Maybe some Ops are not vectorizable or require some tricky logic, we cannot
 /// do one-off logic here; ideally it would be TableGen'd.
-static OperationStmt *vectorizeOneOperationStmt(FuncBuilder *b,
-                                                OperationStmt *opStmt,
+static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
+                                                OperationInst *opStmt,
                                                 VectorizationState *state) {
   // Sanity checks.
   assert(!opStmt->isa<LoadOp>() &&
@@ -1091,7 +1091,7 @@ static OperationStmt *vectorizeOneOperationStmt(FuncBuilder *b,
     LLVM_DEBUG(permutationMap.print(dbgs()));
     auto transfer = b.create<VectorTransferWriteOp>(
         opStmt->getLoc(), vectorValue, memRef, indices, permutationMap);
-    auto *res = cast<OperationStmt>(transfer->getOperation());
+    auto *res = cast<OperationInst>(transfer->getOperation());
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ vectorized store: " << *res);
     // "Terminators" (i.e. StoreOps) are erased on the spot.
     opStmt->erase();
@@ -1114,8 +1114,8 @@ static OperationStmt *vectorizeOneOperationStmt(FuncBuilder *b,
   // Create a clone of the op with the proper operands and return types.
   // TODO(ntv): The following assumes there is always an op with a fixed
   // name that works both in scalar mode and vector mode.
-  // TODO(ntv): Is it worth considering an OperationStmt.clone operation
-  // which changes the type so we can promote an OperationStmt with less
+  // TODO(ntv): Is it worth considering an OperationInst.clone operation
+  // which changes the type so we can promote an OperationInst with less
   // boilerplate?
   OperationState newOp(b->getContext(), opStmt->getLoc(),
                        opStmt->getName().getStringRef(), operands, types,
@@ -1123,22 +1123,22 @@ static OperationStmt *vectorizeOneOperationStmt(FuncBuilder *b,
   return b->createOperation(newOp);
 }
 
-/// Iterates over the OperationStmt in the loop and rewrites them using their
+/// Iterates over the OperationInst in the loop and rewrites them using their
 /// vectorized counterpart by:
-///   1. iteratively building a worklist of uses of the OperationStmt vectorized
+///   1. iteratively building a worklist of uses of the OperationInst vectorized
 ///   so far by this pattern;
-///   2. for each OperationStmt in the worklist, create the vector form of this
+///   2. for each OperationInst in the worklist, create the vector form of this
 ///   operation and replace all its uses by the vectorized form. For this step,
 ///   the worklist must be traversed in order;
 ///   3. verify that all operands of the newly vectorized operation have been
 ///   vectorized by this pattern.
 static bool vectorizeOperations(VectorizationState *state) {
   // 1. create initial worklist with the uses of the roots.
-  SetVector<OperationStmt *> worklist;
-  auto insertUsesOf = [&worklist, state](Operation *vectorized) {
-    for (auto *r : cast<OperationStmt>(vectorized)->getResults())
+  SetVector<OperationInst *> worklist;
+  auto insertUsesOf = [&worklist, state](OperationInst *vectorized) {
+    for (auto *r : vectorized->getResults())
       for (auto &u : r->getUses()) {
-        auto *stmt = cast<OperationStmt>(u.getOwner());
+        auto *stmt = cast<OperationInst>(u.getOwner());
         // Don't propagate to terminals, a separate pass is needed for those.
         // TODO(ntv)[b/119759136]: use isa<> once Op is implemented.
         if (state->terminators.count(stmt) > 0) {
@@ -1160,7 +1160,7 @@ static bool vectorizeOperations(VectorizationState *state) {
     // 2. Create vectorized form of the statement.
     // Insert it just before stmt, on success register stmt as replaced.
     FuncBuilder b(stmt);
-    auto *vectorizedStmt = vectorizeOneOperationStmt(&b, stmt, state);
+    auto *vectorizedStmt = vectorizeOneOperationInst(&b, stmt, state);
     if (!vectorizedStmt) {
       return true;
     }
@@ -1169,11 +1169,11 @@ static bool vectorizeOperations(VectorizationState *state) {
     //    Note that we cannot just call replaceAllUsesWith because it may
     //    result in ops with mixed types, for ops whose operands have not all
     //    yet been vectorized. This would be invalid IR.
-    state->registerReplacement(cast<OperationStmt>(stmt), vectorizedStmt);
+    state->registerReplacement(stmt, vectorizedStmt);
 
     // 4. Augment the worklist with uses of the statement we just vectorized.
     // This preserves the proper order in the worklist.
-    apply(insertUsesOf, ArrayRef<Operation *>{stmt});
+    apply(insertUsesOf, ArrayRef<OperationInst *>{stmt});
   }
   return false;
 }
@@ -1223,12 +1223,12 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
     // Form the root operationsthat have been set in the replacementMap.
     // For now, these roots are the loads for which vector_transfer_read
     // operations have been inserted.
-    auto getDefiningOperation = [](const Value *val) {
-      return const_cast<Value *>(val)->getDefiningOperation();
+    auto getDefiningInst = [](const Value *val) {
+      return const_cast<Value *>(val)->getDefiningInst();
     };
     using ReferenceTy = decltype(*(state.replacementMap.begin()));
     auto getKey = [](ReferenceTy it) { return it.first; };
-    auto roots = map(getDefiningOperation, map(getKey, state.replacementMap));
+    auto roots = map(getDefiningInst, map(getKey, state.replacementMap));
 
     // Vectorize the root operations and everything reached by use-def chains
     // except the terminators (store statements) that need to be post-processed
@@ -1240,12 +1240,12 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
     }
 
     // Finally, vectorize the terminators. If anything fails to vectorize, skip.
-    auto vectorizeOrFail = [&fail, &state](OperationStmt *stmt) {
+    auto vectorizeOrFail = [&fail, &state](OperationInst *stmt) {
       if (fail) {
         return;
       }
       FuncBuilder b(stmt);
-      auto *res = vectorizeOneOperationStmt(&b, stmt, &state);
+      auto *res = vectorizeOneOperationInst(&b, stmt, &state);
       if (res == nullptr) {
         fail = true;
       }

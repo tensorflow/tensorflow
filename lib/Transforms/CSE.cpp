@@ -50,10 +50,10 @@ struct CSE : public FunctionPass {
 };
 
 // TODO(riverriddle) Handle commutative operations.
-struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
-  static unsigned getHashValue(const Operation *op) {
+struct SimpleOperationInfo : public llvm::DenseMapInfo<OperationInst *> {
+  static unsigned getHashValue(const OperationInst *op) {
     // Hash the operations based upon their:
-    //   - Operation Name
+    //   - OperationInst Name
     //   - Attributes
     //   - Result Types
     //   - Operands
@@ -62,7 +62,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
         hash_combine_range(op->result_type_begin(), op->result_type_end()),
         hash_combine_range(op->operand_begin(), op->operand_end()));
   }
-  static bool isEqual(const Operation *lhs, const Operation *rhs) {
+  static bool isEqual(const OperationInst *lhs, const OperationInst *rhs) {
     if (lhs == rhs)
       return true;
     if (lhs == getTombstoneKey() || lhs == getEmptyKey() ||
@@ -93,8 +93,8 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
 struct CSEImpl {
   using AllocatorTy = llvm::RecyclingAllocator<
       llvm::BumpPtrAllocator,
-      llvm::ScopedHashTableVal<Operation *, Operation *>>;
-  using ScopedMapTy = llvm::ScopedHashTable<Operation *, Operation *,
+      llvm::ScopedHashTableVal<OperationInst *, OperationInst *>>;
+  using ScopedMapTy = llvm::ScopedHashTable<OperationInst *, OperationInst *,
                                             SimpleOperationInfo, AllocatorTy>;
 
   /// Erase any operations that were marked as dead during simplification.
@@ -104,7 +104,7 @@ struct CSEImpl {
   }
 
   /// Attempt to eliminate a redundant operation.
-  void simplifyOperation(Operation *op) {
+  void simplifyOperation(OperationInst *op) {
     // TODO(riverriddle) We currently only eliminate non side-effecting
     // operations.
     if (!op->hasNoSideEffect())
@@ -141,7 +141,7 @@ struct CSEImpl {
   ScopedMapTy knownValues;
 
   /// Operations marked as dead and to be erased.
-  std::vector<Operation *> opsToErase;
+  std::vector<OperationInst *> opsToErase;
 };
 
 /// Common sub-expression elimination for CFG functions.
@@ -224,7 +224,7 @@ struct MLCSE : public CSEImpl, StmtWalker<MLCSE> {
     StmtWalker<MLCSE>::walk(Start, End);
   }
 
-  void visitOperationStmt(OperationStmt *stmt) { simplifyOperation(stmt); }
+  void visitOperationInst(OperationInst *stmt) { simplifyOperation(stmt); }
 };
 
 } // end anonymous namespace

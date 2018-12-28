@@ -36,7 +36,7 @@ class ForStmt;
 class FuncBuilder;
 class Location;
 class Module;
-class OperationStmt;
+class OperationInst;
 
 class Function;
 using CFGFunction = Function;
@@ -66,10 +66,10 @@ bool replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 /// these will also be collected into a single (multi-result) affine apply op.
 /// The final results of the composed AffineApplyOp are returned in output
 /// parameter 'results'. Returns the affine apply op created.
-OperationStmt *
+OperationInst *
 createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
                             ArrayRef<Value *> operands,
-                            ArrayRef<OperationStmt *> affineApplyOps,
+                            ArrayRef<OperationInst *> affineApplyOps,
                             SmallVectorImpl<Value *> *results);
 
 /// Given an operation statement, inserts a new single affine apply operation,
@@ -98,7 +98,7 @@ createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 /// Returns nullptr if none of the operands were the result of an affine_apply
 /// and thus there was no affine computation slice to create. Returns the newly
 /// affine_apply operation statement otherwise.
-OperationStmt *createAffineComputationSlice(OperationStmt *opStmt);
+OperationInst *createAffineComputationSlice(OperationInst *opStmt);
 
 /// Forward substitutes results from 'AffineApplyOp' into any users which
 /// are also AffineApplyOps.
@@ -113,7 +113,7 @@ bool constantFoldBounds(ForStmt *forStmt);
 /// Replaces (potentially nested) function attributes in the operation "op"
 /// with those specified in "remappingTable".
 void remapFunctionAttrs(
-    Operation &op, const DenseMap<Attribute, FunctionAttr> &remappingTable);
+    OperationInst &op, const DenseMap<Attribute, FunctionAttr> &remappingTable);
 
 /// Replaces (potentially nested) function attributes all operations of the
 /// Function "fn" with those specified in "remappingTable".

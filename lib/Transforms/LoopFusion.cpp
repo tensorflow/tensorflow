@@ -80,7 +80,7 @@ char LoopFusion::passID = 0;
 
 FunctionPass *mlir::createLoopFusionPass() { return new LoopFusion; }
 
-static void getSingleMemRefAccess(OperationStmt *loadOrStoreOpStmt,
+static void getSingleMemRefAccess(OperationInst *loadOrStoreOpStmt,
                                   MemRefAccess *access) {
   if (auto loadOp = loadOrStoreOpStmt->dyn_cast<LoadOp>()) {
     access->memref = loadOp->getMemRef();
@@ -112,8 +112,8 @@ struct FusionCandidate {
   MemRefAccess dstAccess;
 };
 
-static FusionCandidate buildFusionCandidate(OperationStmt *srcStoreOpStmt,
-                                            OperationStmt *dstLoadOpStmt) {
+static FusionCandidate buildFusionCandidate(OperationInst *srcStoreOpStmt,
+                                            OperationInst *dstLoadOpStmt) {
   FusionCandidate candidate;
   // Get store access for src loop nest.
   getSingleMemRefAccess(srcStoreOpStmt, &candidate.srcAccess);
@@ -123,7 +123,7 @@ static FusionCandidate buildFusionCandidate(OperationStmt *srcStoreOpStmt,
 }
 
 // Returns the loop depth of the loop nest surrounding 'opStmt'.
-static unsigned getLoopDepth(OperationStmt *opStmt) {
+static unsigned getLoopDepth(OperationInst *opStmt) {
   unsigned loopDepth = 0;
   auto *currStmt = opStmt->getParentStmt();
   ForStmt *currForStmt;
@@ -141,15 +141,15 @@ namespace {
 class LoopNestStateCollector : public StmtWalker<LoopNestStateCollector> {
 public:
   SmallVector<ForStmt *, 4> forStmts;
-  SmallVector<OperationStmt *, 4> loadOpStmts;
-  SmallVector<OperationStmt *, 4> storeOpStmts;
+  SmallVector<OperationInst *, 4> loadOpStmts;
+  SmallVector<OperationInst *, 4> storeOpStmts;
   bool hasIfStmt = false;
 
   void visitForStmt(ForStmt *forStmt) { forStmts.push_back(forStmt); }
 
   void visitIfStmt(IfStmt *ifStmt) { hasIfStmt = true; }
 
-  void visitOperationStmt(OperationStmt *opStmt) {
+  void visitOperationInst(OperationInst *opStmt) {
     if (opStmt->isa<LoadOp>())
       loadOpStmts.push_back(opStmt);
     if (opStmt->isa<StoreOp>())
@@ -171,10 +171,10 @@ public:
     unsigned id;
     // The top-level statment which is (or contains) loads/stores.
     Statement *stmt;
-    // List of load op stmts.
-    SmallVector<OperationStmt *, 4> loads;
+    // List of load operations.
+    SmallVector<OperationInst *, 4> loads;
     // List of store op stmts.
-    SmallVector<OperationStmt *, 4> stores;
+    SmallVector<OperationInst *, 4> stores;
     Node(unsigned id, Statement *stmt) : id(id), stmt(stmt) {}
 
     // Returns the load op count for 'memref'.
@@ -312,8 +312,8 @@ public:
   }
 
   // Adds ops in 'loads' and 'stores' to node at 'id'.
-  void addToNode(unsigned id, const SmallVectorImpl<OperationStmt *> &loads,
-                 const SmallVectorImpl<OperationStmt *> &stores) {
+  void addToNode(unsigned id, const SmallVectorImpl<OperationInst *> &loads,
+                 const SmallVectorImpl<OperationInst *> &stores) {
     Node *node = getNode(id);
     for (auto *loadOpStmt : loads)
       node->loads.push_back(loadOpStmt);
@@ -370,7 +370,7 @@ bool MemRefDependenceGraph::init(MLFunction *f) {
       }
       nodes.insert({node.id, node});
     }
-    if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
+    if (auto *opStmt = dyn_cast<OperationInst>(&stmt)) {
       if (auto loadOp = opStmt->dyn_cast<LoadOp>()) {
         // Create graph node for top-level load op.
         Node node(id++, &stmt);
@@ -474,7 +474,7 @@ public:
       if (!isa<ForStmt>(dstNode->stmt))
         continue;
 
-      SmallVector<OperationStmt *, 4> loads = dstNode->loads;
+      SmallVector<OperationInst *, 4> loads = dstNode->loads;
       while (!loads.empty()) {
         auto *dstLoadOpStmt = loads.pop_back_val();
         auto *memref = dstLoadOpStmt->cast<LoadOp>()->getMemRef();

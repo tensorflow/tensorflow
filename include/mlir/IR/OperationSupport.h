@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines a number of support types that Operation and related
+// This file defines a number of support types that OperationInst and related
 // classes build on top of.
 //
 //===----------------------------------------------------------------------===//
@@ -32,7 +32,7 @@
 
 namespace mlir {
 class Dialect;
-class Operation;
+class OperationInst;
 class OperationState;
 class OpAsmParser;
 class OpAsmParserResult;
@@ -78,23 +78,24 @@ public:
   Dialect &dialect;
 
   /// Return true if this "op class" can match against the specified operation.
-  bool (&isClassFor)(const Operation *op);
+  bool (&isClassFor)(const OperationInst *op);
 
   /// Use the specified object to parse this ops custom assembly format.
   bool (&parseAssembly)(OpAsmParser *parser, OperationState *result);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(const Operation *op, OpAsmPrinter *p);
+  void (&printAssembly)(const OperationInst *op, OpAsmPrinter *p);
 
   /// This hook implements the verifier for this operation.  It should emits an
   /// error message and returns true if a problem is detected, or returns false
   /// if everything is ok.
-  bool (&verifyInvariants)(const Operation *op);
+  bool (&verifyInvariants)(const OperationInst *op);
 
   /// This hook implements a constant folder for this operation.  It returns
   /// true if folding failed, or returns false and fills in `results` on
   /// success.
-  bool (&constantFoldHook)(const Operation *op, ArrayRef<Attribute> operands,
+  bool (&constantFoldHook)(const OperationInst *op,
+                           ArrayRef<Attribute> operands,
                            SmallVectorImpl<Attribute> &results);
 
   /// This hook returns any canonicalization pattern rewrites that the operation
@@ -124,11 +125,11 @@ public:
 private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
-      bool (&isClassFor)(const Operation *op),
+      bool (&isClassFor)(const OperationInst *op),
       bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
-      void (&printAssembly)(const Operation *op, OpAsmPrinter *p),
-      bool (&verifyInvariants)(const Operation *op),
-      bool (&constantFoldHook)(const Operation *op,
+      void (&printAssembly)(const OperationInst *op, OpAsmPrinter *p),
+      bool (&verifyInvariants)(const OperationInst *op),
+      bool (&constantFoldHook)(const OperationInst *op,
                                ArrayRef<Attribute> operands,
                                SmallVectorImpl<Attribute> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,

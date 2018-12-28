@@ -127,7 +127,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(const ForStmt &forStmt) {
 bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
   assert(isa<ForStmt>(iv) && "iv must be a ForStmt");
   assert(index.getType().isa<IndexType>() && "index must be of IndexType");
-  SmallVector<OperationStmt *, 4> affineApplyOps;
+  SmallVector<OperationInst *, 4> affineApplyOps;
   getReachableAffineApplyOps({const_cast<Value *>(&index)}, affineApplyOps);
 
   if (affineApplyOps.empty()) {
@@ -234,13 +234,13 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
 }
 
 static bool isVectorTransferReadOrWrite(const Statement &stmt) {
-  const auto *opStmt = cast<OperationStmt>(&stmt);
+  const auto *opStmt = cast<OperationInst>(&stmt);
   return opStmt->isa<VectorTransferReadOp>() ||
          opStmt->isa<VectorTransferWriteOp>();
 }
 
 using VectorizableStmtFun =
-    std::function<bool(const ForStmt &, const OperationStmt &)>;
+    std::function<bool(const ForStmt &, const OperationInst &)>;
 
 static bool isVectorizableLoopWithCond(const ForStmt &loop,
                                        VectorizableStmtFun isVectorizableStmt) {
@@ -265,7 +265,7 @@ static bool isVectorizableLoopWithCond(const ForStmt &loop,
   auto loadAndStores = matcher::Op(matcher::isLoadOrStore);
   auto loadAndStoresMatched = loadAndStores.match(forStmt);
   for (auto ls : loadAndStoresMatched) {
-    auto *op = cast<OperationStmt>(ls.first);
+    auto *op = cast<OperationInst>(ls.first);
     auto load = op->dyn_cast<LoadOp>();
     auto store = op->dyn_cast<StoreOp>();
     // Only scalar types are considered vectorizable, all load/store must be
@@ -285,7 +285,7 @@ static bool isVectorizableLoopWithCond(const ForStmt &loop,
 bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
     const ForStmt &loop, unsigned fastestVaryingDim) {
   VectorizableStmtFun fun(
-      [fastestVaryingDim](const ForStmt &loop, const OperationStmt &op) {
+      [fastestVaryingDim](const ForStmt &loop, const OperationInst &op) {
         auto load = op.dyn_cast<LoadOp>();
         auto store = op.dyn_cast<StoreOp>();
         return load ? isContiguousAccess(loop, *load, fastestVaryingDim)
@@ -297,7 +297,7 @@ bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
 bool mlir::isVectorizableLoop(const ForStmt &loop) {
   VectorizableStmtFun fun(
       // TODO: implement me
-      [](const ForStmt &loop, const OperationStmt &op) { return true; });
+      [](const ForStmt &loop, const OperationInst &op) { return true; });
   return isVectorizableLoopWithCond(loop, fun);
 }
 
@@ -314,7 +314,7 @@ bool mlir::isStmtwiseShiftValid(const ForStmt &forStmt,
   for (const auto &stmt : *forBody) {
     // A for or if stmt does not produce any def/results (that are used
     // outside).
-    if (const auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
+    if (const auto *opStmt = dyn_cast<OperationInst>(&stmt)) {
       for (unsigned i = 0, e = opStmt->getNumResults(); i < e; ++i) {
         const Value *result = opStmt->getResult(i);
         for (const StmtOperand &use : result->getUses()) {

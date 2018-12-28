@@ -35,7 +35,7 @@ class ForStmt;
 class MLIRContext;
 
 /// The operand of a Terminator contains a StmtBlock.
-using StmtBlockOperand = IROperandImpl<StmtBlock, OperationStmt>;
+using StmtBlockOperand = IROperandImpl<StmtBlock, OperationInst>;
 
 } // namespace mlir
 
@@ -72,7 +72,7 @@ class Statement : public IROperandOwner,
                   public llvm::ilist_node_with_parent<Statement, StmtBlock> {
 public:
   enum class Kind {
-    Operation = (int)IROperandOwner::Kind::OperationStmt,
+    OperationInst = (int)IROperandOwner::Kind::OperationInst,
     For = (int)IROperandOwner::Kind::ForStmt,
     If = (int)IROperandOwner::Kind::IfStmt,
   };

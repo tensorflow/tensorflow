@@ -478,14 +478,14 @@ bool mlir::getFlattenedAffineExprs(
                                    localVarCst);
 }
 
-/// Returns the sequence of AffineApplyOp OperationStmts operation in
+/// Returns the sequence of AffineApplyOp OperationInsts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.
 // TODO(andydavis) Add a method to AffineApplyOp which forward substitutes
 // the AffineApplyOp into any user AffineApplyOps.
 void mlir::getReachableAffineApplyOps(
     ArrayRef<Value *> operands,
-    SmallVectorImpl<OperationStmt *> &affineApplyOps) {
+    SmallVectorImpl<OperationInst *> &affineApplyOps) {
   struct State {
     // The ssa value for this node in the DFS traversal.
     Value *value;
@@ -499,9 +499,9 @@ void mlir::getReachableAffineApplyOps(
 
   while (!worklist.empty()) {
     State &state = worklist.back();
-    auto *opStmt = state.value->getDefiningStmt();
-    // Note: getDefiningStmt will return nullptr if the operand is not an
-    // OperationStmt (i.e. ForStmt), which is a terminator for the search.
+    auto *opStmt = state.value->getDefiningInst();
+    // Note: getDefiningInst will return nullptr if the operand is not an
+    // OperationInst (i.e. ForStmt), which is a terminator for the search.
     if (opStmt == nullptr || !opStmt->isa<AffineApplyOp>()) {
       worklist.pop_back();
       continue;
@@ -531,7 +531,7 @@ void mlir::getReachableAffineApplyOps(
 // operands of 'valueMap'.
 void mlir::forwardSubstituteReachableOps(AffineValueMap *valueMap) {
   // Gather AffineApplyOps reachable from 'indices'.
-  SmallVector<OperationStmt *, 4> affineApplyOps;
+  SmallVector<OperationInst *, 4> affineApplyOps;
   getReachableAffineApplyOps(valueMap->getOperands(), affineApplyOps);
   // Compose AffineApplyOps in 'affineApplyOps'.
   for (auto *opStmt : affineApplyOps) {
@@ -842,7 +842,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       auto *symbol = operands[i];
       assert(symbol->isValidSymbol());
       // Check if the symbol is a constant.
-      if (auto *opStmt = symbol->getDefiningStmt()) {
+      if (auto *opStmt = symbol->getDefiningInst()) {
         if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
           dependenceDomain->setIdToConstant(valuePosMap.getSymPos(symbol),
                                             constOp->getValue());

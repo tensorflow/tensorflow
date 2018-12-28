@@ -1269,7 +1269,7 @@ bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
           addSymbolId(getNumSymbolIds(), const_cast<Value *>(operand));
           loc = getNumDimIds() + getNumSymbolIds() - 1;
           // Check if the symbol is a constant.
-          if (auto *opStmt = operand->getDefiningStmt()) {
+          if (auto *opStmt = operand->getDefiningInst()) {
             if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
               setIdToConstant(*operand, constOp->getValue());
             }

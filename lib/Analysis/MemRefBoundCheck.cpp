@@ -45,7 +45,7 @@ struct MemRefBoundCheck : public FunctionPass, StmtWalker<MemRefBoundCheck> {
   // Not applicable to CFG functions.
   PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
 
-  void visitOperationStmt(OperationStmt *opStmt);
+  void visitOperationInst(OperationInst *opStmt);
 
   static char passID;
 };
@@ -58,7 +58,7 @@ FunctionPass *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();
 }
 
-void MemRefBoundCheck::visitOperationStmt(OperationStmt *opStmt) {
+void MemRefBoundCheck::visitOperationInst(OperationInst *opStmt) {
   if (auto loadOp = opStmt->dyn_cast<LoadOp>()) {
     boundCheckLoadOrStoreOp(loadOp);
   } else if (auto storeOp = opStmt->dyn_cast<StoreOp>()) {

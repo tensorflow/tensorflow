@@ -246,8 +246,8 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
   return res;
 }
 
-static OperationStmt *
-instantiate(FuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
+static OperationInst *
+instantiate(FuncBuilder *b, OperationInst *opStmt, VectorType hwVectorType,
             DenseMap<const Value *, Value *> *substitutionsMap);
 
 /// Not all Values belong to a program slice scoped within the immediately
@@ -263,7 +263,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
                          DenseMap<const Value *, Value *> *substitutionsMap) {
   auto it = substitutionsMap->find(v);
   if (it == substitutionsMap->end()) {
-    auto *opStmt = cast<OperationStmt>(v->getDefiningOperation());
+    auto *opStmt = cast<OperationInst>(v->getDefiningInst());
     if (opStmt->isa<ConstantOp>()) {
       FuncBuilder b(opStmt);
       auto *inst = instantiate(&b, opStmt, hwVectorType, substitutionsMap);
@@ -272,7 +272,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
       assert(res.second && "Insertion failed");
       return res.first->second;
     }
-    v->getDefiningOperation()->emitError("Missing substitution");
+    v->getDefiningInst()->emitError("Missing substitution");
     return nullptr;
   }
   return it->second;
@@ -384,7 +384,7 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
 ///   - constant splat is replaced by constant splat of `hwVectorType`.
 /// TODO(ntv): add more substitutions on a per-need basis.
 static SmallVector<NamedAttribute, 1>
-materializeAttributes(OperationStmt *opStmt, VectorType hwVectorType) {
+materializeAttributes(OperationInst *opStmt, VectorType hwVectorType) {
   SmallVector<NamedAttribute, 1> res;
   for (auto a : opStmt->getAttrs()) {
     if (auto splat = a.second.dyn_cast<SplatElementsAttr>()) {
@@ -404,8 +404,8 @@ materializeAttributes(OperationStmt *opStmt, VectorType hwVectorType) {
 /// substitutionsMap.
 ///
 /// If the underlying substitution fails, this fails too and returns nullptr.
-static OperationStmt *
-instantiate(FuncBuilder *b, OperationStmt *opStmt, VectorType hwVectorType,
+static OperationInst *
+instantiate(FuncBuilder *b, OperationInst *opStmt, VectorType hwVectorType,
             DenseMap<const Value *, Value *> *substitutionsMap) {
   assert(!opStmt->isa<VectorTransferReadOp>() &&
          "Should call the function specialized for VectorTransferReadOp");
@@ -475,7 +475,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
 /// `hwVectorType` int the covering of the super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static OperationStmt *
+static OperationInst *
 instantiate(FuncBuilder *b, VectorTransferReadOp *read, VectorType hwVectorType,
             ArrayRef<unsigned> hwVectorInstance,
             DenseMap<const Value *, Value *> *substitutionsMap) {
@@ -486,7 +486,7 @@ instantiate(FuncBuilder *b, VectorTransferReadOp *read, VectorType hwVectorType,
   auto cloned = b->create<VectorTransferReadOp>(
       read->getLoc(), hwVectorType, read->getMemRef(), affineIndices,
       projectedPermutationMap(read, hwVectorType), read->getPaddingValue());
-  return cast<OperationStmt>(cloned->getOperation());
+  return cast<OperationInst>(cloned->getOperation());
 }
 
 /// Creates an instantiated version of `write` for the instance of
@@ -495,7 +495,7 @@ instantiate(FuncBuilder *b, VectorTransferReadOp *read, VectorType hwVectorType,
 /// `hwVectorType` int the covering of th3e super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static OperationStmt *
+static OperationInst *
 instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
             VectorType hwVectorType, ArrayRef<unsigned> hwVectorInstance,
             DenseMap<const Value *, Value *> *substitutionsMap) {
@@ -508,7 +508,7 @@ instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
       substitute(write->getVector(), hwVectorType, substitutionsMap),
       write->getMemRef(), affineIndices,
       projectedPermutationMap(write, hwVectorType));
-  return cast<OperationStmt>(cloned->getOperation());
+  return cast<OperationInst>(cloned->getOperation());
 }
 
 /// Returns `true` if stmt instance is properly cloned and inserted, false
@@ -544,7 +544,7 @@ static bool instantiateMaterialization(Statement *stmt,
 
   // Create a builder here for unroll-and-jam effects.
   FuncBuilder b(stmt);
-  auto *opStmt = cast<OperationStmt>(stmt);
+  auto *opStmt = cast<OperationInst>(stmt);
   if (auto write = opStmt->dyn_cast<VectorTransferWriteOp>()) {
     instantiate(&b, write, state->hwVectorType, state->hwVectorInstance,
                 state->substitutionsMap);
@@ -620,8 +620,7 @@ static bool emitSlice(MaterializationState *state,
   }
 
   LLVM_DEBUG(dbgs() << "\nMLFunction is now\n");
-  LLVM_DEBUG(
-      cast<OperationStmt>((*slice)[0])->getOperationFunction()->print(dbgs()));
+  LLVM_DEBUG(cast<OperationInst>((*slice)[0])->getFunction()->print(dbgs()));
 
   // slice are topologically sorted, we can just erase them in reverse
   // order. Reverse iterator does not just work simply with an operator*
@@ -652,7 +651,7 @@ static bool emitSlice(MaterializationState *state,
 /// because we currently disallow vectorization of defs that come from another
 /// scope.
 static bool materialize(MLFunction *f,
-                        const SetVector<OperationStmt *> &terminators,
+                        const SetVector<OperationInst *> &terminators,
                         MaterializationState *state) {
   DenseSet<Statement *> seen;
   for (auto *term : terminators) {
@@ -724,7 +723,7 @@ PassResult MaterializeVectorsPass::runOnMLFunction(MLFunction *f) {
   // Capture terminators; i.e. vector_transfer_write ops involving a strict
   // super-vector of subVectorType.
   auto filter = [subVectorType](const Statement &stmt) {
-    const auto &opStmt = cast<OperationStmt>(stmt);
+    const auto &opStmt = cast<OperationInst>(stmt);
     if (!opStmt.isa<VectorTransferWriteOp>()) {
       return false;
     }
@@ -732,9 +731,9 @@ PassResult MaterializeVectorsPass::runOnMLFunction(MLFunction *f) {
   };
   auto pat = Op(filter);
   auto matches = pat.match(f);
-  SetVector<OperationStmt *> terminators;
+  SetVector<OperationInst *> terminators;
   for (auto m : matches) {
-    terminators.insert(cast<OperationStmt>(m.first));
+    terminators.insert(cast<OperationInst>(m.first));
   }
 
   auto fail = materialize(f, terminators, &state);

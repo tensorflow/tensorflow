@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "AttributeListStorage.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -65,8 +66,8 @@ Statement::~Statement() {
 /// Destroy this statement or one of its subclasses.
 void Statement::destroy() {
   switch (this->getKind()) {
-  case Kind::Operation:
-    cast<OperationStmt>(this)->destroy();
+  case Kind::OperationInst:
+    cast<OperationInst>(this)->destroy();
     break;
   case Kind::For:
     delete cast<ForStmt>(this);
@@ -95,7 +96,7 @@ const Value *Statement::getOperand(unsigned idx) const {
 // it is an induction variable, or it is a result of affine apply operation
 // with dimension id arguments.
 bool Value::isValidDim() const {
-  if (auto *stmt = getDefiningStmt()) {
+  if (auto *stmt = getDefiningInst()) {
     // Top level statement or constant operation is ok.
     if (stmt->getParentStmt() == nullptr || stmt->isa<ConstantOp>())
       return true;
@@ -113,7 +114,7 @@ bool Value::isValidDim() const {
 // the top level, or it is a result of affine apply operation with symbol
 // arguments.
 bool Value::isValidSymbol() const {
-  if (auto *stmt = getDefiningStmt()) {
+  if (auto *stmt = getDefiningInst()) {
     // Top level statement or constant operation is ok.
     if (stmt->getParentStmt() == nullptr || stmt->isa<ConstantOp>())
       return true;
@@ -133,8 +134,8 @@ void Statement::setOperand(unsigned idx, Value *value) {
 
 unsigned Statement::getNumOperands() const {
   switch (getKind()) {
-  case Kind::Operation:
-    return cast<OperationStmt>(this)->getNumOperands();
+  case Kind::OperationInst:
+    return cast<OperationInst>(this)->getNumOperands();
   case Kind::For:
     return cast<ForStmt>(this)->getNumOperands();
   case Kind::If:
@@ -144,8 +145,8 @@ unsigned Statement::getNumOperands() const {
 
 MutableArrayRef<StmtOperand> Statement::getStmtOperands() {
   switch (getKind()) {
-  case Kind::Operation:
-    return cast<OperationStmt>(this)->getStmtOperands();
+  case Kind::OperationInst:
+    return cast<OperationInst>(this)->getStmtOperands();
   case Kind::For:
     return cast<ForStmt>(this)->getStmtOperands();
   case Kind::If:
@@ -177,7 +178,7 @@ bool Statement::emitError(const Twine &message) const {
 
 // Returns whether the Statement is a terminator.
 bool Statement::isTerminator() const {
-  if (auto *op = dyn_cast<OperationStmt>(this))
+  if (auto *op = dyn_cast<OperationInst>(this))
     return op->isTerminator();
   return false;
 }
@@ -264,11 +265,11 @@ void Statement::dropAllReferences() {
 }
 
 //===----------------------------------------------------------------------===//
-// OperationStmt
+// OperationInst
 //===----------------------------------------------------------------------===//
 
-/// Create a new OperationStmt with the specific fields.
-OperationStmt *OperationStmt::create(Location location, OperationName name,
+/// Create a new OperationInst with the specific fields.
+OperationInst *OperationInst::create(Location location, OperationName name,
                                      ArrayRef<Value *> operands,
                                      ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
@@ -285,9 +286,9 @@ OperationStmt *OperationStmt::create(Location location, OperationName name,
           resultTypes.size(), numSuccessors, numSuccessors, numOperands);
   void *rawMem = malloc(byteSize);
 
-  // Initialize the OperationStmt part of the statement.
+  // Initialize the OperationInst part of the statement.
   auto stmt = ::new (rawMem)
-      OperationStmt(location, name, numOperands, resultTypes.size(),
+      OperationInst(location, name, numOperands, resultTypes.size(),
                     numSuccessors, attributes, context);
 
   // Initialize the results and operands.
@@ -355,15 +356,22 @@ OperationStmt *OperationStmt::create(Location location, OperationName name,
   return stmt;
 }
 
-OperationStmt::OperationStmt(Location location, OperationName name,
+OperationInst::OperationInst(Location location, OperationName name,
                              unsigned numOperands, unsigned numResults,
                              unsigned numSuccessors,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
-    : Operation(name, attributes, location, context), numOperands(numOperands),
-      numResults(numResults), numSuccs(numSuccessors) {}
+    : Statement(Kind::OperationInst, location), numOperands(numOperands),
+      numResults(numResults), numSuccs(numSuccessors), name(name) {
+#ifndef NDEBUG
+  for (auto elt : attributes)
+    assert(elt.second != nullptr && "Attributes cannot have null entries");
+#endif
 
-OperationStmt::~OperationStmt() {
+  this->attrs = AttributeListStorage::get(attributes, context);
+}
+
+OperationInst::~OperationInst() {
   // Explicitly run the destructors for the operands and results.
   for (auto &operand : getStmtOperands())
     operand.~StmtOperand();
@@ -377,13 +385,27 @@ OperationStmt::~OperationStmt() {
       successor.~StmtBlockOperand();
 }
 
-void OperationStmt::destroy() {
-  this->~OperationStmt();
+/// Return true if there are no users of any results of this operation.
+bool OperationInst::use_empty() const {
+  for (auto *result : getResults())
+    if (!result->use_empty())
+      return false;
+  return true;
+}
+
+ArrayRef<NamedAttribute> OperationInst::getAttrs() const {
+  if (!attrs)
+    return {};
+  return attrs->getElements();
+}
+
+void OperationInst::destroy() {
+  this->~OperationInst();
   free(this);
 }
 
 /// Return the context this operation is associated with.
-MLIRContext *OperationStmt::getContext() const {
+MLIRContext *OperationInst::getContext() const {
   // If we have a result or operand type, that is a constant time way to get
   // to the context.
   if (getNumResults())
@@ -396,9 +418,9 @@ MLIRContext *OperationStmt::getContext() const {
   return getFunction()->getContext();
 }
 
-bool OperationStmt::isReturn() const { return isa<ReturnOp>(); }
+bool OperationInst::isReturn() const { return isa<ReturnOp>(); }
 
-void OperationStmt::setSuccessor(BasicBlock *block, unsigned index) {
+void OperationInst::setSuccessor(BasicBlock *block, unsigned index) {
   assert(index < getNumSuccessors());
   getBlockOperands()[index].set(block);
 }
@@ -411,6 +433,96 @@ void OperationInst::eraseOperand(unsigned index) {
               &Operands[numOperands - 1]);
   --numOperands;
   Operands[getNumOperands()].~StmtOperand();
+}
+
+auto OperationInst::getSuccessorOperands(unsigned index) const
+    -> llvm::iterator_range<const_operand_iterator> {
+  assert(isTerminator() && "Only terminators have successors.");
+  unsigned succOperandIndex = getSuccessorOperandIndex(index);
+  return {const_operand_iterator(this, succOperandIndex),
+          const_operand_iterator(this, succOperandIndex +
+                                           getNumSuccessorOperands(index))};
+}
+auto OperationInst::getSuccessorOperands(unsigned index)
+    -> llvm::iterator_range<operand_iterator> {
+  assert(isTerminator() && "Only terminators have successors.");
+  unsigned succOperandIndex = getSuccessorOperandIndex(index);
+  return {operand_iterator(this, succOperandIndex),
+          operand_iterator(this,
+                           succOperandIndex + getNumSuccessorOperands(index))};
+}
+
+/// If an attribute exists with the specified name, change it to the new
+/// value.  Otherwise, add a new attribute with the specified name/value.
+void OperationInst::setAttr(Identifier name, Attribute value) {
+  assert(value && "attributes may never be null");
+  auto origAttrs = getAttrs();
+
+  SmallVector<NamedAttribute, 8> newAttrs(origAttrs.begin(), origAttrs.end());
+  auto *context = getContext();
+
+  // If we already have this attribute, replace it.
+  for (auto &elt : newAttrs)
+    if (elt.first == name) {
+      elt.second = value;
+      attrs = AttributeListStorage::get(newAttrs, context);
+      return;
+    }
+
+  // Otherwise, add it.
+  newAttrs.push_back({name, value});
+  attrs = AttributeListStorage::get(newAttrs, context);
+}
+
+/// Remove the attribute with the specified name if it exists.  The return
+/// value indicates whether the attribute was present or not.
+auto OperationInst::removeAttr(Identifier name) -> RemoveResult {
+  auto origAttrs = getAttrs();
+  for (unsigned i = 0, e = origAttrs.size(); i != e; ++i) {
+    if (origAttrs[i].first == name) {
+      SmallVector<NamedAttribute, 8> newAttrs;
+      newAttrs.reserve(origAttrs.size() - 1);
+      newAttrs.append(origAttrs.begin(), origAttrs.begin() + i);
+      newAttrs.append(origAttrs.begin() + i + 1, origAttrs.end());
+      attrs = AttributeListStorage::get(newAttrs, getContext());
+      return RemoveResult::Removed;
+    }
+  }
+  return RemoveResult::NotFound;
+}
+
+/// Attempt to constant fold this operation with the specified constant
+/// operand values.  If successful, this returns false and fills in the
+/// results vector.  If not, this returns true and results is unspecified.
+bool OperationInst::constantFold(ArrayRef<Attribute> operands,
+                                 SmallVectorImpl<Attribute> &results) const {
+  if (auto *abstractOp = getAbstractOperation()) {
+    // If we have a registered operation definition matching this one, use it to
+    // try to constant fold the operation.
+    if (!abstractOp->constantFoldHook(llvm::cast<OperationInst>(this), operands,
+                                      results))
+      return false;
+
+    // Otherwise, fall back on the dialect hook to handle it.
+    return abstractOp->dialect.constantFoldHook(llvm::cast<OperationInst>(this),
+                                                operands, results);
+  }
+
+  // If this operation hasn't been registered or doesn't have abstract
+  // operation, fall back to a dialect which matches the prefix.
+  auto opName = getName().getStringRef();
+  if (auto *dialect = getContext()->getRegisteredDialect(opName)) {
+    return dialect->constantFoldHook(llvm::cast<OperationInst>(this), operands,
+                                     results);
+  }
+
+  return true;
+}
+
+/// Emit an error with the op name prefixed, like "'dim' op " which is
+/// convenient for verifiers.
+bool OperationInst::emitOpError(const Twine &message) const {
+  return emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
 }
 
 //===----------------------------------------------------------------------===//
@@ -625,7 +737,7 @@ Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
 
   SmallVector<Value *, 8> operands;
   SmallVector<StmtBlock *, 2> successors;
-  if (auto *opStmt = dyn_cast<OperationStmt>(this)) {
+  if (auto *opStmt = dyn_cast<OperationInst>(this)) {
     operands.reserve(getNumOperands() + opStmt->getNumSuccessors());
 
     if (!opStmt->isTerminator()) {
@@ -653,8 +765,8 @@ Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
         operands.push_back(nullptr);
 
         // Remap the successors operands.
-        for (auto &operand : opStmt->getSuccessorOperands(succ))
-          operands.push_back(remapOperand(operand.get()));
+        for (auto *operand : opStmt->getSuccessorOperands(succ))
+          operands.push_back(remapOperand(operand));
       }
     }
 
@@ -662,7 +774,7 @@ Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
     resultTypes.reserve(opStmt->getNumResults());
     for (auto *result : opStmt->getResults())
       resultTypes.push_back(result->getType());
-    auto *newOp = OperationStmt::create(getLoc(), opStmt->getName(), operands,
+    auto *newOp = OperationInst::create(getLoc(), opStmt->getName(), operands,
                                         resultTypes, opStmt->getAttrs(),
                                         successors, context);
     // Remember the mapping of any results.

@@ -200,7 +200,7 @@ namespace mlir {
 namespace matcher {
 
 MLFunctionMatcher Op(FilterFunctionType filter) {
-  return MLFunctionMatcher(Statement::Kind::Operation, {}, filter);
+  return MLFunctionMatcher(Statement::Kind::OperationInst, {}, filter);
 }
 
 MLFunctionMatcher If(MLFunctionMatcher child) {
@@ -246,7 +246,7 @@ bool isReductionLoop(const Statement &stmt) {
 };
 
 bool isLoadOrStore(const Statement &stmt) {
-  const auto *opStmt = dyn_cast<OperationStmt>(&stmt);
+  const auto *opStmt = dyn_cast<OperationInst>(&stmt);
   return opStmt && (opStmt->isa<LoadOp>() || opStmt->isa<StoreOp>());
 };
 

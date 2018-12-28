@@ -56,8 +56,8 @@ public:
                          MLIRContext *context) const;
 
 private:
-  friend class Operation;
-  explicit AddFOp(const Operation *state) : BinaryOp(state) {}
+  friend class OperationInst;
+  explicit AddFOp(const OperationInst *state) : BinaryOp(state) {}
 };
 
 /// The "addi" operation takes two operands and returns one result, each of
@@ -80,8 +80,8 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class Operation;
-  explicit AddIOp(const Operation *state) : BinaryOp(state) {}
+  friend class OperationInst;
+  explicit AddIOp(const OperationInst *state) : BinaryOp(state) {}
 };
 
 /// The "alloc" operation allocates a region of memory, as specified by its
@@ -123,8 +123,8 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class Operation;
-  explicit AllocOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit AllocOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "call" operation represents a direct call to a function.  The operands
@@ -151,8 +151,8 @@ public:
   bool verify() const;
 
 protected:
-  friend class Operation;
-  explicit CallOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit CallOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "call_indirect" operation represents an indirect call to a value of
@@ -180,8 +180,8 @@ public:
   bool verify() const;
 
 protected:
-  friend class Operation;
-  explicit CallIndirectOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit CallIndirectOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The predicate indicates the type of the comparison to perform:
@@ -245,8 +245,8 @@ public:
   bool verify() const;
 
 private:
-  friend class Operation;
-  explicit CmpIOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit CmpIOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "dealloc" operation frees the region of memory referenced by a memref
@@ -277,8 +277,8 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class Operation;
-  explicit DeallocOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit DeallocOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "dim" operation takes a memref or tensor operand and returns an
@@ -309,8 +309,8 @@ public:
   void print(OpAsmPrinter *p) const;
 
 private:
-  friend class Operation;
-  explicit DimOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit DimOp(const OperationInst *state) : Op(state) {}
 };
 
 // DmaStartOp starts a non-blocking DMA operation that transfers data from a
@@ -367,7 +367,7 @@ public:
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
   // Returns the source memerf indices for this DMA operation.
-  llvm::iterator_range<Operation::const_operand_iterator>
+  llvm::iterator_range<OperationInst::const_operand_iterator>
   getSrcIndices() const {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank()};
@@ -389,7 +389,7 @@ public:
   }
 
   // Returns the destination memref indices for this DMA operation.
-  llvm::iterator_range<Operation::const_operand_iterator>
+  llvm::iterator_range<OperationInst::const_operand_iterator>
   getDstIndices() const {
     return {getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
@@ -411,7 +411,7 @@ public:
   }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Operation::const_operand_iterator>
+  llvm::iterator_range<OperationInst::const_operand_iterator>
   getTagIndices() const {
     unsigned tagIndexStartPos =
         1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1 + 1;
@@ -471,8 +471,8 @@ public:
   }
 
 protected:
-  friend class ::mlir::Operation;
-  explicit DmaStartOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit DmaStartOp(const OperationInst *state) : Op(state) {}
 };
 
 // DmaWaitOp blocks until the completion of a DMA operation associated with the
@@ -502,7 +502,7 @@ public:
   Value *getTagMemRef() { return getOperand(0); }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Operation::const_operand_iterator>
+  llvm::iterator_range<OperationInst::const_operand_iterator>
   getTagIndices() const {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getTagMemRefRank()};
@@ -524,8 +524,8 @@ public:
                                           MLIRContext *context);
 
 protected:
-  friend class ::mlir::Operation;
-  explicit DmaWaitOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit DmaWaitOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "extract_element" op reads a tensor or vector and returns one element
@@ -549,11 +549,12 @@ public:
   Value *getAggregate() { return getOperand(0); }
   const Value *getAggregate() const { return getOperand(0); }
 
-  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+  llvm::iterator_range<OperationInst::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
-  llvm::iterator_range<Operation::const_operand_iterator> getIndices() const {
+  llvm::iterator_range<OperationInst::const_operand_iterator>
+  getIndices() const {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
@@ -565,8 +566,8 @@ public:
   void print(OpAsmPrinter *p) const;
 
 private:
-  friend class Operation;
-  explicit ExtractElementOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit ExtractElementOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "load" op reads an element from a memref specified by an index list. The
@@ -591,11 +592,12 @@ public:
     return getMemRef()->getType().cast<MemRefType>();
   }
 
-  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+  llvm::iterator_range<OperationInst::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
-  llvm::iterator_range<Operation::const_operand_iterator> getIndices() const {
+  llvm::iterator_range<OperationInst::const_operand_iterator>
+  getIndices() const {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
@@ -608,8 +610,8 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class Operation;
-  explicit LoadOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit LoadOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "memref_cast" operation converts a memref from one type to an equivalent
@@ -639,8 +641,8 @@ public:
   bool verify() const;
 
 private:
-  friend class Operation;
-  explicit MemRefCastOp(const Operation *state) : CastOp(state) {}
+  friend class OperationInst;
+  explicit MemRefCastOp(const OperationInst *state) : CastOp(state) {}
 };
 
 /// The "mulf" operation takes two operands and returns one result, each of
@@ -660,8 +662,8 @@ public:
                          MLIRContext *context) const;
 
 private:
-  friend class Operation;
-  explicit MulFOp(const Operation *state) : BinaryOp(state) {}
+  friend class OperationInst;
+  explicit MulFOp(const OperationInst *state) : BinaryOp(state) {}
 };
 
 /// The "muli" operation takes two operands and returns one result, each of
@@ -684,8 +686,8 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class Operation;
-  explicit MulIOp(const Operation *state) : BinaryOp(state) {}
+  friend class OperationInst;
+  explicit MulIOp(const OperationInst *state) : BinaryOp(state) {}
 };
 
 /// The "select" operation chooses one value based on a binary condition
@@ -720,8 +722,8 @@ public:
                          MLIRContext *context) const;
 
 private:
-  friend class Operation;
-  explicit SelectOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit SelectOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "store" op writes an element to a memref specified by an index list.
@@ -752,11 +754,12 @@ public:
     return getMemRef()->getType().cast<MemRefType>();
   }
 
-  llvm::iterator_range<Operation::operand_iterator> getIndices() {
+  llvm::iterator_range<OperationInst::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
   }
 
-  llvm::iterator_range<Operation::const_operand_iterator> getIndices() const {
+  llvm::iterator_range<OperationInst::const_operand_iterator>
+  getIndices() const {
     return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
   }
 
@@ -770,8 +773,8 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class Operation;
-  explicit StoreOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit StoreOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "subf" operation takes two operands and returns one result, each of
@@ -790,8 +793,8 @@ public:
                          MLIRContext *context) const;
 
 private:
-  friend class Operation;
-  explicit SubFOp(const Operation *state) : BinaryOp(state) {}
+  friend class OperationInst;
+  explicit SubFOp(const OperationInst *state) : BinaryOp(state) {}
 };
 
 /// The "subi" operation takes two operands and returns one result, each of
@@ -813,8 +816,8 @@ public:
                                           MLIRContext *context);
 
 private:
-  friend class Operation;
-  explicit SubIOp(const Operation *state) : BinaryOp(state) {}
+  friend class OperationInst;
+  explicit SubIOp(const OperationInst *state) : BinaryOp(state) {}
 };
 
 /// The "tensor_cast" operation converts a tensor from one type to an equivalent
@@ -839,8 +842,8 @@ public:
   bool verify() const;
 
 private:
-  friend class Operation;
-  explicit TensorCastOp(const Operation *state) : CastOp(state) {}
+  friend class OperationInst;
+  explicit TensorCastOp(const OperationInst *state) : CastOp(state) {}
 };
 
 } // end namespace mlir

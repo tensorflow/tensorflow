@@ -243,7 +243,7 @@ public:
   StmtBlock *getBlock() const { return block; }
 
   /// Creates an operation given the fields represented as an OperationState.
-  OperationStmt *createOperation(const OperationState &state);
+  OperationInst *createOperation(const OperationState &state);
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
@@ -265,7 +265,7 @@ public:
     OpTy::build(this, &state, args...);
     auto *stmt = createOperation(state);
 
-    // If the OperationStmt we produce is valid, return it.
+    // If the OperationInst we produce is valid, return it.
     if (!OpTy::verifyInvariants(stmt)) {
       auto result = stmt->dyn_cast<OpTy>();
       assert(result && "Builder didn't return the right type");
@@ -284,7 +284,7 @@ public:
   /// sub-statements to the corresponding statement that is copied, and adds
   /// those mappings to the map.
   Statement *clone(const Statement &stmt,
-                   OperationStmt::OperandMapTy &operandMapping) {
+                   OperationInst::OperandMapTy &operandMapping) {
     Statement *cloneStmt = stmt.clone(operandMapping, getContext());
     block->getStatements().insert(insertPoint, cloneStmt);
     return cloneStmt;

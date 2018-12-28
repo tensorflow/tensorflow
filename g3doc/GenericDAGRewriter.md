@@ -322,14 +322,14 @@ class Pattern {
   /// returns a None value.  On success it a (possibly null) pattern-specific
   /// state wrapped in a Some.  This state is passed back into its rewrite
   /// function if this match is selected.
-  virtual Optional<PatternState*> match(Operation *op) const = 0;
+  virtual Optional<PatternState*> match(OperationInst *op) const = 0;
 
   /// Rewrite the IR rooted at the specified operation with the result of
   /// this pattern, generating any new operations with the specified
   /// rewriter.  If an unexpected error is encountered (an internal
   /// compiler error), it is emitted through the normal MLIR diagnostic
   /// hooks and the IR is left in a valid state.
-  virtual void rewrite(Operation *op, PatternState *state,
+  virtual void rewrite(OperationInst *op, PatternState *state,
                        PatternRewriter &rewriter) const;
 };
 ```
@@ -372,8 +372,8 @@ class PatternMatcher {
    // Given a specific operation, see if there is some rewrite that is
    // interesting.  If so, return success and return the list of new
    // operations that were created.  If not, return failure.
-   bool matchAndRewrite(Operation *op,
-                        SmallVectorImpl<Operation*> &newlyCreatedOps);
+   bool matchAndRewrite(OperationInst *op,
+                        SmallVectorImpl<OperationInst*> &newlyCreatedOps);
 };
 ```
 

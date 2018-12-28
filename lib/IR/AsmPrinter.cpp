@@ -120,10 +120,10 @@ private:
   void visitStatement(const Statement *stmt);
   void visitForStmt(const ForStmt *forStmt);
   void visitIfStmt(const IfStmt *ifStmt);
-  void visitOperationStmt(const OperationStmt *opStmt);
+  void visitOperationInst(const OperationInst *opStmt);
   void visitType(Type type);
   void visitAttribute(Attribute attr);
-  void visitOperation(const Operation *op);
+  void visitOperation(const OperationInst *op);
 
   DenseMap<AffineMap, int> affineMapIds;
   std::vector<AffineMap> affineMapsById;
@@ -161,7 +161,7 @@ void ModuleState::visitAttribute(Attribute attr) {
   }
 }
 
-void ModuleState::visitOperation(const Operation *op) {
+void ModuleState::visitOperation(const OperationInst *op) {
   // Visit all the types used in the operation.
   for (auto *operand : op->getOperands())
     visitType(operand->getType());
@@ -212,7 +212,7 @@ void ModuleState::visitForStmt(const ForStmt *forStmt) {
     visitStatement(&childStmt);
 }
 
-void ModuleState::visitOperationStmt(const OperationStmt *opStmt) {
+void ModuleState::visitOperationInst(const OperationInst *opStmt) {
   for (auto attr : opStmt->getAttrs())
     visitAttribute(attr.second);
 }
@@ -223,8 +223,8 @@ void ModuleState::visitStatement(const Statement *stmt) {
     return visitIfStmt(cast<IfStmt>(stmt));
   case Statement::Kind::For:
     return visitForStmt(cast<ForStmt>(stmt));
-  case Statement::Kind::Operation:
-    return visitOperationStmt(cast<OperationStmt>(stmt));
+  case Statement::Kind::OperationInst:
+    return visitOperationInst(cast<OperationInst>(stmt));
   default:
     return;
   }
@@ -944,8 +944,8 @@ class FunctionPrinter : public ModulePrinter, private OpAsmPrinter {
 public:
   FunctionPrinter(const ModulePrinter &other) : ModulePrinter(other) {}
 
-  void printOperation(const Operation *op);
-  void printDefaultOp(const Operation *op);
+  void printOperation(const OperationInst *op);
+  void printDefaultOp(const OperationInst *op);
 
   // Implement OpAsmPrinter.
   raw_ostream &getStream() const { return os; }
@@ -983,7 +983,7 @@ protected:
     llvm::raw_svector_ostream specialName(specialNameBuffer);
 
     // Give constant integers special names.
-    if (auto *op = value->getDefiningOperation()) {
+    if (auto *op = value->getDefiningInst()) {
       if (auto intOp = op->dyn_cast<ConstantIntOp>()) {
         // i1 constants get special names.
         if (intOp->getType().isInteger(1)) {
@@ -1111,7 +1111,7 @@ private:
 };
 } // end anonymous namespace
 
-void FunctionPrinter::printOperation(const Operation *op) {
+void FunctionPrinter::printOperation(const OperationInst *op) {
   if (op->getNumResults()) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
     os << " = ";
@@ -1128,7 +1128,7 @@ void FunctionPrinter::printOperation(const Operation *op) {
   printDefaultOp(op);
 }
 
-void FunctionPrinter::printDefaultOp(const Operation *op) {
+void FunctionPrinter::printDefaultOp(const OperationInst *op) {
   os << '"';
   printEscapedString(op->getName().getStringRef(), os);
   os << "\"(";
@@ -1172,7 +1172,7 @@ public:
 
   void print(const Instruction *inst);
 
-  void printSuccessorAndUseList(const Operation *term, unsigned index);
+  void printSuccessorAndUseList(const OperationInst *term, unsigned index);
 
   void printBBName(const BasicBlock *block) { os << "bb" << getBBID(block); }
 
@@ -1302,7 +1302,7 @@ void CFGFunctionPrinter::printBranchOperands(const Range &range) {
   os << ')';
 }
 
-void CFGFunctionPrinter::printSuccessorAndUseList(const Operation *term,
+void CFGFunctionPrinter::printSuccessorAndUseList(const OperationInst *term,
                                                   unsigned index) {
   printBBName(term->getSuccessor(index));
   printBranchOperands(term->getSuccessorOperands(index));
@@ -1331,11 +1331,11 @@ public:
 
   // Methods to print ML function statements.
   void print(const Statement *stmt);
-  void print(const OperationStmt *stmt);
+  void print(const OperationInst *stmt);
   void print(const ForStmt *stmt);
   void print(const IfStmt *stmt);
   void print(const StmtBlock *block);
-  void printSuccessorAndUseList(const Operation *term, unsigned index) {
+  void printSuccessorAndUseList(const OperationInst *term, unsigned index) {
     assert(false && "MLFunctions do not have terminators with successors.");
   }
 
@@ -1371,7 +1371,7 @@ void MLFunctionPrinter::numberValues() {
   // the first result of the operation statements.
   struct NumberValuesPass : public StmtWalker<NumberValuesPass> {
     NumberValuesPass(MLFunctionPrinter *printer) : printer(printer) {}
-    void visitOperationStmt(OperationStmt *stmt) {
+    void visitOperationInst(OperationInst *stmt) {
       if (stmt->getNumResults() != 0)
         printer->numberValueID(stmt->getResult(0));
     }
@@ -1421,8 +1421,8 @@ void MLFunctionPrinter::print(const StmtBlock *block) {
 
 void MLFunctionPrinter::print(const Statement *stmt) {
   switch (stmt->getKind()) {
-  case Statement::Kind::Operation:
-    return print(cast<OperationStmt>(stmt));
+  case Statement::Kind::OperationInst:
+    return print(cast<OperationInst>(stmt));
   case Statement::Kind::For:
     return print(cast<ForStmt>(stmt));
   case Statement::Kind::If:
@@ -1430,7 +1430,7 @@ void MLFunctionPrinter::print(const Statement *stmt) {
   }
 }
 
-void MLFunctionPrinter::print(const OperationStmt *stmt) {
+void MLFunctionPrinter::print(const OperationInst *stmt) {
   os.indent(numSpaces);
   printOperation(stmt);
 }
@@ -1580,7 +1580,7 @@ void Value::print(raw_ostream &os) const {
     os << "<block argument>\n";
     return;
   case Value::Kind::StmtResult:
-    return getDefiningStmt()->print(os);
+    return getDefiningInst()->print(os);
   case Value::Kind::ForStmt:
     return cast<ForStmt>(this)->print(os);
   }

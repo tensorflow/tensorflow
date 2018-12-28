@@ -121,7 +121,7 @@ private:
 
   void visitForStmt(ForStmt *forStmt) { matchOne(forStmt); }
   void visitIfStmt(IfStmt *ifStmt) { matchOne(ifStmt); }
-  void visitOperationStmt(OperationStmt *opStmt) { matchOne(opStmt); }
+  void visitOperationInst(OperationInst *opStmt) { matchOne(opStmt); }
 
   /// Underlying global bump allocator managed by an MLFunctionMatcherContext.
   static llvm::BumpPtrAllocator *&allocator();

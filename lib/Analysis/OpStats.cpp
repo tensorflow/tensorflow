@@ -38,7 +38,7 @@ struct PrintOpStatsPass : public FunctionPass, StmtWalker<PrintOpStatsPass> {
 
   // Process ML functions and operation statments in ML functions.
   PassResult runOnMLFunction(MLFunction *function) override;
-  void visitOperationStmt(OperationStmt *stmt);
+  void visitOperationInst(OperationInst *stmt);
 
   // Print summary of op stats.
   void printSummary();
@@ -69,7 +69,7 @@ PassResult PrintOpStatsPass::runOnCFGFunction(CFGFunction *function) {
   return success();
 }
 
-void PrintOpStatsPass::visitOperationStmt(OperationStmt *stmt) {
+void PrintOpStatsPass::visitOperationInst(OperationInst *stmt) {
   ++opCount[stmt->getName().getStringRef()];
 }
 

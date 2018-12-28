@@ -56,7 +56,7 @@ struct MemRefCastFolder : public RewritePattern {
   MemRefCastFolder(StringRef rootOpName, MLIRContext *context)
       : RewritePattern(rootOpName, 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  PatternMatchResult match(OperationInst *op) const override {
     for (auto *operand : op->getOperands())
       if (matchPattern(operand, m_Op<MemRefCastOp>()))
         return matchSuccess();
@@ -64,9 +64,9 @@ struct MemRefCastFolder : public RewritePattern {
     return matchFailure();
   }
 
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
     for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
-      if (auto *memref = op->getOperand(i)->getDefiningOperation())
+      if (auto *memref = op->getOperand(i)->getDefiningInst())
         if (auto cast = memref->dyn_cast<MemRefCastOp>())
           op->setOperand(i, cast->getOperand());
     rewriter.updatedRootInPlace(op);
@@ -122,7 +122,7 @@ struct SimplifyAddX0 : public RewritePattern {
   SimplifyAddX0(MLIRContext *context)
       : RewritePattern(AddIOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  PatternMatchResult match(OperationInst *op) const override {
     auto addi = op->cast<AddIOp>();
 
     if (matchPattern(addi->getOperand(1), m_Zero()))
@@ -130,7 +130,7 @@ struct SimplifyAddX0 : public RewritePattern {
 
     return matchFailure();
   }
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, op->getOperand(0));
   }
 };
@@ -228,7 +228,7 @@ struct SimplifyAllocConst : public RewritePattern {
   SimplifyAllocConst(MLIRContext *context)
       : RewritePattern(AllocOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  PatternMatchResult match(OperationInst *op) const override {
     auto alloc = op->cast<AllocOp>();
 
     // Check to see if any dimensions operands are constants.  If so, we can
@@ -239,7 +239,7 @@ struct SimplifyAllocConst : public RewritePattern {
     return matchFailure();
   }
 
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
     auto allocOp = op->cast<AllocOp>();
     auto memrefType = allocOp->getType();
 
@@ -258,7 +258,7 @@ struct SimplifyAllocConst : public RewritePattern {
         newShapeConstants.push_back(dimSize);
         continue;
       }
-      auto *defOp = allocOp->getOperand(dynamicDimPos)->getDefiningOperation();
+      auto *defOp = allocOp->getOperand(dynamicDimPos)->getDefiningInst();
       OpPointer<ConstantIndexOp> constantIndexOp;
       if (defOp && (constantIndexOp = defOp->dyn_cast<ConstantIndexOp>())) {
         // Dynamic shape dimension will be folded.
@@ -1105,7 +1105,7 @@ struct SimplifyMulX1 : public RewritePattern {
   SimplifyMulX1(MLIRContext *context)
       : RewritePattern(MulIOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  PatternMatchResult match(OperationInst *op) const override {
     auto muli = op->cast<MulIOp>();
 
     if (matchPattern(muli->getOperand(1), m_One()))
@@ -1113,7 +1113,7 @@ struct SimplifyMulX1 : public RewritePattern {
 
     return matchFailure();
   }
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
     rewriter.replaceOp(op, op->getOperand(0));
   }
 };
@@ -1308,14 +1308,14 @@ struct SimplifyXMinusX : public RewritePattern {
   SimplifyXMinusX(MLIRContext *context)
       : RewritePattern(SubIOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  PatternMatchResult match(OperationInst *op) const override {
     auto subi = op->cast<SubIOp>();
     if (subi->getOperand(0) == subi->getOperand(1))
       return matchSuccess();
 
     return matchFailure();
   }
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
     auto subi = op->cast<SubIOp>();
     auto result =
         rewriter.create<ConstantIntOp>(op->getLoc(), 0, subi->getType());

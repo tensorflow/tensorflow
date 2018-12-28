@@ -27,7 +27,7 @@
 namespace mlir {
 
 using DialectConstantFoldHook = std::function<bool(
-    const Operation *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
+    const OperationInst *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
 
 /// Dialects are groups of MLIR operations and behavior associated with the
 /// entire group.  For example, hooks into other systems for constant folding,
@@ -50,7 +50,7 @@ public:
   /// and fills in the `results` vector.  If not, this returns true and
   /// `results` is unspecified.
   DialectConstantFoldHook constantFoldHook =
-      [](const Operation *op, ArrayRef<Attribute> operands,
+      [](const OperationInst *op, ArrayRef<Attribute> operands,
          SmallVectorImpl<Attribute> &results) { return true; };
 
   // TODO: Hook to return the list of named types that are known.

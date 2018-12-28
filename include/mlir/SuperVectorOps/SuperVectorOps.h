@@ -112,8 +112,9 @@ public:
   MemRefType getMemRefType() const {
     return getMemRef()->getType().cast<MemRefType>();
   }
-  llvm::iterator_range<Operation::operand_iterator> getIndices();
-  llvm::iterator_range<Operation::const_operand_iterator> getIndices() const;
+  llvm::iterator_range<OperationInst::operand_iterator> getIndices();
+  llvm::iterator_range<OperationInst::const_operand_iterator>
+  getIndices() const;
   Optional<Value *> getPaddingValue();
   Optional<const Value *> getPaddingValue() const;
   AffineMap getPermutationMap() const;
@@ -123,8 +124,8 @@ public:
   bool verify() const;
 
 private:
-  friend class Operation;
-  explicit VectorTransferReadOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit VectorTransferReadOp(const OperationInst *state) : Op(state) {}
 };
 
 /// VectorTransferWriteOp performs a blocking write from a super-vector to
@@ -180,8 +181,9 @@ public:
   MemRefType getMemRefType() const {
     return getMemRef()->getType().cast<MemRefType>();
   }
-  llvm::iterator_range<Operation::operand_iterator> getIndices();
-  llvm::iterator_range<Operation::const_operand_iterator> getIndices() const;
+  llvm::iterator_range<OperationInst::operand_iterator> getIndices();
+  llvm::iterator_range<OperationInst::const_operand_iterator>
+  getIndices() const;
   AffineMap getPermutationMap() const;
 
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -189,8 +191,8 @@ public:
   bool verify() const;
 
 private:
-  friend class Operation;
-  explicit VectorTransferWriteOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit VectorTransferWriteOp(const OperationInst *state) : Op(state) {}
 };
 
 /// VectorTypeCastOp performs a conversion from a memref with scalar element to
@@ -213,8 +215,8 @@ public:
   bool verify() const;
 
 private:
-  friend class Operation;
-  explicit VectorTypeCastOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit VectorTypeCastOp(const OperationInst *state) : Op(state) {}
 };
 
 } // end namespace mlir

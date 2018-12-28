@@ -168,10 +168,10 @@ void getBackwardSlice(
 ///   /____\
 ///
 /// We want to iteratively apply `getSlice` to construct the whole
-/// list of OperationStmt that are reachable by (use|def)+ from stmt.
+/// list of OperationInst that are reachable by (use|def)+ from stmt.
 /// We want the resulting slice in topological order.
 /// Ideally we would like the ordering to be maintained in-place to avoid
-/// copying OperationStmt at each step. Keeping this ordering by construction
+/// copying OperationInst at each step. Keeping this ordering by construction
 /// seems very unclear, so we list invariants in the hope of seeing whether
 /// useful properties pop up.
 ///
@@ -207,7 +207,7 @@ llvm::SetVector<Statement *> getSlice(
     [](Statement *) { return true; });
 
 /// Multi-root DAG topological sort.
-/// Performs a topological sort of the OperationStmt in the `toSort` SetVector.
+/// Performs a topological sort of the OperationInst in the `toSort` SetVector.
 /// Returns a topologically sorted SetVector.
 llvm::SetVector<Statement *>
 topologicalSort(const llvm::SetVector<Statement *> &toSort);

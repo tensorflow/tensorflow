@@ -76,7 +76,7 @@ private:
 class IROperandOwner {
 public:
   enum class Kind {
-    OperationStmt,
+    OperationInst,
     ForStmt,
     IfStmt,
 
@@ -127,7 +127,7 @@ public:
     insertIntoCurrent();
   }
 
-  /// Return the owner of this operand, for example, the OperationStmt that
+  /// Return the owner of this operand, for example, the OperationInst that
   /// contains a StmtOperand.
   IROperandOwner *getOwner() { return owner; }
   const IROperandOwner *getOwner() const { return owner; }
@@ -175,7 +175,7 @@ private:
   /// This points to the previous link in the use-chain.
   IROperand **back = nullptr;
 
-  /// The owner of this operand, for example, the OperationStmt that contains a
+  /// The owner of this operand, for example, the OperationInst that contains a
   /// StmtOperand.
   IROperandOwner *const owner;
 

@@ -36,8 +36,8 @@ BuiltinDialect::BuiltinDialect(MLIRContext *context)
   addOperations<AffineApplyOp, BranchOp, CondBranchOp, ConstantOp, ReturnOp>();
 }
 
-void mlir::printDimAndSymbolList(Operation::const_operand_iterator begin,
-                                 Operation::const_operand_iterator end,
+void mlir::printDimAndSymbolList(OperationInst::const_operand_iterator begin,
+                                 OperationInst::const_operand_iterator end,
                                  unsigned numDims, OpAsmPrinter *p) {
   *p << '(';
   p->printOperands(begin, begin + numDims);
@@ -188,14 +188,12 @@ void BranchOp::print(OpAsmPrinter *p) const {
 
 bool BranchOp::verify() const {
   // ML functions do not have branching terminators.
-  if (getOperation()->getOperationFunction()->isML())
+  if (getOperation()->getFunction()->isML())
     return (emitOpError("cannot occur in a ML function"), true);
   return false;
 }
 
-BasicBlock *BranchOp::getDest() const {
-  return getOperation()->getSuccessor(0);
-}
+BasicBlock *BranchOp::getDest() { return getOperation()->getSuccessor(0); }
 
 void BranchOp::setDest(BasicBlock *block) {
   return getOperation()->setSuccessor(block, 0);
@@ -258,18 +256,18 @@ void CondBranchOp::print(OpAsmPrinter *p) const {
 
 bool CondBranchOp::verify() const {
   // ML functions do not have branching terminators.
-  if (getOperation()->getOperationFunction()->isML())
+  if (getOperation()->getFunction()->isML())
     return (emitOpError("cannot occur in a ML function"), true);
   if (!getCondition()->getType().isInteger(1))
     return emitOpError("expected condition type was boolean (i1)");
   return false;
 }
 
-BasicBlock *CondBranchOp::getTrueDest() const {
+BasicBlock *CondBranchOp::getTrueDest() {
   return getOperation()->getSuccessor(trueIndex);
 }
 
-BasicBlock *CondBranchOp::getFalseDest() const {
+BasicBlock *CondBranchOp::getFalseDest() {
   return getOperation()->getSuccessor(falseIndex);
 }
 
@@ -399,13 +397,13 @@ void ConstantFloatOp::build(Builder *builder, OperationState *result,
   ConstantOp::build(builder, result, builder->getFloatAttr(type, value), type);
 }
 
-bool ConstantFloatOp::isClassFor(const Operation *op) {
+bool ConstantFloatOp::isClassFor(const OperationInst *op) {
   return ConstantOp::isClassFor(op) &&
          op->getResult(0)->getType().isa<FloatType>();
 }
 
 /// ConstantIntOp only matches values whose result type is an IntegerType.
-bool ConstantIntOp::isClassFor(const Operation *op) {
+bool ConstantIntOp::isClassFor(const OperationInst *op) {
   return ConstantOp::isClassFor(op) &&
          op->getResult(0)->getType().isa<IntegerType>();
 }
@@ -427,7 +425,7 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
 }
 
 /// ConstantIndexOp only matches values whose result type is Index.
-bool ConstantIndexOp::isClassFor(const Operation *op) {
+bool ConstantIndexOp::isClassFor(const OperationInst *op) {
   return ConstantOp::isClassFor(op) && op->getResult(0)->getType().isIndex();
 }
 
@@ -470,7 +468,7 @@ void ReturnOp::print(OpAsmPrinter *p) const {
 }
 
 bool ReturnOp::verify() const {
-  auto *function = cast<OperationStmt>(getOperation())->getFunction();
+  auto *function = cast<OperationInst>(getOperation())->getFunction();
 
   // The operand number and types must match the function signature.
   const auto &results = function->getType().getResults();

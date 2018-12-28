@@ -28,29 +28,13 @@ OperationInst *Value::getDefiningInst() {
   return nullptr;
 }
 
-/// If this value is the result of an OperationStmt, return the statement
-/// that defines it.
-OperationStmt *Value::getDefiningStmt() {
-  if (auto *result = dyn_cast<StmtResult>(this))
-    return result->getOwner();
-  return nullptr;
-}
-
-Operation *Value::getDefiningOperation() {
-  if (auto *inst = getDefiningInst())
-    return inst;
-  if (auto *stmt = getDefiningStmt())
-    return stmt;
-  return nullptr;
-}
-
-/// Return the function that this Valueis defined in.
+/// Return the function that this Value is defined in.
 Function *Value::getFunction() {
   switch (getKind()) {
   case Value::Kind::BlockArgument:
     return cast<BlockArgument>(this)->getFunction();
   case Value::Kind::StmtResult:
-    return getDefiningStmt()->getFunction();
+    return getDefiningInst()->getFunction();
   case Value::Kind::ForStmt:
     return cast<ForStmt>(this)->getFunction();
   }
@@ -73,8 +57,8 @@ void IRObjectWithUseList::replaceAllUsesWith(IRObjectWithUseList *newValue) {
 /// Return the context this operation is associated with.
 MLIRContext *IROperandOwner::getContext() const {
   switch (getKind()) {
-  case Kind::OperationStmt:
-    return cast<OperationStmt>(this)->getContext();
+  case Kind::OperationInst:
+    return cast<OperationInst>(this)->getContext();
   case Kind::ForStmt:
     return cast<ForStmt>(this)->getContext();
   case Kind::IfStmt:

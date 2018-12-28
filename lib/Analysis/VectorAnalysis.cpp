@@ -104,7 +104,7 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
 /// header file.
 static AffineMap makePermutationMap(
     MLIRContext *context,
-    llvm::iterator_range<Operation::operand_iterator> indices,
+    llvm::iterator_range<OperationInst::operand_iterator> indices,
     const DenseMap<ForStmt *, unsigned> &enclosingLoopToVectorDim) {
   using functional::makePtrDynCaster;
   using functional::map;
@@ -157,7 +157,7 @@ static SetVector<ForStmt *> getEnclosingForStmts(Statement *stmt) {
 }
 
 AffineMap
-mlir::makePermutationMap(OperationStmt *opStmt,
+mlir::makePermutationMap(OperationInst *opStmt,
                          const DenseMap<ForStmt *, unsigned> &loopToVectorDim) {
   DenseMap<ForStmt *, unsigned> enclosingLoopToVectorDim;
   auto enclosingLoops = getEnclosingForStmts(opStmt);
@@ -178,7 +178,7 @@ mlir::makePermutationMap(OperationStmt *opStmt,
                               enclosingLoopToVectorDim);
 }
 
-bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
+bool mlir::matcher::operatesOnStrictSuperVectors(const OperationInst &opStmt,
                                                  VectorType subVectorType) {
   // First, extract the vector type and ditinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector_transfer_read,

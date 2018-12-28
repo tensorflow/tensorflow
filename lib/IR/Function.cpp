@@ -161,34 +161,34 @@ bool Function::emitError(const Twine &message) const {
 // MLFunction implementation.
 //===----------------------------------------------------------------------===//
 
-const OperationStmt *MLFunction::getReturnStmt() const {
-  return cast<OperationStmt>(&getBody()->back());
+const OperationInst *MLFunction::getReturnStmt() const {
+  return cast<OperationInst>(&getBody()->back());
 }
 
-OperationStmt *MLFunction::getReturnStmt() {
-  return cast<OperationStmt>(&getBody()->back());
+OperationInst *MLFunction::getReturnStmt() {
+  return cast<OperationInst>(&getBody()->back());
 }
 
-void MLFunction::walk(std::function<void(OperationStmt *)> callback) {
+void MLFunction::walk(std::function<void(OperationInst *)> callback) {
   struct Walker : public StmtWalker<Walker> {
-    std::function<void(OperationStmt *)> const &callback;
-    Walker(std::function<void(OperationStmt *)> const &callback)
+    std::function<void(OperationInst *)> const &callback;
+    Walker(std::function<void(OperationInst *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationStmt(OperationStmt *opStmt) { callback(opStmt); }
+    void visitOperationInst(OperationInst *opStmt) { callback(opStmt); }
   };
 
   Walker v(callback);
   v.walk(this);
 }
 
-void MLFunction::walkPostOrder(std::function<void(OperationStmt *)> callback) {
+void MLFunction::walkPostOrder(std::function<void(OperationInst *)> callback) {
   struct Walker : public StmtWalker<Walker> {
-    std::function<void(OperationStmt *)> const &callback;
-    Walker(std::function<void(OperationStmt *)> const &callback)
+    std::function<void(OperationInst *)> const &callback;
+    Walker(std::function<void(OperationInst *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationStmt(OperationStmt *opStmt) { callback(opStmt); }
+    void visitOperationInst(OperationInst *opStmt) { callback(opStmt); }
   };
 
   Walker v(callback);

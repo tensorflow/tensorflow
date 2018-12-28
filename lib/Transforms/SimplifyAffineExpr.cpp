@@ -47,7 +47,7 @@ struct SimplifyAffineStructures : public FunctionPass,
   PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
 
   void visitIfStmt(IfStmt *ifStmt);
-  void visitOperationStmt(OperationStmt *opStmt);
+  void visitOperationInst(OperationInst *opStmt);
 
   static char passID;
 };
@@ -75,7 +75,7 @@ void SimplifyAffineStructures::visitIfStmt(IfStmt *ifStmt) {
   ifStmt->setIntegerSet(simplifyIntegerSet(set));
 }
 
-void SimplifyAffineStructures::visitOperationStmt(OperationStmt *opStmt) {
+void SimplifyAffineStructures::visitOperationInst(OperationInst *opStmt) {
   for (auto attr : opStmt->getAttrs()) {
     if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
       MutableAffineMap mMap(mapAttr.getValue());

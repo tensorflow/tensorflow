@@ -52,7 +52,7 @@ void mlir::getForwardSlice(Statement *stmt,
     return;
   }
 
-  if (auto *opStmt = dyn_cast<OperationStmt>(stmt)) {
+  if (auto *opStmt = dyn_cast<OperationInst>(stmt)) {
     assert(opStmt->getNumResults() <= 1 && "NYI: multiple results");
     if (opStmt->getNumResults() > 0) {
       for (auto &u : opStmt->getResult(0)->getUses()) {
@@ -102,7 +102,7 @@ void mlir::getBackwardSlice(Statement *stmt,
   }
 
   for (auto *operand : stmt->getOperands()) {
-    auto *stmt = operand->getDefiningStmt();
+    auto *stmt = operand->getDefiningInst();
     if (backwardSlice->count(stmt) == 0) {
       getBackwardSlice(stmt, backwardSlice, filter,
                        /*topLevel=*/false);
@@ -156,7 +156,7 @@ struct DFSState {
 } // namespace
 
 static void DFSPostorder(Statement *current, DFSState *state) {
-  auto *opStmt = cast<OperationStmt>(current);
+  auto *opStmt = cast<OperationInst>(current);
   assert(opStmt->getNumResults() <= 1 && "NYI: multi-result");
   if (opStmt->getNumResults() > 0) {
     for (auto &u : opStmt->getResult(0)->getUses()) {

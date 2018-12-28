@@ -44,7 +44,7 @@
 //    lc.walk(function);
 //    numLoops = lc.numLoops;
 //
-// There  are 'visit' methods for Operation, ForStmt, IfStmt, and
+// There  are 'visit' methods for OperationInst, ForStmt, IfStmt, and
 // MLFunction, which recursively process all contained statements.
 //
 // Note that if you don't implement visitXXX for some statement type,
@@ -87,9 +87,9 @@ public:
       return static_cast<SubClass *>(this)->visitForStmt(cast<ForStmt>(s));
     case Statement::Kind::If:
       return static_cast<SubClass *>(this)->visitIfStmt(cast<IfStmt>(s));
-    case Statement::Kind::Operation:
-      return static_cast<SubClass *>(this)->visitOperationStmt(
-          cast<OperationStmt>(s));
+    case Statement::Kind::OperationInst:
+      return static_cast<SubClass *>(this)->visitOperationInst(
+          cast<OperationInst>(s));
     }
   }
 
@@ -105,7 +105,7 @@ public:
   // methods get called to indicate when transitioning into a new unit.
   void visitForStmt(ForStmt *forStmt) {}
   void visitIfStmt(IfStmt *ifStmt) {}
-  void visitOperationStmt(OperationStmt *opStmt) {}
+  void visitOperationInst(OperationInst *opStmt) {}
 };
 
 /// Base class for statement walkers. A walker can traverse depth first in
@@ -142,8 +142,8 @@ public:
     static_cast<SubClass *>(this)->visitMLFunction(f);
   }
 
-  RetTy walkOpStmt(OperationStmt *opStmt) {
-    return static_cast<SubClass *>(this)->visitOperationStmt(opStmt);
+  RetTy walkOpStmt(OperationInst *opStmt) {
+    return static_cast<SubClass *>(this)->visitOperationInst(opStmt);
   }
 
   void walkForStmt(ForStmt *forStmt) {
@@ -186,8 +186,8 @@ public:
       return static_cast<SubClass *>(this)->walkForStmt(cast<ForStmt>(s));
     case Statement::Kind::If:
       return static_cast<SubClass *>(this)->walkIfStmt(cast<IfStmt>(s));
-    case Statement::Kind::Operation:
-      return static_cast<SubClass *>(this)->walkOpStmt(cast<OperationStmt>(s));
+    case Statement::Kind::OperationInst:
+      return static_cast<SubClass *>(this)->walkOpStmt(cast<OperationInst>(s));
     }
   }
 
@@ -203,8 +203,8 @@ public:
     case Statement::Kind::If:
       return static_cast<SubClass *>(this)->walkIfStmtPostOrder(
           cast<IfStmt>(s));
-    case Statement::Kind::Operation:
-      return static_cast<SubClass *>(this)->walkOpStmt(cast<OperationStmt>(s));
+    case Statement::Kind::OperationInst:
+      return static_cast<SubClass *>(this)->walkOpStmt(cast<OperationInst>(s));
     }
   }
 
@@ -222,7 +222,7 @@ public:
   void visitMLFunction(MLFunction *f) {}
   void visitForStmt(ForStmt *forStmt) {}
   void visitIfStmt(IfStmt *ifStmt) {}
-  void visitOperationStmt(OperationStmt *opStmt) {}
+  void visitOperationInst(OperationInst *opStmt) {}
 };
 
 } // end namespace mlir

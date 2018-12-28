@@ -1,4 +1,4 @@
-//===- Operation.cpp - MLIR Operation Class -------------------------------===//
+//===- Operation.cpp - Operation support code -----------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,8 +15,6 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/Operation.h"
-#include "AttributeListStorage.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/MLIRContext.h"
@@ -51,200 +49,6 @@ OperationName OperationName::getFromOpaquePointer(void *pointer) {
 }
 
 OpAsmParser::~OpAsmParser() {}
-
-//===----------------------------------------------------------------------===//
-// Operation class
-//===----------------------------------------------------------------------===//
-
-Operation::Operation(OperationName name, ArrayRef<NamedAttribute> attrs,
-                     Location location, MLIRContext *context)
-    : Statement(Kind::Operation, location), name(name) {
-  this->attrs = AttributeListStorage::get(attrs, context);
-
-#ifndef NDEBUG
-  for (auto elt : attrs)
-    assert(elt.second != nullptr && "Attributes cannot have null entries");
-#endif
-}
-
-Operation::~Operation() {}
-
-
-/// Return the function this operation is defined in.
-Function *Operation::getOperationFunction() {
-  return llvm::cast<OperationStmt>(this)->getFunction();
-}
-
-/// Return the number of results this operation has.
-unsigned Operation::getNumResults() const {
-  return llvm::cast<OperationStmt>(this)->getNumResults();
-}
-
-/// Return the indicated result.
-Value *Operation::getResult(unsigned idx) {
-  return llvm::cast<OperationStmt>(this)->getResult(idx);
-}
-
-unsigned Operation::getNumSuccessors() const {
-  assert(isTerminator() && "Only terminators have successors.");
-  return llvm::cast<OperationStmt>(this)->getNumSuccessors();
-}
-
-unsigned Operation::getNumSuccessorOperands(unsigned index) const {
-  assert(isTerminator() && "Only terminators have successors.");
-  return llvm::cast<OperationStmt>(this)->getNumSuccessorOperands(index);
-}
-BasicBlock *Operation::getSuccessor(unsigned index) {
-  assert(isTerminator() && "Only terminators have successors");
-  return llvm::cast<OperationStmt>(this)->getSuccessor(index);
-}
-void Operation::setSuccessor(BasicBlock *block, unsigned index) {
-  assert(isTerminator() && "Only terminators have successors");
-  llvm::cast<OperationStmt>(this)->setSuccessor(block, index);
-}
-
-void Operation::eraseSuccessorOperand(unsigned succIndex, unsigned opIndex) {
-  assert(isTerminator() && "Only terminators have successors");
-  return llvm::cast<OperationStmt>(this)->eraseSuccessorOperand(succIndex,
-                                                                opIndex);
-}
-auto Operation::getSuccessorOperands(unsigned index) const
-    -> llvm::iterator_range<const_operand_iterator> {
-  assert(isTerminator() && "Only terminators have successors.");
-  unsigned succOperandIndex =
-      llvm::cast<OperationStmt>(this)->getSuccessorOperandIndex(index);
-  return {const_operand_iterator(this, succOperandIndex),
-          const_operand_iterator(this, succOperandIndex +
-                                           getNumSuccessorOperands(index))};
-}
-auto Operation::getSuccessorOperands(unsigned index)
-    -> llvm::iterator_range<operand_iterator> {
-  assert(isTerminator() && "Only terminators have successors.");
-  unsigned succOperandIndex =
-      llvm::cast<OperationStmt>(this)->getSuccessorOperandIndex(index);
-  return {operand_iterator(this, succOperandIndex),
-          operand_iterator(this,
-                           succOperandIndex + getNumSuccessorOperands(index))};
-}
-
-/// Return true if there are no users of any results of this operation.
-bool Operation::use_empty() const {
-  for (auto *result : getResults())
-    if (!result->use_empty())
-      return false;
-  return true;
-}
-
-ArrayRef<NamedAttribute> Operation::getAttrs() const {
-  if (!attrs)
-    return {};
-  return attrs->getElements();
-}
-
-/// If an attribute exists with the specified name, change it to the new
-/// value.  Otherwise, add a new attribute with the specified name/value.
-void Operation::setAttr(Identifier name, Attribute value) {
-  assert(value && "attributes may never be null");
-  auto origAttrs = getAttrs();
-
-  SmallVector<NamedAttribute, 8> newAttrs(origAttrs.begin(), origAttrs.end());
-  auto *context = getContext();
-
-  // If we already have this attribute, replace it.
-  for (auto &elt : newAttrs)
-    if (elt.first == name) {
-      elt.second = value;
-      attrs = AttributeListStorage::get(newAttrs, context);
-      return;
-    }
-
-  // Otherwise, add it.
-  newAttrs.push_back({name, value});
-  attrs = AttributeListStorage::get(newAttrs, context);
-}
-
-/// Remove the attribute with the specified name if it exists.  The return
-/// value indicates whether the attribute was present or not.
-auto Operation::removeAttr(Identifier name) -> RemoveResult {
-  auto origAttrs = getAttrs();
-  for (unsigned i = 0, e = origAttrs.size(); i != e; ++i) {
-    if (origAttrs[i].first == name) {
-      SmallVector<NamedAttribute, 8> newAttrs;
-      newAttrs.reserve(origAttrs.size() - 1);
-      newAttrs.append(origAttrs.begin(), origAttrs.begin() + i);
-      newAttrs.append(origAttrs.begin() + i + 1, origAttrs.end());
-      attrs = AttributeListStorage::get(newAttrs, getContext());
-      return RemoveResult::Removed;
-    }
-  }
-  return RemoveResult::NotFound;
-}
-
-/// Emit a note about this operation, reporting up to any diagnostic
-/// handlers that may be listening.
-void Operation::emitNote(const Twine &message) const {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Note);
-}
-
-/// Emit a warning about this operation, reporting up to any diagnostic
-/// handlers that may be listening.
-void Operation::emitWarning(const Twine &message) const {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Warning);
-}
-
-/// Emit an error about fatal conditions with this operation, reporting up to
-/// any diagnostic handlers that may be listening.  This function always returns
-/// true.  NOTE: This may terminate the containing application, only use when
-/// the IR is in an inconsistent state.
-bool Operation::emitError(const Twine &message) const {
-  return getContext()->emitError(getLoc(), message);
-}
-
-/// Emit an error with the op name prefixed, like "'dim' op " which is
-/// convenient for verifiers.
-bool Operation::emitOpError(const Twine &message) const {
-  return emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
-}
-
-/// Remove this operation from its parent block and delete it.
-void Operation::erase() {
-  return llvm::cast<OperationStmt>(this)->erase();
-}
-
-/// Attempt to constant fold this operation with the specified constant
-/// operand values.  If successful, this returns false and fills in the
-/// results vector.  If not, this returns true and results is unspecified.
-bool Operation::constantFold(ArrayRef<Attribute> operands,
-                             SmallVectorImpl<Attribute> &results) const {
-  if (auto *abstractOp = getAbstractOperation()) {
-    // If we have a registered operation definition matching this one, use it to
-    // try to constant fold the operation.
-    if (!abstractOp->constantFoldHook(this, operands, results))
-      return false;
-
-    // Otherwise, fall back on the dialect hook to handle it.
-    return abstractOp->dialect.constantFoldHook(this, operands, results);
-  }
-
-  // If this operation hasn't been registered or doesn't have abstract
-  // operation, fall back to a dialect which matches the prefix.
-  auto opName = getName().getStringRef();
-  if (auto *dialect = getContext()->getRegisteredDialect(opName)) {
-    return dialect->constantFoldHook(this, operands, results);
-  }
-
-  return true;
-}
-
-/// Methods for support type inquiry through isa, cast, and dyn_cast.
-bool Operation::classof(const Statement *stmt) {
-  return stmt->getKind() == Statement::Kind::Operation;
-}
-bool Operation::classof(const IROperandOwner *ptr) {
-  return ptr->getKind() == IROperandOwner::Kind::OperationStmt;
-}
 
 //===----------------------------------------------------------------------===//
 // OpState trait class.
@@ -290,19 +94,20 @@ void OpState::emitNote(const Twine &message) const {
 // Op Trait implementations
 //===----------------------------------------------------------------------===//
 
-bool OpTrait::impl::verifyZeroOperands(const Operation *op) {
+bool OpTrait::impl::verifyZeroOperands(const OperationInst *op) {
   if (op->getNumOperands() != 0)
     return op->emitOpError("requires zero operands");
   return false;
 }
 
-bool OpTrait::impl::verifyOneOperand(const Operation *op) {
+bool OpTrait::impl::verifyOneOperand(const OperationInst *op) {
   if (op->getNumOperands() != 1)
     return op->emitOpError("requires a single operand");
   return false;
 }
 
-bool OpTrait::impl::verifyNOperands(const Operation *op, unsigned numOperands) {
+bool OpTrait::impl::verifyNOperands(const OperationInst *op,
+                                    unsigned numOperands) {
   if (op->getNumOperands() != numOperands) {
     return op->emitOpError("expected " + Twine(numOperands) +
                            " operands, but found " +
@@ -311,7 +116,7 @@ bool OpTrait::impl::verifyNOperands(const Operation *op, unsigned numOperands) {
   return false;
 }
 
-bool OpTrait::impl::verifyAtLeastNOperands(const Operation *op,
+bool OpTrait::impl::verifyAtLeastNOperands(const OperationInst *op,
                                            unsigned numOperands) {
   if (op->getNumOperands() < numOperands)
     return op->emitOpError("expected " + Twine(numOperands) +
@@ -331,7 +136,7 @@ static Type getTensorOrVectorElementType(Type type) {
   return type;
 }
 
-bool OpTrait::impl::verifyOperandsAreIntegerLike(const Operation *op) {
+bool OpTrait::impl::verifyOperandsAreIntegerLike(const OperationInst *op) {
   for (auto *operand : op->getOperands()) {
     auto type = getTensorOrVectorElementType(operand->getType());
     if (!type.isIntOrIndex())
@@ -340,7 +145,7 @@ bool OpTrait::impl::verifyOperandsAreIntegerLike(const Operation *op) {
   return false;
 }
 
-bool OpTrait::impl::verifySameTypeOperands(const Operation *op) {
+bool OpTrait::impl::verifySameTypeOperands(const OperationInst *op) {
   // Zero or one operand always have the "same" type.
   unsigned nOperands = op->getNumOperands();
   if (nOperands < 2)
@@ -354,25 +159,26 @@ bool OpTrait::impl::verifySameTypeOperands(const Operation *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyZeroResult(const Operation *op) {
+bool OpTrait::impl::verifyZeroResult(const OperationInst *op) {
   if (op->getNumResults() != 0)
     return op->emitOpError("requires zero results");
   return false;
 }
 
-bool OpTrait::impl::verifyOneResult(const Operation *op) {
+bool OpTrait::impl::verifyOneResult(const OperationInst *op) {
   if (op->getNumResults() != 1)
     return op->emitOpError("requires one result");
   return false;
 }
 
-bool OpTrait::impl::verifyNResults(const Operation *op, unsigned numOperands) {
+bool OpTrait::impl::verifyNResults(const OperationInst *op,
+                                   unsigned numOperands) {
   if (op->getNumResults() != numOperands)
     return op->emitOpError("expected " + Twine(numOperands) + " results");
   return false;
 }
 
-bool OpTrait::impl::verifyAtLeastNResults(const Operation *op,
+bool OpTrait::impl::verifyAtLeastNResults(const OperationInst *op,
                                           unsigned numOperands) {
   if (op->getNumResults() < numOperands)
     return op->emitOpError("expected " + Twine(numOperands) +
@@ -401,7 +207,7 @@ static bool verifyShapeMatch(Type type1, Type type2) {
   return false;
 }
 
-bool OpTrait::impl::verifySameOperandsAndResultShape(const Operation *op) {
+bool OpTrait::impl::verifySameOperandsAndResultShape(const OperationInst *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
     return true;
 
@@ -419,7 +225,7 @@ bool OpTrait::impl::verifySameOperandsAndResultShape(const Operation *op) {
   return false;
 }
 
-bool OpTrait::impl::verifySameOperandsAndResultType(const Operation *op) {
+bool OpTrait::impl::verifySameOperandsAndResultType(const OperationInst *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
     return true;
 
@@ -438,8 +244,8 @@ bool OpTrait::impl::verifySameOperandsAndResultType(const Operation *op) {
 }
 
 static bool verifyBBArguments(
-    llvm::iterator_range<Operation::const_operand_iterator> operands,
-    const BasicBlock *destBB, const Operation *op) {
+    llvm::iterator_range<OperationInst::const_operand_iterator> operands,
+    const BasicBlock *destBB, const OperationInst *op) {
   unsigned operandCount = std::distance(operands.begin(), operands.end());
   if (operandCount != destBB->getNumArguments())
     return op->emitError("branch has " + Twine(operandCount) +
@@ -455,9 +261,9 @@ static bool verifyBBArguments(
   return false;
 }
 
-static bool verifyTerminatorSuccessors(const Operation *op) {
+static bool verifyTerminatorSuccessors(const OperationInst *op) {
   // Verify that the operands lines up with the BB arguments in the successor.
-  const Function *fn = op->getOperationFunction();
+  const Function *fn = op->getFunction();
   for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i) {
     auto *succ = op->getSuccessor(i);
     if (succ->getFunction() != fn)
@@ -468,17 +274,15 @@ static bool verifyTerminatorSuccessors(const Operation *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
+bool OpTrait::impl::verifyIsTerminator(const OperationInst *op) {
   // Verify that the operation is at the end of the respective parent block.
-  if (op->getOperationFunction()->isML()) {
-    auto *stmt = cast<OperationStmt>(op);
-    StmtBlock *block = stmt->getBlock();
-    if (!block || block->getContainingStmt() || &block->back() != stmt)
+  if (op->getFunction()->isML()) {
+    StmtBlock *block = op->getBlock();
+    if (!block || block->getContainingStmt() || &block->back() != op)
       return op->emitOpError("must be the last statement in the ML function");
   } else {
-    auto *inst = cast<OperationInst>(op);
-    const BasicBlock *block = inst->getBlock();
-    if (!block || &block->back() != inst)
+    const BasicBlock *block = op->getBlock();
+    if (!block || &block->back() != op)
       return op->emitOpError(
           "must be the last instruction in the parent basic block.");
   }
@@ -489,7 +293,7 @@ bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyResultsAreBoolLike(const Operation *op) {
+bool OpTrait::impl::verifyResultsAreBoolLike(const OperationInst *op) {
   for (auto *result : op->getResults()) {
     auto elementType = getTensorOrVectorElementType(result->getType());
     auto intType = elementType.dyn_cast<IntegerType>();
@@ -501,7 +305,7 @@ bool OpTrait::impl::verifyResultsAreBoolLike(const Operation *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
+bool OpTrait::impl::verifyResultsAreFloatLike(const OperationInst *op) {
   for (auto *result : op->getResults()) {
     if (!getTensorOrVectorElementType(result->getType()).isa<FloatType>())
       return op->emitOpError("requires a floating point type");
@@ -510,7 +314,7 @@ bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyResultsAreIntegerLike(const Operation *op) {
+bool OpTrait::impl::verifyResultsAreIntegerLike(const OperationInst *op) {
   for (auto *result : op->getResults()) {
     auto type = getTensorOrVectorElementType(result->getType());
     if (!type.isIntOrIndex())
@@ -543,7 +347,7 @@ bool impl::parseBinaryOp(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type, result->types);
 }
 
-void impl::printBinaryOp(const Operation *op, OpAsmPrinter *p) {
+void impl::printBinaryOp(const OperationInst *op, OpAsmPrinter *p) {
   *p << op->getName() << ' ' << *op->getOperand(0) << ", "
      << *op->getOperand(1);
   p->printOptionalAttrDict(op->getAttrs());
@@ -569,7 +373,7 @@ bool impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(dstType, result->types);
 }
 
-void impl::printCastOp(const Operation *op, OpAsmPrinter *p) {
+void impl::printCastOp(const OperationInst *op, OpAsmPrinter *p) {
   *p << op->getName() << ' ' << *op->getOperand(0) << " : "
      << op->getOperand(0)->getType() << " to " << op->getResult(0)->getType();
 }

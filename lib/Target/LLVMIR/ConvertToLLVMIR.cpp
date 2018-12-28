@@ -111,8 +111,8 @@ private:
   /// descriptor and get the pointer to the element indexed by the linearized
   /// subscript.  Return nullptr on errors.
   llvm::Value *emitMemRefElementAccess(
-      const Value *memRef, const Operation &op,
-      llvm::iterator_range<Operation::const_operand_iterator> opIndices);
+      const Value *memRef, const OperationInst &op,
+      llvm::iterator_range<OperationInst::const_operand_iterator> opIndices);
 
   /// Emit LLVM IR corresponding to the given Alloc `op`.  In particular, create
   /// a Value for the MemRef descriptor, store any dynamic sizes passed to
@@ -307,7 +307,7 @@ ModuleLowerer::linearizeSubscripts(ArrayRef<llvm::Value *> indices,
 // the location of `op` and return true.  Return false if the type is supported.
 // TODO(zinenko): this function should disappear when the conversion fully
 // supports MemRefs.
-static bool checkSupportedMemRefType(MemRefType type, const Operation &op) {
+static bool checkSupportedMemRefType(MemRefType type, const OperationInst &op) {
   if (!type.getAffineMaps().empty())
     return op.emitError("NYI: memrefs with affine maps");
   if (type.getMemorySpace() != 0)
@@ -316,8 +316,8 @@ static bool checkSupportedMemRefType(MemRefType type, const Operation &op) {
 }
 
 llvm::Value *ModuleLowerer::emitMemRefElementAccess(
-    const Value *memRef, const Operation &op,
-    llvm::iterator_range<Operation::const_operand_iterator> opIndices) {
+    const Value *memRef, const OperationInst &op,
+    llvm::iterator_range<OperationInst::const_operand_iterator> opIndices) {
   auto type = memRef->getType().dyn_cast<MemRefType>();
   assert(type && "expected memRef value to have a MemRef type");
   if (checkSupportedMemRefType(type, op))
@@ -425,7 +425,7 @@ ModuleLowerer::emitMemRefDealloc(ConstOpPointer<DeallocOp> deallocOp) {
 // This forcibly recreates the APFloat with IEEESingle semantics to make sure
 // LLVM constructs a `float` constant.
 static llvm::ConstantFP *getFloatConstant(APFloat APvalue,
-                                          const Operation &inst,
+                                          const OperationInst &inst,
                                           llvm::LLVMContext *context) {
   bool unused;
   APFloat::opStatus status = APvalue.convert(

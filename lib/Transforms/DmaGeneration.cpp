@@ -67,7 +67,7 @@ struct DmaGeneration : public FunctionPass, StmtWalker<DmaGeneration> {
   PassResult runOnMLFunction(MLFunction *f) override;
   void runOnForStmt(ForStmt *forStmt);
 
-  void visitOperationStmt(OperationStmt *opStmt);
+  void visitOperationInst(OperationInst *opStmt);
   bool generateDma(const MemRefRegion &region, ForStmt *forStmt,
                    uint64_t *sizeInBytes);
 
@@ -108,7 +108,7 @@ FunctionPass *mlir::createDmaGenerationPass(unsigned slowMemorySpace,
 
 // Gather regions to promote to buffers in faster memory space.
 // TODO(bondhugula): handle store op's; only load's handled for now.
-void DmaGeneration::visitOperationStmt(OperationStmt *opStmt) {
+void DmaGeneration::visitOperationInst(OperationInst *opStmt) {
   if (auto loadOp = opStmt->dyn_cast<LoadOp>()) {
     if (loadOp->getMemRefType().getMemorySpace() != slowMemorySpace)
       return;

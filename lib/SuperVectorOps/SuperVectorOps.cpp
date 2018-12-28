@@ -86,14 +86,14 @@ void VectorTransferReadOp::build(Builder *builder, OperationState *result,
   result->addTypes(vectorType);
 }
 
-llvm::iterator_range<Operation::operand_iterator>
+llvm::iterator_range<OperationInst::operand_iterator>
 VectorTransferReadOp::getIndices() {
   auto begin = getOperation()->operand_begin() + Offsets::FirstIndexOffset;
   auto end = begin + getMemRefType().getRank();
   return {begin, end};
 }
 
-llvm::iterator_range<Operation::const_operand_iterator>
+llvm::iterator_range<OperationInst::const_operand_iterator>
 VectorTransferReadOp::getIndices() const {
   auto begin = getOperation()->operand_begin() + Offsets::FirstIndexOffset;
   auto end = begin + getMemRefType().getRank();
@@ -303,14 +303,14 @@ void VectorTransferWriteOp::build(Builder *builder, OperationState *result,
                        builder->getAffineMapAttr(permutationMap));
 }
 
-llvm::iterator_range<Operation::operand_iterator>
+llvm::iterator_range<OperationInst::operand_iterator>
 VectorTransferWriteOp::getIndices() {
   auto begin = getOperation()->operand_begin() + Offsets::FirstIndexOffset;
   auto end = begin + getMemRefType().getRank();
   return {begin, end};
 }
 
-llvm::iterator_range<Operation::const_operand_iterator>
+llvm::iterator_range<OperationInst::const_operand_iterator>
 VectorTransferWriteOp::getIndices() const {
   auto begin = getOperation()->operand_begin() + Offsets::FirstIndexOffset;
   auto end = begin + getMemRefType().getRank();

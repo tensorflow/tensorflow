@@ -58,12 +58,14 @@ void Pattern::anchor() {}
 // RewritePattern and PatternRewriter implementation
 //===----------------------------------------------------------------------===//
 
-void RewritePattern::rewrite(Operation *op, std::unique_ptr<PatternState> state,
+void RewritePattern::rewrite(OperationInst *op,
+                             std::unique_ptr<PatternState> state,
                              PatternRewriter &rewriter) const {
   rewrite(op, rewriter);
 }
 
-void RewritePattern::rewrite(Operation *op, PatternRewriter &rewriter) const {
+void RewritePattern::rewrite(OperationInst *op,
+                             PatternRewriter &rewriter) const {
   llvm_unreachable("need to implement one of the rewrite functions!");
 }
 
@@ -77,7 +79,7 @@ PatternRewriter::~PatternRewriter() {
 /// clients can specify a list of other nodes that this replacement may make
 /// (perhaps transitively) dead.  If any of those ops are dead, this will
 /// remove them as well.
-void PatternRewriter::replaceOp(Operation *op, ArrayRef<Value *> newValues,
+void PatternRewriter::replaceOp(OperationInst *op, ArrayRef<Value *> newValues,
                                 ArrayRef<Value *> valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootReplaced(op);
@@ -97,7 +99,8 @@ void PatternRewriter::replaceOp(Operation *op, ArrayRef<Value *> newValues,
 /// op and newOp are known to have the same number of results, replace the
 /// uses of op with uses of newOp
 void PatternRewriter::replaceOpWithResultsOfAnotherOp(
-    Operation *op, Operation *newOp, ArrayRef<Value *> valuesToRemoveIfDead) {
+    OperationInst *op, OperationInst *newOp,
+    ArrayRef<Value *> valuesToRemoveIfDead) {
   assert(op->getNumResults() == newOp->getNumResults() &&
          "replacement op doesn't match results of original op");
   if (op->getNumResults() == 1)
@@ -117,7 +120,7 @@ void PatternRewriter::replaceOpWithResultsOfAnotherOp(
 /// should remove if they are dead at this point.
 ///
 void PatternRewriter::updatedRootInPlace(
-    Operation *op, ArrayRef<Value *> valuesToRemoveIfDead) {
+    OperationInst *op, ArrayRef<Value *> valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootUpdated(op);
 
@@ -132,7 +135,7 @@ void PatternRewriter::updatedRootInPlace(
 /// Find the highest benefit pattern available in the pattern set for the DAG
 /// rooted at the specified node.  This returns the pattern if found, or null
 /// if there are no matches.
-auto PatternMatcher::findMatch(Operation *op) -> MatchResult {
+auto PatternMatcher::findMatch(OperationInst *op) -> MatchResult {
   // TODO: This is a completely trivial implementation, expand this in the
   // future.
 

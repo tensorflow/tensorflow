@@ -145,7 +145,7 @@ Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
 //
 // TODO(bondhugula): extend this to any other memref dereferencing ops
 // (dma_start, dma_wait).
-bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
+bool mlir::getMemRefRegion(OperationInst *opStmt, unsigned loopDepth,
                            MemRefRegion *region) {
   OpPointer<LoadOp> loadOp;
   OpPointer<StoreOp> storeOp;
@@ -204,7 +204,7 @@ bool mlir::getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
       auto *symbol = accessValueMap.getOperand(i);
       assert(symbol->isValidSymbol());
       // Check if the symbol is a constant.
-      if (auto *opStmt = symbol->getDefiningStmt()) {
+      if (auto *opStmt = symbol->getDefiningInst()) {
         if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
           regionCst->setIdToConstant(*symbol, constOp->getValue());
         }
@@ -282,7 +282,7 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
           std::is_same<LoadOrStoreOpPointer, OpPointer<StoreOp>>::value,
       "function argument should be either a LoadOp or a StoreOp");
 
-  OperationStmt *opStmt = cast<OperationStmt>(loadOrStoreOp->getOperation());
+  OperationInst *opStmt = cast<OperationInst>(loadOrStoreOp->getOperation());
   MemRefRegion region;
   if (!getMemRefRegion(opStmt, /*loopDepth=*/0, &region))
     return false;

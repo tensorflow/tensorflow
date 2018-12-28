@@ -120,8 +120,8 @@ public:
   }
 
   /// Return the 'return' statement of this MLFunction.
-  const OperationStmt *getReturnStmt() const;
-  OperationStmt *getReturnStmt();
+  const OperationInst *getReturnStmt() const;
+  OperationInst *getReturnStmt();
 
   // These should only be used on MLFunctions.
   StmtBlock *getBody() {
@@ -133,12 +133,12 @@ public:
   }
 
   /// Walk the statements in the function in preorder, calling the callback for
-  /// each Operation statement.
-  void walk(std::function<void(OperationStmt *)> callback);
+  /// each operation statement.
+  void walk(std::function<void(OperationInst *)> callback);
 
   /// Walk the statements in the function in postorder, calling the callback for
-  /// each Operation statement.
-  void walkPostOrder(std::function<void(OperationStmt *)> callback);
+  /// each operation statement.
+  void walkPostOrder(std::function<void(OperationInst *)> callback);
 
   //===--------------------------------------------------------------------===//
   // Arguments

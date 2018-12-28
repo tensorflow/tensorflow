@@ -450,7 +450,7 @@ auto MLIRContext::getDiagnosticHandler() const -> DiagnosticHandlerTy {
 
 /// This emits a diagnostic using the registered issue handle if present, or
 /// with the default behavior if not.  The MLIR compiler should not generally
-/// interact with this, it should use methods on Operation instead.
+/// interact with this, it should use methods on OperationInst instead.
 void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
                                  DiagnosticKind kind) const {
   // Check to see if we are emitting a diagnostic on a fused location.

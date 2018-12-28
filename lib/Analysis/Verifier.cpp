@@ -51,7 +51,7 @@ namespace {
 ///
 class Verifier {
 public:
-  bool failure(const Twine &message, const Operation &value) {
+  bool failure(const Twine &message, const OperationInst &value) {
     return value.emitError(message);
   }
 
@@ -62,15 +62,15 @@ public:
   bool failure(const Twine &message, const BasicBlock &bb) {
     // Take the location information for the first instruction in the block.
     if (!bb.empty())
-      if (auto *op = dyn_cast<OperationStmt>(&bb.front()))
+      if (auto *op = dyn_cast<OperationInst>(&bb.front()))
         return failure(message, *op);
 
     // Worst case, fall back to using the function's location.
     return failure(message, fn);
   }
 
-  bool verifyOperation(const Operation &op);
-  bool verifyAttribute(Attribute attr, const Operation &op);
+  bool verifyOperation(const OperationInst &op);
+  bool verifyAttribute(Attribute attr, const OperationInst &op);
 
 protected:
   explicit Verifier(const Function &fn) : fn(fn) {}
@@ -82,7 +82,7 @@ private:
 } // end anonymous namespace
 
 // Check that function attributes are all well formed.
-bool Verifier::verifyAttribute(Attribute attr, const Operation &op) {
+bool Verifier::verifyAttribute(Attribute attr, const OperationInst &op) {
   if (!attr.isOrContainsFunction())
     return false;
 
@@ -109,9 +109,9 @@ bool Verifier::verifyAttribute(Attribute attr, const Operation &op) {
   return false;
 }
 
-/// Check the invariants of the specified operation instruction or statement.
-bool Verifier::verifyOperation(const Operation &op) {
-  if (op.getOperationFunction() != &fn)
+/// Check the invariants of the specified operation.
+bool Verifier::verifyOperation(const OperationInst &op) {
+  if (op.getFunction() != &fn)
     return failure("operation in the wrong function", op);
 
   // Check that operands are non-nil and structurally ok.
@@ -245,7 +245,7 @@ struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
 
   MLFuncVerifier(const MLFunction &fn) : Verifier(fn), fn(fn) {}
 
-  void visitOperationStmt(OperationStmt *opStmt) {
+  void visitOperationInst(OperationInst *opStmt) {
     hadError |= verifyOperation(*opStmt);
   }
 
@@ -302,14 +302,14 @@ bool MLFuncVerifier::verifyDominance() {
         if (!liveValues.count(opValue)) {
           stmt.emitError("operand #" + Twine(operandNo) +
                          " does not dominate this use");
-          if (auto *useStmt = opValue->getDefiningStmt())
+          if (auto *useStmt = opValue->getDefiningInst())
             useStmt->emitNote("operand defined here");
           return true;
         }
         ++operandNo;
       }
 
-      if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
+      if (auto *opStmt = dyn_cast<OperationInst>(&stmt)) {
         // Operations define values, add them to the hash table.
         for (auto *result : opStmt->getResults())
           liveValues.insert(result, true);
@@ -344,7 +344,7 @@ bool MLFuncVerifier::verifyReturn() {
     return failure(missingReturnMsg, fn);
 
   const auto &stmt = fn.getBody()->getStatements().back();
-  if (const auto *op = dyn_cast<OperationStmt>(&stmt)) {
+  if (const auto *op = dyn_cast<OperationInst>(&stmt)) {
     if (!op->isReturn())
       return failure(missingReturnMsg, fn);
 

@@ -98,7 +98,7 @@ void VectorizerTestPass::testVectorShapeRatio(MLFunction *f) {
   // Only filter statements that operate on a strict super-vector and have one
   // return. This makes testing easier.
   auto filter = [subVectorType](const Statement &stmt) {
-    auto *opStmt = dyn_cast<OperationStmt>(&stmt);
+    auto *opStmt = dyn_cast<OperationInst>(&stmt);
     if (!opStmt) {
       return false;
     }
@@ -116,7 +116,7 @@ void VectorizerTestPass::testVectorShapeRatio(MLFunction *f) {
   auto pat = Op(filter);
   auto matches = pat.match(f);
   for (auto m : matches) {
-    auto *opStmt = cast<OperationStmt>(m.first);
+    auto *opStmt = cast<OperationInst>(m.first);
     // This is a unit test that only checks and prints shape ratio.
     // As a consequence we write only Ops with a single return type for the
     // purpose of this test. If we need to test more intricate behavior in the
@@ -146,7 +146,7 @@ static MLFunctionMatches matchTestSlicingOps(MLFunction *f) {
   using matcher::Op;
   // Match all OpStatements with the kTestSlicingOpName name.
   auto filter = [](const Statement &stmt) {
-    const auto &opStmt = cast<OperationStmt>(stmt);
+    const auto &opStmt = cast<OperationInst>(stmt);
     return opStmt.getName().getStringRef() == kTestSlicingOpName;
   };
   auto pat = Op(filter);
@@ -192,7 +192,7 @@ void VectorizerTestPass::testSlicing(MLFunction *f) {
 }
 
 bool customOpWithAffineMapAttribute(const Statement &stmt) {
-  const auto &opStmt = cast<OperationStmt>(stmt);
+  const auto &opStmt = cast<OperationInst>(stmt);
   return opStmt.getName().getStringRef() ==
          VectorizerTestPass::kTestAffineMapOpName;
 }
@@ -205,7 +205,7 @@ void VectorizerTestPass::testComposeMaps(MLFunction *f) {
   maps.reserve(matches.size());
   std::reverse(matches.begin(), matches.end());
   for (auto m : matches) {
-    auto *opStmt = cast<OperationStmt>(m.first);
+    auto *opStmt = cast<OperationInst>(m.first);
     auto map = opStmt->getAttr(VectorizerTestPass::kTestAffineMapAttrName)
                    .cast<AffineMapAttr>()
                    .getValue();

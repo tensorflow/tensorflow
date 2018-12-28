@@ -64,7 +64,7 @@ FunctionPass *mlir::createPipelineDataTransferPass() {
 // Returns the position of the tag memref operand given a DMA statement.
 // Temporary utility: will be replaced when DmaStart/DmaFinish abstract op's are
 // added.  TODO(b/117228571)
-static unsigned getTagMemRefPos(const OperationStmt &dmaStmt) {
+static unsigned getTagMemRefPos(const OperationInst &dmaStmt) {
   assert(dmaStmt.isa<DmaStartOp>() || dmaStmt.isa<DmaWaitOp>());
   if (dmaStmt.isa<DmaStartOp>()) {
     // Second to last operand.
@@ -179,13 +179,13 @@ static bool checkTagMatch(OpPointer<DmaStartOp> startOp,
 // Identify matching DMA start/finish statements to overlap computation with.
 static void findMatchingStartFinishStmts(
     ForStmt *forStmt,
-    SmallVectorImpl<std::pair<OperationStmt *, OperationStmt *>>
+    SmallVectorImpl<std::pair<OperationInst *, OperationInst *>>
         &startWaitPairs) {
 
   // Collect outgoing DMA statements - needed to check for dependences below.
   SmallVector<OpPointer<DmaStartOp>, 4> outgoingDmaOps;
   for (auto &stmt : *forStmt->getBody()) {
-    auto *opStmt = dyn_cast<OperationStmt>(&stmt);
+    auto *opStmt = dyn_cast<OperationInst>(&stmt);
     if (!opStmt)
       continue;
     OpPointer<DmaStartOp> dmaStartOp;
@@ -194,9 +194,9 @@ static void findMatchingStartFinishStmts(
       outgoingDmaOps.push_back(dmaStartOp);
   }
 
-  SmallVector<OperationStmt *, 4> dmaStartStmts, dmaFinishStmts;
+  SmallVector<OperationInst *, 4> dmaStartStmts, dmaFinishStmts;
   for (auto &stmt : *forStmt->getBody()) {
-    auto *opStmt = dyn_cast<OperationStmt>(&stmt);
+    auto *opStmt = dyn_cast<OperationInst>(&stmt);
     if (!opStmt)
       continue;
     // Collect DMA finish statements.
@@ -260,7 +260,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
     return success();
   }
 
-  SmallVector<std::pair<OperationStmt *, OperationStmt *>, 4> startWaitPairs;
+  SmallVector<std::pair<OperationInst *, OperationInst *>, 4> startWaitPairs;
   findMatchingStartFinishStmts(forStmt, startWaitPairs);
 
   if (startWaitPairs.empty()) {
@@ -293,7 +293,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
     // operation could have been used on it if it was dynamically shaped in
     // order to create the double buffer above)
     if (oldMemRef->use_empty())
-      if (auto *allocStmt = oldMemRef->getDefiningStmt())
+      if (auto *allocStmt = oldMemRef->getDefiningInst())
         allocStmt->erase();
   }
 
@@ -309,7 +309,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
     // If the old tag has no more uses, remove its 'dead' alloc if it was
     // alloc'ed.
     if (oldTagMemRef->use_empty())
-      if (auto *allocStmt = oldTagMemRef->getDefiningStmt())
+      if (auto *allocStmt = oldTagMemRef->getDefiningInst())
         allocStmt->erase();
   }
 
@@ -329,7 +329,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
     } else {
       // If a slice wasn't created, the reachable affine_apply op's from its
       // operands are the ones that go with it.
-      SmallVector<OperationStmt *, 4> affineApplyStmts;
+      SmallVector<OperationInst *, 4> affineApplyStmts;
       SmallVector<Value *, 4> operands(dmaStartStmt->getOperands());
       getReachableAffineApplyOps(operands, affineApplyStmts);
       for (const auto *stmt : affineApplyStmts) {
@@ -352,7 +352,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
     shifts[s++] = stmtShiftMap[&stmt];
     LLVM_DEBUG(
         // Tagging statements with shifts for debugging purposes.
-        if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
+        if (auto *opStmt = dyn_cast<OperationInst>(&stmt)) {
           FuncBuilder b(opStmt);
           opStmt->setAttr(b.getIdentifier("shift"),
                           b.getI64IntegerAttr(shifts[s - 1]));

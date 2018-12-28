@@ -103,7 +103,7 @@ private:
 namespace {
 
 using CreateOperationFunction =
-    std::function<Operation *(const OperationState &)>;
+    std::function<OperationInst *(const OperationState &)>;
 
 /// This class implement support for parsing global entities like types and
 /// shared entities like SSA names.  It is intended to be subclassed by
@@ -1915,8 +1915,10 @@ public:
 
   // Operations
   ParseResult parseOperation(const CreateOperationFunction &createOpFunc);
-  Operation *parseVerboseOperation(const CreateOperationFunction &createOpFunc);
-  Operation *parseCustomOperation(const CreateOperationFunction &createOpFunc);
+  OperationInst *
+  parseVerboseOperation(const CreateOperationFunction &createOpFunc);
+  OperationInst *
+  parseCustomOperation(const CreateOperationFunction &createOpFunc);
 
   /// Parse a single operation successor and it's operand list.
   virtual bool parseSuccessorAndUseList(BasicBlock *&dest,
@@ -2184,7 +2186,7 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
       return ParseFailure;
   }
 
-  Operation *op;
+  OperationInst *op;
   if (getToken().is(Token::bare_identifier) || getToken().isKeyword())
     op = parseCustomOperation(createOpFunc);
   else if (getToken().is(Token::string))
@@ -2220,7 +2222,7 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   return ParseSuccess;
 }
 
-Operation *FunctionParser::parseVerboseOperation(
+OperationInst *FunctionParser::parseVerboseOperation(
     const CreateOperationFunction &createOpFunc) {
 
   // Get location information for the operation.
@@ -2516,7 +2518,7 @@ private:
 };
 } // end anonymous namespace.
 
-Operation *FunctionParser::parseCustomOperation(
+OperationInst *FunctionParser::parseCustomOperation(
     const CreateOperationFunction &createOpFunc) {
   auto opLoc = getToken().getLoc();
   auto opName = getTokenSpelling();
@@ -2746,7 +2748,7 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
   // into.
   builder.setInsertionPointToEnd(block);
 
-  auto createOpFunc = [&](const OperationState &result) -> Operation * {
+  auto createOpFunc = [&](const OperationState &result) -> OperationInst * {
     return builder.createOperation(result);
   };
 
@@ -3149,7 +3151,7 @@ ParseResult MLFunctionParser::parseElseClause(StmtBlock *elseClause) {
 /// Parse a list of statements ending with `return` or `}`
 ///
 ParseResult MLFunctionParser::parseStatements(StmtBlock *block) {
-  auto createOpFunc = [&](const OperationState &state) -> Operation * {
+  auto createOpFunc = [&](const OperationState &state) -> OperationInst * {
     return builder.createOperation(state);
   };
 

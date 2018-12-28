@@ -185,7 +185,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // case of GPUs.
   llvm::SmallVector<Value *, 1> newResults = {};
   if (std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value) {
-    b.setInsertionPoint(cast<OperationStmt>(transfer->getOperation()));
+    b.setInsertionPoint(cast<OperationInst>(transfer->getOperation()));
     auto *vector = b.create<LoadOp>(transfer->getLoc(), vecView->getResult(),
                                     ArrayRef<Value *>{state->zero})
                        ->getResult();
@@ -193,7 +193,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   }
 
   // 6. Free the local buffer.
-  b.setInsertionPoint(cast<OperationStmt>(transfer->getOperation()));
+  b.setInsertionPoint(cast<OperationInst>(transfer->getOperation()));
   b.create<DeallocOp>(transfer->getLoc(), tmpScalarAlloc);
 
   // 7. It is now safe to erase the statement.
@@ -207,13 +207,14 @@ public:
   explicit VectorTransferExpander(MLIRContext *context)
       : MLLoweringPattern(VectorTransferOpTy::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  PatternMatchResult match(OperationInst *op) const override {
     if (m_Op<VectorTransferOpTy>().match(op))
       return matchSuccess();
     return matchFailure();
   }
 
-  void rewriteOpStmt(Operation *op, MLFuncGlobalLoweringState *funcWiseState,
+  void rewriteOpStmt(OperationInst *op,
+                     MLFuncGlobalLoweringState *funcWiseState,
                      std::unique_ptr<PatternState> opState,
                      MLFuncLoweringRewriter *rewriter) const override {
     rewriteAsLoops(&*op->dyn_cast<VectorTransferOpTy>(), rewriter,

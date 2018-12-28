@@ -290,7 +290,7 @@ StmtBlock *FuncBuilder::createBlock(StmtBlock *insertBefore) {
 }
 
 /// Create an operation given the fields represented as an OperationState.
-OperationStmt *FuncBuilder::createOperation(const OperationState &state) {
+OperationInst *FuncBuilder::createOperation(const OperationState &state) {
   auto *op = OperationInst::create(state.location, state.name, state.operands,
                                    state.types, state.attributes,
                                    state.successors, context);

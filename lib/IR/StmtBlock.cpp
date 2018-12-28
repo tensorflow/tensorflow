@@ -100,13 +100,13 @@ void StmtBlock::eraseArgument(unsigned index) {
 // Terminator management
 //===----------------------------------------------------------------------===//
 
-OperationStmt *StmtBlock::getTerminator() {
+OperationInst *StmtBlock::getTerminator() {
   if (empty())
     return nullptr;
 
   // Check if the last instruction is a terminator.
   auto &backInst = statements.back();
-  auto *opStmt = dyn_cast<OperationStmt>(&backInst);
+  auto *opStmt = dyn_cast<OperationInst>(&backInst);
   if (!opStmt || !opStmt->isTerminator())
     return nullptr;
   return opStmt;

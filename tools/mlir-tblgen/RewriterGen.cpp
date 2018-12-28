@@ -62,7 +62,7 @@ static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
     os << "struct " << rewriteName << " : public RewritePattern {\n"
        << "  " << rewriteName << "(MLIRContext *context) : RewritePattern("
        << rootName->getAsString() << ", 1, context) {}\n"
-       << "  PatternMatchResult match(Operation *op) const override {\n"
+       << "  PatternMatchResult match(OperationInst *op) const override {\n"
        << "    // TODO: This just handle 1 result\n"
        << "    if (op->getNumResults() != 1) return matchFailure();\n"
        << "    return matchSuccess();\n  }\n";
@@ -85,7 +85,7 @@ static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
     SplitString(opName, split, "_");
     auto className = join(split, "::");
     os << formatv(R"(
-  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
+  void rewrite(OperationInst *op, PatternRewriter &rewriter) const override {
     auto* context = op->getContext(); (void)context;
     rewriter.replaceOpWithNewOp<{0}>(op, op->getResult(0)->getType())",
                   className);

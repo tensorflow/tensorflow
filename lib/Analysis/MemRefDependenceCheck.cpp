@@ -40,7 +40,7 @@ namespace {
 /// Checks dependences between all pairs of memref accesses in an MLFunction.
 struct MemRefDependenceCheck : public FunctionPass,
                                StmtWalker<MemRefDependenceCheck> {
-  SmallVector<OperationStmt *, 4> loadsAndStores;
+  SmallVector<OperationInst *, 4> loadsAndStores;
   explicit MemRefDependenceCheck()
       : FunctionPass(&MemRefDependenceCheck::passID) {}
 
@@ -48,7 +48,7 @@ struct MemRefDependenceCheck : public FunctionPass,
   // Not applicable to CFG functions.
   PassResult runOnCFGFunction(CFGFunction *f) override { return success(); }
 
-  void visitOperationStmt(OperationStmt *opStmt) {
+  void visitOperationInst(OperationInst *opStmt) {
     if (opStmt->isa<LoadOp>() || opStmt->isa<StoreOp>()) {
       loadsAndStores.push_back(opStmt);
     }
@@ -66,7 +66,7 @@ FunctionPass *mlir::createMemRefDependenceCheckPass() {
 
 // Adds memref access indices 'opIndices' from 'memrefType' to 'access'.
 static void addMemRefAccessIndices(
-    llvm::iterator_range<Operation::const_operand_iterator> opIndices,
+    llvm::iterator_range<OperationInst::const_operand_iterator> opIndices,
     MemRefType memrefType, MemRefAccess *access) {
   access->indices.reserve(memrefType.getRank());
   for (auto *index : opIndices) {
@@ -75,7 +75,7 @@ static void addMemRefAccessIndices(
 }
 
 // Populates 'access' with memref, indices and opstmt from 'loadOrStoreOpStmt'.
-static void getMemRefAccess(const OperationStmt *loadOrStoreOpStmt,
+static void getMemRefAccess(const OperationInst *loadOrStoreOpStmt,
                             MemRefAccess *access) {
   access->opStmt = loadOrStoreOpStmt;
   if (auto loadOp = loadOrStoreOpStmt->dyn_cast<LoadOp>()) {
@@ -131,7 +131,7 @@ getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
 // "source" access and all subsequent "destination" accesses in
 // 'loadsAndStores'. Emits the result of the dependence check as a note with
 // the source access.
-static void checkDependences(ArrayRef<OperationStmt *> loadsAndStores) {
+static void checkDependences(ArrayRef<OperationInst *> loadsAndStores) {
   for (unsigned i = 0, e = loadsAndStores.size(); i < e; ++i) {
     auto *srcOpStmt = loadsAndStores[i];
     MemRefAccess srcAccess;

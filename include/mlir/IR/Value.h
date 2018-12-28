@@ -28,13 +28,12 @@
 
 namespace mlir {
 class Function;
-class OperationStmt;
-class Operation;
+class OperationInst;
 class Statement;
 class StmtBlock;
 class Value;
 using Instruction = Statement;
-using OperationInst = OperationStmt;
+using OperationInst = OperationInst;
 
 /// Operands contain a Value.
 using StmtOperand = IROperandImpl<Value, Statement>;
@@ -81,25 +80,11 @@ public:
     return const_cast<Value *>(this)->getFunction();
   }
 
-  /// If this value is the result of an Instruction, return the instruction
+  /// If this value is the result of an operation, return the instruction
   /// that defines it.
   OperationInst *getDefiningInst();
   const OperationInst *getDefiningInst() const {
     return const_cast<Value *>(this)->getDefiningInst();
-  }
-
-  /// If this value is the result of an OperationStmt, return the statement
-  /// that defines it.
-  OperationStmt *getDefiningStmt();
-  const OperationStmt *getDefiningStmt() const {
-    return const_cast<Value *>(this)->getDefiningStmt();
-  }
-
-  /// If this value is the result of an Operation, return the operation that
-  /// defines it.
-  Operation *getDefiningOperation();
-  const Operation *getDefiningOperation() const {
-    return const_cast<Value *>(this)->getDefiningOperation();
   }
 
   using use_iterator = ValueUseIterator<StmtOperand, Statement>;
@@ -169,15 +154,15 @@ private:
 /// This is a value defined by a result of an operation instruction.
 class StmtResult : public Value {
 public:
-  StmtResult(Type type, OperationStmt *owner)
+  StmtResult(Type type, OperationInst *owner)
       : Value(Value::Kind::StmtResult, type), owner(owner) {}
 
   static bool classof(const Value *value) {
     return value->getKind() == Kind::StmtResult;
   }
 
-  OperationStmt *getOwner() { return owner; }
-  const OperationStmt *getOwner() const { return owner; }
+  OperationInst *getOwner() { return owner; }
+  const OperationInst *getOwner() const { return owner; }
 
   /// Returns the number of this result.
   unsigned getResultNumber() const;
@@ -186,7 +171,7 @@ private:
   /// The owner of this operand.
   /// TODO: can encode this more efficiently to avoid the space hit of this
   /// through bitpacking shenanigans.
-  OperationStmt *const owner;
+  OperationInst *const owner;
 };
 
 // TODO(clattner) clean all this up.

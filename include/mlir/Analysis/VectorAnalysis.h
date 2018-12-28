@@ -27,7 +27,7 @@ namespace mlir {
 class AffineMap;
 class ForStmt;
 class MemRefType;
-class OperationStmt;
+class OperationInst;
 class VectorType;
 
 /// Computes and returns the multi-dimensional ratio of `superShape` to
@@ -118,7 +118,7 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// `%arg0[%c0, %c0]` into vector<128xf32> which needs a 1-D vector broadcast.
 ///
 AffineMap
-makePermutationMap(OperationStmt *opStmt,
+makePermutationMap(OperationInst *opStmt,
                    const llvm::DenseMap<ForStmt *, unsigned> &loopToVectorDim);
 
 namespace matcher {
@@ -131,7 +131,7 @@ namespace matcher {
 /// TODO(ntv): this could all be much simpler if we added a bit that a vector
 /// type to mark that a vector is a strict super-vector but it still does not
 /// warrant adding even 1 extra bit in the IR for now.
-bool operatesOnStrictSuperVectors(const OperationStmt &stmt,
+bool operatesOnStrictSuperVectors(const OperationInst &stmt,
                                   VectorType subVectorType);
 
 } // end namespace matcher

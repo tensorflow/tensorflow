@@ -37,7 +37,7 @@ class ForStmt;
 class MLIRContext;
 class FlatAffineConstraints;
 class IntegerSet;
-class OperationStmt;
+class OperationInst;
 class Statement;
 class Value;
 
@@ -74,12 +74,12 @@ AffineMap composeUnboundedMaps(AffineMap f, AffineMap g);
 /// smaller than the number of results of `g`.
 AffineExpr composeWithUnboundedMap(AffineExpr e, AffineMap g);
 
-/// Returns the sequence of AffineApplyOp OperationStmts operation in
+/// Returns the sequence of AffineApplyOp OperationInsts operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.
 void getReachableAffineApplyOps(
     llvm::ArrayRef<Value *> operands,
-    llvm::SmallVectorImpl<OperationStmt *> &affineApplyOps);
+    llvm::SmallVectorImpl<OperationInst *> &affineApplyOps);
 
 /// Forward substitutes into 'valueMap' all AffineApplyOps reachable from the
 /// operands of 'valueMap'.
@@ -123,7 +123,7 @@ bool getIndexSet(llvm::ArrayRef<ForStmt *> forStmts,
 
 struct MemRefAccess {
   const Value *memref;
-  const OperationStmt *opStmt;
+  const OperationInst *opStmt;
   llvm::SmallVector<Value *, 4> indices;
   // Populates 'accessMap' with composition of AffineApplyOps reachable from
   // 'indices'.

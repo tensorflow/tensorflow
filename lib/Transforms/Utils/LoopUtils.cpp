@@ -156,7 +156,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
   auto *loopChunk = b->createFor(srcForStmt->getLoc(), lbOperands, lbMap,
                                  ubOperands, ubMap, srcForStmt->getStep());
 
-  OperationStmt::OperandMapTy operandMap;
+  OperationInst::OperandMapTy operandMap;
 
   for (auto it = stmtGroupQueue.begin() + offset, e = stmtGroupQueue.end();
        it != e; ++it) {

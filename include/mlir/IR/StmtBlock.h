@@ -161,9 +161,9 @@ public:
 
   /// Get the terminator instruction of this block, or null if the block is
   /// malformed.
-  OperationStmt *getTerminator();
+  OperationInst *getTerminator();
 
-  const OperationStmt *getTerminator() const {
+  const OperationInst *getTerminator() const {
     return const_cast<StmtBlock *>(this)->getTerminator();
   }
 
@@ -408,7 +408,7 @@ public:
   }
 
 private:
-  using BBUseIterator = ValueUseIterator<StmtBlockOperand, OperationStmt>;
+  using BBUseIterator = ValueUseIterator<StmtBlockOperand, OperationInst>;
   BBUseIterator bbUseIterator;
 };
 

@@ -42,12 +42,12 @@ namespace {
 // with no remaining uses are collected and erased after the walk.
 // TODO(andydavis) Remove this when Chris adds instruction combiner pass.
 struct ComposeAffineMaps : public FunctionPass, StmtWalker<ComposeAffineMaps> {
-  std::vector<OperationStmt *> affineApplyOpsToErase;
+  std::vector<OperationInst *> affineApplyOpsToErase;
 
   explicit ComposeAffineMaps() : FunctionPass(&ComposeAffineMaps::passID) {}
   using StmtListType = llvm::iplist<Statement>;
   void walk(StmtListType::iterator Start, StmtListType::iterator End);
-  void visitOperationStmt(OperationStmt *stmt);
+  void visitOperationInst(OperationInst *stmt);
   PassResult runOnMLFunction(MLFunction *f) override;
   using StmtWalker<ComposeAffineMaps>::walk;
 
@@ -72,7 +72,7 @@ void ComposeAffineMaps::walk(StmtListType::iterator Start,
   }
 }
 
-void ComposeAffineMaps::visitOperationStmt(OperationStmt *opStmt) {
+void ComposeAffineMaps::visitOperationInst(OperationInst *opStmt) {
   if (auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>()) {
     forwardSubstitute(affineApplyOp);
     bool allUsesEmpty = true;

@@ -239,9 +239,9 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   emitter.emitAttrGetters();
   emitter.emitCanonicalizationPatterns();
 
-  os << "private:\n  friend class ::mlir::Operation;\n";
+  os << "private:\n  friend class ::mlir::OperationInst;\n";
   os << "  explicit " << emitter.cppClassName()
-     << "(const Operation* state) : Op(state) {}\n";
+     << "(const OperationInst* state) : Op(state) {}\n";
   os << "};\n";
   emitter.mapOverClassNamespaces(
       [&os](StringRef ns) { os << "} // end namespace " << ns << "\n"; });

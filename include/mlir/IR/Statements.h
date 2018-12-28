@@ -24,31 +24,48 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/Statement.h"
 #include "mlir/IR/StmtBlock.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
 class AffineBound;
 class IntegerSet;
 class AffineCondition;
-class OperationStmt;
-using OperationInst = OperationStmt;
+class AttributeListStorage;
+template <typename OpType> class ConstOpPointer;
+template <typename OpType> class OpPointer;
+template <typename ObjectType, typename ElementType> class ResultIterator;
+template <typename ObjectType, typename ElementType> class ResultTypeIterator;
+class Function;
 
-/// Operation statements represent operations inside ML functions.
-class OperationStmt final
-    : public Operation,
-      private llvm::TrailingObjects<OperationStmt, StmtResult, StmtBlockOperand,
+/// Operations represent all of the arithmetic and other basic computation in
+/// MLIR.
+///
+class OperationInst final
+    : public Statement,
+      private llvm::TrailingObjects<OperationInst, StmtResult, StmtBlockOperand,
                                     unsigned, StmtOperand> {
 public:
-  /// Create a new OperationStmt with the specific fields.
-  static OperationStmt *
+  /// Create a new OperationInst with the specific fields.
+  static OperationInst *
   create(Location location, OperationName name, ArrayRef<Value *> operands,
          ArrayRef<Type> resultTypes, ArrayRef<NamedAttribute> attributes,
          ArrayRef<StmtBlock *> successors, MLIRContext *context);
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
+
+  /// The name of an operation is the key identifier for it.
+  OperationName getName() const { return name; }
+
+  /// If this operation has a registered operation description, return it.
+  /// Otherwise return null.
+  const AbstractOperation *getAbstractOperation() const {
+    return getName().getAbstractOperation();
+  }
 
   /// Check if this statement is a return statement.
   bool isReturn() const;
@@ -68,7 +85,7 @@ public:
   }
 
   // Support non-const operand iteration.
-  using operand_iterator = OperandIterator<OperationStmt, Value>;
+  using operand_iterator = OperandIterator<OperationInst, Value>;
 
   operand_iterator operand_begin() { return operand_iterator(this, 0); }
 
@@ -83,7 +100,7 @@ public:
 
   // Support const operand iteration.
   using const_operand_iterator =
-      OperandIterator<const OperationStmt, const Value>;
+      OperandIterator<const OperationInst, const Value>;
 
   const_operand_iterator operand_begin() const {
     return const_operand_iterator(this, 0);
@@ -114,35 +131,28 @@ public:
   // Results
   //===--------------------------------------------------------------------===//
 
+  /// Return true if there are no users of any results of this operation.
+  bool use_empty() const;
+
   unsigned getNumResults() const { return numResults; }
 
   Value *getResult(unsigned idx) { return &getStmtResult(idx); }
   const Value *getResult(unsigned idx) const { return &getStmtResult(idx); }
 
   // Support non-const result iteration.
-  using result_iterator = ResultIterator<OperationStmt, Value>;
-  result_iterator result_begin() { return result_iterator(this, 0); }
-  result_iterator result_end() {
-    return result_iterator(this, getNumResults());
-  }
-  llvm::iterator_range<result_iterator> getResults() {
-    return {result_begin(), result_end()};
-  }
+  using result_iterator = ResultIterator<OperationInst, Value>;
+  result_iterator result_begin();
+  result_iterator result_end();
+  llvm::iterator_range<result_iterator> getResults();
 
   // Support const result iteration.
   using const_result_iterator =
-      ResultIterator<const OperationStmt, const Value>;
-  const_result_iterator result_begin() const {
-    return const_result_iterator(this, 0);
-  }
+      ResultIterator<const OperationInst, const Value>;
+  const_result_iterator result_begin() const;
 
-  const_result_iterator result_end() const {
-    return const_result_iterator(this, getNumResults());
-  }
+  const_result_iterator result_end() const;
 
-  llvm::iterator_range<const_result_iterator> getResults() const {
-    return {result_begin(), result_end()};
-  }
+  llvm::iterator_range<const_result_iterator> getResults() const;
 
   ArrayRef<StmtResult> getStmtResults() const {
     return {getTrailingObjects<StmtResult>(), numResults};
@@ -160,18 +170,60 @@ public:
 
   // Support result type iteration.
   using result_type_iterator =
-      ResultTypeIterator<const OperationStmt, const Value>;
-  result_type_iterator result_type_begin() const {
-    return result_type_iterator(this, 0);
+      ResultTypeIterator<const OperationInst, const Value>;
+  result_type_iterator result_type_begin() const;
+
+  result_type_iterator result_type_end() const;
+
+  llvm::iterator_range<result_type_iterator> getResultTypes() const;
+
+  //===--------------------------------------------------------------------===//
+  // Attributes
+  //===--------------------------------------------------------------------===//
+
+  // Operations may optionally carry a list of attributes that associate
+  // constants to names.  Attributes may be dynamically added and removed over
+  // the lifetime of an operation.
+  //
+  // We assume there will be relatively few attributes on a given operation
+  // (maybe a dozen or so, but not hundreds or thousands) so we use linear
+  // searches for everything.
+
+  /// Return all of the attributes on this operation.
+  ArrayRef<NamedAttribute> getAttrs() const;
+
+  /// Return the specified attribute if present, null otherwise.
+  Attribute getAttr(Identifier name) const {
+    for (auto elt : getAttrs())
+      if (elt.first == name)
+        return elt.second;
+    return nullptr;
   }
 
-  result_type_iterator result_type_end() const {
-    return result_type_iterator(this, getNumResults());
+  Attribute getAttr(StringRef name) const {
+    for (auto elt : getAttrs())
+      if (elt.first.is(name))
+        return elt.second;
+    return nullptr;
   }
 
-  llvm::iterator_range<result_type_iterator> getResultTypes() const {
-    return {result_type_begin(), result_type_end()};
+  template <typename AttrClass> AttrClass getAttrOfType(Identifier name) const {
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
+
+  template <typename AttrClass> AttrClass getAttrOfType(StringRef name) const {
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
+  }
+
+  /// If the an attribute exists with the specified name, change it to the new
+  /// value.  Otherwise, add a new attribute with the specified name/value.
+  void setAttr(Identifier name, Attribute value);
+
+  enum class RemoveResult { Removed, NotFound };
+
+  /// Remove the attribute with the specified name if it exists.  The return
+  /// value indicates whether the attribute was present or not.
+  RemoveResult removeAttr(Identifier name);
 
   //===--------------------------------------------------------------------===//
   // Terminators
@@ -182,19 +234,12 @@ public:
     return {getTrailingObjects<StmtBlockOperand>(), numSuccs};
   }
   ArrayRef<StmtBlockOperand> getBlockOperands() const {
-    return const_cast<OperationStmt *>(this)->getBlockOperands();
+    return const_cast<OperationInst *>(this)->getBlockOperands();
   }
 
-  MutableArrayRef<StmtOperand> getSuccessorOperands(unsigned index) {
-    assert(isTerminator() && "Only terminators have successors");
-    assert(index < getNumSuccessors());
-    unsigned succOpIndex = getSuccessorOperandIndex(index);
-    auto *operandBegin = getStmtOperands().data() + succOpIndex;
-    return {operandBegin, getNumSuccessorOperands(index)};
-  }
-  ArrayRef<StmtOperand> getSuccessorOperands(unsigned index) const {
-    return const_cast<OperationStmt *>(this)->getSuccessorOperands(index);
-  }
+  llvm::iterator_range<const_operand_iterator>
+  getSuccessorOperands(unsigned index) const;
+  llvm::iterator_range<operand_iterator> getSuccessorOperands(unsigned index);
 
   unsigned getNumSuccessors() const { return numSuccs; }
   unsigned getNumSuccessorOperands(unsigned index) const {
@@ -208,7 +253,7 @@ public:
     return getBlockOperands()[index].get();
   }
   const StmtBlock *getSuccessor(unsigned index) const {
-    return const_cast<OperationStmt *>(this)->getSuccessor(index);
+    return const_cast<OperationInst *>(this)->getSuccessor(index);
   }
   void setSuccessor(BasicBlock *block, unsigned index);
 
@@ -238,32 +283,128 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
+  // Accessors for various properties of operations
+  //===--------------------------------------------------------------------===//
+
+  /// Returns whether the operation is commutative.
+  bool isCommutative() const {
+    if (auto *absOp = getAbstractOperation())
+      return absOp->hasProperty(OperationProperty::Commutative);
+    return false;
+  }
+
+  /// Returns whether the operation has side-effects.
+  bool hasNoSideEffect() const {
+    if (auto *absOp = getAbstractOperation())
+      return absOp->hasProperty(OperationProperty::NoSideEffect);
+    return false;
+  }
+
+  /// Returns whether the operation is a terminator.
+  bool isTerminator() const {
+    if (auto *absOp = getAbstractOperation())
+      return absOp->hasProperty(OperationProperty::Terminator);
+    return false;
+  }
+
+  /// Attempt to constant fold this operation with the specified constant
+  /// operand values - the elements in "operands" will correspond directly to
+  /// the operands of the operation, but may be null if non-constant.  If
+  /// constant folding is successful, this returns false and fills in the
+  /// `results` vector.  If not, this returns true and `results` is unspecified.
+  bool constantFold(ArrayRef<Attribute> operands,
+                    SmallVectorImpl<Attribute> &results) const;
+
+  //===--------------------------------------------------------------------===//
+  // Conversions to declared operations like DimOp
+  //===--------------------------------------------------------------------===//
+
+  // Return a null OpPointer for the specified type.
+  template <typename OpClass> static OpPointer<OpClass> getNull() {
+    return OpPointer<OpClass>(OpClass(nullptr));
+  }
+
+  /// The dyn_cast methods perform a dynamic cast from an OperationInst (like
+  /// Instruction and OperationInst) to a typed Op like DimOp.  This returns
+  /// a null OpPointer on failure.
+  template <typename OpClass> OpPointer<OpClass> dyn_cast() {
+    if (isa<OpClass>()) {
+      return cast<OpClass>();
+    } else {
+      return OpPointer<OpClass>(OpClass(nullptr));
+    }
+  }
+
+  /// The dyn_cast methods perform a dynamic cast from an OperationInst (like
+  /// Instruction and OperationInst) to a typed Op like DimOp.  This returns
+  /// a null ConstOpPointer on failure.
+  template <typename OpClass> ConstOpPointer<OpClass> dyn_cast() const {
+    if (isa<OpClass>()) {
+      return cast<OpClass>();
+    } else {
+      return ConstOpPointer<OpClass>(OpClass(nullptr));
+    }
+  }
+
+  /// The cast methods perform a cast from an OperationInst (like
+  /// Instruction and OperationInst) to a typed Op like DimOp.  This aborts
+  /// if the parameter to the template isn't an instance of the template type
+  /// argument.
+  template <typename OpClass> OpPointer<OpClass> cast() {
+    assert(isa<OpClass>() && "cast<Ty>() argument of incompatible type!");
+    return OpPointer<OpClass>(OpClass(this));
+  }
+
+  /// The cast methods perform a cast from an OperationInst (like
+  /// Instruction and OperationInst) to a typed Op like DimOp.  This aborts
+  /// if the parameter to the template isn't an instance of the template type
+  /// argument.
+  template <typename OpClass> ConstOpPointer<OpClass> cast() const {
+    assert(isa<OpClass>() && "cast<Ty>() argument of incompatible type!");
+    return ConstOpPointer<OpClass>(OpClass(this));
+  }
+
+  /// The is methods return true if the operation is a typed op (like DimOp) of
+  /// of the given class.
+  template <typename OpClass> bool isa() const {
+    return OpClass::isClassFor(this);
+  }
+
+  //===--------------------------------------------------------------------===//
   // Other
   //===--------------------------------------------------------------------===//
 
+  /// Emit an error with the op name prefixed, like "'dim' op " which is
+  /// convenient for verifiers.  This function always returns true.
+  bool emitOpError(const Twine &message) const;
+
   void destroy();
-  using Statement::erase;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const IROperandOwner *ptr) {
-    return ptr->getKind() == IROperandOwner::Kind::OperationStmt;
+    return ptr->getKind() == IROperandOwner::Kind::OperationInst;
   }
-  static bool classof(const Operation *op) { return true; }
 
 private:
   unsigned numOperands;
   const unsigned numResults, numSuccs;
 
-  OperationStmt(Location location, OperationName name, unsigned numOperands,
+  /// This holds the name of the operation.
+  OperationName name;
+
+  /// This holds general named attributes for the operation.
+  AttributeListStorage *attrs;
+
+  OperationInst(Location location, OperationName name, unsigned numOperands,
                 unsigned numResults, unsigned numSuccessors,
                 ArrayRef<NamedAttribute> attributes, MLIRContext *context);
-  ~OperationStmt();
+  ~OperationInst();
 
   /// Erase the operand at 'index'.
   void eraseOperand(unsigned index);
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<OperationStmt, StmtResult, StmtBlockOperand,
+  friend llvm::TrailingObjects<OperationInst, StmtResult, StmtBlockOperand,
                                unsigned, StmtOperand>;
   size_t numTrailingObjects(OverloadToken<StmtOperand>) const {
     return numOperands;
@@ -276,6 +417,95 @@ private:
   }
   size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
 };
+
+/// This template implements the result iterators for the OperationInst class
+/// in terms of getResult(idx).
+template <typename ObjectType, typename ElementType>
+class ResultIterator final
+    : public IndexedAccessorIterator<ResultIterator<ObjectType, ElementType>,
+                                     ObjectType, ElementType> {
+public:
+  /// Initializes the result iterator to the specified index.
+  ResultIterator(ObjectType *object, unsigned index)
+      : IndexedAccessorIterator<ResultIterator<ObjectType, ElementType>,
+                                ObjectType, ElementType>(object, index) {}
+
+  /// Support converting to the const variant. This will be a no-op for const
+  /// variant.
+  operator ResultIterator<const ObjectType, const ElementType>() const {
+    return ResultIterator<const ObjectType, const ElementType>(this->object,
+                                                               this->index);
+  }
+
+  ElementType *operator*() const {
+    return this->object->getResult(this->index);
+  }
+};
+
+/// This template implements the result type iterators for the OperationInst
+/// class in terms of getResult(idx)->getType().
+template <typename ObjectType, typename ElementType>
+class ResultTypeIterator final
+    : public IndexedAccessorIterator<
+          ResultTypeIterator<ObjectType, ElementType>, ObjectType,
+          ElementType> {
+public:
+  /// Initializes the result type iterator to the specified index.
+  ResultTypeIterator(ObjectType *object, unsigned index)
+      : IndexedAccessorIterator<ResultTypeIterator<ObjectType, ElementType>,
+                                ObjectType, ElementType>(object, index) {}
+
+  /// Support converting to the const variant. This will be a no-op for const
+  /// variant.
+  operator ResultTypeIterator<const ObjectType, const ElementType>() const {
+    return ResultTypeIterator<const ObjectType, const ElementType>(this->object,
+                                                                   this->index);
+  }
+
+  Type operator*() const {
+    return this->object->getResult(this->index)->getType();
+  }
+};
+
+// Implement the inline result iterator methods.
+inline auto OperationInst::result_begin() -> result_iterator {
+  return result_iterator(this, 0);
+}
+
+inline auto OperationInst::result_end() -> result_iterator {
+  return result_iterator(this, getNumResults());
+}
+
+inline auto OperationInst::getResults()
+    -> llvm::iterator_range<result_iterator> {
+  return {result_begin(), result_end()};
+}
+
+inline auto OperationInst::result_begin() const -> const_result_iterator {
+  return const_result_iterator(this, 0);
+}
+
+inline auto OperationInst::result_end() const -> const_result_iterator {
+  return const_result_iterator(this, getNumResults());
+}
+
+inline auto OperationInst::getResults() const
+    -> llvm::iterator_range<const_result_iterator> {
+  return {result_begin(), result_end()};
+}
+
+inline auto OperationInst::result_type_begin() const -> result_type_iterator {
+  return result_type_iterator(this, 0);
+}
+
+inline auto OperationInst::result_type_end() const -> result_type_iterator {
+  return result_type_iterator(this, getNumResults());
+}
+
+inline auto OperationInst::getResultTypes() const
+    -> llvm::iterator_range<result_type_iterator> {
+  return {result_type_begin(), result_type_end()};
+}
 
 /// For statement represents an affine loop nest.
 class ForStmt : public Statement, public Value {

@@ -32,7 +32,7 @@ class AffineExpr;
 class AffineMap;
 class ForStmt;
 class MemRefType;
-class OperationStmt;
+class OperationInst;
 class Value;
 
 /// Returns the trip count of the loop as an affine expression if the latter is

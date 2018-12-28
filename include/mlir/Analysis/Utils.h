@@ -35,7 +35,7 @@ namespace mlir {
 class FlatAffineConstraints;
 class ForStmt;
 class MemRefAccess;
-class OperationStmt;
+class OperationInst;
 class Statement;
 class Value;
 
@@ -128,7 +128,7 @@ private:
 ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
 /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
 ///
-bool getMemRefRegion(OperationStmt *opStmt, unsigned loopDepth,
+bool getMemRefRegion(OperationInst *opStmt, unsigned loopDepth,
                      MemRefRegion *region);
 
 /// Returns the size of memref data in bytes if it's statically shaped, None

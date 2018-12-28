@@ -120,7 +120,7 @@ PassResult LoopUnroll::runOnMLFunction(MLFunction *f) {
       return hasInnerLoops;
     }
 
-    bool visitOperationStmt(OperationStmt *opStmt) { return false; }
+    bool visitOperationInst(OperationInst *opStmt) { return false; }
 
     // FIXME: can't use base class method for this because that in turn would
     // need to use the derived class method above. CRTP doesn't allow it, and

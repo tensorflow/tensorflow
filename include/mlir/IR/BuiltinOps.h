@@ -80,8 +80,8 @@ public:
                     MLIRContext *context) const;
 
 private:
-  friend class Operation;
-  explicit AffineApplyOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit AffineApplyOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "br" operation represents a branch instruction in a CFG function.
@@ -108,15 +108,18 @@ public:
   bool verify() const;
 
   /// Return the block this branch jumps to.
-  BasicBlock *getDest() const;
+  BasicBlock *getDest();
+  const BasicBlock *getDest() const {
+    return const_cast<BranchOp *>(this)->getDest();
+  }
   void setDest(BasicBlock *block);
 
   /// Erase the operand at 'index' from the operand list.
   void eraseOperand(unsigned index);
 
 private:
-  friend class Operation;
-  explicit BranchOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit BranchOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "cond_br" operation represents a conditional branch instruction in a
@@ -157,10 +160,16 @@ public:
   const Value *getCondition() const { return getOperand(0); }
 
   /// Return the destination if the condition is true.
-  BasicBlock *getTrueDest() const;
+  BasicBlock *getTrueDest();
+  const BasicBlock *getTrueDest() const {
+    return const_cast<CondBranchOp *>(this)->getTrueDest();
+  }
 
   /// Return the destination if the condition is false.
-  BasicBlock *getFalseDest() const;
+  BasicBlock *getFalseDest();
+  const BasicBlock *getFalseDest() const {
+    return const_cast<CondBranchOp *>(this)->getFalseDest();
+  }
 
   // Accessors for operands to the 'true' destination.
   Value *getTrueOperand(unsigned idx) {
@@ -241,8 +250,8 @@ private:
     return getTrueDestOperandIndex() + getNumTrueOperands();
   }
 
-  friend class Operation;
-  explicit CondBranchOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit CondBranchOp(const OperationInst *state) : Op(state) {}
 };
 
 /// The "constant" operation requires a single attribute named "value".
@@ -270,8 +279,8 @@ public:
                          MLIRContext *context) const;
 
 protected:
-  friend class Operation;
-  explicit ConstantOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit ConstantOp(const OperationInst *state) : Op(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -289,11 +298,11 @@ public:
     return getAttrOfType<FloatAttr>("value").getValue();
   }
 
-  static bool isClassFor(const Operation *op);
+  static bool isClassFor(const OperationInst *op);
 
 private:
-  friend class Operation;
-  explicit ConstantFloatOp(const Operation *state) : ConstantOp(state) {}
+  friend class OperationInst;
+  explicit ConstantFloatOp(const OperationInst *state) : ConstantOp(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -316,11 +325,11 @@ public:
     return getAttrOfType<IntegerAttr>("value").getInt();
   }
 
-  static bool isClassFor(const Operation *op);
+  static bool isClassFor(const OperationInst *op);
 
 private:
-  friend class Operation;
-  explicit ConstantIntOp(const Operation *state) : ConstantOp(state) {}
+  friend class OperationInst;
+  explicit ConstantIntOp(const OperationInst *state) : ConstantOp(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -337,11 +346,11 @@ public:
     return getAttrOfType<IntegerAttr>("value").getInt();
   }
 
-  static bool isClassFor(const Operation *op);
+  static bool isClassFor(const OperationInst *op);
 
 private:
-  friend class Operation;
-  explicit ConstantIndexOp(const Operation *state) : ConstantOp(state) {}
+  friend class OperationInst;
+  explicit ConstantIndexOp(const OperationInst *state) : ConstantOp(state) {}
 };
 
 /// The "return" operation represents a return statement within a function.
@@ -367,13 +376,13 @@ public:
   bool verify() const;
 
 private:
-  friend class Operation;
-  explicit ReturnOp(const Operation *state) : Op(state) {}
+  friend class OperationInst;
+  explicit ReturnOp(const OperationInst *state) : Op(state) {}
 };
 
 // Prints dimension and symbol list.
-void printDimAndSymbolList(Operation::const_operand_iterator begin,
-                           Operation::const_operand_iterator end,
+void printDimAndSymbolList(OperationInst::const_operand_iterator begin,
+                           OperationInst::const_operand_iterator end,
                            unsigned numDims, OpAsmPrinter *p);
 
 // Parses dimension and symbol list and returns true if parsing failed.

@@ -47,14 +47,14 @@ public:
 
   void visitForStmt(ForStmt *forStmt);
   void visitIfStmt(IfStmt *ifStmt);
-  void visitOperationStmt(OperationStmt *opStmt);
+  void visitOperationInst(OperationInst *opStmt);
 
 private:
   Value *getConstantIndexValue(int64_t value);
   void visitStmtBlock(StmtBlock *stmtBlock);
   Value *buildMinMaxReductionSeq(
       Location loc, CmpIPredicate predicate,
-      llvm::iterator_range<Operation::result_iterator> values);
+      llvm::iterator_range<OperationInst::result_iterator> values);
 
   CFGFunction *cfgFunc;
   FuncBuilder builder;
@@ -64,7 +64,7 @@ private:
 };
 } // end anonymous namespace
 
-// Return a vector of OperationStmt's arguments as Values.  For each
+// Return a vector of OperationInst's arguments as Values.  For each
 // statement operands, represented as Value, lookup its Value conterpart in
 // the valueRemapping table.
 static llvm::SmallVector<mlir::Value *, 4>
@@ -84,7 +84,7 @@ operandsAs(Statement *opStmt,
 // remains the same but the values must be updated to be Values.  Update the
 // mapping Value->Value as the conversion is performed.  The operation
 // instruction is appended to current block (end of SESE region).
-void FunctionConverter::visitOperationStmt(OperationStmt *opStmt) {
+void FunctionConverter::visitOperationInst(OperationInst *opStmt) {
   // Set up basic operation state (context, name, operands).
   OperationState state(cfgFunc->getContext(), opStmt->getLoc(),
                        opStmt->getName());
@@ -136,7 +136,7 @@ void FunctionConverter::visitStmtBlock(StmtBlock *stmtBlock) {
 // recognize as a reduction by the subsequent passes.
 Value *FunctionConverter::buildMinMaxReductionSeq(
     Location loc, CmpIPredicate predicate,
-    llvm::iterator_range<Operation::result_iterator> values) {
+    llvm::iterator_range<OperationInst::result_iterator> values) {
   assert(!llvm::empty(values) && "empty min/max chain");
 
   auto valueIt = values.begin();
@@ -600,7 +600,7 @@ void ModuleConverter::replaceReferences() {
 // operation "op" and containing an MLFunction-typed value with the result of
 // converting "func" to a CFGFunction.
 static inline void replaceMLFunctionAttr(
-    Operation &op, Identifier name, const Function *func,
+    OperationInst &op, Identifier name, const Function *func,
     const llvm::DenseMap<MLFunction *, CFGFunction *> &generatedFuncs) {
   if (!func->isML())
     return;
