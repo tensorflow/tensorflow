@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef MLIR_SUPPORT_GENINFO_H_
-#define MLIR_SUPPORT_GENINFO_H_
+#ifndef MLIR_TABLEGEN_GENINFO_H_
+#define MLIR_TABLEGEN_GENINFO_H_
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/StringRef.h"
@@ -78,4 +78,4 @@ struct GenRegistration {
 
 } // end namespace mlir
 
-#endif // MLIR_SUPPORT_GENINFO_H_
+#endif // MLIR_TABLEGEN_GENINFO_H_

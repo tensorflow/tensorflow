@@ -115,7 +115,7 @@ class DerivedAttr<code ReturnType, code Body> : Attr<DerivedAttrBody> {
 class OpProperty;
 
 //
-// Note: These are hard coded into mlir-op-gen.
+// Note: These are hard coded into mlir-tblgen.
 //
 def Commutative   : OpProperty;   // X op Y == Y op X
 def NoSideEffect  : OpProperty;   // op has no side effect

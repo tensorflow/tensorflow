@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_SUPPORT_GENNAMEPARSER_H_
-#define MLIR_SUPPORT_GENNAMEPARSER_H_
+#ifndef MLIR_TABLEGEN_GENNAMEPARSER_H_
+#define MLIR_TABLEGEN_GENNAMEPARSER_H_
 
 #include "llvm/Support/CommandLine.h"
 
@@ -37,4 +37,4 @@ struct GenNameParser : public llvm::cl::parser<const GenInfo *> {
 };
 } // end namespace mlir
 
-#endif // MLIR_SUPPORT_GENNAMEPARSER_H_
+#endif // MLIR_TABLEGEN_GENNAMEPARSER_H_
