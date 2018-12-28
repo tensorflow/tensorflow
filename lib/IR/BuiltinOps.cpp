@@ -183,24 +183,24 @@ bool BranchOp::parse(OpAsmParser *parser, OperationState *result) {
 
 void BranchOp::print(OpAsmPrinter *p) const {
   *p << "br ";
-  p->printSuccessorAndUseList(getOperation(), 0);
+  p->printSuccessorAndUseList(getInstruction(), 0);
 }
 
 bool BranchOp::verify() const {
   // ML functions do not have branching terminators.
-  if (getOperation()->getFunction()->isML())
+  if (getInstruction()->getFunction()->isML())
     return (emitOpError("cannot occur in a ML function"), true);
   return false;
 }
 
-BasicBlock *BranchOp::getDest() { return getOperation()->getSuccessor(0); }
+BasicBlock *BranchOp::getDest() { return getInstruction()->getSuccessor(0); }
 
 void BranchOp::setDest(BasicBlock *block) {
-  return getOperation()->setSuccessor(block, 0);
+  return getInstruction()->setSuccessor(block, 0);
 }
 
 void BranchOp::eraseOperand(unsigned index) {
-  getOperation()->eraseSuccessorOperand(0, index);
+  getInstruction()->eraseSuccessorOperand(0, index);
 }
 
 //===----------------------------------------------------------------------===//
@@ -249,14 +249,14 @@ void CondBranchOp::print(OpAsmPrinter *p) const {
   *p << "cond_br ";
   p->printOperand(getCondition());
   *p << ", ";
-  p->printSuccessorAndUseList(getOperation(), trueIndex);
+  p->printSuccessorAndUseList(getInstruction(), trueIndex);
   *p << ", ";
-  p->printSuccessorAndUseList(getOperation(), falseIndex);
+  p->printSuccessorAndUseList(getInstruction(), falseIndex);
 }
 
 bool CondBranchOp::verify() const {
   // ML functions do not have branching terminators.
-  if (getOperation()->getFunction()->isML())
+  if (getInstruction()->getFunction()->isML())
     return (emitOpError("cannot occur in a ML function"), true);
   if (!getCondition()->getType().isInteger(1))
     return emitOpError("expected condition type was boolean (i1)");
@@ -264,27 +264,27 @@ bool CondBranchOp::verify() const {
 }
 
 BasicBlock *CondBranchOp::getTrueDest() {
-  return getOperation()->getSuccessor(trueIndex);
+  return getInstruction()->getSuccessor(trueIndex);
 }
 
 BasicBlock *CondBranchOp::getFalseDest() {
-  return getOperation()->getSuccessor(falseIndex);
+  return getInstruction()->getSuccessor(falseIndex);
 }
 
 unsigned CondBranchOp::getNumTrueOperands() const {
-  return getOperation()->getNumSuccessorOperands(trueIndex);
+  return getInstruction()->getNumSuccessorOperands(trueIndex);
 }
 
 void CondBranchOp::eraseTrueOperand(unsigned index) {
-  getOperation()->eraseSuccessorOperand(trueIndex, index);
+  getInstruction()->eraseSuccessorOperand(trueIndex, index);
 }
 
 unsigned CondBranchOp::getNumFalseOperands() const {
-  return getOperation()->getNumSuccessorOperands(falseIndex);
+  return getInstruction()->getNumSuccessorOperands(falseIndex);
 }
 
 void CondBranchOp::eraseFalseOperand(unsigned index) {
-  getOperation()->eraseSuccessorOperand(falseIndex, index);
+  getInstruction()->eraseSuccessorOperand(falseIndex, index);
 }
 
 //===----------------------------------------------------------------------===//
@@ -468,7 +468,7 @@ void ReturnOp::print(OpAsmPrinter *p) const {
 }
 
 bool ReturnOp::verify() const {
-  auto *function = cast<OperationInst>(getOperation())->getFunction();
+  auto *function = getInstruction()->getFunction();
 
   // The operand number and types must match the function signature.
   const auto &results = function->getType().getResults();

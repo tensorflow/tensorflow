@@ -230,7 +230,7 @@ public:
   template <typename OpTy, typename... Args>
   void replaceOpWithNewOp(OperationInst *op, Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
-    replaceOpWithResultsOfAnotherOp(op, newOp->getOperation(), {});
+    replaceOpWithResultsOfAnotherOp(op, newOp->getInstruction(), {});
   }
 
   /// Replaces the result op with a new op that is created without verification.
@@ -241,7 +241,7 @@ public:
                           ArrayRef<Value *> valuesToRemoveIfDead,
                           Args... args) {
     auto newOp = create<OpTy>(op->getLoc(), args...);
-    replaceOpWithResultsOfAnotherOp(op, newOp->getOperation(),
+    replaceOpWithResultsOfAnotherOp(op, newOp->getInstruction(),
                                     valuesToRemoveIfDead);
   }
 

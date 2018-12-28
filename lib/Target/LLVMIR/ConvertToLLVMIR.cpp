@@ -352,7 +352,7 @@ llvm::Value *ModuleLowerer::emitMemRefElementAccess(
 
 llvm::Value *ModuleLowerer::emitMemRefAlloc(ConstOpPointer<AllocOp> allocOp) {
   MemRefType type = allocOp->getType();
-  if (checkSupportedMemRefType(type, *allocOp->getOperation()))
+  if (checkSupportedMemRefType(type, *allocOp->getInstruction()))
     return nullptr;
 
   // Get actual sizes of the memref as values: static sizes are constant
@@ -450,8 +450,8 @@ llvm::Value *ModuleLowerer::emitConstantSplat(const ConstantOp &op) {
     return op.emitError("NYI: only float splats are currently supported"),
            nullptr;
 
-  llvm::Constant *cst =
-      getFloatConstant(floatAttr.getValue(), *op.getOperation(), &llvmContext);
+  llvm::Constant *cst = getFloatConstant(floatAttr.getValue(),
+                                         *op.getInstruction(), &llvmContext);
   if (!cst)
     return nullptr;
 
@@ -623,7 +623,7 @@ bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
 
   if (auto loadOp = inst.dyn_cast<LoadOp>()) {
     llvm::Value *element = emitMemRefElementAccess(
-        loadOp->getMemRef(), *loadOp->getOperation(), loadOp->getIndices());
+        loadOp->getMemRef(), *loadOp->getInstruction(), loadOp->getIndices());
     if (!element)
       return true;
 
@@ -631,8 +631,9 @@ bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
     return false;
   }
   if (auto storeOp = inst.dyn_cast<StoreOp>()) {
-    llvm::Value *element = emitMemRefElementAccess(
-        storeOp->getMemRef(), *storeOp->getOperation(), storeOp->getIndices());
+    llvm::Value *element = emitMemRefElementAccess(storeOp->getMemRef(),
+                                                   *storeOp->getInstruction(),
+                                                   storeOp->getIndices());
     if (!element)
       return true;
 

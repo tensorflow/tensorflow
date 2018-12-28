@@ -84,7 +84,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 
   // Walk all uses of old memref. Operation using the memref gets replaced.
   for (auto it = oldMemRef->use_begin(); it != oldMemRef->use_end();) {
-    StmtOperand &use = *(it++);
+    InstOperand &use = *(it++);
     auto *opStmt = cast<OperationInst>(use.getOwner());
 
     // Skip this use if it's not dominated by domStmtFilter.
@@ -145,7 +145,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
       auto remapOp = builder.create<AffineApplyOp>(opStmt->getLoc(), indexRemap,
                                                    remapOperands);
       // Remapped indices.
-      for (auto *index : remapOp->getOperation()->getResults())
+      for (auto *index : remapOp->getInstruction()->getResults())
         state.operands.push_back(index);
     } else {
       // No remapping specified.
@@ -216,7 +216,7 @@ mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
   for (unsigned i = 0, e = operands.size(); i < e; ++i) {
     (*results)[i] = affineApplyOp->getResult(i);
   }
-  return cast<OperationInst>(affineApplyOp->getOperation());
+  return affineApplyOp->getInstruction();
 }
 
 /// Given an operation statement, inserts a new single affine apply operation,
@@ -313,18 +313,18 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opStmt) {
 }
 
 void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
-  if (!affineApplyOp->getOperation()->getFunction()->isML()) {
+  if (!affineApplyOp->getInstruction()->getFunction()->isML()) {
     // TODO: Support forward substitution for CFG style functions.
     return;
   }
-  auto *opStmt = cast<OperationInst>(affineApplyOp->getOperation());
+  auto *opStmt = affineApplyOp->getInstruction();
   // Iterate through all uses of all results of 'opStmt', forward substituting
   // into any uses which are AffineApplyOps.
   for (unsigned resultIndex = 0, e = opStmt->getNumResults(); resultIndex < e;
        ++resultIndex) {
     const Value *result = opStmt->getResult(resultIndex);
     for (auto it = result->use_begin(); it != result->use_end();) {
-      StmtOperand &use = *(it++);
+      InstOperand &use = *(it++);
       auto *useStmt = use.getOwner();
       auto *useOpStmt = dyn_cast<OperationInst>(useStmt);
       // Skip if use is not AffineApplyOp.
@@ -356,7 +356,7 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
             newAffineApplyOp->getResult(i));
       }
       // Erase 'oldAffineApplyOp'.
-      oldAffineApplyOp->getOperation()->erase();
+      oldAffineApplyOp->getInstruction()->erase();
     }
   }
 }

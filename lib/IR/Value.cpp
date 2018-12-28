@@ -33,7 +33,7 @@ Function *Value::getFunction() {
   switch (getKind()) {
   case Value::Kind::BlockArgument:
     return cast<BlockArgument>(this)->getFunction();
-  case Value::Kind::StmtResult:
+  case Value::Kind::InstResult:
     return getDefiningInst()->getFunction();
   case Value::Kind::ForStmt:
     return cast<ForStmt>(this)->getFunction();

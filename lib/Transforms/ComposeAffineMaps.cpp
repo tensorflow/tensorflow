@@ -76,7 +76,7 @@ void ComposeAffineMaps::visitOperationInst(OperationInst *opStmt) {
   if (auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>()) {
     forwardSubstitute(affineApplyOp);
     bool allUsesEmpty = true;
-    for (auto *result : affineApplyOp->getOperation()->getResults()) {
+    for (auto *result : affineApplyOp->getInstruction()->getResults()) {
       if (!result->use_empty()) {
         allUsesEmpty = false;
         break;

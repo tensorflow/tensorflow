@@ -61,7 +61,7 @@ bool OpState::parse(OpAsmParser *parser, OperationState *result) {
 
 // The fallback for the printer is to print it the longhand form.
 void OpState::print(OpAsmPrinter *p) const {
-  p->printDefaultOp(getOperation());
+  p->printDefaultOp(getInstruction());
 }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
@@ -69,25 +69,25 @@ void OpState::print(OpAsmPrinter *p) const {
 /// the containing application, only use when the IR is in an inconsistent
 /// state.
 bool OpState::emitError(const Twine &message) const {
-  return getOperation()->emitError(message);
+  return getInstruction()->emitError(message);
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
 bool OpState::emitOpError(const Twine &message) const {
-  return getOperation()->emitOpError(message);
+  return getInstruction()->emitOpError(message);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void OpState::emitWarning(const Twine &message) const {
-  getOperation()->emitWarning(message);
+  getInstruction()->emitWarning(message);
 }
 
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void OpState::emitNote(const Twine &message) const {
-  getOperation()->emitNote(message);
+  getInstruction()->emitNote(message);
 }
 
 //===----------------------------------------------------------------------===//

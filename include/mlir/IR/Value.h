@@ -33,10 +33,9 @@ class Statement;
 class StmtBlock;
 class Value;
 using Instruction = Statement;
-using OperationInst = OperationInst;
 
 /// Operands contain a Value.
-using StmtOperand = IROperandImpl<Value, Statement>;
+using InstOperand = IROperandImpl<Value, Statement>;
 
 /// This is the common base class for all SSA values in the MLIR system,
 /// representing a computable value that has a type and a set of users.
@@ -46,7 +45,7 @@ public:
   /// This enumerates all of the SSA value kinds in the MLIR system.
   enum class Kind {
     BlockArgument, // block argument
-    StmtResult,    // statement result
+    InstResult,    // operation instruction result
     ForStmt,       // 'for' statement induction variable
   };
 
@@ -87,7 +86,7 @@ public:
     return const_cast<Value *>(this)->getDefiningInst();
   }
 
-  using use_iterator = ValueUseIterator<StmtOperand, Statement>;
+  using use_iterator = ValueUseIterator<InstOperand, Statement>;
   using use_range = llvm::iterator_range<use_iterator>;
 
   inline use_iterator use_begin() const;
@@ -113,7 +112,7 @@ inline raw_ostream &operator<<(raw_ostream &os, const Value &value) {
 
 // Utility functions for iterating through Value uses.
 inline auto Value::use_begin() const -> use_iterator {
-  return use_iterator((StmtOperand *)getFirstUse());
+  return use_iterator((InstOperand *)getFirstUse());
 }
 
 inline auto Value::use_end() const -> use_iterator {
@@ -152,13 +151,13 @@ private:
 };
 
 /// This is a value defined by a result of an operation instruction.
-class StmtResult : public Value {
+class InstResult : public Value {
 public:
-  StmtResult(Type type, OperationInst *owner)
-      : Value(Value::Kind::StmtResult, type), owner(owner) {}
+  InstResult(Type type, OperationInst *owner)
+      : Value(Value::Kind::InstResult, type), owner(owner) {}
 
   static bool classof(const Value *value) {
-    return value->getKind() == Kind::StmtResult;
+    return value->getKind() == Kind::InstResult;
   }
 
   OperationInst *getOwner() { return owner; }
@@ -173,10 +172,6 @@ private:
   /// through bitpacking shenanigans.
   OperationInst *const owner;
 };
-
-// TODO(clattner) clean all this up.
-using BBArgument = BlockArgument;
-using InstResult = StmtResult;
 
 } // namespace mlir
 

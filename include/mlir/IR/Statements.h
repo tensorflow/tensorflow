@@ -46,8 +46,8 @@ class Function;
 ///
 class OperationInst final
     : public Statement,
-      private llvm::TrailingObjects<OperationInst, StmtResult, StmtBlockOperand,
-                                    unsigned, StmtOperand> {
+      private llvm::TrailingObjects<OperationInst, InstResult, StmtBlockOperand,
+                                    unsigned, InstOperand> {
 public:
   /// Create a new OperationInst with the specific fields.
   static OperationInst *
@@ -76,12 +76,12 @@ public:
 
   unsigned getNumOperands() const { return numOperands; }
 
-  Value *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+  Value *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const Value *getOperand(unsigned idx) const {
-    return getStmtOperand(idx).get();
+    return getInstOperand(idx).get();
   }
   void setOperand(unsigned idx, Value *value) {
-    return getStmtOperand(idx).set(value);
+    return getInstOperand(idx).set(value);
   }
 
   // Support non-const operand iteration.
@@ -115,16 +115,16 @@ public:
     return {operand_begin(), operand_end()};
   }
 
-  ArrayRef<StmtOperand> getStmtOperands() const {
-    return {getTrailingObjects<StmtOperand>(), numOperands};
+  ArrayRef<InstOperand> getInstOperands() const {
+    return {getTrailingObjects<InstOperand>(), numOperands};
   }
-  MutableArrayRef<StmtOperand> getStmtOperands() {
-    return {getTrailingObjects<StmtOperand>(), numOperands};
+  MutableArrayRef<InstOperand> getInstOperands() {
+    return {getTrailingObjects<InstOperand>(), numOperands};
   }
 
-  StmtOperand &getStmtOperand(unsigned idx) { return getStmtOperands()[idx]; }
-  const StmtOperand &getStmtOperand(unsigned idx) const {
-    return getStmtOperands()[idx];
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
   }
 
   //===--------------------------------------------------------------------===//
@@ -136,8 +136,8 @@ public:
 
   unsigned getNumResults() const { return numResults; }
 
-  Value *getResult(unsigned idx) { return &getStmtResult(idx); }
-  const Value *getResult(unsigned idx) const { return &getStmtResult(idx); }
+  Value *getResult(unsigned idx) { return &getInstResult(idx); }
+  const Value *getResult(unsigned idx) const { return &getInstResult(idx); }
 
   // Support non-const result iteration.
   using result_iterator = ResultIterator<OperationInst, Value>;
@@ -154,18 +154,18 @@ public:
 
   llvm::iterator_range<const_result_iterator> getResults() const;
 
-  ArrayRef<StmtResult> getStmtResults() const {
-    return {getTrailingObjects<StmtResult>(), numResults};
+  ArrayRef<InstResult> getInstResults() const {
+    return {getTrailingObjects<InstResult>(), numResults};
   }
 
-  MutableArrayRef<StmtResult> getStmtResults() {
-    return {getTrailingObjects<StmtResult>(), numResults};
+  MutableArrayRef<InstResult> getInstResults() {
+    return {getTrailingObjects<InstResult>(), numResults};
   }
 
-  StmtResult &getStmtResult(unsigned idx) { return getStmtResults()[idx]; }
+  InstResult &getInstResult(unsigned idx) { return getInstResults()[idx]; }
 
-  const StmtResult &getStmtResult(unsigned idx) const {
-    return getStmtResults()[idx];
+  const InstResult &getInstResult(unsigned idx) const {
+    return getInstResults()[idx];
   }
 
   // Support result type iteration.
@@ -404,12 +404,12 @@ private:
   void eraseOperand(unsigned index);
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<OperationInst, StmtResult, StmtBlockOperand,
-                               unsigned, StmtOperand>;
-  size_t numTrailingObjects(OverloadToken<StmtOperand>) const {
+  friend llvm::TrailingObjects<OperationInst, InstResult, StmtBlockOperand,
+                               unsigned, InstOperand>;
+  size_t numTrailingObjects(OverloadToken<InstOperand>) const {
     return numOperands;
   }
-  size_t numTrailingObjects(OverloadToken<StmtResult>) const {
+  size_t numTrailingObjects(OverloadToken<InstResult>) const {
     return numResults;
   }
   size_t numTrailingObjects(OverloadToken<StmtBlockOperand>) const {
@@ -603,12 +603,12 @@ public:
 
   unsigned getNumOperands() const { return operands.size(); }
 
-  Value *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+  Value *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const Value *getOperand(unsigned idx) const {
-    return getStmtOperand(idx).get();
+    return getInstOperand(idx).get();
   }
   void setOperand(unsigned idx, Value *value) {
-    getStmtOperand(idx).set(value);
+    getInstOperand(idx).set(value);
   }
 
   operand_iterator operand_begin() { return operand_iterator(this, 0); }
@@ -623,11 +623,11 @@ public:
     return const_operand_iterator(this, getNumOperands());
   }
 
-  ArrayRef<StmtOperand> getStmtOperands() const { return operands; }
-  MutableArrayRef<StmtOperand> getStmtOperands() { return operands; }
-  StmtOperand &getStmtOperand(unsigned idx) { return getStmtOperands()[idx]; }
-  const StmtOperand &getStmtOperand(unsigned idx) const {
-    return getStmtOperands()[idx];
+  ArrayRef<InstOperand> getInstOperands() const { return operands; }
+  MutableArrayRef<InstOperand> getInstOperands() { return operands; }
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
   }
 
   // TODO: provide iterators for the lower and upper bound operands
@@ -677,7 +677,7 @@ private:
   // Operands for the lower and upper bounds, with the former followed by the
   // latter. Dimensional operands are followed by symbolic operands for each
   // bound.
-  std::vector<StmtOperand> operands;
+  std::vector<InstOperand> operands;
 
   explicit ForStmt(Location location, unsigned numOperands, AffineMap lbMap,
                    AffineMap ubMap, int64_t step);
@@ -696,8 +696,8 @@ public:
   const Value *getOperand(unsigned idx) const {
     return stmt.getOperand(opStart + idx);
   }
-  const StmtOperand &getStmtOperand(unsigned idx) const {
-    return stmt.getStmtOperand(opStart + idx);
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return stmt.getInstOperand(opStart + idx);
   }
 
   using operand_iterator = ForStmt::operand_iterator;
@@ -714,9 +714,9 @@ public:
 
   /// Returns an iterator on the underlying Value's (Value *).
   operand_range getOperands() const { return {operand_begin(), operand_end()}; }
-  ArrayRef<StmtOperand> getStmtOperands() const {
-    auto ops = stmt.getStmtOperands();
-    return ArrayRef<StmtOperand>(ops.begin() + opStart, ops.begin() + opEnd);
+  ArrayRef<InstOperand> getInstOperands() const {
+    auto ops = stmt.getInstOperands();
+    return ArrayRef<InstOperand>(ops.begin() + opStart, ops.begin() + opEnd);
   }
 
 private:
@@ -783,12 +783,12 @@ public:
 
   unsigned getNumOperands() const { return operands.size(); }
 
-  Value *getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+  Value *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const Value *getOperand(unsigned idx) const {
-    return getStmtOperand(idx).get();
+    return getInstOperand(idx).get();
   }
   void setOperand(unsigned idx, Value *value) {
-    getStmtOperand(idx).set(value);
+    getInstOperand(idx).set(value);
   }
 
   operand_iterator operand_begin() { return operand_iterator(this, 0); }
@@ -803,11 +803,11 @@ public:
     return const_operand_iterator(this, getNumOperands());
   }
 
-  ArrayRef<StmtOperand> getStmtOperands() const { return operands; }
-  MutableArrayRef<StmtOperand> getStmtOperands() { return operands; }
-  StmtOperand &getStmtOperand(unsigned idx) { return getStmtOperands()[idx]; }
-  const StmtOperand &getStmtOperand(unsigned idx) const {
-    return getStmtOperands()[idx];
+  ArrayRef<InstOperand> getInstOperands() const { return operands; }
+  MutableArrayRef<InstOperand> getInstOperands() { return operands; }
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
   }
 
   //===--------------------------------------------------------------------===//
@@ -831,7 +831,7 @@ private:
   IntegerSet set;
 
   // Condition operands.
-  std::vector<StmtOperand> operands;
+  std::vector<InstOperand> operands;
 
   explicit IfStmt(Location location, unsigned numOperands, IntegerSet set);
 };

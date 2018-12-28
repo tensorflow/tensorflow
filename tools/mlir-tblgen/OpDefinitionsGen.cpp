@@ -289,10 +289,10 @@ void OpEmitter::emitAttrGetters() {
 
 void OpEmitter::emitNamedOperands() {
   const auto operandMethods = R"(  Value *{0}() {
-    return this->getOperation()->getOperand({1});
+    return this->getInstruction()->getOperand({1});
   }
   const Value *{0}() const {
-    return this->getOperation()->getOperand({1});
+    return this->getInstruction()->getOperand({1});
   }
 )";
   for (int i = 0, e = operands.size(); i != e; ++i) {

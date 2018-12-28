@@ -66,12 +66,12 @@ public:
 
   OpType *operator->() { return &value; }
 
-  operator bool() const { return value.getOperation(); }
+  operator bool() const { return value.getInstruction(); }
 
   /// OpPointer can be implicitly converted to OpType*.
   /// Return `nullptr` if there is no associated OperationInst*.
   operator OpType *() {
-    if (!value.getOperation())
+    if (!value.getInstruction())
       return nullptr;
     return &value;
   }
@@ -102,12 +102,12 @@ public:
   const OpType *operator->() const { return &value; }
 
   /// Return true if non-null.
-  operator bool() const { return value.getOperation(); }
+  operator bool() const { return value.getInstruction(); }
 
   /// ConstOpPointer can always be implicitly converted to const OpType*.
   /// Return `nullptr` if there is no associated OperationInst*.
   operator const OpType *() const {
-    if (!value.getOperation())
+    if (!value.getInstruction())
       return nullptr;
     return &value;
   }
@@ -137,8 +137,8 @@ private:
 class OpState {
 public:
   /// Return the operation that this refers to.
-  const OperationInst *getOperation() const { return state; }
-  OperationInst *getOperation() { return state; }
+  const OperationInst *getInstruction() const { return state; }
+  OperationInst *getInstruction() { return state; }
 
   /// The source location the operation was defined or derived from.
   Location getLoc() const { return state->getLoc(); }
@@ -303,7 +303,7 @@ template <typename ConcreteType, template <typename> class TraitType>
 class TraitBase {
 protected:
   /// Return the ultimate OperationInst being worked on.
-  OperationInst *getOperation() {
+  OperationInst *getInstruction() {
     // We have to cast up to the trait type, then to the concrete type, then to
     // the BaseState class in explicit hops because the concrete type will
     // multiply derive from the (content free) TraitBase class, and we need to
@@ -311,10 +311,10 @@ protected:
     auto *trait = static_cast<TraitType<ConcreteType> *>(this);
     auto *concrete = static_cast<ConcreteType *>(trait);
     auto *base = static_cast<OpState *>(concrete);
-    return base->getOperation();
+    return base->getInstruction();
   }
-  const OperationInst *getOperation() const {
-    return const_cast<TraitBase *>(this)->getOperation();
+  const OperationInst *getInstruction() const {
+    return const_cast<TraitBase *>(this)->getInstruction();
   }
 
   /// Provide default implementations of trait hooks.  This allows traits to
@@ -346,12 +346,14 @@ template <typename ConcreteType>
 class OneOperand : public TraitBase<ConcreteType, OneOperand> {
 public:
   const Value *getOperand() const {
-    return this->getOperation()->getOperand(0);
+    return this->getInstruction()->getOperand(0);
   }
 
-  Value *getOperand() { return this->getOperation()->getOperand(0); }
+  Value *getOperand() { return this->getInstruction()->getOperand(0); }
 
-  void setOperand(Value *value) { this->getOperation()->setOperand(0, value); }
+  void setOperand(Value *value) {
+    this->getInstruction()->setOperand(0, value);
+  }
 
   static bool verifyTrait(const OperationInst *op) {
     return impl::verifyOneOperand(op);
@@ -369,15 +371,15 @@ public:
   class Impl : public TraitBase<ConcreteType, NOperands<N>::Impl> {
   public:
     const Value *getOperand(unsigned i) const {
-      return this->getOperation()->getOperand(i);
+      return this->getInstruction()->getOperand(i);
     }
 
     Value *getOperand(unsigned i) {
-      return this->getOperation()->getOperand(i);
+      return this->getInstruction()->getOperand(i);
     }
 
     void setOperand(unsigned i, Value *value) {
-      this->getOperation()->setOperand(i, value);
+      this->getInstruction()->setOperand(i, value);
     }
 
     static bool verifyTrait(const OperationInst *op) {
@@ -397,42 +399,42 @@ public:
   class Impl : public TraitBase<ConcreteType, AtLeastNOperands<N>::Impl> {
   public:
     unsigned getNumOperands() const {
-      return this->getOperation()->getNumOperands();
+      return this->getInstruction()->getNumOperands();
     }
     const Value *getOperand(unsigned i) const {
-      return this->getOperation()->getOperand(i);
+      return this->getInstruction()->getOperand(i);
     }
 
     Value *getOperand(unsigned i) {
-      return this->getOperation()->getOperand(i);
+      return this->getInstruction()->getOperand(i);
     }
 
     void setOperand(unsigned i, Value *value) {
-      this->getOperation()->setOperand(i, value);
+      this->getInstruction()->setOperand(i, value);
     }
 
     // Support non-const operand iteration.
     using operand_iterator = OperationInst::operand_iterator;
     operand_iterator operand_begin() {
-      return this->getOperation()->operand_begin();
+      return this->getInstruction()->operand_begin();
     }
     operand_iterator operand_end() {
-      return this->getOperation()->operand_end();
+      return this->getInstruction()->operand_end();
     }
     llvm::iterator_range<operand_iterator> getOperands() {
-      return this->getOperation()->getOperands();
+      return this->getInstruction()->getOperands();
     }
 
     // Support const operand iteration.
     using const_operand_iterator = OperationInst::const_operand_iterator;
     const_operand_iterator operand_begin() const {
-      return this->getOperation()->operand_begin();
+      return this->getInstruction()->operand_begin();
     }
     const_operand_iterator operand_end() const {
-      return this->getOperation()->operand_end();
+      return this->getInstruction()->operand_end();
     }
     llvm::iterator_range<const_operand_iterator> getOperands() const {
-      return this->getOperation()->getOperands();
+      return this->getInstruction()->getOperands();
     }
 
     static bool verifyTrait(const OperationInst *op) {
@@ -447,39 +449,43 @@ template <typename ConcreteType>
 class VariadicOperands : public TraitBase<ConcreteType, VariadicOperands> {
 public:
   unsigned getNumOperands() const {
-    return this->getOperation()->getNumOperands();
+    return this->getInstruction()->getNumOperands();
   }
 
   const Value *getOperand(unsigned i) const {
-    return this->getOperation()->getOperand(i);
+    return this->getInstruction()->getOperand(i);
   }
 
-  Value *getOperand(unsigned i) { return this->getOperation()->getOperand(i); }
+  Value *getOperand(unsigned i) {
+    return this->getInstruction()->getOperand(i);
+  }
 
   void setOperand(unsigned i, Value *value) {
-    this->getOperation()->setOperand(i, value);
+    this->getInstruction()->setOperand(i, value);
   }
 
   // Support non-const operand iteration.
   using operand_iterator = OperationInst::operand_iterator;
   operand_iterator operand_begin() {
-    return this->getOperation()->operand_begin();
+    return this->getInstruction()->operand_begin();
   }
-  operand_iterator operand_end() { return this->getOperation()->operand_end(); }
+  operand_iterator operand_end() {
+    return this->getInstruction()->operand_end();
+  }
   llvm::iterator_range<operand_iterator> getOperands() {
-    return this->getOperation()->getOperands();
+    return this->getInstruction()->getOperands();
   }
 
   // Support const operand iteration.
   using const_operand_iterator = OperationInst::const_operand_iterator;
   const_operand_iterator operand_begin() const {
-    return this->getOperation()->operand_begin();
+    return this->getInstruction()->operand_begin();
   }
   const_operand_iterator operand_end() const {
-    return this->getOperation()->operand_end();
+    return this->getInstruction()->operand_end();
   }
   llvm::iterator_range<const_operand_iterator> getOperands() const {
-    return this->getOperation()->getOperands();
+    return this->getInstruction()->getOperands();
   }
 };
 
@@ -498,8 +504,10 @@ public:
 template <typename ConcreteType>
 class OneResult : public TraitBase<ConcreteType, OneResult> {
 public:
-  Value *getResult() { return this->getOperation()->getResult(0); }
-  const Value *getResult() const { return this->getOperation()->getResult(0); }
+  Value *getResult() { return this->getInstruction()->getResult(0); }
+  const Value *getResult() const {
+    return this->getInstruction()->getResult(0);
+  }
 
   Type getType() const { return getResult()->getType(); }
 
@@ -542,10 +550,12 @@ public:
     static unsigned getNumResults() { return N; }
 
     const Value *getResult(unsigned i) const {
-      return this->getOperation()->getResult(i);
+      return this->getInstruction()->getResult(i);
     }
 
-    Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+    Value *getResult(unsigned i) {
+      return this->getInstruction()->getResult(i);
+    }
 
     Type getType(unsigned i) const { return getResult(i)->getType(); }
 
@@ -566,10 +576,12 @@ public:
   class Impl : public TraitBase<ConcreteType, AtLeastNResults<N>::Impl> {
   public:
     const Value *getResult(unsigned i) const {
-      return this->getOperation()->getResult(i);
+      return this->getInstruction()->getResult(i);
     }
 
-    Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+    Value *getResult(unsigned i) {
+      return this->getInstruction()->getResult(i);
+    }
 
     Type getType(unsigned i) const { return getResult(i)->getType(); }
 
@@ -585,39 +597,39 @@ template <typename ConcreteType>
 class VariadicResults : public TraitBase<ConcreteType, VariadicResults> {
 public:
   unsigned getNumResults() const {
-    return this->getOperation()->getNumResults();
+    return this->getInstruction()->getNumResults();
   }
 
   const Value *getResult(unsigned i) const {
-    return this->getOperation()->getResult(i);
+    return this->getInstruction()->getResult(i);
   }
 
-  Value *getResult(unsigned i) { return this->getOperation()->getResult(i); }
+  Value *getResult(unsigned i) { return this->getInstruction()->getResult(i); }
 
   void setResult(unsigned i, Value *value) {
-    this->getOperation()->setResult(i, value);
+    this->getInstruction()->setResult(i, value);
   }
 
   // Support non-const result iteration.
   using result_iterator = OperationInst::result_iterator;
   result_iterator result_begin() {
-    return this->getOperation()->result_begin();
+    return this->getInstruction()->result_begin();
   }
-  result_iterator result_end() { return this->getOperation()->result_end(); }
+  result_iterator result_end() { return this->getInstruction()->result_end(); }
   llvm::iterator_range<result_iterator> getResults() {
-    return this->getOperation()->getResults();
+    return this->getInstruction()->getResults();
   }
 
   // Support const result iteration.
   using const_result_iterator = OperationInst::const_result_iterator;
   const_result_iterator result_begin() const {
-    return this->getOperation()->result_begin();
+    return this->getInstruction()->result_begin();
   }
   const_result_iterator result_end() const {
-    return this->getOperation()->result_end();
+    return this->getInstruction()->result_end();
   }
   llvm::iterator_range<const_result_iterator> getResults() const {
-    return this->getOperation()->getResults();
+    return this->getInstruction()->getResults();
   }
 };
 
@@ -734,28 +746,28 @@ public:
   }
 
   unsigned getNumSuccessors() const {
-    return this->getOperation()->getNumSuccessors();
+    return this->getInstruction()->getNumSuccessors();
   }
   unsigned getNumSuccessorOperands(unsigned index) const {
-    return this->getOperation()->getNumSuccessorOperands(index);
+    return this->getInstruction()->getNumSuccessorOperands(index);
   }
 
   const BasicBlock *getSuccessor(unsigned index) const {
-    return this->getOperation()->getSuccessor(index);
+    return this->getInstruction()->getSuccessor(index);
   }
   BasicBlock *getSuccessor(unsigned index) {
-    return this->getOperation()->getSuccessor(index);
+    return this->getInstruction()->getSuccessor(index);
   }
 
   void setSuccessor(BasicBlock *block, unsigned index) {
-    return this->getOperation()->setSuccessor(block, index);
+    return this->getInstruction()->setSuccessor(block, index);
   }
 
   void addSuccessorOperand(unsigned index, Value *value) {
-    return this->getOperation()->addSuccessorOperand(index, value);
+    return this->getInstruction()->addSuccessorOperand(index, value);
   }
   void addSuccessorOperands(unsigned index, ArrayRef<Value *> values) {
-    return this->getOperation()->addSuccessorOperand(index, values);
+    return this->getInstruction()->addSuccessorOperand(index, values);
   }
 };
 
@@ -777,8 +789,10 @@ class Op : public OpState,
                                  Traits<ConcreteType>...>::value> {
 public:
   /// Return the operation that this refers to.
-  const OperationInst *getOperation() const { return OpState::getOperation(); }
-  OperationInst *getOperation() { return OpState::getOperation(); }
+  const OperationInst *getInstruction() const {
+    return OpState::getInstruction();
+  }
+  OperationInst *getInstruction() { return OpState::getInstruction(); }
 
   /// Return true if this "op class" can match against the specified operation.
   /// This hook can be overridden with a more specific implementation in
@@ -903,7 +917,7 @@ public:
     return impl::parseBinaryOp(parser, result);
   }
   void print(OpAsmPrinter *p) const {
-    return impl::printBinaryOp(this->getOperation(), p);
+    return impl::printBinaryOp(this->getInstruction(), p);
   }
 
 protected:
@@ -939,7 +953,7 @@ public:
     return impl::parseCastOp(parser, result);
   }
   void print(OpAsmPrinter *p) const {
-    return impl::printCastOp(this->getOperation(), p);
+    return impl::printCastOp(this->getInstruction(), p);
   }
 
 protected:

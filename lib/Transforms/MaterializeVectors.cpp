@@ -263,7 +263,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
                          DenseMap<const Value *, Value *> *substitutionsMap) {
   auto it = substitutionsMap->find(v);
   if (it == substitutionsMap->end()) {
-    auto *opStmt = cast<OperationInst>(v->getDefiningInst());
+    auto *opStmt = v->getDefiningInst();
     if (opStmt->isa<ConstantOp>()) {
       FuncBuilder b(opStmt);
       auto *inst = instantiate(&b, opStmt, hwVectorType, substitutionsMap);
@@ -451,7 +451,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
          "Shape and ratio not of the same size");
   unsigned dim = 0;
   SmallVector<AffineExpr, 4> keep;
-  MLIRContext *context = transfer->getOperation()->getContext();
+  MLIRContext *context = transfer->getInstruction()->getContext();
   functional::zipApply(
       [&dim, &keep, context](int shape, int ratio) {
         assert(shape >= ratio && "shape dim must be greater than ratio dim");
@@ -486,7 +486,7 @@ instantiate(FuncBuilder *b, VectorTransferReadOp *read, VectorType hwVectorType,
   auto cloned = b->create<VectorTransferReadOp>(
       read->getLoc(), hwVectorType, read->getMemRef(), affineIndices,
       projectedPermutationMap(read, hwVectorType), read->getPaddingValue());
-  return cast<OperationInst>(cloned->getOperation());
+  return cloned->getInstruction();
 }
 
 /// Creates an instantiated version of `write` for the instance of
@@ -508,7 +508,7 @@ instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
       substitute(write->getVector(), hwVectorType, substitutionsMap),
       write->getMemRef(), affineIndices,
       projectedPermutationMap(write, hwVectorType));
-  return cast<OperationInst>(cloned->getOperation());
+  return cloned->getInstruction();
 }
 
 /// Returns `true` if stmt instance is properly cloned and inserted, false

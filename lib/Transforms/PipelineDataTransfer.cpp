@@ -130,7 +130,7 @@ static bool doubleBuffer(Value *oldMemRef, ForStmt *forStmt) {
                                 &*forStmt->getBody()->begin())) {
     LLVM_DEBUG(llvm::dbgs()
                    << "memref replacement for double buffering failed\n";);
-    ivModTwoOp->getOperation()->erase();
+    ivModTwoOp->getInstruction()->erase();
     return false;
   }
   return true;

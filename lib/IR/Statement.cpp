@@ -29,23 +29,23 @@
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
-// StmtResult
+// InstResult
 //===----------------------------------------------------------------------===//
 
 /// Return the result number of this result.
-unsigned StmtResult::getResultNumber() const {
+unsigned InstResult::getResultNumber() const {
   // Results are always stored consecutively, so use pointer subtraction to
   // figure out what number this is.
-  return this - &getOwner()->getStmtResults()[0];
+  return this - &getOwner()->getInstResults()[0];
 }
 
 //===----------------------------------------------------------------------===//
-// StmtOperand
+// InstOperand
 //===----------------------------------------------------------------------===//
 
 /// Return which operand this is in the operand list.
-template <> unsigned StmtOperand::getOperandNumber() const {
-  return this - &getOwner()->getStmtOperands()[0];
+template <> unsigned InstOperand::getOperandNumber() const {
+  return this - &getOwner()->getInstOperands()[0];
 }
 
 /// Return which operand this is in the operand list.
@@ -86,10 +86,10 @@ MLFunction *Statement::getFunction() const {
   return block ? block->getFunction() : nullptr;
 }
 
-Value *Statement::getOperand(unsigned idx) { return getStmtOperand(idx).get(); }
+Value *Statement::getOperand(unsigned idx) { return getInstOperand(idx).get(); }
 
 const Value *Statement::getOperand(unsigned idx) const {
-  return getStmtOperand(idx).get();
+  return getInstOperand(idx).get();
 }
 
 // Value can be used as a dimension id if it is valid as a symbol, or
@@ -129,7 +129,7 @@ bool Value::isValidSymbol() const {
 }
 
 void Statement::setOperand(unsigned idx, Value *value) {
-  getStmtOperand(idx).set(value);
+  getInstOperand(idx).set(value);
 }
 
 unsigned Statement::getNumOperands() const {
@@ -143,14 +143,14 @@ unsigned Statement::getNumOperands() const {
   }
 }
 
-MutableArrayRef<StmtOperand> Statement::getStmtOperands() {
+MutableArrayRef<InstOperand> Statement::getInstOperands() {
   switch (getKind()) {
   case Kind::OperationInst:
-    return cast<OperationInst>(this)->getStmtOperands();
+    return cast<OperationInst>(this)->getInstOperands();
   case Kind::For:
-    return cast<ForStmt>(this)->getStmtOperands();
+    return cast<ForStmt>(this)->getInstOperands();
   case Kind::If:
-    return cast<IfStmt>(this)->getStmtOperands();
+    return cast<IfStmt>(this)->getInstOperands();
   }
 }
 
@@ -256,7 +256,7 @@ void Statement::moveBefore(StmtBlock *block,
 /// step in breaking cyclic dependences between references when they are to
 /// be deleted.
 void Statement::dropAllReferences() {
-  for (auto &op : getStmtOperands())
+  for (auto &op : getInstOperands())
     op.drop();
 
   if (isTerminator())
@@ -282,7 +282,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
   unsigned numOperands = operands.size() - numSuccessors;
 
   auto byteSize =
-      totalSizeToAlloc<StmtResult, StmtBlockOperand, unsigned, StmtOperand>(
+      totalSizeToAlloc<InstResult, StmtBlockOperand, unsigned, InstOperand>(
           resultTypes.size(), numSuccessors, numSuccessors, numOperands);
   void *rawMem = malloc(byteSize);
 
@@ -292,11 +292,11 @@ OperationInst *OperationInst::create(Location location, OperationName name,
                     numSuccessors, attributes, context);
 
   // Initialize the results and operands.
-  auto stmtResults = stmt->getStmtResults();
+  auto instResults = stmt->getInstResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
-    new (&stmtResults[i]) StmtResult(resultTypes[i], stmt);
+    new (&instResults[i]) InstResult(resultTypes[i], stmt);
 
-  auto stmtOperands = stmt->getStmtOperands();
+  auto InstOperands = stmt->getInstOperands();
 
   // Initialize normal operands.
   unsigned operandIt = 0, operandE = operands.size();
@@ -307,7 +307,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
     // separately below.
     if (!operands[operandIt])
       break;
-    new (&stmtOperands[nextOperand++]) StmtOperand(stmt, operands[operandIt]);
+    new (&InstOperands[nextOperand++]) InstOperand(stmt, operands[operandIt]);
   }
 
   unsigned currentSuccNum = 0;
@@ -345,7 +345,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
       ++currentSuccNum;
       continue;
     }
-    new (&stmtOperands[nextOperand++]) StmtOperand(stmt, operands[operandIt]);
+    new (&InstOperands[nextOperand++]) InstOperand(stmt, operands[operandIt]);
     ++(*succOperandCountIt);
   }
 
@@ -373,11 +373,11 @@ OperationInst::OperationInst(Location location, OperationName name,
 
 OperationInst::~OperationInst() {
   // Explicitly run the destructors for the operands and results.
-  for (auto &operand : getStmtOperands())
-    operand.~StmtOperand();
+  for (auto &operand : getInstOperands())
+    operand.~InstOperand();
 
-  for (auto &result : getStmtResults())
-    result.~StmtResult();
+  for (auto &result : getInstResults())
+    result.~InstResult();
 
   // Explicitly run the destructors for the successors.
   if (isTerminator())
@@ -427,12 +427,12 @@ void OperationInst::setSuccessor(BasicBlock *block, unsigned index) {
 
 void OperationInst::eraseOperand(unsigned index) {
   assert(index < getNumOperands());
-  auto Operands = getStmtOperands();
+  auto Operands = getInstOperands();
   // Shift all operands down by 1.
   std::rotate(&Operands[index], &Operands[index + 1],
               &Operands[numOperands - 1]);
   --numOperands;
-  Operands[getNumOperands()].~StmtOperand();
+  Operands[getNumOperands()].~InstOperand();
 }
 
 auto OperationInst::getSuccessorOperands(unsigned index) const
@@ -543,10 +543,10 @@ ForStmt *ForStmt::create(Location location, ArrayRef<Value *> lbOperands,
 
   unsigned i = 0;
   for (unsigned e = lbOperands.size(); i != e; ++i)
-    stmt->operands.emplace_back(StmtOperand(stmt, lbOperands[i]));
+    stmt->operands.emplace_back(InstOperand(stmt, lbOperands[i]));
 
   for (unsigned j = 0, e = ubOperands.size(); j != e; ++i, ++j)
-    stmt->operands.emplace_back(StmtOperand(stmt, ubOperands[j]));
+    stmt->operands.emplace_back(InstOperand(stmt, ubOperands[j]));
 
   return stmt;
 }
@@ -580,10 +580,10 @@ void ForStmt::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
   operands.clear();
   operands.reserve(lbOperands.size() + ubMap.getNumInputs());
   for (auto *operand : lbOperands) {
-    operands.emplace_back(StmtOperand(this, operand));
+    operands.emplace_back(InstOperand(this, operand));
   }
   for (auto *operand : ubOperands) {
-    operands.emplace_back(StmtOperand(this, operand));
+    operands.emplace_back(InstOperand(this, operand));
   }
   this->lbMap = map;
 }
@@ -597,10 +597,10 @@ void ForStmt::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
   operands.clear();
   operands.reserve(lbOperands.size() + ubOperands.size());
   for (auto *operand : lbOperands) {
-    operands.emplace_back(StmtOperand(this, operand));
+    operands.emplace_back(InstOperand(this, operand));
   }
   for (auto *operand : ubOperands) {
-    operands.emplace_back(StmtOperand(this, operand));
+    operands.emplace_back(InstOperand(this, operand));
   }
   this->ubMap = map;
 }
@@ -699,7 +699,7 @@ IfStmt *IfStmt::create(Location location, ArrayRef<Value *> operands,
   IfStmt *stmt = new IfStmt(location, numOperands, set);
 
   for (auto *op : operands)
-    stmt->operands.emplace_back(StmtOperand(stmt, op));
+    stmt->operands.emplace_back(InstOperand(stmt, op));
 
   return stmt;
 }
@@ -749,11 +749,11 @@ Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
       unsigned firstSuccOperand = opStmt->getNumSuccessors()
                                       ? opStmt->getSuccessorOperandIndex(0)
                                       : opStmt->getNumOperands();
-      auto stmtOperands = opStmt->getStmtOperands();
+      auto InstOperands = opStmt->getInstOperands();
 
       unsigned i = 0;
       for (; i != firstSuccOperand; ++i)
-        operands.push_back(remapOperand(stmtOperands[i].get()));
+        operands.push_back(remapOperand(InstOperands[i].get()));
 
       successors.reserve(opStmt->getNumSuccessors());
       for (unsigned succ = 0, e = opStmt->getNumSuccessors(); succ != e;

@@ -76,5 +76,5 @@ bool DominanceInfo::properlyDominates(const Value *a, const Instruction *b) {
 
   // bbarguments properly dominate all instructions in their own block, so we
   // use a dominates check here, not a properlyDominates check.
-  return dominates(cast<BBArgument>(a)->getOwner(), b->getBlock());
+  return dominates(cast<BlockArgument>(a)->getOwner(), b->getBlock());
 }

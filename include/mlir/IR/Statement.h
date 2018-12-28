@@ -160,14 +160,14 @@ public:
   /// Returns a const iterator on the underlying Values.
   llvm::iterator_range<const_operand_iterator> getOperands() const;
 
-  MutableArrayRef<StmtOperand> getStmtOperands();
-  ArrayRef<StmtOperand> getStmtOperands() const {
-    return const_cast<Statement *>(this)->getStmtOperands();
+  MutableArrayRef<InstOperand> getInstOperands();
+  ArrayRef<InstOperand> getInstOperands() const {
+    return const_cast<Statement *>(this)->getInstOperands();
   }
 
-  StmtOperand &getStmtOperand(unsigned idx) { return getStmtOperands()[idx]; }
-  const StmtOperand &getStmtOperand(unsigned idx) const {
-    return getStmtOperands()[idx];
+  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  const InstOperand &getInstOperand(unsigned idx) const {
+    return getInstOperands()[idx];
   }
 
   /// Emit an error about fatal conditions with this operation, reporting up to

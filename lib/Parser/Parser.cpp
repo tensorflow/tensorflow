@@ -2621,7 +2621,7 @@ private:
   }
 
   ParseResult
-  parseOptionalBasicBlockArgList(SmallVectorImpl<BBArgument *> &results,
+  parseOptionalBasicBlockArgList(SmallVectorImpl<BlockArgument *> &results,
                                  BasicBlock *owner);
 
   ParseResult parseBasicBlock();
@@ -2657,14 +2657,14 @@ bool CFGFunctionParser::parseSuccessorAndUseList(
 ///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
 ///
 ParseResult CFGFunctionParser::parseOptionalBasicBlockArgList(
-    SmallVectorImpl<BBArgument *> &results, BasicBlock *owner) {
+    SmallVectorImpl<BlockArgument *> &results, BasicBlock *owner) {
   if (getToken().is(Token::r_brace))
     return ParseSuccess;
 
   return parseCommaSeparatedList([&]() -> ParseResult {
     auto type = parseSSADefOrUseAndType<Type>(
         [&](SSAUseInfo useInfo, Type type) -> Type {
-          BBArgument *arg = owner->addArgument(type);
+          BlockArgument *arg = owner->addArgument(type);
           if (addDefinition(useInfo, arg))
             return {};
           return type;
@@ -2735,7 +2735,7 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
 
   // If an argument list is present, parse it.
   if (consumeIf(Token::l_paren)) {
-    SmallVector<BBArgument *, 8> bbArgs;
+    SmallVector<BlockArgument *, 8> bbArgs;
     if (parseOptionalBasicBlockArgList(bbArgs, block) ||
         parseToken(Token::r_paren, "expected ')' to end argument list"))
       return ParseFailure;

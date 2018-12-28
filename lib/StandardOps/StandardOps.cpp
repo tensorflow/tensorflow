@@ -210,7 +210,7 @@ bool AllocOp::verify() const {
   // Check that the total number of operands matches the number of symbols in
   // the affine map, plus the number of dynamic dimensions specified in the
   // memref type.
-  if (getOperation()->getNumOperands() != numDynamicDims + numSymbols) {
+  if (getInstruction()->getNumOperands() != numDynamicDims + numSymbols) {
     return emitOpError(
         "operand count does not equal dimension plus symbol operand count");
   }
@@ -550,7 +550,7 @@ void CmpIOp::print(OpAsmPrinter *p) const {
   assert(predicateValue >= static_cast<int>(CmpIPredicate::FirstValidValue) &&
          predicateValue < static_cast<int>(CmpIPredicate::NumPredicates) &&
          "unknown predicate index");
-  Builder b(getOperation()->getContext());
+  Builder b(getInstruction()->getContext());
   auto predicateStringAttr =
       b.getStringAttr(getPredicateNames()[predicateValue]);
   p->printAttribute(predicateStringAttr);
@@ -1153,7 +1153,7 @@ bool SelectOp::parse(OpAsmParser *parser, OperationState *result) {
 
 void SelectOp::print(OpAsmPrinter *p) const {
   *p << getOperationName() << ' ';
-  p->printOperands(getOperation()->getOperands());
+  p->printOperands(getInstruction()->getOperands());
   *p << " : " << getTrueValue()->getType();
   p->printOptionalAttrDict(getAttrs());
 }

@@ -282,7 +282,7 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
           std::is_same<LoadOrStoreOpPointer, OpPointer<StoreOp>>::value,
       "function argument should be either a LoadOp or a StoreOp");
 
-  OperationInst *opStmt = cast<OperationInst>(loadOrStoreOp->getOperation());
+  OperationInst *opStmt = loadOrStoreOp->getInstruction();
   MemRefRegion region;
   if (!getMemRefRegion(opStmt, /*loopDepth=*/0, &region))
     return false;

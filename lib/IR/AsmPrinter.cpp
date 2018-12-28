@@ -1014,7 +1014,7 @@ protected:
         // Otherwise number it normally.
         valueIDs[value] = nextValueID++;
         return;
-      case Value::Kind::StmtResult:
+      case Value::Kind::InstResult:
         // This is an uninteresting result, give it a boring number and be
         // done with it.
         valueIDs[value] = nextValueID++;
@@ -1063,7 +1063,7 @@ protected:
         resultNo = result->getResultNumber();
         lookupValue = result->getOwner()->getResult(0);
       }
-    } else if (auto *result = dyn_cast<StmtResult>(value)) {
+    } else if (auto *result = dyn_cast<InstResult>(value)) {
       if (result->getOwner()->getNumResults() != 1) {
         resultNo = result->getResultNumber();
         lookupValue = result->getOwner()->getResult(0);
@@ -1235,7 +1235,7 @@ void CFGFunctionPrinter::print(const BasicBlock *block) {
 
   if (!block->args_empty()) {
     os << '(';
-    interleaveComma(block->getArguments(), [&](const BBArgument *arg) {
+    interleaveComma(block->getArguments(), [&](const BlockArgument *arg) {
       printValueID(arg);
       os << ": ";
       printType(arg->getType());
@@ -1340,7 +1340,7 @@ public:
   }
 
   // Print loop bounds.
-  void printDimAndSymbolList(ArrayRef<StmtOperand> ops, unsigned numDims);
+  void printDimAndSymbolList(ArrayRef<InstOperand> ops, unsigned numDims);
   void printBound(AffineBound bound, const char *prefix);
 
   // Number of spaces used for indenting nested statements.
@@ -1451,19 +1451,20 @@ void MLFunctionPrinter::print(const ForStmt *stmt) {
   os.indent(numSpaces) << "}";
 }
 
-void MLFunctionPrinter::printDimAndSymbolList(ArrayRef<StmtOperand> ops,
+void MLFunctionPrinter::printDimAndSymbolList(ArrayRef<InstOperand> ops,
                                               unsigned numDims) {
   auto printComma = [&]() { os << ", "; };
   os << '(';
-  interleave(ops.begin(), ops.begin() + numDims,
-             [&](const StmtOperand &v) { printOperand(v.get()); }, printComma);
+  interleave(
+      ops.begin(), ops.begin() + numDims,
+      [&](const InstOperand &v) { printOperand(v.get()); }, printComma);
   os << ')';
 
   if (numDims < ops.size()) {
     os << '[';
-    interleave(ops.begin() + numDims, ops.end(),
-               [&](const StmtOperand &v) { printOperand(v.get()); },
-               printComma);
+    interleave(
+        ops.begin() + numDims, ops.end(),
+        [&](const InstOperand &v) { printOperand(v.get()); }, printComma);
     os << ']';
   }
 }
@@ -1503,14 +1504,14 @@ void MLFunctionPrinter::printBound(AffineBound bound, const char *prefix) {
 
   // Print the map and its operands.
   printAffineMapReference(map);
-  printDimAndSymbolList(bound.getStmtOperands(), map.getNumDims());
+  printDimAndSymbolList(bound.getInstOperands(), map.getNumDims());
 }
 
 void MLFunctionPrinter::print(const IfStmt *stmt) {
   os.indent(numSpaces) << "if ";
   IntegerSet set = stmt->getIntegerSet();
   printIntegerSetReference(set);
-  printDimAndSymbolList(stmt->getStmtOperands(), set.getNumDims());
+  printDimAndSymbolList(stmt->getInstOperands(), set.getNumDims());
   os << " {\n";
   print(stmt->getThen());
   os.indent(numSpaces) << "}";
@@ -1579,7 +1580,7 @@ void Value::print(raw_ostream &os) const {
     // TODO: Improve this.
     os << "<block argument>\n";
     return;
-  case Value::Kind::StmtResult:
+  case Value::Kind::InstResult:
     return getDefiningInst()->print(os);
   case Value::Kind::ForStmt:
     return cast<ForStmt>(this)->print(os);

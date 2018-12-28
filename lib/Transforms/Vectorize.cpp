@@ -832,7 +832,7 @@ static bool vectorizeRootOrTerminal(Value *iv, LoadOrStoreOpPointer memoryOp,
   auto vectorType = VectorType::get(state->strategy->vectorSizes, elementType);
 
   // Materialize a MemRef with 1 vector.
-  auto *opStmt = cast<OperationInst>(memoryOp->getOperation());
+  auto *opStmt = memoryOp->getInstruction();
   // For now, vector_transfers must be aligned, operate only on indices with an
   // identity subset of AffineMap and do not change layout.
   // TODO(ntv): increase the expressiveness power of vector_transfer operations
@@ -846,8 +846,7 @@ static bool vectorizeRootOrTerminal(Value *iv, LoadOrStoreOpPointer memoryOp,
     auto transfer = b.create<VectorTransferReadOp>(
         opStmt->getLoc(), vectorType, memoryOp->getMemRef(),
         map(makePtrDynCaster<Value>(), memoryOp->getIndices()), permutationMap);
-    state->registerReplacement(opStmt,
-                               cast<OperationInst>(transfer->getOperation()));
+    state->registerReplacement(opStmt, transfer->getInstruction());
   } else {
     state->registerTerminator(opStmt);
   }
@@ -974,7 +973,7 @@ static Value *vectorizeConstant(Statement *stmt, const ConstantOp &constant,
   Location loc = stmt->getLoc();
   auto vectorType = type.cast<VectorType>();
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
-  auto *constantOpStmt = cast<OperationInst>(constant.getOperation());
+  auto *constantOpStmt = cast<OperationInst>(constant.getInstruction());
 
   OperationState state(
       b.getContext(), loc, constantOpStmt->getName().getStringRef(), {},
@@ -1091,7 +1090,7 @@ static OperationInst *vectorizeOneOperationInst(FuncBuilder *b,
     LLVM_DEBUG(permutationMap.print(dbgs()));
     auto transfer = b.create<VectorTransferWriteOp>(
         opStmt->getLoc(), vectorValue, memRef, indices, permutationMap);
-    auto *res = cast<OperationInst>(transfer->getOperation());
+    auto *res = cast<OperationInst>(transfer->getInstruction());
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ vectorized store: " << *res);
     // "Terminators" (i.e. StoreOps) are erased on the spot.
     opStmt->erase();

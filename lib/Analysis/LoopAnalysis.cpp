@@ -205,7 +205,7 @@ static bool isContiguousAccess(const Value &iv, const LoadOrStoreOp &memoryOp,
   auto layoutMap = memRefType.getAffineMaps();
   // TODO(ntv): remove dependence on Builder once we support non-identity
   // layout map.
-  Builder b(memoryOp.getOperation()->getContext());
+  Builder b(memoryOp.getInstruction()->getContext());
   if (layoutMap.size() >= 2 ||
       (layoutMap.size() == 1 &&
        !(layoutMap[0] ==
@@ -317,7 +317,7 @@ bool mlir::isStmtwiseShiftValid(const ForStmt &forStmt,
     if (const auto *opStmt = dyn_cast<OperationInst>(&stmt)) {
       for (unsigned i = 0, e = opStmt->getNumResults(); i < e; ++i) {
         const Value *result = opStmt->getResult(i);
-        for (const StmtOperand &use : result->getUses()) {
+        for (const InstOperand &use : result->getUses()) {
           // If an ancestor statement doesn't lie in the block of forStmt, there
           // is no shift to check.
           // This is a naive way. If performance becomes an issue, a map can

@@ -185,7 +185,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // case of GPUs.
   llvm::SmallVector<Value *, 1> newResults = {};
   if (std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value) {
-    b.setInsertionPoint(cast<OperationInst>(transfer->getOperation()));
+    b.setInsertionPoint(cast<OperationInst>(transfer->getInstruction()));
     auto *vector = b.create<LoadOp>(transfer->getLoc(), vecView->getResult(),
                                     ArrayRef<Value *>{state->zero})
                        ->getResult();
@@ -193,11 +193,11 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   }
 
   // 6. Free the local buffer.
-  b.setInsertionPoint(cast<OperationInst>(transfer->getOperation()));
+  b.setInsertionPoint(transfer->getInstruction());
   b.create<DeallocOp>(transfer->getLoc(), tmpScalarAlloc);
 
   // 7. It is now safe to erase the statement.
-  rewriter->replaceOp(transfer->getOperation(), newResults);
+  rewriter->replaceOp(transfer->getInstruction(), newResults);
 }
 
 namespace {
