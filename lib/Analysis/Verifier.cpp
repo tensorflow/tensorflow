@@ -253,6 +253,11 @@ struct MLFuncVerifier : public Verifier, public InstWalker<MLFuncVerifier> {
     llvm::PrettyStackTraceFormat fmt("MLIR Verifier: mlfunc @%s",
                                      fn.getName().c_str());
 
+    // ML Functions should have exactly one block.
+    // TODO(clattner): This will change real soon now.
+    if (fn.getBlocks().size() != 1)
+      return fn.emitError("mlfunc should have exactly one block");
+
     // Check basic structural properties.
     walk(const_cast<Function *>(&fn));
     if (hadError)

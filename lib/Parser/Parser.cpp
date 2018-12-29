@@ -1878,7 +1878,7 @@ public:
 
   ~FunctionParser();
 
-  ParseResult parseFunctionBody();
+  ParseResult parseFunctionBody(bool hadNamedArguments);
 
   /// Parse a single operation successor and it's operand list.
   bool parseSuccessorAndUseList(Block *&dest,
@@ -1938,7 +1938,7 @@ public:
   /// us to diagnose references to blocks that are not defined precisely.
   Block *getBlockNamed(StringRef name, SMLoc loc);
 
-  // Define the basic block with the specified name. Returns the Block* or
+  // Define the block with the specified name. Returns the Block* or
   // nullptr in the case of redefinition.
   Block *defineBlockNamed(StringRef name, SMLoc loc);
 
@@ -1983,7 +1983,7 @@ private:
 };
 } // end anonymous namespace
 
-ParseResult FunctionParser::parseFunctionBody() {
+ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
   auto braceLoc = getToken().getLoc();
   if (parseToken(Token::l_brace, "expected '{' in function"))
     return ParseFailure;
@@ -1992,16 +1992,17 @@ ParseResult FunctionParser::parseFunctionBody() {
   if (getToken().is(Token::r_brace))
     return emitError("function must have a body");
 
-  if (function->isCFG()) {
-    // Parse the list of blocks.
-    while (!consumeIf(Token::r_brace))
-      if (parseBlock())
-        return ParseFailure;
-  } else {
-    if (parseBlockBody(function->getBody()) ||
-        parseToken(Token::r_brace, "expected '}' after instruction list"))
+  // If we had named arguments, then just parse the first block into the
+  // block we have already created.
+  if (hadNamedArguments) {
+    if (parseBlockBody(&function->front()))
       return ParseFailure;
   }
+
+  // Parse the remaining list of blocks.
+  while (!consumeIf(Token::r_brace))
+    if (parseBlock())
+      return ParseFailure;
 
   // Verify that all referenced blocks were defined.
   if (!forwardRef.empty()) {
@@ -2013,7 +2014,7 @@ ParseResult FunctionParser::parseFunctionBody() {
 
     for (auto entry : errors) {
       auto loc = SMLoc::getFromPointer(entry.first);
-      emitError(loc, "reference to an undefined basic block");
+      emitError(loc, "reference to an undefined block");
     }
     return ParseFailure;
   }
@@ -2041,7 +2042,7 @@ ParseResult FunctionParser::parseFunctionBody() {
 ParseResult FunctionParser::parseBlock() {
   SMLoc nameLoc = getToken().getLoc();
   auto name = getTokenSpelling();
-  if (parseToken(Token::bare_identifier, "expected basic block name"))
+  if (parseToken(Token::bare_identifier, "expected block name"))
     return ParseFailure;
 
   auto *block = defineBlockNamed(name, nameLoc);
@@ -2058,7 +2059,7 @@ ParseResult FunctionParser::parseBlock() {
       return ParseFailure;
   }
 
-  if (parseToken(Token::colon, "expected ':' after basic block name"))
+  if (parseToken(Token::colon, "expected ':' after block name"))
     return ParseFailure;
 
   return parseBlockBody(block);
@@ -2317,8 +2318,8 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
   return ParseSuccess;
 }
 
-/// Get the basic block with the specified name, creating it if it doesn't
-/// already exist.  The location specified is the point of use, which allows
+/// Get the block with the specified name, creating it if it doesn't already
+/// exist.  The location specified is the point of use, which allows
 /// us to diagnose references to blocks that are not defined precisely.
 Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
   auto &blockAndLoc = blocksByName[name];
@@ -2332,8 +2333,8 @@ Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
   return blockAndLoc.first;
 }
 
-// Define the basic block with the specified name. Returns the Block* or
-// nullptr in the case of redefinition.
+/// Define the block with the specified name. Returns the Block* or nullptr in
+/// the case of redefinition.
 Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc) {
   auto &blockAndLoc = blocksByName[name];
   if (!blockAndLoc.first) {
@@ -2364,7 +2365,7 @@ bool FunctionParser::parseSuccessorAndUseList(
     Block *&dest, SmallVectorImpl<Value *> &operands) {
   // Verify branch is identifier and get the matching block.
   if (!getToken().is(Token::bare_identifier))
-    return emitError("expected basic block name");
+    return emitError("expected block name");
   dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
   consumeToken();
 
@@ -2378,8 +2379,7 @@ bool FunctionParser::parseSuccessorAndUseList(
   return false;
 }
 
-/// Parse a (possibly empty) list of SSA operands with types as basic block
-/// arguments.
+/// Parse a (possibly empty) list of SSA operands with types as block arguments.
 ///
 ///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
 ///
@@ -3141,14 +3141,11 @@ private:
   ParseResult parseAffineStructureDef();
 
   // Functions.
-  ParseResult parseMLArgumentList(SmallVectorImpl<Type> &argTypes,
-                                  SmallVectorImpl<StringRef> &argNames);
+  ParseResult parseArgumentList(SmallVectorImpl<Type> &argTypes,
+                                SmallVectorImpl<StringRef> &argNames);
   ParseResult parseFunctionSignature(StringRef &name, FunctionType &type,
-                                     SmallVectorImpl<StringRef> *argNames);
-  ParseResult parseFunctionAttribute(SmallVectorImpl<NamedAttribute> &attrs);
-  ParseResult parseExtFunc();
-  ParseResult parseCFGFunc();
-  ParseResult parseMLFunc();
+                                     SmallVectorImpl<StringRef> &argNames);
+  ParseResult parseFunc(Function::Kind kind);
 };
 } // end anonymous namespace
 
@@ -3198,32 +3195,42 @@ ParseResult ModuleParser::parseAffineStructureDef() {
 
 /// Parse a (possibly empty) list of Function arguments with types.
 ///
-/// ml-argument      ::= ssa-id `:` type
-/// ml-argument-list ::= ml-argument (`,` ml-argument)* | /*empty*/
+///   named-argument ::= ssa-id `:` type
+///   argument-list  ::= named-argument (`,` named-argument)* | /*empty*/
+///   argument-list ::= type (`,` type)* | /*empty*/
 ///
 ParseResult
-ModuleParser::parseMLArgumentList(SmallVectorImpl<Type> &argTypes,
-                                  SmallVectorImpl<StringRef> &argNames) {
+ModuleParser::parseArgumentList(SmallVectorImpl<Type> &argTypes,
+                                SmallVectorImpl<StringRef> &argNames) {
   consumeToken(Token::l_paren);
 
+  // The argument list either has to consistently have ssa-id's followed by
+  // types, or just be a type list.  It isn't ok to sometimes have SSA ID's and
+  // sometimes not.
   auto parseElt = [&]() -> ParseResult {
-    // Parse argument name
-    if (getToken().isNot(Token::percent_identifier))
-      return emitError("expected SSA identifier");
-
+    // Parse argument name if present.
+    auto loc = getToken().getLoc();
     StringRef name = getTokenSpelling();
-    consumeToken(Token::percent_identifier);
-    argNames.push_back(name);
+    if (consumeIf(Token::percent_identifier)) {
+      // Reject this if the preceding argument was missing a name.
+      if (argNames.empty() && !argTypes.empty())
+        return emitError(loc, "expected type instead of SSA identifier");
 
-    if (parseToken(Token::colon, "expected ':'"))
-      return ParseFailure;
+      argNames.push_back(name);
+
+      if (parseToken(Token::colon, "expected ':'"))
+        return ParseFailure;
+    } else {
+      // Reject this if the preceding argument had a name.
+      if (!argNames.empty())
+        return emitError("expected SSA identifier");
+    }
 
     // Parse argument type
     auto elt = parseType();
     if (!elt)
       return ParseFailure;
     argTypes.push_back(elt);
-
     return ParseSuccess;
   };
 
@@ -3233,13 +3240,12 @@ ModuleParser::parseMLArgumentList(SmallVectorImpl<Type> &argTypes,
 /// Parse a function signature, starting with a name and including the
 /// parameter list.
 ///
-///   argument-list ::= type (`,` type)* | /*empty*/ | ml-argument-list
-///   function-signature ::= function-id `(` argument-list `)` (`->`
-///   type-list)?
+///   function-signature ::=
+///      function-id `(` argument-list `)` (`->` type-list)?
 ///
 ParseResult
 ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
-                                     SmallVectorImpl<StringRef> *argNames) {
+                                     SmallVectorImpl<StringRef> &argNames) {
   if (getToken().isNot(Token::at_identifier))
     return emitError("expected a function identifier like '@foo'");
 
@@ -3250,14 +3256,7 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
     return emitError("expected '(' in function signature");
 
   SmallVector<Type, 4> argTypes;
-  ParseResult parseResult;
-
-  if (argNames)
-    parseResult = parseMLArgumentList(argTypes, *argNames);
-  else
-    parseResult = parseTypeList(argTypes);
-
-  if (parseResult)
+  if (parseArgumentList(argTypes, argNames))
     return ParseFailure;
 
   // Parse the return type if present.
@@ -3270,113 +3269,39 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
   return ParseSuccess;
 }
 
-/// Parse function attributes, starting with keyword "attributes".
+/// Function declarations.
 ///
-///   function-attribute ::= (`attributes` attribute-dict)?
+///   ext-func ::= `extfunc` function-signature function-attributes?
+//
+///   ml-func ::= `mlfunc` function-signature function-attributes?
+///              `{` inst* return-inst `}`
 ///
-ParseResult
-ModuleParser::parseFunctionAttribute(SmallVectorImpl<NamedAttribute> &attrs) {
-  if (consumeIf(Token::kw_attributes)) {
-    if (parseAttributeDict(attrs)) {
-      return ParseFailure;
-    }
-  }
-  return ParseSuccess;
-}
-
-/// External function declarations.
+///   cfg-func ::= `cfgfunc` function-signature function-attributes?
+///               `{` basic-block+ `}`
 ///
-///   ext-func ::= `extfunc` function-signature
-///                (`attributes` attribute-dict)?
+///   function-attributes ::= `attributes` attribute-dict
 ///
-ParseResult ModuleParser::parseExtFunc() {
-  consumeToken(Token::kw_extfunc);
-  auto loc = getToken().getLoc();
-
-  StringRef name;
-  FunctionType type;
-  if (parseFunctionSignature(name, type, /*arguments*/ nullptr))
-    return ParseFailure;
-
-  SmallVector<NamedAttribute, 8> attrs;
-  if (parseFunctionAttribute(attrs)) {
-    return ParseFailure;
-  }
-
-  // Okay, the external function definition was parsed correctly.
-  auto *function =
-      new Function(Function::Kind::ExtFunc, getEncodedSourceLocation(loc), name,
-                   type, attrs);
-  getModule()->getFunctions().push_back(function);
-
-  // Verify no name collision / redefinition.
-  if (function->getName() != name)
-    return emitError(loc,
-                     "redefinition of function named '" + name.str() + "'");
-
-  return ParseSuccess;
-}
-
-/// CFG function declarations.
-///
-///   cfg-func ::= `cfgfunc` function-signature
-///               (`attributes` attribute-dict)? `{` basic-block+ `}`
-///
-ParseResult ModuleParser::parseCFGFunc() {
-  consumeToken(Token::kw_cfgfunc);
-  auto loc = getToken().getLoc();
-
-  StringRef name;
-  FunctionType type;
-  if (parseFunctionSignature(name, type, /*arguments*/ nullptr))
-    return ParseFailure;
-
-  SmallVector<NamedAttribute, 8> attrs;
-  if (parseFunctionAttribute(attrs)) {
-    return ParseFailure;
-  }
-
-  // Okay, the CFG function signature was parsed correctly, create the
-  // function.
-  auto *function =
-      new Function(Function::Kind::CFGFunc, getEncodedSourceLocation(loc), name,
-                   type, attrs);
-  getModule()->getFunctions().push_back(function);
-
-  // Verify no name collision / redefinition.
-  if (function->getName() != name)
-    return emitError(loc,
-                     "redefinition of function named '" + name.str() + "'");
-
-  return FunctionParser(getState(), function).parseFunctionBody();
-}
-
-/// ML function declarations.
-///
-///   ml-func ::= `mlfunc` ml-func-signature
-///              (`attributes` attribute-dict)? `{` inst* return-inst
-///              `}`
-///
-ParseResult ModuleParser::parseMLFunc() {
-  consumeToken(Token::kw_mlfunc);
+ParseResult ModuleParser::parseFunc(Function::Kind kind) {
+  consumeToken();
 
   StringRef name;
   FunctionType type;
   SmallVector<StringRef, 4> argNames;
 
   auto loc = getToken().getLoc();
-  if (parseFunctionSignature(name, type, &argNames))
+  if (parseFunctionSignature(name, type, argNames))
     return ParseFailure;
 
+  // If function attributes are present, parse them.
   SmallVector<NamedAttribute, 8> attrs;
-  if (parseFunctionAttribute(attrs)) {
-    return ParseFailure;
+  if (consumeIf(Token::kw_attributes)) {
+    if (parseAttributeDict(attrs))
+      return ParseFailure;
   }
 
-  // Okay, the ML function signature was parsed correctly, create the
-  // function.
-  auto *function = new Function(
-      Function::Kind::MLFunc, getEncodedSourceLocation(loc), name, type, attrs);
+  // Okay, the function signature was parsed correctly, create the function now.
+  auto *function =
+      new Function(kind, getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -3384,16 +3309,32 @@ ParseResult ModuleParser::parseMLFunc() {
     return emitError(loc,
                      "redefinition of function named '" + name.str() + "'");
 
+  // External functions have no body.
+  if (kind == Function::Kind::ExtFunc)
+    return ParseSuccess;
+
   // Create the parser.
   auto parser = FunctionParser(getState(), function);
 
-  // Add definitions of the function arguments.
-  for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
-    if (parser.addDefinition({argNames[i], 0, loc}, function->getArgument(i)))
-      return ParseFailure;
+  bool hadNamedArguments = !argNames.empty() || function->isML();
+
+  // CFG functions don't auto-create a block, so create one now.
+  // TODO(clattner): FIX THIS.
+  if (hadNamedArguments && kind == Function::Kind::CFGFunc) {
+    auto *entry = new Block();
+    function->push_back(entry);
+    entry->addArguments(type.getInputs());
   }
 
-  return parser.parseFunctionBody();
+  // Add definitions of the function arguments.
+  if (hadNamedArguments) {
+    for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
+      if (parser.addDefinition({argNames[i], 0, loc}, function->getArgument(i)))
+        return ParseFailure;
+    }
+  }
+
+  return parser.parseFunctionBody(hadNamedArguments);
 }
 
 /// Finish the end of module parsing - when the result is valid, do final
@@ -3457,17 +3398,17 @@ ParseResult ModuleParser::parseModule() {
       break;
 
     case Token::kw_extfunc:
-      if (parseExtFunc())
+      if (parseFunc(Function::Kind::ExtFunc))
         return ParseFailure;
       break;
 
     case Token::kw_cfgfunc:
-      if (parseCFGFunc())
+      if (parseFunc(Function::Kind::CFGFunc))
         return ParseFailure;
       break;
 
     case Token::kw_mlfunc:
-      if (parseMLFunc())
+      if (parseFunc(Function::Kind::MLFunc))
         return ParseFailure;
       break;
     }

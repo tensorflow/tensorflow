@@ -88,7 +88,7 @@ extfunc missingsigil() -> (i1, index, f32) // expected-error {{expected a functi
 
 cfgfunc @bad_branch() {
 bb12:
-  br missing  // expected-error {{reference to an undefined basic block}}
+  br missing  // expected-error {{reference to an undefined block}}
 }
 
 // -----
@@ -339,7 +339,7 @@ bb42:
 
 mlfunc @missing_rbrace() {
   return
-mlfunc @d() {return} // expected-error {{expected '}' after instruction list}}
+mlfunc @d() {return} // expected-error {{expected block name}}
 
 // -----
 
@@ -417,7 +417,7 @@ cfgfunc @condbr_a_bb_is_not_a_type() {
 bb0:
   %c = "foo"() : () -> i1
   %a = "foo"() : () -> i32
-  cond_br %c, bb0(%a, %a : i32, i32), i32 // expected-error {{expected basic block name}}
+  cond_br %c, bb0(%a, %a : i32, i32), i32 // expected-error {{expected block name}}
 }
 
 // -----
@@ -740,4 +740,36 @@ bb0:
 cfgfunc @elementsattr_malformed_opaque1() -> () {
 bb0:
   "foo"(){bar: opaque<tensor<1xi8>, "00abc">} : () -> () // expected-error {{opaque string should start with '0x'}}
+}
+
+// -----
+
+cfgfunc @redundant_signature(%a : i32) -> () {
+bb0(%b : i32):  // expected-error {{custom op 'bb0' is unknown}}
+  return
+}
+
+// -----
+
+cfgfunc @mixed_named_arguments(%a : i32,
+                               f32) -> () {
+    // expected-error @-1 {{expected SSA identifier}}
+  return
+}
+
+// -----
+
+cfgfunc @mixed_named_arguments(f32,
+                               %a : i32) -> () { // expected-error {{expected type instead of SSA identifier}}
+  return
+}
+
+// -----
+
+mlfunc @multi_block(%N : index) {  // expected-error {{mlfunc should have exactly one block}}
+  for %i = 1 to %N {}
+  return
+
+bb42:
+  return
 }

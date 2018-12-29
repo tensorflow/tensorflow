@@ -187,6 +187,14 @@ mlfunc @mlfunc_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
   return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
 } // CHECK: }
 
+// CHECK-LABEL: cfgfunc @cfgfunc_with_two_args(f16, i8) -> (i1, i32) {
+cfgfunc @cfgfunc_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
+  // CHECK: bb0(%arg0: f16, %arg1: i8):
+  // CHECK: %0 = "foo"(%arg0, %arg1) : (f16, i8) -> (i1, i32)
+  %c = "foo"(%a, %b) : (f16, i8)->(i1, i32)
+  return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
+} // CHECK: }
+
 // CHECK-LABEL: mlfunc @mlfunc_ops_in_loop() {
 mlfunc @mlfunc_ops_in_loop() {
   // CHECK: %0 = "foo"() : () -> i64
