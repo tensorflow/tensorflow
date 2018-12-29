@@ -30,7 +30,9 @@
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Debug.h"
+
+#define DEBUG_TYPE "affine-analysis"
 
 using namespace mlir;
 
@@ -1193,6 +1195,11 @@ bool mlir::checkMemrefAccessDependence(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
     llvm::SmallVector<DependenceComponent, 2> *dependenceComponents) {
+  LLVM_DEBUG(llvm::dbgs() << "Checking for dependence at depth: "
+                          << Twine(loopDepth) << " between:\n";);
+  LLVM_DEBUG(srcAccess.opInst->dump(););
+  LLVM_DEBUG(dstAccess.opInst->dump(););
+
   // Return 'false' if these accesses do not acces the same memref.
   if (srcAccess.memref != dstAccess.memref)
     return false;
@@ -1269,10 +1276,14 @@ bool mlir::checkMemrefAccessDependence(
   if (dependenceConstraints->isEmpty()) {
     return false;
   }
+
   // Compute dependence direction vector and return true.
   if (dependenceComponents != nullptr) {
     computeDirectionVector(srcDomain, dstDomain, loopDepth,
                            dependenceConstraints, dependenceComponents);
   }
+
+  LLVM_DEBUG(llvm::dbgs() << "Dependence polyhedron:\n");
+  LLVM_DEBUG(dependenceConstraints->dump());
   return true;
 }

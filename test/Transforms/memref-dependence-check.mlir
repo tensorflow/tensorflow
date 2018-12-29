@@ -698,4 +698,70 @@ mlfunc @mod_div_3d() {
   return
 }
 
-// TODO(bondhugula): add more test cases exercising mod/div affine_apply's.
+// -----
+// This test case arises in the context of a 6-d to 2-d reshape.
+// CHECK-LABEL: mlfunc @delinearize_mod_floordiv
+mlfunc @delinearize_mod_floordiv() {
+  %c0 = constant 0 : index
+  %val = constant 0 : i32
+  %in = alloc() : memref<2x2x3x3x16x1xi32>
+  %out = alloc() : memref<64x9xi32>
+
+  for %i0 = 0 to 2 {
+    for %i1 = 0 to 2 {
+      for %i2 = 0 to 3 {
+        for %i3 = 0 to 3 {
+          for %i4 = 0 to 16 {
+            for %i5 = 0 to 1 {
+              store %val, %in[%i0, %i1, %i2, %i3, %i4, %i5] : memref<2x2x3x3x16x1xi32>
+// expected-note@-1 {{dependence from 0 to 0 at depth 1 = false}}
+// expected-note@-2 {{dependence from 0 to 0 at depth 2 = false}}
+// expected-note@-3 {{dependence from 0 to 0 at depth 3 = false}}
+// expected-note@-4 {{dependence from 0 to 0 at depth 4 = false}}
+// expected-note@-5 {{dependence from 0 to 0 at depth 5 = false}}
+// expected-note@-6 {{dependence from 0 to 0 at depth 6 = false}}
+// expected-note@-7 {{dependence from 0 to 0 at depth 7 = false}}
+// expected-note@-8 {{dependence from 0 to 1 at depth 1 = true}}
+// expected-note@-9 {{dependence from 0 to 2 at depth 1 = false}}
+            }
+          }
+        }
+      }
+    }
+  }
+
+  for %ii = 0 to 64 {
+    for %jj = 0 to 9 {
+      %a0 = affine_apply (d0, d1) -> (d0 * (9 * 1024) + d1 * 128) (%ii, %jj)
+      %a1 = affine_apply (d0) ->
+        (d0 floordiv (2 * 3 * 3 * 128 * 128),
+        (d0 mod 294912) floordiv (3 * 3 * 128 * 128),
+        (((d0 mod 294912) mod 147456) floordiv 1152) floordiv 8,
+        (((d0 mod 294912) mod 147456) mod 1152) floordiv 384,
+        ((((d0 mod 294912) mod 147456) mod 1152) mod 384) floordiv 128,
+        (((((d0 mod 294912) mod 147456) mod 1152) mod 384) mod 128)
+          floordiv 128) (%a0)
+      %v0 = load %in[%a1#0, %a1#1, %a1#3, %a1#4, %a1#2, %a1#5] : memref<2x2x3x3x16x1xi32>
+// expected-note@-1 {{dependence from 1 to 0 at depth 1 = false}}
+// expected-note@-2 {{dependence from 1 to 1 at depth 1 = false}}
+// expected-note@-3 {{dependence from 1 to 1 at depth 2 = false}}
+// expected-note@-4 {{dependence from 1 to 1 at depth 3 = false}}
+// expected-note@-5 {{dependence from 1 to 2 at depth 1 = false}}
+// expected-note@-6 {{dependence from 1 to 2 at depth 2 = false}}
+// expected-note@-7 {{dependence from 1 to 2 at depth 3 = false}}
+// TODO(andydavis): the dep tester shouldn't be printing out these messages
+// below; they are redundant.
+      store %v0, %out[%ii, %jj] : memref<64x9xi32>
+// expected-note@-1 {{dependence from 2 to 0 at depth 1 = false}}
+// expected-note@-2 {{dependence from 2 to 1 at depth 1 = false}}
+// expected-note@-3 {{dependence from 2 to 1 at depth 2 = false}}
+// expected-note@-4 {{dependence from 2 to 1 at depth 3 = false}}
+// expected-note@-5 {{dependence from 2 to 2 at depth 1 = false}}
+// expected-note@-6 {{dependence from 2 to 2 at depth 2 = false}}
+// expected-note@-7 {{dependence from 2 to 2 at depth 3 = false}}
+    }
+  }
+  return
+}
+
+// TODO(bondhugula): add more test cases involving mod's/div's.

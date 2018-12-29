@@ -961,6 +961,40 @@ void FlatAffineConstraints::removeIdRange(unsigned idStart, unsigned idLimit) {
   // No resize necessary. numReservedCols remains the same.
 }
 
+/// Returns the position of the identifier that has the minimum <number of lower
+/// bounds> times <number of upper bounds> from the specified range of
+/// identifiers [start, end). It is often best to eliminate in the increasing
+/// order of these counts when doing Fourier-Motzkin elimination since FM adds
+/// that many new constraints.
+static unsigned getBestIdToEliminate(const FlatAffineConstraints &cst,
+                                     unsigned start, unsigned end) {
+  assert(start < cst.getNumIds() && end < cst.getNumIds() + 1);
+
+  auto getProductOfNumLowerUpperBounds = [&](unsigned pos) {
+    unsigned numLb = 0;
+    unsigned numUb = 0;
+    for (unsigned r = 0, e = cst.getNumInequalities(); r < e; r++) {
+      if (cst.atIneq(r, pos) > 0) {
+        ++numLb;
+      } else if (cst.atIneq(r, pos) < 0) {
+        ++numUb;
+      }
+    }
+    return numLb * numUb;
+  };
+
+  unsigned minLoc = start;
+  unsigned min = getProductOfNumLowerUpperBounds(start);
+  for (unsigned c = start + 1; c < end; c++) {
+    unsigned numLbUbProduct = getProductOfNumLowerUpperBounds(c);
+    if (numLbUbProduct < min) {
+      min = numLbUbProduct;
+      minLoc = c;
+    }
+  }
+  return minLoc;
+}
+
 // Checks for emptiness of the set by eliminating identifiers successively and
 // using the GCD test (on all equality constraints) and checking for trivially
 // invalid constraints. Returns 'true' if the constraint system is found to be
@@ -969,23 +1003,29 @@ bool FlatAffineConstraints::isEmpty() const {
   if (isEmptyByGCDTest() || hasInvalidConstraint())
     return true;
 
-  auto tmpCst = clone();
-  for (unsigned i = 0, e = tmpCst->getNumIds(); i < e; i++) {
+  // First, eliminate as many identifiers as possible using Gaussian
+  // elimination.
+  FlatAffineConstraints tmpCst(*this);
+  unsigned currentPos = 0;
+  while (currentPos < tmpCst.getNumIds()) {
+    tmpCst.gaussianEliminateIds(currentPos, tmpCst.getNumIds());
+    ++currentPos;
     // We check emptiness through trivial checks after eliminating each ID to
     // detect emptiness early. Since the checks isEmptyByGCDTest() and
     // hasInvalidConstraint() are linear time and single sweep on the constraint
     // buffer, this appears reasonable - but can optimize in the future.
-    if (tmpCst->gaussianEliminateId(0)) {
-      if (tmpCst->hasInvalidConstraint() || tmpCst->isEmptyByGCDTest())
-        return true;
-    } else {
-      tmpCst->FourierMotzkinEliminate(0);
-      // If the variable couldn't be eliminated by Gaussian, FM wouldn't have
-      // modified the equalities in any way. So no need to again run GCD test.
-      // Check for trivial invalid constraints.
-      if (tmpCst->hasInvalidConstraint())
-        return true;
-    }
+    if (tmpCst.hasInvalidConstraint() || tmpCst.isEmptyByGCDTest())
+      return true;
+  }
+
+  // Eliminate the remaining using FM.
+  for (unsigned i = 0, e = tmpCst.getNumIds(); i < e; i++) {
+    tmpCst.FourierMotzkinEliminate(
+        getBestIdToEliminate(tmpCst, 0, tmpCst.getNumIds()));
+    // FM wouldn't have modified the equalities in any way. So no need to again
+    // run GCD test. Check for trivial invalid constraints.
+    if (tmpCst.hasInvalidConstraint())
+      return true;
   }
   return false;
 }
@@ -1049,7 +1089,7 @@ void FlatAffineConstraints::GCDTightenInequalities() {
 unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
                                                      unsigned posLimit) {
   // Return if identifier positions to eliminate are out of range.
-  assert(posStart >= 0 && posLimit <= numIds);
+  assert(posLimit <= numIds);
   assert(hasConsistentState());
 
   if (posStart >= posLimit)
@@ -1869,45 +1909,11 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   LLVM_DEBUG(dump());
 }
 
-/// Returns the position of the identifier that has the minimum <number of lower
-/// bounds> times <number of upper bounds> from the specified range of
-/// identifiers [start, end). It is often best to eliminate in the increasing
-/// order of these counts when doing Fourier-Motzkin elimination since FM adds
-/// that many new constraints.
-static unsigned getBestIdToEliminate(const FlatAffineConstraints &cst,
-                                     unsigned start, unsigned end) {
-  assert(start < cst.getNumIds() && end < cst.getNumIds() + 1);
-
-  auto getProductOfNumLowerUpperBounds = [&](unsigned pos) {
-    unsigned numLb = 0;
-    unsigned numUb = 0;
-    for (unsigned r = 0, e = cst.getNumInequalities(); r < e; r++) {
-      if (cst.atIneq(r, pos) > 0) {
-        ++numLb;
-      } else if (cst.atIneq(r, pos) < 0) {
-        ++numUb;
-      }
-    }
-    return numLb * numUb;
-  };
-
-  unsigned minLoc = start;
-  unsigned min = getProductOfNumLowerUpperBounds(start);
-  for (unsigned c = start + 1; c < end; c++) {
-    unsigned numLbUbProduct = getProductOfNumLowerUpperBounds(c);
-    if (numLbUbProduct < min) {
-      min = numLbUbProduct;
-      minLoc = c;
-    }
-  }
-  return minLoc;
-}
-
 void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
   if (num == 0)
     return;
 
-  // 'pos' can be at most getNumCols() - 2.
+  // 'pos' can be at most getNumCols() - 2 if num > 0.
   assert(pos <= getNumCols() - 2 && "invalid position");
   assert(pos + num < getNumCols() && "invalid range");
 
@@ -1915,17 +1921,14 @@ void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
   unsigned currentPos = pos;
   unsigned numToEliminate = num;
   unsigned numGaussianEliminated = 0;
-  do {
+
+  while (currentPos < getNumIds()) {
     unsigned curNumEliminated =
         gaussianEliminateIds(currentPos, currentPos + numToEliminate);
-    if (curNumEliminated == 0) {
-      ++currentPos;
-      --numToEliminate;
-    } else {
-      numToEliminate -= curNumEliminated;
-    }
+    ++currentPos;
+    numToEliminate -= curNumEliminated + 1;
     numGaussianEliminated += curNumEliminated;
-  } while (numToEliminate != 0);
+  }
 
   // Eliminate the remaining using Fourier-Motzkin.
   for (unsigned i = 0; i < num - numGaussianEliminated; i++) {
