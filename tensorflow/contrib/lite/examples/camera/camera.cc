@@ -427,7 +427,8 @@ void RunInference(Settings* s) {
         DEBUG(INFO) << "Entering kTfLiteFloat32:" << wanted_height << " ,"
                     << wanted_width << " ," << wanted_channels << " \n";
 #endif
-        s->input_floating = true;
+
+	s->input_floating = true;
         resize<float>(interpreter->typed_tensor<float>(input), frame_data,
                       video_height, video_width, video_channels, wanted_height,
                       wanted_width, wanted_channels, s);
