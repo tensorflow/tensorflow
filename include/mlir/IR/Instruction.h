@@ -96,7 +96,8 @@ public:
   Instruction *clone(MLIRContext *context) const;
 
   /// Returns the instruction block that contains this instruction.
-  Block *getBlock() const { return block; }
+  const Block *getBlock() const { return block; }
+  Block *getBlock() { return block; }
 
   /// Returns the closest surrounding instruction that contains this instruction
   /// or nullptr if this is a top-level instruction.

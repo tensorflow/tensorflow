@@ -36,20 +36,18 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/Instructions.h"
 #include "mlir/IR/Module.h"
-#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
 namespace {
-/// Base class for the verifiers in this file.  It is a pervasive truth that
-/// this file treats "true" as an error that needs to be recovered from, and
-/// "false" as success.
+/// This class encapsulates all the state used to verify a function body.  It is
+/// a pervasive truth that this file treats "true" as an error that needs to be
+/// recovered from, and "false" as success.
 ///
-class Verifier {
+class FuncVerifier {
 public:
   bool failure(const Twine &message, const OperationInst &value) {
     return value.emitError(message);
@@ -69,20 +67,90 @@ public:
     return failure(message, fn);
   }
 
-  bool verifyOperation(const OperationInst &op);
   bool verifyAttribute(Attribute attr, const OperationInst &op);
 
-protected:
-  explicit Verifier(const Function &fn) : fn(fn) {}
+  bool verify();
+  bool verifyBlock(const Block &block, bool isTopLevel);
+  bool verifyOperation(const OperationInst &op);
+  bool verifyForInst(const ForInst &forInst);
+  bool verifyIfInst(const IfInst &ifInst);
+  bool verifyDominance(const Block &block);
+  bool verifyInstDominance(const Instruction &inst);
+
+  explicit FuncVerifier(const Function &fn) : fn(fn) {}
 
 private:
   /// The function being checked.
   const Function &fn;
+
+  /// Dominance information for this function, when checking dominance.
+  DominanceInfo *domInfo = nullptr;
 };
 } // end anonymous namespace
 
+bool FuncVerifier::verify() {
+  llvm::PrettyStackTraceFormat fmt("MLIR Verifier: func @%s",
+                                   fn.getName().c_str());
+
+  // If this is an external function, it must be empty.
+  if (fn.getKind() == Function::Kind::ExtFunc) {
+    if (!fn.empty())
+      return failure("extfunc must not have any blocks", fn);
+
+    // nothing else to check.
+    return false;
+  }
+
+  if (fn.empty())
+    return failure("function must have at least one block", fn);
+
+  // ML Functions should have exactly one block.
+  // TODO(clattner): This will change real soon now.
+  if (fn.isML() && fn.getBlocks().size() != 1)
+    return fn.emitError("mlfunc should have exactly one block");
+
+  // Verify the first block has no predecessors.
+  auto *firstBB = &fn.front();
+  if (!firstBB->hasNoPredecessors())
+    return failure("entry block of function may not have predecessors", fn);
+
+  // Verify that the argument list of the function and the arg list of the first
+  // block line up.
+  auto fnInputTypes = fn.getType().getInputs();
+  if (fnInputTypes.size() != firstBB->getNumArguments())
+    return failure("first block of function must have " +
+                       Twine(fnInputTypes.size()) +
+                       " arguments to match function signature",
+                   fn);
+  for (unsigned i = 0, e = firstBB->getNumArguments(); i != e; ++i)
+    if (fnInputTypes[i] != firstBB->getArgument(i)->getType())
+      return failure(
+          "type of argument #" + Twine(i) +
+              " must match corresponding argument in function signature",
+          fn);
+
+  for (auto &block : fn) {
+    if (verifyBlock(block, /*isTopLevel*/ true))
+      return true;
+  }
+
+  // Since everything looks structurally ok to this point, we do a dominance
+  // check.  We do this as a second pass since malformed CFG's can cause
+  // dominator analysis constructure to crash and we want the verifier to be
+  // resilient to malformed code.
+  DominanceInfo theDomInfo(const_cast<Function *>(&fn));
+  domInfo = &theDomInfo;
+  for (auto &block : fn) {
+    if (verifyDominance(block))
+      return true;
+  }
+
+  domInfo = nullptr;
+  return false;
+}
+
 // Check that function attributes are all well formed.
-bool Verifier::verifyAttribute(Attribute attr, const OperationInst &op) {
+bool FuncVerifier::verifyAttribute(Attribute attr, const OperationInst &op) {
   if (!attr.isOrContainsFunction())
     return false;
 
@@ -109,8 +177,38 @@ bool Verifier::verifyAttribute(Attribute attr, const OperationInst &op) {
   return false;
 }
 
+bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
+  // Blocks under IfInst/ForInst don't have terminators, but blocks at the top
+  // level of a function do.
+  if (isTopLevel && !block.getTerminator())
+    return failure("block with no terminator", block);
+
+  for (auto *arg : block.getArguments()) {
+    if (arg->getOwner() != &block)
+      return failure("block argument not owned by block", block);
+  }
+
+  for (auto &inst : block) {
+    switch (inst.getKind()) {
+    case Instruction::Kind::OperationInst:
+      if (verifyOperation(cast<OperationInst>(inst)))
+        return true;
+      break;
+    case Instruction::Kind::For:
+      if (verifyForInst(cast<ForInst>(inst)))
+        return true;
+      break;
+    case Instruction::Kind::If:
+      if (verifyIfInst(cast<IfInst>(inst)))
+        return true;
+      break;
+    }
+  }
+  return false;
+}
+
 /// Check the invariants of the specified operation.
-bool Verifier::verifyOperation(const OperationInst &op) {
+bool FuncVerifier::verifyOperation(const OperationInst &op) {
   if (op.getFunction() != &fn)
     return failure("operation in the wrong function", op);
 
@@ -140,68 +238,57 @@ bool Verifier::verifyOperation(const OperationInst &op) {
   return false;
 }
 
-//===----------------------------------------------------------------------===//
-// CFG Functions
-//===----------------------------------------------------------------------===//
+bool FuncVerifier::verifyForInst(const ForInst &forInst) {
+  // TODO: check that loop bounds are properly formed.
+  return verifyBlock(*forInst.getBody(), /*isTopLevel=*/false);
+}
 
-namespace {
-struct CFGFuncVerifier : public Verifier {
-  const Function &fn;
-  DominanceInfo domInfo;
+bool FuncVerifier::verifyIfInst(const IfInst &ifInst) {
+  // TODO: check that if conditions are properly formed.
+  if (verifyBlock(*ifInst.getThen(), /*isTopLevel*/ false))
+    return true;
 
-  CFGFuncVerifier(const Function &fn)
-      : Verifier(fn), fn(fn), domInfo(const_cast<Function *>(&fn)) {}
-
-  bool verify();
-  bool verifyBlock(const Block &block);
-  bool verifyInstOperands(const Instruction &inst);
-};
-} // end anonymous namespace
-
-bool CFGFuncVerifier::verify() {
-  llvm::PrettyStackTraceFormat fmt("MLIR Verifier: cfgfunc @%s",
-                                   fn.getName().c_str());
-
-  // TODO: Lots to be done here, including verifying dominance information when
-  // we have uses and defs.
-
-  if (fn.empty())
-    return failure("cfgfunc must have at least one block", fn);
-
-  // Verify the first block has no predecessors.
-  auto *firstBB = &fn.front();
-  if (!firstBB->hasNoPredecessors()) {
-    return failure("first block of cfgfunc must not have predecessors", fn);
-  }
-
-  // Verify that the argument list of the function and the arg list of the first
-  // block line up.
-  auto fnInputTypes = fn.getType().getInputs();
-  if (fnInputTypes.size() != firstBB->getNumArguments())
-    return failure("first block of cfgfunc must have " +
-                       Twine(fnInputTypes.size()) +
-                       " arguments to match function signature",
-                   fn);
-  for (unsigned i = 0, e = firstBB->getNumArguments(); i != e; ++i)
-    if (fnInputTypes[i] != firstBB->getArgument(i)->getType())
-      return failure(
-          "type of argument #" + Twine(i) +
-              " must match corresponding argument in function signature",
-          fn);
-
-  for (auto &block : fn) {
-    if (verifyBlock(block))
+  if (auto *elseClause = ifInst.getElse())
+    if (verifyBlock(*elseClause, /*isTopLevel*/ false))
       return true;
+
+  return false;
+}
+
+bool FuncVerifier::verifyDominance(const Block &block) {
+  for (auto &inst : block) {
+    // Check that all operands on the instruction are ok.
+    if (verifyInstDominance(inst))
+      return true;
+
+    switch (inst.getKind()) {
+    case Instruction::Kind::OperationInst:
+      if (verifyOperation(cast<OperationInst>(inst)))
+        return true;
+      break;
+    case Instruction::Kind::For:
+      if (verifyDominance(*cast<ForInst>(inst).getBody()))
+        return true;
+      break;
+    case Instruction::Kind::If:
+      auto &ifInst = cast<IfInst>(inst);
+      if (verifyDominance(*ifInst.getThen()))
+        return true;
+      if (auto *elseClause = ifInst.getElse())
+        if (verifyDominance(*elseClause))
+          return true;
+      break;
+    }
   }
   return false;
 }
 
-bool CFGFuncVerifier::verifyInstOperands(const Instruction &inst) {
+bool FuncVerifier::verifyInstDominance(const Instruction &inst) {
   // Check that operands properly dominate this use.
   for (unsigned operandNo = 0, e = inst.getNumOperands(); operandNo != e;
        ++operandNo) {
     auto *op = inst.getOperand(operandNo);
-    if (domInfo.properlyDominates(op, &inst))
+    if (domInfo->properlyDominates(op, &inst))
       continue;
 
     inst.emitError("operand #" + Twine(operandNo) +
@@ -214,151 +301,6 @@ bool CFGFuncVerifier::verifyInstOperands(const Instruction &inst) {
   return false;
 }
 
-bool CFGFuncVerifier::verifyBlock(const Block &block) {
-  if (!block.getTerminator())
-    return failure("block with no terminator", block);
-
-  for (auto *arg : block.getArguments()) {
-    if (arg->getOwner() != &block)
-      return failure("block argument not owned by block", block);
-  }
-
-  for (auto &inst : block) {
-    if (auto *opInst = dyn_cast<OperationInst>(&inst))
-      if (verifyOperation(*opInst))
-        return true;
-
-    if (verifyInstOperands(inst))
-      return true;
-  }
-  return false;
-}
-
-//===----------------------------------------------------------------------===//
-// ML Functions
-//===----------------------------------------------------------------------===//
-
-namespace {
-struct MLFuncVerifier : public Verifier, public InstWalker<MLFuncVerifier> {
-  const Function &fn;
-  bool hadError = false;
-
-  MLFuncVerifier(const Function &fn) : Verifier(fn), fn(fn) {}
-
-  void visitOperationInst(OperationInst *opInst) {
-    hadError |= verifyOperation(*opInst);
-  }
-
-  bool verify() {
-    llvm::PrettyStackTraceFormat fmt("MLIR Verifier: mlfunc @%s",
-                                     fn.getName().c_str());
-
-    // ML Functions should have exactly one block.
-    // TODO(clattner): This will change real soon now.
-    if (fn.getBlocks().size() != 1)
-      return fn.emitError("mlfunc should have exactly one block");
-
-    // Check basic structural properties.
-    walk(const_cast<Function *>(&fn));
-    if (hadError)
-      return true;
-
-    // TODO: check that loop bounds and if conditions are properly formed.
-    if (verifyReturn())
-      return true;
-
-    return verifyDominance();
-  }
-
-  /// Walk all of the code in this MLFunc and verify that the operands of any
-  /// operations are properly dominated by their definitions.
-  bool verifyDominance();
-
-  /// Verify that function has a return instruction that matches its signature.
-  bool verifyReturn();
-};
-} // end anonymous namespace
-
-/// Walk all of the code in this MLFunc and verify that the operands of any
-/// operations are properly dominated by their definitions.
-bool MLFuncVerifier::verifyDominance() {
-  using HashTable = llvm::ScopedHashTable<const Value *, bool>;
-  HashTable liveValues;
-  HashTable::ScopeTy topScope(liveValues);
-
-  // All of the arguments to the function are live for the whole function.
-  for (auto *arg : fn.getArguments())
-    liveValues.insert(arg, true);
-
-  // This recursive function walks the instruction list pushing scopes onto the
-  // stack as it goes, and popping them to remove them from the table.
-  std::function<bool(const Block &block)> walkBlock;
-  walkBlock = [&](const Block &block) -> bool {
-    HashTable::ScopeTy blockScope(liveValues);
-
-    // The induction variable of a for instruction is live within its body.
-    if (auto *forInst = dyn_cast_or_null<ForInst>(block.getContainingInst()))
-      liveValues.insert(forInst, true);
-
-    for (auto &inst : block) {
-      // Verify that each of the operands are live.
-      unsigned operandNo = 0;
-      for (auto *opValue : inst.getOperands()) {
-        if (!liveValues.count(opValue)) {
-          inst.emitError("operand #" + Twine(operandNo) +
-                         " does not dominate this use");
-          if (auto *useInst = opValue->getDefiningInst())
-            useInst->emitNote("operand defined here");
-          return true;
-        }
-        ++operandNo;
-      }
-
-      if (auto *opInst = dyn_cast<OperationInst>(&inst)) {
-        // Operations define values, add them to the hash table.
-        for (auto *result : opInst->getResults())
-          liveValues.insert(result, true);
-        continue;
-      }
-
-      // If this is an if or for, recursively walk the block they contain.
-      if (auto *ifInst = dyn_cast<IfInst>(&inst)) {
-        if (walkBlock(*ifInst->getThen()))
-          return true;
-
-        if (auto *elseClause = ifInst->getElse())
-          if (walkBlock(*elseClause))
-            return true;
-      }
-      if (auto *forInst = dyn_cast<ForInst>(&inst))
-        if (walkBlock(*forInst->getBody()))
-          return true;
-    }
-
-    return false;
-  };
-
-  // Check the whole function out.
-  return walkBlock(*fn.getBody());
-}
-
-bool MLFuncVerifier::verifyReturn() {
-  // TODO: fold return verification in the pass that verifies all instructions.
-  const char missingReturnMsg[] =
-      "ML function must end with return instruction";
-  if (fn.getBody()->getInstructions().empty())
-    return failure(missingReturnMsg, fn);
-
-  const auto &inst = fn.getBody()->getInstructions().back();
-  if (const auto *op = dyn_cast<OperationInst>(&inst)) {
-    if (!op->isReturn())
-      return failure(missingReturnMsg, fn);
-
-    return false;
-  }
-  return failure(missingReturnMsg, fn);
-}
-
 //===----------------------------------------------------------------------===//
 // Entrypoints
 //===----------------------------------------------------------------------===//
@@ -366,17 +308,7 @@ bool MLFuncVerifier::verifyReturn() {
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and
 /// returns true.
-bool Function::verify() const {
-  switch (getKind()) {
-  case Kind::ExtFunc:
-    // No body, nothing can be wrong here.
-    return false;
-  case Kind::CFGFunc:
-    return CFGFuncVerifier(*this).verify();
-  case Kind::MLFunc:
-    return MLFuncVerifier(*this).verify();
-  }
-}
+bool Function::verify() const { return FuncVerifier(*this).verify(); }
 
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and

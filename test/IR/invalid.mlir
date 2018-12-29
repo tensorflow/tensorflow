@@ -142,7 +142,7 @@ bb42:
 // -----
 
 cfgfunc @block_first_has_predecessor() {
-// expected-error@-1 {{first block of cfgfunc must not have predecessors}}
+// expected-error@-1 {{entry block of function may not have predecessors}}
 bb42:
   br bb43
 bb43:
@@ -177,8 +177,8 @@ bb42:
 
 // -----
 
-mlfunc @no_return() {  // expected-error {{ML function must end with return instruction}}
-  "foo"() : () -> ()
+mlfunc @no_return() {
+  "foo"() : () -> ()  // expected-error {{block with no terminator}}
 }
 
 // -----
@@ -370,7 +370,7 @@ bb2(%a: i64):  // expected-error{{redefinition of SSA value '%a'}}
 
 // -----
 
-cfgfunc @bbargMismatch(i32, f32) { // expected-error {{first block of cfgfunc must have 2 arguments to match function signature}}
+cfgfunc @bbargMismatch(i32, f32) { // expected-error {{first block of function must have 2 arguments to match function signature}}
 bb42(%0: f32):
   return
 }
@@ -478,7 +478,7 @@ mlfunc @return_inside_loop() -> i8 {
   for %i = 1 to 100 {
     %a = "foo"() : ()->i8
     return %a : i8
-    // expected-error@-1 {{'return' op must be the last instruction in the ML function}}
+    // expected-error@-1 {{'return' op may only be at the top level of a function}}
   }
 }
 

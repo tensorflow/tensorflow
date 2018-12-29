@@ -919,10 +919,10 @@ static unsigned getNumCommonLoops(const FlatAffineConstraints &srcDomain,
 }
 
 // Returns Block common to 'srcAccess.opInst' and 'dstAccess.opInst'.
-static Block *getCommonBlock(const MemRefAccess &srcAccess,
-                             const MemRefAccess &dstAccess,
-                             const FlatAffineConstraints &srcDomain,
-                             unsigned numCommonLoops) {
+static const Block *getCommonBlock(const MemRefAccess &srcAccess,
+                                   const MemRefAccess &dstAccess,
+                                   const FlatAffineConstraints &srcDomain,
+                                   unsigned numCommonLoops) {
   if (numCommonLoops == 0) {
     auto *block = srcAccess.opInst->getBlock();
     while (block->getContainingInst()) {

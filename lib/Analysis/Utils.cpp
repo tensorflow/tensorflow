@@ -337,7 +337,7 @@ template bool mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
 // Block from the Block containing instruction, stopping at 'limitBlock'.
 static void findInstPosition(const Instruction *inst, Block *limitBlock,
                              SmallVectorImpl<unsigned> *positions) {
-  Block *block = inst->getBlock();
+  const Block *block = inst->getBlock();
   while (block != limitBlock) {
     int instPosInBlock = block->findInstPositionInBlock(*inst);
     assert(instPosInBlock >= 0);

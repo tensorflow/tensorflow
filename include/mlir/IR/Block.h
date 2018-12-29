@@ -147,9 +147,11 @@ public:
   /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
   /// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
   /// the latter fails.
-  /// TODO: This is very specific functionality that should live somewhere else.
+  /// TODO: This is very specific functionality that should live somewhere else,
+  /// probably in Dominance.cpp.
   const Instruction *findAncestorInstInBlock(const Instruction &inst) const;
-  /// TODO: This const overload is wrong.
+  // TODO: it doesn't make sense for the former method to take the instruction
+  // by reference but this one to take it by pointer.
   Instruction *findAncestorInstInBlock(Instruction *inst) {
     return const_cast<Instruction *>(findAncestorInstInBlock(*inst));
   }

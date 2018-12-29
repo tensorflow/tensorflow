@@ -65,9 +65,13 @@ public:
     return (Instruction *)a->getDefiningInst() == b || properlyDominates(a, b);
   }
 
-  // dominates/properlyDominates for blocks.
-  using DominatorTreeBase::dominates;
-  using DominatorTreeBase::properlyDominates;
+  /// Return true if the specified block A properly dominates block B.
+  bool properlyDominates(const Block *a, const Block *b);
+
+  /// Return true if the specified block A dominates block B.
+  bool dominates(const Block *a, const Block *b) {
+    return a == b || properlyDominates(a, b);
+  }
 };
 
 } //  end namespace mlir

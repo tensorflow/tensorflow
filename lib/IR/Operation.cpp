@@ -275,17 +275,14 @@ static bool verifyTerminatorSuccessors(const OperationInst *op) {
 }
 
 bool OpTrait::impl::verifyIsTerminator(const OperationInst *op) {
+  const Block *block = op->getBlock();
   // Verify that the operation is at the end of the respective parent block.
-  if (op->getFunction()->isML()) {
-    Block *block = op->getBlock();
-    if (!block || block->getContainingInst() || &block->back() != op)
-      return op->emitOpError("must be the last instruction in the ML function");
-  } else {
-    const Block *block = op->getBlock();
-    if (!block || &block->back() != op)
-      return op->emitOpError(
-          "must be the last instruction in the parent block");
-  }
+  if (!block || &block->back() != op)
+    return op->emitOpError("must be the last instruction in the parent block");
+
+  // Terminators may not exist in ForInst and IfInst.
+  if (block->getContainingInst())
+    return op->emitOpError("may only be at the top level of a function");
 
   // Verify the state of the successor blocks.
   if (op->getNumSuccessors() != 0 && verifyTerminatorSuccessors(op))
