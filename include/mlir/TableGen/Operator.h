@@ -53,7 +53,7 @@ public:
   struct Attribute {
     llvm::StringInit *name;
     llvm::Record *record;
-    const bool isDerived;
+    bool isDerived;
   };
 
   using attribute_iterator = Attribute *;
