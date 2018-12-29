@@ -271,8 +271,8 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 // Instructions.
 //===----------------------------------------------------------------------===//
 
-/// Add new basic block and set the insertion point to the end of it.  If an
-/// 'insertBefore' basic block is passed, the block will be placed before the
+/// Add new block and set the insertion point to the end of it.  If an
+/// 'insertBefore' block is passed, the block will be placed before the
 /// specified block.  If not, the block will be appended to the end of the
 /// current function.
 Block *FuncBuilder::createBlock(Block *insertBefore) {

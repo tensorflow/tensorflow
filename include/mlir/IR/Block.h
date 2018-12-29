@@ -221,8 +221,8 @@ public:
   /// Unlink this Block from its Function and delete it.
   void eraseFromFunction();
 
-  /// Split the basic block into two basic blocks before the specified
-  /// instruction or iterator.
+  /// Split the block into two blocks before the specified instruction or
+  /// iterator.
   ///
   /// Note that all instructions BEFORE the specified iterator stay as part of
   /// the original basic block, an unconditional branch is added to the original
@@ -244,7 +244,7 @@ public:
   void print(raw_ostream &os) const;
   void dump() const;
 
-  /// Print out the name of the basic block without printing its body.
+  /// Print out the name of the block without printing its body.
   /// NOTE: The printType argument is ignored.  We keep it for compatibility
   /// with LLVM dominator machinery that expects it to exist.
   void printAsOperand(raw_ostream &os, bool printType = true);

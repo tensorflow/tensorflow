@@ -87,7 +87,7 @@ private:
 /// The "br" operation represents a branch instruction in a CFG function.
 /// The operation takes variable number of operands and produces no results.
 /// The operand number and types for each successor must match the
-/// arguments of the basic block successor. For example:
+/// arguments of the block successor. For example:
 ///
 ///   bb2:
 ///      %2 = call @someFn()
@@ -125,7 +125,7 @@ private:
 /// The "cond_br" operation represents a conditional branch instruction in a
 /// CFG function. The operation takes variable number of operands and produces
 /// no results. The operand number and types for each successor must match the
-//  arguments of the basic block successor. For example:
+//  arguments of the block successor. For example:
 ///
 ///   bb0:
 ///      %0 = extract_element %arg0[] : tensor<i1>

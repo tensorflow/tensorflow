@@ -157,7 +157,7 @@ protected:
 
 /// The "call_indirect" operation represents an indirect call to a value of
 /// function type.  Functions are first class types in MLIR, and may be passed
-/// as arguments and merged together with basic block arguments.  The operands
+/// as arguments and merged together with block arguments.  The operands
 /// and result types of the call must match the specified function type.
 ///
 ///   %31 = call_indirect %15(%0, %1)

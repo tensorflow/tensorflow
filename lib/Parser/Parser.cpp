@@ -1933,7 +1933,7 @@ public:
 
   // Block references.
 
-  /// Get the basic block with the specified name, creating it if it doesn't
+  /// Get the block with the specified name, creating it if it doesn't
   /// already exist.  The location specified is the point of use, which allows
   /// us to diagnose references to blocks that are not defined precisely.
   Block *getBlockNamed(StringRef name, SMLoc loc);

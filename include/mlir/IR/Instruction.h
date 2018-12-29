@@ -120,8 +120,8 @@ public:
   /// function.
   void moveBefore(Instruction *existingInst);
 
-  /// Unlink this operation instruction from its current basic block and insert
-  /// it right before `iterator` in the specified basic block.
+  /// Unlink this operation instruction from its current block and insert it
+  /// right before `iterator` in the specified block.
   void moveBefore(Block *block, llvm::iplist<Instruction>::iterator iterator);
 
   // Returns whether the Instruction is a terminator.

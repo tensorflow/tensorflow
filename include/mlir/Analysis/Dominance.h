@@ -65,7 +65,7 @@ public:
     return (Instruction *)a->getDefiningInst() == b || properlyDominates(a, b);
   }
 
-  // dominates/properlyDominates for basic blocks.
+  // dominates/properlyDominates for blocks.
   using DominatorTreeBase::dominates;
   using DominatorTreeBase::properlyDominates;
 };

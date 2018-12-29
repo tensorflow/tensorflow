@@ -9,7 +9,7 @@
 
 
 //
-// Basic functionality: function and basic block conversion, function calls,
+// Basic functionality: function and block conversion, function calls,
 // phi nodes, scalar type conversion, arithmetic operations.
 //
 

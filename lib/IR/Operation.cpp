@@ -284,7 +284,7 @@ bool OpTrait::impl::verifyIsTerminator(const OperationInst *op) {
     const Block *block = op->getBlock();
     if (!block || &block->back() != op)
       return op->emitOpError(
-          "must be the last instruction in the parent basic block.");
+          "must be the last instruction in the parent block");
   }
 
   // Verify the state of the successor blocks.

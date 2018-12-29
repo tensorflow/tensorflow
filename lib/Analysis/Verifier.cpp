@@ -166,7 +166,7 @@ bool CFGFuncVerifier::verify() {
   // we have uses and defs.
 
   if (fn.empty())
-    return failure("cfgfunc must have at least one basic block", fn);
+    return failure("cfgfunc must have at least one block", fn);
 
   // Verify the first block has no predecessors.
   auto *firstBB = &fn.front();
@@ -216,11 +216,11 @@ bool CFGFuncVerifier::verifyInstOperands(const Instruction &inst) {
 
 bool CFGFuncVerifier::verifyBlock(const Block &block) {
   if (!block.getTerminator())
-    return failure("basic block with no terminator", block);
+    return failure("block with no terminator", block);
 
   for (auto *arg : block.getArguments()) {
     if (arg->getOwner() != &block)
-      return failure("basic block argument not owned by block", block);
+      return failure("block argument not owned by block", block);
   }
 
   for (auto &inst : block) {

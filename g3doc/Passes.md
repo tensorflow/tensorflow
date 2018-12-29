@@ -8,10 +8,10 @@ This document describes the available MLIR passes and their contracts.
 
 Convert ML functions to equivalent CFG functions.
 
-Individual operations are preserved. Loops are converted to a subgraph of basic
-blocks (initialization, condition checking, subgraph of body blocks) with loop
-induction variable being passed as the basic block argument of the condition
-checking block.
+Individual operations are preserved. Loops are converted to a subgraph of blocks
+(initialization, condition checking, subgraph of body blocks) with loop
+induction variable being passed as the block argument of the condition checking
+block.
 
 ### Input IR
 
@@ -36,7 +36,7 @@ addition to the operations present in the source ML functions.
 -   Individual operations other than control flow from the source ML functions
     are replicated in the produced CFG functions; their arguments may be updated
     to capture the corresponding SSA values after conversion (e.g., loop
-    iterators become basic block arguments).
+    iterators become block arguments).
 
 ## `affine_apply` lowering (`-lower-affine-apply`) {#lower-affine-apply}
 

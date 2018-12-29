@@ -749,7 +749,7 @@ bool ModuleLowerer::convertBlock(const Block &bb, bool ignoreArguments) {
   // value remapping and PHI nodes, but do not add incoming edges for the PHI
   // nodes just yet: those values may be defined by this or following blocks.
   // This step is omitted if "ignoreArguments" is set.  The arguments of the
-  // first basic block have been already made available through the remapping of
+  // first block have been already made available through the remapping of
   // LLVM function arguments.
   if (!ignoreArguments) {
     auto predecessors = bb.getPredecessors();
@@ -790,7 +790,7 @@ static const Value *getPHISourceValue(const Block *current, const Block *pred,
   // through the "true" or the "false" branch and take the relevant operands.
   auto condBranchOp = terminator.dyn_cast<CondBranchOp>();
   assert(condBranchOp &&
-         "only branch instructions can be terminators of a basic block that "
+         "only branch instructions can be terminators of a block that "
          "has successors");
 
   condBranchOp->emitError("NYI: conditional branches with arguments");

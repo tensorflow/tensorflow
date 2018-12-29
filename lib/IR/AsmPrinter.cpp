@@ -1531,7 +1531,7 @@ void Block::print(raw_ostream &os) const {
 
 void Block::dump() const { print(llvm::errs()); }
 
-/// Print out the name of the basic block without printing its body.
+/// Print out the name of the block without printing its body.
 void Block::printAsOperand(raw_ostream &os, bool printType) {
   if (!getFunction()) {
     os << "<<UNLINKED BLOCK>>\n";

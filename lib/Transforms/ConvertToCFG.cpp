@@ -150,7 +150,7 @@ Value *FunctionConverter::buildMinMaxReductionSeq(
   return value;
 }
 
-// Convert a "for" loop to a flow of basic blocks.
+// Convert a "for" loop to a flow of blocks.
 //
 // Create an SESE region for the loop (including its body) and append it to the
 // end of the current region.  The loop region consists of the initialization
@@ -227,7 +227,7 @@ void FunctionConverter::visitForInst(ForInst *forInst) {
   builder.create<BranchOp>(builder.getUnknownLoc(), loopInitBlock);
 
   // The loop condition block has an argument for loop induction variable.
-  // Create it upfront and make the loop induction variable -> basic block
+  // Create it upfront and make the loop induction variable -> block
   // argument remapping available to the following instructions.  ForInstruction
   // is-a Value corresponding to the loop induction variable.
   builder.setInsertionPointToEnd(loopConditionBlock);
