@@ -1,4 +1,5 @@
-//===- Statement.h - MLIR ML Statement Class --------------------*- C++ -*-===//
+//===- Instruction.h - MLIR ML Instruction Class --------------------*- C++
+//-*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,12 +16,12 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines the Statement class.
+// This file defines the Instruction class.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_IR_STATEMENT_H
-#define MLIR_IR_STATEMENT_H
+#ifndef MLIR_IR_INSTRUCTION_H
+#define MLIR_IR_INSTRUCTION_H
 
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
@@ -30,7 +31,7 @@
 namespace mlir {
 class Block;
 class Location;
-class ForStmt;
+class ForInst;
 class MLIRContext;
 
 /// Terminator operations can have Block operands to represent successors.
@@ -39,20 +40,20 @@ using BlockOperand = IROperandImpl<Block, OperationInst>;
 } // namespace mlir
 
 //===----------------------------------------------------------------------===//
-// ilist_traits for Statement
+// ilist_traits for Instruction
 //===----------------------------------------------------------------------===//
 
 namespace llvm {
 
-template <> struct ilist_traits<::mlir::Statement> {
-  using Statement = ::mlir::Statement;
-  using stmt_iterator = simple_ilist<Statement>::iterator;
+template <> struct ilist_traits<::mlir::Instruction> {
+  using Instruction = ::mlir::Instruction;
+  using inst_iterator = simple_ilist<Instruction>::iterator;
 
-  static void deleteNode(Statement *stmt);
-  void addNodeToList(Statement *stmt);
-  void removeNodeFromList(Statement *stmt);
-  void transferNodesFromList(ilist_traits<Statement> &otherList,
-                             stmt_iterator first, stmt_iterator last);
+  static void deleteNode(Instruction *inst);
+  void addNodeToList(Instruction *inst);
+  void removeNodeFromList(Instruction *inst);
+  void transferNodesFromList(ilist_traits<Instruction> &otherList,
+                             inst_iterator first, inst_iterator last);
 
 private:
   mlir::Block *getContainingBlock();
@@ -63,22 +64,22 @@ private:
 namespace mlir {
 template <typename ObjectType, typename ElementType> class OperandIterator;
 
-/// Statement is a basic unit of execution within an ML function.
-/// Statements can be nested within for and if statements effectively
-/// forming a tree. Child statements are organized into statement blocks
+/// Instruction is a basic unit of execution within an ML function.
+/// Instructions can be nested within for and if instructions effectively
+/// forming a tree. Child instructions are organized into instruction blocks
 /// represented by a 'Block' class.
-class Statement : public IROperandOwner,
-                  public llvm::ilist_node_with_parent<Statement, Block> {
+class Instruction : public IROperandOwner,
+                    public llvm::ilist_node_with_parent<Instruction, Block> {
 public:
   enum class Kind {
     OperationInst = (int)IROperandOwner::Kind::OperationInst,
-    For = (int)IROperandOwner::Kind::ForStmt,
-    If = (int)IROperandOwner::Kind::IfStmt,
+    For = (int)IROperandOwner::Kind::ForInst,
+    If = (int)IROperandOwner::Kind::IfInst,
   };
 
   Kind getKind() const { return (Kind)IROperandOwner::getKind(); }
 
-  /// Remove this statement from its parent block and delete it.
+  /// Remove this instruction from its parent block and delete it.
   void erase();
 
   // This is a verbose type used by the clone method below.
@@ -86,27 +87,27 @@ public:
       DenseMap<const Value *, Value *, llvm::DenseMapInfo<const Value *>,
                llvm::detail::DenseMapPair<const Value *, Value *>>;
 
-  /// Create a deep copy of this statement, remapping any operands that use
-  /// values outside of the statement using the map that is provided (leaving
+  /// Create a deep copy of this instruction, remapping any operands that use
+  /// values outside of the instruction using the map that is provided (leaving
   /// them alone if no entry is present).  Replaces references to cloned
-  /// sub-statements to the corresponding statement that is copied, and adds
+  /// sub-instructions to the corresponding instruction that is copied, and adds
   /// those mappings to the map.
-  Statement *clone(OperandMapTy &operandMap, MLIRContext *context) const;
-  Statement *clone(MLIRContext *context) const;
+  Instruction *clone(OperandMapTy &operandMap, MLIRContext *context) const;
+  Instruction *clone(MLIRContext *context) const;
 
-  /// Returns the statement block that contains this statement.
+  /// Returns the instruction block that contains this instruction.
   Block *getBlock() const { return block; }
 
-  /// Returns the closest surrounding statement that contains this statement
-  /// or nullptr if this is a top-level statement.
-  Statement *getParentStmt() const;
+  /// Returns the closest surrounding instruction that contains this instruction
+  /// or nullptr if this is a top-level instruction.
+  Instruction *getParentInst() const;
 
-  /// Returns the function that this statement is part of.
-  /// The function is determined by traversing the chain of parent statements.
-  /// Returns nullptr if the statement is unlinked.
+  /// Returns the function that this instruction is part of.
+  /// The function is determined by traversing the chain of parent instructions.
+  /// Returns nullptr if the instruction is unlinked.
   Function *getFunction() const;
 
-  /// Destroys this statement and its subclass data.
+  /// Destroys this instruction and its subclass data.
   void destroy();
 
   /// This drops all operand uses from this instruction, which is an essential
@@ -114,16 +115,16 @@ public:
   /// be deleted.
   void dropAllReferences();
 
-  /// Unlink this statement from its current block and insert it right before
-  /// `existingStmt` which may be in the same or another block in the same
+  /// Unlink this instruction from its current block and insert it right before
+  /// `existingInst` which may be in the same or another block in the same
   /// function.
-  void moveBefore(Statement *existingStmt);
+  void moveBefore(Instruction *existingInst);
 
   /// Unlink this operation instruction from its current basic block and insert
   /// it right before `iterator` in the specified basic block.
-  void moveBefore(Block *block, llvm::iplist<Statement>::iterator iterator);
+  void moveBefore(Block *block, llvm::iplist<Instruction>::iterator iterator);
 
-  // Returns whether the Statement is a terminator.
+  // Returns whether the Instruction is a terminator.
   bool isTerminator() const;
 
   void print(raw_ostream &os) const;
@@ -140,7 +141,7 @@ public:
   void setOperand(unsigned idx, Value *value);
 
   // Support non-const operand iteration.
-  using operand_iterator = OperandIterator<Statement, Value>;
+  using operand_iterator = OperandIterator<Instruction, Value>;
 
   operand_iterator operand_begin();
 
@@ -150,7 +151,8 @@ public:
   llvm::iterator_range<operand_iterator> getOperands();
 
   // Support const operand iteration.
-  using const_operand_iterator = OperandIterator<const Statement, const Value>;
+  using const_operand_iterator =
+      OperandIterator<const Instruction, const Value>;
 
   const_operand_iterator operand_begin() const;
 
@@ -161,7 +163,7 @@ public:
 
   MutableArrayRef<InstOperand> getInstOperands();
   ArrayRef<InstOperand> getInstOperands() const {
-    return const_cast<Statement *>(this)->getInstOperands();
+    return const_cast<Instruction *>(this)->getInstOperands();
   }
 
   InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
@@ -185,27 +187,27 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const IROperandOwner *ptr) {
-    return ptr->getKind() <= IROperandOwner::Kind::STMT_LAST;
+    return ptr->getKind() <= IROperandOwner::Kind::INST_LAST;
   }
 
 protected:
-  Statement(Kind kind, Location location)
+  Instruction(Kind kind, Location location)
       : IROperandOwner((IROperandOwner::Kind)kind, location) {}
 
-  // Statements are deleted through the destroy() member because this class
+  // Instructions are deleted through the destroy() member because this class
   // does not have a virtual destructor.
-  ~Statement();
+  ~Instruction();
 
 private:
-  /// The statement block that containts this statement.
+  /// The instruction block that containts this instruction.
   Block *block = nullptr;
 
   // allow ilist_traits access to 'block' field.
-  friend struct llvm::ilist_traits<Statement>;
+  friend struct llvm::ilist_traits<Instruction>;
 };
 
-inline raw_ostream &operator<<(raw_ostream &os, const Statement &stmt) {
-  stmt.print(os);
+inline raw_ostream &operator<<(raw_ostream &os, const Instruction &inst) {
+  inst.print(os);
   return os;
 }
 
@@ -271,31 +273,32 @@ public:
 };
 
 // Implement the inline operand iterator methods.
-inline auto Statement::operand_begin() -> operand_iterator {
+inline auto Instruction::operand_begin() -> operand_iterator {
   return operand_iterator(this, 0);
 }
 
-inline auto Statement::operand_end() -> operand_iterator {
+inline auto Instruction::operand_end() -> operand_iterator {
   return operand_iterator(this, getNumOperands());
 }
 
-inline auto Statement::getOperands() -> llvm::iterator_range<operand_iterator> {
+inline auto Instruction::getOperands()
+    -> llvm::iterator_range<operand_iterator> {
   return {operand_begin(), operand_end()};
 }
 
-inline auto Statement::operand_begin() const -> const_operand_iterator {
+inline auto Instruction::operand_begin() const -> const_operand_iterator {
   return const_operand_iterator(this, 0);
 }
 
-inline auto Statement::operand_end() const -> const_operand_iterator {
+inline auto Instruction::operand_end() const -> const_operand_iterator {
   return const_operand_iterator(this, getNumOperands());
 }
 
-inline auto Statement::getOperands() const
+inline auto Instruction::getOperands() const
     -> llvm::iterator_range<const_operand_iterator> {
   return {operand_begin(), operand_end()};
 }
 
 } // end namespace mlir
 
-#endif  // MLIR_IR_STATEMENT_H
+#endif // MLIR_IR_INSTRUCTION_H

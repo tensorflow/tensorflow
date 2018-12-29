@@ -23,8 +23,8 @@ syn region mlirComment start="//" skip="\\$" end="$"
 syn region mlirString matchgroup=mlirString start=+"+ end=+"+
 
 hi def link mlirComment      Comment
-hi def link mlirKeywords     Statement
-hi def link mlirCoreOps      Statement
+hi def link mlirKeywords     Instruction
+hi def link mlirCoreOps      Instruction
 hi def link mlirInt          Constant
 hi def link mlirType         Type
 hi def link mlirMapOutline   PreProc

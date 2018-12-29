@@ -114,9 +114,9 @@ public:
   Block &front() { return blocks.front(); }
   const Block &front() const { return const_cast<Function *>(this)->front(); }
 
-  /// Return the 'return' statement of this Function.
-  const OperationInst *getReturnStmt() const;
-  OperationInst *getReturnStmt();
+  /// Return the 'return' instruction of this Function.
+  const OperationInst *getReturn() const;
+  OperationInst *getReturn();
 
   // These should only be used on MLFunctions.
   Block *getBody() {
@@ -127,12 +127,12 @@ public:
     return const_cast<Function *>(this)->getBody();
   }
 
-  /// Walk the statements in the function in preorder, calling the callback for
-  /// each operation statement.
+  /// Walk the instructions in the function in preorder, calling the callback
+  /// for each operation instruction.
   void walk(std::function<void(OperationInst *)> callback);
 
-  /// Walk the statements in the function in postorder, calling the callback for
-  /// each operation statement.
+  /// Walk the instructions in the function in postorder, calling the callback
+  /// for each operation instruction.
   void walkPostOrder(std::function<void(OperationInst *)> callback);
 
   //===--------------------------------------------------------------------===//

@@ -452,8 +452,8 @@ mlfunc @should_fuse_no_top_level_access() {
 
 #set0 = (d0) : (1 == 0)
 
-// CHECK-LABEL: mlfunc @should_not_fuse_if_stmt_at_top_level() {
-mlfunc @should_not_fuse_if_stmt_at_top_level() {
+// CHECK-LABEL: mlfunc @should_not_fuse_if_inst_at_top_level() {
+mlfunc @should_not_fuse_if_inst_at_top_level() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -466,7 +466,7 @@ mlfunc @should_not_fuse_if_stmt_at_top_level() {
   %c0 = constant 4 : index
   if #set0(%c0) {
   }
-  // Top-level IfStmt should prevent fusion.
+  // Top-level IfInst should prevent fusion.
   // CHECK:      for %i0 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT: }
@@ -480,8 +480,8 @@ mlfunc @should_not_fuse_if_stmt_at_top_level() {
 
 #set0 = (d0) : (1 == 0)
 
-// CHECK-LABEL: mlfunc @should_not_fuse_if_stmt_in_loop_nest() {
-mlfunc @should_not_fuse_if_stmt_in_loop_nest() {
+// CHECK-LABEL: mlfunc @should_not_fuse_if_inst_in_loop_nest() {
+mlfunc @should_not_fuse_if_inst_in_loop_nest() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
   %c4 = constant 4 : index
@@ -495,7 +495,7 @@ mlfunc @should_not_fuse_if_stmt_in_loop_nest() {
     %v0 = load %m[%i1] : memref<10xf32>
   }
 
-  // IfStmt in ForStmt should prevent fusion.
+  // IfInst in ForInst should prevent fusion.
   // CHECK:      for %i0 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT: }

@@ -26,7 +26,7 @@
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/StmtVisitor.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/Support/Debug.h"
@@ -38,14 +38,14 @@ using namespace mlir;
 namespace {
 
 /// Checks for out of bound memef access subscripts..
-struct MemRefBoundCheck : public FunctionPass, StmtWalker<MemRefBoundCheck> {
+struct MemRefBoundCheck : public FunctionPass, InstWalker<MemRefBoundCheck> {
   explicit MemRefBoundCheck() : FunctionPass(&MemRefBoundCheck::passID) {}
 
   PassResult runOnMLFunction(Function *f) override;
   // Not applicable to CFG functions.
   PassResult runOnCFGFunction(Function *f) override { return success(); }
 
-  void visitOperationInst(OperationInst *opStmt);
+  void visitOperationInst(OperationInst *opInst);
 
   static char passID;
 };
@@ -58,10 +58,10 @@ FunctionPass *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();
 }
 
-void MemRefBoundCheck::visitOperationInst(OperationInst *opStmt) {
-  if (auto loadOp = opStmt->dyn_cast<LoadOp>()) {
+void MemRefBoundCheck::visitOperationInst(OperationInst *opInst) {
+  if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
     boundCheckLoadOrStoreOp(loadOp);
-  } else if (auto storeOp = opStmt->dyn_cast<StoreOp>()) {
+  } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
     boundCheckLoadOrStoreOp(storeOp);
   }
   // TODO(bondhugula): do this for DMA ops as well.

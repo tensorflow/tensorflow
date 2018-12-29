@@ -34,8 +34,8 @@
 
 using namespace mlir;
 
-/// Returns true if statement 'a' properly dominates statement b.
-bool mlir::properlyDominates(const Statement &a, const Statement &b) {
+/// Returns true if instruction 'a' properly dominates instruction b.
+bool mlir::properlyDominates(const Instruction &a, const Instruction &b) {
   if (&a == &b)
     return false;
 
@@ -64,24 +64,24 @@ bool mlir::properlyDominates(const Statement &a, const Statement &b) {
   return false;
 }
 
-/// Returns true if statement A dominates statement B.
-bool mlir::dominates(const Statement &a, const Statement &b) {
+/// Returns true if instruction A dominates instruction B.
+bool mlir::dominates(const Instruction &a, const Instruction &b) {
   return &a == &b || properlyDominates(a, b);
 }
 
-/// Populates 'loops' with IVs of the loops surrounding 'stmt' ordered from
-/// the outermost 'for' statement to the innermost one.
-void mlir::getLoopIVs(const Statement &stmt,
-                      SmallVectorImpl<ForStmt *> *loops) {
-  auto *currStmt = stmt.getParentStmt();
-  ForStmt *currForStmt;
-  // Traverse up the hierarchy collecing all 'for' statement while skipping over
-  // 'if' statements.
-  while (currStmt && ((currForStmt = dyn_cast<ForStmt>(currStmt)) ||
-                      isa<IfStmt>(currStmt))) {
-    if (currForStmt)
-      loops->push_back(currForStmt);
-    currStmt = currStmt->getParentStmt();
+/// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
+/// the outermost 'for' instruction to the innermost one.
+void mlir::getLoopIVs(const Instruction &inst,
+                      SmallVectorImpl<ForInst *> *loops) {
+  auto *currInst = inst.getParentInst();
+  ForInst *currForInst;
+  // Traverse up the hierarchy collecing all 'for' instruction while skipping
+  // over 'if' instructions.
+  while (currInst && ((currForInst = dyn_cast<ForInst>(currInst)) ||
+                      isa<IfInst>(currInst))) {
+    if (currForInst)
+      loops->push_back(currForInst);
+    currInst = currInst->getParentInst();
   }
   std::reverse(loops->begin(), loops->end());
 }
@@ -129,7 +129,7 @@ Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
 
 /// Computes the memory region accessed by this memref with the region
 /// represented as constraints symbolic/parameteric in 'loopDepth' loops
-/// surrounding opStmt and any additional Function symbols. Returns false if
+/// surrounding opInst and any additional Function symbols. Returns false if
 /// this fails due to yet unimplemented cases.
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:
@@ -145,21 +145,21 @@ Optional<int64_t> MemRefRegion::getBoundingConstantSizeAndShape(
 //
 // TODO(bondhugula): extend this to any other memref dereferencing ops
 // (dma_start, dma_wait).
-bool mlir::getMemRefRegion(OperationInst *opStmt, unsigned loopDepth,
+bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
                            MemRefRegion *region) {
   OpPointer<LoadOp> loadOp;
   OpPointer<StoreOp> storeOp;
   unsigned rank;
   SmallVector<Value *, 4> indices;
 
-  if ((loadOp = opStmt->dyn_cast<LoadOp>())) {
+  if ((loadOp = opInst->dyn_cast<LoadOp>())) {
     rank = loadOp->getMemRefType().getRank();
     for (auto *index : loadOp->getIndices()) {
       indices.push_back(index);
     }
     region->memref = loadOp->getMemRef();
     region->setWrite(false);
-  } else if ((storeOp = opStmt->dyn_cast<StoreOp>())) {
+  } else if ((storeOp = opInst->dyn_cast<StoreOp>())) {
     rank = storeOp->getMemRefType().getRank();
     for (auto *index : storeOp->getIndices()) {
       indices.push_back(index);
@@ -173,7 +173,7 @@ bool mlir::getMemRefRegion(OperationInst *opStmt, unsigned loopDepth,
   // Build the constraints for this region.
   FlatAffineConstraints *regionCst = region->getConstraints();
 
-  FuncBuilder b(opStmt);
+  FuncBuilder b(opInst);
   auto idMap = b.getMultiDimIdentityMap(rank);
 
   // Initialize 'accessValueMap' and compose with reachable AffineApplyOps.
@@ -192,20 +192,20 @@ bool mlir::getMemRefRegion(OperationInst *opStmt, unsigned loopDepth,
   unsigned numSymbols = accessMap.getNumSymbols();
   // Add inequalties for loop lower/upper bounds.
   for (unsigned i = 0; i < numDims + numSymbols; ++i) {
-    if (auto *loop = dyn_cast<ForStmt>(accessValueMap.getOperand(i))) {
+    if (auto *loop = dyn_cast<ForInst>(accessValueMap.getOperand(i))) {
       // Note that regionCst can now have more dimensions than accessMap if the
       // bounds expressions involve outer loops or other symbols.
-      // TODO(bondhugula): rewrite this to use getStmtIndexSet; this way
+      // TODO(bondhugula): rewrite this to use getInstIndexSet; this way
       // conditionals will be handled when the latter supports it.
-      if (!regionCst->addForStmtDomain(*loop))
+      if (!regionCst->addForInstDomain(*loop))
         return false;
     } else {
       // Has to be a valid symbol.
       auto *symbol = accessValueMap.getOperand(i);
       assert(symbol->isValidSymbol());
       // Check if the symbol is a constant.
-      if (auto *opStmt = symbol->getDefiningInst()) {
-        if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
+      if (auto *opInst = symbol->getDefiningInst()) {
+        if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
           regionCst->setIdToConstant(*symbol, constOp->getValue());
         }
       }
@@ -220,12 +220,12 @@ bool mlir::getMemRefRegion(OperationInst *opStmt, unsigned loopDepth,
 
   // Eliminate any loop IVs other than the outermost 'loopDepth' IVs, on which
   // this memref region is symbolic.
-  SmallVector<ForStmt *, 4> outerIVs;
-  getLoopIVs(*opStmt, &outerIVs);
+  SmallVector<ForInst *, 4> outerIVs;
+  getLoopIVs(*opInst, &outerIVs);
   outerIVs.resize(loopDepth);
   for (auto *operand : accessValueMap.getOperands()) {
-    ForStmt *iv;
-    if ((iv = dyn_cast<ForStmt>(operand)) &&
+    ForInst *iv;
+    if ((iv = dyn_cast<ForInst>(operand)) &&
         std::find(outerIVs.begin(), outerIVs.end(), iv) == outerIVs.end()) {
       regionCst->projectOut(operand);
     }
@@ -282,9 +282,9 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
           std::is_same<LoadOrStoreOpPointer, OpPointer<StoreOp>>::value,
       "function argument should be either a LoadOp or a StoreOp");
 
-  OperationInst *opStmt = loadOrStoreOp->getInstruction();
+  OperationInst *opInst = loadOrStoreOp->getInstruction();
   MemRefRegion region;
-  if (!getMemRefRegion(opStmt, /*loopDepth=*/0, &region))
+  if (!getMemRefRegion(opInst, /*loopDepth=*/0, &region))
     return false;
   LLVM_DEBUG(llvm::dbgs() << "Memory region");
   LLVM_DEBUG(region.getConstraints()->dump());
@@ -333,43 +333,43 @@ template bool mlir::boundCheckLoadOrStoreOp(OpPointer<LoadOp> loadOp,
 template bool mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
                                             bool emitError);
 
-// Returns in 'positions' the Block positions of 'stmt' in each ancestor
-// Block from the Block containing statement, stopping at 'limitBlock'.
-static void findStmtPosition(const Statement *stmt, Block *limitBlock,
+// Returns in 'positions' the Block positions of 'inst' in each ancestor
+// Block from the Block containing instruction, stopping at 'limitBlock'.
+static void findInstPosition(const Instruction *inst, Block *limitBlock,
                              SmallVectorImpl<unsigned> *positions) {
-  Block *block = stmt->getBlock();
+  Block *block = inst->getBlock();
   while (block != limitBlock) {
-    int stmtPosInBlock = block->findInstPositionInBlock(*stmt);
-    assert(stmtPosInBlock >= 0);
-    positions->push_back(stmtPosInBlock);
-    stmt = block->getContainingInst();
-    block = stmt->getBlock();
+    int instPosInBlock = block->findInstPositionInBlock(*inst);
+    assert(instPosInBlock >= 0);
+    positions->push_back(instPosInBlock);
+    inst = block->getContainingInst();
+    block = inst->getBlock();
   }
   std::reverse(positions->begin(), positions->end());
 }
 
-// Returns the Statement in a possibly nested set of Blocks, where the
-// position of the statement is represented by 'positions', which has a
+// Returns the Instruction in a possibly nested set of Blocks, where the
+// position of the instruction is represented by 'positions', which has a
 // Block position for each level of nesting.
-static Statement *getStmtAtPosition(ArrayRef<unsigned> positions,
-                                    unsigned level, Block *block) {
+static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
+                                      unsigned level, Block *block) {
   unsigned i = 0;
-  for (auto &stmt : *block) {
+  for (auto &inst : *block) {
     if (i != positions[level]) {
       ++i;
       continue;
     }
     if (level == positions.size() - 1)
-      return &stmt;
-    if (auto *childForStmt = dyn_cast<ForStmt>(&stmt))
-      return getStmtAtPosition(positions, level + 1, childForStmt->getBody());
+      return &inst;
+    if (auto *childForInst = dyn_cast<ForInst>(&inst))
+      return getInstAtPosition(positions, level + 1, childForInst->getBody());
 
-    if (auto *ifStmt = dyn_cast<IfStmt>(&stmt)) {
-      auto *ret = getStmtAtPosition(positions, level + 1, ifStmt->getThen());
+    if (auto *ifInst = dyn_cast<IfInst>(&inst)) {
+      auto *ret = getInstAtPosition(positions, level + 1, ifInst->getThen());
       if (ret != nullptr)
         return ret;
-      if (auto *elseClause = ifStmt->getElse())
-        return getStmtAtPosition(positions, level + 1, elseClause);
+      if (auto *elseClause = ifInst->getElse())
+        return getInstAtPosition(positions, level + 1, elseClause);
     }
   }
   return nullptr;
@@ -379,7 +379,7 @@ static Statement *getStmtAtPosition(ArrayRef<unsigned> positions,
 // dependence constraint system to create AffineMaps with which to adjust the
 // loop bounds of the inserted compution slice so that they are functions of the
 // loop IVs and symbols of the loops surrounding 'dstAccess'.
-ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
+ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
                                               MemRefAccess *dstAccess,
                                               unsigned srcLoopDepth,
                                               unsigned dstLoopDepth) {
@@ -390,14 +390,14 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
     return nullptr;
   }
   // Get loop nest surrounding src operation.
-  SmallVector<ForStmt *, 4> srcLoopNest;
-  getLoopIVs(*srcAccess->opStmt, &srcLoopNest);
+  SmallVector<ForInst *, 4> srcLoopNest;
+  getLoopIVs(*srcAccess->opInst, &srcLoopNest);
   unsigned srcLoopNestSize = srcLoopNest.size();
   assert(srcLoopDepth <= srcLoopNestSize);
 
   // Get loop nest surrounding dst operation.
-  SmallVector<ForStmt *, 4> dstLoopNest;
-  getLoopIVs(*dstAccess->opStmt, &dstLoopNest);
+  SmallVector<ForInst *, 4> dstLoopNest;
+  getLoopIVs(*dstAccess->opInst, &dstLoopNest);
   unsigned dstLoopNestSize = dstLoopNest.size();
   (void)dstLoopNestSize;
   assert(dstLoopDepth > 0);
@@ -425,7 +425,7 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
     }
     SmallVector<unsigned, 2> nonZeroDimIds;
     SmallVector<unsigned, 2> nonZeroSymbolIds;
-    srcIvMaps[i] = cst->toAffineMapFromEq(0, 0, srcAccess->opStmt->getContext(),
+    srcIvMaps[i] = cst->toAffineMapFromEq(0, 0, srcAccess->opInst->getContext(),
                                           &nonZeroDimIds, &nonZeroSymbolIds);
     if (srcIvMaps[i] == AffineMap::Null()) {
       continue;
@@ -446,23 +446,23 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
     // with a symbol identifiers in 'nonZeroSymbolIds'.
   }
 
-  // Find the stmt block positions of 'srcAccess->opStmt' within 'srcLoopNest'.
+  // Find the inst block positions of 'srcAccess->opInst' within 'srcLoopNest'.
   SmallVector<unsigned, 4> positions;
-  findStmtPosition(srcAccess->opStmt, srcLoopNest[0]->getBlock(), &positions);
+  findInstPosition(srcAccess->opInst, srcLoopNest[0]->getBlock(), &positions);
 
-  // Clone src loop nest and insert it a the beginning of the statement block
+  // Clone src loop nest and insert it a the beginning of the instruction block
   // of the loop at 'dstLoopDepth' in 'dstLoopNest'.
-  auto *dstForStmt = dstLoopNest[dstLoopDepth - 1];
-  FuncBuilder b(dstForStmt->getBody(), dstForStmt->getBody()->begin());
+  auto *dstForInst = dstLoopNest[dstLoopDepth - 1];
+  FuncBuilder b(dstForInst->getBody(), dstForInst->getBody()->begin());
   DenseMap<const Value *, Value *> operandMap;
-  auto *sliceLoopNest = cast<ForStmt>(b.clone(*srcLoopNest[0], operandMap));
+  auto *sliceLoopNest = cast<ForInst>(b.clone(*srcLoopNest[0], operandMap));
 
-  // Lookup stmt in cloned 'sliceLoopNest' at 'positions'.
-  Statement *sliceStmt =
-      getStmtAtPosition(positions, /*level=*/0, sliceLoopNest->getBody());
-  // Get loop nest surrounding 'sliceStmt'.
-  SmallVector<ForStmt *, 4> sliceSurroundingLoops;
-  getLoopIVs(*sliceStmt, &sliceSurroundingLoops);
+  // Lookup inst in cloned 'sliceLoopNest' at 'positions'.
+  Instruction *sliceInst =
+      getInstAtPosition(positions, /*level=*/0, sliceLoopNest->getBody());
+  // Get loop nest surrounding 'sliceInst'.
+  SmallVector<ForInst *, 4> sliceSurroundingLoops;
+  getLoopIVs(*sliceInst, &sliceSurroundingLoops);
   unsigned sliceSurroundingLoopsSize = sliceSurroundingLoops.size();
   (void)sliceSurroundingLoopsSize;
 
@@ -470,18 +470,18 @@ ForStmt *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   unsigned sliceLoopLimit = dstLoopDepth + srcLoopNestSize;
   assert(sliceLoopLimit <= sliceSurroundingLoopsSize);
   for (unsigned i = dstLoopDepth; i < sliceLoopLimit; ++i) {
-    auto *forStmt = sliceSurroundingLoops[i];
+    auto *forInst = sliceSurroundingLoops[i];
     unsigned index = i - dstLoopDepth;
     AffineMap lbMap = srcIvMaps[index];
     if (lbMap == AffineMap::Null())
       continue;
-    forStmt->setLowerBound(srcIvOperands[index], lbMap);
+    forInst->setLowerBound(srcIvOperands[index], lbMap);
     // Create upper bound map with is lower bound map + 1;
     assert(lbMap.getNumResults() == 1);
     AffineExpr ubResultExpr = lbMap.getResult(0) + 1;
     AffineMap ubMap = AffineMap::get(lbMap.getNumDims(), lbMap.getNumSymbols(),
                                      {ubResultExpr}, {});
-    forStmt->setUpperBound(srcIvOperands[index], ubMap);
+    forInst->setUpperBound(srcIvOperands[index], ubMap);
   }
   return sliceLoopNest;
 }

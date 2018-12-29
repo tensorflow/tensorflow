@@ -1,4 +1,5 @@
-//===- Statements.h - MLIR ML Statement Classes -----------------*- C++ -*-===//
+//===- Instructions.h - MLIR ML Instruction Classes -----------------*- C++
+//-*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,18 +16,18 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines classes for special kinds of ML Function statements.
+// This file defines classes for special kinds of ML Function instructions.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_IR_STATEMENTS_H
-#define MLIR_IR_STATEMENTS_H
+#ifndef MLIR_IR_INSTRUCTIONS_H
+#define MLIR_IR_INSTRUCTIONS_H
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Block.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/OperationSupport.h"
-#include "mlir/IR/Statement.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/TrailingObjects.h"
 
@@ -45,7 +46,7 @@ class Function;
 /// MLIR.
 ///
 class OperationInst final
-    : public Statement,
+    : public Instruction,
       private llvm::TrailingObjects<OperationInst, InstResult, BlockOperand,
                                     unsigned, InstOperand> {
 public:
@@ -67,7 +68,7 @@ public:
     return getName().getAbstractOperation();
   }
 
-  /// Check if this statement is a return statement.
+  /// Check if this instruction is a return instruction.
   bool isReturn() const;
 
   //===--------------------------------------------------------------------===//
@@ -507,36 +508,36 @@ inline auto OperationInst::getResultTypes() const
   return {result_type_begin(), result_type_end()};
 }
 
-/// For statement represents an affine loop nest.
-class ForStmt : public Statement, public Value {
+/// For instruction represents an affine loop nest.
+class ForInst : public Instruction, public Value {
 public:
-  static ForStmt *create(Location location, ArrayRef<Value *> lbOperands,
+  static ForInst *create(Location location, ArrayRef<Value *> lbOperands,
                          AffineMap lbMap, ArrayRef<Value *> ubOperands,
                          AffineMap ubMap, int64_t step);
 
-  ~ForStmt() {
-    // Explicitly erase statements instead of relying of 'Block' destructor
-    // since child statements need to be destroyed before the Value that this
-    // for stmt represents is destroyed. Affine maps are immortal objects and
+  ~ForInst() {
+    // Explicitly erase instructions instead of relying of 'Block' destructor
+    // since child instructions need to be destroyed before the Value that this
+    // for inst represents is destroyed. Affine maps are immortal objects and
     // don't need to be deleted.
     getBody()->clear();
   }
 
   /// Resolve base class ambiguity.
-  using Statement::getFunction;
+  using Instruction::getFunction;
 
   /// Operand iterators.
-  using operand_iterator = OperandIterator<ForStmt, Value>;
-  using const_operand_iterator = OperandIterator<const ForStmt, const Value>;
+  using operand_iterator = OperandIterator<ForInst, Value>;
+  using const_operand_iterator = OperandIterator<const ForInst, const Value>;
 
   /// Operand iterator range.
   using operand_range = llvm::iterator_range<operand_iterator>;
   using const_operand_range = llvm::iterator_range<const_operand_iterator>;
 
-  /// Get the body of the ForStmt.
+  /// Get the body of the ForInst.
   Block *getBody() { return &body.front(); }
 
-  /// Get the body of the ForStmt.
+  /// Get the body of the ForInst.
   const Block *getBody() const { return &body.front(); }
 
   //===--------------------------------------------------------------------===//
@@ -648,19 +649,19 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const { return getType().getContext(); }
 
-  using Statement::dump;
-  using Statement::print;
+  using Instruction::dump;
+  using Instruction::print;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const IROperandOwner *ptr) {
-    return ptr->getKind() == IROperandOwner::Kind::ForStmt;
+    return ptr->getKind() == IROperandOwner::Kind::ForInst;
   }
 
-  // For statement represents implicitly represents induction variable by
+  // For instruction represents implicitly represents induction variable by
   // inheriting from Value class. Whenever you need to refer to the loop
-  // induction variable, just use the for statement itself.
+  // induction variable, just use the for instruction itself.
   static bool classof(const Value *value) {
-    return value->getKind() == Value::Kind::ForStmt;
+    return value->getKind() == Value::Kind::ForInst;
   }
 
 private:
@@ -679,68 +680,68 @@ private:
   // bound.
   std::vector<InstOperand> operands;
 
-  explicit ForStmt(Location location, unsigned numOperands, AffineMap lbMap,
+  explicit ForInst(Location location, unsigned numOperands, AffineMap lbMap,
                    AffineMap ubMap, int64_t step);
 };
 
-/// AffineBound represents a lower or upper bound in the for statement.
+/// AffineBound represents a lower or upper bound in the for instruction.
 /// This class does not own the underlying operands. Instead, it refers
-/// to the operands stored in the ForStmt. Its life span should not exceed
-/// that of the for statement it refers to.
+/// to the operands stored in the ForInst. Its life span should not exceed
+/// that of the for instruction it refers to.
 class AffineBound {
 public:
-  const ForStmt *getForStmt() const { return &stmt; }
+  const ForInst *getForInst() const { return &inst; }
   AffineMap getMap() const { return map; }
 
   unsigned getNumOperands() const { return opEnd - opStart; }
   const Value *getOperand(unsigned idx) const {
-    return stmt.getOperand(opStart + idx);
+    return inst.getOperand(opStart + idx);
   }
   const InstOperand &getInstOperand(unsigned idx) const {
-    return stmt.getInstOperand(opStart + idx);
+    return inst.getInstOperand(opStart + idx);
   }
 
-  using operand_iterator = ForStmt::operand_iterator;
-  using operand_range = ForStmt::operand_range;
+  using operand_iterator = ForInst::operand_iterator;
+  using operand_range = ForInst::operand_range;
 
   operand_iterator operand_begin() const {
     // These are iterators over Value *. Not casting away const'ness would
     // require the caller to use const Value *.
-    return operand_iterator(const_cast<ForStmt *>(&stmt), opStart);
+    return operand_iterator(const_cast<ForInst *>(&inst), opStart);
   }
   operand_iterator operand_end() const {
-    return operand_iterator(const_cast<ForStmt *>(&stmt), opEnd);
+    return operand_iterator(const_cast<ForInst *>(&inst), opEnd);
   }
 
   /// Returns an iterator on the underlying Value's (Value *).
   operand_range getOperands() const { return {operand_begin(), operand_end()}; }
   ArrayRef<InstOperand> getInstOperands() const {
-    auto ops = stmt.getInstOperands();
+    auto ops = inst.getInstOperands();
     return ArrayRef<InstOperand>(ops.begin() + opStart, ops.begin() + opEnd);
   }
 
 private:
-  // 'for' statement that contains this bound.
-  const ForStmt &stmt;
+  // 'for' instruction that contains this bound.
+  const ForInst &inst;
   // Start and end positions of this affine bound operands in the list of
-  // the containing 'for' statement operands.
+  // the containing 'for' instruction operands.
   unsigned opStart, opEnd;
   // Affine map for this bound.
   AffineMap map;
 
-  AffineBound(const ForStmt &stmt, unsigned opStart, unsigned opEnd,
+  AffineBound(const ForInst &inst, unsigned opStart, unsigned opEnd,
               AffineMap map)
-      : stmt(stmt), opStart(opStart), opEnd(opEnd), map(map) {}
+      : inst(inst), opStart(opStart), opEnd(opEnd), map(map) {}
 
-  friend class ForStmt;
+  friend class ForInst;
 };
 
-/// If statement restricts execution to a subset of the loop iteration space.
-class IfStmt : public Statement {
+/// If instruction restricts execution to a subset of the loop iteration space.
+class IfInst : public Instruction {
 public:
-  static IfStmt *create(Location location, ArrayRef<Value *> operands,
+  static IfInst *create(Location location, ArrayRef<Value *> operands,
                         IntegerSet set);
-  ~IfStmt();
+  ~IfInst();
 
   //===--------------------------------------------------------------------===//
   // Then, else, condition.
@@ -774,8 +775,8 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Operand iterators.
-  using operand_iterator = OperandIterator<IfStmt, Value>;
-  using const_operand_iterator = OperandIterator<const IfStmt, const Value>;
+  using operand_iterator = OperandIterator<IfInst, Value>;
+  using const_operand_iterator = OperandIterator<const IfInst, const Value>;
 
   /// Operand iterator range.
   using operand_range = llvm::iterator_range<operand_iterator>;
@@ -818,13 +819,13 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(const IROperandOwner *ptr) {
-    return ptr->getKind() == IROperandOwner::Kind::IfStmt;
+    return ptr->getKind() == IROperandOwner::Kind::IfInst;
   }
 
 private:
   // it is always present.
   BlockList thenClause;
-  // 'else' clause of the if statement. 'nullptr' if there is no else clause.
+  // 'else' clause of the if instruction. 'nullptr' if there is no else clause.
   BlockList *elseClause;
 
   // The integer set capturing the conditional guard.
@@ -833,31 +834,31 @@ private:
   // Condition operands.
   std::vector<InstOperand> operands;
 
-  explicit IfStmt(Location location, unsigned numOperands, IntegerSet set);
+  explicit IfInst(Location location, unsigned numOperands, IntegerSet set);
 };
 
-/// AffineCondition represents a condition of the 'if' statement.
+/// AffineCondition represents a condition of the 'if' instruction.
 /// Its life span should not exceed that of the objects it refers to.
 /// AffineCondition does not provide its own methods for iterating over
-/// the operands since the iterators of the if statement accomplish
+/// the operands since the iterators of the if instruction accomplish
 /// the same purpose.
 ///
 /// AffineCondition is trivially copyable, so it should be passed by value.
 class AffineCondition {
 public:
-  const IfStmt *getIfStmt() const { return &stmt; }
+  const IfInst *getIfInst() const { return &inst; }
   IntegerSet getIntegerSet() const { return set; }
 
 private:
-  // 'if' statement that contains this affine condition.
-  const IfStmt &stmt;
+  // 'if' instruction that contains this affine condition.
+  const IfInst &inst;
   // Integer set for this affine condition.
   IntegerSet set;
 
-  AffineCondition(const IfStmt &stmt, IntegerSet set) : stmt(stmt), set(set) {}
+  AffineCondition(const IfInst &inst, IntegerSet set) : inst(inst), set(set) {}
 
-  friend class IfStmt;
+  friend class IfInst;
 };
 } // end namespace mlir
 
-#endif  // MLIR_IR_STATEMENTS_H
+#endif // MLIR_IR_INSTRUCTIONS_H

@@ -18,7 +18,7 @@
 #ifndef MLIR_ANALYSIS_MLFUNCTIONMATCHER_H_
 #define MLIR_ANALYSIS_MLFUNCTIONMATCHER_H_
 
-#include "mlir/IR/StmtVisitor.h"
+#include "mlir/IR/InstVisitor.h"
 #include "llvm/Support/Allocator.h"
 #include <utility>
 
@@ -26,7 +26,7 @@ namespace mlir {
 
 struct MLFunctionMatcherStorage;
 struct MLFunctionMatchesStorage;
-class Statement;
+class Instruction;
 
 /// An MLFunctionMatcher is a recursive matcher that captures nested patterns in
 /// an ML Function. It is used in conjunction with a scoped
@@ -47,14 +47,14 @@ class Statement;
 ///
 
 /// Recursive abstraction for matching results.
-/// Provides iteration over the Statement* captured by a Matcher.
+/// Provides iteration over the Instruction* captured by a Matcher.
 ///
 /// Implemented as a POD value-type with underlying storage pointer.
 /// The underlying storage lives in a scoped bumper allocator whose lifetime
 /// is managed by an RAII MLFunctionMatcherContext.
 /// This should be used by value everywhere.
 struct MLFunctionMatches {
-  using EntryType = std::pair<Statement *, MLFunctionMatches>;
+  using EntryType = std::pair<Instruction *, MLFunctionMatches>;
   using iterator = EntryType *;
 
   MLFunctionMatches() : storage(nullptr) {}
@@ -66,8 +66,8 @@ struct MLFunctionMatches {
   unsigned size() { return end() - begin(); }
   unsigned empty() { return size() == 0; }
 
-  /// Appends the pair <stmt, children> to the current matches.
-  void append(Statement *stmt, MLFunctionMatches children);
+  /// Appends the pair <inst, children> to the current matches.
+  void append(Instruction *inst, MLFunctionMatches children);
 
 private:
   friend class MLFunctionMatcher;
@@ -79,7 +79,7 @@ private:
   MLFunctionMatchesStorage *storage;
 };
 
-/// A MLFunctionMatcher is a special type of StmtWalker that:
+/// A MLFunctionMatcher is a special type of InstWalker that:
 ///   1. recursively matches a substructure in the tree;
 ///   2. uses a filter function to refine matches with extra semantic
 ///      constraints (passed via a lambda of type FilterFunctionType);
@@ -89,39 +89,39 @@ private:
 /// The underlying storage lives in a scoped bumper allocator whose lifetime
 /// is managed by an RAII MLFunctionMatcherContext.
 /// This should be used by value everywhere.
-using FilterFunctionType = std::function<bool(const Statement &)>;
-static bool defaultFilterFunction(const Statement &) { return true; };
-struct MLFunctionMatcher : public StmtWalker<MLFunctionMatcher> {
-  MLFunctionMatcher(Statement::Kind k, MLFunctionMatcher child,
+using FilterFunctionType = std::function<bool(const Instruction &)>;
+static bool defaultFilterFunction(const Instruction &) { return true; };
+struct MLFunctionMatcher : public InstWalker<MLFunctionMatcher> {
+  MLFunctionMatcher(Instruction::Kind k, MLFunctionMatcher child,
                     FilterFunctionType filter = defaultFilterFunction);
-  MLFunctionMatcher(Statement::Kind k,
+  MLFunctionMatcher(Instruction::Kind k,
                     MutableArrayRef<MLFunctionMatcher> children,
                     FilterFunctionType filter = defaultFilterFunction);
 
   /// Returns all the matches in `function`.
   MLFunctionMatches match(Function *function);
 
-  /// Returns all the matches nested under `statement`.
-  MLFunctionMatches match(Statement *statement);
+  /// Returns all the matches nested under `instruction`.
+  MLFunctionMatches match(Instruction *instruction);
 
   unsigned getDepth();
 
 private:
   friend class MLFunctionMatcherContext;
-  friend StmtWalker<MLFunctionMatcher>;
+  friend InstWalker<MLFunctionMatcher>;
 
-  Statement::Kind getKind();
+  Instruction::Kind getKind();
   MutableArrayRef<MLFunctionMatcher> getChildrenMLFunctionMatchers();
   FilterFunctionType getFilterFunction();
 
   MLFunctionMatcher forkMLFunctionMatcherAt(MLFunctionMatcher tmpl,
-                                            Statement *stmt);
+                                            Instruction *inst);
 
-  void matchOne(Statement *elem);
+  void matchOne(Instruction *elem);
 
-  void visitForStmt(ForStmt *forStmt) { matchOne(forStmt); }
-  void visitIfStmt(IfStmt *ifStmt) { matchOne(ifStmt); }
-  void visitOperationInst(OperationInst *opStmt) { matchOne(opStmt); }
+  void visitForInst(ForInst *forInst) { matchOne(forInst); }
+  void visitIfInst(IfInst *ifInst) { matchOne(ifInst); }
+  void visitOperationInst(OperationInst *opInst) { matchOne(opInst); }
 
   /// Underlying global bump allocator managed by an MLFunctionMatcherContext.
   static llvm::BumpPtrAllocator *&allocator();
@@ -160,9 +160,9 @@ MLFunctionMatcher For(MutableArrayRef<MLFunctionMatcher> children = {});
 MLFunctionMatcher For(FilterFunctionType filter,
                       MutableArrayRef<MLFunctionMatcher> children = {});
 
-bool isParallelLoop(const Statement &stmt);
-bool isReductionLoop(const Statement &stmt);
-bool isLoadOrStore(const Statement &stmt);
+bool isParallelLoop(const Instruction &inst);
+bool isReductionLoop(const Instruction &inst);
+bool isLoadOrStore(const Instruction &inst);
 
 } // end namespace matcher
 } // end namespace mlir

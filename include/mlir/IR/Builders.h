@@ -19,7 +19,7 @@
 #define MLIR_IR_BUILDERS_H
 
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Statements.h"
+#include "mlir/IR/Instructions.h"
 
 namespace mlir {
 
@@ -172,10 +172,10 @@ public:
       clearInsertionPoint();
   }
 
-  /// Create a function builder and set insertion point to the given statement,
-  /// which will cause subsequent insertions to go right before it.
-  FuncBuilder(Statement *stmt) : FuncBuilder(stmt->getFunction()) {
-    setInsertionPoint(stmt);
+  /// Create a function builder and set insertion point to the given
+  /// instruction, which will cause subsequent insertions to go right before it.
+  FuncBuilder(Instruction *inst) : FuncBuilder(inst->getFunction()) {
+    setInsertionPoint(inst);
   }
 
   FuncBuilder(Block *block) : FuncBuilder(block->getFunction()) {
@@ -207,8 +207,8 @@ public:
 
   /// Sets the insertion point to the specified operation, which will cause
   /// subsequent insertions to go right before it.
-  void setInsertionPoint(Statement *stmt) {
-    setInsertionPoint(stmt->getBlock(), Block::iterator(stmt));
+  void setInsertionPoint(Instruction *inst) {
+    setInsertionPoint(inst->getBlock(), Block::iterator(inst));
   }
 
   /// Sets the insertion point to the start of the specified block.
@@ -234,9 +234,9 @@ public:
   /// current function.
   Block *createBlock(Block *insertBefore = nullptr);
 
-  /// Returns a builder for the body of a for Stmt.
-  static FuncBuilder getForStmtBodyBuilder(ForStmt *forStmt) {
-    return FuncBuilder(forStmt->getBody(), forStmt->getBody()->end());
+  /// Returns a builder for the body of a 'for' instruction.
+  static FuncBuilder getForInstBodyBuilder(ForInst *forInst) {
+    return FuncBuilder(forInst->getBody(), forInst->getBody()->end());
   }
 
   /// Returns the current block of the builder.
@@ -250,8 +250,8 @@ public:
   OpPointer<OpTy> create(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
-    auto *stmt = createOperation(state);
-    auto result = stmt->dyn_cast<OpTy>();
+    auto *inst = createOperation(state);
+    auto result = inst->dyn_cast<OpTy>();
     assert(result && "Builder didn't return the right type");
     return result;
   }
@@ -263,44 +263,44 @@ public:
   OpPointer<OpTy> createChecked(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
-    auto *stmt = createOperation(state);
+    auto *inst = createOperation(state);
 
     // If the OperationInst we produce is valid, return it.
-    if (!OpTy::verifyInvariants(stmt)) {
-      auto result = stmt->dyn_cast<OpTy>();
+    if (!OpTy::verifyInvariants(inst)) {
+      auto result = inst->dyn_cast<OpTy>();
       assert(result && "Builder didn't return the right type");
       return result;
     }
 
-    // Otherwise, the error message got emitted.  Just remove the statement
+    // Otherwise, the error message got emitted.  Just remove the instruction
     // we made.
-    stmt->erase();
+    inst->erase();
     return OpPointer<OpTy>();
   }
 
-  /// Creates a deep copy of the specified statement, remapping any operands
-  /// that use values outside of the statement using the map that is provided (
-  /// leaving them alone if no entry is present).  Replaces references to cloned
-  /// sub-statements to the corresponding statement that is copied, and adds
-  /// those mappings to the map.
-  Statement *clone(const Statement &stmt,
-                   OperationInst::OperandMapTy &operandMapping) {
-    Statement *cloneStmt = stmt.clone(operandMapping, getContext());
-    block->getInstructions().insert(insertPoint, cloneStmt);
-    return cloneStmt;
+  /// Creates a deep copy of the specified instruction, remapping any operands
+  /// that use values outside of the instruction using the map that is provided
+  /// ( leaving them alone if no entry is present).  Replaces references to
+  /// cloned sub-instructions to the corresponding instruction that is copied,
+  /// and adds those mappings to the map.
+  Instruction *clone(const Instruction &inst,
+                     OperationInst::OperandMapTy &operandMapping) {
+    Instruction *cloneInst = inst.clone(operandMapping, getContext());
+    block->getInstructions().insert(insertPoint, cloneInst);
+    return cloneInst;
   }
 
-  // Creates a for statement. When step is not specified, it is set to 1.
-  ForStmt *createFor(Location location, ArrayRef<Value *> lbOperands,
+  // Creates a for instruction. When step is not specified, it is set to 1.
+  ForInst *createFor(Location location, ArrayRef<Value *> lbOperands,
                      AffineMap lbMap, ArrayRef<Value *> ubOperands,
                      AffineMap ubMap, int64_t step = 1);
 
-  // Creates a for statement with known (constant) lower and upper bounds.
+  // Creates a for instruction with known (constant) lower and upper bounds.
   // Default step is 1.
-  ForStmt *createFor(Location loc, int64_t lb, int64_t ub, int64_t step = 1);
+  ForInst *createFor(Location loc, int64_t lb, int64_t ub, int64_t step = 1);
 
-  /// Creates if statement.
-  IfStmt *createIf(Location location, ArrayRef<Value *> operands,
+  /// Creates if instruction.
+  IfInst *createIf(Location location, ArrayRef<Value *> operands,
                    IntegerSet set);
 
 private:

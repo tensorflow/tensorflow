@@ -36,9 +36,9 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Function.h"
+#include "mlir/IR/InstVisitor.h"
+#include "mlir/IR/Instructions.h"
 #include "mlir/IR/Module.h"
-#include "mlir/IR/Statements.h"
-#include "mlir/IR/StmtVisitor.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
@@ -239,14 +239,14 @@ bool CFGFuncVerifier::verifyBlock(const Block &block) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
+struct MLFuncVerifier : public Verifier, public InstWalker<MLFuncVerifier> {
   const Function &fn;
   bool hadError = false;
 
   MLFuncVerifier(const Function &fn) : Verifier(fn), fn(fn) {}
 
-  void visitOperationInst(OperationInst *opStmt) {
-    hadError |= verifyOperation(*opStmt);
+  void visitOperationInst(OperationInst *opInst) {
+    hadError |= verifyOperation(*opInst);
   }
 
   bool verify() {
@@ -269,7 +269,7 @@ struct MLFuncVerifier : public Verifier, public StmtWalker<MLFuncVerifier> {
   /// operations are properly dominated by their definitions.
   bool verifyDominance();
 
-  /// Verify that function has a return statement that matches its signature.
+  /// Verify that function has a return instruction that matches its signature.
   bool verifyReturn();
 };
 } // end anonymous namespace
@@ -285,48 +285,48 @@ bool MLFuncVerifier::verifyDominance() {
   for (auto *arg : fn.getArguments())
     liveValues.insert(arg, true);
 
-  // This recursive function walks the statement list pushing scopes onto the
+  // This recursive function walks the instruction list pushing scopes onto the
   // stack as it goes, and popping them to remove them from the table.
   std::function<bool(const Block &block)> walkBlock;
   walkBlock = [&](const Block &block) -> bool {
     HashTable::ScopeTy blockScope(liveValues);
 
-    // The induction variable of a for statement is live within its body.
-    if (auto *forStmt = dyn_cast_or_null<ForStmt>(block.getContainingInst()))
-      liveValues.insert(forStmt, true);
+    // The induction variable of a for instruction is live within its body.
+    if (auto *forInst = dyn_cast_or_null<ForInst>(block.getContainingInst()))
+      liveValues.insert(forInst, true);
 
-    for (auto &stmt : block) {
+    for (auto &inst : block) {
       // Verify that each of the operands are live.
       unsigned operandNo = 0;
-      for (auto *opValue : stmt.getOperands()) {
+      for (auto *opValue : inst.getOperands()) {
         if (!liveValues.count(opValue)) {
-          stmt.emitError("operand #" + Twine(operandNo) +
+          inst.emitError("operand #" + Twine(operandNo) +
                          " does not dominate this use");
-          if (auto *useStmt = opValue->getDefiningInst())
-            useStmt->emitNote("operand defined here");
+          if (auto *useInst = opValue->getDefiningInst())
+            useInst->emitNote("operand defined here");
           return true;
         }
         ++operandNo;
       }
 
-      if (auto *opStmt = dyn_cast<OperationInst>(&stmt)) {
+      if (auto *opInst = dyn_cast<OperationInst>(&inst)) {
         // Operations define values, add them to the hash table.
-        for (auto *result : opStmt->getResults())
+        for (auto *result : opInst->getResults())
           liveValues.insert(result, true);
         continue;
       }
 
       // If this is an if or for, recursively walk the block they contain.
-      if (auto *ifStmt = dyn_cast<IfStmt>(&stmt)) {
-        if (walkBlock(*ifStmt->getThen()))
+      if (auto *ifInst = dyn_cast<IfInst>(&inst)) {
+        if (walkBlock(*ifInst->getThen()))
           return true;
 
-        if (auto *elseClause = ifStmt->getElse())
+        if (auto *elseClause = ifInst->getElse())
           if (walkBlock(*elseClause))
             return true;
       }
-      if (auto *forStmt = dyn_cast<ForStmt>(&stmt))
-        if (walkBlock(*forStmt->getBody()))
+      if (auto *forInst = dyn_cast<ForInst>(&inst))
+        if (walkBlock(*forInst->getBody()))
           return true;
     }
 
@@ -338,13 +338,14 @@ bool MLFuncVerifier::verifyDominance() {
 }
 
 bool MLFuncVerifier::verifyReturn() {
-  // TODO: fold return verification in the pass that verifies all statements.
-  const char missingReturnMsg[] = "ML function must end with return statement";
+  // TODO: fold return verification in the pass that verifies all instructions.
+  const char missingReturnMsg[] =
+      "ML function must end with return instruction";
   if (fn.getBody()->getInstructions().empty())
     return failure(missingReturnMsg, fn);
 
-  const auto &stmt = fn.getBody()->getInstructions().back();
-  if (const auto *op = dyn_cast<OperationInst>(&stmt)) {
+  const auto &inst = fn.getBody()->getInstructions().back();
+  if (const auto *op = dyn_cast<OperationInst>(&inst)) {
     if (!op->isReturn())
       return failure(missingReturnMsg, fn);
 

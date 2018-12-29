@@ -33,22 +33,22 @@
 namespace mlir {
 
 class FlatAffineConstraints;
-class ForStmt;
+class ForInst;
 class MemRefAccess;
 class OperationInst;
-class Statement;
+class Instruction;
 class Value;
 
-/// Returns true if statement 'a' dominates statement b.
-bool dominates(const Statement &a, const Statement &b);
+/// Returns true if instruction 'a' dominates instruction b.
+bool dominates(const Instruction &a, const Instruction &b);
 
-/// Returns true if statement 'a' properly dominates statement b.
-bool properlyDominates(const Statement &a, const Statement &b);
+/// Returns true if instruction 'a' properly dominates instruction b.
+bool properlyDominates(const Instruction &a, const Instruction &b);
 
-/// Populates 'loops' with IVs of the loops surrounding 'stmt' ordered from
-/// the outermost 'for' statement to the innermost one.
-//  TODO(bondhugula): handle 'if' stmt's.
-void getLoopIVs(const Statement &stmt, SmallVectorImpl<ForStmt *> *loops);
+/// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
+/// the outermost 'for' instruction to the innermost one.
+//  TODO(bondhugula): handle 'if' inst's.
+void getLoopIVs(const Instruction &inst, SmallVectorImpl<ForInst *> *loops);
 
 /// A region of a memref's data space; this is typically constructed by
 /// analyzing load/store op's on this memref and the index space of loops
@@ -111,10 +111,10 @@ private:
 
 /// Computes the memory region accessed by this memref with the region
 /// represented as constraints symbolic/parameteric in 'loopDepth' loops
-/// surrounding opStmt. Returns false if this fails due to yet unimplemented
+/// surrounding opInst. Returns false if this fails due to yet unimplemented
 /// cases. The computed region's 'cst' field has exactly as many dimensional
 /// identifiers as the rank of the memref, and *potentially* additional symbolic
-/// identifiers which could include any of the loop IVs surrounding opStmt up
+/// identifiers which could include any of the loop IVs surrounding opInst up
 /// until 'loopDepth' and another additional Function symbols involved with
 /// the access (for eg., those appear in affine_apply's, loop bounds, etc.).
 ///  For example, the memref region for this operation at loopDepth = 1 will be:
@@ -128,7 +128,7 @@ private:
 ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
 /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
 ///
-bool getMemRefRegion(OperationInst *opStmt, unsigned loopDepth,
+bool getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
                      MemRefRegion *region);
 
 /// Returns the size of memref data in bytes if it's statically shaped, None
@@ -144,7 +144,7 @@ bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
 
 /// Creates a clone of the computation contained in the loop nest surrounding
 /// 'srcAccess', slices the iteration space of the first 'srcLoopDepth' src loop
-/// IVs, and inserts the computation slice at the beginning of the statement
+/// IVs, and inserts the computation slice at the beginning of the instruction
 /// block of the loop at 'dstLoopDepth' in the loop nest surrounding
 /// 'dstAccess'. Returns the top-level loop of the computation slice on
 /// success, returns nullptr otherwise.
@@ -152,7 +152,7 @@ bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
 // materialize the results of the backward slice - presenting a trade-off b/w
 // storage and redundant computation in several cases
 // TODO(andydavis) Support computation slices with common surrounding loops.
-ForStmt *insertBackwardComputationSlice(MemRefAccess *srcAccess,
+ForInst *insertBackwardComputationSlice(MemRefAccess *srcAccess,
                                         MemRefAccess *dstAccess,
                                         unsigned srcLoopDepth,
                                         unsigned dstLoopDepth);

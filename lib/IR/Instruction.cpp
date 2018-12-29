@@ -1,4 +1,5 @@
-//===- Statement.cpp - MLIR Statement Classes ----------------------------===//
+//===- Instruction.cpp - MLIR Instruction Classes
+//----------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,10 +21,10 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Function.h"
+#include "mlir/IR/InstVisitor.h"
+#include "mlir/IR/Instructions.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Statements.h"
-#include "mlir/IR/StmtVisitor.h"
 #include "llvm/ADT/DenseMap.h"
 
 using namespace mlir;
@@ -54,41 +55,43 @@ template <> unsigned BlockOperand::getOperandNumber() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Statement
+// Instruction
 //===----------------------------------------------------------------------===//
 
-// Statements are deleted through the destroy() member because we don't have
+// Instructions are deleted through the destroy() member because we don't have
 // a virtual destructor.
-Statement::~Statement() {
-  assert(block == nullptr && "statement destroyed but still in a block");
+Instruction::~Instruction() {
+  assert(block == nullptr && "instruction destroyed but still in a block");
 }
 
-/// Destroy this statement or one of its subclasses.
-void Statement::destroy() {
+/// Destroy this instruction or one of its subclasses.
+void Instruction::destroy() {
   switch (this->getKind()) {
   case Kind::OperationInst:
     cast<OperationInst>(this)->destroy();
     break;
   case Kind::For:
-    delete cast<ForStmt>(this);
+    delete cast<ForInst>(this);
     break;
   case Kind::If:
-    delete cast<IfStmt>(this);
+    delete cast<IfInst>(this);
     break;
   }
 }
 
-Statement *Statement::getParentStmt() const {
+Instruction *Instruction::getParentInst() const {
   return block ? block->getContainingInst() : nullptr;
 }
 
-Function *Statement::getFunction() const {
+Function *Instruction::getFunction() const {
   return block ? block->getFunction() : nullptr;
 }
 
-Value *Statement::getOperand(unsigned idx) { return getInstOperand(idx).get(); }
+Value *Instruction::getOperand(unsigned idx) {
+  return getInstOperand(idx).get();
+}
 
-const Value *Statement::getOperand(unsigned idx) const {
+const Value *Instruction::getOperand(unsigned idx) const {
   return getInstOperand(idx).get();
 }
 
@@ -96,12 +99,12 @@ const Value *Statement::getOperand(unsigned idx) const {
 // it is an induction variable, or it is a result of affine apply operation
 // with dimension id arguments.
 bool Value::isValidDim() const {
-  if (auto *stmt = getDefiningInst()) {
-    // Top level statement or constant operation is ok.
-    if (stmt->getParentStmt() == nullptr || stmt->isa<ConstantOp>())
+  if (auto *inst = getDefiningInst()) {
+    // Top level instruction or constant operation is ok.
+    if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = stmt->dyn_cast<AffineApplyOp>())
+    if (auto op = inst->dyn_cast<AffineApplyOp>())
       return op->isValidDim();
     return false;
   }
@@ -114,12 +117,12 @@ bool Value::isValidDim() const {
 // the top level, or it is a result of affine apply operation with symbol
 // arguments.
 bool Value::isValidSymbol() const {
-  if (auto *stmt = getDefiningInst()) {
-    // Top level statement or constant operation is ok.
-    if (stmt->getParentStmt() == nullptr || stmt->isa<ConstantOp>())
+  if (auto *inst = getDefiningInst()) {
+    // Top level instruction or constant operation is ok.
+    if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = stmt->dyn_cast<AffineApplyOp>())
+    if (auto op = inst->dyn_cast<AffineApplyOp>())
       return op->isValidSymbol();
     return false;
   }
@@ -128,42 +131,42 @@ bool Value::isValidSymbol() const {
   return isa<BlockArgument>(this);
 }
 
-void Statement::setOperand(unsigned idx, Value *value) {
+void Instruction::setOperand(unsigned idx, Value *value) {
   getInstOperand(idx).set(value);
 }
 
-unsigned Statement::getNumOperands() const {
+unsigned Instruction::getNumOperands() const {
   switch (getKind()) {
   case Kind::OperationInst:
     return cast<OperationInst>(this)->getNumOperands();
   case Kind::For:
-    return cast<ForStmt>(this)->getNumOperands();
+    return cast<ForInst>(this)->getNumOperands();
   case Kind::If:
-    return cast<IfStmt>(this)->getNumOperands();
+    return cast<IfInst>(this)->getNumOperands();
   }
 }
 
-MutableArrayRef<InstOperand> Statement::getInstOperands() {
+MutableArrayRef<InstOperand> Instruction::getInstOperands() {
   switch (getKind()) {
   case Kind::OperationInst:
     return cast<OperationInst>(this)->getInstOperands();
   case Kind::For:
-    return cast<ForStmt>(this)->getInstOperands();
+    return cast<ForInst>(this)->getInstOperands();
   case Kind::If:
-    return cast<IfStmt>(this)->getInstOperands();
+    return cast<IfInst>(this)->getInstOperands();
   }
 }
 
-/// Emit a note about this statement, reporting up to any diagnostic
+/// Emit a note about this instruction, reporting up to any diagnostic
 /// handlers that may be listening.
-void Statement::emitNote(const Twine &message) const {
+void Instruction::emitNote(const Twine &message) const {
   getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Note);
 }
 
-/// Emit a warning about this statement, reporting up to any diagnostic
+/// Emit a warning about this instruction, reporting up to any diagnostic
 /// handlers that may be listening.
-void Statement::emitWarning(const Twine &message) const {
+void Instruction::emitWarning(const Twine &message) const {
   getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Warning);
 }
@@ -172,80 +175,80 @@ void Statement::emitWarning(const Twine &message) const {
 /// any diagnostic handlers that may be listening.  This function always
 /// returns true.  NOTE: This may terminate the containing application, only
 /// use when the IR is in an inconsistent state.
-bool Statement::emitError(const Twine &message) const {
+bool Instruction::emitError(const Twine &message) const {
   return getContext()->emitError(getLoc(), message);
 }
 
-// Returns whether the Statement is a terminator.
-bool Statement::isTerminator() const {
+// Returns whether the Instruction is a terminator.
+bool Instruction::isTerminator() const {
   if (auto *op = dyn_cast<OperationInst>(this))
     return op->isTerminator();
   return false;
 }
 
 //===----------------------------------------------------------------------===//
-// ilist_traits for Statement
+// ilist_traits for Instruction
 //===----------------------------------------------------------------------===//
 
-void llvm::ilist_traits<::mlir::Statement>::deleteNode(Statement *stmt) {
-  stmt->destroy();
+void llvm::ilist_traits<::mlir::Instruction>::deleteNode(Instruction *inst) {
+  inst->destroy();
 }
 
-Block *llvm::ilist_traits<::mlir::Statement>::getContainingBlock() {
+Block *llvm::ilist_traits<::mlir::Instruction>::getContainingBlock() {
   size_t Offset(size_t(&((Block *)nullptr->*Block::getSublistAccess(nullptr))));
-  iplist<Statement> *Anchor(static_cast<iplist<Statement> *>(this));
+  iplist<Instruction> *Anchor(static_cast<iplist<Instruction> *>(this));
   return reinterpret_cast<Block *>(reinterpret_cast<char *>(Anchor) - Offset);
 }
 
-/// This is a trait method invoked when a statement is added to a block.  We
+/// This is a trait method invoked when a instruction is added to a block.  We
 /// keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::Statement>::addNodeToList(Statement *stmt) {
-  assert(!stmt->getBlock() && "already in a statement block!");
-  stmt->block = getContainingBlock();
+void llvm::ilist_traits<::mlir::Instruction>::addNodeToList(Instruction *inst) {
+  assert(!inst->getBlock() && "already in a instruction block!");
+  inst->block = getContainingBlock();
 }
 
-/// This is a trait method invoked when a statement is removed from a block.
+/// This is a trait method invoked when a instruction is removed from a block.
 /// We keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::Statement>::removeNodeFromList(
-    Statement *stmt) {
-  assert(stmt->block && "not already in a statement block!");
-  stmt->block = nullptr;
+void llvm::ilist_traits<::mlir::Instruction>::removeNodeFromList(
+    Instruction *inst) {
+  assert(inst->block && "not already in a instruction block!");
+  inst->block = nullptr;
 }
 
-/// This is a trait method invoked when a statement is moved from one block
+/// This is a trait method invoked when a instruction is moved from one block
 /// to another.  We keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::Statement>::transferNodesFromList(
-    ilist_traits<Statement> &otherList, stmt_iterator first,
-    stmt_iterator last) {
-  // If we are transferring statements within the same block, the block
+void llvm::ilist_traits<::mlir::Instruction>::transferNodesFromList(
+    ilist_traits<Instruction> &otherList, inst_iterator first,
+    inst_iterator last) {
+  // If we are transferring instructions within the same block, the block
   // pointer doesn't need to be updated.
   Block *curParent = getContainingBlock();
   if (curParent == otherList.getContainingBlock())
     return;
 
-  // Update the 'block' member of each statement.
+  // Update the 'block' member of each instruction.
   for (; first != last; ++first)
     first->block = curParent;
 }
 
-/// Remove this statement (and its descendants) from its Block and delete
+/// Remove this instruction (and its descendants) from its Block and delete
 /// all of them.
-void Statement::erase() {
-  assert(getBlock() && "Statement has no block");
+void Instruction::erase() {
+  assert(getBlock() && "Instruction has no block");
   getBlock()->getInstructions().erase(this);
 }
 
-/// Unlink this statement from its current block and insert it right before
-/// `existingStmt` which may be in the same or another block in the same
+/// Unlink this instruction from its current block and insert it right before
+/// `existingInst` which may be in the same or another block in the same
 /// function.
-void Statement::moveBefore(Statement *existingStmt) {
-  moveBefore(existingStmt->getBlock(), existingStmt->getIterator());
+void Instruction::moveBefore(Instruction *existingInst) {
+  moveBefore(existingInst->getBlock(), existingInst->getIterator());
 }
 
 /// Unlink this operation instruction from its current basic block and insert
 /// it right before `iterator` in the specified basic block.
-void Statement::moveBefore(Block *block,
-                           llvm::iplist<Statement>::iterator iterator) {
+void Instruction::moveBefore(Block *block,
+                             llvm::iplist<Instruction>::iterator iterator) {
   block->getInstructions().splice(iterator, getBlock()->getInstructions(),
                                   getIterator());
 }
@@ -253,7 +256,7 @@ void Statement::moveBefore(Block *block,
 /// This drops all operand uses from this instruction, which is an essential
 /// step in breaking cyclic dependences between references when they are to
 /// be deleted.
-void Statement::dropAllReferences() {
+void Instruction::dropAllReferences() {
   for (auto &op : getInstOperands())
     op.drop();
 
@@ -284,17 +287,17 @@ OperationInst *OperationInst::create(Location location, OperationName name,
           resultTypes.size(), numSuccessors, numSuccessors, numOperands);
   void *rawMem = malloc(byteSize);
 
-  // Initialize the OperationInst part of the statement.
-  auto stmt = ::new (rawMem)
+  // Initialize the OperationInst part of the instruction.
+  auto inst = ::new (rawMem)
       OperationInst(location, name, numOperands, resultTypes.size(),
                     numSuccessors, attributes, context);
 
   // Initialize the results and operands.
-  auto instResults = stmt->getInstResults();
+  auto instResults = inst->getInstResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
-    new (&instResults[i]) InstResult(resultTypes[i], stmt);
+    new (&instResults[i]) InstResult(resultTypes[i], inst);
 
-  auto InstOperands = stmt->getInstOperands();
+  auto InstOperands = inst->getInstOperands();
 
   // Initialize normal operands.
   unsigned operandIt = 0, operandE = operands.size();
@@ -305,7 +308,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
     // separately below.
     if (!operands[operandIt])
       break;
-    new (&InstOperands[nextOperand++]) InstOperand(stmt, operands[operandIt]);
+    new (&InstOperands[nextOperand++]) InstOperand(inst, operands[operandIt]);
   }
 
   unsigned currentSuccNum = 0;
@@ -313,13 +316,13 @@ OperationInst *OperationInst::create(Location location, OperationName name,
     // Verify that the amount of sentinal operands is equivalent to the number
     // of successors.
     assert(currentSuccNum == numSuccessors);
-    return stmt;
+    return inst;
   }
 
-  assert(stmt->isTerminator() &&
+  assert(inst->isTerminator() &&
          "Sentinal operand found in non terminator operand list.");
-  auto instBlockOperands = stmt->getBlockOperands();
-  unsigned *succOperandCountIt = stmt->getTrailingObjects<unsigned>();
+  auto instBlockOperands = inst->getBlockOperands();
+  unsigned *succOperandCountIt = inst->getTrailingObjects<unsigned>();
   unsigned *succOperandCountE = succOperandCountIt + numSuccessors;
   (void)succOperandCountE;
 
@@ -338,12 +341,12 @@ OperationInst *OperationInst::create(Location location, OperationName name,
       }
 
       new (&instBlockOperands[currentSuccNum])
-          BlockOperand(stmt, successors[currentSuccNum]);
+          BlockOperand(inst, successors[currentSuccNum]);
       *succOperandCountIt = 0;
       ++currentSuccNum;
       continue;
     }
-    new (&InstOperands[nextOperand++]) InstOperand(stmt, operands[operandIt]);
+    new (&InstOperands[nextOperand++]) InstOperand(inst, operands[operandIt]);
     ++(*succOperandCountIt);
   }
 
@@ -351,7 +354,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
   // successors.
   assert(currentSuccNum == numSuccessors);
 
-  return stmt;
+  return inst;
 }
 
 OperationInst::OperationInst(Location location, OperationName name,
@@ -359,7 +362,7 @@ OperationInst::OperationInst(Location location, OperationName name,
                              unsigned numSuccessors,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
-    : Statement(Kind::OperationInst, location), numOperands(numOperands),
+    : Instruction(Kind::OperationInst, location), numOperands(numOperands),
       numResults(numResults), numSuccs(numSuccessors), name(name) {
 #ifndef NDEBUG
   for (auto elt : attributes)
@@ -524,10 +527,10 @@ bool OperationInst::emitOpError(const Twine &message) const {
 }
 
 //===----------------------------------------------------------------------===//
-// ForStmt
+// ForInst
 //===----------------------------------------------------------------------===//
 
-ForStmt *ForStmt::create(Location location, ArrayRef<Value *> lbOperands,
+ForInst *ForInst::create(Location location, ArrayRef<Value *> lbOperands,
                          AffineMap lbMap, ArrayRef<Value *> ubOperands,
                          AffineMap ubMap, int64_t step) {
   assert(lbOperands.size() == lbMap.getNumInputs() &&
@@ -537,39 +540,39 @@ ForStmt *ForStmt::create(Location location, ArrayRef<Value *> lbOperands,
   assert(step > 0 && "step has to be a positive integer constant");
 
   unsigned numOperands = lbOperands.size() + ubOperands.size();
-  ForStmt *stmt = new ForStmt(location, numOperands, lbMap, ubMap, step);
+  ForInst *inst = new ForInst(location, numOperands, lbMap, ubMap, step);
 
   unsigned i = 0;
   for (unsigned e = lbOperands.size(); i != e; ++i)
-    stmt->operands.emplace_back(InstOperand(stmt, lbOperands[i]));
+    inst->operands.emplace_back(InstOperand(inst, lbOperands[i]));
 
   for (unsigned j = 0, e = ubOperands.size(); j != e; ++i, ++j)
-    stmt->operands.emplace_back(InstOperand(stmt, ubOperands[j]));
+    inst->operands.emplace_back(InstOperand(inst, ubOperands[j]));
 
-  return stmt;
+  return inst;
 }
 
-ForStmt::ForStmt(Location location, unsigned numOperands, AffineMap lbMap,
+ForInst::ForInst(Location location, unsigned numOperands, AffineMap lbMap,
                  AffineMap ubMap, int64_t step)
-    : Statement(Statement::Kind::For, location),
-      Value(Value::Kind::ForStmt,
+    : Instruction(Instruction::Kind::For, location),
+      Value(Value::Kind::ForInst,
             Type::getIndex(lbMap.getResult(0).getContext())),
       body(this), lbMap(lbMap), ubMap(ubMap), step(step) {
 
-  // The body of a for stmt always has one block.
+  // The body of a for inst always has one block.
   body.push_back(new Block());
   operands.reserve(numOperands);
 }
 
-const AffineBound ForStmt::getLowerBound() const {
+const AffineBound ForInst::getLowerBound() const {
   return AffineBound(*this, 0, lbMap.getNumInputs(), lbMap);
 }
 
-const AffineBound ForStmt::getUpperBound() const {
+const AffineBound ForInst::getUpperBound() const {
   return AffineBound(*this, lbMap.getNumInputs(), getNumOperands(), ubMap);
 }
 
-void ForStmt::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
+void ForInst::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
   assert(lbOperands.size() == map.getNumInputs());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
 
@@ -586,7 +589,7 @@ void ForStmt::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
   this->lbMap = map;
 }
 
-void ForStmt::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
+void ForInst::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
   assert(ubOperands.size() == map.getNumInputs());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
 
@@ -603,57 +606,57 @@ void ForStmt::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
   this->ubMap = map;
 }
 
-void ForStmt::setLowerBoundMap(AffineMap map) {
+void ForInst::setLowerBoundMap(AffineMap map) {
   assert(lbMap.getNumDims() == map.getNumDims() &&
          lbMap.getNumSymbols() == map.getNumSymbols());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
   this->lbMap = map;
 }
 
-void ForStmt::setUpperBoundMap(AffineMap map) {
+void ForInst::setUpperBoundMap(AffineMap map) {
   assert(ubMap.getNumDims() == map.getNumDims() &&
          ubMap.getNumSymbols() == map.getNumSymbols());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
   this->ubMap = map;
 }
 
-bool ForStmt::hasConstantLowerBound() const { return lbMap.isSingleConstant(); }
+bool ForInst::hasConstantLowerBound() const { return lbMap.isSingleConstant(); }
 
-bool ForStmt::hasConstantUpperBound() const { return ubMap.isSingleConstant(); }
+bool ForInst::hasConstantUpperBound() const { return ubMap.isSingleConstant(); }
 
-int64_t ForStmt::getConstantLowerBound() const {
+int64_t ForInst::getConstantLowerBound() const {
   return lbMap.getSingleConstantResult();
 }
 
-int64_t ForStmt::getConstantUpperBound() const {
+int64_t ForInst::getConstantUpperBound() const {
   return ubMap.getSingleConstantResult();
 }
 
-void ForStmt::setConstantLowerBound(int64_t value) {
+void ForInst::setConstantLowerBound(int64_t value) {
   setLowerBound({}, AffineMap::getConstantMap(value, getContext()));
 }
 
-void ForStmt::setConstantUpperBound(int64_t value) {
+void ForInst::setConstantUpperBound(int64_t value) {
   setUpperBound({}, AffineMap::getConstantMap(value, getContext()));
 }
 
-ForStmt::operand_range ForStmt::getLowerBoundOperands() {
+ForInst::operand_range ForInst::getLowerBoundOperands() {
   return {operand_begin(), operand_begin() + getLowerBoundMap().getNumInputs()};
 }
 
-ForStmt::const_operand_range ForStmt::getLowerBoundOperands() const {
+ForInst::const_operand_range ForInst::getLowerBoundOperands() const {
   return {operand_begin(), operand_begin() + getLowerBoundMap().getNumInputs()};
 }
 
-ForStmt::operand_range ForStmt::getUpperBoundOperands() {
+ForInst::operand_range ForInst::getUpperBoundOperands() {
   return {operand_begin() + getLowerBoundMap().getNumInputs(), operand_end()};
 }
 
-ForStmt::const_operand_range ForStmt::getUpperBoundOperands() const {
+ForInst::const_operand_range ForInst::getUpperBoundOperands() const {
   return {operand_begin() + getLowerBoundMap().getNumInputs(), operand_end()};
 }
 
-bool ForStmt::matchingBoundOperandList() const {
+bool ForInst::matchingBoundOperandList() const {
   if (lbMap.getNumDims() != ubMap.getNumDims() ||
       lbMap.getNumSymbols() != ubMap.getNumSymbols())
     return false;
@@ -668,46 +671,46 @@ bool ForStmt::matchingBoundOperandList() const {
 }
 
 //===----------------------------------------------------------------------===//
-// IfStmt
+// IfInst
 //===----------------------------------------------------------------------===//
 
-IfStmt::IfStmt(Location location, unsigned numOperands, IntegerSet set)
-    : Statement(Kind::If, location), thenClause(this), elseClause(nullptr),
+IfInst::IfInst(Location location, unsigned numOperands, IntegerSet set)
+    : Instruction(Kind::If, location), thenClause(this), elseClause(nullptr),
       set(set) {
   operands.reserve(numOperands);
 
-  // The then of an 'if' stmt always has one block.
+  // The then of an 'if' inst always has one block.
   thenClause.push_back(new Block());
 }
 
-IfStmt::~IfStmt() {
+IfInst::~IfInst() {
   if (elseClause)
     delete elseClause;
 
-  // An IfStmt's IntegerSet 'set' should not be deleted since it is
+  // An IfInst's IntegerSet 'set' should not be deleted since it is
   // allocated through MLIRContext's bump pointer allocator.
 }
 
-IfStmt *IfStmt::create(Location location, ArrayRef<Value *> operands,
+IfInst *IfInst::create(Location location, ArrayRef<Value *> operands,
                        IntegerSet set) {
   unsigned numOperands = operands.size();
   assert(numOperands == set.getNumOperands() &&
          "operand cound does not match the integer set operand count");
 
-  IfStmt *stmt = new IfStmt(location, numOperands, set);
+  IfInst *inst = new IfInst(location, numOperands, set);
 
   for (auto *op : operands)
-    stmt->operands.emplace_back(InstOperand(stmt, op));
+    inst->operands.emplace_back(InstOperand(inst, op));
 
-  return stmt;
+  return inst;
 }
 
-const AffineCondition IfStmt::getCondition() const {
+const AffineCondition IfInst::getCondition() const {
   return AffineCondition(*this, set);
 }
 
-MLIRContext *IfStmt::getContext() const {
-  // Check for degenerate case of if statement with no operands.
+MLIRContext *IfInst::getContext() const {
+  // Check for degenerate case of if instruction with no operands.
   // This is unlikely, but legal.
   if (operands.empty())
     return getFunction()->getContext();
@@ -716,16 +719,16 @@ MLIRContext *IfStmt::getContext() const {
 }
 
 //===----------------------------------------------------------------------===//
-// Statement Cloning
+// Instruction Cloning
 //===----------------------------------------------------------------------===//
 
-/// Create a deep copy of this statement, remapping any operands that use
-/// values outside of the statement using the map that is provided (leaving
+/// Create a deep copy of this instruction, remapping any operands that use
+/// values outside of the instruction using the map that is provided (leaving
 /// them alone if no entry is present).  Replaces references to cloned
-/// sub-statements to the corresponding statement that is copied, and adds
+/// sub-instructions to the corresponding instruction that is copied, and adds
 /// those mappings to the map.
-Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
-                            MLIRContext *context) const {
+Instruction *Instruction::clone(DenseMap<const Value *, Value *> &operandMap,
+                                MLIRContext *context) const {
   // If the specified value is in operandMap, return the remapped value.
   // Otherwise return the value itself.
   auto remapOperand = [&](const Value *value) -> Value * {
@@ -735,48 +738,48 @@ Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
 
   SmallVector<Value *, 8> operands;
   SmallVector<Block *, 2> successors;
-  if (auto *opStmt = dyn_cast<OperationInst>(this)) {
-    operands.reserve(getNumOperands() + opStmt->getNumSuccessors());
+  if (auto *opInst = dyn_cast<OperationInst>(this)) {
+    operands.reserve(getNumOperands() + opInst->getNumSuccessors());
 
-    if (!opStmt->isTerminator()) {
+    if (!opInst->isTerminator()) {
       // Non-terminators just add all the operands.
       for (auto *opValue : getOperands())
         operands.push_back(remapOperand(opValue));
     } else {
       // We add the operands separated by nullptr's for each successor.
-      unsigned firstSuccOperand = opStmt->getNumSuccessors()
-                                      ? opStmt->getSuccessorOperandIndex(0)
-                                      : opStmt->getNumOperands();
-      auto InstOperands = opStmt->getInstOperands();
+      unsigned firstSuccOperand = opInst->getNumSuccessors()
+                                      ? opInst->getSuccessorOperandIndex(0)
+                                      : opInst->getNumOperands();
+      auto InstOperands = opInst->getInstOperands();
 
       unsigned i = 0;
       for (; i != firstSuccOperand; ++i)
         operands.push_back(remapOperand(InstOperands[i].get()));
 
-      successors.reserve(opStmt->getNumSuccessors());
-      for (unsigned succ = 0, e = opStmt->getNumSuccessors(); succ != e;
+      successors.reserve(opInst->getNumSuccessors());
+      for (unsigned succ = 0, e = opInst->getNumSuccessors(); succ != e;
            ++succ) {
-        successors.push_back(const_cast<Block *>(opStmt->getSuccessor(succ)));
+        successors.push_back(const_cast<Block *>(opInst->getSuccessor(succ)));
 
         // Add sentinel to delineate successor operands.
         operands.push_back(nullptr);
 
         // Remap the successors operands.
-        for (auto *operand : opStmt->getSuccessorOperands(succ))
+        for (auto *operand : opInst->getSuccessorOperands(succ))
           operands.push_back(remapOperand(operand));
       }
     }
 
     SmallVector<Type, 8> resultTypes;
-    resultTypes.reserve(opStmt->getNumResults());
-    for (auto *result : opStmt->getResults())
+    resultTypes.reserve(opInst->getNumResults());
+    for (auto *result : opInst->getResults())
       resultTypes.push_back(result->getType());
-    auto *newOp = OperationInst::create(getLoc(), opStmt->getName(), operands,
-                                        resultTypes, opStmt->getAttrs(),
+    auto *newOp = OperationInst::create(getLoc(), opInst->getName(), operands,
+                                        resultTypes, opInst->getAttrs(),
                                         successors, context);
     // Remember the mapping of any results.
-    for (unsigned i = 0, e = opStmt->getNumResults(); i != e; ++i)
-      operandMap[opStmt->getResult(i)] = newOp->getResult(i);
+    for (unsigned i = 0, e = opInst->getNumResults(); i != e; ++i)
+      operandMap[opInst->getResult(i)] = newOp->getResult(i);
     return newOp;
   }
 
@@ -784,43 +787,43 @@ Statement *Statement::clone(DenseMap<const Value *, Value *> &operandMap,
   for (auto *opValue : getOperands())
     operands.push_back(remapOperand(opValue));
 
-  if (auto *forStmt = dyn_cast<ForStmt>(this)) {
-    auto lbMap = forStmt->getLowerBoundMap();
-    auto ubMap = forStmt->getUpperBoundMap();
+  if (auto *forInst = dyn_cast<ForInst>(this)) {
+    auto lbMap = forInst->getLowerBoundMap();
+    auto ubMap = forInst->getUpperBoundMap();
 
-    auto *newFor = ForStmt::create(
+    auto *newFor = ForInst::create(
         getLoc(), ArrayRef<Value *>(operands).take_front(lbMap.getNumInputs()),
         lbMap, ArrayRef<Value *>(operands).take_back(ubMap.getNumInputs()),
-        ubMap, forStmt->getStep());
+        ubMap, forInst->getStep());
 
     // Remember the induction variable mapping.
-    operandMap[forStmt] = newFor;
+    operandMap[forInst] = newFor;
 
     // Recursively clone the body of the for loop.
-    for (auto &subStmt : *forStmt->getBody())
-      newFor->getBody()->push_back(subStmt.clone(operandMap, context));
+    for (auto &subInst : *forInst->getBody())
+      newFor->getBody()->push_back(subInst.clone(operandMap, context));
 
     return newFor;
   }
 
-  // Otherwise, we must have an If statement.
-  auto *ifStmt = cast<IfStmt>(this);
-  auto *newIf = IfStmt::create(getLoc(), operands, ifStmt->getIntegerSet());
+  // Otherwise, we must have an If instruction.
+  auto *ifInst = cast<IfInst>(this);
+  auto *newIf = IfInst::create(getLoc(), operands, ifInst->getIntegerSet());
 
   auto *resultThen = newIf->getThen();
-  for (auto &childStmt : *ifStmt->getThen())
-    resultThen->push_back(childStmt.clone(operandMap, context));
+  for (auto &childInst : *ifInst->getThen())
+    resultThen->push_back(childInst.clone(operandMap, context));
 
-  if (ifStmt->hasElse()) {
+  if (ifInst->hasElse()) {
     auto *resultElse = newIf->createElse();
-    for (auto &childStmt : *ifStmt->getElse())
-      resultElse->push_back(childStmt.clone(operandMap, context));
+    for (auto &childInst : *ifInst->getElse())
+      resultElse->push_back(childInst.clone(operandMap, context));
   }
 
   return newIf;
 }
 
-Statement *Statement::clone(MLIRContext *context) const {
+Instruction *Instruction::clone(MLIRContext *context) const {
   DenseMap<const Value *, Value *> operandMap;
   return clone(operandMap, context);
 }

@@ -96,7 +96,7 @@ and probably slightly incorrect below):
   }
 ```
 
-In this design, an mlfunc is an unordered bag of statements whose execution
+In this design, an mlfunc is an unordered bag of instructions whose execution
 order is fully controlled by their schedule.
 
 However, we recently agreed that a more explicit schedule tree representation is
@@ -128,9 +128,9 @@ representation, and makes lexical ordering within a loop significant
 (eliminating the constant 0/1/2 of schedules).
 
 It isn't obvious in the example above, but the representation allows for some
-interesting features, including the ability for statements within a loop nest to
-have non-equal domains, like this - the second statement ignores the outer 10
-points inside the loop:
+interesting features, including the ability for instructions within a loop nest
+to have non-equal domains, like this - the second instruction ignores the outer
+10 points inside the loop:
 
 ```
   mlfunc @reduced_domain_example(... %N) {
@@ -147,9 +147,9 @@ points inside the loop:
   }
 ```
 
-It also allows schedule remapping within the statement, like this example that
+It also allows schedule remapping within the instruction, like this example that
 introduces a diagonal skew through a simple change to the schedules of the two
-statements:
+instructions:
 
 ```
   mlfunc @skewed_domain_example(... %N) {
@@ -175,9 +175,9 @@ structure.
 
 This document proposes and explores the idea of going one step further, moving
 all of the domain and schedule information into the "schedule tree". In this
-form, we would have a representation where all statements inside of a given
+form, we would have a representation where all instructions inside of a given
 for-loop are known to have the same domain, which is maintained by the loop. In
-the simplified form, we also have an "if" statement that takes an affine
+the simplified form, we also have an "if" instruction that takes an affine
 condition.
 
 Our simple example above would be represented as:
@@ -199,7 +199,7 @@ Our simple example above would be represented as:
   }
 ```
 
-The example with the reduced domain would be represented with an if statement:
+The example with the reduced domain would be represented with an if instruction:
 
 ```mlir
   mlfunc @reduced_domain_example(... %N) {
@@ -223,13 +223,13 @@ The example with the reduced domain would be represented with an if statement:
 
 These IRs represent exactly the same information, and use a similar information
 density. The 'traditional' form introduces an extra level of abstraction
-(schedules and domains) that make it easy to transform statements at the expense
-of making it difficult to reason about how those statements will come out after
-code generation. With the simplified form, transformations have to do parts of
-code generation inline with their transformation: instead of simply changing a
-schedule to **(i+j, j)** to get skewing, you'd have to generate this code
-explicitly (potentially implemented by making polyhedral codegen a library that
-transformations call into):
+(schedules and domains) that make it easy to transform instructions at the
+expense of making it difficult to reason about how those instructions will come
+out after code generation. With the simplified form, transformations have to do
+parts of code generation inline with their transformation: instead of simply
+changing a schedule to **(i+j, j)** to get skewing, you'd have to generate this
+code explicitly (potentially implemented by making polyhedral codegen a library
+that transformations call into):
 
 ```mlir
 mlfunc @skewed_domain_example(... %N) {
@@ -268,12 +268,12 @@ representation helps solve this inherently hard problem.
 ### Commonality: compactness of IR
 
 In the cases that are most relevant to us (hyper rectangular spaces) these forms
-are directly equivalent: a traditional statement with a limited domain (e.g. the
-"reduced_domain_example" above) ends up having one level of ML 'if' inside its
-loops. The simplified form pays for this by eliminating schedules and domains
-from the IR. Both forms allow code duplication to reduce dynamic branches in the
-IR: the traditional approach allows statement splitting, the simplified form
-supports statement duplication.
+are directly equivalent: a traditional instruction with a limited domain (e.g.
+the "reduced_domain_example" above) ends up having one level of ML 'if' inside
+its loops. The simplified form pays for this by eliminating schedules and
+domains from the IR. Both forms allow code duplication to reduce dynamic
+branches in the IR: the traditional approach allows instruction splitting, the
+simplified form supports instruction duplication.
 
 It is important to point out that the traditional form wins on compactness in
 the extreme cases: e.g. the loop skewing case. These cases will be rare in
@@ -296,7 +296,7 @@ possible to do this, but it is a non-trivial transformation.
 
 An advantage for the traditional form is that it is easier to perform certain
 transformations on it: skewing and tiling are just transformations on the
-schedule of the statements in question, it doesn't require changing the loop
+schedule of the instructions in question, it doesn't require changing the loop
 structure.
 
 In practice, the simplified form requires moving the complexity of code
@@ -317,7 +317,7 @@ The simplified form is much easier for analyses and transformations to build
 cost models for (e.g. answering the question of "how much code bloat will be
 caused by unrolling a loop at this level?"), because it is easier to predict
 what target code will be generated. With the traditional form, these analyses
-will have to anticipate what polyhedral codegen will do to a set of statements
+will have to anticipate what polyhedral codegen will do to a set of instructions
 under consideration: something that is non-trivial in the interesting cases in
 question (see "Cost of code generation").
 
@@ -343,7 +343,7 @@ stages of a code generator for an accelerator.
 We agree already that values defined in an mlfunc can include scalar values and
 they are defined based on traditional dominance. In the simplified form, this is
 very simple: arguments and induction variables defined in for-loops are live
-inside their lexical body, and linear series of statements have the same "top
+inside their lexical body, and linear series of instructions have the same "top
 down" dominance relation that a basic block does.
 
 In the traditional form though, this is not the case: it seems that a lot of
@@ -374,8 +374,9 @@ mlfunc's (if we support them) will also have to have domains.
 
 The traditional form has multiple encodings for the same sorts of behavior: you
 end up having bits on `for` loops to specify whether codegen should use
-"atomic/separate" policies, unroll loops, etc. Statements can be split or can
-generate multiple copies of their statement because of overlapping domains, etc.
+"atomic/separate" policies, unroll loops, etc. Instructions can be split or can
+generate multiple copies of their instruction because of overlapping domains,
+etc.
 
 This is a problem for analyses and cost models, because they each have to reason
 about these additional forms in the IR.

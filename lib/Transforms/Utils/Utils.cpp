@@ -26,8 +26,8 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/Module.h"
-#include "mlir/IR/StmtVisitor.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
@@ -66,7 +66,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                                     ArrayRef<Value *> extraIndices,
                                     AffineMap indexRemap,
                                     ArrayRef<Value *> extraOperands,
-                                    const Statement *domStmtFilter) {
+                                    const Instruction *domInstFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
@@ -85,41 +85,41 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
   // Walk all uses of old memref. Operation using the memref gets replaced.
   for (auto it = oldMemRef->use_begin(); it != oldMemRef->use_end();) {
     InstOperand &use = *(it++);
-    auto *opStmt = cast<OperationInst>(use.getOwner());
+    auto *opInst = cast<OperationInst>(use.getOwner());
 
-    // Skip this use if it's not dominated by domStmtFilter.
-    if (domStmtFilter && !dominates(*domStmtFilter, *opStmt))
+    // Skip this use if it's not dominated by domInstFilter.
+    if (domInstFilter && !dominates(*domInstFilter, *opInst))
       continue;
 
     // Check if the memref was used in a non-deferencing context. It is fine for
     // the memref to be used in a non-deferencing way outside of the region
     // where this replacement is happening.
-    if (!isMemRefDereferencingOp(*opStmt))
+    if (!isMemRefDereferencingOp(*opInst))
       // Failure: memref used in a non-deferencing op (potentially escapes); no
       // replacement in these cases.
       return false;
 
     auto getMemRefOperandPos = [&]() -> unsigned {
       unsigned i, e;
-      for (i = 0, e = opStmt->getNumOperands(); i < e; i++) {
-        if (opStmt->getOperand(i) == oldMemRef)
+      for (i = 0, e = opInst->getNumOperands(); i < e; i++) {
+        if (opInst->getOperand(i) == oldMemRef)
           break;
       }
-      assert(i < opStmt->getNumOperands() && "operand guaranteed to be found");
+      assert(i < opInst->getNumOperands() && "operand guaranteed to be found");
       return i;
     };
     unsigned memRefOperandPos = getMemRefOperandPos();
 
-    // Construct the new operation statement using this memref.
-    OperationState state(opStmt->getContext(), opStmt->getLoc(),
-                         opStmt->getName());
-    state.operands.reserve(opStmt->getNumOperands() + extraIndices.size());
+    // Construct the new operation instruction using this memref.
+    OperationState state(opInst->getContext(), opInst->getLoc(),
+                         opInst->getName());
+    state.operands.reserve(opInst->getNumOperands() + extraIndices.size());
     // Insert the non-memref operands.
-    state.operands.insert(state.operands.end(), opStmt->operand_begin(),
-                          opStmt->operand_begin() + memRefOperandPos);
+    state.operands.insert(state.operands.end(), opInst->operand_begin(),
+                          opInst->operand_begin() + memRefOperandPos);
     state.operands.push_back(newMemRef);
 
-    FuncBuilder builder(opStmt);
+    FuncBuilder builder(opInst);
     for (auto *extraIndex : extraIndices) {
       // TODO(mlir-team): An operation/SSA value should provide a method to
       // return the position of an SSA result in its defining
@@ -139,10 +139,10 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
     remapOperands.insert(remapOperands.end(), extraOperands.begin(),
                          extraOperands.end());
     remapOperands.insert(
-        remapOperands.end(), opStmt->operand_begin() + memRefOperandPos + 1,
-        opStmt->operand_begin() + memRefOperandPos + 1 + oldMemRefRank);
+        remapOperands.end(), opInst->operand_begin() + memRefOperandPos + 1,
+        opInst->operand_begin() + memRefOperandPos + 1 + oldMemRefRank);
     if (indexRemap) {
-      auto remapOp = builder.create<AffineApplyOp>(opStmt->getLoc(), indexRemap,
+      auto remapOp = builder.create<AffineApplyOp>(opInst->getLoc(), indexRemap,
                                                    remapOperands);
       // Remapped indices.
       for (auto *index : remapOp->getInstruction()->getResults())
@@ -155,27 +155,27 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 
     // Insert the remaining operands unmodified.
     state.operands.insert(state.operands.end(),
-                          opStmt->operand_begin() + memRefOperandPos + 1 +
+                          opInst->operand_begin() + memRefOperandPos + 1 +
                               oldMemRefRank,
-                          opStmt->operand_end());
+                          opInst->operand_end());
 
     // Result types don't change. Both memref's are of the same elemental type.
-    state.types.reserve(opStmt->getNumResults());
-    for (const auto *result : opStmt->getResults())
+    state.types.reserve(opInst->getNumResults());
+    for (const auto *result : opInst->getResults())
       state.types.push_back(result->getType());
 
     // Attributes also do not change.
-    state.attributes.insert(state.attributes.end(), opStmt->getAttrs().begin(),
-                            opStmt->getAttrs().end());
+    state.attributes.insert(state.attributes.end(), opInst->getAttrs().begin(),
+                            opInst->getAttrs().end());
 
     // Create the new operation.
     auto *repOp = builder.createOperation(state);
     // Replace old memref's deferencing op's uses.
     unsigned r = 0;
-    for (auto *res : opStmt->getResults()) {
+    for (auto *res : opInst->getResults()) {
       res->replaceAllUsesWith(repOp->getResult(r++));
     }
-    opStmt->erase();
+    opInst->erase();
   }
   return true;
 }
@@ -196,9 +196,9 @@ mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
   // Initialize AffineValueMap with identity map.
   AffineValueMap valueMap(map, operands);
 
-  for (auto *opStmt : affineApplyOps) {
-    assert(opStmt->isa<AffineApplyOp>());
-    auto affineApplyOp = opStmt->cast<AffineApplyOp>();
+  for (auto *opInst : affineApplyOps) {
+    assert(opInst->isa<AffineApplyOp>());
+    auto affineApplyOp = opInst->cast<AffineApplyOp>();
     // Forward substitute 'affineApplyOp' into 'valueMap'.
     valueMap.forwardSubstitute(*affineApplyOp);
   }
@@ -219,10 +219,10 @@ mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
   return affineApplyOp->getInstruction();
 }
 
-/// Given an operation statement, inserts a new single affine apply operation,
-/// that is exclusively used by this operation statement, and that provides all
-/// operands that are results of an affine_apply as a function of loop iterators
-/// and program parameters and whose results are.
+/// Given an operation instruction, inserts a new single affine apply operation,
+/// that is exclusively used by this operation instruction, and that provides
+/// all operands that are results of an affine_apply as a function of loop
+/// iterators and program parameters and whose results are.
 ///
 /// Before
 ///
@@ -242,18 +242,18 @@ mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 /// This allows applying different transformations on send and compute (for eg.
 /// different shifts/delays).
 ///
-/// Returns nullptr either if none of opStmt's operands were the result of an
+/// Returns nullptr either if none of opInst's operands were the result of an
 /// affine_apply and thus there was no affine computation slice to create, or if
-/// all the affine_apply op's supplying operands to this opStmt do not have any
-/// uses besides this opStmt. Returns the new affine_apply operation statement
+/// all the affine_apply op's supplying operands to this opInst do not have any
+/// uses besides this opInst. Returns the new affine_apply operation instruction
 /// otherwise.
-OperationInst *mlir::createAffineComputationSlice(OperationInst *opStmt) {
+OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
   // Collect all operands that are results of affine apply ops.
   SmallVector<Value *, 4> subOperands;
-  subOperands.reserve(opStmt->getNumOperands());
-  for (auto *operand : opStmt->getOperands()) {
-    auto *defStmt = operand->getDefiningInst();
-    if (defStmt && defStmt->isa<AffineApplyOp>()) {
+  subOperands.reserve(opInst->getNumOperands());
+  for (auto *operand : opInst->getOperands()) {
+    auto *defInst = operand->getDefiningInst();
+    if (defInst && defInst->isa<AffineApplyOp>()) {
       subOperands.push_back(operand);
     }
   }
@@ -265,13 +265,13 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opStmt) {
   if (affineApplyOps.empty())
     return nullptr;
 
-  // Check if all uses of the affine apply op's lie only in this op stmt, in
+  // Check if all uses of the affine apply op's lie only in this op inst, in
   // which case there would be nothing to do.
   bool localized = true;
   for (auto *op : affineApplyOps) {
     for (auto *result : op->getResults()) {
       for (auto &use : result->getUses()) {
-        if (use.getOwner() != opStmt) {
+        if (use.getOwner() != opInst) {
           localized = false;
           break;
         }
@@ -281,18 +281,18 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opStmt) {
   if (localized)
     return nullptr;
 
-  FuncBuilder builder(opStmt);
+  FuncBuilder builder(opInst);
   SmallVector<Value *, 4> results;
-  auto *affineApplyStmt = createComposedAffineApplyOp(
-      &builder, opStmt->getLoc(), subOperands, affineApplyOps, &results);
+  auto *affineApplyInst = createComposedAffineApplyOp(
+      &builder, opInst->getLoc(), subOperands, affineApplyOps, &results);
   assert(results.size() == subOperands.size() &&
          "number of results should be the same as the number of subOperands");
 
   // Construct the new operands that include the results from the composed
   // affine apply op above instead of existing ones (subOperands). So, they
-  // differ from opStmt's operands only for those operands in 'subOperands', for
+  // differ from opInst's operands only for those operands in 'subOperands', for
   // which they will be replaced by the corresponding one from 'results'.
-  SmallVector<Value *, 4> newOperands(opStmt->getOperands());
+  SmallVector<Value *, 4> newOperands(opInst->getOperands());
   for (unsigned i = 0, e = newOperands.size(); i < e; i++) {
     // Replace the subOperands from among the new operands.
     unsigned j, f;
@@ -306,10 +306,10 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opStmt) {
   }
 
   for (unsigned idx = 0, e = newOperands.size(); idx < e; idx++) {
-    opStmt->setOperand(idx, newOperands[idx]);
+    opInst->setOperand(idx, newOperands[idx]);
   }
 
-  return affineApplyStmt;
+  return affineApplyInst;
 }
 
 void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
@@ -317,26 +317,26 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
     // TODO: Support forward substitution for CFG style functions.
     return;
   }
-  auto *opStmt = affineApplyOp->getInstruction();
-  // Iterate through all uses of all results of 'opStmt', forward substituting
+  auto *opInst = affineApplyOp->getInstruction();
+  // Iterate through all uses of all results of 'opInst', forward substituting
   // into any uses which are AffineApplyOps.
-  for (unsigned resultIndex = 0, e = opStmt->getNumResults(); resultIndex < e;
+  for (unsigned resultIndex = 0, e = opInst->getNumResults(); resultIndex < e;
        ++resultIndex) {
-    const Value *result = opStmt->getResult(resultIndex);
+    const Value *result = opInst->getResult(resultIndex);
     for (auto it = result->use_begin(); it != result->use_end();) {
       InstOperand &use = *(it++);
-      auto *useStmt = use.getOwner();
-      auto *useOpStmt = dyn_cast<OperationInst>(useStmt);
+      auto *useInst = use.getOwner();
+      auto *useOpInst = dyn_cast<OperationInst>(useInst);
       // Skip if use is not AffineApplyOp.
-      if (useOpStmt == nullptr || !useOpStmt->isa<AffineApplyOp>())
+      if (useOpInst == nullptr || !useOpInst->isa<AffineApplyOp>())
         continue;
-      // Advance iterator past 'opStmt' operands which also use 'result'.
-      while (it != result->use_end() && it->getOwner() == useStmt)
+      // Advance iterator past 'opInst' operands which also use 'result'.
+      while (it != result->use_end() && it->getOwner() == useInst)
         ++it;
 
-      FuncBuilder builder(useOpStmt);
+      FuncBuilder builder(useOpInst);
       // Initialize AffineValueMap with 'affineApplyOp' which uses 'result'.
-      auto oldAffineApplyOp = useOpStmt->cast<AffineApplyOp>();
+      auto oldAffineApplyOp = useOpInst->cast<AffineApplyOp>();
       AffineValueMap valueMap(*oldAffineApplyOp);
       // Forward substitute 'result' at index 'i' into 'valueMap'.
       valueMap.forwardSubstituteSingle(*affineApplyOp, resultIndex);
@@ -348,10 +348,10 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
         operands[i] = valueMap.getOperand(i);
       }
       auto newAffineApplyOp = builder.create<AffineApplyOp>(
-          useOpStmt->getLoc(), valueMap.getAffineMap(), operands);
+          useOpInst->getLoc(), valueMap.getAffineMap(), operands);
 
       // Update all uses to use results from 'newAffineApplyOp'.
-      for (unsigned i = 0, e = useOpStmt->getNumResults(); i < e; ++i) {
+      for (unsigned i = 0, e = useOpInst->getNumResults(); i < e; ++i) {
         oldAffineApplyOp->getResult(i)->replaceAllUsesWith(
             newAffineApplyOp->getResult(i));
       }
@@ -364,19 +364,19 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
 /// Folds the specified (lower or upper) bound to a constant if possible
 /// considering its operands. Returns false if the folding happens for any of
 /// the bounds, true otherwise.
-bool mlir::constantFoldBounds(ForStmt *forStmt) {
-  auto foldLowerOrUpperBound = [forStmt](bool lower) {
+bool mlir::constantFoldBounds(ForInst *forInst) {
+  auto foldLowerOrUpperBound = [forInst](bool lower) {
     // Check if the bound is already a constant.
-    if (lower && forStmt->hasConstantLowerBound())
+    if (lower && forInst->hasConstantLowerBound())
       return true;
-    if (!lower && forStmt->hasConstantUpperBound())
+    if (!lower && forInst->hasConstantUpperBound())
       return true;
 
     // Check to see if each of the operands is the result of a constant.  If so,
     // get the value.  If not, ignore it.
     SmallVector<Attribute, 8> operandConstants;
-    auto boundOperands = lower ? forStmt->getLowerBoundOperands()
-                               : forStmt->getUpperBoundOperands();
+    auto boundOperands = lower ? forInst->getLowerBoundOperands()
+                               : forInst->getUpperBoundOperands();
     for (const auto *operand : boundOperands) {
       Attribute operandCst;
       if (auto *operandOp = operand->getDefiningInst()) {
@@ -387,7 +387,7 @@ bool mlir::constantFoldBounds(ForStmt *forStmt) {
     }
 
     AffineMap boundMap =
-        lower ? forStmt->getLowerBoundMap() : forStmt->getUpperBoundMap();
+        lower ? forInst->getLowerBoundMap() : forInst->getUpperBoundMap();
     assert(boundMap.getNumResults() >= 1 &&
            "bound maps should have at least one result");
     SmallVector<Attribute, 4> foldedResults;
@@ -402,8 +402,8 @@ bool mlir::constantFoldBounds(ForStmt *forStmt) {
       maxOrMin = lower ? llvm::APIntOps::smax(maxOrMin, foldedResult)
                        : llvm::APIntOps::smin(maxOrMin, foldedResult);
     }
-    lower ? forStmt->setConstantLowerBound(maxOrMin.getSExtValue())
-          : forStmt->setConstantUpperBound(maxOrMin.getSExtValue());
+    lower ? forInst->setConstantLowerBound(maxOrMin.getSExtValue())
+          : forInst->setConstantUpperBound(maxOrMin.getSExtValue());
 
     // Return false on success.
     return false;
@@ -449,11 +449,11 @@ void mlir::remapFunctionAttrs(
   if (!fn.isML())
     return;
 
-  struct MLFnWalker : public StmtWalker<MLFnWalker> {
+  struct MLFnWalker : public InstWalker<MLFnWalker> {
     MLFnWalker(const DenseMap<Attribute, FunctionAttr> &remappingTable)
         : remappingTable(remappingTable) {}
-    void visitOperationInst(OperationInst *opStmt) {
-      remapFunctionAttrs(*opStmt, remappingTable);
+    void visitOperationInst(OperationInst *opInst) {
+      remapFunctionAttrs(*opInst, remappingTable);
     }
 
     const DenseMap<Attribute, FunctionAttr> &remappingTable;

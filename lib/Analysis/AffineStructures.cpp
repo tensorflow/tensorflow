@@ -24,8 +24,8 @@
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Instructions.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/IR/Statements.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
@@ -1248,22 +1248,22 @@ void FlatAffineConstraints::setDimSymbolSeparation(unsigned newSymbolCount) {
   numSymbols = newSymbolCount;
 }
 
-bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
+bool FlatAffineConstraints::addForInstDomain(const ForInst &forInst) {
   unsigned pos;
   // Pre-condition for this method.
-  if (!findId(forStmt, &pos)) {
+  if (!findId(forInst, &pos)) {
     assert(0 && "Value not found");
     return false;
   }
 
-  if (forStmt.getStep() != 1)
+  if (forInst.getStep() != 1)
     LLVM_DEBUG(llvm::dbgs()
                << "Domain conservative: non-unit stride not handled\n");
 
   // Adds a lower or upper bound when the bounds aren't constant.
   auto addLowerOrUpperBound = [&](bool lower) -> bool {
-    auto operands = lower ? forStmt.getLowerBoundOperands()
-                          : forStmt.getUpperBoundOperands();
+    auto operands = lower ? forInst.getLowerBoundOperands()
+                          : forInst.getUpperBoundOperands();
     for (const auto &operand : operands) {
       unsigned loc;
       if (!findId(*operand, &loc)) {
@@ -1271,8 +1271,8 @@ bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
           addSymbolId(getNumSymbolIds(), const_cast<Value *>(operand));
           loc = getNumDimIds() + getNumSymbolIds() - 1;
           // Check if the symbol is a constant.
-          if (auto *opStmt = operand->getDefiningInst()) {
-            if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
+          if (auto *opInst = operand->getDefiningInst()) {
+            if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
               setIdToConstant(*operand, constOp->getValue());
             }
           }
@@ -1292,7 +1292,7 @@ bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
     }
 
     auto boundMap =
-        lower ? forStmt.getLowerBoundMap() : forStmt.getUpperBoundMap();
+        lower ? forInst.getLowerBoundMap() : forInst.getUpperBoundMap();
 
     FlatAffineConstraints localVarCst;
     std::vector<SmallVector<int64_t, 8>> flatExprs;
@@ -1322,16 +1322,16 @@ bool FlatAffineConstraints::addForStmtDomain(const ForStmt &forStmt) {
     return true;
   };
 
-  if (forStmt.hasConstantLowerBound()) {
-    addConstantLowerBound(pos, forStmt.getConstantLowerBound());
+  if (forInst.hasConstantLowerBound()) {
+    addConstantLowerBound(pos, forInst.getConstantLowerBound());
   } else {
     // Non-constant lower bound case.
     if (!addLowerOrUpperBound(/*lower=*/true))
       return false;
   }
 
-  if (forStmt.hasConstantUpperBound()) {
-    addConstantUpperBound(pos, forStmt.getConstantUpperBound() - 1);
+  if (forInst.hasConstantUpperBound()) {
+    addConstantUpperBound(pos, forInst.getConstantUpperBound() - 1);
     return true;
   }
   // Non-constant upper bound case.

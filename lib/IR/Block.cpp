@@ -26,16 +26,16 @@ Block::~Block() {
   llvm::DeleteContainerPointers(arguments);
 }
 
-/// Returns the closest surrounding statement that contains this block or
-/// nullptr if this is a top-level statement block.
-Statement *Block::getContainingInst() {
+/// Returns the closest surrounding instruction that contains this block or
+/// nullptr if this is a top-level instruction block.
+Instruction *Block::getContainingInst() {
   return parent ? parent->getContainingInst() : nullptr;
 }
 
 Function *Block::getFunction() {
   Block *block = this;
-  while (auto *stmt = block->getContainingInst()) {
-    block = stmt->getBlock();
+  while (auto *inst = block->getContainingInst()) {
+    block = inst->getBlock();
     if (!block)
       return nullptr;
   }
@@ -49,11 +49,11 @@ Function *Block::getFunction() {
 /// the latter fails.
 const Instruction *
 Block::findAncestorInstInBlock(const Instruction &inst) const {
-  // Traverse up the statement hierarchy starting from the owner of operand to
-  // find the ancestor statement that resides in the block of 'forStmt'.
+  // Traverse up the instruction hierarchy starting from the owner of operand to
+  // find the ancestor instruction that resides in the block of 'forInst'.
   const auto *currInst = &inst;
   while (currInst->getBlock() != this) {
-    currInst = currInst->getParentStmt();
+    currInst = currInst->getParentInst();
     if (!currInst)
       return nullptr;
   }
@@ -106,10 +106,10 @@ OperationInst *Block::getTerminator() {
 
   // Check if the last instruction is a terminator.
   auto &backInst = back();
-  auto *opStmt = dyn_cast<OperationInst>(&backInst);
-  if (!opStmt || !opStmt->isTerminator())
+  auto *opInst = dyn_cast<OperationInst>(&backInst);
+  if (!opInst || !opInst->isTerminator())
     return nullptr;
-  return opStmt;
+  return opInst;
 }
 
 /// Return true if this block has no predecessors.
@@ -184,10 +184,10 @@ Block *Block::splitBlock(iterator splitBefore) {
 
 BlockList::BlockList(Function *container) : container(container) {}
 
-BlockList::BlockList(Statement *container) : container(container) {}
+BlockList::BlockList(Instruction *container) : container(container) {}
 
-Statement *BlockList::getContainingInst() {
-  return container.dyn_cast<Statement *>();
+Instruction *BlockList::getContainingInst() {
+  return container.dyn_cast<Instruction *>();
 }
 
 Function *BlockList::getContainingFunction() {

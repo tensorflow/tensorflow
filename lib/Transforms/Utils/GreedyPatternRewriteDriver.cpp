@@ -271,7 +271,7 @@ static void processMLFunction(Function *fn,
     }
 
     void setInsertionPoint(OperationInst *op) override {
-      // Any new operations should be added before this statement.
+      // Any new operations should be added before this instruction.
       builder.setInsertionPoint(cast<OperationInst>(op));
     }
 
@@ -280,7 +280,7 @@ static void processMLFunction(Function *fn,
   };
 
   GreedyPatternRewriteDriver driver(std::move(patterns));
-  fn->walk([&](OperationInst *stmt) { driver.addToWorklist(stmt); });
+  fn->walk([&](OperationInst *inst) { driver.addToWorklist(inst); });
 
   FuncBuilder mlBuilder(fn);
   MLFuncRewriter rewriter(driver, mlBuilder);

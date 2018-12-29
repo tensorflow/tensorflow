@@ -33,12 +33,12 @@ namespace mlir {
 class AffineExpr;
 class AffineMap;
 class AffineValueMap;
-class ForStmt;
+class ForInst;
 class MLIRContext;
 class FlatAffineConstraints;
 class IntegerSet;
 class OperationInst;
-class Statement;
+class Instruction;
 class Value;
 
 /// Simplify an affine expression through flattening and some amount of
@@ -113,17 +113,17 @@ bool getFlattenedAffineExprs(
     FlatAffineConstraints *cst = nullptr);
 
 /// Builds a system of constraints with dimensional identifiers corresponding to
-/// the loop IVs of the forStmts appearing in that order. Bounds of the loop are
+/// the loop IVs of the forInsts appearing in that order. Bounds of the loop are
 /// used to add appropriate inequalities. Any symbols founds in the bound
 /// operands are added as symbols in the system. Returns false for the yet
 /// unimplemented cases.
 //  TODO(bondhugula): handle non-unit strides.
-bool getIndexSet(llvm::ArrayRef<ForStmt *> forStmts,
+bool getIndexSet(llvm::ArrayRef<ForInst *> forInsts,
                  FlatAffineConstraints *domain);
 
 struct MemRefAccess {
   const Value *memref;
-  const OperationInst *opStmt;
+  const OperationInst *opInst;
   llvm::SmallVector<Value *, 4> indices;
   // Populates 'accessMap' with composition of AffineApplyOps reachable from
   // 'indices'.
@@ -146,7 +146,7 @@ struct DependenceComponent {
 
 /// Checks whether two accesses to the same memref access the same element.
 /// Each access is specified using the MemRefAccess structure, which contains
-/// the operation statement, indices and memref associated with the access.
+/// the operation instruction, indices and memref associated with the access.
 /// Returns 'false' if it can be determined conclusively that the accesses do
 /// not access the same memref element. Returns 'true' otherwise.
 // TODO(andydavis) Wrap 'dependenceConstraints' and 'dependenceComponents' into

@@ -22,11 +22,11 @@
 #ifndef MLIR_IR_BLOCK_H
 #define MLIR_IR_BLOCK_H
 
-#include "mlir/IR/Statement.h"
+#include "mlir/IR/Instruction.h"
 #include "llvm/ADT/PointerUnion.h"
 
 namespace mlir {
-class IfStmt;
+class IfInst;
 class BlockList;
 
 template <typename BlockType> class PredecessorIterator;
@@ -58,7 +58,7 @@ public:
   }
 
   /// Returns the function that this block is part of, even if the block is
-  /// nested under an IfStmt or ForStmt.
+  /// nested under an IfInst or ForInst.
   Function *getFunction();
   const Function *getFunction() const {
     return const_cast<Block *>(this)->getFunction();
@@ -134,10 +134,10 @@ public:
   /// Returns the instructions's position in this block or -1 if the instruction
   /// is not present.
   /// TODO: This is needlessly inefficient, and should not be API on Block.
-  int64_t findInstPositionInBlock(const Instruction &stmt) const {
+  int64_t findInstPositionInBlock(const Instruction &inst) const {
     int64_t j = 0;
     for (const auto &s : instructions) {
-      if (&s == &stmt)
+      if (&s == &inst)
         return j;
       j++;
     }
@@ -291,7 +291,7 @@ private:
 namespace mlir {
 
 /// This class contains a list of basic blocks and has a notion of the object it
-/// is part of - a Function or IfStmt or ForStmt.
+/// is part of - a Function or IfInst or ForInst.
 class BlockList {
 public:
   explicit BlockList(Function *container);
@@ -331,14 +331,14 @@ public:
     return &BlockList::blocks;
   }
 
-  /// A BlockList is part of a Function or and IfStmt/ForStmt.  If it is
-  /// part of an IfStmt/ForStmt, then return it, otherwise return null.
+  /// A BlockList is part of a Function or and IfInst/ForInst.  If it is
+  /// part of an IfInst/ForInst, then return it, otherwise return null.
   Instruction *getContainingInst();
   const Instruction *getContainingInst() const {
     return const_cast<BlockList *>(this)->getContainingInst();
   }
 
-  /// A BlockList is part of a Function or and IfStmt/ForStmt.  If it is
+  /// A BlockList is part of a Function or and IfInst/ForInst.  If it is
   /// part of a Function, then return it, otherwise return null.
   Function *getContainingFunction();
   const Function *getContainingFunction() const {

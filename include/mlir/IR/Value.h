@@ -30,12 +30,11 @@ namespace mlir {
 class Block;
 class Function;
 class OperationInst;
-class Statement;
+class Instruction;
 class Value;
-using Instruction = Statement;
 
 /// Operands contain a Value.
-using InstOperand = IROperandImpl<Value, Statement>;
+using InstOperand = IROperandImpl<Value, Instruction>;
 
 /// This is the common base class for all SSA values in the MLIR system,
 /// representing a computable value that has a type and a set of users.
@@ -46,7 +45,7 @@ public:
   enum class Kind {
     BlockArgument, // block argument
     InstResult,    // operation instruction result
-    ForStmt,       // 'for' statement induction variable
+    ForInst,       // 'for' instruction induction variable
   };
 
   ~Value() {}
@@ -86,7 +85,7 @@ public:
     return const_cast<Value *>(this)->getDefiningInst();
   }
 
-  using use_iterator = ValueUseIterator<InstOperand, Statement>;
+  using use_iterator = ValueUseIterator<InstOperand, Instruction>;
   using use_range = llvm::iterator_range<use_iterator>;
 
   inline use_iterator use_begin() const;

@@ -110,7 +110,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // Get the ML function builder.
   // We need access to the Function builder stored internally in the
   // MLFunctionLoweringRewriter general rewriting API does not provide
-  // ML-specific functions (ForStmt and Block manipulation).  While we could
+  // ML-specific functions (ForInst and Block manipulation).  While we could
   // forward them or define a whole rewriting chain based on MLFunctionBuilder
   // instead of Builer, the code for it would be duplicate boilerplate.  As we
   // go towards unifying ML and CFG functions, this separation will disappear.
@@ -137,13 +137,13 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   // memory.
   // TODO(ntv): Handle broadcast / slice properly.
   auto permutationMap = transfer->getPermutationMap();
-  SetVector<ForStmt *> loops;
+  SetVector<ForInst *> loops;
   SmallVector<Value *, 8> accessIndices(transfer->getIndices());
   for (auto it : llvm::enumerate(transfer->getVectorType().getShape())) {
     auto composed = composeWithUnboundedMap(
         getAffineDimExpr(it.index(), b.getContext()), permutationMap);
-    auto *forStmt = b.createFor(transfer->getLoc(), 0, it.value());
-    loops.insert(forStmt);
+    auto *forInst = b.createFor(transfer->getLoc(), 0, it.value());
+    loops.insert(forInst);
     // Setting the insertion point to the innermost loop achieves nesting.
     b.setInsertionPointToStart(loops.back()->getBody());
     if (composed == getAffineConstantExpr(0, b.getContext())) {
@@ -196,7 +196,7 @@ static void rewriteAsLoops(VectorTransferOpTy *transfer,
   b.setInsertionPoint(transfer->getInstruction());
   b.create<DeallocOp>(transfer->getLoc(), tmpScalarAlloc);
 
-  // 7. It is now safe to erase the statement.
+  // 7. It is now safe to erase the instruction.
   rewriter->replaceOp(transfer->getInstruction(), newResults);
 }
 
@@ -213,7 +213,7 @@ public:
     return matchFailure();
   }
 
-  void rewriteOpStmt(OperationInst *op,
+  void rewriteOpInst(OperationInst *op,
                      MLFuncGlobalLoweringState *funcWiseState,
                      std::unique_ptr<PatternState> opState,
                      MLFuncLoweringRewriter *rewriter) const override {

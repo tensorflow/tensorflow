@@ -226,7 +226,7 @@ mlfunc @live_out_use(%arg0: memref<512 x 32 x f32>) -> f32 {
       memref<32 x 32 x f32, 2>, memref<1 x i32>
     dma_wait %tag[%zero], %num_elt : memref<1 x i32>
   }
-  // Use live out of 'for' stmt; no DMA pipelining will be done.
+  // Use live out of 'for' inst; no DMA pipelining will be done.
   %v = load %Av[%zero, %zero] : memref<32 x 32 x f32, 2>
   return %v : f32
 // CHECK:      %{{[0-9]+}} = load %{{[0-9]+}}[%c0, %c0] : memref<32x32xf32, 2>

@@ -27,24 +27,24 @@
 
 namespace mlir {
 
-class Statement;
+class Instruction;
 
 /// Type of the condition to limit the propagation of transitive use-defs.
 /// This can be used in particular to limit the propagation to a given Scope or
-/// to avoid passing through certain types of statement in a configurable
+/// to avoid passing through certain types of instruction in a configurable
 /// manner.
-using TransitiveFilter = std::function<bool(Statement *)>;
+using TransitiveFilter = std::function<bool(Instruction *)>;
 
 /// Fills `forwardSlice` with the computed forward slice (i.e. all
-/// the transitive uses of stmt), **without** including that statement.
+/// the transitive uses of inst), **without** including that instruction.
 ///
 /// This additionally takes a TransitiveFilter which acts as a frontier:
-/// when looking at uses transitively, a statement that does not pass the filter
-/// is never propagated through. This allows in particular to carve out the
-/// scope within a ForStmt or the scope within an IfStmt.
+/// when looking at uses transitively, a instruction that does not pass the
+/// filter is never propagated through. This allows in particular to carve out
+/// the scope within a ForInst or the scope within an IfInst.
 ///
 /// The implementation traverses the use chains in postorder traversal for
-/// efficiency reasons: if a statement is already in `forwardSlice`, no
+/// efficiency reasons: if a instruction is already in `forwardSlice`, no
 /// need to traverse its uses again. Since use-def chains form a DAG, this
 /// terminates.
 ///
@@ -77,21 +77,21 @@ using TransitiveFilter = std::function<bool(Statement *)>;
 ///      {4, 3, 6, 2, 1, 5, 8, 7, 9}
 ///
 void getForwardSlice(
-    Statement *stmt, llvm::SetVector<Statement *> *forwardSlice,
+    Instruction *inst, llvm::SetVector<Instruction *> *forwardSlice,
     TransitiveFilter filter = /* pass-through*/
-    [](Statement *) { return true; },
+    [](Instruction *) { return true; },
     bool topLevel = true);
 
 /// Fills `backwardSlice` with the computed backward slice (i.e.
-/// all the transitive defs of stmt), **without** including that statement.
+/// all the transitive defs of inst), **without** including that instruction.
 ///
 /// This additionally takes a TransitiveFilter which acts as a frontier:
-/// when looking at defs transitively, a statement that does not pass the filter
-/// is never propagated through. This allows in particular to carve out the
-/// scope within a ForStmt or the scope within an IfStmt.
+/// when looking at defs transitively, a instruction that does not pass the
+/// filter is never propagated through. This allows in particular to carve out
+/// the scope within a ForInst or the scope within an IfInst.
 ///
 /// The implementation traverses the def chains in postorder traversal for
-/// efficiency reasons: if a statement is already in `backwardSlice`, no
+/// efficiency reasons: if a instruction is already in `backwardSlice`, no
 /// need to traverse its definitions again. Since useuse-def chains form a DAG,
 /// this terminates.
 ///
@@ -117,14 +117,14 @@ void getForwardSlice(
 ///    {1, 2, 5, 7, 3, 4, 6, 8}
 ///
 void getBackwardSlice(
-    Statement *stmt, llvm::SetVector<Statement *> *backwardSlice,
+    Instruction *inst, llvm::SetVector<Instruction *> *backwardSlice,
     TransitiveFilter filter = /* pass-through*/
-    [](Statement *) { return true; },
+    [](Instruction *) { return true; },
     bool topLevel = true);
 
 /// Iteratively computes backward slices and forward slices until
-/// a fixed point is reached. Returns an `llvm::SetVector<Statement *>` which
-/// **includes** the original statement.
+/// a fixed point is reached. Returns an `llvm::SetVector<Instruction *>` which
+/// **includes** the original instruction.
 ///
 /// This allows building a slice (i.e. multi-root DAG where everything
 /// that is reachable from an Value in forward and backward direction is
@@ -158,17 +158,17 @@ void getBackwardSlice(
 ///
 /// Additional implementation considerations
 /// ========================================
-/// Consider the defs-stmt-uses hourglass.
+/// Consider the defs-inst-uses hourglass.
 ///    ____
 ///    \  /  defs (in some topological order)
 ///     \/
-///    stmt
+///    inst
 ///     /\
 ///    /  \  uses (in some topological order)
 ///   /____\
 ///
 /// We want to iteratively apply `getSlice` to construct the whole
-/// list of OperationInst that are reachable by (use|def)+ from stmt.
+/// list of OperationInst that are reachable by (use|def)+ from inst.
 /// We want the resulting slice in topological order.
 /// Ideally we would like the ordering to be maintained in-place to avoid
 /// copying OperationInst at each step. Keeping this ordering by construction
@@ -183,34 +183,34 @@ void getBackwardSlice(
 /// ===========
 /// We wish to maintain the following property by a recursive argument:
 ///   """
-///      defs << {stmt} <<uses are in topological order.
+///      defs << {inst} <<uses are in topological order.
 ///   """
 /// The property clearly holds for 0 and 1-sized uses and defs;
 ///
 /// Invariants:
 ///   2. defs and uses are in topological order internally, by construction;
-///   3. for any {x} |= defs, defs(x) |= defs;    because all go through stmt
-///   4. for any {x} |= uses,    defs |= defs(x); because all go through stmt
-///   5. for any {x} |= defs,    uses |= uses(x); because all go through stmt
-///   6. for any {x} |= uses, uses(x) |= uses;    because all go through stmt
+///   3. for any {x} |= defs, defs(x) |= defs;    because all go through inst
+///   4. for any {x} |= uses,    defs |= defs(x); because all go through inst
+///   5. for any {x} |= defs,    uses |= uses(x); because all go through inst
+///   6. for any {x} |= uses, uses(x) |= uses;    because all go through inst
 ///
 /// Intuitively, we should be able to recurse like:
-///   preorder(defs) - stmt - postorder(uses)
+///   preorder(defs) - inst - postorder(uses)
 /// and keep things ordered but this is still hand-wavy and not worth the
 /// trouble for now: punt to a simple worklist-based solution.
 ///
-llvm::SetVector<Statement *> getSlice(
-    Statement *stmt,
+llvm::SetVector<Instruction *> getSlice(
+    Instruction *inst,
     TransitiveFilter backwardFilter = /* pass-through*/
-    [](Statement *) { return true; },
+    [](Instruction *) { return true; },
     TransitiveFilter forwardFilter = /* pass-through*/
-    [](Statement *) { return true; });
+    [](Instruction *) { return true; });
 
 /// Multi-root DAG topological sort.
 /// Performs a topological sort of the OperationInst in the `toSort` SetVector.
 /// Returns a topologically sorted SetVector.
-llvm::SetVector<Statement *>
-topologicalSort(const llvm::SetVector<Statement *> &toSort);
+llvm::SetVector<Instruction *>
+topologicalSort(const llvm::SetVector<Instruction *> &toSort);
 
 } // end namespace mlir
 

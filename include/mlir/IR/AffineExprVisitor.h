@@ -30,7 +30,7 @@ namespace mlir {
 ///
 /// AffineExpr visitors are used when you want to perform different actions
 /// for different kinds of AffineExprs without having to use lots of casts
-/// and a big switch statement.
+/// and a big switch instruction.
 ///
 /// To define your own visitor, inherit from this class, specifying your
 /// new type for the 'SubClass' template parameter, and "override" visitXXX
@@ -66,11 +66,11 @@ namespace mlir {
 //  AffineSymbolExpr.
 ///
 /// Note that if you don't implement visitXXX for some affine expression type,
-/// the visitXXX method for Statement superclass will be invoked.
+/// the visitXXX method for Instruction superclass will be invoked.
 ///
 /// Note that this class is specifically designed as a template to avoid
 /// virtual function call overhead. Defining and using a AffineExprVisitor is
-/// just as efficient as having your own switch statement over the statement
+/// just as efficient as having your own switch instruction over the instruction
 /// opcode.
 
 template <typename SubClass, typename RetTy = void> class AffineExprVisitor {
@@ -159,8 +159,8 @@ public:
 
   //===--------------------------------------------------------------------===//
   // Visitation functions... these functions provide default fallbacks in case
-  // the user does not specify what to do for a particular statement type.
-  // The default behavior is to generalize the statement type to its subtype
+  // the user does not specify what to do for a particular instruction type.
+  // The default behavior is to generalize the instruction type to its subtype
   // and try visiting the subtype.  All of this should be inlined perfectly,
   // because there are no virtual functions to get in the way.
   //

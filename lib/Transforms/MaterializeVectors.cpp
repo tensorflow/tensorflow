@@ -73,7 +73,7 @@
 /// Implementation details
 /// ======================
 /// The current decisions made by the super-vectorization pass guarantee that
-/// use-def chains do not escape an enclosing vectorized ForStmt. In other
+/// use-def chains do not escape an enclosing vectorized ForInst. In other
 /// words, this pass operates on a scoped program slice. Furthermore, since we
 /// do not vectorize in the presence of conditionals for now, sliced chains are
 /// guaranteed not to escape the innermost scope, which has to be either the top
@@ -247,7 +247,7 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
 }
 
 static OperationInst *
-instantiate(FuncBuilder *b, OperationInst *opStmt, VectorType hwVectorType,
+instantiate(FuncBuilder *b, OperationInst *opInst, VectorType hwVectorType,
             DenseMap<const Value *, Value *> *substitutionsMap);
 
 /// Not all Values belong to a program slice scoped within the immediately
@@ -263,10 +263,10 @@ static Value *substitute(Value *v, VectorType hwVectorType,
                          DenseMap<const Value *, Value *> *substitutionsMap) {
   auto it = substitutionsMap->find(v);
   if (it == substitutionsMap->end()) {
-    auto *opStmt = v->getDefiningInst();
-    if (opStmt->isa<ConstantOp>()) {
-      FuncBuilder b(opStmt);
-      auto *inst = instantiate(&b, opStmt, hwVectorType, substitutionsMap);
+    auto *opInst = v->getDefiningInst();
+    if (opInst->isa<ConstantOp>()) {
+      FuncBuilder b(opInst);
+      auto *inst = instantiate(&b, opInst, hwVectorType, substitutionsMap);
       auto res =
           substitutionsMap->insert(std::make_pair(v, inst->getResult(0)));
       assert(res.second && "Insertion failed");
@@ -285,7 +285,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 ///
 /// The general problem this pass solves is as follows:
 /// Assume a vector_transfer operation at the super-vector granularity that has
-/// `l` enclosing loops (ForStmt). Assume the vector transfer operation operates
+/// `l` enclosing loops (ForInst). Assume the vector transfer operation operates
 /// on a MemRef of rank `r`, a super-vector of rank `s` and a hardware vector of
 /// rank `h`.
 /// For the purpose of illustration assume l==4, r==3, s==2, h==1 and that the
@@ -347,7 +347,7 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
   SmallVector<AffineExpr, 8> affineExprs;
   // TODO(ntv): support a concrete map and composition.
   unsigned i = 0;
-  // The first numMemRefIndices correspond to ForStmt that have not been
+  // The first numMemRefIndices correspond to ForInst that have not been
   // vectorized, the transformation is the identity on those.
   for (i = 0; i < numMemRefIndices; ++i) {
     auto d_i = b->getAffineDimExpr(i);
@@ -384,9 +384,9 @@ reindexAffineIndices(FuncBuilder *b, VectorType hwVectorType,
 ///   - constant splat is replaced by constant splat of `hwVectorType`.
 /// TODO(ntv): add more substitutions on a per-need basis.
 static SmallVector<NamedAttribute, 1>
-materializeAttributes(OperationInst *opStmt, VectorType hwVectorType) {
+materializeAttributes(OperationInst *opInst, VectorType hwVectorType) {
   SmallVector<NamedAttribute, 1> res;
-  for (auto a : opStmt->getAttrs()) {
+  for (auto a : opInst->getAttrs()) {
     if (auto splat = a.second.dyn_cast<SplatElementsAttr>()) {
       auto attr = SplatElementsAttr::get(hwVectorType, splat.getValue());
       res.push_back(NamedAttribute(a.first, attr));
@@ -397,7 +397,7 @@ materializeAttributes(OperationInst *opStmt, VectorType hwVectorType) {
   return res;
 }
 
-/// Creates an instantiated version of `opStmt`.
+/// Creates an instantiated version of `opInst`.
 /// Ops other than VectorTransferReadOp/VectorTransferWriteOp require no
 /// affine reindexing. Just substitute their Value operands and be done. For
 /// this case the actual instance is irrelevant. Just use the values in
@@ -405,11 +405,11 @@ materializeAttributes(OperationInst *opStmt, VectorType hwVectorType) {
 ///
 /// If the underlying substitution fails, this fails too and returns nullptr.
 static OperationInst *
-instantiate(FuncBuilder *b, OperationInst *opStmt, VectorType hwVectorType,
+instantiate(FuncBuilder *b, OperationInst *opInst, VectorType hwVectorType,
             DenseMap<const Value *, Value *> *substitutionsMap) {
-  assert(!opStmt->isa<VectorTransferReadOp>() &&
+  assert(!opInst->isa<VectorTransferReadOp>() &&
          "Should call the function specialized for VectorTransferReadOp");
-  assert(!opStmt->isa<VectorTransferWriteOp>() &&
+  assert(!opInst->isa<VectorTransferWriteOp>() &&
          "Should call the function specialized for VectorTransferWriteOp");
   bool fail = false;
   auto operands = map(
@@ -419,14 +419,14 @@ instantiate(FuncBuilder *b, OperationInst *opStmt, VectorType hwVectorType,
         fail |= !res;
         return res;
       },
-      opStmt->getOperands());
+      opInst->getOperands());
   if (fail)
     return nullptr;
 
-  auto attrs = materializeAttributes(opStmt, hwVectorType);
+  auto attrs = materializeAttributes(opInst, hwVectorType);
 
-  OperationState state(b->getContext(), opStmt->getLoc(),
-                       opStmt->getName().getStringRef(), operands,
+  OperationState state(b->getContext(), opInst->getLoc(),
+                       opInst->getName().getStringRef(), operands,
                        {hwVectorType}, attrs);
   return b->createOperation(state);
 }
@@ -511,11 +511,11 @@ instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
   return cloned->getInstruction();
 }
 
-/// Returns `true` if stmt instance is properly cloned and inserted, false
+/// Returns `true` if inst instance is properly cloned and inserted, false
 /// otherwise.
 /// The multi-dimensional `hwVectorInstance` belongs to the shapeRatio of
 /// super-vector type to hw vector type.
-/// A cloned instance of `stmt` is formed as follows:
+/// A cloned instance of `inst` is formed as follows:
 ///   1. vector_transfer_read: the return `superVectorType` is replaced by
 ///      `hwVectorType`. Additionally, affine indices are reindexed with
 ///      `reindexAffineIndices` using `hwVectorInstance` and vector type
@@ -532,24 +532,24 @@ instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
 ///      possible.
 ///
 /// Returns true on failure.
-static bool instantiateMaterialization(Statement *stmt,
+static bool instantiateMaterialization(Instruction *inst,
                                        MaterializationState *state) {
-  LLVM_DEBUG(dbgs() << "\ninstantiate: " << *stmt);
+  LLVM_DEBUG(dbgs() << "\ninstantiate: " << *inst);
 
-  if (isa<ForStmt>(stmt))
-    return stmt->emitError("NYI path ForStmt");
+  if (isa<ForInst>(inst))
+    return inst->emitError("NYI path ForInst");
 
-  if (isa<IfStmt>(stmt))
-    return stmt->emitError("NYI path IfStmt");
+  if (isa<IfInst>(inst))
+    return inst->emitError("NYI path IfInst");
 
   // Create a builder here for unroll-and-jam effects.
-  FuncBuilder b(stmt);
-  auto *opStmt = cast<OperationInst>(stmt);
-  if (auto write = opStmt->dyn_cast<VectorTransferWriteOp>()) {
+  FuncBuilder b(inst);
+  auto *opInst = cast<OperationInst>(inst);
+  if (auto write = opInst->dyn_cast<VectorTransferWriteOp>()) {
     instantiate(&b, write, state->hwVectorType, state->hwVectorInstance,
                 state->substitutionsMap);
     return false;
-  } else if (auto read = opStmt->dyn_cast<VectorTransferReadOp>()) {
+  } else if (auto read = opInst->dyn_cast<VectorTransferReadOp>()) {
     auto *clone = instantiate(&b, read, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     state->substitutionsMap->insert(
@@ -559,17 +559,17 @@ static bool instantiateMaterialization(Statement *stmt,
   // The only op with 0 results reaching this point must, by construction, be
   // VectorTransferWriteOps and have been caught above. Ops with >= 2 results
   // are not yet supported. So just support 1 result.
-  if (opStmt->getNumResults() != 1)
-    return stmt->emitError("NYI: ops with != 1 results");
-  if (opStmt->getResult(0)->getType() != state->superVectorType)
-    return stmt->emitError("Op does not return a supervector.");
+  if (opInst->getNumResults() != 1)
+    return inst->emitError("NYI: ops with != 1 results");
+  if (opInst->getResult(0)->getType() != state->superVectorType)
+    return inst->emitError("Op does not return a supervector.");
   auto *clone =
-      instantiate(&b, opStmt, state->hwVectorType, state->substitutionsMap);
+      instantiate(&b, opInst, state->hwVectorType, state->substitutionsMap);
   if (!clone) {
     return true;
   }
   state->substitutionsMap->insert(
-      std::make_pair(opStmt->getResult(0), clone->getResult(0)));
+      std::make_pair(opInst->getResult(0), clone->getResult(0)));
   return false;
 }
 
@@ -595,7 +595,7 @@ static bool instantiateMaterialization(Statement *stmt,
 /// TODO(ntv): full loops + materialized allocs.
 /// TODO(ntv): partial unrolling + materialized allocs.
 static bool emitSlice(MaterializationState *state,
-                      SetVector<Statement *> *slice) {
+                      SetVector<Instruction *> *slice) {
   auto ratio = shapeRatio(state->superVectorType, state->hwVectorType);
   assert(ratio.hasValue() &&
          "ratio of super-vector to HW-vector shape is not integral");
@@ -610,10 +610,10 @@ static bool emitSlice(MaterializationState *state,
     DenseMap<const Value *, Value *> substitutionMap;
     scopedState.substitutionsMap = &substitutionMap;
     // slice are topologically sorted, we can just clone them in order.
-    for (auto *stmt : *slice) {
-      auto fail = instantiateMaterialization(stmt, &scopedState);
+    for (auto *inst : *slice) {
+      auto fail = instantiateMaterialization(inst, &scopedState);
       if (fail) {
-        stmt->emitError("Unhandled super-vector materialization failure");
+        inst->emitError("Unhandled super-vector materialization failure");
         return true;
       }
     }
@@ -636,7 +636,7 @@ static bool emitSlice(MaterializationState *state,
 /// Materializes super-vector types into concrete hw vector types as follows:
 ///   1. start from super-vector terminators (current vector_transfer_write
 ///      ops);
-///   2. collect all the statements that can be reached by transitive use-defs
+///   2. collect all the instructions that can be reached by transitive use-defs
 ///      chains;
 ///   3. get the superVectorType for this particular terminator and the
 ///      corresponding hardware vector type (for now limited to F32)
@@ -647,13 +647,13 @@ static bool emitSlice(MaterializationState *state,
 /// Notes
 /// =====
 /// The `slice` is sorted in topological order by construction.
-/// Additionally, this set is limited to statements in the same lexical scope
+/// Additionally, this set is limited to instructions in the same lexical scope
 /// because we currently disallow vectorization of defs that come from another
 /// scope.
 static bool materialize(Function *f,
                         const SetVector<OperationInst *> &terminators,
                         MaterializationState *state) {
-  DenseSet<Statement *> seen;
+  DenseSet<Instruction *> seen;
   for (auto *term : terminators) {
     // Short-circuit test, a given terminator may have been reached by some
     // other previous transitive use-def chains.
@@ -668,16 +668,16 @@ static bool materialize(Function *f,
     // current enclosing scope of the terminator. See the top of the function
     // Note for the justification of this restriction.
     // TODO(ntv): relax scoping constraints.
-    auto *enclosingScope = term->getParentStmt();
-    auto keepIfInSameScope = [enclosingScope](Statement *stmt) {
-      assert(stmt && "NULL stmt");
+    auto *enclosingScope = term->getParentInst();
+    auto keepIfInSameScope = [enclosingScope](Instruction *inst) {
+      assert(inst && "NULL inst");
       if (!enclosingScope) {
         // by construction, everyone is always under the top scope (null scope).
         return true;
       }
-      return properlyDominates(*enclosingScope, *stmt);
+      return properlyDominates(*enclosingScope, *inst);
     };
-    SetVector<Statement *> slice =
+    SetVector<Instruction *> slice =
         getSlice(term, keepIfInSameScope, keepIfInSameScope);
     assert(!slice.empty());
 
@@ -722,12 +722,12 @@ PassResult MaterializeVectorsPass::runOnMLFunction(Function *f) {
 
   // Capture terminators; i.e. vector_transfer_write ops involving a strict
   // super-vector of subVectorType.
-  auto filter = [subVectorType](const Statement &stmt) {
-    const auto &opStmt = cast<OperationInst>(stmt);
-    if (!opStmt.isa<VectorTransferWriteOp>()) {
+  auto filter = [subVectorType](const Instruction &inst) {
+    const auto &opInst = cast<OperationInst>(inst);
+    if (!opInst.isa<VectorTransferWriteOp>()) {
       return false;
     }
-    return matcher::operatesOnStrictSuperVectors(opStmt, subVectorType);
+    return matcher::operatesOnStrictSuperVectors(opInst, subVectorType);
   };
   auto pat = Op(filter);
   auto matches = pat.match(f);

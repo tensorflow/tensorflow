@@ -17,10 +17,10 @@
 
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
+#include "mlir/IR/Instructions.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/Statements.h"
 using namespace mlir;
 
 /// Form the OperationName for an op with the specified string.  This either is
@@ -279,7 +279,7 @@ bool OpTrait::impl::verifyIsTerminator(const OperationInst *op) {
   if (op->getFunction()->isML()) {
     Block *block = op->getBlock();
     if (!block || block->getContainingInst() || &block->back() != op)
-      return op->emitOpError("must be the last statement in the ML function");
+      return op->emitOpError("must be the last instruction in the ML function");
   } else {
     const Block *block = op->getBlock();
     if (!block || &block->back() != op)

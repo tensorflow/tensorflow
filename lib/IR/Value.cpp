@@ -17,7 +17,7 @@
 
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Statements.h"
+#include "mlir/IR/Instructions.h"
 using namespace mlir;
 
 /// If this value is the result of an Instruction, return the instruction
@@ -35,8 +35,8 @@ Function *Value::getFunction() {
     return cast<BlockArgument>(this)->getFunction();
   case Value::Kind::InstResult:
     return getDefiningInst()->getFunction();
-  case Value::Kind::ForStmt:
-    return cast<ForStmt>(this)->getFunction();
+  case Value::Kind::ForInst:
+    return cast<ForInst>(this)->getFunction();
   }
 }
 
@@ -59,10 +59,10 @@ MLIRContext *IROperandOwner::getContext() const {
   switch (getKind()) {
   case Kind::OperationInst:
     return cast<OperationInst>(this)->getContext();
-  case Kind::ForStmt:
-    return cast<ForStmt>(this)->getContext();
-  case Kind::IfStmt:
-    return cast<IfStmt>(this)->getContext();
+  case Kind::ForInst:
+    return cast<ForInst>(this)->getContext();
+  case Kind::IfInst:
+    return cast<IfInst>(this)->getContext();
   }
 }
 

@@ -24,7 +24,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/StmtVisitor.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/Passes.h"
@@ -207,24 +207,24 @@ struct CFGCSE : public CSEImpl {
 };
 
 /// Common sub-expression elimination for ML functions.
-struct MLCSE : public CSEImpl, StmtWalker<MLCSE> {
-  using StmtWalker<MLCSE>::walk;
+struct MLCSE : public CSEImpl, InstWalker<MLCSE> {
+  using InstWalker<MLCSE>::walk;
 
   void run(Function *f) {
-    // Walk the function statements.
+    // Walk the function instructions.
     walk(f);
 
     // Finally, erase any redundant operations.
     eraseDeadOperations();
   }
 
-  // Insert a scope for each statement range.
+  // Insert a scope for each instruction range.
   template <class Iterator> void walk(Iterator Start, Iterator End) {
     ScopedMapTy::ScopeTy scope(knownValues);
-    StmtWalker<MLCSE>::walk(Start, End);
+    InstWalker<MLCSE>::walk(Start, End);
   }
 
-  void visitOperationInst(OperationInst *stmt) { simplifyOperation(stmt); }
+  void visitOperationInst(OperationInst *inst) { simplifyOperation(inst); }
 };
 
 } // end anonymous namespace

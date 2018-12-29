@@ -25,7 +25,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/StmtVisitor.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/Passes.h"
@@ -36,20 +36,20 @@ using namespace mlir;
 
 namespace {
 
-// ComposeAffineMaps walks stmt blocks in a Function, and for each
+// ComposeAffineMaps walks inst blocks in a Function, and for each
 // AffineApplyOp, forward substitutes its results into any users which are
 // also AffineApplyOps. After forward subtituting its results, AffineApplyOps
 // with no remaining uses are collected and erased after the walk.
 // TODO(andydavis) Remove this when Chris adds instruction combiner pass.
-struct ComposeAffineMaps : public FunctionPass, StmtWalker<ComposeAffineMaps> {
+struct ComposeAffineMaps : public FunctionPass, InstWalker<ComposeAffineMaps> {
   std::vector<OperationInst *> affineApplyOpsToErase;
 
   explicit ComposeAffineMaps() : FunctionPass(&ComposeAffineMaps::passID) {}
-  using InstListType = llvm::iplist<Statement>;
+  using InstListType = llvm::iplist<Instruction>;
   void walk(InstListType::iterator Start, InstListType::iterator End);
-  void visitOperationInst(OperationInst *stmt);
+  void visitOperationInst(OperationInst *inst);
   PassResult runOnMLFunction(Function *f) override;
-  using StmtWalker<ComposeAffineMaps>::walk;
+  using InstWalker<ComposeAffineMaps>::walk;
 
   static char passID;
 };
@@ -66,14 +66,14 @@ void ComposeAffineMaps::walk(InstListType::iterator Start,
                              InstListType::iterator End) {
   while (Start != End) {
     walk(&(*Start));
-    // Increment iterator after walk as visit function can mutate stmt list
+    // Increment iterator after walk as visit function can mutate inst list
     // ahead of 'Start'.
     ++Start;
   }
 }
 
-void ComposeAffineMaps::visitOperationInst(OperationInst *opStmt) {
-  if (auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>()) {
+void ComposeAffineMaps::visitOperationInst(OperationInst *opInst) {
+  if (auto affineApplyOp = opInst->dyn_cast<AffineApplyOp>()) {
     forwardSubstitute(affineApplyOp);
     bool allUsesEmpty = true;
     for (auto *result : affineApplyOp->getInstruction()->getResults()) {
@@ -83,7 +83,7 @@ void ComposeAffineMaps::visitOperationInst(OperationInst *opStmt) {
       }
     }
     if (allUsesEmpty) {
-      affineApplyOpsToErase.push_back(opStmt);
+      affineApplyOpsToErase.push_back(opInst);
     }
   }
 }
@@ -91,8 +91,8 @@ void ComposeAffineMaps::visitOperationInst(OperationInst *opStmt) {
 PassResult ComposeAffineMaps::runOnMLFunction(Function *f) {
   affineApplyOpsToErase.clear();
   walk(f);
-  for (auto *opStmt : affineApplyOpsToErase) {
-    opStmt->erase();
+  for (auto *opInst : affineApplyOpsToErase) {
+    opInst->erase();
   }
   return success();
 }

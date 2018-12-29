@@ -25,7 +25,7 @@
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Statements.h"
+#include "mlir/IR/Instructions.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
@@ -498,22 +498,22 @@ void mlir::getReachableAffineApplyOps(
 
   while (!worklist.empty()) {
     State &state = worklist.back();
-    auto *opStmt = state.value->getDefiningInst();
+    auto *opInst = state.value->getDefiningInst();
     // Note: getDefiningInst will return nullptr if the operand is not an
-    // OperationInst (i.e. ForStmt), which is a terminator for the search.
-    if (opStmt == nullptr || !opStmt->isa<AffineApplyOp>()) {
+    // OperationInst (i.e. ForInst), which is a terminator for the search.
+    if (opInst == nullptr || !opInst->isa<AffineApplyOp>()) {
       worklist.pop_back();
       continue;
     }
-    if (auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>()) {
+    if (auto affineApplyOp = opInst->dyn_cast<AffineApplyOp>()) {
       if (state.operandIndex == 0) {
-        // Pre-Visit: Add 'opStmt' to reachable sequence.
-        affineApplyOps.push_back(opStmt);
+        // Pre-Visit: Add 'opInst' to reachable sequence.
+        affineApplyOps.push_back(opInst);
       }
-      if (state.operandIndex < opStmt->getNumOperands()) {
+      if (state.operandIndex < opInst->getNumOperands()) {
         // Visit: Add next 'affineApplyOp' operand to worklist.
         // Get next operand to visit at 'operandIndex'.
-        auto *nextOperand = opStmt->getOperand(state.operandIndex);
+        auto *nextOperand = opInst->getOperand(state.operandIndex);
         // Increment 'operandIndex' in 'state'.
         ++state.operandIndex;
         // Add 'nextOperand' to worklist.
@@ -533,47 +533,47 @@ void mlir::forwardSubstituteReachableOps(AffineValueMap *valueMap) {
   SmallVector<OperationInst *, 4> affineApplyOps;
   getReachableAffineApplyOps(valueMap->getOperands(), affineApplyOps);
   // Compose AffineApplyOps in 'affineApplyOps'.
-  for (auto *opStmt : affineApplyOps) {
-    assert(opStmt->isa<AffineApplyOp>());
-    auto affineApplyOp = opStmt->dyn_cast<AffineApplyOp>();
+  for (auto *opInst : affineApplyOps) {
+    assert(opInst->isa<AffineApplyOp>());
+    auto affineApplyOp = opInst->dyn_cast<AffineApplyOp>();
     // Forward substitute 'affineApplyOp' into 'valueMap'.
     valueMap->forwardSubstitute(*affineApplyOp);
   }
 }
 
 // Builds a system of constraints with dimensional identifiers corresponding to
-// the loop IVs of the forStmts appearing in that order. Any symbols founds in
+// the loop IVs of the forInsts appearing in that order. Any symbols founds in
 // the bound operands are added as symbols in the system. Returns false for the
 // yet unimplemented cases.
 // TODO(andydavis,bondhugula) Handle non-unit steps through local variables or
 // stride information in FlatAffineConstraints. (For eg., by using iv - lb %
 // step = 0 and/or by introducing a method in FlatAffineConstraints
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
-bool mlir::getIndexSet(ArrayRef<ForStmt *> forStmts,
+bool mlir::getIndexSet(ArrayRef<ForInst *> forInsts,
                        FlatAffineConstraints *domain) {
-  SmallVector<Value *, 4> indices(forStmts.begin(), forStmts.end());
+  SmallVector<Value *, 4> indices(forInsts.begin(), forInsts.end());
   // Reset while associated Values in 'indices' to the domain.
-  domain->reset(forStmts.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
-  for (auto *forStmt : forStmts) {
-    // Add constraints from forStmt's bounds.
-    if (!domain->addForStmtDomain(*forStmt))
+  domain->reset(forInsts.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
+  for (auto *forInst : forInsts) {
+    // Add constraints from forInst's bounds.
+    if (!domain->addForInstDomain(*forInst))
       return false;
   }
   return true;
 }
 
-// Computes the iteration domain for 'opStmt' and populates 'indexSet', which
-// encapsulates the constraints involving loops surrounding 'opStmt' and
+// Computes the iteration domain for 'opInst' and populates 'indexSet', which
+// encapsulates the constraints involving loops surrounding 'opInst' and
 // potentially involving any Function symbols. The dimensional identifiers in
-// 'indexSet' correspond to the loops surounding 'stmt' from outermost to
+// 'indexSet' correspond to the loops surounding 'inst' from outermost to
 // innermost.
-// TODO(andydavis) Add support to handle IfStmts surrounding 'stmt'.
-static bool getStmtIndexSet(const Statement *stmt,
+// TODO(andydavis) Add support to handle IfInsts surrounding 'inst'.
+static bool getInstIndexSet(const Instruction *inst,
                             FlatAffineConstraints *indexSet) {
-  // TODO(andydavis) Extend this to gather enclosing IfStmts and consider
+  // TODO(andydavis) Extend this to gather enclosing IfInsts and consider
   // factoring it out into a utility function.
-  SmallVector<ForStmt *, 4> loops;
-  getLoopIVs(*stmt, &loops);
+  SmallVector<ForInst *, 4> loops;
+  getLoopIVs(*inst, &loops);
   return getIndexSet(loops, indexSet);
 }
 
@@ -672,7 +672,7 @@ static void buildDimAndSymbolPositionMaps(
   auto updateValuePosMap = [&](ArrayRef<Value *> values, bool isSrc) {
     for (unsigned i = 0, e = values.size(); i < e; ++i) {
       auto *value = values[i];
-      if (!isa<ForStmt>(values[i]))
+      if (!isa<ForInst>(values[i]))
         valuePosMap->addSymbolValue(value);
       else if (isSrc)
         valuePosMap->addSrcValue(value);
@@ -840,13 +840,13 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   // Add equality constraints for any operands that are defined by constant ops.
   auto addEqForConstOperands = [&](ArrayRef<const Value *> operands) {
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
-      if (isa<ForStmt>(operands[i]))
+      if (isa<ForInst>(operands[i]))
         continue;
       auto *symbol = operands[i];
       assert(symbol->isValidSymbol());
       // Check if the symbol is a constant.
-      if (auto *opStmt = symbol->getDefiningInst()) {
-        if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
+      if (auto *opInst = symbol->getDefiningInst()) {
+        if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
           dependenceDomain->setIdToConstant(valuePosMap.getSymPos(symbol),
                                             constOp->getValue());
         }
@@ -909,8 +909,8 @@ static unsigned getNumCommonLoops(const FlatAffineConstraints &srcDomain,
       std::min(srcDomain.getNumDimIds(), dstDomain.getNumDimIds());
   unsigned numCommonLoops = 0;
   for (unsigned i = 0; i < minNumLoops; ++i) {
-    if (!isa<ForStmt>(srcDomain.getIdValue(i)) ||
-        !isa<ForStmt>(dstDomain.getIdValue(i)) ||
+    if (!isa<ForInst>(srcDomain.getIdValue(i)) ||
+        !isa<ForInst>(dstDomain.getIdValue(i)) ||
         srcDomain.getIdValue(i) != dstDomain.getIdValue(i))
       break;
     ++numCommonLoops;
@@ -918,26 +918,26 @@ static unsigned getNumCommonLoops(const FlatAffineConstraints &srcDomain,
   return numCommonLoops;
 }
 
-// Returns Block common to 'srcAccess.opStmt' and 'dstAccess.opStmt'.
+// Returns Block common to 'srcAccess.opInst' and 'dstAccess.opInst'.
 static Block *getCommonBlock(const MemRefAccess &srcAccess,
                              const MemRefAccess &dstAccess,
                              const FlatAffineConstraints &srcDomain,
                              unsigned numCommonLoops) {
   if (numCommonLoops == 0) {
-    auto *block = srcAccess.opStmt->getBlock();
+    auto *block = srcAccess.opInst->getBlock();
     while (block->getContainingInst()) {
       block = block->getContainingInst()->getBlock();
     }
     return block;
   }
   auto *commonForValue = srcDomain.getIdValue(numCommonLoops - 1);
-  assert(isa<ForStmt>(commonForValue));
-  return cast<ForStmt>(commonForValue)->getBody();
+  assert(isa<ForInst>(commonForValue));
+  return cast<ForInst>(commonForValue)->getBody();
 }
 
-// Returns true if the ancestor operation statement of 'srcAccess' properly
-// dominates the ancestor operation statement of 'dstAccess' in the same
-// statement block. Returns false otherwise.
+// Returns true if the ancestor operation instruction of 'srcAccess' properly
+// dominates the ancestor operation instruction of 'dstAccess' in the same
+// instruction block. Returns false otherwise.
 // Note that because 'srcAccess' or 'dstAccess' may be nested in conditionals,
 // the function is named 'srcMayExecuteBeforeDst'.
 // Note that 'numCommonLoops' is the number of contiguous surrounding outer
@@ -946,16 +946,16 @@ static bool srcMayExecuteBeforeDst(const MemRefAccess &srcAccess,
                                    const MemRefAccess &dstAccess,
                                    const FlatAffineConstraints &srcDomain,
                                    unsigned numCommonLoops) {
-  // Get Block common to 'srcAccess.opStmt' and 'dstAccess.opStmt'.
+  // Get Block common to 'srcAccess.opInst' and 'dstAccess.opInst'.
   auto *commonBlock =
       getCommonBlock(srcAccess, dstAccess, srcDomain, numCommonLoops);
   // Check the dominance relationship between the respective ancestors of the
   // src and dst in the Block of the innermost among the common loops.
-  auto *srcStmt = commonBlock->findAncestorInstInBlock(*srcAccess.opStmt);
-  assert(srcStmt != nullptr);
-  auto *dstStmt = commonBlock->findAncestorInstInBlock(*dstAccess.opStmt);
-  assert(dstStmt != nullptr);
-  return mlir::properlyDominates(*srcStmt, *dstStmt);
+  auto *srcInst = commonBlock->findAncestorInstInBlock(*srcAccess.opInst);
+  assert(srcInst != nullptr);
+  auto *dstInst = commonBlock->findAncestorInstInBlock(*dstAccess.opInst);
+  assert(dstInst != nullptr);
+  return mlir::properlyDominates(*srcInst, *dstInst);
 }
 
 // Adds ordering constraints to 'dependenceDomain' based on number of loops
@@ -1119,7 +1119,7 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //    until operands of the AffineValueMap are loop IVs or symbols.
 // *) Build iteration domain constraints for each access. Iteration domain
 //    constraints are pairs of inequality contraints representing the
-//    upper/lower loop bounds for each ForStmt in the loop nest associated
+//    upper/lower loop bounds for each ForInst in the loop nest associated
 //    with each access.
 // *) Build dimension and symbol position maps for each access, which map
 //    Values from access functions and iteration domains to their position
@@ -1197,7 +1197,7 @@ bool mlir::checkMemrefAccessDependence(
   if (srcAccess.memref != dstAccess.memref)
     return false;
   // Return 'false' if one of these accesses is not a StoreOp.
-  if (!srcAccess.opStmt->isa<StoreOp>() && !dstAccess.opStmt->isa<StoreOp>())
+  if (!srcAccess.opInst->isa<StoreOp>() && !dstAccess.opInst->isa<StoreOp>())
     return false;
 
   // Get composed access function for 'srcAccess'.
@@ -1208,19 +1208,19 @@ bool mlir::checkMemrefAccessDependence(
   AffineValueMap dstAccessMap;
   dstAccess.getAccessMap(&dstAccessMap);
 
-  // Get iteration domain for the 'srcAccess' statement.
+  // Get iteration domain for the 'srcAccess' instruction.
   FlatAffineConstraints srcDomain;
-  if (!getStmtIndexSet(srcAccess.opStmt, &srcDomain))
+  if (!getInstIndexSet(srcAccess.opInst, &srcDomain))
     return false;
 
-  // Get iteration domain for 'dstAccess' statement.
+  // Get iteration domain for 'dstAccess' instruction.
   FlatAffineConstraints dstDomain;
-  if (!getStmtIndexSet(dstAccess.opStmt, &dstDomain))
+  if (!getInstIndexSet(dstAccess.opInst, &dstDomain))
     return false;
 
   // Return 'false' if loopDepth > numCommonLoops and if the ancestor operation
-  // statement of 'srcAccess' does not properly dominate the ancestor operation
-  // statement of 'dstAccess' in the same common statement block.
+  // instruction of 'srcAccess' does not properly dominate the ancestor
+  // operation instruction of 'dstAccess' in the same common instruction block.
   unsigned numCommonLoops = getNumCommonLoops(srcDomain, dstDomain);
   assert(loopDepth <= numCommonLoops + 1);
   if (loopDepth > numCommonLoops &&

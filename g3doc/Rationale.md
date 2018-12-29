@@ -583,7 +583,7 @@ our current design in practice.
 
 The current MLIR uses a representation of polyhedral schedules using a tree of
 if/for loops. We extensively debated the tradeoffs involved in the typical
-unordered polyhedral statement representation (where each statement has
+unordered polyhedral instruction representation (where each instruction has
 multi-dimensional schedule information), discussed the benefits of schedule tree
 forms, and eventually decided to go with a syntactic tree of affine if/else
 conditionals and affine for loops. Discussion of the tradeoff was captured in
@@ -598,13 +598,13 @@ At a high level, we have two alternatives here:
     as multidimensional affine functions. A schedule tree form however makes
     polyhedral domains and schedules a first class concept in the IR allowing
     compact expression of transformations through the schedule tree without
-    changing the domains of MLStmts. Such a representation also hides prologues,
-    epilogues, partial tiles, complex loop bounds and conditionals making loop
-    nests free of "syntax". Cost models instead look at domains and schedules.
-    In addition, if necessary such a domain schedule representation can be
-    normalized to explicitly propagate the schedule into domains and model all
-    the cleanup code. An example and more detail on the schedule tree form is in
-    the next section.
+    changing the domains of instructions. Such a representation also hides
+    prologues, epilogues, partial tiles, complex loop bounds and conditionals
+    making loop nests free of "syntax". Cost models instead look at domains and
+    schedules. In addition, if necessary such a domain schedule representation
+    can be normalized to explicitly propagate the schedule into domains and
+    model all the cleanup code. An example and more detail on the schedule tree
+    form is in the next section.
 1.  Having two different forms of MLFunctions: an affine loop tree form
     (AffineLoopTreeFunction) and a polyhedral schedule tree form as two
     different forms of MLFunctions. Or in effect, having four different forms
@@ -620,7 +620,7 @@ has to be executed while schedules represent the order in which domain elements
 are interleaved. We model domains as non piece-wise convex integer sets, and
 schedules as affine functions; however, the former can be disjunctive, and the
 latter can be piece-wise affine relations. In the schedule tree representation,
-domain and schedules for statements are represented in a tree-like structure
+domain and schedules for instructions are represented in a tree-like structure
 which is called a schedule tree. Each non-leaf node of the tree is an abstract
 polyhedral dimension corresponding to an abstract fused loop for each ML
 instruction that appears in that branch. Each leaf node is an ML Instruction.
@@ -790,26 +790,26 @@ extfunc @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
 We considered providing a representation for SSA values that are live out of
 if/else conditional bodies or for loops of ML functions. We ultimately abandoned
 this approach due to its complexity. In the current design of MLIR, scalar
-variables cannot escape for loops or if statements. In situations, where
+variables cannot escape for loops or if instructions. In situations, where
 escaping is necessary, we use zero-dimensional tensors and memrefs instead of
 scalars.
 
 The abandoned design of supporting escaping scalars is as follows:
 
-#### For Statement {#for-statement}
+#### For Instruction {#for-instruction}
 
 Syntax:
 
 ``` {.ebnf}
 [<out-var-list> =]
 for %<index-variable-name> = <lower-bound> ... <upper-bound> step <step>
-   [with <in-var-list>] { <loop-statement-list> }
+   [with <in-var-list>] { <loop-instruction-list> }
 ```
 
 out-var-list is a comma separated list of SSA values defined in the loop body
 and used outside the loop body. in-var-list is a comma separated list of SSA
-values used inside the loop body and their initializers. loop-statement-list is
-a list of statements that may also include a yield statement.
+values used inside the loop body and their initializers. loop-instruction-list
+is a list of instructions that may also include a yield instruction.
 
 Example:
 
@@ -826,7 +826,7 @@ mlfunc int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
 }
 ```
 
-#### If/else Statement {#if-else-statement}
+#### If/else Instruction {#if-else-instruction}
 
 Syntax:
 
@@ -834,12 +834,12 @@ Syntax:
 <out-var-list> = if (<cond-list>) {...} [else {...}]
 ```
 
-Out-var-list is a list of SSA values defined by the if-statement. The values are
-arguments to the yield-statement that occurs in both then and else clauses when
-else clause is present. When if statement contains only if clause, the escaping
-value defined in the then clause should be merged with the value the variable
-had before the if statement. The design captured here does not handle this
-situation.
+Out-var-list is a list of SSA values defined by the if-instruction. The values
+are arguments to the yield-instruction that occurs in both then and else clauses
+when else clause is present. When if instruction contains only if clause, the
+escaping value defined in the then clause should be merged with the value the
+variable had before the if instruction. The design captured here does not handle
+this situation.
 
 Example:
 

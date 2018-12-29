@@ -16,9 +16,9 @@
 // =============================================================================
 
 #include "mlir/IR/Function.h"
+#include "mlir/IR/InstVisitor.h"
+#include "mlir/IR/Instructions.h"
 #include "mlir/IR/OperationSupport.h"
-#include "mlir/IR/Statements.h"
-#include "mlir/IR/StmtVisitor.h"
 #include "mlir/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
@@ -26,7 +26,7 @@
 using namespace mlir;
 
 namespace {
-struct PrintOpStatsPass : public FunctionPass, StmtWalker<PrintOpStatsPass> {
+struct PrintOpStatsPass : public FunctionPass, InstWalker<PrintOpStatsPass> {
   explicit PrintOpStatsPass(llvm::raw_ostream &os = llvm::errs())
       : FunctionPass(&PrintOpStatsPass::passID), os(os) {}
 
@@ -38,7 +38,7 @@ struct PrintOpStatsPass : public FunctionPass, StmtWalker<PrintOpStatsPass> {
 
   // Process ML functions and operation statments in ML functions.
   PassResult runOnMLFunction(Function *function) override;
-  void visitOperationInst(OperationInst *stmt);
+  void visitOperationInst(OperationInst *inst);
 
   // Print summary of op stats.
   void printSummary();
@@ -69,8 +69,8 @@ PassResult PrintOpStatsPass::runOnCFGFunction(Function *function) {
   return success();
 }
 
-void PrintOpStatsPass::visitOperationInst(OperationInst *stmt) {
-  ++opCount[stmt->getName().getStringRef()];
+void PrintOpStatsPass::visitOperationInst(OperationInst *inst) {
+  ++opCount[inst->getName().getStringRef()];
 }
 
 PassResult PrintOpStatsPass::runOnMLFunction(Function *function) {

@@ -22,7 +22,7 @@
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Statements.h"
+#include "mlir/IR/Instructions.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
 
@@ -38,36 +38,36 @@ using namespace mlir;
 using llvm::DenseSet;
 using llvm::SetVector;
 
-void mlir::getForwardSlice(Statement *stmt,
-                           SetVector<Statement *> *forwardSlice,
+void mlir::getForwardSlice(Instruction *inst,
+                           SetVector<Instruction *> *forwardSlice,
                            TransitiveFilter filter, bool topLevel) {
-  if (!stmt) {
+  if (!inst) {
     return;
   }
 
   // Evaluate whether we should keep this use.
   // This is useful in particular to implement scoping; i.e. return the
   // transitive forwardSlice in the current scope.
-  if (!filter(stmt)) {
+  if (!filter(inst)) {
     return;
   }
 
-  if (auto *opStmt = dyn_cast<OperationInst>(stmt)) {
-    assert(opStmt->getNumResults() <= 1 && "NYI: multiple results");
-    if (opStmt->getNumResults() > 0) {
-      for (auto &u : opStmt->getResult(0)->getUses()) {
-        auto *ownerStmt = u.getOwner();
-        if (forwardSlice->count(ownerStmt) == 0) {
-          getForwardSlice(ownerStmt, forwardSlice, filter,
+  if (auto *opInst = dyn_cast<OperationInst>(inst)) {
+    assert(opInst->getNumResults() <= 1 && "NYI: multiple results");
+    if (opInst->getNumResults() > 0) {
+      for (auto &u : opInst->getResult(0)->getUses()) {
+        auto *ownerInst = u.getOwner();
+        if (forwardSlice->count(ownerInst) == 0) {
+          getForwardSlice(ownerInst, forwardSlice, filter,
                           /*topLevel=*/false);
         }
       }
     }
-  } else if (auto *forStmt = dyn_cast<ForStmt>(stmt)) {
-    for (auto &u : forStmt->getUses()) {
-      auto *ownerStmt = u.getOwner();
-      if (forwardSlice->count(ownerStmt) == 0) {
-        getForwardSlice(ownerStmt, forwardSlice, filter,
+  } else if (auto *forInst = dyn_cast<ForInst>(inst)) {
+    for (auto &u : forInst->getUses()) {
+      auto *ownerInst = u.getOwner();
+      if (forwardSlice->count(ownerInst) == 0) {
+        getForwardSlice(ownerInst, forwardSlice, filter,
                         /*topLevel=*/false);
       }
     }
@@ -80,61 +80,61 @@ void mlir::getForwardSlice(Statement *stmt,
     // std::reverse does not work out of the box on SetVector and I want an
     // in-place swap based thing (the real std::reverse, not the LLVM adapter).
     // TODO(clattner): Consider adding an extra method?
-    std::vector<Statement *> v(forwardSlice->takeVector());
+    std::vector<Instruction *> v(forwardSlice->takeVector());
     forwardSlice->insert(v.rbegin(), v.rend());
   } else {
-    forwardSlice->insert(stmt);
+    forwardSlice->insert(inst);
   }
 }
 
-void mlir::getBackwardSlice(Statement *stmt,
-                            SetVector<Statement *> *backwardSlice,
+void mlir::getBackwardSlice(Instruction *inst,
+                            SetVector<Instruction *> *backwardSlice,
                             TransitiveFilter filter, bool topLevel) {
-  if (!stmt) {
+  if (!inst) {
     return;
   }
 
   // Evaluate whether we should keep this def.
   // This is useful in particular to implement scoping; i.e. return the
   // transitive forwardSlice in the current scope.
-  if (!filter(stmt)) {
+  if (!filter(inst)) {
     return;
   }
 
-  for (auto *operand : stmt->getOperands()) {
-    auto *stmt = operand->getDefiningInst();
-    if (backwardSlice->count(stmt) == 0) {
-      getBackwardSlice(stmt, backwardSlice, filter,
+  for (auto *operand : inst->getOperands()) {
+    auto *inst = operand->getDefiningInst();
+    if (backwardSlice->count(inst) == 0) {
+      getBackwardSlice(inst, backwardSlice, filter,
                        /*topLevel=*/false);
     }
   }
 
-  // Don't insert the top level statement, we just queried on it and don't
+  // Don't insert the top level instruction, we just queried on it and don't
   // want it in the results.
   if (!topLevel) {
-    backwardSlice->insert(stmt);
+    backwardSlice->insert(inst);
   }
 }
 
-SetVector<Statement *> mlir::getSlice(Statement *stmt,
-                                      TransitiveFilter backwardFilter,
-                                      TransitiveFilter forwardFilter) {
-  SetVector<Statement *> slice;
-  slice.insert(stmt);
+SetVector<Instruction *> mlir::getSlice(Instruction *inst,
+                                        TransitiveFilter backwardFilter,
+                                        TransitiveFilter forwardFilter) {
+  SetVector<Instruction *> slice;
+  slice.insert(inst);
 
   unsigned currentIndex = 0;
-  SetVector<Statement *> backwardSlice;
-  SetVector<Statement *> forwardSlice;
+  SetVector<Instruction *> backwardSlice;
+  SetVector<Instruction *> forwardSlice;
   while (currentIndex != slice.size()) {
-    auto *currentStmt = (slice)[currentIndex];
-    // Compute and insert the backwardSlice starting from currentStmt.
+    auto *currentInst = (slice)[currentIndex];
+    // Compute and insert the backwardSlice starting from currentInst.
     backwardSlice.clear();
-    getBackwardSlice(currentStmt, &backwardSlice, backwardFilter);
+    getBackwardSlice(currentInst, &backwardSlice, backwardFilter);
     slice.insert(backwardSlice.begin(), backwardSlice.end());
 
-    // Compute and insert the forwardSlice starting from currentStmt.
+    // Compute and insert the forwardSlice starting from currentInst.
     forwardSlice.clear();
-    getForwardSlice(currentStmt, &forwardSlice, forwardFilter);
+    getForwardSlice(currentInst, &forwardSlice, forwardFilter);
     slice.insert(forwardSlice.begin(), forwardSlice.end());
     ++currentIndex;
   }
@@ -144,24 +144,24 @@ SetVector<Statement *> mlir::getSlice(Statement *stmt,
 namespace {
 /// DFS post-order implementation that maintains a global count to work across
 /// multiple invocations, to help implement topological sort on multi-root DAGs.
-/// We traverse all statements but only record the ones that appear in `toSort`
-/// for the final result.
+/// We traverse all instructions but only record the ones that appear in
+/// `toSort` for the final result.
 struct DFSState {
-  DFSState(const SetVector<Statement *> &set)
+  DFSState(const SetVector<Instruction *> &set)
       : toSort(set), topologicalCounts(), seen() {}
-  const SetVector<Statement *> &toSort;
-  SmallVector<Statement *, 16> topologicalCounts;
-  DenseSet<Statement *> seen;
+  const SetVector<Instruction *> &toSort;
+  SmallVector<Instruction *, 16> topologicalCounts;
+  DenseSet<Instruction *> seen;
 };
 } // namespace
 
-static void DFSPostorder(Statement *current, DFSState *state) {
-  auto *opStmt = cast<OperationInst>(current);
-  assert(opStmt->getNumResults() <= 1 && "NYI: multi-result");
-  if (opStmt->getNumResults() > 0) {
-    for (auto &u : opStmt->getResult(0)->getUses()) {
-      auto *stmt = u.getOwner();
-      DFSPostorder(stmt, state);
+static void DFSPostorder(Instruction *current, DFSState *state) {
+  auto *opInst = cast<OperationInst>(current);
+  assert(opInst->getNumResults() <= 1 && "NYI: multi-result");
+  if (opInst->getNumResults() > 0) {
+    for (auto &u : opInst->getResult(0)->getUses()) {
+      auto *inst = u.getOwner();
+      DFSPostorder(inst, state);
     }
   }
   bool inserted;
@@ -175,8 +175,8 @@ static void DFSPostorder(Statement *current, DFSState *state) {
   }
 }
 
-SetVector<Statement *>
-mlir::topologicalSort(const SetVector<Statement *> &toSort) {
+SetVector<Instruction *>
+mlir::topologicalSort(const SetVector<Instruction *> &toSort) {
   if (toSort.empty()) {
     return toSort;
   }
@@ -189,7 +189,7 @@ mlir::topologicalSort(const SetVector<Statement *> &toSort) {
   }
 
   // Reorder and return.
-  SetVector<Statement *> res;
+  SetVector<Instruction *> res;
   for (auto it = state.topologicalCounts.rbegin(),
             eit = state.topologicalCounts.rend();
        it != eit; ++it) {

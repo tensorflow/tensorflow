@@ -17,7 +17,7 @@
 //
 // Integer sets are sets of points from the integer lattice constrained by
 // affine equality/inequality constraints. This class is meant to represent
-// affine equality/inequality conditions for MLFunctions' if statements. As
+// affine equality/inequality conditions for MLFunctions' if instructions. As
 // such, it is only expected to contain a handful of affine constraints, and it
 // is immutable like an Affine Map. Integer sets are however not unique'd -
 // although affine expressions that make up the equalities and inequalites of an

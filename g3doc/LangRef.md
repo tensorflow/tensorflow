@@ -35,10 +35,10 @@ definitions, a "[CFG Function](#cfg-functions)" and an
 composition of [operations](#operations), but represent control flow in
 different ways: A CFG Function control flow using a CFG of [Blocks](#blocks),
 which contain instructions and end with
-[control flow terminator statements](#terminator-instructions) (like branches).
-ML Functions represents control flow with a nest of affine loops and if
-conditions, and are said to contain statements. Both types of functions can call
-back and forth between each other arbitrarily.
+[control flow terminator instructions](#terminator-instructions) (like
+branches). ML Functions represents control flow with a nest of affine loops and
+if conditions. Both types of functions can call back and forth between each
+other arbitrarily.
 
 MLIR is an
 [SSA-based](https://en.wikipedia.org/wiki/Static_single_assignment_form) IR,
@@ -258,12 +258,12 @@ and symbol identifiers.
 
 In an [ML Function](#ml-functions), a symbolic identifier can be bound to an SSA
 value that is either an argument to the function, a value defined at the top
-level of that function (outside of all loops and if statements), the result of a
-[`constant` operation](#'constant'-operation), or the result of an
+level of that function (outside of all loops and if instructions), the result of
+a [`constant` operation](#'constant'-operation), or the result of an
 [`affine_apply`](#'affine_apply'-operation) operation that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
 that a symbol is bound to, but also to induction variables of enclosing
-[for statements](#'for'-statement), and the results of an
+[for instructions](#'for'-instruction), and the results of an
 [`affine_apply` operation](#'affine_apply'-operation) (which recursively may use
 other dimensions and symbols).
 
@@ -939,7 +939,7 @@ way to lower [ML Functions](#ml-functions) before late code generation.
 Syntax:
 
 ``` {.ebnf}
-block           ::= bb-label operation* terminator-stmt
+block           ::= bb-label operation* terminator-inst
 bb-label        ::= bb-id bb-arg-list? `:`
 bb-id           ::= bare-id
 ssa-id-and-type ::= ssa-id `:` type
@@ -951,10 +951,10 @@ bb-arg-list ::= `(` ssa-id-and-type-list? `)`
 ```
 
 A [basic block](https://en.wikipedia.org/wiki/Basic_block) is a sequential list
-of operation instructions without control flow (calls are not considered control
-flow for this purpose) that are executed from top to bottom. The last
-instruction in a block is a [terminator instruction](#terminator-instructions),
-which ends the block.
+of instructions without control flow (calls are not considered control flow for
+this purpose) that are executed from top to bottom. The last instruction in a
+block is a [terminator instruction](#terminator-instructions), which ends the
+block.
 
 Blocks in MLIR take a list of arguments, which represent SSA PHI nodes in a
 functional notation. The arguments are defined by the block, and values are
@@ -995,7 +995,7 @@ case: they become arguments to the entry block
 [[more rationale](Rationale.md#block-arguments-vs-phi-nodes)].
 
 Control flow within a CFG function is implemented with unconditional branches,
-conditional branches, and a return statement.
+conditional branches, and a `return` instruction.
 
 TODO: We can add
 [switches](http://llvm.org/docs/LangRef.html#switch-instruction),
@@ -1009,11 +1009,11 @@ if/when there is demand.
 Syntax:
 
 ``` {.ebnf}
-terminator-stmt ::= `br` bb-id branch-use-list?
+terminator-inst ::= `br` bb-id branch-use-list?
 branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
 ```
 
-The `br` terminator statement represents an unconditional jump to a target
+The `br` terminator instruction represents an unconditional jump to a target
 block. The count and types of operands to the branch must align with the
 arguments in the target block.
 
@@ -1025,14 +1025,14 @@ function.
 Syntax:
 
 ``` {.ebnf}
-terminator-stmt ::=
+terminator-inst ::=
   `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id branch-use-list?
 ```
 
-The `cond_br` terminator statement represents a conditional branch on a boolean
-(1-bit integer) value. If the bit is set, then the first destination is jumped
-to; if it is false, the second destination is chosen. The count and types of
-operands must align with the arguments in the corresponding target blocks.
+The `cond_br` terminator instruction represents a conditional branch on a
+boolean (1-bit integer) value. If the bit is set, then the first destination is
+jumped to; if it is false, the second destination is chosen. The count and types
+of operands must align with the arguments in the corresponding target blocks.
 
 The MLIR conditional branch instruction is not allowed to target the entry block
 for a function. The two destinations of the conditional branch instruction are
@@ -1057,10 +1057,10 @@ bb1 (%x : i32) :
 Syntax:
 
 ``` {.ebnf}
-terminator-stmt ::= `return` (ssa-use-list `:` type-list-no-parens)?
+terminator-inst ::= `return` (ssa-use-list `:` type-list-no-parens)?
 ```
 
-The `return` terminator statement represents the completion of a cfg function,
+The `return` terminator instruction represents the completion of a cfg function,
 and produces the result values. The count and types of the operands must match
 the result types of the enclosing function. It is legal for multiple blocks in a
 single function to return.
@@ -1071,60 +1071,60 @@ Syntax:
 
 ``` {.ebnf}
 ml-func ::= `mlfunc` ml-func-signature
-            (`attributes` attribute-dict)? `{` stmt* return-stmt `}`
+            (`attributes` attribute-dict)? `{` inst* return-inst `}`
 
 ml-argument      ::= ssa-id `:` type
 ml-argument-list ::= ml-argument (`,` ml-argument)* | /*empty*/
 ml-func-signature ::= function-id `(` ml-argument-list `)` (`->` type-list)?
 
-stmt ::= operation | for-stmt | if-stmt
+inst ::= operation | for-inst | if-inst
 ```
 
 The body of an ML Function is made up of nested affine for loops, conditionals,
-and [operation](#operations) statements, and ends with a return statement. Each
-of the control flow statements is made up a list of instructions and other
-control flow statements.
+and [operation](#operations) instructions, and ends with a return instruction.
+Each of the control flow instructions is made up a list of instructions and
+other control flow instructions.
 
 While ML Functions are restricted to affine loops and conditionals, they may
 freely call (and be called) by CFG Functions which do not have these
 restrictions. As such, the expressivity of MLIR is not restricted in general;
 one can choose to apply MLFunctions when it is beneficial.
 
-#### 'return' statement {#'return'-statement}
+#### 'return' instruction {#'return'-instruction}
 
 Syntax:
 
 ``` {.ebnf}
-return-stmt ::= `return` (ssa-use-list `:` type-list-no-parens)?
+return-inst ::= `return` (ssa-use-list `:` type-list-no-parens)?
 ```
 
-The arity and operand types of the return statement must match the result of the
-enclosing function.
+The arity and operand types of the return instruction must match the result of
+the enclosing function.
 
-#### 'for' statement {#'for'-statement}
+#### 'for' instruction {#'for'-instruction}
 
 Syntax:
 
 ``` {.ebnf}
-for-stmt ::= `for` ssa-id `=` lower-bound `to` upper-bound
-              (`step` integer-literal)? `{` stmt* `}`
+for-inst ::= `for` ssa-id `=` lower-bound `to` upper-bound
+              (`step` integer-literal)? `{` inst* `}`
 
 lower-bound ::= `max`? affine-map dim-and-symbol-use-list | shorthand-bound
 upper-bound ::= `min`? affine-map dim-and-symbol-use-list | shorthand-bound
 shorthand-bound ::= ssa-id | `-`? integer-literal
 ```
 
-The `for` statement in an ML Function represents an affine loop nest, defining
+The `for` instruction in an ML Function represents an affine loop nest, defining
 an SSA value for its induction variable. This SSA value always has type
 [`index`](#index-type), which is the size of the machine word.
 
-The `for` statement executes its body a number of times iterating from a lower
+The `for` instruction executes its body a number of times iterating from a lower
 bound to an upper bound by a stride. The stride, represented by `step`, is a
 positive constant integer which defaults to "1" if not present. The lower and
 upper bounds specify a half-open range: the range includes the lower bound but
 does not include the upper bound.
 
-The lower and upper bounds of a `for` statement are represented as an
+The lower and upper bounds of a `for` instruction are represented as an
 application of an affine mapping to a list of SSA values passed to the map. The
 [same restrictions](#dimensions-and-symbols) hold for these SSA values as for
 all bindings of SSA values to dimensions and symbols.
@@ -1159,23 +1159,23 @@ mlfunc @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
 }
 ```
 
-#### 'if' statement {#'if'-statement}
+#### 'if' instruction {#'if'-instruction}
 
 Syntax:
 
 ``` {.ebnf}
-if-stmt-head ::= `if` if-stmt-cond `{` stmt* `}`
-               | if-stmt-head `else` `if` if-stmt-cond `{` stmt* `}`
-if-stmt-cond ::= integer-set dim-and-symbol-use-list
+if-inst-head ::= `if` if-inst-cond `{` inst* `}`
+               | if-inst-head `else` `if` if-inst-cond `{` inst* `}`
+if-inst-cond ::= integer-set dim-and-symbol-use-list
 
-if-stmt ::= if-stmt-head
-          | if-stmt-head `else` `{` stmt* `}`
+if-inst ::= if-inst-head
+          | if-inst-head `else` `{` inst* `}`
 ```
 
-The `if` statement in an ML Function restricts execution to a subset of the loop
-iteration space defined by an integer set (a conjunction of affine constraints).
-A single `if` may have a number of optional `else if` clauses, and may end with
-an optional `else` clause.
+The `if` instruction in an ML Function restricts execution to a subset of the
+loop iteration space defined by an integer set (a conjunction of affine
+constraints). A single `if` may have a number of optional `else if` clauses, and
+may end with an optional `else` clause.
 
 The condition of the `if` is represented by an [integer set](#integer-sets) (a
 conjunction of affine constraints), and the SSA values bound to the dimensions

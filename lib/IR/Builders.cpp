@@ -268,7 +268,7 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 }
 
 //===----------------------------------------------------------------------===//
-// Statements.
+// Instructions.
 //===----------------------------------------------------------------------===//
 
 /// Add new basic block and set the insertion point to the end of it.  If an
@@ -298,25 +298,25 @@ OperationInst *FuncBuilder::createOperation(const OperationState &state) {
   return op;
 }
 
-ForStmt *FuncBuilder::createFor(Location location, ArrayRef<Value *> lbOperands,
+ForInst *FuncBuilder::createFor(Location location, ArrayRef<Value *> lbOperands,
                                 AffineMap lbMap, ArrayRef<Value *> ubOperands,
                                 AffineMap ubMap, int64_t step) {
-  auto *stmt =
-      ForStmt::create(location, lbOperands, lbMap, ubOperands, ubMap, step);
-  block->getInstructions().insert(insertPoint, stmt);
-  return stmt;
+  auto *inst =
+      ForInst::create(location, lbOperands, lbMap, ubOperands, ubMap, step);
+  block->getInstructions().insert(insertPoint, inst);
+  return inst;
 }
 
-ForStmt *FuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
+ForInst *FuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
                                 int64_t step) {
   auto lbMap = AffineMap::getConstantMap(lb, context);
   auto ubMap = AffineMap::getConstantMap(ub, context);
   return createFor(location, {}, lbMap, {}, ubMap, step);
 }
 
-IfStmt *FuncBuilder::createIf(Location location, ArrayRef<Value *> operands,
+IfInst *FuncBuilder::createIf(Location location, ArrayRef<Value *> operands,
                               IntegerSet set) {
-  auto *stmt = IfStmt::create(location, operands, set);
-  block->getInstructions().insert(insertPoint, stmt);
-  return stmt;
+  auto *inst = IfInst::create(location, operands, set);
+  block->getInstructions().insert(insertPoint, inst);
+  return inst;
 }

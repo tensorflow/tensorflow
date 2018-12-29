@@ -160,11 +160,11 @@ bb42:
 // -----
 
 mlfunc @foo()
-mlfunc @bar() // expected-error {{expected '{' before statement list}}
+mlfunc @bar() // expected-error {{expected '{' before instruction list}}
 
 // -----
 
-mlfunc @empty() { // expected-error {{ML function must end with return statement}}
+mlfunc @empty() { // expected-error {{ML function must end with return instruction}}
 }
 
 // -----
@@ -177,7 +177,7 @@ bb42:
 
 // -----
 
-mlfunc @no_return() {  // expected-error {{ML function must end with return statement}}
+mlfunc @no_return() {  // expected-error {{ML function must end with return instruction}}
   "foo"() : () -> ()
 }
 
@@ -231,7 +231,7 @@ mlfunc @malformed_for_to() {
 
 mlfunc @incomplete_for() {
   for %i = 1 to 10 step 2
-}        // expected-error {{expected '{' before statement list}}
+}        // expected-error {{expected '{' before instruction list}}
 
 // -----
 
@@ -246,7 +246,7 @@ mlfunc @for_negative_stride() {
 
 // -----
 
-mlfunc @non_statement() {
+mlfunc @non_instruction() {
   asd   // expected-error {{custom op 'asd' is unknown}}
 }
 
@@ -339,7 +339,7 @@ bb42:
 
 mlfunc @missing_rbrace() {
   return
-mlfunc @d() {return} // expected-error {{expected '}' after statement list}}
+mlfunc @d() {return} // expected-error {{expected '}' after instruction list}}
 
 // -----
 
@@ -478,7 +478,7 @@ mlfunc @return_inside_loop() -> i8 {
   for %i = 1 to 100 {
     %a = "foo"() : ()->i8
     return %a : i8
-    // expected-error@-1 {{'return' op must be the last statement in the ML function}}
+    // expected-error@-1 {{'return' op must be the last instruction in the ML function}}
   }
 }
 

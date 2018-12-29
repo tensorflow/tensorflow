@@ -72,16 +72,16 @@ private:
 };
 
 /// Subclasses of IROperandOwner can be the owner of an IROperand.  In practice
-/// this is the common base between Instruction and Statement.
+/// this is the common base between Instruction and Instruction.
 class IROperandOwner {
 public:
   enum class Kind {
     OperationInst,
-    ForStmt,
-    IfStmt,
+    ForInst,
+    IfInst,
 
     /// These enums define ranges used for classof implementations.
-    STMT_LAST = IfStmt,
+    INST_LAST = IfInst,
   };
 
   Kind getKind() const { return locationAndKind.getInt(); }
@@ -106,7 +106,7 @@ private:
 };
 
 /// A reference to a value, suitable for use as an operand of an instruction,
-/// statement, etc.
+/// instruction, etc.
 class IROperand {
 public:
   IROperand(IROperandOwner *owner) : owner(owner) {}
@@ -201,7 +201,7 @@ private:
 };
 
 /// A reference to a value, suitable for use as an operand of an instruction,
-/// statement, etc.  IRValueTy is the root type to use for values this tracks,
+/// instruction, etc.  IRValueTy is the root type to use for values this tracks,
 /// and SSAUserTy is the type that will contain operands.
 template <typename IRValueTy, typename IROwnerTy>
 class IROperandImpl : public IROperand {

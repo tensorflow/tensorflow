@@ -283,8 +283,8 @@ mlfunc @loop_bounds(%N : index) {
   return    // CHECK:   return
 }           // CHECK: }
 
-// CHECK-LABEL: mlfunc @ifstmt(%arg0 : index) {
-mlfunc @ifstmt(%N: index) {
+// CHECK-LABEL: mlfunc @ifinst(%arg0 : index) {
+mlfunc @ifinst(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
   for %i = 1 to 10 {           // CHECK   for %i0 = 1 to 10 {
     if #set0(%i)[%N, %c] {     // CHECK     if #set0(%i0)[%arg0, %c200] {
@@ -304,8 +304,8 @@ mlfunc @ifstmt(%N: index) {
   return    // CHECK   return
 }           // CHECK }
 
-// CHECK-LABEL: mlfunc @simple_ifstmt(%arg0 : index) {
-mlfunc @simple_ifstmt(%N: index) {
+// CHECK-LABEL: mlfunc @simple_ifinst(%arg0 : index) {
+mlfunc @simple_ifinst(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
   for %i = 1 to 10 {           // CHECK   for %i0 = 1 to 10 {
     if #set0(%i)[%N, %c] {     // CHECK     if #set0(%i0)[%arg0, %c200] {
@@ -349,8 +349,8 @@ bb42:       // CHECK: bb0:
   // CHECK: "foo"() {cfgfunc: [], d: 1.000000e-09, i123: 7, if: "foo"} : () -> ()
   "foo"() {if: "foo", cfgfunc: [], i123: 7, d: 1.e-9} : () -> ()
 
-  // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifstmt : (index) -> ()} : () -> ()
-  "foo"() {fn: @attributes : () -> (), if: @ifstmt : (index) -> ()} : () -> ()
+  // CHECK: "foo"() {fn: @attributes : () -> (), if: @ifinst : (index) -> ()} : () -> ()
+  "foo"() {fn: @attributes : () -> (), if: @ifinst : (index) -> ()} : () -> ()
   return
 }
 

@@ -81,7 +81,7 @@ void zipApply(Fun fun, ContainerType1 input1, ContainerType2 input2) {
 
 /// Unwraps a pointer type to another type (possibly the same).
 /// Used in particular to allow easier compositions of
-///   llvm::iterator_range<ForStmt::operand_iterator> types.
+///   llvm::iterator_range<ForInst::operand_iterator> types.
 template <typename T, typename ToType = T>
 inline std::function<ToType *(T *)> makePtrDynCaster() {
   return [](T *val) { return llvm::dyn_cast<ToType>(val); };

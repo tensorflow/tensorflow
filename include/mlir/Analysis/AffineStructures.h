@@ -30,7 +30,7 @@ class AffineApplyOp;
 class AffineBound;
 class AffineCondition;
 class AffineMap;
-class ForStmt;
+class ForInst;
 class IntegerSet;
 class MLIRContext;
 class Value;
@@ -113,7 +113,7 @@ private:
 /// results, and its map can themselves change  as a result of
 /// substitutions, simplifications, and other analysis.
 // An affine value map can readily be constructed from an AffineApplyOp, or an
-// AffineBound of a ForStmt. It can be further transformed, substituted into,
+// AffineBound of a ForInst. It can be further transformed, substituted into,
 // or simplified. Unlike AffineMap's, AffineValueMap's are created and destroyed
 // during analysis. Only the AffineMap expressions that are pointed by them are
 // unique'd.
@@ -410,16 +410,16 @@ public:
   void addLowerBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> lb);
 
   /// Adds constraints (lower and upper bounds) for the specified 'for'
-  /// statement's Value using IR information stored in its bound maps. The
-  /// right identifier is first looked up using forStmt's Value. Returns
+  /// instruction's Value using IR information stored in its bound maps. The
+  /// right identifier is first looked up using forInst's Value. Returns
   /// false for the yet unimplemented/unsupported cases, and true if the
   /// information is succesfully added. Asserts if the Value corresponding to
-  /// the 'for' statement isn't found in the constraint system. Any new
-  /// identifiers that are found in the bound operands of the 'for' statement
+  /// the 'for' instruction isn't found in the constraint system. Any new
+  /// identifiers that are found in the bound operands of the 'for' instruction
   /// are added as trailing identifiers (either dimensional or symbolic
   /// depending on whether the operand is a valid ML Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.
-  bool addForStmtDomain(const ForStmt &forStmt);
+  bool addForInstDomain(const ForInst &forInst);
 
   /// Adds an upper bound expression for the specified expression.
   void addUpperBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> ub);

@@ -66,7 +66,7 @@ public:
   /// must override).  It will be passed the function-wise state, common to all
   /// matches, and the state returned by the `match` call, if any.  The subclass
   /// must use `rewriter` to modify the function.
-  virtual void rewriteOpStmt(OperationInst *op,
+  virtual void rewriteOpInst(OperationInst *op,
                              MLFuncGlobalLoweringState *funcWiseState,
                              std::unique_ptr<PatternState> opState,
                              MLFuncLoweringRewriter *rewriter) const = 0;
@@ -93,7 +93,7 @@ using OwningMLLoweringPatternList =
 ///   next _original_ operation is considered.
 /// In other words, for each operation, the pass applies the first matching
 /// rewriter in the list and advances to the (lexically) next operation.
-/// Non-operation statements (ForStmt and IfStmt) are ignored.
+/// Non-operation instructions (ForInst and IfInst) are ignored.
 /// This is similar to greedy worklist-based pattern rewriter, except that this
 /// operates on ML functions using an ML builder and does not maintain the work
 /// list.  Note that, as of the time of writing, worklist-based rewriter did not
@@ -144,14 +144,14 @@ PassResult MLPatternLoweringPass<Patterns...>::runOnMLFunction(Function *f) {
   MLFuncLoweringRewriter rewriter(&builder);
 
   llvm::SmallVector<OperationInst *, 0> ops;
-  f->walk([&ops](OperationInst *stmt) { ops.push_back(stmt); });
+  f->walk([&ops](OperationInst *inst) { ops.push_back(inst); });
 
-  for (OperationInst *stmt : ops) {
+  for (OperationInst *inst : ops) {
     for (const auto &pattern : patterns) {
-      rewriter.getBuilder()->setInsertionPoint(stmt);
-      auto matchResult = pattern->match(stmt);
+      rewriter.getBuilder()->setInsertionPoint(inst);
+      auto matchResult = pattern->match(inst);
       if (matchResult) {
-        pattern->rewriteOpStmt(stmt, funcWiseState.get(),
+        pattern->rewriteOpInst(inst, funcWiseState.get(),
                                std::move(*matchResult), &rewriter);
         break;
       }

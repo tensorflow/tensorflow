@@ -25,7 +25,7 @@
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/StmtVisitor.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/Support/Debug.h"
@@ -39,7 +39,7 @@ namespace {
 // TODO(andydavis) Add common surrounding loop depth-wise dependence checks.
 /// Checks dependences between all pairs of memref accesses in a Function.
 struct MemRefDependenceCheck : public FunctionPass,
-                               StmtWalker<MemRefDependenceCheck> {
+                               InstWalker<MemRefDependenceCheck> {
   SmallVector<OperationInst *, 4> loadsAndStores;
   explicit MemRefDependenceCheck()
       : FunctionPass(&MemRefDependenceCheck::passID) {}
@@ -48,9 +48,9 @@ struct MemRefDependenceCheck : public FunctionPass,
   // Not applicable to CFG functions.
   PassResult runOnCFGFunction(Function *f) override { return success(); }
 
-  void visitOperationInst(OperationInst *opStmt) {
-    if (opStmt->isa<LoadOp>() || opStmt->isa<StoreOp>()) {
-      loadsAndStores.push_back(opStmt);
+  void visitOperationInst(OperationInst *opInst) {
+    if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>()) {
+      loadsAndStores.push_back(opInst);
     }
   }
   static char passID;
@@ -74,17 +74,17 @@ static void addMemRefAccessIndices(
   }
 }
 
-// Populates 'access' with memref, indices and opstmt from 'loadOrStoreOpStmt'.
-static void getMemRefAccess(const OperationInst *loadOrStoreOpStmt,
+// Populates 'access' with memref, indices and opinst from 'loadOrStoreOpInst'.
+static void getMemRefAccess(const OperationInst *loadOrStoreOpInst,
                             MemRefAccess *access) {
-  access->opStmt = loadOrStoreOpStmt;
-  if (auto loadOp = loadOrStoreOpStmt->dyn_cast<LoadOp>()) {
+  access->opInst = loadOrStoreOpInst;
+  if (auto loadOp = loadOrStoreOpInst->dyn_cast<LoadOp>()) {
     access->memref = loadOp->getMemRef();
     addMemRefAccessIndices(loadOp->getIndices(), loadOp->getMemRefType(),
                            access);
   } else {
-    assert(loadOrStoreOpStmt->isa<StoreOp>());
-    auto storeOp = loadOrStoreOpStmt->dyn_cast<StoreOp>();
+    assert(loadOrStoreOpInst->isa<StoreOp>());
+    auto storeOp = loadOrStoreOpInst->dyn_cast<StoreOp>();
     access->memref = storeOp->getMemRef();
     addMemRefAccessIndices(storeOp->getIndices(), storeOp->getMemRefType(),
                            access);
@@ -93,8 +93,8 @@ static void getMemRefAccess(const OperationInst *loadOrStoreOpStmt,
 
 // Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
 // where each lists loops from outer-most to inner-most in loop nest.
-static unsigned getNumCommonSurroundingLoops(ArrayRef<const ForStmt *> loopsA,
-                                             ArrayRef<const ForStmt *> loopsB) {
+static unsigned getNumCommonSurroundingLoops(ArrayRef<const ForInst *> loopsA,
+                                             ArrayRef<const ForInst *> loopsB) {
   unsigned minNumLoops = std::min(loopsA.size(), loopsB.size());
   unsigned numCommonLoops = 0;
   for (unsigned i = 0; i < minNumLoops; ++i) {
@@ -133,18 +133,18 @@ getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
 // the source access.
 static void checkDependences(ArrayRef<OperationInst *> loadsAndStores) {
   for (unsigned i = 0, e = loadsAndStores.size(); i < e; ++i) {
-    auto *srcOpStmt = loadsAndStores[i];
+    auto *srcOpInst = loadsAndStores[i];
     MemRefAccess srcAccess;
-    getMemRefAccess(srcOpStmt, &srcAccess);
-    SmallVector<ForStmt *, 4> srcLoops;
-    getLoopIVs(*srcOpStmt, &srcLoops);
+    getMemRefAccess(srcOpInst, &srcAccess);
+    SmallVector<ForInst *, 4> srcLoops;
+    getLoopIVs(*srcOpInst, &srcLoops);
     for (unsigned j = 0; j < e; ++j) {
-      auto *dstOpStmt = loadsAndStores[j];
+      auto *dstOpInst = loadsAndStores[j];
       MemRefAccess dstAccess;
-      getMemRefAccess(dstOpStmt, &dstAccess);
+      getMemRefAccess(dstOpInst, &dstAccess);
 
-      SmallVector<ForStmt *, 4> dstLoops;
-      getLoopIVs(*dstOpStmt, &dstLoops);
+      SmallVector<ForInst *, 4> dstLoops;
+      getLoopIVs(*dstOpInst, &dstLoops);
       unsigned numCommonLoops =
           getNumCommonSurroundingLoops(srcLoops, dstLoops);
       for (unsigned d = 1; d <= numCommonLoops + 1; ++d) {
@@ -156,7 +156,7 @@ static void checkDependences(ArrayRef<OperationInst *> loadsAndStores) {
         // TODO(andydavis) Print dependence type (i.e. RAW, etc) and print
         // distance vectors as: ([2, 3], [0, 10]). Also, shorten distance
         // vectors from ([1, 1], [3, 3]) to (1, 3).
-        srcOpStmt->emitNote(
+        srcOpInst->emitNote(
             "dependence from " + Twine(i) + " to " + Twine(j) + " at depth " +
             Twine(d) + " = " +
             getDirectionVectorStr(ret, numCommonLoops, d, dependenceComponents)

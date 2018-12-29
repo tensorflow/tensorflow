@@ -27,7 +27,7 @@
 
 namespace mlir {
 
-class ForStmt;
+class ForInst;
 class FunctionPass;
 class ModulePass;
 
@@ -59,7 +59,7 @@ FunctionPass *createMaterializeVectorsPass();
 /// all) or the default unroll factor is used (LoopUnroll:kDefaultUnrollFactor).
 FunctionPass *createLoopUnrollPass(
     int unrollFactor = -1, int unrollFull = -1,
-    const std::function<unsigned(const ForStmt &)> &getUnrollFactor = nullptr);
+    const std::function<unsigned(const ForInst &)> &getUnrollFactor = nullptr);
 
 /// Creates a loop unroll jam pass to unroll jam by the specified factor. A
 /// factor of -1 lets the pass use the default factor or the one on the command

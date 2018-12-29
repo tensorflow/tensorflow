@@ -262,7 +262,7 @@ public:
   using HyperRectangleListTy = ::llvm::iplist<HyperRectangularSet>;
   HyperRectangleListTy &getRectangles() { return hyperRectangles; }
 
-  // Iteration over the statements in the block.
+  // Iteration over the instructions in the block.
   using const_iterator = HyperRectangleListTy::const_iterator;
 
   const_iterator begin() const { return hyperRectangles.begin(); }

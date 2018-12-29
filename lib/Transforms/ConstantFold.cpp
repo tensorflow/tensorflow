@@ -17,7 +17,7 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/StmtVisitor.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
@@ -26,20 +26,20 @@ using namespace mlir;
 
 namespace {
 /// Simple constant folding pass.
-struct ConstantFold : public FunctionPass, StmtWalker<ConstantFold> {
+struct ConstantFold : public FunctionPass, InstWalker<ConstantFold> {
   ConstantFold() : FunctionPass(&ConstantFold::passID) {}
 
   // All constants in the function post folding.
   SmallVector<Value *, 8> existingConstants;
   // Operations that were folded and that need to be erased.
-  std::vector<OperationInst *> opStmtsToErase;
+  std::vector<OperationInst *> opInstsToErase;
   using ConstantFactoryType = std::function<Value *(Attribute, Type)>;
 
   bool foldOperation(OperationInst *op,
                      SmallVectorImpl<Value *> &existingConstants,
                      ConstantFactoryType constantFactory);
-  void visitOperationInst(OperationInst *stmt);
-  void visitForStmt(ForStmt *stmt);
+  void visitOperationInst(OperationInst *inst);
+  void visitForInst(ForInst *inst);
   PassResult runOnCFGFunction(Function *f) override;
   PassResult runOnMLFunction(Function *f) override;
 
@@ -140,24 +140,24 @@ PassResult ConstantFold::runOnCFGFunction(Function *f) {
 }
 
 // Override the walker's operation visiter for constant folding.
-void ConstantFold::visitOperationInst(OperationInst *stmt) {
+void ConstantFold::visitOperationInst(OperationInst *inst) {
   auto constantFactory = [&](Attribute value, Type type) -> Value * {
-    FuncBuilder builder(stmt);
-    return builder.create<ConstantOp>(stmt->getLoc(), value, type);
+    FuncBuilder builder(inst);
+    return builder.create<ConstantOp>(inst->getLoc(), value, type);
   };
-  if (!ConstantFold::foldOperation(stmt, existingConstants, constantFactory)) {
-    opStmtsToErase.push_back(stmt);
+  if (!ConstantFold::foldOperation(inst, existingConstants, constantFactory)) {
+    opInstsToErase.push_back(inst);
   }
 }
 
-// Override the walker's 'for' statement visit for constant folding.
-void ConstantFold::visitForStmt(ForStmt *forStmt) {
-  constantFoldBounds(forStmt);
+// Override the walker's 'for' instruction visit for constant folding.
+void ConstantFold::visitForInst(ForInst *forInst) {
+  constantFoldBounds(forInst);
 }
 
 PassResult ConstantFold::runOnMLFunction(Function *f) {
   existingConstants.clear();
-  opStmtsToErase.clear();
+  opInstsToErase.clear();
 
   walk(f);
   // At this point, these operations are dead, remove them.
@@ -165,8 +165,8 @@ PassResult ConstantFold::runOnMLFunction(Function *f) {
   // side effects.  When we have side effect modeling, we should verify that
   // the operation is effect-free before we remove it.  Until then this is
   // close enough.
-  for (auto *stmt : opStmtsToErase) {
-    stmt->erase();
+  for (auto *inst : opInstsToErase) {
+    inst->erase();
   }
 
   // By the time we are done, we may have simplified a bunch of code, leaving

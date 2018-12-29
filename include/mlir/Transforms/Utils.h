@@ -32,7 +32,7 @@
 
 namespace mlir {
 
-class ForStmt;
+class ForInst;
 class FuncBuilder;
 class Location;
 class Module;
@@ -45,7 +45,7 @@ class Function;
 /// indices. Additional indices are added at the start. The new memref could be
 /// of a different shape or rank. 'extraOperands' is an optional argument that
 /// corresponds to additional operands (inputs) for indexRemap at the beginning
-/// of its input list. An additional optional argument 'domStmtFilter' restricts
+/// of its input list. An additional optional argument 'domInstFilter' restricts
 /// the replacement to only those operations that are dominated by the former.
 /// Returns true on success and false if the replacement is not possible
 /// (whenever a memref is used as an operand in a non-deferencing scenario). See
@@ -56,7 +56,7 @@ bool replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                               ArrayRef<Value *> extraIndices = {},
                               AffineMap indexRemap = AffineMap::Null(),
                               ArrayRef<Value *> extraOperands = {},
-                              const Statement *domStmtFilter = nullptr);
+                              const Instruction *domInstFilter = nullptr);
 
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
 /// its results equal to the number of operands, as a composition
@@ -71,10 +71,10 @@ createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
                             ArrayRef<OperationInst *> affineApplyOps,
                             SmallVectorImpl<Value *> *results);
 
-/// Given an operation statement, inserts a new single affine apply operation,
-/// that is exclusively used by this operation statement, and that provides all
-/// operands that are results of an affine_apply as a function of loop iterators
-/// and program parameters and whose results are.
+/// Given an operation instruction, inserts a new single affine apply operation,
+/// that is exclusively used by this operation instruction, and that provides
+/// all operands that are results of an affine_apply as a function of loop
+/// iterators and program parameters and whose results are.
 ///
 /// Before
 ///
@@ -96,8 +96,8 @@ createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 ///
 /// Returns nullptr if none of the operands were the result of an affine_apply
 /// and thus there was no affine computation slice to create. Returns the newly
-/// affine_apply operation statement otherwise.
-OperationInst *createAffineComputationSlice(OperationInst *opStmt);
+/// affine_apply operation instruction otherwise.
+OperationInst *createAffineComputationSlice(OperationInst *opInst);
 
 /// Forward substitutes results from 'AffineApplyOp' into any users which
 /// are also AffineApplyOps.
@@ -105,9 +105,9 @@ OperationInst *createAffineComputationSlice(OperationInst *opStmt);
 // TODO(mlir-team): extend this for Value/ CFGFunctions.
 void forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp);
 
-/// Folds the lower and upper bounds of a 'for' stmt to constants if possible.
+/// Folds the lower and upper bounds of a 'for' inst to constants if possible.
 /// Returns false if the folding happens for at least one bound, true otherwise.
-bool constantFoldBounds(ForStmt *forStmt);
+bool constantFoldBounds(ForInst *forInst);
 
 /// Replaces (potentially nested) function attributes in the operation "op"
 /// with those specified in "remappingTable".

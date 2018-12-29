@@ -18,9 +18,9 @@
 #include "mlir/IR/Function.h"
 #include "AttributeListStorage.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
-#include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
@@ -161,21 +161,21 @@ bool Function::emitError(const Twine &message) const {
 // Function implementation.
 //===----------------------------------------------------------------------===//
 
-const OperationInst *Function::getReturnStmt() const {
+const OperationInst *Function::getReturn() const {
   return cast<OperationInst>(&getBody()->back());
 }
 
-OperationInst *Function::getReturnStmt() {
+OperationInst *Function::getReturn() {
   return cast<OperationInst>(&getBody()->back());
 }
 
 void Function::walk(std::function<void(OperationInst *)> callback) {
-  struct Walker : public StmtWalker<Walker> {
+  struct Walker : public InstWalker<Walker> {
     std::function<void(OperationInst *)> const &callback;
     Walker(std::function<void(OperationInst *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(OperationInst *opStmt) { callback(opStmt); }
+    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
   };
 
   Walker v(callback);
@@ -183,12 +183,12 @@ void Function::walk(std::function<void(OperationInst *)> callback) {
 }
 
 void Function::walkPostOrder(std::function<void(OperationInst *)> callback) {
-  struct Walker : public StmtWalker<Walker> {
+  struct Walker : public InstWalker<Walker> {
     std::function<void(OperationInst *)> const &callback;
     Walker(std::function<void(OperationInst *)> const &callback)
         : callback(callback) {}
 
-    void visitOperationInst(OperationInst *opStmt) { callback(opStmt); }
+    void visitOperationInst(OperationInst *opInst) { callback(opInst); }
   };
 
   Walker v(callback);

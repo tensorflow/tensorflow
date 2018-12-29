@@ -25,7 +25,7 @@
 namespace mlir {
 
 class AffineMap;
-class ForStmt;
+class ForInst;
 class MemRefType;
 class OperationInst;
 class VectorType;
@@ -65,8 +65,8 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// Note that loopToVectorDim is a whole function map from which only enclosing
 /// loop information is extracted.
 ///
-/// Prerequisites: `opStmt` is a vectorizable load or store operation (i.e. at
-/// most one invariant index along each ForStmt of `loopToVectorDim`).
+/// Prerequisites: `opInst` is a vectorizable load or store operation (i.e. at
+/// most one invariant index along each ForInst of `loopToVectorDim`).
 ///
 /// Example 1:
 /// The following MLIR snippet:
@@ -118,8 +118,8 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// `%arg0[%c0, %c0]` into vector<128xf32> which needs a 1-D vector broadcast.
 ///
 AffineMap
-makePermutationMap(OperationInst *opStmt,
-                   const llvm::DenseMap<ForStmt *, unsigned> &loopToVectorDim);
+makePermutationMap(OperationInst *opInst,
+                   const llvm::DenseMap<ForInst *, unsigned> &loopToVectorDim);
 
 namespace matcher {
 
@@ -131,7 +131,7 @@ namespace matcher {
 /// TODO(ntv): this could all be much simpler if we added a bit that a vector
 /// type to mark that a vector is a strict super-vector but it still does not
 /// warrant adding even 1 extra bit in the IR for now.
-bool operatesOnStrictSuperVectors(const OperationInst &stmt,
+bool operatesOnStrictSuperVectors(const OperationInst &inst,
                                   VectorType subVectorType);
 
 } // end namespace matcher

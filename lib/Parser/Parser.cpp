@@ -26,12 +26,12 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/Utils.h"
@@ -2071,7 +2071,7 @@ FunctionParser::~FunctionParser() {
   }
 }
 
-/// Parse a SSA operand for an instruction or statement.
+/// Parse a SSA operand for an instruction or instruction.
 ///
 ///   ssa-use ::= ssa-id
 ///
@@ -2716,7 +2716,7 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
 
 /// Basic block declaration.
 ///
-///   basic-block ::= bb-label instruction* terminator-stmt
+///   basic-block ::= bb-label instruction* terminator-inst
 ///   bb-label    ::= bb-id bb-arg-list? `:`
 ///   bb-id       ::= bare-id
 ///   bb-arg-list ::= `(` ssa-id-and-type-list? `)`
@@ -2786,16 +2786,16 @@ private:
   /// more specific builder type.
   FuncBuilder builder;
 
-  ParseResult parseForStmt();
+  ParseResult parseForInst();
   ParseResult parseIntConstant(int64_t &val);
   ParseResult parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
                                     unsigned numDims, unsigned numOperands,
                                     const char *affineStructName);
   ParseResult parseBound(SmallVectorImpl<Value *> &operands, AffineMap &map,
                          bool isLower);
-  ParseResult parseIfStmt();
+  ParseResult parseIfInst();
   ParseResult parseElseClause(Block *elseClause);
-  ParseResult parseStatements(Block *block);
+  ParseResult parseInstructions(Block *block);
   ParseResult parseBlock(Block *block);
 
   bool parseSuccessorAndUseList(Block *&dest,
@@ -2809,19 +2809,19 @@ private:
 ParseResult MLFunctionParser::parseFunctionBody() {
   auto braceLoc = getToken().getLoc();
 
-  // Parse statements in this function.
+  // Parse instructions in this function.
   if (parseBlock(function->getBody()))
     return ParseFailure;
 
   return finalizeFunction(function, braceLoc);
 }
 
-/// For statement.
+/// For instruction.
 ///
-///    ml-for-stmt ::= `for` ssa-id `=` lower-bound `to` upper-bound
-///                   (`step` integer-literal)? `{` ml-stmt* `}`
+///    ml-for-inst ::= `for` ssa-id `=` lower-bound `to` upper-bound
+///                   (`step` integer-literal)? `{` ml-inst* `}`
 ///
-ParseResult MLFunctionParser::parseForStmt() {
+ParseResult MLFunctionParser::parseForInst() {
   consumeToken(Token::kw_for);
 
   // Parse induction variable.
@@ -2862,23 +2862,23 @@ ParseResult MLFunctionParser::parseForStmt() {
     return emitError("step has to be a positive integer");
   }
 
-  // Create for statement.
-  ForStmt *forStmt =
+  // Create for instruction.
+  ForInst *forInst =
       builder.createFor(getEncodedSourceLocation(loc), lbOperands, lbMap,
                         ubOperands, ubMap, step);
 
   // Create SSA value definition for the induction variable.
-  if (addDefinition({inductionVariableName, 0, loc}, forStmt))
+  if (addDefinition({inductionVariableName, 0, loc}, forInst))
     return ParseFailure;
 
-  // If parsing of the for statement body fails,
-  // MLIR contains for statement with those nested statements that have been
+  // If parsing of the for instruction body fails,
+  // MLIR contains for instruction with those nested instructions that have been
   // successfully parsed.
-  if (parseBlock(forStmt->getBody()))
+  if (parseBlock(forInst->getBody()))
     return ParseFailure;
 
   // Reset insertion point to the current block.
-  builder.setInsertionPointToEnd(forStmt->getBlock());
+  builder.setInsertionPointToEnd(forInst->getBlock());
 
   return ParseSuccess;
 }
@@ -3007,7 +3007,7 @@ ParseResult MLFunctionParser::parseBound(SmallVectorImpl<Value *> &operands,
   // Create an identity map using dim id for an induction variable and
   // symbol otherwise. This representation is optimized for storage.
   // Analysis passes may expand it into a multi-dimensional map if desired.
-  if (isa<ForStmt>(operands[0]))
+  if (isa<ForInst>(operands[0]))
     map = builder.getDimIdentityMap();
   else
     map = builder.getSymbolIdentityMap();
@@ -3095,14 +3095,14 @@ IntegerSet Parser::parseIntegerSetInline() {
   return set;
 }
 
-/// If statement.
+/// If instruction.
 ///
-///   ml-if-head ::= `if` ml-if-cond `{` ml-stmt* `}`
-///               | ml-if-head `else` `if` ml-if-cond `{` ml-stmt* `}`
-///   ml-if-stmt ::= ml-if-head
-///               | ml-if-head `else` `{` ml-stmt* `}`
+///   ml-if-head ::= `if` ml-if-cond `{` ml-inst* `}`
+///               | ml-if-head `else` `if` ml-if-cond `{` ml-inst* `}`
+///   ml-if-inst ::= ml-if-head
+///               | ml-if-head `else` `{` ml-inst* `}`
 ///
-ParseResult MLFunctionParser::parseIfStmt() {
+ParseResult MLFunctionParser::parseIfInst() {
   auto loc = getToken().getLoc();
   consumeToken(Token::kw_if);
 
@@ -3115,25 +3115,25 @@ ParseResult MLFunctionParser::parseIfStmt() {
                             "integer set"))
     return ParseFailure;
 
-  IfStmt *ifStmt =
+  IfInst *ifInst =
       builder.createIf(getEncodedSourceLocation(loc), operands, set);
 
-  Block *thenClause = ifStmt->getThen();
+  Block *thenClause = ifInst->getThen();
 
-  // When parsing of an if statement body fails, the IR contains
-  // the if statement with the portion of the body that has been
+  // When parsing of an if instruction body fails, the IR contains
+  // the if instruction with the portion of the body that has been
   // successfully parsed.
   if (parseBlock(thenClause))
     return ParseFailure;
 
   if (consumeIf(Token::kw_else)) {
-    auto *elseClause = ifStmt->createElse();
+    auto *elseClause = ifInst->createElse();
     if (parseElseClause(elseClause))
       return ParseFailure;
   }
 
   // Reset insertion point to the current block.
-  builder.setInsertionPointToEnd(ifStmt->getBlock());
+  builder.setInsertionPointToEnd(ifInst->getBlock());
 
   return ParseSuccess;
 }
@@ -3141,25 +3141,25 @@ ParseResult MLFunctionParser::parseIfStmt() {
 ParseResult MLFunctionParser::parseElseClause(Block *elseClause) {
   if (getToken().is(Token::kw_if)) {
     builder.setInsertionPointToEnd(elseClause);
-    return parseIfStmt();
+    return parseIfInst();
   }
 
   return parseBlock(elseClause);
 }
 
 ///
-/// Parse a list of statements ending with `return` or `}`
+/// Parse a list of instructions ending with `return` or `}`
 ///
-ParseResult MLFunctionParser::parseStatements(Block *block) {
+ParseResult MLFunctionParser::parseInstructions(Block *block) {
   auto createOpFunc = [&](const OperationState &state) -> OperationInst * {
     return builder.createOperation(state);
   };
 
   builder.setInsertionPointToEnd(block);
 
-  // Parse statements till we see '}' or 'return'.
-  // Return statement is parsed separately to emit a more intuitive error
-  // when '}' is missing after the return statement.
+  // Parse instructions till we see '}' or 'return'.
+  // Return instruction is parsed separately to emit a more intuitive error
+  // when '}' is missing after the return instruction.
   while (getToken().isNot(Token::r_brace, Token::kw_return)) {
     switch (getToken().getKind()) {
     default:
@@ -3167,17 +3167,17 @@ ParseResult MLFunctionParser::parseStatements(Block *block) {
         return ParseFailure;
       break;
     case Token::kw_for:
-      if (parseForStmt())
+      if (parseForInst())
         return ParseFailure;
       break;
     case Token::kw_if:
-      if (parseIfStmt())
+      if (parseIfInst())
         return ParseFailure;
       break;
     } // end switch
   }
 
-  // Parse the return statement.
+  // Parse the return instruction.
   if (getToken().is(Token::kw_return))
     if (parseOperation(createOpFunc))
       return ParseFailure;
@@ -3186,12 +3186,12 @@ ParseResult MLFunctionParser::parseStatements(Block *block) {
 }
 
 ///
-/// Parse `{` ml-stmt* `}`
+/// Parse `{` ml-inst* `}`
 ///
 ParseResult MLFunctionParser::parseBlock(Block *block) {
-  if (parseToken(Token::l_brace, "expected '{' before statement list") ||
-      parseStatements(block) ||
-      parseToken(Token::r_brace, "expected '}' after statement list"))
+  if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
+      parseInstructions(block) ||
+      parseToken(Token::r_brace, "expected '}' after instruction list"))
     return ParseFailure;
 
   return ParseSuccess;
@@ -3429,7 +3429,7 @@ ParseResult ModuleParser::parseCFGFunc() {
 /// ML function declarations.
 ///
 ///   ml-func ::= `mlfunc` ml-func-signature
-///              (`attributes` attribute-dict)? `{` ml-stmt* ml-return-stmt
+///              (`attributes` attribute-dict)? `{` ml-inst* ml-return-inst
 ///              `}`
 ///
 ParseResult ModuleParser::parseMLFunc() {

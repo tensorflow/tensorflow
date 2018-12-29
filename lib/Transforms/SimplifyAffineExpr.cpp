@@ -21,7 +21,7 @@
 
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/StmtVisitor.h"
+#include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -32,12 +32,12 @@ using llvm::report_fatal_error;
 
 namespace {
 
-/// Simplifies all affine expressions appearing in the operation statements of
+/// Simplifies all affine expressions appearing in the operation instructions of
 /// the Function. This is mainly to test the simplifyAffineExpr method.
 //  TODO(someone): Gradually, extend this to all affine map references found in
 //  ML functions and CFG functions.
 struct SimplifyAffineStructures : public FunctionPass,
-                                  StmtWalker<SimplifyAffineStructures> {
+                                  InstWalker<SimplifyAffineStructures> {
   explicit SimplifyAffineStructures()
       : FunctionPass(&SimplifyAffineStructures::passID) {}
 
@@ -46,8 +46,8 @@ struct SimplifyAffineStructures : public FunctionPass,
   // for this yet? TODO(someone).
   PassResult runOnCFGFunction(Function *f) override { return success(); }
 
-  void visitIfStmt(IfStmt *ifStmt);
-  void visitOperationInst(OperationInst *opStmt);
+  void visitIfInst(IfInst *ifInst);
+  void visitOperationInst(OperationInst *opInst);
 
   static char passID;
 };
@@ -70,18 +70,18 @@ static IntegerSet simplifyIntegerSet(IntegerSet set) {
   return set;
 }
 
-void SimplifyAffineStructures::visitIfStmt(IfStmt *ifStmt) {
-  auto set = ifStmt->getCondition().getIntegerSet();
-  ifStmt->setIntegerSet(simplifyIntegerSet(set));
+void SimplifyAffineStructures::visitIfInst(IfInst *ifInst) {
+  auto set = ifInst->getCondition().getIntegerSet();
+  ifInst->setIntegerSet(simplifyIntegerSet(set));
 }
 
-void SimplifyAffineStructures::visitOperationInst(OperationInst *opStmt) {
-  for (auto attr : opStmt->getAttrs()) {
+void SimplifyAffineStructures::visitOperationInst(OperationInst *opInst) {
+  for (auto attr : opInst->getAttrs()) {
     if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
       MutableAffineMap mMap(mapAttr.getValue());
       mMap.simplify();
       auto map = mMap.getAffineMap();
-      opStmt->setAttr(attr.first, AffineMapAttr::get(map));
+      opInst->setAttr(attr.first, AffineMapAttr::get(map));
     }
   }
 }

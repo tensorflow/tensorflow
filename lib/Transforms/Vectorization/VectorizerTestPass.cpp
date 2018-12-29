@@ -95,20 +95,20 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
   SmallVector<int, 8> shape(clTestVectorShapeRatio.begin(),
                             clTestVectorShapeRatio.end());
   auto subVectorType = VectorType::get(shape, Type::getF32(f->getContext()));
-  // Only filter statements that operate on a strict super-vector and have one
+  // Only filter instructions that operate on a strict super-vector and have one
   // return. This makes testing easier.
-  auto filter = [subVectorType](const Statement &stmt) {
-    auto *opStmt = dyn_cast<OperationInst>(&stmt);
-    if (!opStmt) {
+  auto filter = [subVectorType](const Instruction &inst) {
+    auto *opInst = dyn_cast<OperationInst>(&inst);
+    if (!opInst) {
       return false;
     }
     assert(subVectorType.getElementType() ==
                Type::getF32(subVectorType.getContext()) &&
            "Only f32 supported for now");
-    if (!matcher::operatesOnStrictSuperVectors(*opStmt, subVectorType)) {
+    if (!matcher::operatesOnStrictSuperVectors(*opInst, subVectorType)) {
       return false;
     }
-    if (opStmt->getNumResults() != 1) {
+    if (opInst->getNumResults() != 1) {
       return false;
     }
     return true;
@@ -116,26 +116,26 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
   auto pat = Op(filter);
   auto matches = pat.match(f);
   for (auto m : matches) {
-    auto *opStmt = cast<OperationInst>(m.first);
+    auto *opInst = cast<OperationInst>(m.first);
     // This is a unit test that only checks and prints shape ratio.
     // As a consequence we write only Ops with a single return type for the
     // purpose of this test. If we need to test more intricate behavior in the
     // future we can always extend.
-    auto superVectorType = opStmt->getResult(0)->getType().cast<VectorType>();
+    auto superVectorType = opInst->getResult(0)->getType().cast<VectorType>();
     auto ratio = shapeRatio(superVectorType, subVectorType);
     if (!ratio.hasValue()) {
-      opStmt->emitNote("NOT MATCHED");
+      opInst->emitNote("NOT MATCHED");
     } else {
-      outs() << "\nmatched: " << *opStmt << " with shape ratio: ";
+      outs() << "\nmatched: " << *opInst << " with shape ratio: ";
       interleaveComma(MutableArrayRef<unsigned>(*ratio), outs());
     }
   }
 }
 
-static std::string toString(Statement *stmt) {
+static std::string toString(Instruction *inst) {
   std::string res;
   auto os = llvm::raw_string_ostream(res);
-  stmt->print(os);
+  inst->print(os);
   return res;
 }
 
@@ -144,10 +144,10 @@ static MLFunctionMatches matchTestSlicingOps(Function *f) {
   constexpr auto kTestSlicingOpName = "slicing-test-op";
   using functional::map;
   using matcher::Op;
-  // Match all OpStatements with the kTestSlicingOpName name.
-  auto filter = [](const Statement &stmt) {
-    const auto &opStmt = cast<OperationInst>(stmt);
-    return opStmt.getName().getStringRef() == kTestSlicingOpName;
+  // Match all OpInstructions with the kTestSlicingOpName name.
+  auto filter = [](const Instruction &inst) {
+    const auto &opInst = cast<OperationInst>(inst);
+    return opInst.getName().getStringRef() == kTestSlicingOpName;
   };
   auto pat = Op(filter);
   return pat.match(f);
@@ -156,7 +156,7 @@ static MLFunctionMatches matchTestSlicingOps(Function *f) {
 void VectorizerTestPass::testBackwardSlicing(Function *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
-    SetVector<Statement *> backwardSlice;
+    SetVector<Instruction *> backwardSlice;
     getBackwardSlice(m.first, &backwardSlice);
     auto strs = map(toString, backwardSlice);
     outs() << "\nmatched: " << *m.first << " backward static slice: ";
@@ -169,7 +169,7 @@ void VectorizerTestPass::testBackwardSlicing(Function *f) {
 void VectorizerTestPass::testForwardSlicing(Function *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
-    SetVector<Statement *> forwardSlice;
+    SetVector<Instruction *> forwardSlice;
     getForwardSlice(m.first, &forwardSlice);
     auto strs = map(toString, forwardSlice);
     outs() << "\nmatched: " << *m.first << " forward static slice: ";
@@ -182,7 +182,7 @@ void VectorizerTestPass::testForwardSlicing(Function *f) {
 void VectorizerTestPass::testSlicing(Function *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
-    SetVector<Statement *> staticSlice = getSlice(m.first);
+    SetVector<Instruction *> staticSlice = getSlice(m.first);
     auto strs = map(toString, staticSlice);
     outs() << "\nmatched: " << *m.first << " static slice: ";
     for (const auto &s : strs) {
@@ -191,9 +191,9 @@ void VectorizerTestPass::testSlicing(Function *f) {
   }
 }
 
-bool customOpWithAffineMapAttribute(const Statement &stmt) {
-  const auto &opStmt = cast<OperationInst>(stmt);
-  return opStmt.getName().getStringRef() ==
+bool customOpWithAffineMapAttribute(const Instruction &inst) {
+  const auto &opInst = cast<OperationInst>(inst);
+  return opInst.getName().getStringRef() ==
          VectorizerTestPass::kTestAffineMapOpName;
 }
 
@@ -205,8 +205,8 @@ void VectorizerTestPass::testComposeMaps(Function *f) {
   maps.reserve(matches.size());
   std::reverse(matches.begin(), matches.end());
   for (auto m : matches) {
-    auto *opStmt = cast<OperationInst>(m.first);
-    auto map = opStmt->getAttr(VectorizerTestPass::kTestAffineMapAttrName)
+    auto *opInst = cast<OperationInst>(m.first);
+    auto map = opInst->getAttr(VectorizerTestPass::kTestAffineMapAttrName)
                    .cast<AffineMapAttr>()
                    .getValue();
     maps.push_back(map);

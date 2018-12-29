@@ -29,7 +29,7 @@
 namespace mlir {
 
 class AffineMap;
-class ForStmt;
+class ForInst;
 class Function;
 class FuncBuilder;
 
@@ -42,53 +42,53 @@ struct LLVM_NODISCARD UtilResult {
   operator bool() const { return value == Failure; }
 };
 
-/// Unrolls this for statement completely if the trip count is known to be
+/// Unrolls this for instruction completely if the trip count is known to be
 /// constant. Returns false otherwise.
-bool loopUnrollFull(ForStmt *forStmt);
-/// Unrolls this for statement by the specified unroll factor. Returns false if
-/// the loop cannot be unrolled either due to restrictions or due to invalid
+bool loopUnrollFull(ForInst *forInst);
+/// Unrolls this for instruction by the specified unroll factor. Returns false
+/// if the loop cannot be unrolled either due to restrictions or due to invalid
 /// unroll factors.
-bool loopUnrollByFactor(ForStmt *forStmt, uint64_t unrollFactor);
+bool loopUnrollByFactor(ForInst *forInst, uint64_t unrollFactor);
 /// Unrolls this loop by the specified unroll factor or its trip count,
 /// whichever is lower.
-bool loopUnrollUpToFactor(ForStmt *forStmt, uint64_t unrollFactor);
+bool loopUnrollUpToFactor(ForInst *forInst, uint64_t unrollFactor);
 
 /// Unrolls and jams this loop by the specified factor. Returns true if the loop
 /// is successfully unroll-jammed.
-bool loopUnrollJamByFactor(ForStmt *forStmt, uint64_t unrollJamFactor);
+bool loopUnrollJamByFactor(ForInst *forInst, uint64_t unrollJamFactor);
 
 /// Unrolls and jams this loop by the specified factor or by the trip count (if
 /// constant), whichever is lower.
-bool loopUnrollJamUpToFactor(ForStmt *forStmt, uint64_t unrollJamFactor);
+bool loopUnrollJamUpToFactor(ForInst *forInst, uint64_t unrollJamFactor);
 
-/// Promotes the loop body of a ForStmt to its containing block if the ForStmt
+/// Promotes the loop body of a ForInst to its containing block if the ForInst
 /// was known to have a single iteration. Returns false otherwise.
-bool promoteIfSingleIteration(ForStmt *forStmt);
+bool promoteIfSingleIteration(ForInst *forInst);
 
-/// Promotes all single iteration ForStmt's in the Function, i.e., moves
+/// Promotes all single iteration ForInst's in the Function, i.e., moves
 /// their body into the containing Block.
 void promoteSingleIterationLoops(Function *f);
 
 /// Returns the lower bound of the cleanup loop when unrolling a loop
 /// with the specified unroll factor.
-AffineMap getCleanupLoopLowerBound(const ForStmt &forStmt,
+AffineMap getCleanupLoopLowerBound(const ForInst &forInst,
                                    unsigned unrollFactor, FuncBuilder *builder);
 
 /// Returns the upper bound of an unrolled loop when unrolling with
 /// the specified trip count, stride, and unroll factor.
-AffineMap getUnrolledLoopUpperBound(const ForStmt &forStmt,
+AffineMap getUnrolledLoopUpperBound(const ForInst &forInst,
                                     unsigned unrollFactor,
                                     FuncBuilder *builder);
 
-/// Skew the statements in the body of a 'for' statement with the specified
-/// statement-wise shifts. The shifts are with respect to the original execution
-/// order, and are multiplied by the loop 'step' before being applied.
-UtilResult stmtBodySkew(ForStmt *forStmt, ArrayRef<uint64_t> shifts,
+/// Skew the instructions in the body of a 'for' instruction with the specified
+/// instruction-wise shifts. The shifts are with respect to the original
+/// execution order, and are multiplied by the loop 'step' before being applied.
+UtilResult instBodySkew(ForInst *forInst, ArrayRef<uint64_t> shifts,
                         bool unrollPrologueEpilogue = false);
 
 /// Tiles the specified band of perfectly nested loops creating tile-space loops
 /// and intra-tile loops. A band is a contiguous set of loops.
-UtilResult tileCodeGen(ArrayRef<ForStmt *> band, ArrayRef<unsigned> tileSizes);
+UtilResult tileCodeGen(ArrayRef<ForInst *> band, ArrayRef<unsigned> tileSizes);
 
 } // end namespace mlir
 
