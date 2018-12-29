@@ -1885,6 +1885,16 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
 
 Status HloInstruction::ReplaceOperandWith(int64 operand_num,
                                           HloInstruction* new_operand) {
+  auto old_operand = operand(operand_num);
+  TF_RET_CHECK(ShapeUtil::CompatibleIgnoringFpPrecision(old_operand->shape(),
+                                                        new_operand->shape()))
+      << old_operand->shape() << " is not compatible with "
+      << new_operand->shape();
+  return ReplaceOperandWithDifferentShape(operand_num, new_operand);
+}
+
+Status HloInstruction::ReplaceOperandWithDifferentShape(
+    int64 operand_num, HloInstruction* new_operand) {
   TF_RET_CHECK(operand_num >= 0);
   TF_RET_CHECK(operand_num < operand_count());
   HloInstruction* old_operand = mutable_operand(operand_num);
@@ -1892,10 +1902,6 @@ Status HloInstruction::ReplaceOperandWith(int64 operand_num,
     return Status::OK();
   }
 
-  TF_RET_CHECK(ShapeUtil::CompatibleIgnoringFpPrecision(old_operand->shape(),
-                                                        new_operand->shape()))
-      << old_operand->shape() << " is not compatible with "
-      << new_operand->shape();
   operands_[operand_num] = new_operand;
 
   VLOG(3) << "Replacing operand " << operand_num << " of " << name() << " with "
@@ -1910,6 +1916,14 @@ Status HloInstruction::ReplaceOperandWith(int64 operand_num,
 }
 
 Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
+  TF_RET_CHECK(
+      ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
+      << shape() << " is not compatible with " << new_producer->shape();
+  return ReplaceAllUsesWithDifferentShape(new_producer);
+}
+
+Status HloInstruction::ReplaceAllUsesWithDifferentShape(
+    HloInstruction* new_producer) {
   bool new_producer_is_user = false;
   for (HloInstruction* user : users()) {
     if (user == new_producer) {
@@ -1934,7 +1948,8 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer) {
     AddUser(new_producer);
   }
   if (parent_ && parent_->root_instruction() == this) {
-    parent_->set_root_instruction(new_producer);
+    parent_->set_root_instruction(new_producer,
+                                  /*accept_different_shape=*/true);
   }
 
   return Status::OK();
