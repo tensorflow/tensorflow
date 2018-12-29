@@ -102,9 +102,6 @@ private:
 
 namespace {
 
-using CreateOperationFunction =
-    std::function<OperationInst *(const OperationState &)>;
-
 /// This class implement support for parsing global entities like types and
 /// shared entities like SSA names.  It is intended to be subclassed by
 /// specialized subparsers that include state, e.g. when a local symbol table.
@@ -1869,13 +1866,34 @@ namespace {
 /// functions, notably for dealing with operations and SSA values.
 class FunctionParser : public Parser {
 public:
-  enum class Kind { CFGFunc, MLFunc };
+  /// This builder intentionally shadows the builder in the base class, with a
+  /// more specific builder type.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshadow-field"
+  FuncBuilder builder;
+#pragma clang diagnostic pop
 
-  Kind getKind() const { return kind; }
+  FunctionParser(ParserState &state, Function *function)
+      : Parser(state), builder(function), function(function) {}
+
+  ~FunctionParser();
+
+  ParseResult parseFunctionBody();
+
+  /// Parse a single operation successor and it's operand list.
+  bool parseSuccessorAndUseList(Block *&dest,
+                                SmallVectorImpl<Value *> &operands);
+
+  ParseResult
+  parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
+                            Block *owner);
+
+  ParseResult parseBlock();
+  ParseResult parseBlockBody(Block *block);
 
   /// After the function is finished parsing, this function checks to see if
   /// there are any remaining issues.
-  ParseResult finalizeFunction(Function *func, SMLoc loc);
+  ParseResult finalizeFunction(SMLoc loc);
 
   /// This represents a use of an SSA value in the program.  The first two
   /// entries in the tuple are the name and result number of a reference.  The
@@ -1913,25 +1931,41 @@ public:
   ParseResult
   parseOptionalSSAUseAndTypeList(SmallVectorImpl<ValueTy *> &results);
 
+  // Block references.
+
+  /// Get the basic block with the specified name, creating it if it doesn't
+  /// already exist.  The location specified is the point of use, which allows
+  /// us to diagnose references to blocks that are not defined precisely.
+  Block *getBlockNamed(StringRef name, SMLoc loc);
+
+  // Define the basic block with the specified name. Returns the Block* or
+  // nullptr in the case of redefinition.
+  Block *defineBlockNamed(StringRef name, SMLoc loc);
+
   // Operations
-  ParseResult parseOperation(const CreateOperationFunction &createOpFunc);
-  OperationInst *
-  parseVerboseOperation(const CreateOperationFunction &createOpFunc);
-  OperationInst *
-  parseCustomOperation(const CreateOperationFunction &createOpFunc);
+  ParseResult parseOperation();
+  OperationInst *parseVerboseOperation();
+  OperationInst *parseCustomOperation();
 
-  /// Parse a single operation successor and it's operand list.
-  virtual bool parseSuccessorAndUseList(Block *&dest,
-                                        SmallVectorImpl<Value *> &operands) = 0;
-
-protected:
-  FunctionParser(ParserState &state, Kind kind) : Parser(state), kind(kind) {}
-
-  virtual ~FunctionParser();
+  ParseResult parseForInst();
+  ParseResult parseIntConstant(int64_t &val);
+  ParseResult parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
+                                    unsigned numDims, unsigned numOperands,
+                                    const char *affineStructName);
+  ParseResult parseBound(SmallVectorImpl<Value *> &operands, AffineMap &map,
+                         bool isLower);
+  ParseResult parseIfInst();
+  ParseResult parseElseClause(Block *elseClause);
+  ParseResult parseInstructions(Block *block);
 
 private:
-  /// Kind indicates if this is CFG or ML function parser.
-  Kind kind;
+  Function *function;
+
+  // This keeps track of the block names as well as the location of the first
+  // reference, used to diagnose invalid block references and memoize them.
+  llvm::StringMap<std::pair<Block *, SMLoc>> blocksByName;
+  DenseMap<Block *, SMLoc> forwardRef;
+
   /// This keeps track of all of the SSA values we are tracking, indexed by
   /// their name.  This has one entry per result number.
   llvm::StringMap<SmallVector<std::pair<Value *, SMLoc>, 1>> values;
@@ -1948,6 +1982,121 @@ private:
   }
 };
 } // end anonymous namespace
+
+ParseResult FunctionParser::parseFunctionBody() {
+  auto braceLoc = getToken().getLoc();
+  if (parseToken(Token::l_brace, "expected '{' in function"))
+    return ParseFailure;
+
+  // Make sure we have at least one block.
+  if (getToken().is(Token::r_brace))
+    return emitError("function must have a body");
+
+  if (function->isCFG()) {
+    // Parse the list of blocks.
+    while (!consumeIf(Token::r_brace))
+      if (parseBlock())
+        return ParseFailure;
+  } else {
+    if (parseBlockBody(function->getBody()) ||
+        parseToken(Token::r_brace, "expected '}' after instruction list"))
+      return ParseFailure;
+  }
+
+  // Verify that all referenced blocks were defined.
+  if (!forwardRef.empty()) {
+    SmallVector<std::pair<const char *, Block *>, 4> errors;
+    // Iteration over the map isn't deterministic, so sort by source location.
+    for (auto entry : forwardRef)
+      errors.push_back({entry.second.getPointer(), entry.first});
+    llvm::array_pod_sort(errors.begin(), errors.end());
+
+    for (auto entry : errors) {
+      auto loc = SMLoc::getFromPointer(entry.first);
+      emitError(loc, "reference to an undefined basic block");
+    }
+    return ParseFailure;
+  }
+
+  // Now that the function body has been fully parsed we check the invariants
+  // of any branching terminators.
+  if (function->isCFG()) {
+    for (auto &block : *function) {
+      auto *term = block.getTerminator();
+      auto *abstractOp = term->getAbstractOperation();
+      if (term->getNumSuccessors() != 0 && abstractOp)
+        abstractOp->verifyInvariants(term);
+    }
+  }
+  return finalizeFunction(braceLoc);
+}
+
+/// Block declaration.
+///
+///   block ::= block-label? instruction* terminator-inst
+///   block-label    ::= block-id block-arg-list? `:`
+///   block-id       ::= bare-id
+///   block-arg-list ::= `(` ssa-id-and-type-list? `)`
+///
+ParseResult FunctionParser::parseBlock() {
+  SMLoc nameLoc = getToken().getLoc();
+  auto name = getTokenSpelling();
+  if (parseToken(Token::bare_identifier, "expected basic block name"))
+    return ParseFailure;
+
+  auto *block = defineBlockNamed(name, nameLoc);
+
+  // Fail if redefinition.
+  if (!block)
+    return emitError(nameLoc, "redefinition of block '" + name.str() + "'");
+
+  // If an argument list is present, parse it.
+  if (consumeIf(Token::l_paren)) {
+    SmallVector<BlockArgument *, 8> bbArgs;
+    if (parseOptionalBlockArgList(bbArgs, block) ||
+        parseToken(Token::r_paren, "expected ')' to end argument list"))
+      return ParseFailure;
+  }
+
+  if (parseToken(Token::colon, "expected ':' after basic block name"))
+    return ParseFailure;
+
+  return parseBlockBody(block);
+}
+
+ParseResult FunctionParser::parseBlockBody(Block *block) {
+
+  // Set the insertion point to the block we want to insert new operations
+  // into.
+  builder.setInsertionPointToEnd(block);
+
+  // Parse the list of operations that make up the body of the block.
+  while (getToken().isNot(Token::kw_return, Token::kw_br, Token::kw_cond_br,
+                          Token::r_brace)) {
+    switch (getToken().getKind()) {
+    default:
+      if (parseOperation())
+        return ParseFailure;
+      break;
+    case Token::kw_for:
+      if (parseForInst())
+        return ParseFailure;
+      break;
+    case Token::kw_if:
+      if (parseIfInst())
+        return ParseFailure;
+      break;
+    }
+  }
+
+  // TODO: Merge terminator parsing into the loop above?
+  if (getToken().isNot(Token::r_brace)) {
+    // Parse the terminator operation.
+    if (parseOperation())
+      return ParseFailure;
+  }
+  return ParseSuccess;
+}
 
 /// Create and remember a new placeholder for a forward reference.
 Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
@@ -1997,7 +2146,7 @@ Value *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
   // Otherwise, this is a forward reference.  If we are in ML function return
   // an error. In CFG function, create a placeholder and remember
   // that we did so.
-  if (getKind() == Kind::MLFunc)
+  if (function->isML())
     return (
         emitError(useInfo.loc, "use of undefined SSA value " + useInfo.name),
         nullptr);
@@ -2006,6 +2155,38 @@ Value *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
   entries[useInfo.number].first = result;
   entries[useInfo.number].second = useInfo.loc;
   return result;
+}
+
+/// After the function is finished parsing, this function checks to see if
+/// there are any remaining issues.
+ParseResult FunctionParser::finalizeFunction(SMLoc loc) {
+  // Check for any forward references that are left.  If we find any, error
+  // out.
+  if (!forwardReferencePlaceholders.empty()) {
+    SmallVector<std::pair<const char *, Value *>, 4> errors;
+    // Iteration over the map isn't deterministic, so sort by source location.
+    for (auto entry : forwardReferencePlaceholders)
+      errors.push_back({entry.second.getPointer(), entry.first});
+    llvm::array_pod_sort(errors.begin(), errors.end());
+
+    for (auto entry : errors) {
+      auto loc = SMLoc::getFromPointer(entry.first);
+      emitError(loc, "use of undeclared SSA value name");
+    }
+    return ParseFailure;
+  }
+
+  return ParseSuccess;
+}
+
+FunctionParser::~FunctionParser() {
+  for (auto &fwd : forwardReferencePlaceholders) {
+    // Drop all uses of undefined forward declared reference and destroy
+    // defining instruction.
+    for (auto &use : fwd.first->getUses())
+      use.drop();
+    fwd.first->getDefiningInst()->destroy();
+  }
 }
 
 /// Register a definition of a value with the symbol table.
@@ -2037,38 +2218,6 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
   entries[useInfo.number].first = value;
   entries[useInfo.number].second = useInfo.loc;
   return ParseSuccess;
-}
-
-/// After the function is finished parsing, this function checks to see if
-/// there are any remaining issues.
-ParseResult FunctionParser::finalizeFunction(Function *func, SMLoc loc) {
-  // Check for any forward references that are left.  If we find any, error
-  // out.
-  if (!forwardReferencePlaceholders.empty()) {
-    SmallVector<std::pair<const char *, Value *>, 4> errors;
-    // Iteration over the map isn't deterministic, so sort by source location.
-    for (auto entry : forwardReferencePlaceholders)
-      errors.push_back({entry.second.getPointer(), entry.first});
-    llvm::array_pod_sort(errors.begin(), errors.end());
-
-    for (auto entry : errors) {
-      auto loc = SMLoc::getFromPointer(entry.first);
-      emitError(loc, "use of undeclared SSA value name");
-    }
-    return ParseFailure;
-  }
-
-  return ParseSuccess;
-}
-
-FunctionParser::~FunctionParser() {
-  for (auto &fwd : forwardReferencePlaceholders) {
-    // Drop all uses of undefined forward declared reference and destroy
-    // defining instruction.
-    for (auto &use : fwd.first->getUses())
-      use.drop();
-    fwd.first->getDefiningInst()->destroy();
-  }
 }
 
 /// Parse a SSA operand for an instruction or instruction.
@@ -2168,14 +2317,96 @@ ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
   return ParseSuccess;
 }
 
-/// Parse the CFG or MLFunc operation.
+/// Get the basic block with the specified name, creating it if it doesn't
+/// already exist.  The location specified is the point of use, which allows
+/// us to diagnose references to blocks that are not defined precisely.
+Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
+  auto &blockAndLoc = blocksByName[name];
+  if (!blockAndLoc.first) {
+    blockAndLoc.first = new Block();
+    forwardRef[blockAndLoc.first] = loc;
+    function->push_back(blockAndLoc.first);
+    blockAndLoc.second = loc;
+  }
+
+  return blockAndLoc.first;
+}
+
+// Define the basic block with the specified name. Returns the Block* or
+// nullptr in the case of redefinition.
+Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc) {
+  auto &blockAndLoc = blocksByName[name];
+  if (!blockAndLoc.first) {
+    blockAndLoc.first = builder.createBlock();
+    blockAndLoc.second = loc;
+    return blockAndLoc.first;
+  }
+
+  // Forward declarations are removed once defined, so if we are defining a
+  // existing block and it is not a forward declaration, then it is a
+  // redeclaration.
+  if (!forwardRef.erase(blockAndLoc.first))
+    return nullptr;
+
+  // Move the block to the end of the function.  Forward ref'd blocks are
+  // inserted wherever they happen to be referenced.
+  function->getBlocks().splice(function->end(), function->getBlocks(),
+                               blockAndLoc.first);
+  return blockAndLoc.first;
+}
+
+/// Parse a single operation successor and it's operand list.
+///
+///   successor ::= block-id branch-use-list?
+///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
+///
+bool FunctionParser::parseSuccessorAndUseList(
+    Block *&dest, SmallVectorImpl<Value *> &operands) {
+  // Verify branch is identifier and get the matching block.
+  if (!getToken().is(Token::bare_identifier))
+    return emitError("expected basic block name");
+  dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
+  consumeToken();
+
+  // Handle optional arguments.
+  if (consumeIf(Token::l_paren) &&
+      (parseOptionalSSAUseAndTypeList(operands) ||
+       parseToken(Token::r_paren, "expected ')' to close argument list"))) {
+    return true;
+  }
+
+  return false;
+}
+
+/// Parse a (possibly empty) list of SSA operands with types as basic block
+/// arguments.
+///
+///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
+///
+ParseResult FunctionParser::parseOptionalBlockArgList(
+    SmallVectorImpl<BlockArgument *> &results, Block *owner) {
+  if (getToken().is(Token::r_brace))
+    return ParseSuccess;
+
+  return parseCommaSeparatedList([&]() -> ParseResult {
+    auto type = parseSSADefOrUseAndType<Type>(
+        [&](SSAUseInfo useInfo, Type type) -> Type {
+          BlockArgument *arg = owner->addArgument(type);
+          if (addDefinition(useInfo, arg))
+            return {};
+          return type;
+        });
+    return type ? ParseSuccess : ParseFailure;
+  });
+}
+
+/// Parse an operation.
 ///
 ///  operation ::=
 ///    (ssa-id `=`)? string '(' ssa-use-list? ')' attribute-dict?
 ///    `:` function-type
 ///
-ParseResult
-FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
+ParseResult FunctionParser::parseOperation() {
   auto loc = getToken().getLoc();
 
   StringRef resultID;
@@ -2188,9 +2419,9 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
 
   OperationInst *op;
   if (getToken().is(Token::bare_identifier) || getToken().isKeyword())
-    op = parseCustomOperation(createOpFunc);
+    op = parseCustomOperation();
   else if (getToken().is(Token::string))
-    op = parseVerboseOperation(createOpFunc);
+    op = parseVerboseOperation();
   else
     return emitError("expected operation name in quotes");
 
@@ -2222,8 +2453,7 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   return ParseSuccess;
 }
 
-OperationInst *FunctionParser::parseVerboseOperation(
-    const CreateOperationFunction &createOpFunc) {
+OperationInst *FunctionParser::parseVerboseOperation() {
 
   // Get location information for the operation.
   auto srcLocation = getEncodedSourceLocation(getToken().getLoc());
@@ -2282,7 +2512,7 @@ OperationInst *FunctionParser::parseVerboseOperation(
       return nullptr;
   }
 
-  return createOpFunc(result);
+  return builder.createOperation(result);
 }
 
 namespace {
@@ -2518,8 +2748,7 @@ private:
 };
 } // end anonymous namespace.
 
-OperationInst *FunctionParser::parseCustomOperation(
-    const CreateOperationFunction &createOpFunc) {
+OperationInst *FunctionParser::parseCustomOperation() {
   auto opLoc = getToken().getLoc();
   auto opName = getTokenSpelling();
   CustomOpAsmParser opAsmParser(opLoc, opName, *this);
@@ -2551,277 +2780,15 @@ OperationInst *FunctionParser::parseCustomOperation(
     return nullptr;
 
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
-  return createOpFunc(opState);
-}
-
-//===----------------------------------------------------------------------===//
-// CFG Functions
-//===----------------------------------------------------------------------===//
-
-namespace {
-
-/// This is a specialized parser for Function's, maintaining the state
-/// transient to their bodies.
-class CFGFunctionParser : public FunctionParser {
-public:
-  CFGFunctionParser(ParserState &state, Function *function)
-      : FunctionParser(state, Kind::CFGFunc), function(function),
-        builder(function) {}
-
-  ParseResult parseFunctionBody();
-
-  bool parseSuccessorAndUseList(Block *&dest,
-                                SmallVectorImpl<Value *> &operands);
-
-private:
-  Function *function;
-  llvm::StringMap<std::pair<Block *, SMLoc>> blocksByName;
-  DenseMap<Block *, SMLoc> forwardRef;
-
-  /// This builder intentionally shadows the builder in the base class, with a
-  /// more specific builder type.
-  FuncBuilder builder;
-
-  /// Get the basic block with the specified name, creating it if it doesn't
-  /// already exist.  The location specified is the point of use, which allows
-  /// us to diagnose references to blocks that are not defined precisely.
-  Block *getBlockNamed(StringRef name, SMLoc loc) {
-    auto &blockAndLoc = blocksByName[name];
-    if (!blockAndLoc.first) {
-      blockAndLoc.first = new Block();
-      forwardRef[blockAndLoc.first] = loc;
-      function->push_back(blockAndLoc.first);
-      blockAndLoc.second = loc;
-    }
-
-    return blockAndLoc.first;
-  }
-
-  // Define the basic block with the specified name. Returns the Block* or
-  // nullptr in the case of redefinition.
-  Block *defineBlockNamed(StringRef name, SMLoc loc) {
-    auto &blockAndLoc = blocksByName[name];
-    if (!blockAndLoc.first) {
-      blockAndLoc.first = builder.createBlock();
-      blockAndLoc.second = loc;
-      return blockAndLoc.first;
-    }
-
-    // Forward declarations are removed once defined, so if we are defining a
-    // existing block and it is not a forward declaration, then it is a
-    // redeclaration.
-    if (!forwardRef.erase(blockAndLoc.first))
-      return nullptr;
-
-    // Move the block to the end of the function.  Forward ref'd blocks are
-    // inserted wherever they happen to be referenced.
-    function->getBlocks().splice(function->end(), function->getBlocks(),
-                                 blockAndLoc.first);
-    return blockAndLoc.first;
-  }
-
-  ParseResult
-  parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
-                            Block *owner);
-
-  ParseResult parseBlock();
-};
-} // end anonymous namespace
-
-/// Parse a single operation successor and it's operand list.
-///
-///   successor ::= bb-id branch-use-list?
-///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
-///
-bool CFGFunctionParser::parseSuccessorAndUseList(
-    Block *&dest, SmallVectorImpl<Value *> &operands) {
-  // Verify branch is identifier and get the matching block.
-  if (!getToken().is(Token::bare_identifier))
-    return emitError("expected basic block name");
-  dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
-  consumeToken();
-
-  // Handle optional arguments.
-  if (consumeIf(Token::l_paren) &&
-      (parseOptionalSSAUseAndTypeList(operands) ||
-       parseToken(Token::r_paren, "expected ')' to close argument list"))) {
-    return true;
-  }
-
-  return false;
-}
-
-/// Parse a (possibly empty) list of SSA operands with types as basic block
-/// arguments.
-///
-///   ssa-id-and-type-list ::= ssa-id-and-type (`,` ssa-id-and-type)*
-///
-ParseResult CFGFunctionParser::parseOptionalBlockArgList(
-    SmallVectorImpl<BlockArgument *> &results, Block *owner) {
-  if (getToken().is(Token::r_brace))
-    return ParseSuccess;
-
-  return parseCommaSeparatedList([&]() -> ParseResult {
-    auto type = parseSSADefOrUseAndType<Type>(
-        [&](SSAUseInfo useInfo, Type type) -> Type {
-          BlockArgument *arg = owner->addArgument(type);
-          if (addDefinition(useInfo, arg))
-            return {};
-          return type;
-        });
-    return type ? ParseSuccess : ParseFailure;
-  });
-}
-
-ParseResult CFGFunctionParser::parseFunctionBody() {
-  auto braceLoc = getToken().getLoc();
-  if (parseToken(Token::l_brace, "expected '{' in CFG function"))
-    return ParseFailure;
-
-  // Make sure we have at least one block.
-  if (getToken().is(Token::r_brace))
-    return emitError("CFG functions must have at least one basic block");
-
-  // Parse the list of blocks.
-  while (!consumeIf(Token::r_brace))
-    if (parseBlock())
-      return ParseFailure;
-
-  // Verify that all referenced blocks were defined.
-  if (!forwardRef.empty()) {
-    SmallVector<std::pair<const char *, Block *>, 4> errors;
-    // Iteration over the map isn't deterministic, so sort by source location.
-    for (auto entry : forwardRef)
-      errors.push_back({entry.second.getPointer(), entry.first});
-    llvm::array_pod_sort(errors.begin(), errors.end());
-
-    for (auto entry : errors) {
-      auto loc = SMLoc::getFromPointer(entry.first);
-      emitError(loc, "reference to an undefined basic block");
-    }
-    return ParseFailure;
-  }
-
-  // Now that the function body has been fully parsed we check the invariants
-  // of any branching terminators.
-  for (auto &block : *function) {
-    auto *term = block.getTerminator();
-    auto *abstractOp = term->getAbstractOperation();
-    if (term->getNumSuccessors() != 0 && abstractOp)
-      abstractOp->verifyInvariants(term);
-  }
-
-  return finalizeFunction(function, braceLoc);
-}
-
-/// Basic block declaration.
-///
-///   basic-block ::= bb-label instruction* terminator-inst
-///   bb-label    ::= bb-id bb-arg-list? `:`
-///   bb-id       ::= bare-id
-///   bb-arg-list ::= `(` ssa-id-and-type-list? `)`
-///
-ParseResult CFGFunctionParser::parseBlock() {
-  SMLoc nameLoc = getToken().getLoc();
-  auto name = getTokenSpelling();
-  if (parseToken(Token::bare_identifier, "expected basic block name"))
-    return ParseFailure;
-
-  auto *block = defineBlockNamed(name, nameLoc);
-
-  // Fail if redefinition.
-  if (!block)
-    return emitError(nameLoc, "redefinition of block '" + name.str() + "'");
-
-  // If an argument list is present, parse it.
-  if (consumeIf(Token::l_paren)) {
-    SmallVector<BlockArgument *, 8> bbArgs;
-    if (parseOptionalBlockArgList(bbArgs, block) ||
-        parseToken(Token::r_paren, "expected ')' to end argument list"))
-      return ParseFailure;
-  }
-
-  if (parseToken(Token::colon, "expected ':' after basic block name"))
-    return ParseFailure;
-
-  // Set the insertion point to the block we want to insert new operations
-  // into.
-  builder.setInsertionPointToEnd(block);
-
-  auto createOpFunc = [&](const OperationState &result) -> OperationInst * {
-    return builder.createOperation(result);
-  };
-
-  // Parse the list of operations that make up the body of the block.
-  while (getToken().isNot(Token::kw_return, Token::kw_br, Token::kw_cond_br)) {
-    if (parseOperation(createOpFunc))
-      return ParseFailure;
-  }
-
-  // Parse the terminator operation.
-  if (parseOperation(createOpFunc))
-    return ParseFailure;
-
-  return ParseSuccess;
-}
-
-//===----------------------------------------------------------------------===//
-// ML Functions
-//===----------------------------------------------------------------------===//
-
-namespace {
-/// Refined parser for Function bodies.
-class MLFunctionParser : public FunctionParser {
-public:
-  MLFunctionParser(ParserState &state, Function *function)
-      : FunctionParser(state, Kind::MLFunc), function(function),
-        builder(function->getBody()) {}
-
-  ParseResult parseFunctionBody();
-
-private:
-  Function *function;
-
-  /// This builder intentionally shadows the builder in the base class, with a
-  /// more specific builder type.
-  FuncBuilder builder;
-
-  ParseResult parseForInst();
-  ParseResult parseIntConstant(int64_t &val);
-  ParseResult parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
-                                    unsigned numDims, unsigned numOperands,
-                                    const char *affineStructName);
-  ParseResult parseBound(SmallVectorImpl<Value *> &operands, AffineMap &map,
-                         bool isLower);
-  ParseResult parseIfInst();
-  ParseResult parseElseClause(Block *elseClause);
-  ParseResult parseInstructions(Block *block);
-  ParseResult parseBlock(Block *block);
-
-  bool parseSuccessorAndUseList(Block *&dest,
-                                SmallVectorImpl<Value *> &operands) {
-    assert(false && "MLFunctions do not have terminators with successors.");
-    return true;
-  }
-};
-} // end anonymous namespace
-
-ParseResult MLFunctionParser::parseFunctionBody() {
-  auto braceLoc = getToken().getLoc();
-
-  // Parse instructions in this function.
-  if (parseBlock(function->getBody()))
-    return ParseFailure;
-
-  return finalizeFunction(function, braceLoc);
+  return builder.createOperation(opState);
 }
 
 /// For instruction.
 ///
 ///    ml-for-inst ::= `for` ssa-id `=` lower-bound `to` upper-bound
-///                   (`step` integer-literal)? `{` ml-inst* `}`
+///                   (`step` integer-literal)? `{` inst* `}`
 ///
-ParseResult MLFunctionParser::parseForInst() {
+ParseResult FunctionParser::parseForInst() {
   consumeToken(Token::kw_for);
 
   // Parse induction variable.
@@ -2874,7 +2841,9 @@ ParseResult MLFunctionParser::parseForInst() {
   // If parsing of the for instruction body fails,
   // MLIR contains for instruction with those nested instructions that have been
   // successfully parsed.
-  if (parseBlock(forInst->getBody()))
+  if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
+      parseBlockBody(forInst->getBody()) ||
+      parseToken(Token::r_brace, "expected '}' after instruction list"))
     return ParseFailure;
 
   // Reset insertion point to the current block.
@@ -2884,7 +2853,7 @@ ParseResult MLFunctionParser::parseForInst() {
 }
 
 /// Parse integer constant as affine constant expression.
-ParseResult MLFunctionParser::parseIntConstant(int64_t &val) {
+ParseResult FunctionParser::parseIntConstant(int64_t &val) {
   bool negate = consumeIf(Token::minus);
 
   if (getToken().isNot(Token::integer))
@@ -2911,9 +2880,9 @@ ParseResult MLFunctionParser::parseIntConstant(int64_t &val) {
 /// dim-and-symbol-use-list ::= dim-use-list symbol-use-list?
 ///
 ParseResult
-MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
-                                        unsigned numDims, unsigned numOperands,
-                                        const char *affineStructName) {
+FunctionParser::parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
+                                      unsigned numDims, unsigned numOperands,
+                                      const char *affineStructName) {
   if (parseToken(Token::l_paren, "expected '('"))
     return ParseFailure;
 
@@ -2962,8 +2931,8 @@ MLFunctionParser::parseDimAndSymbolList(SmallVectorImpl<Value *> &operands,
 ///  shorthand-bound upper-bound ::= `min`? affine-map dim-and-symbol-use-list
 ///  | shorthand-bound shorthand-bound ::= ssa-id | `-`? integer-literal
 ///
-ParseResult MLFunctionParser::parseBound(SmallVectorImpl<Value *> &operands,
-                                         AffineMap &map, bool isLower) {
+ParseResult FunctionParser::parseBound(SmallVectorImpl<Value *> &operands,
+                                       AffineMap &map, bool isLower) {
   // 'min' / 'max' prefixes are syntactic sugar. Ignore them.
   if (isLower)
     consumeIf(Token::kw_max);
@@ -3097,12 +3066,12 @@ IntegerSet Parser::parseIntegerSetInline() {
 
 /// If instruction.
 ///
-///   ml-if-head ::= `if` ml-if-cond `{` ml-inst* `}`
-///               | ml-if-head `else` `if` ml-if-cond `{` ml-inst* `}`
+///   ml-if-head ::= `if` ml-if-cond `{` inst* `}`
+///               | ml-if-head `else` `if` ml-if-cond `{` inst* `}`
 ///   ml-if-inst ::= ml-if-head
-///               | ml-if-head `else` `{` ml-inst* `}`
+///               | ml-if-head `else` `{` inst* `}`
 ///
-ParseResult MLFunctionParser::parseIfInst() {
+ParseResult FunctionParser::parseIfInst() {
   auto loc = getToken().getLoc();
   consumeToken(Token::kw_if);
 
@@ -3123,7 +3092,9 @@ ParseResult MLFunctionParser::parseIfInst() {
   // When parsing of an if instruction body fails, the IR contains
   // the if instruction with the portion of the body that has been
   // successfully parsed.
-  if (parseBlock(thenClause))
+  if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
+      parseBlockBody(thenClause) ||
+      parseToken(Token::r_brace, "expected '}' after instruction list"))
     return ParseFailure;
 
   if (consumeIf(Token::kw_else)) {
@@ -3138,62 +3109,16 @@ ParseResult MLFunctionParser::parseIfInst() {
   return ParseSuccess;
 }
 
-ParseResult MLFunctionParser::parseElseClause(Block *elseClause) {
+ParseResult FunctionParser::parseElseClause(Block *elseClause) {
   if (getToken().is(Token::kw_if)) {
     builder.setInsertionPointToEnd(elseClause);
     return parseIfInst();
   }
 
-  return parseBlock(elseClause);
-}
-
-///
-/// Parse a list of instructions ending with `return` or `}`
-///
-ParseResult MLFunctionParser::parseInstructions(Block *block) {
-  auto createOpFunc = [&](const OperationState &state) -> OperationInst * {
-    return builder.createOperation(state);
-  };
-
-  builder.setInsertionPointToEnd(block);
-
-  // Parse instructions till we see '}' or 'return'.
-  // Return instruction is parsed separately to emit a more intuitive error
-  // when '}' is missing after the return instruction.
-  while (getToken().isNot(Token::r_brace, Token::kw_return)) {
-    switch (getToken().getKind()) {
-    default:
-      if (parseOperation(createOpFunc))
-        return ParseFailure;
-      break;
-    case Token::kw_for:
-      if (parseForInst())
-        return ParseFailure;
-      break;
-    case Token::kw_if:
-      if (parseIfInst())
-        return ParseFailure;
-      break;
-    } // end switch
-  }
-
-  // Parse the return instruction.
-  if (getToken().is(Token::kw_return))
-    if (parseOperation(createOpFunc))
-      return ParseFailure;
-
-  return ParseSuccess;
-}
-
-///
-/// Parse `{` ml-inst* `}`
-///
-ParseResult MLFunctionParser::parseBlock(Block *block) {
   if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
-      parseInstructions(block) ||
+      parseBlockBody(elseClause) ||
       parseToken(Token::r_brace, "expected '}' after instruction list"))
     return ParseFailure;
-
   return ParseSuccess;
 }
 
@@ -3423,13 +3348,13 @@ ParseResult ModuleParser::parseCFGFunc() {
     return emitError(loc,
                      "redefinition of function named '" + name.str() + "'");
 
-  return CFGFunctionParser(getState(), function).parseFunctionBody();
+  return FunctionParser(getState(), function).parseFunctionBody();
 }
 
 /// ML function declarations.
 ///
 ///   ml-func ::= `mlfunc` ml-func-signature
-///              (`attributes` attribute-dict)? `{` ml-inst* ml-return-inst
+///              (`attributes` attribute-dict)? `{` inst* return-inst
 ///              `}`
 ///
 ParseResult ModuleParser::parseMLFunc() {
@@ -3460,7 +3385,7 @@ ParseResult ModuleParser::parseMLFunc() {
                      "redefinition of function named '" + name.str() + "'");
 
   // Create the parser.
-  auto parser = MLFunctionParser(getState(), function);
+  auto parser = FunctionParser(getState(), function);
 
   // Add definitions of the function arguments.
   for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {

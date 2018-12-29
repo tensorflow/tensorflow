@@ -77,7 +77,7 @@ extfunc @illegalattrs() -> () attributes { key } // expected-error {{expected ':
 // -----
 
 cfgfunc @foo()
-cfgfunc @bar() // expected-error {{expected '{' in CFG function}}
+cfgfunc @bar() // expected-error {{expected '{' in function}}
 
 // -----
 
@@ -160,12 +160,12 @@ bb42:
 // -----
 
 mlfunc @foo()
-mlfunc @bar() // expected-error {{expected '{' before instruction list}}
+mlfunc @bar() // expected-error {{expected '{' in function}}
 
 // -----
 
-mlfunc @empty() { // expected-error {{ML function must end with return instruction}}
-}
+mlfunc @empty() {
+} // expected-error {{function must have a body}}
 
 // -----
 
