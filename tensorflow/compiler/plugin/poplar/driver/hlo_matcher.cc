@@ -373,12 +373,12 @@ OutlinedInfo HloMatcher::OutlineExpressionFromComputation(
         HloInstruction* old_operand = new_inst->mutable_operand(operand);
         HloInstruction** operand_slot = &(outlined[old_operand]);
         if (*operand_slot == nullptr) {
-          auto op_indecies_it =
+          auto op_indicies_it =
               matched.inst_parameters.find(instruction_to_outline);
-          if (op_indecies_it == matched.inst_parameters.end()) {
+          if (op_indicies_it == matched.inst_parameters.end()) {
             continue;
           }
-          auto parameter_num = op_indecies_it->second[operand];
+          auto parameter_num = op_indicies_it->second[operand];
           if (parameter_num != -1) {
             if (arguments.size() <= parameter_num) {
               arguments.resize(parameter_num + 1);
@@ -422,6 +422,13 @@ OutlinedInfo HloMatcher::OutlineExpressionFromComputation(
   // Creates a call to the nested computation.
   HloComputation* nested_computation =
       module->AddEmbeddedComputation(builder.Build(FindOrDie(outlined, root)));
+
+  // Ensure that all parameters are a dependency of the root
+  for (auto* param : nested_computation->parameter_instructions()) {
+    if (param->user_count() == 0) {
+      param->AddControlDependencyTo(nested_computation->root_instruction());
+    }
+  }
 
   HloInstruction* call = matched.computation->AddInstruction(
       HloInstruction::CreateCall(root->shape(), arguments, nested_computation));
