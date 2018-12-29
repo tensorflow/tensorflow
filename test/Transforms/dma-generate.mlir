@@ -249,7 +249,7 @@ mlfunc @dma_with_symbolic_loop_bounds(%A : memref<100x100xf32>, %M : index, %N: 
 }
 
 // CHECK-LABEL: mlfunc @dma_unknown_size
-mlfunc @dma_unknown_size(%arg0 : memref<?x?xf32>) {
+mlfunc @dma_unknown_size(%arg0: memref<?x?xf32>) {
   %M = dim %arg0, 0 : memref<? x ? x f32>
   %N = dim %arg0, 0 : memref<? x ? x f32>
   for %i = 0 to %M {
@@ -264,7 +264,7 @@ mlfunc @dma_unknown_size(%arg0 : memref<?x?xf32>) {
 }
 
 // CHECK-LABEL: mlfunc @dma_memref_3d
-mlfunc @dma_memref_3d(%arg0 : memref<1024x1024x1024xf32>) {
+mlfunc @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
   for %i = 0 to 1024 {
     for %j = 0 to 1024 {
       for %k = 0 to 1024 {

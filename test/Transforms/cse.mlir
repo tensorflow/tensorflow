@@ -15,7 +15,6 @@ mlfunc @simple_constant_ml() -> (i32, i32) {
 
 // CHECK-LABEL: @simple_constant_cfg
 cfgfunc @simple_constant_cfg() -> (i32, i32) {
-^bb0: // CHECK: ^bb0
   // CHECK-NEXT: %c1_i32 = constant 1 : i32
   %0 = constant 1 : i32
 
@@ -40,7 +39,7 @@ mlfunc @basic_ml() -> (index, index) {
 
 // CHECK-LABEL: @many_cfg
 cfgfunc @many_cfg(f32, f32) -> (f32) {
-^bb0(%a : f32, %b : f32): // CHECK: ^bb0
+^bb0(%a : f32, %b : f32): 
   // CHECK-NEXT: %0 = addf %arg0, %arg1 : f32
   %c = addf %a, %b : f32
   %d = addf %a, %b : f32
@@ -78,7 +77,7 @@ mlfunc @different_ops_ml() -> (i32, i32) {
 /// Check that operations are not eliminated if they have different result
 /// types.
 // CHECK-LABEL: @different_results_ml
-mlfunc @different_results_ml(%arg0 : tensor<*xf32>) -> (tensor<?x?xf32>, tensor<4x?xf32>) {
+mlfunc @different_results_ml(%arg0: tensor<*xf32>) -> (tensor<?x?xf32>, tensor<4x?xf32>) {
   // CHECK: %0 = tensor_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
   // CHECK-NEXT: %1 = tensor_cast %arg0 : tensor<*xf32> to tensor<4x?xf32>
   %0 = tensor_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
@@ -91,7 +90,7 @@ mlfunc @different_results_ml(%arg0 : tensor<*xf32>) -> (tensor<?x?xf32>, tensor<
 /// Check that operations are not eliminated if they have different attributes.
 // CHECK-LABEL: @different_attributes_cfg
 cfgfunc @different_attributes_cfg(index, index) -> (i1, i1, i1) {
-^bb0(%a : index, %b : index): // CHECK: ^bb0
+^bb0(%a : index, %b : index):
   // CHECK: %0 = cmpi "slt", %arg0, %arg1 : index
   %0 = cmpi "slt", %a, %b : index
 
@@ -133,8 +132,8 @@ mlfunc @down_propagate_for_ml() {
   return
 }
 
+// CHECK-LABEL: @down_propagate_cfg
 cfgfunc @down_propagate_cfg() -> i32 {
-^bb0: // CHECK: ^bb0:
   // CHECK-NEXT: %c1_i32 = constant 1 : i32
   %0 = constant 1 : i32
 
@@ -170,8 +169,8 @@ mlfunc @up_propagate_ml() -> i32 {
   return %1 : i32
 }
 
+// CHECK-LABEL: cfgfunc @up_propagate_cfg
 cfgfunc @up_propagate_cfg() -> i32 {
-^bb0: // CHECK: ^bb0:
   // CHECK-NEXT:  %c0_i32 = constant 0 : i32
   %0 = constant 0 : i32
 

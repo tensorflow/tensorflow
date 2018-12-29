@@ -55,7 +55,7 @@ mlfunc @loop_tiling() {
 
 #lb = ()[s0] -> (0, s0)
 #ub = ()[s0, s1] -> (s0, 4096 floordiv s1)
-// CHECK-LABEL: mlfunc @loop_max_min_bound(%arg0 : memref<?xi32>, %arg1 : index, %arg2 : index) {
+// CHECK-LABEL: mlfunc @loop_max_min_bound(%arg0: memref<?xi32>, %arg1: index, %arg2: index) {
 mlfunc @loop_max_min_bound(%A : memref<? x i32>, %L : index, %U : index) {
   %M = dim %A, 0 : memref<? x i32>
   for %iTT = max #lb()[%L] to min #ub()[%M, %U] {

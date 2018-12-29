@@ -8,10 +8,8 @@ mlfunc @test_subi_zero(%arg0: i32) -> i32 {
   return %y: i32
 }
 
-// CHECK-LABEL: cfgfunc @test_subi_zero_cfg
-cfgfunc @test_subi_zero_cfg(i32) -> i32 {
-// CHECK-NEXT: ^bb0(%arg0: i32):
-^bb0(%arg0: i32):
+// CHECK-LABEL: cfgfunc @test_subi_zero_cfg(%arg0: i32)
+cfgfunc @test_subi_zero_cfg(%arg0: i32) -> i32 {
   // CHECK-NEXT: %c0_i32 = constant 0 : i32
   // CHECK-NEXT: return %c0
   %y = subi %arg0, %arg0 : i32
@@ -19,7 +17,7 @@ cfgfunc @test_subi_zero_cfg(i32) -> i32 {
 }
 
 // CHECK-LABEL: mlfunc @dim
-mlfunc @dim(%arg0 : tensor<8x4xf32>) -> index {
+mlfunc @dim(%arg0: tensor<8x4xf32>) -> index {
 
   // CHECK: %c4 = constant 4 : index
   %0 = dim %arg0, 1 : tensor<8x4xf32>
@@ -100,7 +98,7 @@ mlfunc @muli_one_tensor(%arg0: tensor<4 x 5 x i32>) -> tensor<4 x 5 x i32> {
 
 // CHECK-LABEL: mlfunc @memref_cast_folding
 mlfunc @memref_cast_folding(%arg0: memref<4 x f32>, %arg1: f32) -> f32 {
-  %1 = memref_cast %arg0: memref<4xf32> to memref<?xf32>
+  %1 = memref_cast %arg0 : memref<4xf32> to memref<?xf32>
 
   // CHECK-NEXT: %c0 = constant 0 : index
   %c0 = constant 0 : index
@@ -130,7 +128,7 @@ mlfunc @alloc_const_fold() -> memref<?xf32> {
 }
 
 
-// CHECK-LABEL: mlfunc @dyn_shape_fold(%arg0 : index, %arg1 : index)
+// CHECK-LABEL: mlfunc @dyn_shape_fold(%arg0: index, %arg1: index)
 mlfunc @dyn_shape_fold(%L : index, %M : index) -> memref<? x ? x f32> {
   // CHECK: %c0 = constant 0 : index
   %zero = constant 0 : index
@@ -175,7 +173,7 @@ mlfunc @merge_constants() -> (index, index) {
 }
 
 // CHECK-LABEL: mlfunc @hoist_constant
-mlfunc @hoist_constant(%arg0 : memref<8xi32>) {
+mlfunc @hoist_constant(%arg0: memref<8xi32>) {
   // CHECK-NEXT: %c42_i32 = constant 42 : i32
   // CHECK-NEXT: for %i0 = 0 to 8 {
   for %i0 = 0 to 8 {

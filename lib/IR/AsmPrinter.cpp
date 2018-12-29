@@ -288,7 +288,6 @@ protected:
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<const char *> elidedAttrs = {});
-  void printFunctionResultType(FunctionType type);
   void printAffineMapId(int affineMapId) const;
   void printAffineMapReference(AffineMap affineMap);
   void printIntegerSetId(int integerSetId) const;
@@ -838,23 +837,6 @@ void ModulePrinter::printIntegerSet(IntegerSet set) {
 // Function printing
 //===----------------------------------------------------------------------===//
 
-void ModulePrinter::printFunctionResultType(FunctionType type) {
-  switch (type.getResults().size()) {
-  case 0:
-    break;
-  case 1:
-    os << " -> ";
-    printType(type.getResults()[0]);
-    break;
-  default:
-    os << " -> (";
-    interleaveComma(type.getResults(),
-                    [&](Type eltType) { printType(eltType); });
-    os << ')';
-    break;
-  }
-}
-
 void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                                           ArrayRef<const char *> elidedAttrs) {
   // If there are no attributes, then there is nothing to be done.
@@ -906,8 +888,7 @@ public:
   void print();
 
   // Print the function signature.
-  void printMLFunctionSignature();
-  void printOtherFunctionSignature();
+  void printFunctionSignature();
 
   // Methods to print instructions.
   void print(const Instruction *inst);
@@ -1119,11 +1100,7 @@ void FunctionPrinter::numberValueID(const Value *value) {
 }
 
 void FunctionPrinter::print() {
-  // TODO(clattner): merge the syntax of functions.
-  if (function->isML())
-    printMLFunctionSignature();
-  else
-    printOtherFunctionSignature();
+  printFunctionSignature();
 
   // Print out function attributes, if present.
   auto attrs = function->getAttrs();
@@ -1141,43 +1118,61 @@ void FunctionPrinter::print() {
   os << '\n';
 }
 
-void FunctionPrinter::printMLFunctionSignature() {
-  auto type = function->getType();
-
-  os << "mlfunc @" << function->getName() << '(';
-
-  for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
-    if (i > 0)
-      os << ", ";
-    auto *arg = function->getArgument(i);
-    printOperand(arg);
-    os << " : ";
-    printType(arg->getType());
+void FunctionPrinter::printFunctionSignature() {
+  switch (function->getKind()) {
+  case Function::Kind::CFGFunc:
+    os << "cfgfunc ";
+    break;
+  case Function::Kind::MLFunc:
+    os << "mlfunc ";
+    break;
+  case Function::Kind::ExtFunc:
+    os << "extfunc ";
+    break;
   }
 
-  os << ')';
-  printFunctionResultType(type);
-}
-
-// This prints the signature for CFG and External functions.
-void FunctionPrinter::printOtherFunctionSignature() {
-  auto type = function->getType();
-
-  if (function->isCFG())
-    os << "cfgfunc ";
-  else
-    os << "extfunc ";
-
   os << '@' << function->getName() << '(';
-  interleaveComma(type.getInputs(), [&](Type eltType) { printType(eltType); });
+
+  auto fnType = function->getType();
+
+  // If this is an external function, don't print argument labels.
+  if (function->empty()) {
+    interleaveComma(fnType.getInputs(),
+                    [&](Type eltType) { printType(eltType); });
+  } else {
+    for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
+      if (i > 0)
+        os << ", ";
+      auto *arg = function->getArgument(i);
+      printOperand(arg);
+      os << ": ";
+      printType(arg->getType());
+    }
+  }
   os << ')';
 
-  printFunctionResultType(type);
+  switch (fnType.getResults().size()) {
+  case 0:
+    break;
+  case 1:
+    os << " -> ";
+    printType(fnType.getResults()[0]);
+    break;
+  default:
+    os << " -> (";
+    interleaveComma(fnType.getResults(),
+                    [&](Type eltType) { printType(eltType); });
+    os << ')';
+    break;
+  }
 }
 
 void FunctionPrinter::print(const Block *block) {
-  // Print the block label and argument list, unless we are in an ML function.
-  if (!block->getFunction()->isML()) {
+  // Print the block label and argument list, unless this is the first block of
+  // the function, or the first block of an IfInst/ForInst with no arguments.
+  if (block != &block->getFunction()->front() &&
+      (block != &block->getParent()->front() ||
+       block->getNumArguments() != 0)) {
     os.indent(currentIndent);
     printBlockName(block);
 
@@ -1197,9 +1192,7 @@ void FunctionPrinter::print(const Block *block) {
     if (!block->getFunction()) {
       os << "\t// block is not in a function!";
     } else if (block->hasNoPredecessors()) {
-      // Don't print "no predecessors" for the entry block.
-      if (block != &block->getFunction()->front())
-        os << "\t// no predecessors";
+      os << "\t// no predecessors";
     } else if (auto *pred = block->getSinglePredecessor()) {
       os << "\t// pred: ";
       printBlockName(pred);

@@ -132,10 +132,8 @@ extfunc @memrefs_compose_with_id(memref<2x2xi8, (d0, d1) -> (d0, d1),
 // CHECK: extfunc @functions((memref<1x?x4x?x?xi32, #map0>, memref<8xi8>) -> (), () -> ())
 extfunc @functions((memref<1x?x4x?x?xi32, #map0, 0>, memref<8xi8, #map1, 0>) -> (), ()->())
 
-// CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) -> i1 {
-cfgfunc @simpleCFG(i32, f32) -> i1 {
-// CHECK: ^bb0(%arg0: i32, %arg1: f32):
-^bb42 (%arg0: i32, %f: f32):
+// CHECK-LABEL: cfgfunc @simpleCFG(%arg0: i32, %arg1: f32) -> i1 {
+cfgfunc @simpleCFG(%arg0: i32, %f: f32) -> i1 {
   // CHECK: %0 = "foo"() : () -> i64
   %1 = "foo"() : ()->i64
   // CHECK: "bar"(%0) : (i64) -> (i1, i1, i1)
@@ -145,9 +143,8 @@ cfgfunc @simpleCFG(i32, f32) -> i1 {
 // CHECK: }
 }
 
-// CHECK-LABEL: cfgfunc @simpleCFGUsingBBArgs(i32, i64) {
+// CHECK-LABEL: cfgfunc @simpleCFGUsingBBArgs(%arg0: i32, %arg1: i64) {
 cfgfunc @simpleCFGUsingBBArgs(i32, i64) {
-// CHECK: ^bb0(%arg0: i32, %arg1: i64):
 ^bb42 (%arg0: i32, %f: i64):
   // CHECK: "bar"(%arg1) : (i64) -> (i1, i1, i1)
   %2 = "bar"(%f) : (i64) -> (i1,i1,i1)
@@ -158,7 +155,6 @@ cfgfunc @simpleCFGUsingBBArgs(i32, i64) {
 
 // CHECK-LABEL: cfgfunc @multiblock() {
 cfgfunc @multiblock() {
-^bb0:         // CHECK: ^bb0:
   return     // CHECK:   return
 ^bb1:         // CHECK: ^bb1:   // no predecessors
   br ^bb4     // CHECK:   br ^bb3
@@ -173,23 +169,22 @@ mlfunc @emptyMLF() {
   return     // CHECK:  return
 }            // CHECK: }
 
-// CHECK-LABEL: mlfunc @mlfunc_with_one_arg(%arg0 : i1) -> i2 {
+// CHECK-LABEL: mlfunc @mlfunc_with_one_arg(%arg0: i1) -> i2 {
 mlfunc @mlfunc_with_one_arg(%c : i1) -> i2 {
   // CHECK: %0 = "foo"(%arg0) : (i1) -> i2
   %b = "foo"(%c) : (i1) -> (i2)
   return %b : i2   // CHECK: return %0 : i2
 } // CHECK: }
 
-// CHECK-LABEL: mlfunc @mlfunc_with_two_args(%arg0 : f16, %arg1 : i8) -> (i1, i32) {
+// CHECK-LABEL: mlfunc @mlfunc_with_two_args(%arg0: f16, %arg1: i8) -> (i1, i32) {
 mlfunc @mlfunc_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
   // CHECK: %0 = "foo"(%arg0, %arg1) : (f16, i8) -> (i1, i32)
   %c = "foo"(%a, %b) : (f16, i8)->(i1, i32)
   return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
 } // CHECK: }
 
-// CHECK-LABEL: cfgfunc @cfgfunc_with_two_args(f16, i8) -> (i1, i32) {
+// CHECK-LABEL: cfgfunc @cfgfunc_with_two_args(%arg0: f16, %arg1: i8) -> (i1, i32) {
 cfgfunc @cfgfunc_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
-  // CHECK: ^bb0(%arg0: f16, %arg1: i8):
   // CHECK: %0 = "foo"(%arg0, %arg1) : (f16, i8) -> (i1, i32)
   %c = "foo"(%a, %b) : (f16, i8)->(i1, i32)
   return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
@@ -241,8 +236,8 @@ mlfunc @complex_loops() {
   return                    // CHECK:   return
 }                           // CHECK: }
 
-// CHECK: mlfunc @triang_loop(%arg0 : index, %arg1 : memref<?x?xi32>) {
-mlfunc @triang_loop(%arg0 : index, %arg1 : memref<?x?xi32>) {
+// CHECK: mlfunc @triang_loop(%arg0: index, %arg1: memref<?x?xi32>) {
+mlfunc @triang_loop(%arg0: index, %arg1: memref<?x?xi32>) {
   %c = constant 0 : i32       // CHECK: %c0_i32 = constant 0 : i32
   for %i0 = 1 to %arg0 {      // CHECK: for %i0 = 1 to %arg0 {
     for %i1 = %i0 to %arg0 {  // CHECK:   for %i1 = #map{{[0-9]+}}(%i0) to %arg0 {
@@ -252,8 +247,8 @@ mlfunc @triang_loop(%arg0 : index, %arg1 : memref<?x?xi32>) {
   return       // CHECK:   return
 }              // CHECK: }
 
-// CHECK: mlfunc @minmax_loop(%arg0 : index, %arg1 : index, %arg2 : memref<100xf32>) {
-mlfunc @minmax_loop(%arg0 : index, %arg1 : index, %arg2 : memref<100xf32>) {
+// CHECK: mlfunc @minmax_loop(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
+mlfunc @minmax_loop(%arg0: index, %arg1: index, %arg2: memref<100xf32>) {
   // CHECK: for %i0 = max #map{{.*}}()[%arg0] to min #map{{.*}}()[%arg1] {
   for %i0 = max()[s]->(0,s-1)()[%arg0] to min()[s]->(100,s+1)()[%arg1] {
     // CHECK: "foo"(%arg2, %i0) : (memref<100xf32>, index) -> ()
@@ -262,7 +257,7 @@ mlfunc @minmax_loop(%arg0 : index, %arg1 : index, %arg2 : memref<100xf32>) {
   return // CHECK:   return
 }        // CHECK: }
 
-// CHECK-LABEL: mlfunc @loop_bounds(%arg0 : index) {
+// CHECK-LABEL: mlfunc @loop_bounds(%arg0: index) {
 mlfunc @loop_bounds(%N : index) {
   // CHECK: %0 = "foo"(%arg0) : (index) -> index
   %s = "foo"(%N) : (index) -> index
@@ -291,7 +286,7 @@ mlfunc @loop_bounds(%N : index) {
   return    // CHECK:   return
 }           // CHECK: }
 
-// CHECK-LABEL: mlfunc @ifinst(%arg0 : index) {
+// CHECK-LABEL: mlfunc @ifinst(%arg0: index) {
 mlfunc @ifinst(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
   for %i = 1 to 10 {           // CHECK   for %i0 = 1 to 10 {
@@ -312,7 +307,7 @@ mlfunc @ifinst(%N: index) {
   return    // CHECK   return
 }           // CHECK }
 
-// CHECK-LABEL: mlfunc @simple_ifinst(%arg0 : index) {
+// CHECK-LABEL: mlfunc @simple_ifinst(%arg0: index) {
 mlfunc @simple_ifinst(%N: index) {
   %c = constant 200 : index // CHECK   %c200 = constant 200
   for %i = 1 to 10 {           // CHECK   for %i0 = 1 to 10 {
@@ -328,8 +323,6 @@ mlfunc @simple_ifinst(%N: index) {
 
 // CHECK-LABEL: cfgfunc @attributes() {
 cfgfunc @attributes() {
-^bb42:       // CHECK: ^bb0:
-
   // CHECK: "foo"()
   "foo"(){} : ()->()
 
@@ -364,7 +357,6 @@ cfgfunc @attributes() {
 
 // CHECK-LABEL: cfgfunc @ssa_values() -> (i16, i8) {
 cfgfunc @ssa_values() -> (i16, i8) {
-^bb0:       // CHECK: ^bb0:
   // CHECK: %0 = "foo"() : () -> (i1, i17)
   %0 = "foo"() : () -> (i1, i17)
   br ^bb2
@@ -384,7 +376,6 @@ cfgfunc @ssa_values() -> (i16, i8) {
 
 // CHECK-LABEL: cfgfunc @bbargs() -> (i16, i8) {
 cfgfunc @bbargs() -> (i16, i8) {
-^bb0:       // CHECK: ^bb0:
   // CHECK: %0 = "foo"() : () -> (i1, i17)
   %0 = "foo"() : () -> (i1, i17)
   br ^bb1(%0#1, %0#0 : i17, i1)
@@ -397,7 +388,6 @@ cfgfunc @bbargs() -> (i16, i8) {
 
 // CHECK-LABEL: cfgfunc @condbr_simple
 cfgfunc @condbr_simple() -> (i32) {
-^bb0:
   %cond = "foo"() : () -> i1
   %a = "bar"() : () -> i32
   %b = "bar"() : () -> i64
@@ -416,7 +406,6 @@ cfgfunc @condbr_simple() -> (i32) {
 
 // CHECK-LABEL: cfgfunc @condbr_moarargs
 cfgfunc @condbr_moarargs() -> (i32) {
-^bb0:
   %cond = "foo"() : () -> i1
   %a = "bar"() : () -> i32
   %b = "bar"() : () -> i64
@@ -435,7 +424,6 @@ cfgfunc @condbr_moarargs() -> (i32) {
 // Test pretty printing of constant names.
 // CHECK-LABEL: cfgfunc @constants
 cfgfunc @constants() -> (i32, i23, i23, i1, i1) {
-^bb0:
   // CHECK: %c42_i32 = constant 42 : i32
   %x = constant 42 : i32
   // CHECK: %c17_i23 = constant 17 : i23
@@ -525,7 +513,7 @@ mlfunc @mlfuncattrempty() -> ()
 #map_non_simple1 = (d0)[s0] -> (d0 + s0)
 #map_non_simple2 = ()[s0, s1] -> (s0 + s1)
 #map_non_simple3 = ()[s0] -> (s0 + 3)
-mlfunc @mlfuncsimplemap(%arg0 : index, %arg1 : index) -> () {
+mlfunc @mlfuncsimplemap(%arg0: index, %arg1: index) -> () {
   for %i0 = 0 to #map_simple0()[] {
   // CHECK: for %i0 = 0 to 10 {
     for %i1 = 0 to #map_simple1()[%arg1] {

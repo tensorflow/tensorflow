@@ -150,7 +150,7 @@ mlfunc @test_gaussian_elimination_empty_set5() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_empty_set(%arg0 : index) {
+// CHECK-LABEL: mlfunc @test_empty_set(%arg0: index) {
 mlfunc @test_empty_set(%N : index) {
   for %i = 0 to 10 {
     for %j = 0 to 10 {

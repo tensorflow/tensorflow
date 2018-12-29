@@ -657,7 +657,7 @@ mlfunc @invalid_if_operands3(%N : index) {
 // -----
 // expected-error@+1 {{expected '"' in string literal}}
 "J// -----
-mlfunc @calls(%arg0 : i32) {
+mlfunc @calls(%arg0: i32) {
   // expected-error@+1 {{expected type}}
   %z = "casdasda"(%x) : (ppop32) -> i32
 }

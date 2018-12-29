@@ -58,8 +58,8 @@ mlfunc @loop_nest_dma() {
 }
 
 // CHECK-LABEL: @loop_step
-mlfunc @loop_step(%arg0 : memref<512xf32>,
-                  %arg1 : memref<512xf32>) {
+mlfunc @loop_step(%arg0: memref<512xf32>,
+                  %arg1: memref<512xf32>) {
   %c0 = constant 0 : index
   %c4 = constant 4 : index
   for %i0 = 0 to 512 step 4 {
@@ -95,8 +95,8 @@ mlfunc @loop_step(%arg0 : memref<512xf32>,
 #map0 = (d0, d1) -> (d0, d1)
 #map1 = (d0, d1) -> ((d0 * 2048 + d1 * 256) floordiv 32, 0)
 #map2 = (d0) -> ((d0 * 2048) floordiv 32, 0)
-// CHECK: mlfunc @loop_dma_nested(%arg0 : memref<512x32xvector<8xf32>
-mlfunc @loop_dma_nested(%arg0 : memref<512x32xvector<8xf32>, #map0>, %arg1 : memref<512x32xvector<8xf32>, #map0>, %arg2 : memref<512x32xvector<8xf32>, #map0>) {
+// CHECK: mlfunc @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>
+mlfunc @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<512x32xvector<8xf32>, #map0>, %arg2: memref<512x32xvector<8xf32>, #map0>) {
   %num_elts = constant 256 : index
   %c0 = constant 0 : index
   %0 = alloc() : memref<64x4xvector<8xf32>, #map0, 2>
@@ -161,7 +161,7 @@ mlfunc @loop_dma_nested(%arg0 : memref<512x32xvector<8xf32>, #map0>, %arg1 : mem
 }
 
 // CHECK: mlfunc @loop_dma_dependent
-mlfunc @loop_dma_dependent(%arg2 : memref<512x32xvector<8xf32>>) {
+mlfunc @loop_dma_dependent(%arg2: memref<512x32xvector<8xf32>>) {
   %num_elts = constant 256 : index
   %c0 = constant 0 : index
   %0 = alloc() : memref<64x4xvector<8xf32>, 2>

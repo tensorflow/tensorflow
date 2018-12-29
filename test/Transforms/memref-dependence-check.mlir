@@ -131,8 +131,8 @@ mlfunc @load_load_same_element() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_same_symbol(%arg0 : index) {
-mlfunc @store_load_same_symbol(%arg0 : index) {
+// CHECK-LABEL: mlfunc @store_load_same_symbol(%arg0: index) {
+mlfunc @store_load_same_symbol(%arg0: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   store %c7, %m[%arg0] : memref<100xf32>
@@ -145,8 +145,8 @@ mlfunc @store_load_same_symbol(%arg0 : index) {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_different_symbols(%arg0 : index, %arg1 : index) {
-mlfunc @store_load_different_symbols(%arg0 : index, %arg1 : index) {
+// CHECK-LABEL: mlfunc @store_load_different_symbols(%arg0: index, %arg1: index) {
+mlfunc @store_load_different_symbols(%arg0: index, %arg1: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   store %c7, %m[%arg0] : memref<100xf32>
@@ -194,8 +194,8 @@ mlfunc @store_load_same_element_affine_apply_const() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_affine_apply_symbol(%arg0 : index) {
-mlfunc @store_load_affine_apply_symbol(%arg0 : index) {
+// CHECK-LABEL: mlfunc @store_load_affine_apply_symbol(%arg0: index) {
+mlfunc @store_load_affine_apply_symbol(%arg0: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %a0 = affine_apply (d0) -> (d0) (%arg0)
@@ -210,8 +210,8 @@ mlfunc @store_load_affine_apply_symbol(%arg0 : index) {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_affine_apply_symbol_offset(%arg0 : index) {
-mlfunc @store_load_affine_apply_symbol_offset(%arg0 : index) {
+// CHECK-LABEL: mlfunc @store_load_affine_apply_symbol_offset(%arg0: index) {
+mlfunc @store_load_affine_apply_symbol_offset(%arg0: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %a0 = affine_apply (d0) -> (d0) (%arg0)
@@ -249,8 +249,8 @@ mlfunc @store_range_load_after_range() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_func_symbol(%arg0 : index, %arg1 : index) {
-mlfunc @store_load_func_symbol(%arg0 : index, %arg1 : index) {
+// CHECK-LABEL: mlfunc @store_load_func_symbol(%arg0: index, %arg1: index) {
+mlfunc @store_load_func_symbol(%arg0: index, %arg1: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c10 = constant 10 : index
@@ -563,8 +563,8 @@ mlfunc @dependence_cycle() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @negative_and_positive_direction_vectors(%arg0 : index, %arg1 : index) {
-mlfunc @negative_and_positive_direction_vectors(%arg0 : index, %arg1 : index) {
+// CHECK-LABEL: mlfunc @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
+mlfunc @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 0 to %arg0 {

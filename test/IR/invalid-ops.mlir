@@ -147,7 +147,7 @@ mlfunc @mlfunc_constant_out_of_range() {
 
 // -----
 
-mlfunc @calls(%arg0 : i32) {
+mlfunc @calls(%arg0: i32) {
   %x = call @calls() : () -> i32  // expected-error {{reference to function with mismatched type}}
   return
 }
@@ -290,7 +290,7 @@ cfgfunc @cfgfunc_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{expected 4 operand types but had 3}}
@@ -300,7 +300,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires 3 operands}}
@@ -310,7 +310,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
@@ -320,7 +320,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
@@ -330,7 +330,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
@@ -340,7 +340,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
@@ -350,7 +350,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
@@ -360,7 +360,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
@@ -369,7 +369,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_read(memref<?x?x?xf32>) {
-^bb0(%arg0 : memref<?x?x?xf32>):
+^bb0(%arg0: memref<?x?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}
@@ -379,7 +379,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{expected 5 operand types but had 4}}
@@ -389,7 +389,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires number of operands and input types to match}}
@@ -399,7 +399,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
@@ -409,7 +409,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires an AffineMapAttr named 'permutation_map'}}
@@ -419,7 +419,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
@@ -429,7 +429,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
@@ -439,7 +439,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
@@ -449,7 +449,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
-^bb0(%arg0 : memref<?x?xf32>):
+^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
   // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
@@ -458,7 +458,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 // -----
 
 cfgfunc @test_vector_transfer_write(memref<?x?x?xf32>) {
-^bb0(%arg0 : memref<?x?x?xf32>):
+^bb0(%arg0: memref<?x?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<3 x 7 x f32>, 3.0>  : vector<3 x 7 x f32>
   // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}

@@ -26,7 +26,6 @@
 
 // CHECK-LABEL: cfgfunc @empty() {
 mlfunc @empty() {
-             // CHECK: ^bb0:
   return     // CHECK:  return
 }            // CHECK: }
 
@@ -34,7 +33,6 @@ extfunc @body(index) -> ()
 
 // Simple loops are properly converted.
 // CHECK-LABEL: cfgfunc @simple_loop() {
-// CHECK-NEXT: ^bb0:
 // CHECK-NEXT:   br ^bb1
 // CHECK-NEXT: ^bb1:	// pred: ^bb0
 // CHECK-NEXT:   %0 = affine_apply [[map1]]()
@@ -106,8 +104,7 @@ extfunc @body_args(index) -> (index)
 extfunc @other(index, i32) -> (i32)
 
 // Arguments and return values of the functions are converted.
-// CHECK-LABEL: cfgfunc @mlfunc_args(i32, i32) -> (i32, i32) {
-// CHECK-NEXT: ^bb0(%arg0: i32, %arg1: i32):
+// CHECK-LABEL: cfgfunc @mlfunc_args(%arg0: i32, %arg1: i32) -> (i32, i32) {
 // CHECK-NEXT:   %c0_i32 = constant 0 : i32
 // CHECK-NEXT:   br ^bb1
 // CHECK-NEXT: ^bb1:	// pred: ^bb0
@@ -149,7 +146,6 @@ extfunc @body2(index, index) -> ()
 extfunc @post(index) -> ()
 
 // CHECK-LABEL: cfgfunc @imperfectly_nested_loops() {
-// CHECK-NEXT: ^bb0:
 // CHECK-NEXT:   br ^bb1
 // CHECK-NEXT: ^bb1:	// pred: ^bb0
 // CHECK-NEXT:   %0 = affine_apply [[map0]]()
@@ -196,7 +192,6 @@ extfunc @mid(index) -> ()
 extfunc @body3(index, index) -> ()
 
 // CHECK-LABEL: cfgfunc @more_imperfectly_nested_loops() {
-// CHECK-NEXT: ^bb0:
 // CHECK-NEXT:   br ^bb1
 // CHECK-NEXT: ^bb1:	// pred: ^bb0
 // CHECK-NEXT:   %0 = affine_apply [[map0]]()
@@ -255,8 +250,7 @@ mlfunc @more_imperfectly_nested_loops() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @affine_apply_loops_shorthand(index) {
-// CHECK-NEXT: ^bb0(%arg0: index):
+// CHECK-LABEL: cfgfunc @affine_apply_loops_shorthand(%arg0: index) {
 // CHECK-NEXT:   br ^bb1
 // CHECK-NEXT: ^bb1:	// pred: ^bb0
 // CHECK-NEXT:   %0 = affine_apply [[map0]]()
@@ -301,7 +295,6 @@ extfunc @get_idx() -> (index)
 #set2 = (d0) : (d0 - 10 >= 0)
 
 // CHECK-LABEL: cfgfunc @if_only() {
-// CHECK-NEXT: ^bb0:
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
@@ -324,7 +317,6 @@ mlfunc @if_only() {
 }
 
 // CHECK-LABEL: cfgfunc @if_else() {
-// CHECK-NEXT: ^bb0:
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
@@ -350,7 +342,6 @@ mlfunc @if_else() {
 }
 
 // CHECK-LABEL: cfgfunc @nested_ifs() {
-// CHECK-NEXT: ^bb0:
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
@@ -399,8 +390,7 @@ mlfunc @nested_ifs() {
 
 #setN = (d0)[N,M,K,L] : (N - d0 + 1 >= 0, N - 1 >= 0, M - 1 >= 0, K - 1 >= 0, L - 42 == 0)
 
-// CHECK-LABEL: cfgfunc @multi_cond(index, index, index, index) {
-// CHECK-NEXT: ^bb0(%arg0: index, %arg1: index, %arg2: index, %arg3: index):
+// CHECK-LABEL: cfgfunc @multi_cond(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %1 = affine_apply [[setMapDiff]](%0)[%arg0, %arg1, %arg2, %arg3]
@@ -443,7 +433,6 @@ mlfunc @multi_cond(%N : index, %M : index, %K : index, %L : index) {
 
 // CHECK-LABEL: cfgfunc @if_for() {
 mlfunc @if_for() {
-// CHECK-NEXT: ^bb0:
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
   %i = call @get_idx() : () -> (index)
 // CHECK-NEXT:   %c0 = constant 0 : index
@@ -532,8 +521,7 @@ mlfunc @if_for() {
 #lbMultiMap = (d0)[s0] -> (d0, s0 - d0)
 #ubMultiMap = (d0)[s0] -> (s0, d0 + 10)
 
-// CHECK-LABEL: cfgfunc @loop_min_max(index) {
-// CHECK-NEXT: ^bb0(%arg0: index):
+// CHECK-LABEL: cfgfunc @loop_min_max(%arg0: index) {
 // CHECK-NEXT:   br ^bb1
 // CHECK-NEXT: ^bb1:	// pred: ^bb0
 // CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map0]]()
@@ -579,8 +567,7 @@ mlfunc @loop_min_max(%N : index) {
 // Check that the "min" (cmpi "slt" + select) reduction sequence is emitted
 // correctly for a an affine map with 7 results.
 
-// CHECK-LABEL: cfgfunc @min_reduction_tree(index) {
-// CHECK-NEXT: ^bb0(%arg0: index):
+// CHECK-LABEL: cfgfunc @min_reduction_tree(%arg0: index) {
 // CHECK-NEXT:   br ^bb1
 // CHECK-NEXT: ^bb1:	// pred: ^bb0
 // CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map0]]()

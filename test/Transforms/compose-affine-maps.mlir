@@ -195,8 +195,8 @@ mlfunc @compose_affine_maps_diamond_dependency() {
   return
 }
 
-// CHECK-LABEL: mlfunc @arg_used_as_dim_and_symbol(%arg0 : memref<100x100xf32>, %arg1 : index) {
-mlfunc @arg_used_as_dim_and_symbol(%arg0 : memref<100x100xf32>, %arg1 : index) {
+// CHECK-LABEL: mlfunc @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
+mlfunc @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
   %c9 = constant 9 : index
   %1 = alloc() : memref<100x100xf32, 1>
   %2 = alloc() : memref<1xi32>

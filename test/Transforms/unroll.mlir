@@ -163,7 +163,7 @@ mlfunc @loop_nest_multiple_results() {
 
 
 // Imperfect loop nest. Unrolling innermost here yields a perfect nest.
-// CHECK-LABEL: mlfunc @loop_nest_seq_imperfect(%arg0 : memref<128x128xf32>) {
+// CHECK-LABEL: mlfunc @loop_nest_seq_imperfect(%arg0: memref<128x128xf32>) {
 mlfunc @loop_nest_seq_imperfect(%a : memref<128x128xf32>) {
   // CHECK: %c0 = constant 0 : index
   // CHECK-NEXT: %c128 = constant 128 : index
@@ -489,7 +489,7 @@ mlfunc @loop_nest_operand3() {
   return
 }
 
-// UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand4(%arg0 : index) {
+// UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand4(%arg0: index) {
 mlfunc @loop_nest_operand4(%N : index) {
   // UNROLL-BY-4: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
