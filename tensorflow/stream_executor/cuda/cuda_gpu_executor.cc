@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
+#include "cuda/include/cuda_runtime_api.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -1039,8 +1040,8 @@ DeviceDescription *CUDAExecutor::PopulateDeviceDescription() const {
     builder.set_numa_node(numa_node);
   }
 
-  CUdevprop prop;
-  if (CUDADriver::GetDeviceProperties(&prop, device_ordinal_)) {
+  cudaDeviceProp prop;
+  if (cudaSuccess == cudaGetDeviceProperties(&prop, device_ordinal_)) {
     builder.set_threads_per_block_limit(prop.maxThreadsPerBlock);
 
     ThreadDim thread_dim_limit;
