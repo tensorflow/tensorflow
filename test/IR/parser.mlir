@@ -725,3 +725,17 @@ cfgfunc @sparsevectorattr() -> () {
   "foof320"(){bar: sparse<vector<0 x f32>, [], []>} : () -> ()
   return
 }
+
+// CHECK-LABEL: mlfunc @loops_with_blockids() {
+mlfunc @loops_with_blockids() {
+^block0:
+  for %i = 1 to 100 step 2 {
+  ^block1:
+    for %j = 1 to 200 {
+    ^block2:
+    }
+  }
+  return
+}
+
+

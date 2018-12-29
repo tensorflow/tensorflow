@@ -102,11 +102,11 @@ cfgfunc @block_redef() {
 
 // -----
 
-cfgfunc @no_terminator() {
+cfgfunc @no_terminator() {   // expected-error {{block with no terminator}}
 ^bb40:
   return
 ^bb41:
-^bb42:        // expected-error {{expected operation name in quotes}}
+^bb42:
   return
 }
 
@@ -339,7 +339,7 @@ cfgfunc @undef() {
 
 mlfunc @missing_rbrace() {
   return
-mlfunc @d() {return} // expected-error {{expected block name}}
+mlfunc @d() {return} // expected-error {{custom op 'mlfunc' is unknown}}
 
 // -----
 
@@ -370,7 +370,8 @@ cfgfunc @argError() {
 
 // -----
 
-cfgfunc @bbargMismatch(i32, f32) { // expected-error {{first block of function must have 2 arguments to match function signature}}
+cfgfunc @bbargMismatch(i32, f32) {
+// expected-error @+1 {{argument and block argument type mismatch}}
 ^bb42(%0: f32):
   return
 }
@@ -745,7 +746,7 @@ cfgfunc @elementsattr_malformed_opaque1() -> () {
 // -----
 
 cfgfunc @redundant_signature(%a : i32) -> () {
-^bb0(%b : i32):  // expected-error {{expected operation name in quotes}}
+^bb0(%b : i32):  // expected-error {{invalid block name in function with named arguments}}
   return
 }
 

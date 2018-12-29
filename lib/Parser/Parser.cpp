@@ -1888,7 +1888,7 @@ public:
   parseOptionalBlockArgList(SmallVectorImpl<BlockArgument *> &results,
                             Block *owner);
 
-  ParseResult parseBlock();
+  ParseResult parseBlock(Block *blockToUse);
   ParseResult parseBlockBody(Block *block);
 
   /// After the function is finished parsing, this function checks to see if
@@ -1940,7 +1940,7 @@ public:
 
   // Define the block with the specified name. Returns the Block* or
   // nullptr in the case of redefinition.
-  Block *defineBlockNamed(StringRef name, SMLoc loc);
+  Block *defineBlockNamed(StringRef name, SMLoc loc, Block *existing);
 
   // Operations
   ParseResult parseOperation();
@@ -1992,17 +1992,23 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
   if (getToken().is(Token::r_brace))
     return emitError("function must have a body");
 
-  // If we had named arguments, then just parse the first block into the
-  // block we have already created.
+  // If we had named arguments, then we don't allow a block name.
   if (hadNamedArguments) {
-    if (parseBlockBody(&function->front()))
-      return ParseFailure;
+    if (getToken().is(Token::caret_identifier))
+      return emitError("invalid block name in function with named arguments");
   }
 
+  // The first block is already created and should be filled in.
+  auto firstBlock = &function->front();
+
   // Parse the remaining list of blocks.
-  while (!consumeIf(Token::r_brace))
-    if (parseBlock())
+  while (!consumeIf(Token::r_brace)) {
+    if (parseBlock(firstBlock))
       return ParseFailure;
+
+    // Create the second and subsequent block.
+    firstBlock = nullptr;
+  }
 
   // Verify that all referenced blocks were defined.
   if (!forwardRef.empty()) {
@@ -2019,16 +2025,6 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
     return ParseFailure;
   }
 
-  // Now that the function body has been fully parsed we check the invariants
-  // of any branching terminators.
-  if (function->isCFG()) {
-    for (auto &block : *function) {
-      auto *term = block.getTerminator();
-      auto *abstractOp = term->getAbstractOperation();
-      if (term->getNumSuccessors() != 0 && abstractOp)
-        abstractOp->verifyInvariants(term);
-    }
-  }
   return finalizeFunction(braceLoc);
 }
 
@@ -2039,13 +2035,22 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
 ///   block-id       ::= caret-id
 ///   block-arg-list ::= `(` ssa-id-and-type-list? `)`
 ///
-ParseResult FunctionParser::parseBlock() {
+ParseResult FunctionParser::parseBlock(Block *blockToUse) {
+  Block *block = blockToUse;
+
+  // The first block for a function is already created.
+  if (block) {
+    // The name for a first block is optional.
+    if (getToken().isNot(Token::caret_identifier))
+      return parseBlockBody(block);
+  }
+
   SMLoc nameLoc = getToken().getLoc();
   auto name = getTokenSpelling();
   if (parseToken(Token::caret_identifier, "expected block name"))
     return ParseFailure;
 
-  auto *block = defineBlockNamed(name, nameLoc);
+  block = defineBlockNamed(name, nameLoc, block);
 
   // Fail if redefinition.
   if (!block)
@@ -2072,8 +2077,7 @@ ParseResult FunctionParser::parseBlockBody(Block *block) {
   builder.setInsertionPointToEnd(block);
 
   // Parse the list of operations that make up the body of the block.
-  while (getToken().isNot(Token::kw_return, Token::kw_br, Token::kw_cond_br,
-                          Token::r_brace)) {
+  while (getToken().isNot(Token::caret_identifier, Token::r_brace)) {
     switch (getToken().getKind()) {
     default:
       if (parseOperation())
@@ -2090,12 +2094,6 @@ ParseResult FunctionParser::parseBlockBody(Block *block) {
     }
   }
 
-  // TODO: Merge terminator parsing into the loop above?
-  if (getToken().isNot(Token::r_brace)) {
-    // Parse the terminator operation.
-    if (parseOperation())
-      return ParseFailure;
-  }
   return ParseSuccess;
 }
 
@@ -2335,10 +2333,14 @@ Block *FunctionParser::getBlockNamed(StringRef name, SMLoc loc) {
 
 /// Define the block with the specified name. Returns the Block* or nullptr in
 /// the case of redefinition.
-Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc) {
+Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc,
+                                        Block *existing) {
   auto &blockAndLoc = blocksByName[name];
   if (!blockAndLoc.first) {
-    blockAndLoc.first = builder.createBlock();
+    // If the caller provided a block, use it.  Otherwise create a new one.
+    if (!existing)
+      existing = builder.createBlock();
+    blockAndLoc.first = existing;
     blockAndLoc.second = loc;
     return blockAndLoc.first;
   }
@@ -2388,10 +2390,28 @@ ParseResult FunctionParser::parseOptionalBlockArgList(
   if (getToken().is(Token::r_brace))
     return ParseSuccess;
 
+  // If the block already has arguments, then we're handling the entry block.
+  // Parse and register the names for the arguments, but do not add them.
+  bool definingExistingArgs = owner->getNumArguments() != 0;
+  unsigned nextArgument = 0;
+
   return parseCommaSeparatedList([&]() -> ParseResult {
     auto type = parseSSADefOrUseAndType<Type>(
         [&](SSAUseInfo useInfo, Type type) -> Type {
-          BlockArgument *arg = owner->addArgument(type);
+          BlockArgument *arg;
+          if (!definingExistingArgs) {
+            arg = owner->addArgument(type);
+          } else if (nextArgument >= owner->getNumArguments()) {
+            emitError("too many arguments specified in argument list");
+            return {};
+          } else {
+            arg = owner->getArgument(nextArgument++);
+            if (arg->getType() != type) {
+              emitError("argument and block argument type mismatch");
+              return {};
+            }
+          }
+
           if (addDefinition(useInfo, arg))
             return {};
           return type;
@@ -2842,7 +2862,7 @@ ParseResult FunctionParser::parseForInst() {
   // MLIR contains for instruction with those nested instructions that have been
   // successfully parsed.
   if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
-      parseBlockBody(forInst->getBody()) ||
+      parseBlock(forInst->getBody()) ||
       parseToken(Token::r_brace, "expected '}' after instruction list"))
     return ParseFailure;
 
@@ -3093,7 +3113,7 @@ ParseResult FunctionParser::parseIfInst() {
   // the if instruction with the portion of the body that has been
   // successfully parsed.
   if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
-      parseBlockBody(thenClause) ||
+      parseBlock(thenClause) ||
       parseToken(Token::r_brace, "expected '}' after instruction list"))
     return ParseFailure;
 
@@ -3116,7 +3136,7 @@ ParseResult FunctionParser::parseElseClause(Block *elseClause) {
   }
 
   if (parseToken(Token::l_brace, "expected '{' before instruction list") ||
-      parseBlockBody(elseClause) ||
+      parseBlock(elseClause) ||
       parseToken(Token::r_brace, "expected '}' after instruction list"))
     return ParseFailure;
   return ParseSuccess;
@@ -3316,11 +3336,11 @@ ParseResult ModuleParser::parseFunc(Function::Kind kind) {
   // Create the parser.
   auto parser = FunctionParser(getState(), function);
 
-  bool hadNamedArguments = !argNames.empty() || function->isML();
+  bool hadNamedArguments = !argNames.empty();
 
   // CFG functions don't auto-create a block, so create one now.
   // TODO(clattner): FIX THIS.
-  if (hadNamedArguments && kind == Function::Kind::CFGFunc) {
+  if (kind == Function::Kind::CFGFunc) {
     auto *entry = new Block();
     function->push_back(entry);
     entry->addArguments(type.getInputs());
