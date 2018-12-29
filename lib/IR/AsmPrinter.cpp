@@ -113,17 +113,12 @@ private:
   }
 
   // Visit functions.
-  void visitFunction(const Function *fn);
-  void visitExtFunction(const Function *fn);
-  void visitCFGFunction(const Function *fn);
-  void visitMLFunction(const Function *fn);
   void visitInstruction(const Instruction *inst);
   void visitForInst(const ForInst *forInst);
   void visitIfInst(const IfInst *ifInst);
   void visitOperationInst(const OperationInst *opInst);
   void visitType(Type type);
   void visitAttribute(Attribute attr);
-  void visitOperation(const OperationInst *op);
 
   DenseMap<AffineMap, int> affineMapIds;
   std::vector<AffineMap> affineMapsById;
@@ -161,7 +156,21 @@ void ModuleState::visitAttribute(Attribute attr) {
   }
 }
 
-void ModuleState::visitOperation(const OperationInst *op) {
+void ModuleState::visitIfInst(const IfInst *ifInst) {
+  recordIntegerSetReference(ifInst->getIntegerSet());
+}
+
+void ModuleState::visitForInst(const ForInst *forInst) {
+  AffineMap lbMap = forInst->getLowerBoundMap();
+  if (!hasShorthandForm(lbMap))
+    recordAffineMapReference(lbMap);
+
+  AffineMap ubMap = forInst->getUpperBoundMap();
+  if (!hasShorthandForm(ubMap))
+    recordAffineMapReference(ubMap);
+}
+
+void ModuleState::visitOperationInst(const OperationInst *op) {
   // Visit all the types used in the operation.
   for (auto *operand : op->getOperands())
     visitType(operand->getType());
@@ -173,50 +182,6 @@ void ModuleState::visitOperation(const OperationInst *op) {
     visitAttribute(elt.second);
 }
 
-void ModuleState::visitExtFunction(const Function *fn) {
-  visitType(fn->getType());
-}
-
-void ModuleState::visitCFGFunction(const Function *fn) {
-  visitType(fn->getType());
-  for (auto &block : *fn) {
-    for (auto &op : block.getInstructions()) {
-      if (auto *opInst = dyn_cast<OperationInst>(&op))
-        visitOperation(opInst);
-      else {
-        llvm_unreachable("IfInst/ForInst in a CFG Function isn't supported");
-      }
-    }
-  }
-}
-
-void ModuleState::visitIfInst(const IfInst *ifInst) {
-  recordIntegerSetReference(ifInst->getIntegerSet());
-  for (auto &childInst : *ifInst->getThen())
-    visitInstruction(&childInst);
-  if (ifInst->hasElse())
-    for (auto &childInst : *ifInst->getElse())
-      visitInstruction(&childInst);
-}
-
-void ModuleState::visitForInst(const ForInst *forInst) {
-  AffineMap lbMap = forInst->getLowerBoundMap();
-  if (!hasShorthandForm(lbMap))
-    recordAffineMapReference(lbMap);
-
-  AffineMap ubMap = forInst->getUpperBoundMap();
-  if (!hasShorthandForm(ubMap))
-    recordAffineMapReference(ubMap);
-
-  for (auto &childInst : *forInst->getBody())
-    visitInstruction(&childInst);
-}
-
-void ModuleState::visitOperationInst(const OperationInst *opInst) {
-  for (auto attr : opInst->getAttrs())
-    visitAttribute(attr.second);
-}
-
 void ModuleState::visitInstruction(const Instruction *inst) {
   switch (inst->getKind()) {
   case Instruction::Kind::If:
@@ -225,33 +190,16 @@ void ModuleState::visitInstruction(const Instruction *inst) {
     return visitForInst(cast<ForInst>(inst));
   case Instruction::Kind::OperationInst:
     return visitOperationInst(cast<OperationInst>(inst));
-  default:
-    return;
-  }
-}
-
-void ModuleState::visitMLFunction(const Function *fn) {
-  visitType(fn->getType());
-  for (auto &inst : *fn->getBody()) {
-    ModuleState::visitInstruction(&inst);
-  }
-}
-
-void ModuleState::visitFunction(const Function *fn) {
-  switch (fn->getKind()) {
-  case Function::Kind::ExtFunc:
-    return visitExtFunction(fn);
-  case Function::Kind::CFGFunc:
-    return visitCFGFunction(fn);
-  case Function::Kind::MLFunc:
-    return visitMLFunction(fn);
   }
 }
 
 // Initializes module state, populating affine map and integer set state.
 void ModuleState::initialize(const Module *module) {
   for (auto &fn : *module) {
-    visitFunction(&fn);
+    visitType(fn.getType());
+
+    const_cast<Function &>(fn).walkInsts(
+        [&](Instruction *op) { ModuleState::visitInstruction(op); });
   }
 }
 
@@ -1167,12 +1115,26 @@ void FunctionPrinter::printFunctionSignature() {
   }
 }
 
+/// Return true if the introducer for the specified  block should be printed.
+static bool shouldPrintBlockArguments(const Block *block) {
+  // Never print the entry block of the function - it is included in the
+  // argument list.
+  if (block == &block->getFunction()->front())
+    return false;
+
+  // If this is the first block in a nested region, and if there are no
+  // arguments, then we can omit it.
+  if (block == &block->getParent()->front() && block->getNumArguments() == 0)
+    return false;
+
+  // Otherwise print it.
+  return true;
+}
+
 void FunctionPrinter::print(const Block *block) {
   // Print the block label and argument list, unless this is the first block of
   // the function, or the first block of an IfInst/ForInst with no arguments.
-  if (block != &block->getFunction()->front() &&
-      (block != &block->getParent()->front() ||
-       block->getNumArguments() != 0)) {
+  if (shouldPrintBlockArguments(block)) {
     os.indent(currentIndent);
     printBlockName(block);
 

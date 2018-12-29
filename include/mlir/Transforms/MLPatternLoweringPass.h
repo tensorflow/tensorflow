@@ -108,7 +108,7 @@ public:
     return nullptr;
   }
 
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -135,7 +135,7 @@ template <typename Pattern> struct ListAdder<Pattern> {
 } // namespace detail
 
 template <typename... Patterns>
-PassResult MLPatternLoweringPass<Patterns...>::runOnMLFunction(Function *f) {
+PassResult MLPatternLoweringPass<Patterns...>::runOnFunction(Function *f) {
   detail::OwningMLLoweringPatternList patterns;
   detail::ListAdder<Patterns...>::addPatternsToList(&patterns, f->getContext());
   auto funcWiseState = makeFuncWiseState(f);
@@ -143,8 +143,8 @@ PassResult MLPatternLoweringPass<Patterns...>::runOnMLFunction(Function *f) {
   FuncBuilder builder(f);
   MLFuncLoweringRewriter rewriter(&builder);
 
-  llvm::SmallVector<OperationInst *, 0> ops;
-  f->walk([&ops](OperationInst *inst) { ops.push_back(inst); });
+  llvm::SmallVector<OperationInst *, 16> ops;
+  f->walkOps([&ops](OperationInst *inst) { ops.push_back(inst); });
 
   for (OperationInst *inst : ops) {
     for (const auto &pattern : patterns) {

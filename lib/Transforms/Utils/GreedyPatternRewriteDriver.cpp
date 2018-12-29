@@ -280,7 +280,7 @@ static void processMLFunction(Function *fn,
   };
 
   GreedyPatternRewriteDriver driver(std::move(patterns));
-  fn->walk([&](OperationInst *inst) { driver.addToWorklist(inst); });
+  fn->walkOps([&](OperationInst *inst) { driver.addToWorklist(inst); });
 
   FuncBuilder mlBuilder(fn);
   MLFuncRewriter rewriter(driver, mlBuilder);

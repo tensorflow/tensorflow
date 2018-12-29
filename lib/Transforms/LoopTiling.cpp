@@ -224,15 +224,17 @@ static void getTileableBands(Function *f,
     do {
       band.push_back(currInst);
     } while (currInst->getBody()->getInstructions().size() == 1 &&
-             (currInst = dyn_cast<ForInst>(&*currInst->getBody()->begin())));
+             (currInst = dyn_cast<ForInst>(&currInst->getBody()->front())));
     bands->push_back(band);
   };
 
-  for (auto &inst : *f->getBody()) {
-    auto *forInst = dyn_cast<ForInst>(&inst);
-    if (!forInst)
-      continue;
-    getMaximalPerfectLoopNest(forInst);
+  for (auto &block : *f) {
+    for (auto &inst : block) {
+      auto *forInst = dyn_cast<ForInst>(&inst);
+      if (!forInst)
+        continue;
+      getMaximalPerfectLoopNest(forInst);
+    }
   }
 }
 

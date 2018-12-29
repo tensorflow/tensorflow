@@ -131,15 +131,13 @@ public:
 
   // Define walkers for Function and all Function instruction kinds.
   void walk(Function *f) {
-    static_cast<SubClass *>(this)->visitMLFunction(f);
-    static_cast<SubClass *>(this)->walk(f->getBody()->begin(),
-                                        f->getBody()->end());
+    for (auto &block : *f)
+      static_cast<SubClass *>(this)->walk(block.begin(), block.end());
   }
 
   void walkPostOrder(Function *f) {
-    static_cast<SubClass *>(this)->walkPostOrder(f->getBody()->begin(),
-                                                 f->getBody()->end());
-    static_cast<SubClass *>(this)->visitMLFunction(f);
+    for (auto it = f->rbegin(), e = f->rend(); it != e; ++it)
+      static_cast<SubClass *>(this)->walkPostOrder(it->begin(), it->end());
   }
 
   RetTy walkOpInst(OperationInst *opInst) {
@@ -162,17 +160,16 @@ public:
     static_cast<SubClass *>(this)->visitIfInst(ifInst);
     static_cast<SubClass *>(this)->walk(ifInst->getThen()->begin(),
                                         ifInst->getThen()->end());
-    if (ifInst->hasElse())
-      static_cast<SubClass *>(this)->walk(ifInst->getElse()->begin(),
-                                          ifInst->getElse()->end());
+    if (auto *elseBlock = ifInst->getElse())
+      static_cast<SubClass *>(this)->walk(elseBlock->begin(), elseBlock->end());
   }
 
   void walkIfInstPostOrder(IfInst *ifInst) {
     static_cast<SubClass *>(this)->walkPostOrder(ifInst->getThen()->begin(),
                                                  ifInst->getThen()->end());
-    if (ifInst->hasElse())
-      static_cast<SubClass *>(this)->walkPostOrder(ifInst->getElse()->begin(),
-                                                   ifInst->getElse()->end());
+    if (auto *elseBlock = ifInst->getElse())
+      static_cast<SubClass *>(this)->walkPostOrder(elseBlock->begin(),
+                                                   elseBlock->end());
     static_cast<SubClass *>(this)->visitIfInst(ifInst);
   }
 
@@ -180,6 +177,8 @@ public:
   RetTy walk(Instruction *s) {
     static_assert(std::is_base_of<InstWalker, SubClass>::value,
                   "Must pass the derived type to this template!");
+
+    static_cast<SubClass *>(this)->visitInstruction(s);
 
     switch (s->getKind()) {
     case Instruction::Kind::For:
@@ -195,6 +194,7 @@ public:
   RetTy walkPostOrder(Instruction *s) {
     static_assert(std::is_base_of<InstWalker, SubClass>::value,
                   "Must pass the derived type to this template!");
+    static_cast<SubClass *>(this)->visitInstruction(s);
 
     switch (s->getKind()) {
     case Instruction::Kind::For:
@@ -219,10 +219,10 @@ public:
   // called. These are typically O(1) complexity and shouldn't be recursively
   // processing their descendants in some way. When using RetTy, all of these
   // need to be overridden.
-  void visitMLFunction(Function *f) {}
   void visitForInst(ForInst *forInst) {}
   void visitIfInst(IfInst *ifInst) {}
   void visitOperationInst(OperationInst *opInst) {}
+  void visitInstruction(Instruction *inst) {}
 };
 
 } // end namespace mlir

@@ -348,7 +348,12 @@ public:
 bool MemRefDependenceGraph::init(Function *f) {
   unsigned id = 0;
   DenseMap<Value *, SetVector<unsigned>> memrefAccesses;
-  for (auto &inst : *f->getBody()) {
+
+  // TODO: support multi-block functions.
+  if (f->getBlocks().size() != 1)
+    return false;
+
+  for (auto &inst : f->front()) {
     if (auto *forInst = dyn_cast<ForInst>(&inst)) {
       // Create graph node 'id' to represent top-level 'forInst' and record
       // all loads and store accesses it contains.

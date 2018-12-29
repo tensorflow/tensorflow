@@ -651,7 +651,7 @@ namespace {
 struct Vectorize : public FunctionPass {
   Vectorize() : FunctionPass(&Vectorize::passID) {}
 
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext MLContext;
@@ -1267,7 +1267,7 @@ static bool vectorizeRootMatches(MLFunctionMatches matches,
 
 /// Applies vectorization to the current Function by searching over a bunch of
 /// predetermined patterns.
-PassResult Vectorize::runOnMLFunction(Function *f) {
+PassResult Vectorize::runOnFunction(Function *f) {
   for (auto pat : makePatterns()) {
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n******************************************");

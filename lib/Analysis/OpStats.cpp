@@ -15,9 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/Function.h"
 #include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/Instructions.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass.h"
 #include "llvm/ADT/DenseMap.h"
@@ -33,11 +33,7 @@ struct PrintOpStatsPass : public FunctionPass, InstWalker<PrintOpStatsPass> {
   // Prints the resultant operation stats post iterating over the module.
   PassResult runOnModule(Module *m) override;
 
-  // Process CFG function considering the instructions in basic blocks.
-  PassResult runOnCFGFunction(Function *function) override;
-
-  // Process ML functions and operation statments in ML functions.
-  PassResult runOnMLFunction(Function *function) override;
+  PassResult runOnFunction(Function *function) override;
   void visitOperationInst(OperationInst *inst);
 
   // Print summary of op stats.
@@ -55,17 +51,9 @@ private:
 char PrintOpStatsPass::passID = 0;
 
 PassResult PrintOpStatsPass::runOnModule(Module *m) {
-  auto result = FunctionPass::runOnModule(m);
-  if (!result)
-    printSummary();
-  return result;
-}
-
-PassResult PrintOpStatsPass::runOnCFGFunction(Function *function) {
-  for (const auto &bb : *function)
-    for (const auto &inst : bb)
-      if (auto *op = dyn_cast<OperationInst>(&inst))
-        ++opCount[op->getName().getStringRef()];
+  for (auto &fn : *m)
+    (void)runOnFunction(&fn);
+  printSummary();
   return success();
 }
 
@@ -73,7 +61,7 @@ void PrintOpStatsPass::visitOperationInst(OperationInst *inst) {
   ++opCount[inst->getName().getStringRef()];
 }
 
-PassResult PrintOpStatsPass::runOnMLFunction(Function *function) {
+PassResult PrintOpStatsPass::runOnFunction(Function *function) {
   walk(function);
   return success();
 }

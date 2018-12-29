@@ -44,9 +44,7 @@ struct MemRefDependenceCheck : public FunctionPass,
   explicit MemRefDependenceCheck()
       : FunctionPass(&MemRefDependenceCheck::passID) {}
 
-  PassResult runOnMLFunction(Function *f) override;
-  // Not applicable to CFG functions.
-  PassResult runOnCFGFunction(Function *f) override { return success(); }
+  PassResult runOnFunction(Function *f) override;
 
   void visitOperationInst(OperationInst *opInst) {
     if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>()) {
@@ -168,7 +166,7 @@ static void checkDependences(ArrayRef<OperationInst *> loadsAndStores) {
 
 // Walks the Function 'f' adding load and store ops to 'loadsAndStores'.
 // Runs pair-wise dependence checks.
-PassResult MemRefDependenceCheck::runOnMLFunction(Function *f) {
+PassResult MemRefDependenceCheck::runOnFunction(Function *f) {
   loadsAndStores.clear();
   walk(f);
   checkDependences(loadsAndStores);

@@ -74,7 +74,7 @@ struct LoopUnrollAndJam : public FunctionPass {
       : FunctionPass(&LoopUnrollAndJam::passID),
         unrollJamFactor(unrollJamFactor) {}
 
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
   bool runOnForInst(ForInst *forInst);
 
   static char passID;
@@ -88,15 +88,15 @@ FunctionPass *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }
 
-PassResult LoopUnrollAndJam::runOnMLFunction(Function *f) {
+PassResult LoopUnrollAndJam::runOnFunction(Function *f) {
   // Currently, just the outermost loop from the first loop nest is
   // unroll-and-jammed by this pass. However, runOnForInst can be called on any
   // for Inst.
-  auto *forInst = dyn_cast<ForInst>(f->getBody()->begin());
-  if (!forInst)
-    return success();
+  auto &entryBlock = f->front();
+  if (!entryBlock.empty())
+    if (auto *forInst = dyn_cast<ForInst>(&entryBlock.front()))
+      runOnForInst(forInst);
 
-  runOnForInst(forInst);
   return success();
 }
 

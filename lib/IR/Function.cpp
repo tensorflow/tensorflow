@@ -161,15 +161,20 @@ bool Function::emitError(const Twine &message) const {
 // Function implementation.
 //===----------------------------------------------------------------------===//
 
-const OperationInst *Function::getReturn() const {
-  return cast<OperationInst>(&getBody()->back());
+void Function::walkInsts(std::function<void(Instruction *)> callback) {
+  struct Walker : public InstWalker<Walker> {
+    std::function<void(Instruction *)> const &callback;
+    Walker(std::function<void(Instruction *)> const &callback)
+        : callback(callback) {}
+
+    void visitInstruction(Instruction *inst) { callback(inst); }
+  };
+
+  Walker v(callback);
+  v.walk(this);
 }
 
-OperationInst *Function::getReturn() {
-  return cast<OperationInst>(&getBody()->back());
-}
-
-void Function::walk(std::function<void(OperationInst *)> callback) {
+void Function::walkOps(std::function<void(OperationInst *)> callback) {
   struct Walker : public InstWalker<Walker> {
     std::function<void(OperationInst *)> const &callback;
     Walker(std::function<void(OperationInst *)> const &callback)
@@ -182,7 +187,20 @@ void Function::walk(std::function<void(OperationInst *)> callback) {
   v.walk(this);
 }
 
-void Function::walkPostOrder(std::function<void(OperationInst *)> callback) {
+void Function::walkInstsPostOrder(std::function<void(Instruction *)> callback) {
+  struct Walker : public InstWalker<Walker> {
+    std::function<void(Instruction *)> const &callback;
+    Walker(std::function<void(Instruction *)> const &callback)
+        : callback(callback) {}
+
+    void visitOperationInst(Instruction *inst) { callback(inst); }
+  };
+
+  Walker v(callback);
+  v.walkPostOrder(this);
+}
+
+void Function::walkOpsPostOrder(std::function<void(OperationInst *)> callback) {
   struct Walker : public InstWalker<Walker> {
     std::function<void(OperationInst *)> const &callback;
     Walker(std::function<void(OperationInst *)> const &callback)

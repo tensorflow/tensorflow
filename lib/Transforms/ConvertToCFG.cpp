@@ -485,8 +485,10 @@ Function *FunctionConverter::convert(Function *mlFunc) {
   }
 
   // Convert instructions in order.
-  for (auto &inst : *mlFunc->getBody()) {
-    visit(&inst);
+  for (auto &block : *mlFunc) {
+    for (auto &inst : block) {
+      visit(&inst);
+    }
   }
 
   return cfgFunc;

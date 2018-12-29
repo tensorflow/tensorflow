@@ -62,9 +62,7 @@ struct DmaGeneration : public FunctionPass, InstWalker<DmaGeneration> {
     }
   }
 
-  // Not applicable to CFG functions.
-  PassResult runOnCFGFunction(Function *f) override { return success(); }
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
   void runOnForInst(ForInst *forInst);
 
   void visitOperationInst(OperationInst *opInst);
@@ -425,10 +423,12 @@ void DmaGeneration::runOnForInst(ForInst *forInst) {
                           << " KiB of DMA buffers in fast memory space\n";);
 }
 
-PassResult DmaGeneration::runOnMLFunction(Function *f) {
-  for (auto &inst : *f->getBody()) {
-    if (auto *forInst = dyn_cast<ForInst>(&inst)) {
-      runOnForInst(forInst);
+PassResult DmaGeneration::runOnFunction(Function *f) {
+  for (auto &block : *f) {
+    for (auto &inst : block) {
+      if (auto *forInst = dyn_cast<ForInst>(&inst)) {
+        runOnForInst(forInst);
+      }
     }
   }
   // This function never leaves the IR in an invalid state.
