@@ -1324,7 +1324,7 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
     if (newly_created_tuple_instr) {
       HloInstruction* new_instr = parent()->AddInstruction(
           HloInstruction::CreateGetTupleElement(fused_root->shape(), this, 0));
-      TF_CHECK_OK(ReplaceAllUsesWith(new_instr));
+      TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
     }
     int64 index = tuple_elements.size();
     if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
