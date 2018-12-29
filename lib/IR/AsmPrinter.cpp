@@ -944,7 +944,7 @@ public:
 
   enum { nameSentinel = ~0U };
 
-  void printBlockName(const Block *block) { os << "bb" << getBlockID(block); }
+  void printBlockName(const Block *block) { os << "^bb" << getBlockID(block); }
 
   unsigned getBlockID(const Block *block) {
     auto it = blockIDs.find(block);
@@ -1213,7 +1213,7 @@ void FunctionPrinter::print(const Block *block) {
 
       os << "\t// " << predIDs.size() << " preds: ";
 
-      interleaveComma(predIDs, [&](unsigned predID) { os << "bb" << predID; });
+      interleaveComma(predIDs, [&](unsigned predID) { os << "^bb" << predID; });
     }
     os << '\n';
   }

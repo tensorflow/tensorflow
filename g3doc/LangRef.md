@@ -65,8 +65,8 @@ Here's an example of an MLIR module:
 // result using a TensorFlow op. The dimensions of A and B are partially
 // known. The shapes are assumed to match.
 cfgfunc @mul(tensor<100x?xf32>, tensor<?x50xf32>) -> (tensor<100x50xf32>) {
-// Block bb0. %A and %B come from function arguments.
-bb0(%A: tensor<100x?xf32>, %B: tensor<?x50xf32>):
+// Block ^bb0. %A and %B come from function arguments.
+^bb0(%A: tensor<100x?xf32>, %B: tensor<?x50xf32>):
   // Compute the inner dimension of %A using the dim operation.
   %n = dim %A, 1 : tensor<100x?xf32>
 
@@ -923,7 +923,7 @@ A simple CFG function that returns its argument twice looks like this:
 ```mlir {.mlir}
 cfgfunc @count(i64) -> (i64, i64)
   attributes {fruit: "banana"} {
-bb0(%x: i64):
+^bb0(%x: i64):
   return %x, %x: i64, i64
 }
 ```
@@ -941,7 +941,7 @@ Syntax:
 ``` {.ebnf}
 block           ::= bb-label operation* terminator-inst
 bb-label        ::= bb-id bb-arg-list? `:`
-bb-id           ::= bare-id
+bb-id           ::= caret-id
 ssa-id-and-type ::= ssa-id `:` type
 
 // Non-empty list of names and types.
@@ -965,22 +965,22 @@ arguments:
 
 ```mlir {.mlir}
 cfgfunc @simple(i64, i1) -> i64 {
-bb0(%a: i64, %cond: i1): // Code dominated by bb0 may refer to %a
-  br_cond %cond, bb1, bb2
+^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
+  br_cond %cond, ^bb1, ^bb2
 
-bb1:
-  br bb3(%a: i64)    // Branch passes %a as the argument
+^bb1:
+  br ^bb3(%a: i64)    // Branch passes %a as the argument
 
-bb2:
+^bb2:
   %b = "add"(%a, %a) : (i64, i64) -> i64
-  br bb3(%b: i64)    // Branch passes %b as the argument
+  br ^bb3(%b: i64)    // Branch passes %b as the argument
 
-// bb3 receives an argument, named %c, from predecessors
+// ^bb3 receives an argument, named %c, from predecessors
 // and passes it on to bb4 twice.
-bb3(%c: i64):
-  br bb4(%c, %c : i64, i64)
+^bb3(%c: i64):
+  br ^bb4(%c, %c : i64, i64)
 
-bb4(%d : i64, %e : i64):
+^bb4(%d : i64, %e : i64):
   %0 = addi %d, %e : i64
   return %0 : i64
 }
@@ -1043,11 +1043,11 @@ instruction that targets the same block:
 
 ```mlir {.mlir}
 cfgfunc @select(%a : i32, %b :i32, %flag : i1) -> i32 {
-bb0:
+^bb0:
     // Both targets are the same, operands differ
-    cond_br %flag, bb1 (%a : i32), bb1 (%b : i32)
+    cond_br %flag, ^bb1(%a : i32), ^bb1(%b : i32)
 
-bb1 (%x : i32) :
+^bb1(%x : i32) :
     return %x : i32
 }
 ```

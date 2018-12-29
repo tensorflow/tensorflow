@@ -87,55 +87,55 @@ extfunc missingsigil() -> (i1, index, f32) // expected-error {{expected a functi
 // -----
 
 cfgfunc @bad_branch() {
-bb12:
-  br missing  // expected-error {{reference to an undefined block}}
+^bb12:
+  br ^missing  // expected-error {{reference to an undefined block}}
 }
 
 // -----
 
 cfgfunc @block_redef() {
-bb42:
+^bb42:
   return
-bb42:        // expected-error {{redefinition of block 'bb42'}}
+^bb42:        // expected-error {{redefinition of block '^bb42'}}
   return
 }
 
 // -----
 
 cfgfunc @no_terminator() {
-bb40:
+^bb40:
   return
-bb41:
-bb42:        // expected-error {{custom op 'bb42' is unknown}}
+^bb41:
+^bb42:        // expected-error {{expected operation name in quotes}}
   return
 }
 
 // -----
 
 cfgfunc @block_no_rparen() {
-bb42 (%bb42 : i32: // expected-error {{expected ')' to end argument list}}
+^bb42 (%bb42 : i32: // expected-error {{expected ')' to end argument list}}
   return
 }
 
 // -----
 
 cfgfunc @block_arg_no_ssaid() {
-bb42 (i32): // expected-error {{expected SSA operand}}
+^bb42 (i32): // expected-error {{expected SSA operand}}
   return
 }
 
 // -----
 
 cfgfunc @block_arg_no_type() {
-bb42 (%0): // expected-error {{expected ':' and type for SSA operand}}
+^bb42 (%0): // expected-error {{expected ':' and type for SSA operand}}
   return
 }
 
 // -----
 
 cfgfunc @block_arg_no_close_paren() {
-bb42:
-  br bb2( // expected-error@+1 {{expected ')' to close argument list}}
+^bb42:
+  br ^bb2( // expected-error@+1 {{expected ')' to close argument list}}
   return
 }
 
@@ -143,17 +143,17 @@ bb42:
 
 cfgfunc @block_first_has_predecessor() {
 // expected-error@-1 {{entry block of function may not have predecessors}}
-bb42:
-  br bb43
-bb43:
-  br bb42
+^bb42:
+  br ^bb43
+^bb43:
+  br ^bb42
 }
 
 // -----
 
 cfgfunc @illegalattrs() -> ()
   attributes { key } { // expected-error {{expected ':' in attribute list}}
-bb42:
+^bb42:
   return
 }
 
@@ -171,7 +171,7 @@ mlfunc @empty() {
 
 mlfunc @illegalattrs() -> ()
   attributes { key } { // expected-error {{expected ':' in attribute list}}
-bb42:
+^bb42:
   return
 }
 
@@ -193,14 +193,14 @@ mlfunc @no_return() {
 // -----
 
 cfgfunc @bad_op_type() {
-bb40:
+^bb40:
   "foo"() : i32  // expected-error {{expected function type}}
   return
 }
 // -----
 
 cfgfunc @no_terminator() {
-bb40:
+^bb40:
   "foo"() : ()->()
   ""() : ()->()  // expected-error {{empty operation name is invalid}}
   return
@@ -313,7 +313,7 @@ mlfunc @invalid_if_conditional7() {
 // -----
 
 cfgfunc @test() {
-bb40:
+^bb40:
   %1 = "foo"() : (i32)->i64 // expected-error {{expected 0 operand types but had 1}}
   return
 }
@@ -321,7 +321,7 @@ bb40:
 // -----
 
 cfgfunc @redef() {
-bb42:
+^bb42:
   %x = "xxx"(){index: 0} : ()->i32 // expected-error {{previously defined here}}
   %x = "xxx"(){index: 0} : ()->i32 // expected-error {{redefinition of SSA value '%x'}}
   return
@@ -330,7 +330,7 @@ bb42:
 // -----
 
 cfgfunc @undef() {
-bb42:
+^bb42:
   %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undeclared SSA value}}
   return
 }
@@ -349,7 +349,7 @@ mlfunc @malformed_type(%a : intt) { // expected-error {{expected type}}
 // -----
 
 cfgfunc @resulterror() -> i32 {
-bb42:
+^bb42:
   return    // expected-error {{'return' op has 0 operands, but enclosing function returns 1}}
 }
 
@@ -362,28 +362,28 @@ mlfunc @mlfunc_resulterror() -> i32 {
 // -----
 
 cfgfunc @argError() {
-bb1(%a: i64):  // expected-error {{previously defined here}}
-  br bb2
-bb2(%a: i64):  // expected-error{{redefinition of SSA value '%a'}}
+^bb1(%a: i64):  // expected-error {{previously defined here}}
+  br ^bb2
+^bb2(%a: i64):  // expected-error{{redefinition of SSA value '%a'}}
   return
 }
 
 // -----
 
 cfgfunc @bbargMismatch(i32, f32) { // expected-error {{first block of function must have 2 arguments to match function signature}}
-bb42(%0: f32):
+^bb42(%0: f32):
   return
 }
 
 // -----
 
 cfgfunc @br_mismatch() {
-bb0:
+^bb0:
   %0 = "foo"() : () -> (i1, i17)
   // expected-error @+1 {{branch has 2 operands, but target block has 1}}
-  br bb1(%0#1, %0#0 : i17, i1)
+  br ^bb1(%0#1, %0#0 : i17, i1)
 
-bb1(%x: i17):
+^bb1(%x: i17):
   return
 }
 
@@ -396,34 +396,34 @@ extfunc @vectors(vector<1 x vector<1xi32>>, vector<2x4xf32>)
 // -----
 
 cfgfunc @condbr_notbool() {
-bb0:
+^bb0:
   %a = "foo"() : () -> i32 // expected-error {{prior use here}}
-  cond_br %a, bb0, bb0 // expected-error {{use of value '%a' expects different type than prior uses}}
+  cond_br %a, ^bb0, ^bb0 // expected-error {{use of value '%a' expects different type than prior uses}}
 // expected-error@-1 {{expected condition type was boolean (i1)}}
 }
 
 // -----
 
 cfgfunc @condbr_badtype() {
-bb0:
+^bb0:
   %c = "foo"() : () -> i1
   %a = "foo"() : () -> i32
-  cond_br %c, bb0(%a, %a : i32, bb0) // expected-error {{expected type}}
+  cond_br %c, ^bb0(%a, %a : i32, ^bb0) // expected-error {{expected type}}
 }
 
 // -----
 
 cfgfunc @condbr_a_bb_is_not_a_type() {
-bb0:
+^bb0:
   %c = "foo"() : () -> i1
   %a = "foo"() : () -> i32
-  cond_br %c, bb0(%a, %a : i32, i32), i32 // expected-error {{expected block name}}
+  cond_br %c, ^bb0(%a, %a : i32, i32), i32 // expected-error {{expected block name}}
 }
 
 // -----
 
 cfgfunc @undef() {
-bb0:
+^bb0:
   %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undeclared SSA value name}}
   return
 }
@@ -457,10 +457,10 @@ mlfunc @dominance_failure() {
 // -----
 
 cfgfunc @dominance_failure() {
-bb0:
+^bb0:
   "foo"(%x) : (i32) -> ()    // expected-error {{operand #0 does not dominate this use}}
-  br bb1
-bb1:
+  br ^bb1
+^bb1:
   %x = "bar"() : () -> i32    // expected-note {{operand defined here}}
   return
 }
@@ -490,7 +490,7 @@ extfunc @redef()  // expected-error {{redefinition of function named 'redef'}}
 // -----
 
 cfgfunc @foo() {
-bb0:
+^bb0:
   %x = constant @foo : (i32) -> ()  // expected-error {{reference to function with mismatched type}}
   return
 }
@@ -498,7 +498,7 @@ bb0:
 // -----
 
 cfgfunc @undefined_function() {
-bb0:
+^bb0:
   %x = constant @bar : (i32) -> ()  // expected-error {{reference to undefined function 'bar'}}
   return
 }
@@ -662,46 +662,46 @@ mlfunc @calls(%arg0 : i32) {
 }
 // -----
 // expected-error@+2 {{expected SSA operand}}
-cfgfunc@n(){b(
+cfgfunc@n(){^b(
 // -----
 
 cfgfunc @elementsattr_non_tensor_type() -> () {
-bb0:
+^bb0:
   "foo"(){bar: dense<i32, [4]>} : () -> () // expected-error {{expected elements literal has a tensor or vector type}}
 }
 
 // -----
 
 cfgfunc @elementsattr_non_ranked() -> () {
-bb0:
+^bb0:
   "foo"(){bar: dense<tensor<?xi32>, [4]>} : () -> () // expected-error {{tensor literals must be ranked and have static shape}}
 }
 
 // -----
 
 cfgfunc @elementsattr_shape_mismatch() -> () {
-bb0:
+^bb0:
   "foo"(){bar: dense<tensor<5xi32>, [4]>} : () -> () // expected-error {{inferred shape of elements literal ([1]) does not match type ([5])}}
 }
 
 // -----
 
 cfgfunc @elementsattr_invalid() -> () {
-bb0:
+^bb0:
   "foo"(){bar: dense<tensor<2xi32>, [4, [5]]>} : () -> () // expected-error {{tensor literal is invalid; ranks are not consistent between elements}}
 }
 
 // -----
 
 cfgfunc @elementsattr_badtoken() -> () {
-bb0:
+^bb0:
   "foo"(){bar: dense<tensor<1xi32>, [tf_opaque]>} : () -> () // expected-error {{expected '[' or scalar constant inside tensor literal}}
 }
 
 // -----
 
 cfgfunc @elementsattr_floattype1() -> () {
-bb0:
+^bb0:
   // expected-error@+1 {{floating point value not valid for specified type}}
   "foo"(){bar: dense<tensor<1xi32>, [4.0]>} : () -> ()
 }
@@ -709,7 +709,7 @@ bb0:
 // -----
 
 cfgfunc @elementsattr_floattype2() -> () {
-bb0:
+^bb0:
   // expected-error@+1 {{integer value not valid for specified type}}
   "foo"(){bar: dense<tensor<1xf32>, [4]>} : () -> ()
 }
@@ -717,35 +717,35 @@ bb0:
 // -----
 
 cfgfunc @elementsattr_toolarge1() -> () {
-bb0:
+^bb0:
   "foo"(){bar: dense<tensor<1xi8>, [777]>} : () -> () // expected-error {{integer constant out of range for attribute}}
 }
 
 // -----
 
 cfgfunc @elementsattr_toolarge2() -> () {
-bb0:
+^bb0:
   "foo"(){bar: dense<tensor<1xi8>, [-777]>} : () -> () // expected-error {{integer constant out of range for attribute}}
 }
 
 // -----
 
 cfgfunc @elementsattr_malformed_opaque() -> () {
-bb0:
+^bb0:
   "foo"(){bar: opaque<tensor<1xi8>, "0xQZz123">} : () -> () // expected-error {{opaque string only contains hex digits}}
 }
 
 // -----
 
 cfgfunc @elementsattr_malformed_opaque1() -> () {
-bb0:
+^bb0:
   "foo"(){bar: opaque<tensor<1xi8>, "00abc">} : () -> () // expected-error {{opaque string should start with '0x'}}
 }
 
 // -----
 
 cfgfunc @redundant_signature(%a : i32) -> () {
-bb0(%b : i32):  // expected-error {{custom op 'bb0' is unknown}}
+^bb0(%b : i32):  // expected-error {{expected operation name in quotes}}
   return
 }
 
@@ -770,6 +770,6 @@ mlfunc @multi_block(%N : index) {  // expected-error {{mlfunc should have exactl
   for %i = 1 to %N {}
   return
 
-bb42:
+^bb42:
   return
 }

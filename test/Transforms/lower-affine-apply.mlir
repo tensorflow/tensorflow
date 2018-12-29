@@ -10,7 +10,7 @@
 
 // CHECK-LABEL: cfgfunc @affine_applies()
 cfgfunc @affine_applies() {
-bb0:
+^bb0:
 // CHECK: %c0 = constant 0 : index
   %zero = affine_apply #map0()
 
@@ -65,8 +65,8 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @multiresult_affine_apply()
 cfgfunc @multiresult_affine_apply() {
-// CHECK: bb0
-bb0:
+// CHECK: ^bb0
+^bb0:
 // CHECK-NEXT: %c1 = constant 1 : index
 // CHECK-NEXT: %0 = addi %c1, %c1 : index
 // CHECK-NEXT: %1 = addi %0, %c1 : index
@@ -78,8 +78,8 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @args_ret_affine_apply
 cfgfunc @args_ret_affine_apply(index, index) -> (index, index) {
-// CHECK: bb0(%arg0: index, %arg1: index):
-bb0(%0 : index, %1 : index):
+// CHECK: ^bb0(%arg0: index, %arg1: index):
+^bb0(%0 : index, %1 : index):
 // CHECK-NEXT: return %arg0, %arg1 : index, index
   %00 = affine_apply #map2 (%0)
   %11 = affine_apply #map1 ()[%1]

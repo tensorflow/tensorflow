@@ -15,7 +15,7 @@
 
 // CHECK-LABEL: cfgfunc @cfgfunc_with_ops(f32) {
 cfgfunc @cfgfunc_with_ops(f32) {
-bb0(%a : f32):
+^bb0(%a : f32):
   // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
 
@@ -31,8 +31,8 @@ bb0(%a : f32):
 
 // CHECK-LABEL: cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
-// CHECK: bb0(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index):
-bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
+// CHECK: ^bb0(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index):
+^bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
 
@@ -147,7 +147,7 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
 
 // CHECK-LABEL: cfgfunc @affine_apply() {
 cfgfunc @affine_apply() {
-bb0:
+^bb0:
   %i = "constant"() {value: 0: index} : () -> index
   %j = "constant"() {value: 1: index} : () -> index
 
@@ -170,7 +170,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @load_store
 cfgfunc @load_store(memref<4x4xi32>, index) {
-bb0(%0: memref<4x4xi32>, %1: index):
+^bb0(%0: memref<4x4xi32>, %1: index):
   // CHECK: %0 = load %arg0[%arg1, %arg1] : memref<4x4xi32>
   %2 = "load"(%0, %1, %1) : (memref<4x4xi32>, index, index)->i32
 

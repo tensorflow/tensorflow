@@ -24,6 +24,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/Support/SourceMgr.h"
 using namespace mlir;
+
 using llvm::SMLoc;
 using llvm::SourceMgr;
 
@@ -124,6 +125,8 @@ Token Lexer::lexToken() {
   case '@':
     return lexAtIdentifier(tokStart);
 
+  case '^':
+    LLVM_FALLTHROUGH;
   case '#':
     LLVM_FALLTHROUGH;
   case '%':
@@ -215,7 +218,8 @@ Token Lexer::lexAtIdentifier(const char *tokStart) {
 ///
 ///   affine-map-id ::= `#` suffix-id
 ///   ssa-id        ::= '%' suffix-id
-///   suffix-id ::= digit+ | (letter|id-punct) (letter|id-punct|digit)*
+///   block-id      ::= '^' suffix-id
+///   suffix-id     ::= digit+ | (letter|id-punct) (letter|id-punct|digit)*
 ///
 Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   Token::Kind kind;
@@ -228,6 +232,10 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   case '%':
     kind = Token::percent_identifier;
     errorKind = "invalid SSA name";
+    break;
+  case '^':
+    kind = Token::caret_identifier;
+    errorKind = "invalid block name";
     break;
   default:
     llvm_unreachable("invalid caller");

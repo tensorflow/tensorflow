@@ -134,8 +134,8 @@ extfunc @functions((memref<1x?x4x?x?xi32, #map0, 0>, memref<8xi8, #map1, 0>) -> 
 
 // CHECK-LABEL: cfgfunc @simpleCFG(i32, f32) -> i1 {
 cfgfunc @simpleCFG(i32, f32) -> i1 {
-// CHECK: bb0(%arg0: i32, %arg1: f32):
-bb42 (%arg0: i32, %f: f32):
+// CHECK: ^bb0(%arg0: i32, %arg1: f32):
+^bb42 (%arg0: i32, %f: f32):
   // CHECK: %0 = "foo"() : () -> i64
   %1 = "foo"() : ()->i64
   // CHECK: "bar"(%0) : (i64) -> (i1, i1, i1)
@@ -147,8 +147,8 @@ bb42 (%arg0: i32, %f: f32):
 
 // CHECK-LABEL: cfgfunc @simpleCFGUsingBBArgs(i32, i64) {
 cfgfunc @simpleCFGUsingBBArgs(i32, i64) {
-// CHECK: bb0(%arg0: i32, %arg1: i64):
-bb42 (%arg0: i32, %f: i64):
+// CHECK: ^bb0(%arg0: i32, %arg1: i64):
+^bb42 (%arg0: i32, %f: i64):
   // CHECK: "bar"(%arg1) : (i64) -> (i1, i1, i1)
   %2 = "bar"(%f) : (i64) -> (i1,i1,i1)
   // CHECK: return{{$}}
@@ -158,13 +158,13 @@ bb42 (%arg0: i32, %f: i64):
 
 // CHECK-LABEL: cfgfunc @multiblock() {
 cfgfunc @multiblock() {
-bb0:         // CHECK: bb0:
+^bb0:         // CHECK: ^bb0:
   return     // CHECK:   return
-bb1:         // CHECK: bb1:   // no predecessors
-  br bb4     // CHECK:   br bb3
-bb2:         // CHECK: bb2:   // pred: bb2
-  br bb2     // CHECK:   br bb2
-bb4:         // CHECK: bb3:   // pred: bb1
+^bb1:         // CHECK: ^bb1:   // no predecessors
+  br ^bb4     // CHECK:   br ^bb3
+^bb2:         // CHECK: ^bb2:   // pred: ^bb2
+  br ^bb2     // CHECK:   br ^bb2
+^bb4:         // CHECK: ^bb3:   // pred: ^bb1
   return     // CHECK:   return
 }            // CHECK: }
 
@@ -189,7 +189,7 @@ mlfunc @mlfunc_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
 
 // CHECK-LABEL: cfgfunc @cfgfunc_with_two_args(f16, i8) -> (i1, i32) {
 cfgfunc @cfgfunc_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
-  // CHECK: bb0(%arg0: f16, %arg1: i8):
+  // CHECK: ^bb0(%arg0: f16, %arg1: i8):
   // CHECK: %0 = "foo"(%arg0, %arg1) : (f16, i8) -> (i1, i32)
   %c = "foo"(%a, %b) : (f16, i8)->(i1, i32)
   return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
@@ -328,7 +328,7 @@ mlfunc @simple_ifinst(%N: index) {
 
 // CHECK-LABEL: cfgfunc @attributes() {
 cfgfunc @attributes() {
-bb42:       // CHECK: bb0:
+^bb42:       // CHECK: ^bb0:
 
   // CHECK: "foo"()
   "foo"(){} : ()->()
@@ -364,32 +364,32 @@ bb42:       // CHECK: bb0:
 
 // CHECK-LABEL: cfgfunc @ssa_values() -> (i16, i8) {
 cfgfunc @ssa_values() -> (i16, i8) {
-bb0:       // CHECK: bb0:
+^bb0:       // CHECK: ^bb0:
   // CHECK: %0 = "foo"() : () -> (i1, i17)
   %0 = "foo"() : () -> (i1, i17)
-  br bb2
+  br ^bb2
 
-bb1:       // CHECK: bb1: // pred: bb2
+^bb1:       // CHECK: ^bb1: // pred: ^bb2
   // CHECK: %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
   %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
 
   // CHECK: return %1#0, %1#1 : i16, i8
   return %1#0, %1#1 : i16, i8
 
-bb2:       // CHECK: bb2:  // pred: bb0
+^bb2:       // CHECK: ^bb2:  // pred: ^bb0
   // CHECK: %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
   %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
-  br bb1
+  br ^bb1
 }
 
 // CHECK-LABEL: cfgfunc @bbargs() -> (i16, i8) {
 cfgfunc @bbargs() -> (i16, i8) {
-bb0:       // CHECK: bb0:
+^bb0:       // CHECK: ^bb0:
   // CHECK: %0 = "foo"() : () -> (i1, i17)
   %0 = "foo"() : () -> (i1, i17)
-  br bb1(%0#1, %0#0 : i17, i1)
+  br ^bb1(%0#1, %0#0 : i17, i1)
 
-bb1(%x: i17, %y: i1):       // CHECK: bb1(%1: i17, %2: i1):
+^bb1(%x: i17, %y: i1):       // CHECK: ^bb1(%1: i17, %2: i1):
   // CHECK: %3 = "baz"(%1, %2, %0#1) : (i17, i1, i17) -> (i16, i8)
   %1 = "baz"(%x, %y, %0#1) : (i17, i1, i17) -> (i16, i8)
   return %1#0, %1#1 : i16, i8
@@ -397,36 +397,36 @@ bb1(%x: i17, %y: i1):       // CHECK: bb1(%1: i17, %2: i1):
 
 // CHECK-LABEL: cfgfunc @condbr_simple
 cfgfunc @condbr_simple() -> (i32) {
-bb0:
+^bb0:
   %cond = "foo"() : () -> i1
   %a = "bar"() : () -> i32
   %b = "bar"() : () -> i64
-  // CHECK: cond_br %0, bb1(%1 : i32), bb2(%2 : i64)
-  cond_br %cond, bb1(%a : i32), bb2(%b : i64)
+  // CHECK: cond_br %0, ^bb1(%1 : i32), ^bb2(%2 : i64)
+  cond_br %cond, ^bb1(%a : i32), ^bb2(%b : i64)
 
-// CHECK: bb1({{.*}}: i32): // pred: bb0
-bb1(%x : i32):
-  br bb2(%b: i64)
+// CHECK: ^bb1({{.*}}: i32): // pred: ^bb0
+^bb1(%x : i32):
+  br ^bb2(%b: i64)
 
-// CHECK: bb2({{.*}}: i64): // 2 preds: bb0, bb1
-bb2(%y : i64):
+// CHECK: ^bb2({{.*}}: i64): // 2 preds: ^bb0, ^bb1
+^bb2(%y : i64):
   %z = "foo"() : () -> i32
   return %z : i32
 }
 
 // CHECK-LABEL: cfgfunc @condbr_moarargs
 cfgfunc @condbr_moarargs() -> (i32) {
-bb0:
+^bb0:
   %cond = "foo"() : () -> i1
   %a = "bar"() : () -> i32
   %b = "bar"() : () -> i64
-  // CHECK: cond_br %0, bb1(%1, %2 : i32, i64), bb2(%2, %1, %1 : i64, i32, i32)
-  cond_br %cond, bb1(%a, %b : i32, i64), bb2(%b, %a, %a : i64, i32, i32)
+  // CHECK: cond_br %0, ^bb1(%1, %2 : i32, i64), ^bb2(%2, %1, %1 : i64, i32, i32)
+  cond_br %cond, ^bb1(%a, %b : i32, i64), ^bb2(%b, %a, %a : i64, i32, i32)
 
-bb1(%x : i32, %y : i64):
+^bb1(%x : i32, %y : i64):
   return %x : i32
 
-bb2(%x2 : i64, %y2 : i32, %z2 : i32):
+^bb2(%x2 : i64, %y2 : i32, %z2 : i32):
   %z = "foo"() : () -> i32
   return %z : i32
 }
@@ -435,7 +435,7 @@ bb2(%x2 : i64, %y2 : i32, %z2 : i32):
 // Test pretty printing of constant names.
 // CHECK-LABEL: cfgfunc @constants
 cfgfunc @constants() -> (i32, i23, i23, i1, i1) {
-bb0:
+^bb0:
   // CHECK: %c42_i32 = constant 42 : i32
   %x = constant 42 : i32
   // CHECK: %c17_i23 = constant 17 : i23
@@ -456,7 +456,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @typeattr
 cfgfunc @typeattr() -> () {
-bb0:
+^bb0:
 // CHECK: "foo"() {bar: tensor<*xf32>} : () -> ()
   "foo"(){bar: tensor<*xf32>} : () -> ()
   return
@@ -464,7 +464,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @stringquote
 cfgfunc @stringquote() -> () {
-bb0:
+^bb0:
   // CHECK: "foo"() {bar: "a\22quoted\22string"} : () -> ()
   "foo"(){bar: "a\"quoted\"string"} : () -> ()
   return
@@ -472,7 +472,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @floatAttrs
 cfgfunc @floatAttrs() -> () {
-bb0:
+^bb0:
   // CHECK: "foo"() {a: 4.000000e+00, b: 2.000000e+00, c: 7.100000e+00, d: -0.000000e+00} : () -> ()
   "foo"(){a: 4.0, b: 2.0, c: 7.1, d: -0.0} : () -> ()
   return
@@ -492,7 +492,7 @@ extfunc @extfuncattrempty() -> ()
 cfgfunc @cfgfuncattr() -> ()
   // CHECK: attributes {a: "a\22quoted\22string", b: 4.000000e+00, c: tensor<*xf32>}
   attributes {a: "a\"quoted\"string", b: 4.0, c: tensor<*xf32>} {
-bb0:
+^bb0:
   return
 }
 
@@ -500,7 +500,7 @@ bb0:
 cfgfunc @cfgfuncattrempty() -> ()
   // CHECK-EMPTY
   attributes {} {
-bb0:
+^bb0:
   return
 }
 
@@ -550,7 +550,7 @@ mlfunc @mlfuncsimplemap(%arg0 : index, %arg1 : index) -> () {
 
 // CHECK-LABEL: cfgfunc @splattensorattr
 cfgfunc @splattensorattr() -> () {
-bb0:
+^bb0:
 // CHECK: "splatIntTensor"() {bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
   "splatIntTensor"(){bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
 // CHECK: "splatFloatTensor"() {bar: splat<tensor<2x1x4xf32>, -5.000000e+00>} : () -> ()
@@ -564,7 +564,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @opaquetensorattr
 cfgfunc @opaquetensorattr() -> () {
-bb0:
+^bb0:
 // CHECK: "opaqueIntTensor"() {bar: opaque<tensor<2x1x4xi32>, "0x68656C6C6F">} : () -> ()
   "opaqueIntTensor"(){bar: opaque<tensor<2x1x4xi32>, "0x68656C6C6F">} : () -> ()
 // CHECK: "opaqueFloatTensor"() {bar: opaque<tensor<2x1x4xf32>, "0x68656C6C6F">} : () -> ()
@@ -579,7 +579,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @densetensorattr
 cfgfunc @densetensorattr() -> () {
-bb0:
+^bb0:
 
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
 // CHECK: "fooi3"() {bar: dense<tensor<2x1x4xi3>, {{\[\[\[}}1, -2, 1, 2]], {{\[\[}}0, 2, -1, 2]]]>} : () -> ()
@@ -634,7 +634,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @densevectorattr
 cfgfunc @densevectorattr() -> () {
-bb0:
+^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
 // CHECK: "fooi8"() {bar: dense<vector<1x1x1xi8>, {{\[\[\[}}5]]]>} : () -> ()
   "fooi8"(){bar: dense<vector<1x1x1xi8>, [[[5]]]>} : () -> ()
@@ -672,7 +672,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @sparsetensorattr
 cfgfunc @sparsetensorattr() -> () {
-bb0:
+^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
 // CHECK: "fooi8"() {bar: sparse<tensor<1x1x1xi8>, {{\[\[}}0, 0, 0]], {{\[}}-2]>} : () -> ()
   "fooi8"(){bar: sparse<tensor<1x1x1xi8>, [[0, 0, 0]], [-2]>} : () -> ()
@@ -700,7 +700,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @sparsevectorattr
 cfgfunc @sparsevectorattr() -> () {
-bb0:
+^bb0:
 // NOTE: The {{\[\[}} syntax is because "[[" confuses FileCheck.
 // CHECK: "fooi8"() {bar: sparse<vector<1x1x1xi8>, {{\[\[}}0, 0, 0]], {{\[}}-2]>} : () -> ()
   "fooi8"(){bar: sparse<vector<1x1x1xi8>, [[0, 0, 0]], [-2]>} : () -> ()

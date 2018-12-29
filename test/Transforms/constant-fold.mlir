@@ -22,7 +22,7 @@ mlfunc @test(%p : memref<f32>) {
 
 // CHECK-LABEL: cfgfunc @simple_addf
 cfgfunc @simple_addf() -> f32 {
-bb0:   // CHECK: bb0:
+^bb0:   // CHECK: ^bb0:
   %0 = constant 4.5 : f32
   %1 = constant 1.5 : f32
 
@@ -35,7 +35,7 @@ bb0:   // CHECK: bb0:
 
 // CHECK-LABEL: cfgfunc @simple_addi
 cfgfunc @simple_addi() -> i32 {
-bb0:   // CHECK: bb0:
+^bb0:   // CHECK: ^bb0:
   %0 = constant 1 : i32
   %1 = constant 5 : i32
 
@@ -48,7 +48,7 @@ bb0:   // CHECK: bb0:
 
 // CHECK-LABEL: cfgfunc @simple_subf
 cfgfunc @simple_subf() -> f32 {
-bb0:   // CHECK: bb0:
+^bb0:   // CHECK: ^bb0:
   %0 = constant 4.5 : f32
   %1 = constant 1.5 : f32
 
@@ -61,7 +61,7 @@ bb0:   // CHECK: bb0:
 
 // CHECK-LABEL: cfgfunc @simple_subi
 cfgfunc @simple_subi() -> i32 {
-bb0:   // CHECK: bb0:
+^bb0:   // CHECK: ^bb0:
   %0 = constant 4 : i32
   %1 = constant 1 : i32
 
@@ -122,7 +122,7 @@ mlfunc @constant_fold_bounds(%N : index) {
 
 // CHECK-LABEL: cfgfunc @simple_mulf
 cfgfunc @simple_mulf() -> f32 {
-bb0:   // CHECK: bb0:
+^bb0:   // CHECK: ^bb0:
   %0 = constant 4.5 : f32
   %1 = constant 1.5 : f32
 
@@ -135,7 +135,7 @@ bb0:   // CHECK: bb0:
 
 // CHECK-LABEL: cfgfunc @muli
 cfgfunc @muli(i32) -> (i32, i32) {
-bb0(%a : i32):   // CHECK: bb0(%arg0: i32):
+^bb0(%a : i32):   // CHECK: ^bb0(%arg0: i32):
   %0 = constant 4 : i32
   %1 = constant 2 : i32
   %zero = constant 0 : i32

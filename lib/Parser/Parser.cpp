@@ -2036,13 +2036,13 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
 ///
 ///   block ::= block-label? instruction* terminator-inst
 ///   block-label    ::= block-id block-arg-list? `:`
-///   block-id       ::= bare-id
+///   block-id       ::= caret-id
 ///   block-arg-list ::= `(` ssa-id-and-type-list? `)`
 ///
 ParseResult FunctionParser::parseBlock() {
   SMLoc nameLoc = getToken().getLoc();
   auto name = getTokenSpelling();
-  if (parseToken(Token::bare_identifier, "expected block name"))
+  if (parseToken(Token::caret_identifier, "expected block name"))
     return ParseFailure;
 
   auto *block = defineBlockNamed(name, nameLoc);
@@ -2364,7 +2364,7 @@ Block *FunctionParser::defineBlockNamed(StringRef name, SMLoc loc) {
 bool FunctionParser::parseSuccessorAndUseList(
     Block *&dest, SmallVectorImpl<Value *> &operands) {
   // Verify branch is identifier and get the matching block.
-  if (!getToken().is(Token::bare_identifier))
+  if (!getToken().is(Token::caret_identifier))
     return emitError("expected block name");
   dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
   consumeToken();

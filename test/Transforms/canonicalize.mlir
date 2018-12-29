@@ -10,8 +10,8 @@ mlfunc @test_subi_zero(%arg0: i32) -> i32 {
 
 // CHECK-LABEL: cfgfunc @test_subi_zero_cfg
 cfgfunc @test_subi_zero_cfg(i32) -> i32 {
-// CHECK-NEXT: bb0(%arg0: i32):
-bb0(%arg0: i32):
+// CHECK-NEXT: ^bb0(%arg0: i32):
+^bb0(%arg0: i32):
   // CHECK-NEXT: %c0_i32 = constant 0 : i32
   // CHECK-NEXT: return %c0
   %y = subi %arg0, %arg0 : i32

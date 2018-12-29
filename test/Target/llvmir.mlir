@@ -17,7 +17,7 @@
 // CHECK-NEXT:    ret void
 // CHECK-NEXT:  }
 cfgfunc @empty() {
-bb0:
+^bb0:
   return
 }
 
@@ -27,39 +27,39 @@ extfunc @body(index)
 
 // CHECK-LABEL: define void @simple_loop() {
 cfgfunc @simple_loop() {
-bb0:
-// CHECK: br label %[[SIMPLE_BB1:[0-9]+]]
-  br bb1
+^bb0:
+// CHECK: br label %[[SIMPLE_bb1:[0-9]+]]
+  br ^bb1
 
 // Constants are inlined in LLVM rather than a separate instruction.
-// CHECK: <label>:[[SIMPLE_BB1]]:
-// CHECK-NEXT: br label %[[SIMPLE_BB2:[0-9]+]]
-bb1:	// pred: bb0
+// CHECK: <label>:[[SIMPLE_bb1]]:
+// CHECK-NEXT: br label %[[SIMPLE_bb2:[0-9]+]]
+^bb1:	// pred: ^bb0
   %c1 = constant 1 : index
   %c42 = constant 42 : index
-  br bb2(%c1 : index)
+  br ^bb2(%c1 : index)
 
-// CHECK: <label>:[[SIMPLE_BB2]]:
-// CHECK-NEXT:   %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %[[SIMPLE_BB3:[0-9]+]] ], [ 1, %[[SIMPLE_BB1]] ]
+// CHECK: <label>:[[SIMPLE_bb2]]:
+// CHECK-NEXT:   %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %[[SIMPLE_bb3:[0-9]+]] ], [ 1, %[[SIMPLE_bb1]] ]
 // CHECK-NEXT:   %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 42
-// CHECK-NEXT:   br i1 %{{[0-9]+}}, label %[[SIMPLE_BB3]], label %[[SIMPLE_BB4:[0-9]+]]
-bb2(%0: index):	// 2 preds: bb1, bb3
+// CHECK-NEXT:   br i1 %{{[0-9]+}}, label %[[SIMPLE_bb3]], label %[[SIMPLE_bb4:[0-9]+]]
+^bb2(%0: index):	// 2 preds: ^bb1, ^bb3
   %1 = cmpi "slt", %0, %c42 : index
-  cond_br %1, bb3, bb4
+  cond_br %1, ^bb3, ^bb4
 
-// CHECK: ; <label>:[[SIMPLE_BB3]]:
+// CHECK: ; <label>:[[SIMPLE_bb3]]:
 // CHECK-NEXT:   call void @body(i64 %{{[0-9]+}})
 // CHECK-NEXT:   %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
-// CHECK-NEXT:   br label %[[SIMPLE_BB2]]
-bb3:	// pred: bb2
+// CHECK-NEXT:   br label %[[SIMPLE_bb2]]
+^bb3:	// pred: ^bb2
   call @body(%0) : (index) -> ()
   %c1_0 = constant 1 : index
   %2 = addi %0, %c1_0 : index
-  br bb2(%2 : index)
+  br ^bb2(%2 : index)
 
-// CHECK: ; <label>:[[SIMPLE_BB4]]:
+// CHECK: ; <label>:[[SIMPLE_bb4]]:
 // CHECK-NEXT:    ret void
-bb4:	// pred: bb2
+^bb4:	// pred: ^bb2
   return
 }
 
@@ -68,13 +68,13 @@ bb4:	// pred: bb2
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 cfgfunc @simple_caller() {
-bb0:
+^bb0:
   call @simple_loop() : () -> ()
   return
 }
 
 //cfgfunc @simple_indirect_caller() {
-//bb0:
+//^bb0:
 //  %f = constant @simple_loop : () -> ()
 //  call_indirect %f() : () -> ()
 //  return
@@ -86,7 +86,7 @@ bb0:
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 cfgfunc @ml_caller() {
-bb0:
+^bb0:
   call @simple_loop() : () -> ()
   call @more_imperfectly_nested_loops() : () -> ()
   return
@@ -98,47 +98,47 @@ extfunc @body_args(index) -> index
 extfunc @other(index, i32) -> i32
 
 // CHECK-LABEL: define i32 @mlfunc_args(i32, i32) {
-// CHECK-NEXT: br label %[[ARGS_BB1:[0-9]+]]
+// CHECK-NEXT: br label %[[ARGS_bb1:[0-9]+]]
 cfgfunc @mlfunc_args(i32, i32) -> i32 {
-bb0(%arg0: i32, %arg1: i32):
+^bb0(%arg0: i32, %arg1: i32):
   %c0_i32 = constant 0 : i32
-  br bb1
+  br ^bb1
 
-// CHECK: <label>:[[ARGS_BB1]]:
-// CHECK-NEXT: br label %[[ARGS_BB2:[0-9]+]]
-bb1:	// pred: bb0
+// CHECK: <label>:[[ARGS_bb1]]:
+// CHECK-NEXT: br label %[[ARGS_bb2:[0-9]+]]
+^bb1:	// pred: ^bb0
   %c0 = constant 0 : index
   %c42 = constant 42 : index
-  br bb2(%c0 : index)
+  br ^bb2(%c0 : index)
 
-// CHECK: <label>:[[ARGS_BB2]]:
-// CHECK-NEXT:   %5 = phi i64 [ %12, %[[ARGS_BB3:[0-9]+]] ], [ 0, %[[ARGS_BB1]] ]
+// CHECK: <label>:[[ARGS_bb2]]:
+// CHECK-NEXT:   %5 = phi i64 [ %12, %[[ARGS_bb3:[0-9]+]] ], [ 0, %[[ARGS_bb1]] ]
 // CHECK-NEXT:   %6 = icmp slt i64 %5, 42
-// CHECK-NEXT:   br i1 %6, label %[[ARGS_BB3]], label %[[ARGS_BB4:[0-9]+]]
-bb2(%0: index):	// 2 preds: bb1, bb3
+// CHECK-NEXT:   br i1 %6, label %[[ARGS_bb3]], label %[[ARGS_bb4:[0-9]+]]
+^bb2(%0: index):	// 2 preds: ^bb1, ^bb3
   %1 = cmpi "slt", %0, %c42 : index
-  cond_br %1, bb3, bb4
+  cond_br %1, ^bb3, ^bb4
 
-// CHECK: <label>:[[ARGS_BB3]]:
+// CHECK: <label>:[[ARGS_bb3]]:
 // CHECK-NEXT:   %8 = call i64 @body_args(i64 %5)
 // CHECK-NEXT:   %9 = call i32 @other(i64 %8, i32 %0)
 // CHECK-NEXT:   %10 = call i32 @other(i64 %8, i32 %9)
 // CHECK-NEXT:   %11 = call i32 @other(i64 %8, i32 %1)
 // CHECK-NEXT:   %12 = add i64 %5, 1
-// CHECK-NEXT:   br label %[[ARGS_BB2]]
-bb3:	// pred: bb2
+// CHECK-NEXT:   br label %[[ARGS_bb2]]
+^bb3:	// pred: ^bb2
   %2 = call @body_args(%0) : (index) -> index
   %3 = call @other(%2, %arg0) : (index, i32) -> i32
   %4 = call @other(%2, %3) : (index, i32) -> i32
   %5 = call @other(%2, %arg1) : (index, i32) -> i32
   %c1 = constant 1 : index
   %6 = addi %0, %c1 : index
-  br bb2(%6 : index)
+  br ^bb2(%6 : index)
 
-// CHECK: <label>:[[ARGS_BB4]]:
+// CHECK: <label>:[[ARGS_bb4]]:
 // CHECK-NEXT:   %14 = call i32 @other(i64 0, i32 0)
 // CHECK-NEXT:   ret i32 %14
-bb4:	// pred: bb2
+^bb4:	// pred: ^bb2
   %c0_0 = constant 0 : index
   %7 = call @other(%c0_0, %c0_i32) : (index, i32) -> i32
   return %7 : i32
@@ -154,71 +154,71 @@ extfunc @body2(index, index)
 extfunc @post(index)
 
 // CHECK-LABEL: define void @imperfectly_nested_loops() {
-// CHECK-NEXT:   br label %[[IMPER_BB1:[0-9]+]]
+// CHECK-NEXT:   br label %[[IMPER_bb1:[0-9]+]]
 cfgfunc @imperfectly_nested_loops() {
-bb0:
-  br bb1
+^bb0:
+  br ^bb1
 
-// CHECK: <label>:[[IMPER_BB1]]:
-// CHECK-NEXT:   br label %[[IMPER_BB2:[0-9]+]]
-bb1:	// pred: bb0
+// CHECK: <label>:[[IMPER_bb1]]:
+// CHECK-NEXT:   br label %[[IMPER_bb2:[0-9]+]]
+^bb1:	// pred: ^bb0
   %c0 = constant 0 : index
   %c42 = constant 42 : index
-  br bb2(%c0 : index)
+  br ^bb2(%c0 : index)
 
-// CHECK: <label>:[[IMPER_BB2]]:
-// CHECK-NEXT:   %3 = phi i64 [ %13, %[[IMPER_BB7:[0-9]+]] ], [ 0, %[[IMPER_BB1]] ]
+// CHECK: <label>:[[IMPER_bb2]]:
+// CHECK-NEXT:   %3 = phi i64 [ %13, %[[IMPER_bb7:[0-9]+]] ], [ 0, %[[IMPER_bb1]] ]
 // CHECK-NEXT:   %4 = icmp slt i64 %3, 42
-// CHECK-NEXT:   br i1 %4, label %[[IMPER_BB3:[0-9]+]], label %[[IMPER_BB8:[0-9]+]]
-bb2(%0: index):	// 2 preds: bb1, bb7
+// CHECK-NEXT:   br i1 %4, label %[[IMPER_bb3:[0-9]+]], label %[[IMPER_bb8:[0-9]+]]
+^bb2(%0: index):	// 2 preds: ^bb1, ^bb7
   %1 = cmpi "slt", %0, %c42 : index
-  cond_br %1, bb3, bb8
+  cond_br %1, ^bb3, ^bb8
 
-// CHECK: <label>:[[IMPER_BB3]]:
+// CHECK: <label>:[[IMPER_bb3]]:
 // CHECK-NEXT:   call void @pre(i64 %3)
-// CHECK-NEXT:   br label %[[IMPER_BB4:[0-9]+]]
-bb3:	// pred: bb2
+// CHECK-NEXT:   br label %[[IMPER_bb4:[0-9]+]]
+^bb3:	// pred: ^bb2
   call @pre(%0) : (index) -> ()
-  br bb4
+  br ^bb4
 
-// CHECK: <label>:[[IMPER_BB4]]:
-// CHECK-NEXT:   br label %[[IMPER_BB5:[0-9]+]]
-bb4:	// pred: bb3
+// CHECK: <label>:[[IMPER_bb4]]:
+// CHECK-NEXT:   br label %[[IMPER_bb5:[0-9]+]]
+^bb4:	// pred: ^bb3
   %c7 = constant 7 : index
   %c56 = constant 56 : index
-  br bb5(%c7 : index)
+  br ^bb5(%c7 : index)
 
-// CHECK: <label>:[[IMPER_BB5]]:
-// CHECK-NEXT:   %8 = phi i64 [ %11, %[[IMPER_BB6:[0-9]+]] ], [ 7, %[[IMPER_BB4]] ]
+// CHECK: <label>:[[IMPER_bb5]]:
+// CHECK-NEXT:   %8 = phi i64 [ %11, %[[IMPER_bb6:[0-9]+]] ], [ 7, %[[IMPER_bb4]] ]
 // CHECK-NEXT:   %9 = icmp slt i64 %8, 56
-// CHECK-NEXT:   br i1 %9, label %[[IMPER_BB6]], label %[[IMPER_BB7]]
-bb5(%2: index):	// 2 preds: bb4, bb6
+// CHECK-NEXT:   br i1 %9, label %[[IMPER_bb6]], label %[[IMPER_bb7]]
+^bb5(%2: index):	// 2 preds: ^bb4, ^bb6
   %3 = cmpi "slt", %2, %c56 : index
-  cond_br %3, bb6, bb7
+  cond_br %3, ^bb6, ^bb7
 
-// CHECK: <label>:[[IMPER_BB6]]:
+// CHECK: <label>:[[IMPER_bb6]]:
 // CHECK-NEXT:   call void @body2(i64 %3, i64 %8)
 // CHECK-NEXT:   %11 = add i64 %8, 2
-// CHECK-NEXT:   br label %[[IMPER_BB5]]
-bb6:	// pred: bb5
+// CHECK-NEXT:   br label %[[IMPER_bb5]]
+^bb6:	// pred: ^bb5
   call @body2(%0, %2) : (index, index) -> ()
   %c2 = constant 2 : index
   %4 = addi %2, %c2 : index
-  br bb5(%4 : index)
+  br ^bb5(%4 : index)
 
-// CHECK: <label>:[[IMPER_BB7]]:
+// CHECK: <label>:[[IMPER_bb7]]:
 // CHECK-NEXT:   call void @post(i64 %3)
 // CHECK-NEXT:   %13 = add i64 %3, 1
-// CHECK-NEXT:   br label %[[IMPER_BB2]]
-bb7:	// pred: bb5
+// CHECK-NEXT:   br label %[[IMPER_bb2]]
+^bb7:	// pred: ^bb5
   call @post(%0) : (index) -> ()
   %c1 = constant 1 : index
   %5 = addi %0, %c1 : index
-  br bb2(%5 : index)
+  br ^bb2(%5 : index)
 
-// CHECK: <label>:[[IMPER_BB8]]:
+// CHECK: <label>:[[IMPER_bb8]]:
 // CHECK-NEXT:   ret void
-bb8:	// pred: bb2
+^bb8:	// pred: ^bb2
   return
 }
 
@@ -271,51 +271,51 @@ extfunc @body3(index, index)
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 cfgfunc @more_imperfectly_nested_loops() {
-bb0:
-  br bb1
-bb1:	// pred: bb0
+^bb0:
+  br ^bb1
+^bb1:	// pred: ^bb0
   %c0 = constant 0 : index
   %c42 = constant 42 : index
-  br bb2(%c0 : index)
-bb2(%0: index):	// 2 preds: bb1, bb11
+  br ^bb2(%c0 : index)
+^bb2(%0: index):	// 2 preds: ^bb1, ^bb11
   %1 = cmpi "slt", %0, %c42 : index
-  cond_br %1, bb3, bb12
-bb3:	// pred: bb2
+  cond_br %1, ^bb3, ^bb12
+^bb3:	// pred: ^bb2
   call @pre(%0) : (index) -> ()
-  br bb4
-bb4:	// pred: bb3
+  br ^bb4
+^bb4:	// pred: ^bb3
   %c7 = constant 7 : index
   %c56 = constant 56 : index
-  br bb5(%c7 : index)
-bb5(%2: index):	// 2 preds: bb4, bb6
+  br ^bb5(%c7 : index)
+^bb5(%2: index):	// 2 preds: ^bb4, ^bb6
   %3 = cmpi "slt", %2, %c56 : index
-  cond_br %3, bb6, bb7
-bb6:	// pred: bb5
+  cond_br %3, ^bb6, ^bb7
+^bb6:	// pred: ^bb5
   call @body2(%0, %2) : (index, index) -> ()
   %c2 = constant 2 : index
   %4 = addi %2, %c2 : index
-  br bb5(%4 : index)
-bb7:	// pred: bb5
+  br ^bb5(%4 : index)
+^bb7:	// pred: ^bb5
   call @mid(%0) : (index) -> ()
-  br bb8
-bb8:	// pred: bb7
+  br ^bb8
+^bb8:	// pred: ^bb7
   %c18 = constant 18 : index
   %c37 = constant 37 : index
-  br bb9(%c18 : index)
-bb9(%5: index):	// 2 preds: bb8, bb10
+  br ^bb9(%c18 : index)
+^bb9(%5: index):	// 2 preds: ^bb8, ^bb10
   %6 = cmpi "slt", %5, %c37 : index
-  cond_br %6, bb10, bb11
-bb10:	// pred: bb9
+  cond_br %6, ^bb10, ^bb11
+^bb10:	// pred: ^bb9
   call @body3(%0, %5) : (index, index) -> ()
   %c3 = constant 3 : index
   %7 = addi %5, %c3 : index
-  br bb9(%7 : index)
-bb11:	// pred: bb9
+  br ^bb9(%7 : index)
+^bb11:	// pred: ^bb9
   call @post(%0) : (index) -> ()
   %c1 = constant 1 : index
   %8 = addi %0, %c1 : index
-  br bb2(%8 : index)
-bb12:	// pred: bb2
+  br ^bb2(%8 : index)
+^bb12:	// pred: ^bb2
   return
 }
 
@@ -325,7 +325,7 @@ bb12:	// pred: bb2
 
 // CHECK-LABEL: define void @memref_alloc()
 cfgfunc @memref_alloc() {
-bb0:
+^bb0:
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 400)
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float* } undef, float* %{{[0-9]+}}, 0
@@ -339,24 +339,24 @@ extfunc @get_index() -> index
 
 // CHECK-LABEL: define void @store_load_static()
 cfgfunc @store_load_static() {
-bb0:
+^bb0:
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 40)
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
 // CHECK-NEXT: %{{[0-9]+}} = insertvalue { float* } undef, float* %{{[0-9]+}}, 0
   %0 = alloc() : memref<10xf32>
   %cst = constant 1.000000e+00 : f32
-  br bb1
-bb1:	// pred: bb0
+  br ^bb1
+^bb1:	// pred: ^bb0
   %c0 = constant 0 : index
   %c10 = constant 10 : index
-  br bb2(%c0 : index)
+  br ^bb2(%c0 : index)
 // CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
-bb2(%1: index):	// 2 preds: bb1, bb3
+^bb2(%1: index):	// 2 preds: ^bb1, ^bb3
 // CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 10
   %2 = cmpi "slt", %1, %c10 : index
 // CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
-  cond_br %2, bb3, bb4
-bb3:	// pred: bb2
+  cond_br %2, ^bb3, ^bb4
+^bb3:	// pred: ^bb2
 // CHECK: %{{[0-9]+}} = extractvalue { float* } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: store float 1.000000e+00, float* %{{[0-9]+}}
@@ -365,20 +365,20 @@ bb3:	// pred: bb2
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
   %3 = addi %1, %c1 : index
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br bb2(%3 : index)
-bb4:	// pred: bb2
-  br bb5
-bb5:	// pred: bb4
+  br ^bb2(%3 : index)
+^bb4:	// pred: ^bb2
+  br ^bb5
+^bb5:	// pred: ^bb4
   %c0_0 = constant 0 : index
   %c10_1 = constant 10 : index
-  br bb6(%c0_0 : index)
+  br ^bb6(%c0_0 : index)
 // CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
-bb6(%4: index):	// 2 preds: bb5, bb7
+^bb6(%4: index):	// 2 preds: ^bb5, ^bb7
 // CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 10
   %5 = cmpi "slt", %4, %c10_1 : index
 // CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
-  cond_br %5, bb7, bb8
-bb7:	// pred: bb6
+  cond_br %5, ^bb7, ^bb8
+^bb7:	// pred: ^bb6
 // CHECK:      %{{[0-9]+}} = extractvalue { float* } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = load float, float* %{{[0-9]+}}
@@ -387,15 +387,15 @@ bb7:	// pred: bb6
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
   %7 = addi %4, %c1_2 : index
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br bb6(%7 : index)
-bb8:	// pred: bb6
+  br ^bb6(%7 : index)
+^bb8:	// pred: ^bb6
 // CHECK: ret void
   return
 }
 
 // CHECK-LABEL: define void @store_load_dynamic(i64)
 cfgfunc @store_load_dynamic(index) {
-bb0(%arg0: index):
+^bb0(%arg0: index):
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 %{{[0-9]+}})
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
@@ -404,17 +404,17 @@ bb0(%arg0: index):
   %0 = alloc(%arg0) : memref<?xf32>
   %cst = constant 1.000000e+00 : f32
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br bb1
-bb1:	// pred: bb0
+  br ^bb1
+^bb1:	// pred: ^bb0
   %c0 = constant 0 : index
-  br bb2(%c0 : index)
+  br ^bb2(%c0 : index)
 // CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
-bb2(%1: index):	// 2 preds: bb1, bb3
+^bb2(%1: index):	// 2 preds: ^bb1, ^bb3
 // CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, %{{[0-9]+}}
   %2 = cmpi "slt", %1, %arg0 : index
 // CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
-  cond_br %2, bb3, bb4
-bb3:	// pred: bb2
+  cond_br %2, ^bb3, ^bb4
+^bb3:	// pred: ^bb2
 // CHECK:      %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
@@ -424,19 +424,19 @@ bb3:	// pred: bb2
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
   %3 = addi %1, %c1 : index
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br bb2(%3 : index)
-bb4:	// pred: bb3
-  br bb5
-bb5:	// pred: bb4
+  br ^bb2(%3 : index)
+^bb4:	// pred: ^bb3
+  br ^bb5
+^bb5:	// pred: ^bb4
   %c0_0 = constant 0 : index
-  br bb6(%c0_0 : index)
+  br ^bb6(%c0_0 : index)
 // CHECK: %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %{{[0-9]+}} ], [ 0, %{{[0-9]+}} ]
-bb6(%4: index):	// 2 preds: bb5, bb7
+^bb6(%4: index):	// 2 preds: ^bb5, ^bb7
 // CHECK-NEXT: %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, %{{[0-9]+}}
   %5 = cmpi "slt", %4, %arg0 : index
 // CHECK-NEXT: br i1 %{{[0-9]+}}, label %{{[0-9]+}}, label %{{[0-9]+}}
-  cond_br %5, bb7, bb8
-bb7:	// pred: bb6
+  cond_br %5, ^bb7, ^bb8
+^bb7:	// pred: ^bb6
 // CHECK:      %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 1
 // CHECK-NEXT: %{{[0-9]+}} = extractvalue { float*, i64 } %{{[0-9]+}}, 0
 // CHECK-NEXT: %{{[0-9]+}} = getelementptr float, float* %{{[0-9]+}}, i64 %{{[0-9]+}}
@@ -446,15 +446,15 @@ bb7:	// pred: bb6
 // CHECK-NEXT: %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
   %7 = addi %4, %c1_1 : index
 // CHECK-NEXT: br label %{{[0-9]+}}
-  br bb6(%7 : index)
-bb8:	// pred: bb6
+  br ^bb6(%7 : index)
+^bb8:	// pred: ^bb6
 // CHECK: ret void
   return
 }
 
 // CHECK-LABEL: define void @store_load_mixed(i64)
 cfgfunc @store_load_mixed(index) {
-bb0(%arg0: index):
+^bb0(%arg0: index):
   %c10 = constant 10 : index
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 2, %{{[0-9]+}}
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
@@ -504,7 +504,7 @@ bb0(%arg0: index):
 
 // CHECK-LABEL: define { float*, i64 } @memref_args_rets({ float* }, { float*, i64 }, { float*, i64 }) {
 cfgfunc @memref_args_rets(memref<10xf32>, memref<?xf32>, memref<10x?xf32>) -> memref<10x?xf32> {
-bb0(%arg0: memref<10xf32>, %arg1: memref<?xf32>, %arg2: memref<10x?xf32>):
+^bb0(%arg0: memref<10xf32>, %arg1: memref<?xf32>, %arg2: memref<10x?xf32>):
   %c7 = constant 7 : index
 // CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
   %0 = call @get_index() : () -> index
@@ -539,7 +539,7 @@ bb0(%arg0: memref<10xf32>, %arg1: memref<?xf32>, %arg2: memref<10x?xf32>):
 
 // CHECK-LABEL: define i64 @memref_dim({ float*, i64, i64 })
 cfgfunc @memref_dim(memref<42x?x10x?xf32>) -> index {
-bb0(%arg0: memref<42x?x10x?xf32>):
+^bb0(%arg0: memref<42x?x10x?xf32>):
 // Expecting this to create an LLVM constant.
   %d0 = dim %arg0, 0 : memref<42x?x10x?xf32>
 // CHECK-NEXT: %2 = extractvalue { float*, i64, i64 } %0, 1
@@ -566,7 +566,7 @@ extfunc @get_memref() -> (memref<42x?x10x?xf32>)
 
 // CHECK-LABEL: define { i64, float, { float*, i64, i64 } } @multireturn() {
 cfgfunc @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
-bb0:
+^bb0:
   %0 = call @get_i64() : () -> (i64)
   %1 = call @get_f32() : () -> (f32)
   %2 = call @get_memref() : () -> (memref<42x?x10x?xf32>)
@@ -580,7 +580,7 @@ bb0:
 
 // CHECK-LABEL: define void @multireturn_caller() {
 cfgfunc @multireturn_caller() {
-bb0:
+^bb0:
 // CHECK-NEXT:   %1 = call { i64, float, { float*, i64, i64 } } @multireturn()
 // CHECK-NEXT:   [[ret0:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 0
 // CHECK-NEXT:   [[ret1:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 1
@@ -603,7 +603,7 @@ bb0:
 // CHECK-NEXT:    ret <4 x float> %2
 // CHECK-NEXT:  }
 cfgfunc @vector_ops(vector<4xf32>) -> vector<4xf32> {
-bb0(%arg0 : vector<4xf32>):
+^bb0(%arg0 : vector<4xf32>):
   %0 = constant splat<vector<4xf32>, 42.> : vector<4xf32>
   %1 = addf %arg0, %0 : vector<4xf32>
   return %1 : vector<4xf32>
@@ -611,7 +611,7 @@ bb0(%arg0 : vector<4xf32>):
 
 // CHECK-LABEL: @ops
 cfgfunc @ops(f32, f32, i32, i32) -> (f32, i32) {
-bb0(%arg0 : f32, %arg1 : f32, %arg2 : i32, %arg3 : i32):
+^bb0(%arg0 : f32, %arg1 : f32, %arg2 : i32, %arg3 : i32):
 // CHECK-NEXT: fsub float %0, %1
   %0 = subf %arg0, %arg1 : f32
 // CHECK-NEXT: sub i32 %2, %3

@@ -156,7 +156,7 @@ turned into zero:
 ```mlir
   // RUN: mlir-opt %s -canonicalize | FileCheck %s
   cfgfunc @test_subi_zero_cfg(i32) -> i32 {
-  bb0(%arg0: i32):
+  ^bb0(%arg0: i32):
     %y = subi %arg0, %arg0 : i32
     return %y: i32
   }

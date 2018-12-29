@@ -54,6 +54,7 @@ TOK_IDENTIFIER(bare_identifier)      // foo
 TOK_IDENTIFIER(at_identifier)        // @foo
 TOK_IDENTIFIER(hash_identifier)      // #foo
 TOK_IDENTIFIER(percent_identifier)   // %foo
+TOK_IDENTIFIER(caret_identifier)     // ^foo
 
 // Literals
 TOK_LITERAL(floatliteral)               // 2.0

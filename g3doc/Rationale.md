@@ -360,9 +360,9 @@ This operation could have been implemented with additional control flow: `%r =
 select %cond, %t, %f` is equivalent to
 
 ```mlir
-bb0:
-  br_cond %cond, bb1(%t), bb1(%f)
-bb1(%r):
+^bb0:
+  br_cond %cond, ^bb1(%t), ^bb1(%f)
+^bb1(%r):
 ```
 
 However, this control flow granularity is not available in the ML functions
@@ -430,28 +430,28 @@ mlfunc @search(memref<?x?xi32 %A, <?xi32> %S, i32 %key) {
 }
 
 cfgfunc @search_body(memref<?x?xi32>, memref<?xi32>, i32) {
-bb0(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32)
+^bb0(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32)
   %nj = dim %A, 1 : memref<?x?xi32>
-  br bb1(0)
+  br ^bb1(0)
 
-bb1(%j: i32)
+^bb1(%j: i32)
   %p1 = cmpi "lt", %j, %nj : i32
-  br_cond %p1, bb2, bb5
+  br_cond %p1, ^bb2, ^bb5
 
-bb2:
+^bb2:
   %v = load %A[%i, %j] : memref<?x?xi32>
   %p2 = cmpi "eq", %v, %key : i32
-  br_cond %p2, bb3(%j), bb4
+  br_cond %p2, ^bb3(%j), ^bb4
 
-bb3(%j: i32)
-  store %j to %S [%i] : memref<?xi32>
-  br bb5
+^bb3(%j: i32)
+  store %j to %S[%i] : memref<?xi32>
+  br ^bb5
 
-bb4:
+^bb4:
   %jinc = addi %j, 1 : i32
-  br bb1(%jinc)
+  br ^bb1(%jinc)
 
-bb5:
+^bb5:
   return
 }
 ```
@@ -488,7 +488,7 @@ mlfunc @outer_nest(%n) : (i32) {
 }
 
 cfgfunc @inner_nest(i32, i32, i32) {
-bb0(%i, %j, %n):
+^bb0(%i, %j, %n):
   %pow = call @pow(2, %j) : (f32, f32) ->  f32
   // TODO(missing cast from f32 to i32)
   call @inner_nest2(%pow, %n)

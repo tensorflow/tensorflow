@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s | FileCheck %s
 
 cfgfunc @testType(tensor<1x224x224x3xf32>) -> tensor<96xf32> {
-bb0(%arg0: tensor<1x224x224x3xf32>):
+^bb0(%arg0: tensor<1x224x224x3xf32>):
   %1  = "constant"() {value: splat<tensor<1xf32>, 0.1>} : () -> (tensor<1xf32>)
   %2  = "constant"() {value: splat<tensor<2xf32>, 0.1>} : () -> (tensor<2xf32>)
   %3  = "constant"() {value: splat<tensor<3xf32>, 0.1>} : () -> (tensor<3xf32>)

@@ -4,7 +4,7 @@
 
 // CHECK-LABEL: cfgfunc @alloc() {
 cfgfunc @alloc() {
-bb0:
+^bb0:
   // Test simple alloc.
   // CHECK: %0 = alloc() : memref<1024x64xf32, 1>
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
@@ -35,7 +35,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @dealloc() {
 cfgfunc @dealloc() {
-bb0:
+^bb0:
   // CHECK: %0 = alloc() : memref<1024x64xf32>
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 0>
 
@@ -46,7 +46,7 @@ bb0:
 
 // CHECK-LABEL: cfgfunc @load_store
 cfgfunc @load_store() {
-bb0:
+^bb0:
   // CHECK: %0 = alloc() : memref<1024x64xf32, 1>
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
 
