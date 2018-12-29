@@ -33,6 +33,7 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver_lib
@@ -204,7 +205,8 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
         (self.get_host(hid), [self.get_host_cpu_device(hid)])
         for hid in range(self.num_hosts)
     ]
-    self._input_workers = values.InputWorkers(input_device_map, worker_devices)
+    self._input_workers = input_lib.InputWorkers(
+        input_device_map, worker_devices)
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -304,11 +306,11 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
 
-    return values.DatasetIterator(dataset, self._input_workers,
-                                  self._num_replicas_in_sync)
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._num_replicas_in_sync)
 
   def _distribute_dataset(self, dataset_fn):
-    return values.MultiWorkerDataset(
+    return input_lib.MultiWorkerDataset(
         functools.partial(self._call_dataset_fn, dataset_fn),
         self._input_workers)
 
@@ -339,7 +341,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     if initial_loop_values is None:
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
-    ctx = values.MultiStepContext()
+    ctx = input_lib.MultiStepContext()
 
     def run_fn(*args, **kwargs):
       """Single step on the TPU device."""

@@ -27,6 +27,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import shared_variable_creator
@@ -456,7 +457,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
         "No duplicates allowed in `devices` argument: %s" % devices)
     # TODO(josh11b): Require at least 2 devices?
     self._device_map = values.ReplicaDeviceMap(devices)
-    self._input_workers = values.InputWorkers(self._device_map)
+    self._input_workers = input_lib.InputWorkers(self._device_map)
     self._inferred_cross_device_ops = cross_device_ops_lib.choose_the_best(
         devices)
 
@@ -489,7 +490,8 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     self._default_device = workers[0]
 
     self._device_map = values.ReplicaDeviceMap(devices)
-    self._input_workers = values.InputWorkers(self._device_map, worker_devices)
+    self._input_workers = input_lib.InputWorkers(
+        self._device_map, worker_devices)
     self._inferred_cross_device_ops = cross_device_ops_lib.MultiWorkerAllReduce(
         workers, _infer_num_gpus_per_worker(devices))
 
@@ -543,16 +545,16 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   def _distribute_dataset(self, dataset_fn):
     if self._local_mode:
       worker_index = 0
-      return values.PerReplicaDataset(
+      return input_lib.PerReplicaDataset(
           self._call_dataset_fn(dataset_fn), self._input_workers, worker_index)
     else:
-      return values.MultiWorkerDataset(
+      return input_lib.MultiWorkerDataset(
           functools.partial(self._call_dataset_fn, dataset_fn),
           self._input_workers,
           auto_shard=False)
 
   def _make_dataset_iterator(self, dataset):
-    return values.DatasetIterator(
+    return input_lib.DatasetIterator(
         dataset, self._input_workers, self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
@@ -566,7 +568,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
           num_input_pipelines=num_workers,
           input_pipeline_id=i,
           num_replicas_in_sync=self._num_replicas_in_sync))
-    return values.InputFunctionIterator(
+    return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, input_contexts)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
@@ -576,7 +578,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
 
-    ctx = values.MultiStepContext()
+    ctx = input_lib.MultiStepContext()
     def body(i, *args):
       """A wrapper around `fn` to create the while loop body."""
       del args
