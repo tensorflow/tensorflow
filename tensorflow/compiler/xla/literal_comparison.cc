@@ -387,7 +387,14 @@ class NearComparator {
       rel_error = std::numeric_limits<float>::infinity();
     } else {
       abs_error = FpAbsoluteValue(actual - expected);
-      rel_error = abs_error / FpAbsoluteValue(expected);
+
+      // Avoid division by 0 even though it's well-defined because ubsan can be
+      // configured to treat this as a fatal error.
+      if (expected != T{0}) {
+        rel_error = abs_error / FpAbsoluteValue(expected);
+      } else {
+        rel_error = std::numeric_limits<float>::infinity();
+      }
     }
     const bool is_abs_mismatch = abs_error > error_.abs;
     const bool is_rel_mismatch = rel_error > error_.rel;

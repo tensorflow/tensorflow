@@ -23,6 +23,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -38,6 +39,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/mathutil.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
+#include "tensorflow/stream_executor/logging.pb.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
@@ -154,6 +157,156 @@ class CudnnHandle {
 };
 
 }  // namespace
+
+#ifdef PLATFORM_GOOGLE
+// This macro wraps a global identifier, given by __name, in a callable
+// structure that loads the DLL symbol out of the DSO handle in a thread-safe
+// manner on first use. This dynamic loading technique is used to avoid DSO
+// dependencies on vendor libraries which may or may not be available in the
+// deployed binary environment.
+#define STREAM_EXECUTOR_CUDNN_WRAP(__name)   \
+  struct WrapperShim__##__name {             \
+    template <typename... Args>              \
+    cudnnStatus_t operator()(Args... args) { \
+      return ::__name(args...);              \
+    }                                        \
+  } __name;
+
+#else
+#define STREAM_EXECUTOR_CUDNN_WRAP(__name)                                \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetCudnnDsoHandle();            \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void* f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in cudnn DSO; dlerror: " << s.error_message();   \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    cudnnStatus_t operator()(Args... args) {                              \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
+#endif
+
+// clang-format off
+#define CUDNN_ROUTINE_EACH_V7000_UNDER(__macro)               \
+  __macro(cudnnActivationForward)                             \
+  __macro(cudnnAddTensor)                                     \
+  __macro(cudnnBatchNormalizationBackward)                    \
+  __macro(cudnnBatchNormalizationForwardInference)            \
+  __macro(cudnnBatchNormalizationForwardTraining)             \
+  __macro(cudnnConvolutionBackwardBias)                       \
+  __macro(cudnnConvolutionBackwardData)                       \
+  __macro(cudnnConvolutionBackwardFilter)                     \
+  __macro(cudnnConvolutionBiasActivationForward)              \
+  __macro(cudnnConvolutionForward)                            \
+  __macro(cudnnCreate)                                        \
+  __macro(cudnnCreateActivationDescriptor)                    \
+  __macro(cudnnCreateConvolutionDescriptor)                   \
+  __macro(cudnnCreateDropoutDescriptor)                       \
+  __macro(cudnnCreateFilterDescriptor)                        \
+  __macro(cudnnCreateLRNDescriptor)                           \
+  __macro(cudnnCreatePersistentRNNPlan)                       \
+  __macro(cudnnCreatePoolingDescriptor)                       \
+  __macro(cudnnCreateRNNDescriptor)                           \
+  __macro(cudnnCreateTensorDescriptor)                        \
+  __macro(cudnnDestroy)                                       \
+  __macro(cudnnDestroyActivationDescriptor)                   \
+  __macro(cudnnDestroyConvolutionDescriptor)                  \
+  __macro(cudnnDestroyDropoutDescriptor)                      \
+  __macro(cudnnDestroyFilterDescriptor)                       \
+  __macro(cudnnDestroyLRNDescriptor)                          \
+  __macro(cudnnDestroyPersistentRNNPlan)                      \
+  __macro(cudnnDestroyPoolingDescriptor)                      \
+  __macro(cudnnDestroyRNNDescriptor)                          \
+  __macro(cudnnDestroyTensorDescriptor)                       \
+  __macro(cudnnDropoutGetStatesSize)                          \
+  __macro(cudnnGetActivationDescriptor)                       \
+  __macro(cudnnGetConvolutionBackwardDataAlgorithm)           \
+  __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)       \
+  __macro(cudnnGetConvolutionBackwardFilterAlgorithm)         \
+  __macro(cudnnGetConvolutionBackwardFilterWorkspaceSize)     \
+  __macro(cudnnGetConvolutionForwardAlgorithm)                \
+  __macro(cudnnGetConvolutionForwardWorkspaceSize)            \
+  __macro(cudnnGetConvolutionNdDescriptor)                    \
+  __macro(cudnnGetConvolutionNdForwardOutputDim)              \
+  __macro(cudnnGetFilterNdDescriptor)                         \
+  __macro(cudnnGetProperty)                                   \
+  __macro(cudnnGetRNNLinLayerBiasParams)                      \
+  __macro(cudnnGetRNNLinLayerMatrixParams)                    \
+  __macro(cudnnGetRNNParamsSize)                              \
+  __macro(cudnnGetRNNTrainingReserveSize)                     \
+  __macro(cudnnGetRNNWorkspaceSize)                           \
+  __macro(cudnnLRNCrossChannelBackward)                       \
+  __macro(cudnnLRNCrossChannelForward)                        \
+  __macro(cudnnPoolingBackward)                               \
+  __macro(cudnnPoolingForward)                                \
+  __macro(cudnnRNNBackwardData)                               \
+  __macro(cudnnRNNBackwardWeights)                            \
+  __macro(cudnnRNNForwardInference)                           \
+  __macro(cudnnRNNForwardTraining)                            \
+  __macro(cudnnSetActivationDescriptor)                       \
+  __macro(cudnnSetConvolutionNdDescriptor)                    \
+  __macro(cudnnSetDropoutDescriptor)                          \
+  __macro(cudnnSetFilterNdDescriptor)                         \
+  __macro(cudnnSetLRNDescriptor)                              \
+  __macro(cudnnSetPersistentRNNPlan)                          \
+  __macro(cudnnSetPoolingNdDescriptor)                        \
+  __macro(cudnnSetRNNDescriptor)                              \
+  __macro(cudnnSetRNNDescriptor_v6)                           \
+  __macro(cudnnSetStream)                                     \
+  __macro(cudnnSetTensor4dDescriptor)                         \
+  __macro(cudnnSetTensorNdDescriptor)                         \
+  __macro(cudnnTransformTensor)
+
+// clang-format on
+
+CUDNN_ROUTINE_EACH_V7000_UNDER(STREAM_EXECUTOR_CUDNN_WRAP)
+#undef CUDNN_ROUTINE_EACH_V7000_UNDER
+
+#if CUDNN_VERSION >= 7000
+// clang-format off
+#define CUDNN_ROUTINE_EACH_V7000(__macro)                    \
+  __macro(cudnnSetRNNMatrixMathType)                         \
+  __macro(cudnnSetConvolutionMathType)                       \
+  __macro(cudnnSetConvolutionGroupCount)
+
+// clang-format on
+
+CUDNN_ROUTINE_EACH_V7000(STREAM_EXECUTOR_CUDNN_WRAP)
+#undef CUDNN_ROUTINE_EACH_V7000
+#endif
+
+#if CUDNN_VERSION >= 7201
+// clang-format off
+#define CUDNN_ROUTINE_EACH_V7210(__macro)                     \
+  __macro(cudnnCreateRNNDataDescriptor)                       \
+  __macro(cudnnDestroyRNNDataDescriptor)                      \
+  __macro(cudnnRNNBackwardDataEx)                             \
+  __macro(cudnnRNNBackwardWeightsEx)                          \
+  __macro(cudnnRNNForwardInferenceEx)                         \
+  __macro(cudnnRNNForwardTrainingEx)                          \
+  __macro(cudnnSetRNNDataDescriptor)                          \
+  __macro(cudnnSetRNNPaddingMode)
+
+// clang-format on
+
+CUDNN_ROUTINE_EACH_V7210(STREAM_EXECUTOR_CUDNN_WRAP)
+#undef CUDNN_ROUTINE_EACH_V7210
+#endif
 
 // Wraps a cuDNN handle and provides access to it through CudnnHandle
 // instances, which also locks a mutex, acquires the CUDA context, and sets
@@ -1188,14 +1341,21 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
     for (int region = 0; region < region_count_per_layer; region++) {
       for (int type = 0; type < 2; type++) {
         void* offset = nullptr;
-        RETURN_IF_CUDNN_ERROR((type == 0 ? cudnnGetRNNLinLayerMatrixParams
-                                         : cudnnGetRNNLinLayerBiasParams)(
-            /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
-            /*layer=*/layer, /*xDesc=*/input_desc.get(),
-            /*wDesc=*/filter_desc.get(),
-            /*w=*/nullptr, /*linLayerID=*/region,
-            /*linLayerMatDesc=*/region_desc_handle.get(),
-            /*linLayerMat or linLayerBias=*/&offset));
+        RETURN_IF_CUDNN_ERROR(
+            type == 0 ? cudnnGetRNNLinLayerMatrixParams(
+                            /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
+                            /*layer=*/layer, /*xDesc=*/input_desc.get(),
+                            /*wDesc=*/filter_desc.get(),
+                            /*w=*/nullptr, /*linLayerID=*/region,
+                            /*linLayerMatDesc=*/region_desc_handle.get(),
+                            /*linLayerMat or linLayerBias=*/&offset)
+                      : cudnnGetRNNLinLayerBiasParams(
+                            /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
+                            /*layer=*/layer, /*xDesc=*/input_desc.get(),
+                            /*wDesc=*/filter_desc.get(),
+                            /*w=*/nullptr, /*linLayerID=*/region,
+                            /*linLayerMatDesc=*/region_desc_handle.get(),
+                            /*linLayerMat or linLayerBias=*/&offset));
         int dims[] = {1, 1, 1};
         cudnnDataType_t data_type;
         cudnnTensorFormat_t tensor_format;
@@ -1545,7 +1705,8 @@ port::Status CudnnSupport::DoRnnForwardImpl(
           /*y=*/output_data->opaque(),
           /*hyDesc=*/output_h_desc.handle(), /*hy=*/output_h_data->opaque(),
           /*cyDesc=*/output_c_desc.handle(), /*cy=*/output_c_data->opaque(),
-          NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+          nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+          nullptr,
           /*workspace=*/workspace.opaque(),
           /*workSpaceSizeInBytes=*/workspace.size()));
 #else
@@ -1581,7 +1742,8 @@ port::Status CudnnSupport::DoRnnForwardImpl(
           /*y=*/output_data->opaque(),
           /*hyDesc=*/output_h_desc.handle(), /*hy=*/output_h_data->opaque(),
           /*cyDesc=*/output_c_desc.handle(), /*cy=*/output_c_data->opaque(),
-          NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+          nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+          nullptr,
           /*workspace=*/workspace.opaque(),
           /*workSpaceSizeInBytes=*/workspace.size(),
           /*reserveSpace=*/reserve_space.opaque(),
@@ -1679,7 +1841,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
         /*yDesc=*/output_desc.data_handle(), /*y=*/output_data.opaque(),
         /*dyDesc=*/output_desc.data_handle(),
-        /*dy=*/output_backprop_data.opaque(), NULL, NULL,
+        /*dy=*/output_backprop_data.opaque(), nullptr, nullptr,
         /*dhyDesc=*/output_h_desc.handle(),
         /*dhy=*/output_h_backprop_data.opaque(),
         /*dcyDesc=*/output_c_desc.handle(),
@@ -1692,7 +1854,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
         /*dhxDesc=*/input_h_desc.handle(),
         /*dhx=*/input_h_backprop_data->opaque(),
         /*dcxDesc=*/input_c_desc.handle(),
-        /*dcx=*/input_c_backprop_data->opaque(), NULL, NULL,
+        /*dcx=*/input_c_backprop_data->opaque(), nullptr, nullptr,
         /*workspace=*/workspace.opaque(),
         /*workSpaceSizeInBytes=*/workspace.size(),
         /*reserveSpace=*/reserve_space_data->opaque(),
@@ -2569,6 +2731,65 @@ bool ShouldIncludeWinogradNonfusedAlgo(
 }
 #endif
 
+template <class ElementType>
+dnn::ConvolutionProto GenerateConvProto(
+    dnn::ConvolutionKind kind, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor, dnn::AlgorithmDesc algorithm,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, double conv_scale,
+    double side_value_scale, dnn::DataType acc_type,
+    dnn::ActivationMode activation) {
+  dnn::ConvolutionProto conv_config;
+  auto element_type = dnn::ToDataType<ElementType>::value;
+
+  conv_config.set_kind(kind);
+  *conv_config.mutable_input() = input_descriptor.ToProto(element_type);
+  *conv_config.mutable_filter() = filter_descriptor.ToProto(element_type);
+  *conv_config.mutable_output() = output_descriptor.ToProto(element_type);
+  *conv_config.mutable_algorithm() = algorithm.ToProto();
+  *conv_config.mutable_conv_desc() = convolution_descriptor.ToProto();
+  conv_config.mutable_conv_desc()->set_compute_mode(acc_type);
+  conv_config.set_conv_scale(conv_scale);
+  conv_config.set_side_value_scale(side_value_scale);
+  conv_config.set_activation(activation);
+  return conv_config;
+}
+
+void LogCudaProto(const dnn::ConvolutionProto& conv, float profile_time_ms,
+                  StreamExecutor* stream_executor) {
+  {
+    // For rolling-out, temporarily cap the number of logs per process.
+    // TODO(timshen): remove it.
+    static int count_down = 200;
+    if (count_down == 0) {
+      return;
+    }
+    count_down--;
+  }
+
+  ConvLogEntry conv_log;
+  *conv_log.mutable_convolution() = conv;
+  conv_log.set_profile_time_ms(profile_time_ms);
+
+  auto info = conv_log.mutable_cuda_info();
+  int cc_major, cc_minor;
+  stream_executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                  &cc_minor);
+  info->mutable_compute_capability()->set_major(cc_major);
+  info->mutable_compute_capability()->set_minor(cc_minor);
+
+  if (auto* dnn = stream_executor->AsDnn()) {
+    port::StatusOr<dnn::VersionInfo> version_or = dnn->GetVersion();
+    if (version_or.ok()) {
+      const auto& version = version_or.ValueOrDie();
+      info->mutable_cudnn_version()->set_major(version.major_version());
+      info->mutable_cudnn_version()->set_minor(version.minor_version());
+      info->mutable_cudnn_version()->set_patch(version.patch());
+    }
+  }
+  tensorflow::Logger::Singleton()->LogProto(conv_log);
+}
+
 }  // namespace
 
 template <class T>
@@ -2673,6 +2894,13 @@ port::Status CudnnSupport::DoConvolveImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
+
+    LogCudaProto(
+        GenerateConvProto<T>(dnn::ConvolutionKind::FORWARD, input_descriptor,
+                             filter_descriptor, output_descriptor, algo_desc,
+                             convolution_descriptor, dalpha, dbeta,
+                             accumulator_type, dnn::ActivationMode::kNone),
+        output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
@@ -2790,6 +3018,13 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
+
+    LogCudaProto(GenerateConvProto<ElementType>(
+                     dnn::ConvolutionKind::FORWARD, conv_input_descriptor,
+                     filter_descriptor, output_descriptor, algo_desc,
+                     convolution_descriptor, conv_input_scale, side_input_scale,
+                     accumulator_type, activation_mode),
+                 output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
@@ -3350,6 +3585,13 @@ port::Status CudnnSupport::DoConvolveBackwardDataImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
+
+    LogCudaProto(GenerateConvProto<T>(
+                     dnn::ConvolutionKind::BACKWARD_DATA, input_descriptor,
+                     filter_descriptor, output_descriptor, algo_desc,
+                     convolution_descriptor, dalpha, dbeta, accumulator_type,
+                     dnn::ActivationMode::kNone),
+                 output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();
@@ -3548,6 +3790,13 @@ port::Status CudnnSupport::DoConvolveBackwardFilterImpl(
     output_profile_result->set_elapsed_time_in_ms(
         timer->GetElapsedMilliseconds());
     output_profile_result->set_scratch_size(scratch.size());
+
+    LogCudaProto(GenerateConvProto<T>(
+                     dnn::ConvolutionKind::BACKWARD_FILTER, input_descriptor,
+                     filter_descriptor, output_descriptor, algo_desc,
+                     convolution_descriptor, dalpha, dbeta, accumulator_type,
+                     dnn::ActivationMode::kNone),
+                 output_profile_result->elapsed_time_in_ms(), stream->parent());
   }
 
   return port::Status::OK();

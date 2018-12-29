@@ -129,85 +129,87 @@ class LSTMOpModel : public SingleOpModel {
     BuildInterpreter(input_shapes);
   }
 
-  void SetInputToInputWeights(std::vector<float> f) {
+  void SetInputToInputWeights(const std::vector<float>& f) {
     PopulateTensor(input_to_input_weights_, f);
   }
 
-  void SetInputToForgetWeights(std::vector<float> f) {
+  void SetInputToForgetWeights(const std::vector<float>& f) {
     PopulateTensor(input_to_forget_weights_, f);
   }
 
-  void SetInputToCellWeights(std::vector<float> f) {
+  void SetInputToCellWeights(const std::vector<float>& f) {
     PopulateTensor(input_to_cell_weights_, f);
   }
 
-  void SetInputToOutputWeights(std::vector<float> f) {
+  void SetInputToOutputWeights(const std::vector<float>& f) {
     PopulateTensor(input_to_output_weights_, f);
   }
 
-  void SetRecurrentToInputWeights(std::vector<float> f) {
+  void SetRecurrentToInputWeights(const std::vector<float>& f) {
     PopulateTensor(recurrent_to_input_weights_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::vector<float> f) {
+  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
     PopulateTensor(recurrent_to_forget_weights_, f);
   }
 
-  void SetRecurrentToCellWeights(std::vector<float> f) {
+  void SetRecurrentToCellWeights(const std::vector<float>& f) {
     PopulateTensor(recurrent_to_cell_weights_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::vector<float> f) {
+  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
     PopulateTensor(recurrent_to_output_weights_, f);
   }
 
-  void SetCellToInputWeights(std::vector<float> f) {
+  void SetCellToInputWeights(const std::vector<float>& f) {
     PopulateTensor(cell_to_input_weights_, f);
   }
 
-  void SetCellToForgetWeights(std::vector<float> f) {
+  void SetCellToForgetWeights(const std::vector<float>& f) {
     PopulateTensor(cell_to_forget_weights_, f);
   }
 
-  void SetCellToOutputWeights(std::vector<float> f) {
+  void SetCellToOutputWeights(const std::vector<float>& f) {
     PopulateTensor(cell_to_output_weights_, f);
   }
 
-  void SetInputLayerNormCoefficients(std::vector<float> f) {
+  void SetInputLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(input_layer_norm_coefficients_, f);
   }
 
-  void SetForgetLayerNormCoefficients(std::vector<float> f) {
+  void SetForgetLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(forget_layer_norm_coefficients_, f);
   }
 
-  void SetCellLayerNormCoefficients(std::vector<float> f) {
+  void SetCellLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(cell_layer_norm_coefficients_, f);
   }
 
-  void SetOutputLayerNormCoefficients(std::vector<float> f) {
+  void SetOutputLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(output_layer_norm_coefficients_, f);
   }
 
-  void SetInputGateBias(std::vector<float> f) {
+  void SetInputGateBias(const std::vector<float>& f) {
     PopulateTensor(input_gate_bias_, f);
   }
 
-  void SetForgetGateBias(std::vector<float> f) {
+  void SetForgetGateBias(const std::vector<float>& f) {
     PopulateTensor(forget_gate_bias_, f);
   }
 
-  void SetCellBias(std::vector<float> f) { PopulateTensor(cell_bias_, f); }
+  void SetCellBias(const std::vector<float>& f) {
+    PopulateTensor(cell_bias_, f);
+  }
 
-  void SetOutputGateBias(std::vector<float> f) {
+  void SetOutputGateBias(const std::vector<float>& f) {
     PopulateTensor(output_gate_bias_, f);
   }
 
-  void SetProjectionWeights(std::vector<float> f) {
+  void SetProjectionWeights(const std::vector<float>& f) {
     PopulateTensor(projection_weights_, f);
   }
 
-  void SetProjectionBias(std::vector<float> f) {
+  void SetProjectionBias(const std::vector<float>& f) {
     PopulateTensor(projection_bias_, f);
   }
 
@@ -280,7 +282,7 @@ class HybridLSTMOpModel : public LSTMOpModel {
 
   TensorType tensor_type_;
 
-  void SetWeights(int weights_idx, std::vector<float> f) {
+  void SetWeights(int weights_idx, const std::vector<float>& f) {
     if (tensor_type_ == TensorType_UINT8) {
       SymmetricQuantizeAndPopulate(weights_idx, f);
     } else {
@@ -288,51 +290,51 @@ class HybridLSTMOpModel : public LSTMOpModel {
     }
   }
 
-  void SetInputToInputWeights(std::vector<float> f) {
+  void SetInputToInputWeights(const std::vector<float>& f) {
     SetWeights(input_to_input_weights_, f);
   }
 
-  void SetInputToForgetWeights(std::vector<float> f) {
+  void SetInputToForgetWeights(const std::vector<float>& f) {
     SetWeights(input_to_forget_weights_, f);
   }
 
-  void SetInputToCellWeights(std::vector<float> f) {
+  void SetInputToCellWeights(const std::vector<float>& f) {
     SetWeights(input_to_cell_weights_, f);
   }
 
-  void SetInputToOutputWeights(std::vector<float> f) {
+  void SetInputToOutputWeights(const std::vector<float>& f) {
     SetWeights(input_to_output_weights_, f);
   }
 
-  void SetRecurrentToInputWeights(std::vector<float> f) {
+  void SetRecurrentToInputWeights(const std::vector<float>& f) {
     SetWeights(recurrent_to_input_weights_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::vector<float> f) {
+  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
     SetWeights(recurrent_to_forget_weights_, f);
   }
 
-  void SetRecurrentToCellWeights(std::vector<float> f) {
+  void SetRecurrentToCellWeights(const std::vector<float>& f) {
     SetWeights(recurrent_to_cell_weights_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::vector<float> f) {
+  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
     SetWeights(recurrent_to_output_weights_, f);
   }
 
-  void SetCellToInputWeights(std::vector<float> f) {
+  void SetCellToInputWeights(const std::vector<float>& f) {
     SetWeights(cell_to_input_weights_, f);
   }
 
-  void SetCellToForgetWeights(std::vector<float> f) {
+  void SetCellToForgetWeights(const std::vector<float>& f) {
     SetWeights(cell_to_forget_weights_, f);
   }
 
-  void SetCellToOutputWeights(std::vector<float> f) {
+  void SetCellToOutputWeights(const std::vector<float>& f) {
     SetWeights(cell_to_output_weights_, f);
   }
 
-  void SetProjectionWeights(std::vector<float> f) {
+  void SetProjectionWeights(const std::vector<float>& f) {
     SetWeights(projection_weights_, f);
   }
 };
@@ -1658,7 +1660,7 @@ class HybridLayerNormLSTMOpModel : public LayerNormLSTMOpModel {
 
   TensorType tensor_type_;
 
-  void SetWeights(int weights_idx, std::vector<float> f) {
+  void SetWeights(int weights_idx, const std::vector<float>& f) {
     if (tensor_type_ == TensorType_UINT8) {
       SymmetricQuantizeAndPopulate(weights_idx, f);
     } else {
@@ -1666,67 +1668,67 @@ class HybridLayerNormLSTMOpModel : public LayerNormLSTMOpModel {
     }
   }
 
-  void SetInputToInputWeights(std::vector<float> f) {
+  void SetInputToInputWeights(const std::vector<float>& f) {
     SetWeights(input_to_input_weights_, f);
   }
 
-  void SetInputToForgetWeights(std::vector<float> f) {
+  void SetInputToForgetWeights(const std::vector<float>& f) {
     SetWeights(input_to_forget_weights_, f);
   }
 
-  void SetInputToCellWeights(std::vector<float> f) {
+  void SetInputToCellWeights(const std::vector<float>& f) {
     SetWeights(input_to_cell_weights_, f);
   }
 
-  void SetInputToOutputWeights(std::vector<float> f) {
+  void SetInputToOutputWeights(const std::vector<float>& f) {
     SetWeights(input_to_output_weights_, f);
   }
 
-  void SetRecurrentToInputWeights(std::vector<float> f) {
+  void SetRecurrentToInputWeights(const std::vector<float>& f) {
     SetWeights(recurrent_to_input_weights_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::vector<float> f) {
+  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
     SetWeights(recurrent_to_forget_weights_, f);
   }
 
-  void SetRecurrentToCellWeights(std::vector<float> f) {
+  void SetRecurrentToCellWeights(const std::vector<float>& f) {
     SetWeights(recurrent_to_cell_weights_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::vector<float> f) {
+  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
     SetWeights(recurrent_to_output_weights_, f);
   }
 
-  void SetCellToInputWeights(std::vector<float> f) {
+  void SetCellToInputWeights(const std::vector<float>& f) {
     SetWeights(cell_to_input_weights_, f);
   }
 
-  void SetCellToForgetWeights(std::vector<float> f) {
+  void SetCellToForgetWeights(const std::vector<float>& f) {
     SetWeights(cell_to_forget_weights_, f);
   }
 
-  void SetCellToOutputWeights(std::vector<float> f) {
+  void SetCellToOutputWeights(const std::vector<float>& f) {
     SetWeights(cell_to_output_weights_, f);
   }
 
-  void SetInputLayerNormCoefficients(std::vector<float> f) {
+  void SetInputLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(input_layer_norm_coefficients_, f);
   }
 
-  void SetForgetLayerNormCoefficients(std::vector<float> f) {
+  void SetForgetLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(forget_layer_norm_coefficients_, f);
   }
 
-  void SetCellLayerNormCoefficients(std::vector<float> f) {
+  void SetCellLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(cell_layer_norm_coefficients_, f);
   }
 
-  void SetOutputLayerNormCoefficients(std::vector<float> f) {
+  void SetOutputLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(output_layer_norm_coefficients_, f);
   }
 
-  void SetProjectionWeights(std::vector<float> f) {
+  void SetProjectionWeights(const std::vector<float>& f) {
     SetWeights(projection_weights_, f);
   }
 };

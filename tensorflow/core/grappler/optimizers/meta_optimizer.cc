@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -624,6 +626,80 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
     *optimized_graph = item.graph;
   }
   return status;
+}
+
+Status OptimizeGraph(std::vector<string> ret_node_names,
+                     FunctionLibraryDefinition* flib,
+                     const DeviceSet& device_set, Device* cpu_device,
+                     const ConfigProto& config_proto,
+                     std::unique_ptr<tensorflow::Graph>* g) {
+  if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
+    return Status::OK();
+  }
+
+  tensorflow::grappler::GrapplerItem item;
+
+  // Add all available devices so that inlined function can be placed.
+  for (const Device* d : device_set.devices()) {
+    Status added_device = item.AddDevice(d->name());
+    if (!added_device.ok()) VLOG(3) << added_device.error_message();
+  }
+
+  // Add fetches so that the graph can be pruned.
+  item.fetch.swap(ret_node_names);
+
+  (*g)->ToGraphDef(&item.graph);
+
+  if (flib) {
+    *item.graph.mutable_library() = flib->ToProto();
+  }
+
+  tensorflow::GraphDef out_graph;
+
+  tensorflow::grappler::VirtualCluster cluster(&device_set);
+
+  // TODO(nareshmodi): Consider adding and using the more generic GraphOptions
+  // proto (which also contain the OptimizerOptions).
+  TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
+      item, config_proto, cpu_device, &cluster, &out_graph));
+
+  std::unique_ptr<tensorflow::Graph> optimized_graph(
+      new tensorflow::Graph(OpRegistry::Global()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(GraphConstructorOptions(),
+                                            out_graph, optimized_graph.get()));
+
+  // Copy optimized functions back to the overlay lib.
+  if (flib) {
+    for (const FunctionDef& fdef : out_graph.library().function()) {
+      const string& func_name = fdef.signature().name();
+      if (flib->Contains(func_name)) {
+        TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+      } else {
+        TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
+      }
+    }
+  }
+
+  *g = std::move(optimized_graph);
+
+  // The graph conversion sets the requested device names but not the
+  // assigned device names. However, since at this point the graph is
+  // placed TF expects an assigned device name for every node. Therefore
+  // we copy the requested device into the assigned device field.
+  for (Node* node : (*g)->nodes()) {
+    if (node->IsOp() && node->assigned_device_name().empty()) {
+      if (node->requested_device().empty()) {
+        return errors::Internal(
+            "Either placer did not place the node or Grappler did not "
+            "copy the assigned device. Contact Grappler team since latter "
+            "is more likely. Node=",
+            node->name(), " Graph: ", (*g)->ToGraphDefDebug().DebugString());
+      }
+      node->set_assigned_device_name(node->requested_device());
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace grappler

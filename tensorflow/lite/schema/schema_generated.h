@@ -268,6 +268,9 @@ struct SquaredDifferenceOptionsT;
 struct MirrorPadOptions;
 struct MirrorPadOptionsT;
 
+struct UniqueOptions;
+struct UniqueOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -520,11 +523,12 @@ enum BuiltinOperator {
   BuiltinOperator_MIRROR_PAD = 100,
   BuiltinOperator_ABS = 101,
   BuiltinOperator_SPLIT_V = 102,
+  BuiltinOperator_UNIQUE = 103,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SPLIT_V
+  BuiltinOperator_MAX = BuiltinOperator_UNIQUE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[102] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[103] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -627,7 +631,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[102] {
     BuiltinOperator_SQUARED_DIFFERENCE,
     BuiltinOperator_MIRROR_PAD,
     BuiltinOperator_ABS,
-    BuiltinOperator_SPLIT_V
+    BuiltinOperator_SPLIT_V,
+    BuiltinOperator_UNIQUE
   };
   return values;
 }
@@ -737,6 +742,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "MIRROR_PAD",
     "ABS",
     "SPLIT_V",
+    "UNIQUE",
     nullptr
   };
   return names;
@@ -828,11 +834,12 @@ enum BuiltinOptions {
   BuiltinOptions_MirrorPadOptions = 77,
   BuiltinOptions_AbsOptions = 78,
   BuiltinOptions_SplitVOptions = 79,
+  BuiltinOptions_UniqueOptions = 80,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_SplitVOptions
+  BuiltinOptions_MAX = BuiltinOptions_UniqueOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[80] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[81] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -913,7 +920,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[80] {
     BuiltinOptions_SquaredDifferenceOptions,
     BuiltinOptions_MirrorPadOptions,
     BuiltinOptions_AbsOptions,
-    BuiltinOptions_SplitVOptions
+    BuiltinOptions_SplitVOptions,
+    BuiltinOptions_UniqueOptions
   };
   return values;
 }
@@ -1000,6 +1008,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "MirrorPadOptions",
     "AbsOptions",
     "SplitVOptions",
+    "UniqueOptions",
     nullptr
   };
   return names;
@@ -1328,6 +1337,10 @@ template<> struct BuiltinOptionsTraits<AbsOptions> {
 
 template<> struct BuiltinOptionsTraits<SplitVOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_SplitVOptions;
+};
+
+template<> struct BuiltinOptionsTraits<UniqueOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_UniqueOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1992,6 +2005,14 @@ struct BuiltinOptionsUnion {
   const SplitVOptionsT *AsSplitVOptions() const {
     return type == BuiltinOptions_SplitVOptions ?
       reinterpret_cast<const SplitVOptionsT *>(value) : nullptr;
+  }
+  UniqueOptionsT *AsUniqueOptions() {
+    return type == BuiltinOptions_UniqueOptions ?
+      reinterpret_cast<UniqueOptionsT *>(value) : nullptr;
+  }
+  const UniqueOptionsT *AsUniqueOptions() const {
+    return type == BuiltinOptions_UniqueOptions ?
+      reinterpret_cast<const UniqueOptionsT *>(value) : nullptr;
   }
 };
 
@@ -7021,6 +7042,60 @@ inline flatbuffers::Offset<MirrorPadOptions> CreateMirrorPadOptions(
 
 flatbuffers::Offset<MirrorPadOptions> CreateMirrorPadOptions(flatbuffers::FlatBufferBuilder &_fbb, const MirrorPadOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct UniqueOptionsT : public flatbuffers::NativeTable {
+  typedef UniqueOptions TableType;
+  TensorType idx_out_type;
+  UniqueOptionsT()
+      : idx_out_type(TensorType_INT32) {
+  }
+};
+
+struct UniqueOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef UniqueOptionsT NativeTableType;
+  enum {
+    VT_IDX_OUT_TYPE = 4
+  };
+  TensorType idx_out_type() const {
+    return static_cast<TensorType>(GetField<int8_t>(VT_IDX_OUT_TYPE, 2));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_IDX_OUT_TYPE) &&
+           verifier.EndTable();
+  }
+  UniqueOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(UniqueOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<UniqueOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const UniqueOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct UniqueOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_idx_out_type(TensorType idx_out_type) {
+    fbb_.AddElement<int8_t>(UniqueOptions::VT_IDX_OUT_TYPE, static_cast<int8_t>(idx_out_type), 2);
+  }
+  explicit UniqueOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  UniqueOptionsBuilder &operator=(const UniqueOptionsBuilder &);
+  flatbuffers::Offset<UniqueOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<UniqueOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<UniqueOptions> CreateUniqueOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    TensorType idx_out_type = TensorType_INT32) {
+  UniqueOptionsBuilder builder_(_fbb);
+  builder_.add_idx_out_type(idx_out_type);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<UniqueOptions> CreateUniqueOptions(flatbuffers::FlatBufferBuilder &_fbb, const UniqueOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -7391,6 +7466,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const SplitVOptions *builtin_options_as_SplitVOptions() const {
     return builtin_options_type() == BuiltinOptions_SplitVOptions ? static_cast<const SplitVOptions *>(builtin_options()) : nullptr;
   }
+  const UniqueOptions *builtin_options_as_UniqueOptions() const {
+    return builtin_options_type() == BuiltinOptions_UniqueOptions ? static_cast<const UniqueOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -7736,6 +7814,10 @@ template<> inline const AbsOptions *Operator::builtin_options_as<AbsOptions>() c
 
 template<> inline const SplitVOptions *Operator::builtin_options_as<SplitVOptions>() const {
   return builtin_options_as_SplitVOptions();
+}
+
+template<> inline const UniqueOptions *Operator::builtin_options_as<UniqueOptions>() const {
+  return builtin_options_as_UniqueOptions();
 }
 
 struct OperatorBuilder {
@@ -10356,6 +10438,32 @@ inline flatbuffers::Offset<MirrorPadOptions> CreateMirrorPadOptions(flatbuffers:
       _mode);
 }
 
+inline UniqueOptionsT *UniqueOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new UniqueOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void UniqueOptions::UnPackTo(UniqueOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = idx_out_type(); _o->idx_out_type = _e; };
+}
+
+inline flatbuffers::Offset<UniqueOptions> UniqueOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const UniqueOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUniqueOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<UniqueOptions> CreateUniqueOptions(flatbuffers::FlatBufferBuilder &_fbb, const UniqueOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const UniqueOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _idx_out_type = _o->idx_out_type;
+  return tflite::CreateUniqueOptions(
+      _fbb,
+      _idx_out_type);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -10930,6 +11038,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const SplitVOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_UniqueOptions: {
+      auto ptr = reinterpret_cast<const UniqueOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -11264,6 +11376,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const SplitVOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_UniqueOptions: {
+      auto ptr = reinterpret_cast<const UniqueOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -11586,6 +11702,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const SplitVOptionsT *>(value);
       return CreateSplitVOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_UniqueOptions: {
+      auto ptr = reinterpret_cast<const UniqueOptionsT *>(value);
+      return CreateUniqueOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -11906,6 +12026,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_SplitVOptions: {
       value = new SplitVOptionsT(*reinterpret_cast<SplitVOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_UniqueOptions: {
+      value = new UniqueOptionsT(*reinterpret_cast<UniqueOptionsT *>(u.value));
       break;
     }
     default:
@@ -12307,6 +12431,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_SplitVOptions: {
       auto ptr = reinterpret_cast<SplitVOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_UniqueOptions: {
+      auto ptr = reinterpret_cast<UniqueOptionsT *>(value);
       delete ptr;
       break;
     }
