@@ -108,6 +108,13 @@ class DerivedAttr<code ReturnType, code Body> : Attr<DerivedAttrBody> {
   code body = Body;
 }
 
+// The values for const F32 attributes are set as strings as floating point
+// values can't be provided directly in TableGen.
+class ConstF32Attr<string val> {
+  Type type = F32;
+  string value = val;
+}
+
 //===----------------------------------------------------------------------===//
 // Op Properties
 //===----------------------------------------------------------------------===//
