@@ -1538,7 +1538,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           }
 
           Literal computed_result =
-              embedded_evaluator.Evaluate<Literal>(*computation, arg_literals)
+              embedded_evaluator.Evaluate(*computation, arg_literals)
                   .ConsumeValueOrDie();
           // Clear visit states so that the we can use the evaluate again on
           // the same computation.
@@ -1799,7 +1799,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                              [](Literal& literal) { return &literal; });
 
               TF_ASSIGN_OR_RETURN(Literal computed_result,
-                                  embedded_evaluator.Evaluate<const Literal*>(
+                                  embedded_evaluator.Evaluate(
                                       *function, embedded_operands_ptrs));
               // Clear visit states so that we can use the evaluator again on
               // the same computation.
@@ -1915,8 +1915,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             selected_val_literal.Set({}, *selected_val);
             Literal computed_result =
                 embedded_evaluator
-                    .Evaluate<const Literal*>(
-                        *select, {&selected_val_literal, &curr_val_literal})
+                    .Evaluate(*select,
+                              {&selected_val_literal, &curr_val_literal})
                     .ConsumeValueOrDie();
             bool selected = !computed_result.Get<bool>({});
             if (selected) {
@@ -1937,9 +1937,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               scattered_literal.Set({}, scattered);
               Literal computed_result =
                   embedded_evaluator
-                      .Evaluate<const Literal*>(
-                          *scatter,
-                          {&source_literal_scatter, &scattered_literal})
+                      .Evaluate(*scatter,
+                                {&source_literal_scatter, &scattered_literal})
                       .ConsumeValueOrDie();
               result.Set(operand_index, computed_result.Get<ReturnT>({}));
               // Clear visit states so that the we can use the evaluator again
@@ -2013,8 +2012,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                     LiteralUtil::CreateR0<ReturnT>(result_val);
                 Literal computed_result =
                     embedded_evaluator
-                        .Evaluate<const Literal*>(
-                            *function, {&result_val_literal, &curr_val_literal})
+                        .Evaluate(*function,
+                                  {&result_val_literal, &curr_val_literal})
                         .ConsumeValueOrDie();
 
                 // Clear visit states so that the we can use the evaluate again
@@ -2376,9 +2375,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           LiteralUtil::CreateR0<ReturnT>(updates.Get<ReturnT>(update_index));
       Literal updated_result =
           embedded_evaluator
-              .Evaluate<const Literal*>(
-                  *scatter->to_apply(),
-                  {&result_value_literal, &update_value_literal})
+              .Evaluate(*scatter->to_apply(),
+                        {&result_value_literal, &update_value_literal})
               .ConsumeValueOrDie();
       // Clear visit states so that the we can use the evaluate again on the
       // same computation.

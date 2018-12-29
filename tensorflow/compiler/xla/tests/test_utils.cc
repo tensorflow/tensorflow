@@ -394,7 +394,11 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (!index_space.empty()) {
-    return MakeRandomIndex(index_space, engine);
+    // constrained_uses looks through bitcasts, so param and indexed_space may
+    // not have the same shape.  (For example, param might be an R0 while
+    // indexed_space might have size 1.)
+    return MakeRandomIndex(index_space, engine)
+        .Reshape(param.shape().dimensions());
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:

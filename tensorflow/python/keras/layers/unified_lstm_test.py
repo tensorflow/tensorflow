@@ -682,7 +682,6 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
 
 class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_v1_only('b/121278392')
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_dropout_LSTM(self):
     num_samples = 2
@@ -698,7 +697,6 @@ class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
         },
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @test_util.run_v1_only('b/120941292')
   @test_util.run_in_graph_and_eager_modes(config=_config)
   def test_statefulness_LSTM(self):
     num_samples = 2

@@ -8,7 +8,7 @@ explicitly model the distribution and without writing an explicit loss. For
 example, the generator could learn to draw samples from the distribution of
 natural images. For more details on this technique, see
 ['Generative Adversarial Networks'](https://arxiv.org/abs/1406.2661) by
-Goodfellow et al. See [tensorflow/models](https://github.com/tensorflow/models/tree/master/research/gan/) for examples, and [this tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb) for an
+Goodfellow et al. See [tensorflow/models](https://github.com/tensorflow/models/tree/master/research/gan/) for examples, and [this tutorial](http://https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb) for an
 introduction.
 
 #### Usage
@@ -56,10 +56,11 @@ These include the following main pieces (explained in detail below).
     generative models.
 
 *   [examples](https://github.com/tensorflow/models/tree/master/research/gan/)
-    and [tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb): See examples of how to use TFGAN to make
-    GAN training easier, or use the more complicated examples to jumpstart your
-    own project. These include unconditional and conditional GANs, InfoGANs,
-    adversarial losses on existing networks, and image-to-image translation.
+    and [tutorial](http://https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb): See examples of how to use TFGAN
+    to make GAN training easier, or use the more complicated examples to
+    jumpstart your own project. These include unconditional and conditional
+    GANs, InfoGANs, adversarial losses on existing networks, and image-to-image
+    translation.
 
 ## Training a GAN model
 

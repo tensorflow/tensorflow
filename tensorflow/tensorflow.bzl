@@ -1793,6 +1793,7 @@ def tf_py_test(
         tags = [],
         shard_count = 1,
         additional_deps = [],
+        additional_visibility = [],
         kernels = [],
         flaky = 0,
         xla_enabled = False,
@@ -1813,7 +1814,7 @@ def tf_py_test(
         shard_count = shard_count,
         srcs_version = "PY2AND3",
         tags = tags,
-        visibility = [clean_dep("//tensorflow:internal")],
+        visibility = [clean_dep("//tensorflow:internal")] + additional_visibility,
         deps = [
             clean_dep("//tensorflow/python:extra_py_tests_deps"),
             clean_dep("//tensorflow/python:gradient_checker"),

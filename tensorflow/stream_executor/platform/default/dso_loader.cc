@@ -16,8 +16,6 @@ limitations under the License.
 // TODO(jhen): Replace hardcoded, platform specific path strings in GetXXXPath()
 // with a function in e.g. cuda.h.
 
-#include "tensorflow/stream_executor/dso_loader.h"
-
 #include <limits.h>
 #include <stdlib.h>
 #include <initializer_list>
@@ -30,6 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -89,10 +88,13 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 #if defined(__APPLE__)
   // On Mac OS X, CUDA sometimes installs libcuda.dylib instead of
   // libcuda.1.dylib.
-  return status.ok() ? status : GetDsoHandle(
-     FindDsoPath(port::Env::Default()->FormatLibraryFileName("cuda", ""),
-                 GetCudaDriverLibraryPath()),
-     dso_handle);
+  return status.ok()
+             ? status
+             : GetDsoHandle(
+                   FindDsoPath(
+                       port::Env::Default()->FormatLibraryFileName("cuda", ""),
+                       GetCudaDriverLibraryPath()),
+                   dso_handle);
 #else
   return status;
 #endif
@@ -144,7 +146,7 @@ static mutex& GetRpathMutex() {
               << ". LD_LIBRARY_PATH: "
               << (ld_library_path != nullptr ? ld_library_path : "")
 #endif
-    ;
+        ;
     return port::Status(port::error::FAILED_PRECONDITION,
                         absl::StrCat("could not dlopen DSO: ", path,
                                      "; dlerror: ", s.error_message()));
