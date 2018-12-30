@@ -367,19 +367,6 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForInst *forInst,
   return true;
 }
 
-/// Returns the nesting depth of this instruction, i.e., the number of loops
-/// surrounding this instruction.
-// TODO(bondhugula): move this to utilities later.
-static unsigned getNestingDepth(const Instruction &inst) {
-  const Instruction *currInst = &inst;
-  unsigned depth = 0;
-  while ((currInst = currInst->getParentInst())) {
-    if (isa<ForInst>(currInst))
-      depth++;
-  }
-  return depth;
-}
-
 // TODO(bondhugula): make this run on a Block instead of a 'for' inst.
 void DmaGeneration::runOnForInst(ForInst *forInst) {
   // For now (for testing purposes), we'll run this on the outermost among 'for'

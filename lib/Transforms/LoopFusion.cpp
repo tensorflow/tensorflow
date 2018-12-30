@@ -80,29 +80,6 @@ char LoopFusion::passID = 0;
 
 FunctionPass *mlir::createLoopFusionPass() { return new LoopFusion; }
 
-static void getSingleMemRefAccess(OperationInst *loadOrStoreOpInst,
-                                  MemRefAccess *access) {
-  if (auto loadOp = loadOrStoreOpInst->dyn_cast<LoadOp>()) {
-    access->memref = loadOp->getMemRef();
-    access->opInst = loadOrStoreOpInst;
-    auto loadMemrefType = loadOp->getMemRefType();
-    access->indices.reserve(loadMemrefType.getRank());
-    for (auto *index : loadOp->getIndices()) {
-      access->indices.push_back(index);
-    }
-  } else {
-    assert(loadOrStoreOpInst->isa<StoreOp>());
-    auto storeOp = loadOrStoreOpInst->dyn_cast<StoreOp>();
-    access->opInst = loadOrStoreOpInst;
-    access->memref = storeOp->getMemRef();
-    auto storeMemrefType = storeOp->getMemRefType();
-    access->indices.reserve(storeMemrefType.getRank());
-    for (auto *index : storeOp->getIndices()) {
-      access->indices.push_back(index);
-    }
-  }
-}
-
 // FusionCandidate encapsulates source and destination memref access within
 // loop nests which are candidates for loop fusion.
 struct FusionCandidate {
@@ -116,22 +93,10 @@ static FusionCandidate buildFusionCandidate(OperationInst *srcStoreOpInst,
                                             OperationInst *dstLoadOpInst) {
   FusionCandidate candidate;
   // Get store access for src loop nest.
-  getSingleMemRefAccess(srcStoreOpInst, &candidate.srcAccess);
+  getMemRefAccess(srcStoreOpInst, &candidate.srcAccess);
   // Get load access for dst loop nest.
-  getSingleMemRefAccess(dstLoadOpInst, &candidate.dstAccess);
+  getMemRefAccess(dstLoadOpInst, &candidate.dstAccess);
   return candidate;
-}
-
-// Returns the loop depth of the loop nest surrounding 'opInst'.
-static unsigned getLoopDepth(OperationInst *opInst) {
-  unsigned loopDepth = 0;
-  auto *currInst = opInst->getParentInst();
-  ForInst *currForInst;
-  while (currInst && (currForInst = dyn_cast<ForInst>(currInst))) {
-    ++loopDepth;
-    currInst = currInst->getParentInst();
-  }
-  return loopDepth;
 }
 
 namespace {
@@ -520,10 +485,10 @@ public:
           // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
           unsigned srcLoopDepth = clSrcLoopDepth.getNumOccurrences() > 0
                                       ? clSrcLoopDepth
-                                      : getLoopDepth(srcStoreOpInst);
+                                      : getNestingDepth(*srcStoreOpInst);
           unsigned dstLoopDepth = clDstLoopDepth.getNumOccurrences() > 0
                                       ? clDstLoopDepth
-                                      : getLoopDepth(dstLoadOpInst);
+                                      : getNestingDepth(*dstLoadOpInst);
           auto *sliceLoopNest = mlir::insertBackwardComputationSlice(
               &candidate.srcAccess, &candidate.dstAccess, srcLoopDepth,
               dstLoopDepth);

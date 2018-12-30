@@ -1950,3 +1950,48 @@ void FlatAffineConstraints::projectOut(Value *id) {
   (void)ret;
   FourierMotzkinEliminate(pos);
 }
+
+bool FlatAffineConstraints::isRangeOneToOne(unsigned start,
+                                            unsigned limit) const {
+  assert(start <= getNumIds() - 1 && "invalid start position");
+  assert(limit > start && limit <= getNumIds() && "invalid limit");
+
+  FlatAffineConstraints tmpCst(*this);
+
+  if (start != 0) {
+    // Move [start, limit) to the left.
+    for (unsigned r = 0, e = getNumInequalities(); r < e; ++r) {
+      for (unsigned c = 0, f = getNumCols(); c < f; ++c) {
+        if (c >= start && c < limit)
+          tmpCst.atIneq(r, c - start) = atIneq(r, c);
+        else if (c < start)
+          tmpCst.atIneq(r, c + limit - start) = atIneq(r, c);
+        else
+          tmpCst.atIneq(r, c) = atIneq(r, c);
+      }
+    }
+    for (unsigned r = 0, e = getNumEqualities(); r < e; ++r) {
+      for (unsigned c = 0, f = getNumCols(); c < f; ++c) {
+        if (c >= start && c < limit)
+          tmpCst.atEq(r, c - start) = atEq(r, c);
+        else if (c < start)
+          tmpCst.atEq(r, c + limit - start) = atEq(r, c);
+        else
+          tmpCst.atEq(r, c) = atEq(r, c);
+      }
+    }
+  }
+
+  // Mark everything to the right as symbols so that we can check the extents in
+  // a symbolic way below.
+  tmpCst.setDimSymbolSeparation(getNumIds() - (limit - start));
+
+  // Check if the extents of all the specified dimensions are just one (when
+  // treating the rest as symbols).
+  for (unsigned pos = 0, e = tmpCst.getNumDimIds(); pos < e; ++pos) {
+    auto extent = tmpCst.getConstantBoundOnDimSize(pos);
+    if (!extent.hasValue() || extent.getValue() != 1)
+      return false;
+  }
+  return true;
+}

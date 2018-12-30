@@ -64,9 +64,51 @@ bool mlir::properlyDominates(const Instruction &a, const Instruction &b) {
   return false;
 }
 
+/// Returns true if statement 'a' properly postdominates statement b.
+bool mlir::properlyPostDominates(const Instruction &a, const Instruction &b) {
+  // Only applicable to ML functions.
+  assert(a.getFunction()->isML() && b.getFunction()->isML());
+
+  if (&a == &b)
+    return false;
+
+  if (a.getFunction() != b.getFunction())
+    return false;
+
+  if (a.getBlock() == b.getBlock()) {
+    // Do a linear scan to determine whether a comes after b.
+    auto aIter = Block::const_iterator(a);
+    auto bIter = Block::const_iterator(b);
+    auto bBlockStart = b.getBlock()->begin();
+    while (aIter != bBlockStart) {
+      --aIter;
+      if (aIter == bIter)
+        return true;
+    }
+    return false;
+  }
+
+  // Traverse up b's hierarchy to check if b's block is contained in a's.
+  if (const auto *bAncestor = a.getBlock()->findAncestorInstInBlock(b))
+    // a and bAncestor are in the same block; check if 'a' postdominates
+    // bAncestor.
+    return postDominates(a, *bAncestor);
+
+  // b's block is not contained in A's.
+  return false;
+}
+
 /// Returns true if instruction A dominates instruction B.
 bool mlir::dominates(const Instruction &a, const Instruction &b) {
   return &a == &b || properlyDominates(a, b);
+}
+
+/// Returns true if statement A postdominates statement B.
+bool mlir::postDominates(const Instruction &a, const Instruction &b) {
+  // Only applicable to ML functions.
+  assert(a.getFunction()->isML() && b.getFunction()->isML());
+
+  return &a == &b || properlyPostDominates(a, b);
 }
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
@@ -484,4 +526,57 @@ ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
     forInst->setUpperBound(srcIvOperands[index], ubMap);
   }
   return sliceLoopNest;
+}
+
+void mlir::getMemRefAccess(OperationInst *loadOrStoreOpInst,
+                           MemRefAccess *access) {
+  if (auto loadOp = loadOrStoreOpInst->dyn_cast<LoadOp>()) {
+    access->memref = loadOp->getMemRef();
+    access->opInst = loadOrStoreOpInst;
+    auto loadMemrefType = loadOp->getMemRefType();
+    access->indices.reserve(loadMemrefType.getRank());
+    for (auto *index : loadOp->getIndices()) {
+      access->indices.push_back(index);
+    }
+  } else {
+    assert(loadOrStoreOpInst->isa<StoreOp>() && "load/store op expected");
+    auto storeOp = loadOrStoreOpInst->dyn_cast<StoreOp>();
+    access->opInst = loadOrStoreOpInst;
+    access->memref = storeOp->getMemRef();
+    auto storeMemrefType = storeOp->getMemRefType();
+    access->indices.reserve(storeMemrefType.getRank());
+    for (auto *index : storeOp->getIndices()) {
+      access->indices.push_back(index);
+    }
+  }
+}
+
+/// Returns the nesting depth of this statement, i.e., the number of loops
+/// surrounding this statement.
+unsigned mlir::getNestingDepth(const Instruction &stmt) {
+  const Instruction *currInst = &stmt;
+  unsigned depth = 0;
+  while ((currInst = currInst->getParentInst())) {
+    if (isa<ForInst>(currInst))
+      depth++;
+  }
+  return depth;
+}
+
+/// Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
+/// where each lists loops from outer-most to inner-most in loop nest.
+unsigned mlir::getNumCommonSurroundingLoops(const Instruction &A,
+                                            const Instruction &B) {
+  SmallVector<ForInst *, 4> loopsA, loopsB;
+  getLoopIVs(A, &loopsA);
+  getLoopIVs(B, &loopsB);
+
+  unsigned minNumLoops = std::min(loopsA.size(), loopsB.size());
+  unsigned numCommonLoops = 0;
+  for (unsigned i = 0; i < minNumLoops; ++i) {
+    if (loopsA[i] != loopsB[i])
+      break;
+    ++numCommonLoops;
+  }
+  return numCommonLoops;
 }

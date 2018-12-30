@@ -102,6 +102,10 @@ FunctionPass *createLowerAffineApplyPass();
 /// Creates a pass to lower VectorTransferReadOp and VectorTransferWriteOp.
 FunctionPass *createLowerVectorTransfersPass();
 
+/// Creates a pass to perform optimizations relying on memref dataflow such as
+/// store to load forwarding, elimination of dead stores, and dead allocs.
+FunctionPass *createMemRefDataFlowOptPass();
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H

@@ -50,6 +50,16 @@ bool properlyDominates(const Instruction &a, const Instruction &b);
 //  TODO(bondhugula): handle 'if' inst's.
 void getLoopIVs(const Instruction &inst, SmallVectorImpl<ForInst *> *loops);
 
+/// Returns true if instruction 'a' postdominates instruction b.
+bool postDominates(const Instruction &a, const Instruction &b);
+
+/// Returns true if instruction 'a' properly postdominates instruction b.
+bool properlyPostDominates(const Instruction &a, const Instruction &b);
+
+/// Returns the nesting depth of this instruction, i.e., the number of loops
+/// surrounding this instruction.
+unsigned getNestingDepth(const Instruction &stmt);
+
 /// A region of a memref's data space; this is typically constructed by
 /// analyzing load/store op's on this memref and the index space of loops
 /// surrounding such op's.
@@ -83,7 +93,8 @@ struct MemRefRegion {
   /// minor) which matches 1:1 with the dimensional identifier positions in
   //'cst'.
   Optional<int64_t>
-  getConstantBoundOnDimSize(unsigned pos, SmallVectorImpl<int64_t> *lb) const {
+  getConstantBoundOnDimSize(unsigned pos,
+                            SmallVectorImpl<int64_t> *lb = nullptr) const {
     assert(pos < getRank() && "invalid position");
     return cst.getConstantBoundOnDimSize(pos, lb);
   }
@@ -141,6 +152,13 @@ Optional<uint64_t> getMemRefSizeInBytes(MemRefType memRefType);
 template <typename LoadOrStoreOpPointer>
 bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
                              bool emitError = true);
+
+/// Constructs a MemRefAccess from a load or store operation instruction.
+void getMemRefAccess(OperationInst *loadOrStoreOpInst, MemRefAccess *access);
+
+/// Returns the number of surrounding loops common to both A and B.
+unsigned getNumCommonSurroundingLoops(const Instruction &A,
+                                      const Instruction &B);
 
 /// Creates a clone of the computation contained in the loop nest surrounding
 /// 'srcAccess', slices the iteration space of the first 'srcLoopDepth' src loop

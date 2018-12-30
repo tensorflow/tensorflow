@@ -89,20 +89,6 @@ static void getMemRefAccess(const OperationInst *loadOrStoreOpInst,
   }
 }
 
-// Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
-// where each lists loops from outer-most to inner-most in loop nest.
-static unsigned getNumCommonSurroundingLoops(ArrayRef<const ForInst *> loopsA,
-                                             ArrayRef<const ForInst *> loopsB) {
-  unsigned minNumLoops = std::min(loopsA.size(), loopsB.size());
-  unsigned numCommonLoops = 0;
-  for (unsigned i = 0; i < minNumLoops; ++i) {
-    if (loopsA[i] != loopsB[i])
-      break;
-    ++numCommonLoops;
-  }
-  return numCommonLoops;
-}
-
 // Returns a result string which represents the direction vector (if there was
 // a dependence), returns the string "false" otherwise.
 static string
@@ -134,17 +120,13 @@ static void checkDependences(ArrayRef<OperationInst *> loadsAndStores) {
     auto *srcOpInst = loadsAndStores[i];
     MemRefAccess srcAccess;
     getMemRefAccess(srcOpInst, &srcAccess);
-    SmallVector<ForInst *, 4> srcLoops;
-    getLoopIVs(*srcOpInst, &srcLoops);
     for (unsigned j = 0; j < e; ++j) {
       auto *dstOpInst = loadsAndStores[j];
       MemRefAccess dstAccess;
       getMemRefAccess(dstOpInst, &dstAccess);
 
-      SmallVector<ForInst *, 4> dstLoops;
-      getLoopIVs(*dstOpInst, &dstLoops);
       unsigned numCommonLoops =
-          getNumCommonSurroundingLoops(srcLoops, dstLoops);
+          getNumCommonSurroundingLoops(*srcOpInst, *dstOpInst);
       for (unsigned d = 1; d <= numCommonLoops + 1; ++d) {
         FlatAffineConstraints dependenceConstraints;
         llvm::SmallVector<DependenceComponent, 2> dependenceComponents;
