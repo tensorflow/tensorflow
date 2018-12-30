@@ -254,6 +254,7 @@ StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
 
 bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result) {
   CHECK(result != nullptr);
+  LOG(INFO) << "TRY EVAL " << instruction->name();
   auto result_or = Evaluate(instruction);
   if (!result_or.ok()) {
     VLOG(1) << "TryEvaluate failed:" << result_or.status();
@@ -1067,8 +1068,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
-  Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
-                       .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(Literal result,
+      embedded_evaluator.Evaluate(*computation, arg_literals));
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -1098,9 +1099,8 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   }
 
   HloEvaluator embedded_evaluator;
-  Literal result =
-      embedded_evaluator.Evaluate(*readded_computation, arg_literals)
-          .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(Literal result,
+      embedded_evaluator.Evaluate(*readded_computation, arg_literals));
 
   evaluated_[fusion] = std::move(result);
   return Status::OK();
