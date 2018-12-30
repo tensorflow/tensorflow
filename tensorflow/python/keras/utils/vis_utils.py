@@ -67,6 +67,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   """
   from tensorflow.python.keras.layers.wrappers import Wrapper
   from tensorflow.python.keras.models import Sequential
+  from tensorflow.python.util import nest
 
   _check_pydot()
   dot = pydot.Dot()
