@@ -28,7 +28,7 @@
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Transforms/Passes.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include <algorithm>
 
 #define DEBUG_TYPE "memref-dataflow-opt"
@@ -72,7 +72,7 @@ struct MemRefDataFlowOpt : public FunctionPass, InstWalker<MemRefDataFlowOpt> {
   void visitOperationInst(OperationInst *opInst);
 
   // A list of memref's that are potentially dead / could be eliminated.
-  std::vector<Value *> memrefsToErase;
+  SmallPtrSet<Value *, 4> memrefsToErase;
 
   static char passID;
 };
@@ -199,7 +199,7 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
   Value *storeVal = lastWriteStoreOp->cast<StoreOp>()->getValueToStore();
   loadOp->getResult()->replaceAllUsesWith(storeVal);
   // Record the memref for a later sweep to optimize away.
-  memrefsToErase.push_back(loadOp->getMemRef());
+  memrefsToErase.insert(loadOp->getMemRef());
   loadOp->erase();
 }
 
