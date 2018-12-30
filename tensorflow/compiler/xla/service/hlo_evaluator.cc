@@ -254,7 +254,6 @@ StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
 
 bool HloEvaluator::TryEvaluate(HloInstruction* instruction, Literal* result) {
   CHECK(result != nullptr);
-  LOG(INFO) << "TRY EVAL " << instruction->name();
   auto result_or = Evaluate(instruction);
   if (!result_or.ok()) {
     VLOG(1) << "TryEvaluate failed:" << result_or.status();
