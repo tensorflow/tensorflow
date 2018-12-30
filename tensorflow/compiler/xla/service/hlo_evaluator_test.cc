@@ -2924,5 +2924,59 @@ ENTRY main {
             "Expected 1 argument, but got 2.");
 }
 
+// Check that we correctly return error status when evaluating call instruction
+// containing an unimplemented instruction
+TEST_F(HloEvaluatorTest, CallContainingUnimplementedInstruction) {
+constexpr absl::string_view hlo_text = R"(
+HloModule Test
+
+sub {
+  constant = f32[] constant(0)
+  constant.1 = f32[] constant(1)
+  ROOT rng = f32[]{0} rng(constant, constant.1), distribution=rng_uniform
+}
+
+ENTRY main {
+  r = f32[] call(), to_apply=sub
+  ROOT tuple = (f32[]) tuple(r)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  auto* comp = m_->entry_computation();
+  auto* call = comp->GetInstructionWithName("r");
+
+  Literal lit;
+  EXPECT_FALSE(HloEvaluator().TryEvaluate(call, &lit));
+}
+
+// Check that we correctly return error status when evaluating call instruction
+// containing an unimplemented instruction
+TEST_F(HloEvaluatorTest, FusionContainingUnimplementedInstruction) {
+constexpr absl::string_view hlo_text = R"(
+HloModule Test
+
+sub {
+  constant = f32[] constant(0)
+  constant.1 = f32[] constant(1)
+  ROOT rng = f32[]{0} rng(constant, constant.1), distribution=rng_uniform
+}
+
+ENTRY main {
+  r = f32[] fusion(), calls=sub, kind=kCustom
+  ROOT tuple = (f32[]) tuple(r)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  auto* comp = m_->entry_computation();
+  auto* fusion = comp->GetInstructionWithName("r");
+
+  Literal lit;
+  EXPECT_FALSE(HloEvaluator().TryEvaluate(fusion, &lit));
+}
+
 }  // namespace
 }  // namespace xla
