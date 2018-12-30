@@ -1515,8 +1515,11 @@ def categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
+  y_pred_rank = ops.convert_to_tensor(y_pred).get_shape().ndims
+  y_true_rank = ops.convert_to_tensor(y_true).get_shape().ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
-  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+  if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
+      K.int_shape(y_true)) == len(K.int_shape(y_pred))):
     y_true = array_ops.squeeze(y_true, [-1])
   y_pred = math_ops.argmax(y_pred, axis=-1)
 
@@ -1536,8 +1539,11 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
+  y_pred_rank = ops.convert_to_tensor(y_pred).get_shape().ndims
+  y_true_rank = ops.convert_to_tensor(y_true).get_shape().ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
-  if (len(K.int_shape(y_true)) == len(K.int_shape(y_pred))):
+  if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
+      K.int_shape(y_true)) == len(K.int_shape(y_pred))):
     y_true = array_ops.squeeze(y_true, [-1])
 
   return K.mean(nn.in_top_k(y_pred, math_ops.cast(y_true, 'int32'), k), axis=-1)

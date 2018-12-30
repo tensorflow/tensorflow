@@ -39,6 +39,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -155,13 +156,26 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     Args:
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     Raises:
       ValueError: If name is malformed.
       RuntimeError: If _create_slots has been overridden instead of
           _create_vars.
     """
+    allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay"}
+    for k in kwargs:
+      if k not in allowed_kwargs:
+        raise TypeError("Unexpected keyword argument "
+                        "passed to optimizer: " + str(k))
+      # checks that all keyword arguments are non-negative.
+      if kwargs[k] < 0:
+        raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
+
     self._use_locking = True
     self._name = name
     self._hyper = {}
@@ -183,9 +197,12 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     if decay < 0.:
       raise ValueError("decay cannot be less than 0: {}".format(decay))
     self._initial_decay = decay
-    self.__dict__.update(kwargs)
+    if "clipnorm" in kwargs:
+      self.clipnorm = kwargs.pop("clipnorm")
+    if "clipvalue" in kwargs:
+      self.clipvalue = kwargs.pop("clipvalue")
 
-    self._prepared = False
+    self._hypers_created = False
 
   def minimize(self, loss, var_list, grad_loss=None, name=None):
     """Add operations to minimize `loss` by updating `var_list`.
@@ -335,10 +352,12 @@ class OptimizerV2(checkpointable.CheckpointableBase):
       reduced_grads = merge_grads(grads_and_vars)
       grads_and_vars = zip(reduced_grads, var_list)
 
-    self._prepare()
+    self._create_hypers()
     with ops.init_scope():
       self._create_slots(var_list)
     update_ops = []
+
+    self._prepare(var_list)
 
     def update_grad_to_var(grad, var):
       """Apply gradient to variable."""
@@ -461,8 +480,11 @@ class OptimizerV2(checkpointable.CheckpointableBase):
     slot_dict = self._slots[var_key]
     return slot_dict[slot_name]
 
-  def _prepare(self):
-    if self._prepared:
+  def _prepare(self, var_list):
+    pass
+
+  def _create_hypers(self):
+    if self._hypers_created:
       return
     if self._iterations is None:
       with ops.device("cpu:0"):
@@ -483,18 +505,18 @@ class OptimizerV2(checkpointable.CheckpointableBase):
             trainable=False,
             initializer=value,
             aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-    self._prepared = True
+    self._hypers_created = True
 
   @property
   def iterations(self):
     """Variable. The number of training steps this Optimizer has run."""
-    if not self._prepared:
-      self._prepare()
+    if not self._hypers_created:
+      self._create_hypers()
     return self._iterations
 
   @iterations.setter
   def iterations(self, variable):
-    if self._prepared:
+    if self._hypers_created:
       raise RuntimeError("Cannot set `iterations` to a new Variable after"
                          "the Optimizer weights have been created")
     self._iterations = variable
@@ -722,6 +744,16 @@ class OptimizerV2(checkpointable.CheckpointableBase):
       An `Operation` which updates the value of the variable.
     """
     raise NotImplementedError()
+
+  def _resource_scatter_add(self, x, i, v):
+    with ops.control_dependencies(
+        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
+      return x.value()
+
+  def _resource_scatter_update(self, x, i, v):
+    with ops.control_dependencies(
+        [resource_variable_ops.resource_scatter_update(x.handle, i, v)]):
+      return x.value()
 
   # ---------------
   # For implementing the checkpointable interface

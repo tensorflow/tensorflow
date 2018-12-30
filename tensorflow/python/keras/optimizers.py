@@ -622,7 +622,7 @@ class Adamax(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.optimizers.Nadam')
+@keras_export(v1=['keras.optimizers.Nadam'])
 class Nadam(Optimizer):
   """Nesterov Adam optimizer.
 

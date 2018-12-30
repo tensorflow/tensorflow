@@ -230,7 +230,11 @@ message DebugOptions {
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
 
-  // Next id: 107
+  // Temporary option to allow support for both the R1 and the scalar index
+  // versions of DynamicSlice and DynamicUpdateSlice. Only used for testing.
+  bool xla_allow_scalar_index_dynamic_ops = 107;
+
+  // Next id: 108
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

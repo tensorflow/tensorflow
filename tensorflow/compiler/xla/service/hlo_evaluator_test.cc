@@ -2874,5 +2874,55 @@ ENTRY main {
             static_cast<int32>(pow31 * pow31));
 }
 
+// Check that we get a useful error if we pass inputs of the wrong shape.
+TEST_F(HloEvaluatorTest, EvaluateWithWrongInputShapes) {
+  constexpr absl::string_view hlo_text = R"(
+HloModule Test
+
+ENTRY main {
+  p0 = s32[1] parameter(0)
+  ROOT sum = s32[1] add(p0, p0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal input_wrong_shape = LiteralUtil::CreateR1<int32>({0, 1});
+
+  EXPECT_EQ(HloEvaluator()
+                .Evaluate(*m_, {&input_wrong_shape})
+                .status()
+                .error_message(),
+            "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
+            "but arg was s32[2].");
+  EXPECT_EQ(HloEvaluator()
+                .Evaluate(*m_->entry_computation(), {&input_wrong_shape})
+                .status()
+                .error_message(),
+            "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
+            "but arg was s32[2].");
+}
+
+// Check that we get a useful error if we pass too many or too few inputs.
+TEST_F(HloEvaluatorTest, EvaluateWithWrongNumberOfInputs) {
+  constexpr absl::string_view hlo_text = R"(
+HloModule Test
+
+ENTRY main {
+  p0 = s32[1] parameter(0)
+  ROOT sum = s32[1] add(p0, p0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal input = LiteralUtil::CreateR1<int32>({0});
+
+  EXPECT_EQ(
+      HloEvaluator().Evaluate(*m_, {&input, &input}).status().error_message(),
+      "Expected 1 argument, but got 2.");
+  EXPECT_EQ(HloEvaluator()
+                .Evaluate(*m_->entry_computation(), {&input, &input})
+                .status()
+                .error_message(),
+            "Expected 1 argument, but got 2.");
+}
+
 }  // namespace
 }  // namespace xla

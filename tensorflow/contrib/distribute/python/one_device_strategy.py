@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -52,7 +53,8 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     worker = device_util.canonicalize("/device:CPU:0")
     worker_device_pairs = [(worker, [self._device])]
     device_map = values.SingleDeviceMap(device)
-    self._input_workers = values.InputWorkers(device_map, worker_device_pairs)
+    self._input_workers = input_lib.InputWorkers(
+        device_map, worker_device_pairs)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
@@ -67,17 +69,17 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch."""
-    return values.DatasetIterator(dataset, self._input_workers)
+    return input_lib.DatasetIterator(dataset, self._input_workers)
 
   def _distribute_dataset(self, dataset_fn):
-    return values.PerReplicaDataset(
+    return input_lib.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._input_workers, 0)
 
   def _make_input_fn_iterator(
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
-    return values.InputFunctionIterator(
+    return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, [distribute_lib.InputContext()])
 
   def _broadcast_to(self, tensor, destinations):
@@ -91,7 +93,7 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
 
-    ctx = values.MultiStepContext()
+    ctx = input_lib.MultiStepContext()
     def body(i, *args):
       """A wrapper around `fn` to create the while loop body."""
       del args

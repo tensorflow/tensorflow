@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/bigtable/kernels/test_kernels/bigtable_test_client.h"
 
-#include "google/bigtable/v2/data.pb.h"
+#include "external/com_github_googleapis_googleapis/google/bigtable/v2/data.pb.h"
 #include "google/protobuf/wrappers.pb.h"
 #include "re2/re2.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"

@@ -3109,7 +3109,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     prefix = "sparse_matmul_op",
-    deps = MATH_DEPS + select({
+    deps = MATH_DEPS + [":eigen_contraction_kernel"] + select({
         ":xsmm": [
             "@libxsmm_archive//:xsmm_avx",
         ],
@@ -4569,6 +4569,7 @@ cc_library(
     srcs = ["sdca_internal.cc"],
     hdrs = ["sdca_internal.h"],
     deps = [
+        ":eigen_contraction_kernel",
         ":loss_updaters",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -105,8 +105,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:graph_view",
-        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:graph_topology_view",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
@@ -120,6 +119,8 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )
 

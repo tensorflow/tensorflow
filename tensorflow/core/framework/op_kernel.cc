@@ -118,9 +118,9 @@ OpKernel::OpKernel(OpKernelConstruction* context,
 
 OpKernel::~OpKernel() {}
 
-const uint64 OpKernel::kInitialCostEstimateCycles = 100 * 1000 * 1000;
-const uint64 OpKernel::kOpIsExpensiveThresholdCycles = 5000;
-const uint64 OpKernel::kCostDecay = 10;
+const uint64 OpKernel::kInitialCostEstimateCycles;
+const uint64 OpKernel::kOpIsExpensiveThresholdCycles;
+const uint64 OpKernel::kCostDecay;
 
 const string& OpKernel::name() const { return def_->name(); }
 const string& OpKernel::type_string() const { return def_->op(); }
