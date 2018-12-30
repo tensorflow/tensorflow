@@ -26,14 +26,14 @@
 using namespace mlir;
 
 namespace {
-struct PrintOpStatsPass : public FunctionPass, InstWalker<PrintOpStatsPass> {
+struct PrintOpStatsPass : public ModulePass, InstWalker<PrintOpStatsPass> {
   explicit PrintOpStatsPass(llvm::raw_ostream &os = llvm::errs())
-      : FunctionPass(&PrintOpStatsPass::passID), os(os) {}
+      : ModulePass(&PrintOpStatsPass::passID), os(os) {}
 
-  // Prints the resultant operation stats post iterating over the module.
+  // Prints the resultant operation statistics post iterating over the module.
   PassResult runOnModule(Module *m) override;
 
-  PassResult runOnFunction(Function *function) override;
+  // Updates the operation statistics for the given instruction.
   void visitOperationInst(OperationInst *inst);
 
   // Print summary of op stats.
@@ -52,18 +52,13 @@ char PrintOpStatsPass::passID = 0;
 
 PassResult PrintOpStatsPass::runOnModule(Module *m) {
   for (auto &fn : *m)
-    (void)runOnFunction(&fn);
+    walk(&fn);
   printSummary();
   return success();
 }
 
 void PrintOpStatsPass::visitOperationInst(OperationInst *inst) {
   ++opCount[inst->getName().getStringRef()];
-}
-
-PassResult PrintOpStatsPass::runOnFunction(Function *function) {
-  walk(function);
-  return success();
 }
 
 void PrintOpStatsPass::printSummary() {
