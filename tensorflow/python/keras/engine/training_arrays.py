@@ -343,7 +343,7 @@ def model_iteration(model,
         # Callbacks batch end.
         batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
         callbacks._call_batch_hook(mode, 'end', batch_index, batch_logs)
-        progbar.on_batch_end(batch_index, batch_logs)
+        progbar.on_batch_end(batch_index, batch_logs, mode==ModeKeys.TRAIN)
 
         if callbacks.model.stop_training:
           break

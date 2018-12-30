@@ -706,7 +706,7 @@ class ProgbarLogger(Callback):
     if self.seen < self.target:
       self.log_values = []
 
-  def on_batch_end(self, batch, logs=None):
+  def on_batch_end(self, batch, logs=None, train=True):
     logs = logs or {}
     batch_size = logs.get('size', 0)
     # In case of distribution strategy we can potentially run multiple steps
@@ -721,9 +721,9 @@ class ProgbarLogger(Callback):
       if k in logs:
         self.log_values.append((k, logs[k]))
 
-    # Skip progbar update for the last batch;
+    # In Train mode, skip progbar update for the last batch;
     # will be handled by on_epoch_end.
-    if self.verbose and self.seen < self.target:
+    if self.verbose and (self.seen < self.target or not train):
       self.progbar.update(self.seen, self.log_values)
 
   def on_epoch_end(self, epoch, logs=None):
