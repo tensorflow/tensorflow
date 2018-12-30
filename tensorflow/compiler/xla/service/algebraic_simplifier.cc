@@ -2595,51 +2595,53 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
                                   function));
   }
 
-  // A reduce window can be expressed as a reduce and a reshape if all
-  // dimensions either have a window size of one or the entire dimension. If
-  // there is no stride, dilation, or padding, this is as easy as checking the
-  // size of the output shape and window dimension.
-  //
-  // The reshape is a bitcast since it adds one-sized dimensions. Often these
-  // ones are immediately removed as well with another reshape. The
-  // implementation of reduce tends to be slightly more efficient at reducing
-  // entire dimensions compared to reduce window.
-  auto effective_reduce_dims = [&] {
-    if (window_util::HasStride(window) || window_util::HasDilation(window) ||
-        window_util::HasPadding(window)) {
-      return absl::InlinedVector<int64, 8>{};
-    }
-    absl::InlinedVector<int64, 8> reduce_dims;
-    for (int64 i = 0; i < window.dimensions_size(); ++i) {
-      if (window.dimensions(i).size() == 1) {
-        continue;
-      } else if (reduce_window->shape().dimensions(i) == 1) {
-        reduce_dims.push_back(i);
-      } else {
+  if (options_.enable_window_reduce_to_reduce_replacement()) {
+    // A reduce window can be expressed as a reduce and a reshape if all
+    // dimensions either have a window size of one or the entire dimension. If
+    // there is no stride, dilation, or padding, this is as easy as checking the
+    // size of the output shape and window dimension.
+    //
+    // The reshape is a bitcast since it adds one-sized dimensions. Often these
+    // ones are immediately removed as well with another reshape. The
+    // implementation of reduce tends to be slightly more efficient at reducing
+    // entire dimensions compared to reduce window.
+    auto effective_reduce_dims = [&] {
+      if (window_util::HasStride(window) || window_util::HasDilation(window) ||
+          window_util::HasPadding(window)) {
         return absl::InlinedVector<int64, 8>{};
       }
-    }
-    return reduce_dims;
-  }();
+      absl::InlinedVector<int64, 8> reduce_dims;
+      for (int64 i = 0; i < window.dimensions_size(); ++i) {
+        if (window.dimensions(i).size() == 1) {
+          continue;
+        } else if (reduce_window->shape().dimensions(i) == 1) {
+          reduce_dims.push_back(i);
+        } else {
+          return absl::InlinedVector<int64, 8>{};
+        }
+      }
+      return reduce_dims;
+    }();
 
-  // If a reduce window can be expressed as a reduce, do so and reshape the
-  // output.
-  if (!effective_reduce_dims.empty()) {
-    Shape reduce_shape = ShapeUtil::FilterDimensions(
-        [&](int64 dim) {
-          return !absl::c_linear_search(effective_reduce_dims, dim);
-        },
-        reduce_window->shape());
-    HloInstruction* reduce =
-        computation_->AddInstruction(HloInstruction::CreateReduce(
-            /*shape=*/reduce_shape,
-            /*operand=*/operand,
-            /*init_value=*/reduce_window->mutable_operand(1),
-            /*dimensions_to_reduce=*/effective_reduce_dims,
-            /*reduce_computation=*/function));
-    return ReplaceWithNewInstruction(
-        reduce_window,
-        HloInstruction::CreateReshape(reduce_window->shape(), reduce));
+    // If a reduce window can be expressed as a reduce, do so and reshape the
+    // output.
+    if (!effective_reduce_dims.empty()) {
+      Shape reduce_shape = ShapeUtil::FilterDimensions(
+          [&](int64 dim) {
+            return !absl::c_linear_search(effective_reduce_dims, dim);
+          },
+          reduce_window->shape());
+      HloInstruction* reduce =
+          computation_->AddInstruction(HloInstruction::CreateReduce(
+              /*shape=*/reduce_shape,
+              /*operand=*/operand,
+              /*init_value=*/reduce_window->mutable_operand(1),
+              /*dimensions_to_reduce=*/effective_reduce_dims,
+              /*reduce_computation=*/function));
+      return ReplaceWithNewInstruction(
+          reduce_window,
+          HloInstruction::CreateReshape(reduce_window->shape(), reduce));
+    }
   }
 
   // This optimization folds a pad op into reduce_window.
