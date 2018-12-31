@@ -343,7 +343,7 @@ def model_iteration(model,
         # Callbacks batch end.
         batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
         callbacks._call_batch_hook(mode, 'end', batch_index, batch_logs)
-        progbar.on_batch_end(batch_index, batch_logs, mode==ModeKeys.TRAIN)
+        progbar.on_batch_end(batch_index, batch_logs)
 
         if callbacks.model.stop_training:
           break
@@ -373,9 +373,11 @@ def model_iteration(model,
           model, epoch_logs, val_results, mode, prefix='val_')
 
     if mode == ModeKeys.TRAIN:
-      # Epochs only apply to `fit`.
       callbacks.on_epoch_end(epoch, epoch_logs)
-      progbar.on_epoch_end(epoch, epoch_logs)
+    # Epochs only apply to `fit`. However, progbar depends
+    # on on_epoch_end to flush out the last update, so
+    # on_epoch_end always apply.
+    progbar.on_epoch_end(epoch, epoch_logs)
 
   callbacks._call_end_hook(mode)
 
