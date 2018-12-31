@@ -46,21 +46,24 @@ bool DominanceInfo::properlyDominates(const Block *a, const Block *b) {
   if (blockListA == blockListB)
     return DominatorTreeBase::properlyDominates(a, b);
 
-  // Otherwise, 'a' dominates 'b' if 'b' is defined in an IfInst/ForInst that
-  // (recursively) ends up being dominated by 'a'.  Walk up the list of
-  // containers enclosing B.
-  while (blockListA != blockListB) {
-    // If 'b' is at a the top level function, then 'a' is defined inside some
-    // other instruction that doesn't dominate 'b'.
-    auto *containerInst = blockListB->getContainingInst();
-    if (!containerInst)
+  // Otherwise, 'a' properly dominates 'b' if 'b' is defined in an
+  // IfInst/ForInst that (recursively) ends up being dominated by 'a'. Walk up
+  // the list of containers enclosing B.
+  Instruction *bAncestor;
+  do {
+    bAncestor = blockListB->getContainingInst();
+    // If 'bAncestor' is the top level function, then 'a' is a block
+    // that doesn't dominate 'b'.
+    if (!bAncestor)
       return false;
 
-    blockListB = containerInst->getBlock()->getParent();
-  }
+    blockListB = bAncestor->getBlock()->getParent();
+  } while (blockListA != blockListB);
 
-  // Block 'A' is an ancestor of 'B', we know that A dominates B.
-  return true;
+  // Block A and a block B's ancestor lie in the same block list. (We need to
+  // use 'dominates' below as opposed to properlyDominates since this is an
+  // ancestor of B).
+  return DominatorTreeBase::dominates(a, bAncestor->getBlock());
 }
 
 /// Return true if instruction A properly dominates instruction B.

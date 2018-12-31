@@ -46,7 +46,7 @@ public:
       instructions.pop_back();
   }
 
-  /// Blocks are maintained in a list by BlockList type.
+  /// Blocks are maintained in a list of BlockList type.
   BlockList *getParent() const { return parent; }
 
   /// Returns the closest surrounding instruction that contains this block or
