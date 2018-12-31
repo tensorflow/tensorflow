@@ -27,7 +27,6 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/InstVisitor.h"
 #include "mlir/IR/Module.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/MathExtras.h"
@@ -318,10 +317,6 @@ OperationInst *mlir::createAffineComputationSlice(OperationInst *opInst) {
 }
 
 void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
-  if (!affineApplyOp->getInstruction()->getFunction()->isML()) {
-    // TODO: Support forward substitution for CFG style functions.
-    return;
-  }
   auto *opInst = affineApplyOp->getInstruction();
   // Iterate through all uses of all results of 'opInst', forward substituting
   // into any uses which are AffineApplyOps.
@@ -439,32 +434,10 @@ void mlir::remapFunctionAttrs(
 
 void mlir::remapFunctionAttrs(
     Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+
   // Look at all instructions in a Function.
-  if (fn.isCFG()) {
-    for (auto &bb : fn.getBlockList()) {
-      for (auto &inst : bb) {
-        if (auto *op = dyn_cast<OperationInst>(&inst))
-          remapFunctionAttrs(*op, remappingTable);
-      }
-    }
-    return;
-  }
-
-  // Otherwise, look at MLFunctions.  We ignore external functions.
-  if (!fn.isML())
-    return;
-
-  struct MLFnWalker : public InstWalker<MLFnWalker> {
-    MLFnWalker(const DenseMap<Attribute, FunctionAttr> &remappingTable)
-        : remappingTable(remappingTable) {}
-    void visitOperationInst(OperationInst *opInst) {
-      remapFunctionAttrs(*opInst, remappingTable);
-    }
-
-    const DenseMap<Attribute, FunctionAttr> &remappingTable;
-  };
-
-  MLFnWalker(remappingTable).walk(&fn);
+  fn.walkOps(
+      [&](OperationInst *inst) { remapFunctionAttrs(*inst, remappingTable); });
 }
 
 void mlir::remapFunctionAttrs(

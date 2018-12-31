@@ -53,7 +53,7 @@ public:
 
 private:
   bool convertBlock(const Block &bb, bool ignoreArguments = false);
-  bool convertCFGFunction(const Function &cfgFunc, llvm::Function &llvmFunc);
+  bool convertFunction(const Function &cfgFunc, llvm::Function &llvmFunc);
   bool convertFunctions(const Module &mlirModule, llvm::Module &llvmModule);
   bool convertInstruction(const OperationInst &inst);
 
@@ -819,8 +819,8 @@ void ModuleLowerer::connectPHINodes(const Function &cfgFunc) {
   }
 }
 
-bool ModuleLowerer::convertCFGFunction(const Function &cfgFunc,
-                                       llvm::Function &llvmFunc) {
+bool ModuleLowerer::convertFunction(const Function &cfgFunc,
+                                    llvm::Function &llvmFunc) {
   // Clear the block mapping.  Blocks belong to a function, no need to keep
   // blocks from the previous functions around.  Furthermore, we use this
   // mapping to connect PHI nodes inside the function later.
@@ -848,34 +848,31 @@ bool ModuleLowerer::convertCFGFunction(const Function &cfgFunc,
 bool ModuleLowerer::convertFunctions(const Module &mlirModule,
                                      llvm::Module &llvmModule) {
   // Declare all functions first because there may be function calls that form a
-  // call graph with cycles.  We don't expect MLFunctions here.
+  // call graph with cycles.
   for (const Function &function : mlirModule) {
     const Function *functionPtr = &function;
-    if (functionPtr->isML())
-      continue;
     llvm::Constant *llvmFuncCst = llvmModule.getOrInsertFunction(
         function.getName(), convertFunctionType(function.getType()));
     assert(isa<llvm::Function>(llvmFuncCst));
     functionMapping[functionPtr] = cast<llvm::Function>(llvmFuncCst);
   }
 
-  // Convert CFG functions.
+  // Convert functions.
   for (const Function &function : mlirModule) {
-    const Function *functionPtr = &function;
-    if (!functionPtr->isCFG())
+    // Ignore external functions.
+    if (function.empty())
       continue;
-    llvm::Function *llvmFunc = functionMapping[functionPtr];
+
+    llvm::Function *llvmFunc = functionMapping[&function];
 
     // Add function arguments to the value remapping table.  In Function,
     // arguments of the first block are those of the function.
-    assert(!functionPtr->getBlocks().empty() &&
-           "expected at least one basic block in a Function");
-    const Block &firstBlock = *functionPtr->begin();
+    const Block &firstBlock = *function.begin();
     for (auto arg : llvm::enumerate(llvmFunc->args())) {
       valueMapping[firstBlock.getArgument(arg.index())] = &arg.value();
     }
 
-    if (convertCFGFunction(*functionPtr, *functionMapping[functionPtr]))
+    if (convertFunction(function, *functionMapping[&function]))
       return true;
   }
   return false;
