@@ -770,7 +770,15 @@ class FusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    // NOTE(intel-tf): When filter_size is equal to the input image size,
+    // conv2d essentially is element-wise multiplication followed by
+    // a full sum reduction, which causes larger numerical error
+    // than usual cases.
+    if (image_width == filter_size && image_height == filter_size) {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
+    } else {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    }
   }
 
   void VerifyFusedBatchNormTensorsNear(int depth, int image_width,
@@ -812,7 +820,15 @@ class FusedConv2DOpTest : public OpsTestBase {
     ASSERT_EQ(conv_2d.dtype(), fused_conv_2d.dtype());
     ASSERT_EQ(conv_2d.shape(), fused_conv_2d.shape());
 
-    test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    // NOTE(intel-tf): When filter_size is equal to the input image size,
+    // conv2d essentially is element-wise multiplication followed by
+    // a full sum reduction, which causes larger numerical error
+    // than usual cases.
+    if (image_width == filter_size && image_height == filter_size) {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-4);
+    } else {
+      test::ExpectClose(conv_2d, fused_conv_2d, /*atol=*/1e-6);
+    }
   }
 
   // Verifies that computing Conv2D+BiasAdd in a graph is identical to

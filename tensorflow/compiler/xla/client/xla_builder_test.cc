@@ -455,5 +455,31 @@ TEST_F(XlaBuilderTest, AfterAllWithNonTokenOperands) {
               ::testing::HasSubstr("All operands to AfterAll must be tokens"));
 }
 
+TEST_F(XlaBuilderTest, CheckInputOutputAlias) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {8, 4}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {8, 4}), "p1");
+  auto add = Add(p0, p1);
+  auto sub = Sub(p0, p1);
+  auto root = Tuple(&b, {add, sub});
+
+  b.SetUpAlias({1}, 0, {});
+  b.SetUpAlias({0}, 1, {});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b, root));
+
+  const HloInputOutputAliasConfig& config = module->input_output_alias_config();
+  EXPECT_TRUE(config.ParameterHasAlias(0, {}));
+  EXPECT_TRUE(config.ParameterHasAlias(1, {}));
+
+  auto alias_p0 = config.GetAliasedOutput(0, {});
+  ASSERT_TRUE(alias_p0.has_value());
+  EXPECT_EQ(*alias_p0, ShapeIndex({1}));
+
+  auto alias_p1 = config.GetAliasedOutput(1, {});
+  ASSERT_TRUE(alias_p1.has_value());
+  EXPECT_EQ(*alias_p1, ShapeIndex({0}));
+}
+
 }  // namespace
 }  // namespace xla
