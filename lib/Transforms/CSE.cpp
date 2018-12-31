@@ -35,20 +35,9 @@
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/RecyclingAllocator.h"
 #include <deque>
-
 using namespace mlir;
 
 namespace {
-/// Simple common sub-expression elimination.
-struct CSE : public FunctionPass {
-  CSE() : FunctionPass(&CSE::passID) {}
-
-  PassResult runOnCFGFunction(Function *f) override;
-  PassResult runOnMLFunction(Function *f) override;
-
-  static char passID;
-};
-
 // TODO(riverriddle) Handle commutative operations.
 struct SimpleOperationInfo : public llvm::DenseMapInfo<OperationInst *> {
   static unsigned getHashValue(const OperationInst *op) {
@@ -88,64 +77,22 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<OperationInst *> {
                       rhs->result_type_begin());
   }
 };
+} // end anonymous namespace
 
-/// Shared implementation of operation elimination and scoped map definitions.
-struct CSEImpl {
+namespace {
+/// Simple common sub-expression elimination.
+struct CSE : public FunctionPass {
+  CSE() : FunctionPass(&CSE::passID) {}
+
+  static char passID;
+
+  /// Shared implementation of operation elimination and scoped map definitions.
   using AllocatorTy = llvm::RecyclingAllocator<
       llvm::BumpPtrAllocator,
       llvm::ScopedHashTableVal<OperationInst *, OperationInst *>>;
   using ScopedMapTy = llvm::ScopedHashTable<OperationInst *, OperationInst *,
                                             SimpleOperationInfo, AllocatorTy>;
 
-  /// Erase any operations that were marked as dead during simplification.
-  void eraseDeadOperations() {
-    for (auto *op : opsToErase)
-      op->erase();
-  }
-
-  /// Attempt to eliminate a redundant operation.
-  void simplifyOperation(OperationInst *op) {
-    // TODO(riverriddle) We currently only eliminate non side-effecting
-    // operations.
-    if (!op->hasNoSideEffect())
-      return;
-
-    // If the operation is already trivially dead just add it to the erase list.
-    if (op->use_empty()) {
-      opsToErase.push_back(op);
-      return;
-    }
-
-    // Look for an existing definition for the operation.
-    if (auto *existing = knownValues.lookup(op)) {
-      // If we find one then replace all uses of the current operation with the
-      // existing one and mark it for deletion.
-      for (unsigned i = 0, e = existing->getNumResults(); i != e; ++i)
-        op->getResult(i)->replaceAllUsesWith(existing->getResult(i));
-      opsToErase.push_back(op);
-
-      // If the existing operation has an unknown location and the current
-      // operation doesn't, then set the existing op's location to that of the
-      // current op.
-      if (existing->getLoc().isa<UnknownLoc>() &&
-          !op->getLoc().isa<UnknownLoc>()) {
-        existing->setLoc(op->getLoc());
-      }
-    } else {
-      // Otherwise, we add this operation to the known values map.
-      knownValues.insert(op, op);
-    }
-  }
-
-  /// A scoped hash table of defining operations within a function.
-  ScopedMapTy knownValues;
-
-  /// Operations marked as dead and to be erased.
-  std::vector<OperationInst *> opsToErase;
-};
-
-/// Common sub-expression elimination for CFG functions.
-struct CFGCSE : public CSEImpl {
   /// Represents a single entry in the depth first traversal of a CFG.
   struct CFGStackNode {
     CFGStackNode(ScopedMapTy &knownValues, DominanceInfoNode *node)
@@ -162,82 +109,122 @@ struct CFGCSE : public CSEImpl {
     bool processed;
   };
 
-  void run(Function *f) {
-    // Note, deque is being used here because there was significant performance
-    // gains over vector when the container becomes very large due to the
-    // specific access patterns. If/when these performance issues are no
-    // longer a problem we can change this to vector. For more information see
-    // the llvm mailing list discussion on this:
-    // http://lists.llvm.org/pipermail/llvm-commits/Week-of-Mon-20120116/135228.html
-    std::deque<std::unique_ptr<CFGStackNode>> stack;
+  /// Attempt to eliminate a redundant operation.
+  void simplifyOperation(OperationInst *op);
 
-    // Process the nodes of the dom tree.
-    DominanceInfo domInfo(f);
-    stack.emplace_back(
-        std::make_unique<CFGStackNode>(knownValues, domInfo.getRootNode()));
+  void simplifyBlock(Block *bb);
 
-    while (!stack.empty()) {
-      auto &currentNode = stack.back();
+  PassResult runOnFunction(Function *f) override;
 
-      // Check to see if we need to process this node.
-      if (!currentNode->processed) {
-        currentNode->processed = true;
-        simplifyBlock(currentNode->node->getBlock());
-        // Otherwise, check to see if we need to process a child node.
-      } else if (currentNode->childIterator != currentNode->node->end()) {
-        auto *childNode = *(currentNode->childIterator++);
-        stack.emplace_back(
-            std::make_unique<CFGStackNode>(knownValues, childNode));
-      } else {
-        // Finally, if the node and all of its children have been processed
-        // then we delete the node.
-        stack.pop_back();
-      }
-    }
+private:
+  /// A scoped hash table of defining operations within a function.
+  ScopedMapTy knownValues;
 
-    // Erase any operations marked as redundant.
-    eraseDeadOperations();
-  }
-
-  void simplifyBlock(Block *bb) {
-    for (auto &i : *bb)
-      if (auto *opInst = dyn_cast<OperationInst>(&i))
-        simplifyOperation(opInst);
-  }
+  /// Operations marked as dead and to be erased.
+  std::vector<OperationInst *> opsToErase;
 };
-
-/// Common sub-expression elimination for ML functions.
-struct MLCSE : public CSEImpl, InstWalker<MLCSE> {
-  using InstWalker<MLCSE>::walk;
-
-  void run(Function *f) {
-    // Walk the function instructions.
-    walk(f);
-
-    // Finally, erase any redundant operations.
-    eraseDeadOperations();
-  }
-
-  // Insert a scope for each instruction range.
-  template <class Iterator> void walk(Iterator Start, Iterator End) {
-    ScopedMapTy::ScopeTy scope(knownValues);
-    InstWalker<MLCSE>::walk(Start, End);
-  }
-
-  void visitOperationInst(OperationInst *inst) { simplifyOperation(inst); }
-};
-
 } // end anonymous namespace
 
 char CSE::passID = 0;
 
-PassResult CSE::runOnCFGFunction(Function *f) {
-  CFGCSE().run(f);
-  return success();
+/// Attempt to eliminate a redundant operation.
+void CSE::simplifyOperation(OperationInst *op) {
+  // TODO(riverriddle) We currently only eliminate non side-effecting
+  // operations.
+  if (!op->hasNoSideEffect())
+    return;
+
+  // If the operation is already trivially dead just add it to the erase list.
+  if (op->use_empty()) {
+    opsToErase.push_back(op);
+    return;
+  }
+
+  // Look for an existing definition for the operation.
+  if (auto *existing = knownValues.lookup(op)) {
+    // If we find one then replace all uses of the current operation with the
+    // existing one and mark it for deletion.
+    for (unsigned i = 0, e = existing->getNumResults(); i != e; ++i)
+      op->getResult(i)->replaceAllUsesWith(existing->getResult(i));
+    opsToErase.push_back(op);
+
+    // If the existing operation has an unknown location and the current
+    // operation doesn't, then set the existing op's location to that of the
+    // current op.
+    if (existing->getLoc().isa<UnknownLoc>() &&
+        !op->getLoc().isa<UnknownLoc>()) {
+      existing->setLoc(op->getLoc());
+    }
+  } else {
+    // Otherwise, we add this operation to the known values map.
+    knownValues.insert(op, op);
+  }
 }
 
-PassResult CSE::runOnMLFunction(Function *f) {
-  MLCSE().run(f);
+void CSE::simplifyBlock(Block *bb) {
+  for (auto &i : *bb) {
+    switch (i.getKind()) {
+    case Instruction::Kind::OperationInst:
+      simplifyOperation(&cast<OperationInst>(i));
+      break;
+    case Instruction::Kind::For: {
+      ScopedMapTy::ScopeTy scope(knownValues);
+      simplifyBlock(cast<ForInst>(i).getBody());
+      break;
+    }
+    case Instruction::Kind::If: {
+      auto &ifInst = cast<IfInst>(i);
+      if (auto *elseBlock = ifInst.getElse()) {
+        ScopedMapTy::ScopeTy scope(knownValues);
+        simplifyBlock(elseBlock);
+      }
+      ScopedMapTy::ScopeTy scope(knownValues);
+      simplifyBlock(ifInst.getThen());
+      break;
+    }
+    }
+  }
+}
+PassResult CSE::runOnFunction(Function *f) {
+  // Note, deque is being used here because there was significant performance
+  // gains over vector when the container becomes very large due to the
+  // specific access patterns. If/when these performance issues are no
+  // longer a problem we can change this to vector. For more information see
+  // the llvm mailing list discussion on this:
+  // http://lists.llvm.org/pipermail/llvm-commits/Week-of-Mon-20120116/135228.html
+  std::deque<std::unique_ptr<CFGStackNode>> stack;
+
+  // Process the nodes of the dom tree.
+  DominanceInfo domInfo(f);
+  stack.emplace_back(
+      std::make_unique<CFGStackNode>(knownValues, domInfo.getRootNode()));
+
+  while (!stack.empty()) {
+    auto &currentNode = stack.back();
+
+    // Check to see if we need to process this node.
+    if (!currentNode->processed) {
+      currentNode->processed = true;
+      simplifyBlock(currentNode->node->getBlock());
+    }
+
+    // Otherwise, check to see if we need to process a child node.
+    if (currentNode->childIterator != currentNode->node->end()) {
+      auto *childNode = *(currentNode->childIterator++);
+      stack.emplace_back(
+          std::make_unique<CFGStackNode>(knownValues, childNode));
+    } else {
+      // Finally, if the node and all of its children have been processed
+      // then we delete the node.
+      stack.pop_back();
+    }
+  }
+
+  /// Erase any operations that were marked as dead during simplification.
+  for (auto *op : opsToErase)
+    op->erase();
+  opsToErase.clear();
+
   return success();
 }
 
