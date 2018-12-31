@@ -736,6 +736,18 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         " tf.initializers.variance_scaling instead with distribution=uniform "
         "to get equivalent behaviour.")
 
+    metrics_comment = (
+        "WARNING: tf.metrics have been converted to object oriented versions in"
+        " TF 2.0 and after. The metric function calls have been converted to "
+        "compat.v1 for backward compatibility. Please update these calls to "
+        "the TF 2.0 versions.")
+
+    losses_comment = (
+        "WARNING: tf.losses have been converted to object oriented versions in"
+        " TF 2.0 and after. The loss function calls have been converted to "
+        "compat.v1 for backward compatibility. Please update these calls to "
+        "the TF 2.0 versions.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
@@ -747,9 +759,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_return_type_comment,
         "tf.assert_rank":
             assert_rank_comment,
-        "tf.cond": "tf.cond no longer takes 'strict'. "
-                   "Now 'strict' defaults to True."
-                   "fn1/fn2 arguments are replaced by true_fn/false_fn.",
+        "tf.cond":
+            "tf.cond no longer takes 'strict'. "
+            "Now 'strict' defaults to True."
+            "fn1/fn2 arguments are replaced by true_fn/false_fn.",
         "tf.debugging.assert_equal":
             assert_return_type_comment,
         "tf.debugging.assert_greater":
@@ -780,9 +793,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.debugging.assert_rank_in":
             assert_rank_comment,
-        "tf.device": "tf.device no longer takes function as an argument. "
-                     "'devide_name_or_function' argument has been renamed to "
-                     "'device_name'.",
+        "tf.device":
+            "tf.device no longer takes function as an argument. "
+            "'devide_name_or_function' argument has been renamed to "
+            "'device_name'.",
         "tf.flags":
             "tf.flags has been removed, please use the argparse or absl"
             " module if you need command line parsing.",
@@ -820,10 +834,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             default_loss_reduction_changed,
         "tf.estimator.BaselineRegressor":
             default_loss_reduction_changed,
-        "tf.hessians": "tf.hessians no longer takes "
-                       "'colocate_gradients_with_ops' argument. Also, "
-                       "arguments have been reordered so that 'name' is the "
-                       "last argument.",
+        "tf.hessians":
+            "tf.hessians no longer takes "
+            "'colocate_gradients_with_ops' argument. Also, "
+            "arguments have been reordered so that 'name' is the "
+            "last argument.",
         "tf.nn.conv1d":
             "WARNING: use_cudnn_on_gpu argument has been removed and \"value\""
             " was renamed to \"input\"",
@@ -949,6 +964,104 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             uniform_unit_scaling_initializer_comment,
         "tf.uniform_unit_scaling_initializer":
             uniform_unit_scaling_initializer_comment,
+        "tf.losses.absolute_difference":
+            losses_comment,
+        "tf.losses.add_loss":
+            losses_comment,
+        "tf.losses.compute_weighted_loss":
+            losses_comment,
+        "tf.losses.cosine_distance":
+            losses_comment,
+        "tf.losses.get_losses":
+            losses_comment,
+        "tf.losses.get_regularization_loss":
+            losses_comment,
+        "tf.losses.get_regularization_losses":
+            losses_comment,
+        "tf.losses.get_total_loss":
+            losses_comment,
+        "tf.losses.hinge_loss":
+            losses_comment,
+        "tf.losses.huber_loss":
+            losses_comment,
+        "tf.losses.log_loss":
+            losses_comment,
+        "tf.losses.mean_pairwise_squared_error":
+            losses_comment,
+        "tf.losses.mean_squared_error":
+            losses_comment,
+        "tf.losses.sigmoid_cross_entropy":
+            losses_comment,
+        "tf.losses.softmax_cross_entropy":
+            losses_comment,
+        "tf.losses.sparse_softmax_cross_entropy":
+            losses_comment,
+        "tf.metrics.accuracy":
+            metrics_comment,
+        "tf.metrics.auc":
+            metrics_comment,
+        "tf.metrics.average_precision_at_k":
+            metrics_comment,
+        "tf.metrics.false_negatives":
+            metrics_comment,
+        "tf.metrics.false_negatives_at_thresholds":
+            metrics_comment,
+        "tf.metrics.false_positives":
+            metrics_comment,
+        "tf.metrics.false_positives_at_thresholds":
+            metrics_comment,
+        "tf.metrics.mean":
+            metrics_comment,
+        "tf.metrics.mean_absolute_error":
+            metrics_comment,
+        "tf.metrics.mean_cosine_distance":
+            metrics_comment,
+        "tf.metrics.mean_iou":
+            metrics_comment,
+        "tf.metrics.mean_per_class_accuracy":
+            metrics_comment,
+        "tf.metrics.mean_relative_error":
+            metrics_comment,
+        "tf.metrics.mean_squared_error":
+            metrics_comment,
+        "tf.metrics.mean_tensor":
+            metrics_comment,
+        "tf.metrics.percentage_below":
+            metrics_comment,
+        "tf.metrics.precision":
+            metrics_comment,
+        "tf.metrics.precision_at_k":
+            metrics_comment,
+        "tf.metrics.precision_at_thresholds":
+            metrics_comment,
+        "tf.metrics.precision_at_top_k":
+            metrics_comment,
+        "tf.metrics.recall":
+            metrics_comment,
+        "tf.metrics.recall_at_k":
+            metrics_comment,
+        "tf.metrics.recall_at_thresholds":
+            metrics_comment,
+        "tf.metrics.recall_at_top_k":
+            metrics_comment,
+        "tf.metrics.root_mean_squared_error":
+            metrics_comment,
+        "tf.metrics.sensitivity_at_specificity":
+            metrics_comment,
+        "tf.metrics.sparse_average_precision_at_k":
+            metrics_comment,
+        "tf.metrics.sparse_precision_at_k":
+            metrics_comment,
+        "tf.metrics.specificity_at_sensitivity":
+            metrics_comment,
+        "tf.metrics.true_negatives":
+            metrics_comment,
+        "tf.metrics.true_negatives_at_thresholds":
+            metrics_comment,
+        "tf.metrics.true_positives":
+            metrics_comment,
+        "tf.metrics.true_positives_at_thresholds":
+            metrics_comment,
     }
 
     self.symbol_renames = {

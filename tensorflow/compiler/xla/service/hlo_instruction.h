@@ -559,12 +559,21 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices, absl::Span<const int64> slice_sizes);
+  // Same as above, but expects a span of scalar start indices.
+  static std::unique_ptr<HloInstruction> CreateDynamicSlice(
+      const Shape& shape, HloInstruction* operand,
+      absl::Span<HloInstruction* const> start_indices,
+      absl::Span<const int64> slice_sizes);
 
   // Creates a dynamic update slice instruction, which updates a slice
   // of 'operand' with 'update' and 'start_indices'.
   static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
       const Shape& shape, HloInstruction* operand, HloInstruction* update,
       HloInstruction* start_indices);
+  // Same as above, but expects a span of scalar start indices.
+  static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
+      const Shape& shape, HloInstruction* operand, HloInstruction* update,
+      absl::Span<HloInstruction* const> start_indices);
 
   // Creates a concatenate instruction, where the operands are concatenated on
   // the provided dimension.
@@ -928,11 +937,16 @@ class HloInstruction {
   // operands of it which could be created due to this replacement.
   Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
-  // Replaces the specified operand with new_operand.
+  // Replaces the specified operand with new_operand. The old and new operands
+  // must have compatible shapes ignoring floating-point precision.
   //
   // This function does NOT remove duplicated operands even if this instruction
   // is a fusion, so that the existing operand numbers do not change.
-  Status ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
+  Status ReplaceOperandWith(int64 operand_num, HloInstruction* new_operand);
+
+  // Same as ReplaceOperandWith(), but new_operand can have a different shape.
+  Status ReplaceOperandWithDifferentShape(int64 operand_num,
+                                          HloInstruction* new_operand);
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
@@ -941,9 +955,15 @@ class HloInstruction {
   // If this instruction is the root of its computation, sets the computation's
   // root to new_producer.
   //
+  // The new producer must have a compatible shape ignoring floating-point
+  // precision.
+  //
   // If a user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
+
+  // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
+  Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
 
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when

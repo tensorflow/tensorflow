@@ -72,7 +72,11 @@ class Ftrl(optimizer_v2.OptimizerV2):
                   2*L2_shrinkage*lr_t / (1 + 2*L2*lr_t) * w_t
         where lr_t is the learning rate at t.
         When input is sparse shrinkage will only happen on the active weights.\
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     Raises:
       ValueError: If one of the arguments is invalid.

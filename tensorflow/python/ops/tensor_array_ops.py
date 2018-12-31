@@ -858,7 +858,8 @@ class _EagerTensorArray(object):
     if self._tensor_array:
       for ix in range(len(self._tensor_array)):
         self._maybe_zero(ix)
-    return array_ops.stack(self._tensor_array, name=name)
+    return ops.convert_to_tensor(
+        self._tensor_array, name=name, dtype=self._dtype)
 
   def gather(self, indices, name=None):
     """See TensorArray."""

@@ -24,6 +24,7 @@ from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -153,7 +154,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       compute_devices = (worker_device,)
 
     self._device_map = values.ReplicaDeviceMap(compute_devices)
-    self._input_workers = values.InputWorkers(
+    self._input_workers = input_lib.InputWorkers(
         self._device_map, [(worker_device, compute_devices)])
 
     # In distributed mode, place variables on ps jobs in a round-robin fashion.
@@ -210,7 +211,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       compute_devices = (_LOCAL_CPU,)
 
     self._device_map = values.ReplicaDeviceMap(compute_devices)
-    self._input_workers = values.InputWorkers(
+    self._input_workers = input_lib.InputWorkers(
         self._device_map, [(worker_device, compute_devices)])
 
     # If there is only one GPU, put everything on that GPU. Otherwise, place
@@ -237,13 +238,13 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
 
   def _distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
-    return values.PerReplicaDataset(
+    return input_lib.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._input_workers, 0,
         prefetch_on_device=True)
 
   def _make_dataset_iterator(self, dataset):
-    return values.DatasetIterator(dataset, self._input_workers,
-                                  self._num_replicas_in_sync)
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -262,7 +263,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
         num_input_pipelines=num_input_pipelines,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
-    return values.InputFunctionIterator(
+    return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, [input_context])
 
   def _broadcast_to(self, tensor, destinations):

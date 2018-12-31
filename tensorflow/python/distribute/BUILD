@@ -221,6 +221,7 @@ py_library(
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
+        ":input_lib",
         ":multi_worker_util",
         ":reduce_util",
         ":shared_variable_creator",
@@ -252,6 +253,23 @@ py_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "input_lib",
+    srcs = ["input_lib.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":input_ops",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -350,14 +368,12 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
-        ":input_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",

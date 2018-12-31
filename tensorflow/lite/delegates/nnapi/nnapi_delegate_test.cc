@@ -27,6 +27,16 @@ using ::testing::ElementsAreArray;
 // TODO(b/110368244): figure out how to share the existing tests in kernels/ but
 // with the delegation on. Also, add more unit tests to improve code coverage.
 
+// This matcher uses 1 as maximum tolerance.
+MATCHER(QuantizedNear, "") {
+  const int diff = abs(std::get<0>(arg) - std::get<1>(arg));
+  if (diff > 1) {
+    *result_listener << "Quantized values can be at most off by one: " << diff;
+    return false;
+  }
+  return true;
+}
+
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() {
@@ -585,14 +595,14 @@ class ReshapeOpModel : public SingleOpModelWithNNAPI {
   ReshapeOpModel(std::initializer_list<int> input_shape,
                  std::initializer_list<int> new_shape) {
     input_ = AddInput(TensorType_FLOAT32);
-    new_shape_ = AddInput(TensorType_INT32);
+    new_shape_ = AddConstInput<int>(TensorType_INT32, new_shape,
+                                    {static_cast<int>(new_shape.size())});
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(
         BuiltinOperator_RESHAPE, BuiltinOptions_ReshapeOptions,
         CreateReshapeOptions(builder_, builder_.CreateVector<int>(new_shape))
             .Union());
     BuildInterpreter({input_shape, {static_cast<int>(new_shape.size())}});
-    PopulateTensor<int>(new_shape_, new_shape);
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -1326,7 +1336,8 @@ TEST(NNAPIDelegate, LogisticQuantized) {
                   },
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
-              ElementsAreArray({128, 1, 227, 251, 244, 32, 255, 188}));
+              testing::Pointwise(QuantizedNear(),
+                                 {128, 1, 227, 251, 244, 32, 255, 188}));
 }
 
 #if 0
@@ -1576,14 +1587,17 @@ class StridedSliceOpModel : public SingleOpModelWithNNAPI {
  public:
   StridedSliceOpModel(std::initializer_list<int> input_shape,
                       std::initializer_list<int> begin_shape,
+                      std::initializer_list<int> begin_data,
                       std::initializer_list<int> end_shape,
-                      std::initializer_list<int> strides_shape, int begin_mask,
+                      std::initializer_list<int> end_data,
+                      std::initializer_list<int> strides_shape,
+                      std::initializer_list<int> strides_data, int begin_mask,
                       int end_mask, int ellipsis_mask, int new_axis_mask,
                       int shrink_axis_mask) {
     input_ = AddInput(tensor_input_type);
-    begin_ = AddInput(TensorType_INT32);
-    end_ = AddInput(TensorType_INT32);
-    strides_ = AddInput(TensorType_INT32);
+    begin_ = AddConstInput(TensorType_INT32, begin_data, begin_shape);
+    end_ = AddConstInput(TensorType_INT32, end_data, end_shape);
+    strides_ = AddConstInput(TensorType_INT32, strides_data, strides_shape);
     output_ = AddOutput(tensor_input_type);
     SetBuiltinOp(
         BuiltinOperator_STRIDED_SLICE, BuiltinOptions_StridedSliceOptions,
@@ -1595,15 +1609,6 @@ class StridedSliceOpModel : public SingleOpModelWithNNAPI {
 
   void SetInput(std::initializer_list<input_type> data) {
     PopulateTensor<input_type>(input_, data);
-  }
-  void SetBegin(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(begin_, data);
-  }
-  void SetEnd(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(end_, data);
-  }
-  void SetStrides(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(strides_, data);
   }
 
   std::vector<input_type> GetOutput() {
@@ -1619,39 +1624,47 @@ class StridedSliceOpModel : public SingleOpModelWithNNAPI {
   int output_;
 };
 
-TEST(NNAPIDelegate, StridedSliceIn2D) {
-  StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 0);
+TEST(StridedSliceOpTest, In1D) {
+  StridedSliceOpModel<> m({4}, {1}, {1}, {1}, {3}, {1}, {1}, 0, 0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
+}
+
+TEST(StridedSliceOpTest, In1D_BeginMask) {
+  StridedSliceOpModel<> m({4}, {1}, {1}, {1}, {3}, {1}, {1}, 1, 0, 0, 0, 0);
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3}));
+}
+
+TEST(StridedSliceOpTest, In2D_Stride2) {
+  StridedSliceOpModel<> m({2, 3}, {2}, {0, 0}, {2}, {2, 3}, {2}, {2, 2}, 0, 0,
+                          0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.SetBegin({1, 0});
-  m.SetEnd({2, 2});
-  m.SetStrides({1, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 5}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3}));
 }
 
-TEST(NNAPIDelegate, StridedSliceIn2D_ShrinkAxis_NegativeSlice) {
-  // This is equivalent to tf.range(4)[:, tf.newaxis][-2, -1].
-  StridedSliceOpModel<> m({4, 1}, {2}, {2}, {2}, 0, 0, 0, 0, 3);
-  m.SetInput({0, 1, 2, 3});
-  m.SetBegin({-2, -1});
-  m.SetEnd({-1, 0});
-  m.SetStrides({1, 1});
-
-  m.Invoke();
-  EXPECT_TRUE(m.GetOutputShape().empty());
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({2}));
-}
-
-TEST(NNAPIDelegate, StridedSliceIn2D_ShrinkAxisMask) {
-  StridedSliceOpModel<> m({2, 3}, {2}, {2}, {2}, 0, 0, 0, 0, 3);
+TEST(StridedSliceOpTest, In2D_EndMask) {
+  StridedSliceOpModel<> m({2, 3}, {2}, {1, 0}, {2}, {2, 2}, {2}, {1, 1}, 0, 2,
+                          0, 0, 0);
   m.SetInput({1, 2, 3, 4, 5, 6});
-  m.SetBegin({0, 0});
-  m.SetEnd({1, 1});
-  m.SetStrides({1, 1});
   m.Invoke();
-  EXPECT_TRUE(m.GetOutputShape().empty());
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({4, 5, 6}));
+}
+
+TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis4) {
+  StridedSliceOpModel<> m({2, 3, 2}, {3}, {0, 0, 0}, {3}, {2, 3, 1}, {3},
+                          {1, 1, 1}, 0, 0, 0, 0, 4);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 3, 5, 7, 9, 11}));
 }
 
 static float rnn_input[] = {
