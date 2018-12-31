@@ -39,6 +39,10 @@ void ModulePass::anchor() {}
 /// corresponding hooks and terminates upon error encountered.
 PassResult FunctionPass::runOnModule(Module *m) {
   for (auto &fn : *m) {
+    // All function passes ignore external functions.
+    if (fn.empty())
+      continue;
+
     if (runOnFunction(&fn))
       return failure();
   }

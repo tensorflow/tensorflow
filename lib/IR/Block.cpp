@@ -17,7 +17,6 @@
 
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 using namespace mlir;
 
 Block::~Block() {
@@ -42,6 +41,20 @@ Function *Block::getFunction() {
   if (auto *list = block->getParent())
     return list->getContainingFunction();
   return nullptr;
+}
+
+/// Insert this block (which must not already be in a function) right before
+/// the specified block.
+void Block::insertBefore(Block *block) {
+  assert(!getParent() && "already inserted into a block!");
+  assert(block->getParent() && "cannot insert before a block without a parent");
+  block->getParent()->getBlocks().insert(BlockList::iterator(block), this);
+}
+
+/// Unlink this Block from its Function and delete it.
+void Block::eraseFromFunction() {
+  assert(getFunction() && "Block has no parent");
+  getFunction()->getBlocks().erase(this);
 }
 
 /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
@@ -143,38 +156,26 @@ Block *Block::getSinglePredecessor() {
 // Other
 //===----------------------------------------------------------------------===//
 
-/// Unlink this Block from its Function and delete it.
-void Block::eraseFromFunction() {
-  assert(getFunction() && "Block has no parent");
-  getFunction()->getBlocks().erase(this);
-}
-
-/// Split the basic block into two basic blocks before the specified
-/// instruction or iterator.
+/// Split the block into two blocks before the specified instruction or
+/// iterator.
 ///
 /// Note that all instructions BEFORE the specified iterator stay as part of
-/// the original basic block, an unconditional branch is added to the original
-/// block (going to the new block), and the rest of the instructions in the
-/// original block are moved to the new BB, including the old terminator.  The
-/// newly formed Block is returned.
+/// the original basic block, and the rest of the instructions in the original
+/// block are moved to the new block, including the old terminator.  The
+/// original block is left without a terminator.
 ///
-/// This function invalidates the specified iterator.
+/// The newly formed Block is returned, and the specified iterator is
+/// invalidated.
 Block *Block::splitBlock(iterator splitBefore) {
   // Start by creating a new basic block, and insert it immediate after this
   // one in the containing function.
   auto newBB = new Block();
   getFunction()->getBlocks().insert(++Function::iterator(this), newBB);
-  auto branchLoc =
-      splitBefore == end() ? getTerminator()->getLoc() : splitBefore->getLoc();
 
   // Move all of the operations from the split point to the end of the function
   // into the new block.
   newBB->getInstructions().splice(newBB->end(), getInstructions(), splitBefore,
                                   end());
-
-  // Create an unconditional branch to the new block, and move our terminator
-  // to the new block.
-  FuncBuilder(this).create<BranchOp>(branchLoc, newBB);
   return newBB;
 }
 

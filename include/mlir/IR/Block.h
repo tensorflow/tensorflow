@@ -64,6 +64,13 @@ public:
     return const_cast<Block *>(this)->getFunction();
   }
 
+  /// Insert this block (which must not already be in a function) right before
+  /// the specified block.
+  void insertBefore(Block *block);
+
+  /// Unlink this Block from its Function and delete it.
+  void eraseFromFunction();
+
   //===--------------------------------------------------------------------===//
   // Block argument management
   //===--------------------------------------------------------------------===//
@@ -220,19 +227,16 @@ public:
   // Other
   //===--------------------------------------------------------------------===//
 
-  /// Unlink this Block from its Function and delete it.
-  void eraseFromFunction();
-
   /// Split the block into two blocks before the specified instruction or
   /// iterator.
   ///
   /// Note that all instructions BEFORE the specified iterator stay as part of
-  /// the original basic block, an unconditional branch is added to the original
-  /// block (going to the new block), and the rest of the instructions in the
-  /// original block are moved to the new block, including the old terminator.
-  /// The newly formed Block is returned.
+  /// the original basic block, and the rest of the instructions in the original
+  /// block are moved to the new block, including the old terminator.  The
+  /// original block is left without a terminator.
   ///
-  /// This function invalidates the specified iterator.
+  /// The newly formed Block is returned, and the specified iterator is
+  /// invalidated.
   Block *splitBlock(iterator splitBefore);
   Block *splitBlock(Instruction *splitBeforeInst) {
     return splitBlock(iterator(splitBeforeInst));

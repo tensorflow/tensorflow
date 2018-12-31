@@ -79,10 +79,8 @@ FunctionPass *createPipelineDataTransferPass();
 /// Creates a pass which composes all affine maps applied to loads and stores.
 FunctionPass *createComposeAffineMapsPass();
 
-/// Replaces all ML functions in the module with equivalent CFG functions.
-/// Function references are appropriately patched to refer to the newly
-/// generated CFG functions.
-ModulePass *createConvertToCFGPass();
+/// Lowers IfInst and ForInst to the equivalent lower level CFG structures.
+FunctionPass *createLowerIfAndForPass();
 
 /// Creates a pass to perform tiling on loop nests.
 FunctionPass *createLoopTilingPass();

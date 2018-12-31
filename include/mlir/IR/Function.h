@@ -53,7 +53,8 @@ public:
            ArrayRef<NamedAttribute> attrs = {});
   ~Function();
 
-  Kind getKind() const { return (Kind)nameAndKind.getInt(); }
+  Kind getKind() const { return nameAndKind.getInt(); }
+  void setKind(Kind kind) { nameAndKind.setInt(kind); }
 
   bool isCFG() const { return getKind() == Kind::CFGFunc; }
   bool isML() const { return getKind() == Kind::MLFunc; }

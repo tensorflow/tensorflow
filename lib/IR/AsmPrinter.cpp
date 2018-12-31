@@ -873,12 +873,17 @@ public:
 
   enum { nameSentinel = ~0U };
 
-  void printBlockName(const Block *block) { os << "^bb" << getBlockID(block); }
+  void printBlockName(const Block *block) {
+    auto id = getBlockID(block);
+    if (id != ~0U)
+      os << "^bb" << id;
+    else
+      os << "^INVALIDBLOCK";
+  }
 
   unsigned getBlockID(const Block *block) {
     auto it = blockIDs.find(block);
-    assert(it != blockIDs.end() && "Block not in this function?");
-    return it->second;
+    return it != blockIDs.end() ? it->second : ~0U;
   }
 
   void printSuccessorAndUseList(const OperationInst *term,
@@ -1161,14 +1166,16 @@ void FunctionPrinter::print(const Block *block) {
     } else {
       // We want to print the predecessors in increasing numeric order, not in
       // whatever order the use-list is in, so gather and sort them.
-      SmallVector<unsigned, 4> predIDs;
+      SmallVector<std::pair<unsigned, const Block *>, 4> predIDs;
       for (auto *pred : block->getPredecessors())
-        predIDs.push_back(getBlockID(pred));
+        predIDs.push_back({getBlockID(pred), pred});
       llvm::array_pod_sort(predIDs.begin(), predIDs.end());
 
       os << "\t// " << predIDs.size() << " preds: ";
 
-      interleaveComma(predIDs, [&](unsigned predID) { os << "^bb" << predID; });
+      interleaveComma(predIDs, [&](std::pair<unsigned, const Block *> pred) {
+        printBlockName(pred.second);
+      });
     }
     os << '\n';
   }
