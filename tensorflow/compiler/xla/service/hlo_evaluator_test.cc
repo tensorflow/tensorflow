@@ -2925,7 +2925,7 @@ ENTRY main {
 }
 
 // Check that we correctly return error status when evaluating call instruction
-// containing an unimplemented instruction
+// containing an unimplemented instruction.
 TEST_F(HloEvaluatorTest, CallContainingUnimplementedInstruction) {
 constexpr absl::string_view hlo_text = R"(
 HloModule Test
@@ -2933,7 +2933,7 @@ HloModule Test
 sub {
   constant = f32[] constant(0)
   constant.1 = f32[] constant(1)
-  ROOT rng = f32[]{0} rng(constant, constant.1), distribution=rng_uniform
+  ROOT cst = f32[] custom-call(constant, constant.1), custom_call_target="?"
 }
 
 ENTRY main {
@@ -2951,8 +2951,8 @@ ENTRY main {
   EXPECT_FALSE(HloEvaluator().TryEvaluate(call, &lit));
 }
 
-// Check that we correctly return error status when evaluating call instruction
-// containing an unimplemented instruction
+// Check that we correctly return error status when evaluating fusion
+// instruction containing an unimplemented instruction.
 TEST_F(HloEvaluatorTest, FusionContainingUnimplementedInstruction) {
 constexpr absl::string_view hlo_text = R"(
 HloModule Test
@@ -2960,7 +2960,7 @@ HloModule Test
 sub {
   constant = f32[] constant(0)
   constant.1 = f32[] constant(1)
-  ROOT rng = f32[]{0} rng(constant, constant.1), distribution=rng_uniform
+  ROOT cst = f32[] custom-call(constant, constant.1), custom_call_target="?"
 }
 
 ENTRY main {
