@@ -1878,7 +1878,7 @@ class HloInstructionPattern {
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
-  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape)
+  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape) const
       -> decltype(this->WithShape(Shape().EqualTo(shape))) {
     return WithShape(Shape().EqualTo(shape));
   }
@@ -1886,7 +1886,7 @@ class HloInstructionPattern {
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
-  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape)
+  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape) const
       -> decltype(this->WithShape(Shape().CompatibleTo(shape))) {
     return WithShape(Shape().CompatibleTo(shape));
   }
