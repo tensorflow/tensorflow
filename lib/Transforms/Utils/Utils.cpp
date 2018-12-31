@@ -60,8 +60,6 @@ static bool isMemRefDereferencingOp(const OperationInst &op) {
 //  extra operands, note that 'indexRemap' would just be applied to the existing
 //  indices (%i, %j).
 //
-// TODO(mlir-team): extend this for CFG Functions. Can also be easily
-// extended to add additional indices at any position.
 bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                                     ArrayRef<Value *> extraIndices,
                                     AffineMap indexRemap,

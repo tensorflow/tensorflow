@@ -41,7 +41,7 @@ namespace {
 /// A pass to perform loop tiling on all suitable loop nests of a Function.
 struct LoopTiling : public FunctionPass {
   LoopTiling() : FunctionPass(&LoopTiling::passID) {}
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
   constexpr static unsigned kDefaultTileSize = 4;
 
   static char passID;
@@ -238,7 +238,7 @@ static void getTileableBands(Function *f,
   }
 }
 
-PassResult LoopTiling::runOnMLFunction(Function *f) {
+PassResult LoopTiling::runOnFunction(Function *f) {
   std::vector<SmallVector<ForInst *, 6>> bands;
   getTileableBands(f, &bands);
 

@@ -73,7 +73,7 @@ struct VectorizerTestPass : public FunctionPass {
   static constexpr auto kTestAffineMapAttrName = "affine_map";
   VectorizerTestPass() : FunctionPass(&VectorizerTestPass::passID) {}
 
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
   void testVectorShapeRatio(Function *f);
   void testForwardSlicing(Function *f);
   void testBackwardSlicing(Function *f);
@@ -218,7 +218,11 @@ void VectorizerTestPass::testComposeMaps(Function *f) {
   res.print(outs() << "\nComposed map: ");
 }
 
-PassResult VectorizerTestPass::runOnMLFunction(Function *f) {
+PassResult VectorizerTestPass::runOnFunction(Function *f) {
+  // Only support single block functions at this point.
+  if (f->getBlocks().size() != 1)
+    return success();
+
   if (!clTestVectorShapeRatio.empty()) {
     testVectorShapeRatio(f);
   }

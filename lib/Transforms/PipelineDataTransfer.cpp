@@ -41,7 +41,7 @@ namespace {
 struct PipelineDataTransfer : public FunctionPass,
                               InstWalker<PipelineDataTransfer> {
   PipelineDataTransfer() : FunctionPass(&PipelineDataTransfer::passID) {}
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
   PassResult runOnForInst(ForInst *forInst);
 
   // Collect all 'for' instructions.
@@ -137,7 +137,7 @@ static bool doubleBuffer(Value *oldMemRef, ForInst *forInst) {
 }
 
 /// Returns success if the IR is in a valid state.
-PassResult PipelineDataTransfer::runOnMLFunction(Function *f) {
+PassResult PipelineDataTransfer::runOnFunction(Function *f) {
   // Do a post order walk so that inner loop DMAs are processed first. This is
   // necessary since 'for' instructions nested within would otherwise become
   // invalid (erased) when the outer loop is pipelined (the pipelined one gets

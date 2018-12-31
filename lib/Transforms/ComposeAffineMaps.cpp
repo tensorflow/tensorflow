@@ -48,7 +48,7 @@ struct ComposeAffineMaps : public FunctionPass, InstWalker<ComposeAffineMaps> {
   using InstListType = llvm::iplist<Instruction>;
   void walk(InstListType::iterator Start, InstListType::iterator End);
   void visitOperationInst(OperationInst *inst);
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
   using InstWalker<ComposeAffineMaps>::walk;
 
   static char passID;
@@ -88,7 +88,7 @@ void ComposeAffineMaps::visitOperationInst(OperationInst *opInst) {
   }
 }
 
-PassResult ComposeAffineMaps::runOnMLFunction(Function *f) {
+PassResult ComposeAffineMaps::runOnFunction(Function *f) {
   affineApplyOpsToErase.clear();
   walk(f);
   for (auto *opInst : affineApplyOpsToErase) {

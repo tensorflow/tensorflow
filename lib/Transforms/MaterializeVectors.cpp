@@ -197,7 +197,7 @@ struct MaterializationState {
 struct MaterializeVectorsPass : public FunctionPass {
   MaterializeVectorsPass() : FunctionPass(&MaterializeVectorsPass::passID) {}
 
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext mlContext;
@@ -712,7 +712,11 @@ static bool materialize(Function *f,
   return false;
 }
 
-PassResult MaterializeVectorsPass::runOnMLFunction(Function *f) {
+PassResult MaterializeVectorsPass::runOnFunction(Function *f) {
+  // TODO(ntv): Check to see if this supports arbitrary top-level code.
+  if (f->getBlocks().size() != 1)
+    return success();
+
   using matcher::Op;
   LLVM_DEBUG(dbgs() << "\nMaterializeVectors on Function\n");
   LLVM_DEBUG(f->print(dbgs()));

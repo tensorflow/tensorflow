@@ -50,8 +50,6 @@ class Function;
 /// Returns true on success and false if the replacement is not possible
 /// (whenever a memref is used as an operand in a non-deferencing scenario). See
 /// comments at function definition for an example.
-// TODO(mlir-team): extend this for Value/ CFGFunctions. Can also be easily
-// extended to add additional indices at any position.
 bool replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                               ArrayRef<Value *> extraIndices = {},
                               AffineMap indexRemap = AffineMap::Null(),
@@ -102,7 +100,6 @@ OperationInst *createAffineComputationSlice(OperationInst *opInst);
 /// Forward substitutes results from 'AffineApplyOp' into any users which
 /// are also AffineApplyOps.
 // NOTE: This method may modify users of results of this operation.
-// TODO(mlir-team): extend this for Value/ CFGFunctions.
 void forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp);
 
 /// Folds the lower and upper bounds of a 'for' inst to constants if possible.

@@ -78,7 +78,7 @@ struct PrintCFGPass : public FunctionPass {
                const llvm::Twine &title = "")
       : FunctionPass(&PrintCFGPass::passID), os(os), shortNames(shortNames),
         title(title) {}
-  PassResult runOnCFGFunction(Function *function) override {
+  PassResult runOnFunction(Function *function) override {
     mlir::writeGraph(os, function, shortNames, title);
     return success();
   }

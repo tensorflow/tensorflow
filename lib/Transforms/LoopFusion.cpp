@@ -70,7 +70,7 @@ namespace {
 struct LoopFusion : public FunctionPass {
   LoopFusion() : FunctionPass(&LoopFusion::passID) {}
 
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
   static char passID;
 };
 
@@ -519,7 +519,7 @@ public:
 
 } // end anonymous namespace
 
-PassResult LoopFusion::runOnMLFunction(Function *f) {
+PassResult LoopFusion::runOnFunction(Function *f) {
   MemRefDependenceGraph g;
   if (g.init(f))
     GreedyFusion(&g).run();

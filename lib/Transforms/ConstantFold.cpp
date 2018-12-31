@@ -33,15 +33,12 @@ struct ConstantFold : public FunctionPass, InstWalker<ConstantFold> {
   SmallVector<Value *, 8> existingConstants;
   // Operations that were folded and that need to be erased.
   std::vector<OperationInst *> opInstsToErase;
-  using ConstantFactoryType = std::function<Value *(Attribute, Type)>;
 
   bool foldOperation(OperationInst *op,
-                     SmallVectorImpl<Value *> &existingConstants,
-                     ConstantFactoryType constantFactory);
+                     SmallVectorImpl<Value *> &existingConstants);
   void visitOperationInst(OperationInst *inst);
   void visitForInst(ForInst *inst);
-  PassResult runOnCFGFunction(Function *f) override;
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
 
   static char passID;
 };
@@ -52,15 +49,12 @@ char ConstantFold::passID = 0;
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.
 ///
-/// This returns false if the operation was successfully folded.
-bool ConstantFold::foldOperation(OperationInst *op,
-                                 SmallVectorImpl<Value *> &existingConstants,
-                                 ConstantFactoryType constantFactory) {
+void ConstantFold::visitOperationInst(OperationInst *op) {
   // If this operation is already a constant, just remember it for cleanup
   // later, and don't try to fold it.
   if (auto constant = op->dyn_cast<ConstantOp>()) {
     existingConstants.push_back(constant);
-    return true;
+    return;
   }
 
   // Check to see if each of the operands is a trivial constant.  If so, get
@@ -78,7 +72,7 @@ bool ConstantFold::foldOperation(OperationInst *op,
   // Attempt to constant fold the operation.
   SmallVector<Attribute, 8> resultConstants;
   if (op->constantFold(operandConstants, resultConstants))
-    return true;
+    return;
 
   // Ok, if everything succeeded, then we can create constants corresponding
   // to the result of the call.
@@ -87,67 +81,21 @@ bool ConstantFold::foldOperation(OperationInst *op,
   assert(resultConstants.size() == op->getNumResults() &&
          "constant folding produced the wrong number of results");
 
+  FuncBuilder builder(op);
   for (unsigned i = 0, e = op->getNumResults(); i != e; ++i) {
     auto *res = op->getResult(i);
     if (res->use_empty()) // ignore dead uses.
       continue;
 
-    auto *cst = constantFactory(resultConstants[i], res->getType());
+    auto cst = builder.create<ConstantOp>(op->getLoc(), resultConstants[i],
+                                          res->getType());
     existingConstants.push_back(cst);
     res->replaceAllUsesWith(cst);
   }
 
-  return false;
-}
-
-// For now, we do a simple top-down pass over a function folding constants.  We
-// don't handle conditional control flow, constant PHI nodes, folding
-// conditional branches, or anything else fancy.
-PassResult ConstantFold::runOnCFGFunction(Function *f) {
-  existingConstants.clear();
-  FuncBuilder builder(f);
-
-  for (auto &bb : *f) {
-    for (auto instIt = bb.begin(), e = bb.end(); instIt != e;) {
-      auto *inst = dyn_cast<OperationInst>(&*instIt++);
-      if (!inst)
-        continue;
-
-      auto constantFactory = [&](Attribute value, Type type) -> Value * {
-        builder.setInsertionPoint(inst);
-        return builder.create<ConstantOp>(inst->getLoc(), value, type);
-      };
-
-      if (!foldOperation(inst, existingConstants, constantFactory)) {
-        // At this point the operation is dead, remove it.
-        // TODO: This is assuming that all constant foldable operations have no
-        // side effects.  When we have side effect modeling, we should verify
-        // that the operation is effect-free before we remove it.  Until then
-        // this is close enough.
-        inst->erase();
-      }
-    }
-  }
-
-  // By the time we are done, we may have simplified a bunch of code, leaving
-  // around dead constants.  Check for them now and remove them.
-  for (auto *cst : existingConstants) {
-    if (cst->use_empty())
-      cst->getDefiningInst()->erase();
-  }
-
-  return success();
-}
-
-// Override the walker's operation visiter for constant folding.
-void ConstantFold::visitOperationInst(OperationInst *inst) {
-  auto constantFactory = [&](Attribute value, Type type) -> Value * {
-    FuncBuilder builder(inst);
-    return builder.create<ConstantOp>(inst->getLoc(), value, type);
-  };
-  if (!ConstantFold::foldOperation(inst, existingConstants, constantFactory)) {
-    opInstsToErase.push_back(inst);
-  }
+  // At this point the operation is dead, so we can remove it.  We add it to
+  // a vector to avoid invalidating our walker.
+  opInstsToErase.push_back(op);
 }
 
 // Override the walker's 'for' instruction visit for constant folding.
@@ -155,11 +103,15 @@ void ConstantFold::visitForInst(ForInst *forInst) {
   constantFoldBounds(forInst);
 }
 
-PassResult ConstantFold::runOnMLFunction(Function *f) {
+// For now, we do a simple top-down pass over a function folding constants.  We
+// don't handle conditional control flow, block arguments, folding
+// conditional branches, or anything else fancy.
+PassResult ConstantFold::runOnFunction(Function *f) {
   existingConstants.clear();
   opInstsToErase.clear();
 
   walk(f);
+
   // At this point, these operations are dead, remove them.
   // TODO: This is assuming that all constant foldable operations have no
   // side effects.  When we have side effect modeling, we should verify that

@@ -31,13 +31,11 @@ using namespace mlir;
 
 namespace {
 
+// TODO: This shouldn't be its own pass, it should be a legalization (once we
+// have the proper infra).
 struct LowerAffineApply : public FunctionPass {
-
   explicit LowerAffineApply() : FunctionPass(&LowerAffineApply::passID) {}
-
-  PassResult runOnMLFunction(Function *f) override;
-  PassResult runOnCFGFunction(Function *f) override;
-
+  PassResult runOnFunction(Function *f) override;
   static char passID;
 };
 
@@ -45,28 +43,21 @@ struct LowerAffineApply : public FunctionPass {
 
 char LowerAffineApply::passID = 0;
 
-PassResult LowerAffineApply::runOnMLFunction(Function *f) {
-  f->emitError("ML Functions contain syntactically hidden affine_apply's that "
-               "cannot be expanded");
-  return failure();
-}
+PassResult LowerAffineApply::runOnFunction(Function *f) {
+  SmallVector<OpPointer<AffineApplyOp>, 8> affineApplyInsts;
 
-PassResult LowerAffineApply::runOnCFGFunction(Function *f) {
-  for (Block &bb : *f) {
-    // Handle iterators with care because we erase in the same loop.
-    // In particular, step to the next element before erasing the current one.
-    for (auto it = bb.begin(); it != bb.end();) {
-      auto *inst = dyn_cast<OperationInst>(&*it++);
-      if (!inst)
-        continue;
+  // Find all the affine_apply operations.
+  f->walkOps([&](OperationInst *inst) {
+    auto applyOp = inst->dyn_cast<AffineApplyOp>();
+    if (applyOp)
+      affineApplyInsts.push_back(applyOp);
+  });
 
-      auto affineApplyOp = inst->dyn_cast<AffineApplyOp>();
-      if (!affineApplyOp)
-        continue;
-      if (expandAffineApply(&*affineApplyOp))
-        return failure();
-    }
-  }
+  // Rewrite them in a second pass, avoiding invalidation of the walker
+  // iterator.
+  for (auto applyOp : affineApplyInsts)
+    if (expandAffineApply(applyOp))
+      return failure();
 
   return success();
 }

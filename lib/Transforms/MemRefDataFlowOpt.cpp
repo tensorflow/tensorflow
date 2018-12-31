@@ -66,9 +66,7 @@ namespace {
 struct MemRefDataFlowOpt : public FunctionPass, InstWalker<MemRefDataFlowOpt> {
   explicit MemRefDataFlowOpt() : FunctionPass(&MemRefDataFlowOpt::passID) {}
 
-  // Not applicable to CFG functions.
-  PassResult runOnCFGFunction(Function *f) override { return success(); }
-  PassResult runOnMLFunction(Function *f) override;
+  PassResult runOnFunction(Function *f) override;
 
   void visitOperationInst(OperationInst *opInst);
 
@@ -210,7 +208,11 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
   loadOpsToErase.push_back(loadOpInst);
 }
 
-PassResult MemRefDataFlowOpt::runOnMLFunction(Function *f) {
+PassResult MemRefDataFlowOpt::runOnFunction(Function *f) {
+  // Only supports single block functions at the moment.
+  if (f->getBlocks().size() != 1)
+    return success();
+
   DominanceInfo theDomInfo(f);
   domInfo = &theDomInfo;
   PostDominanceInfo thePostDomInfo(f);
@@ -233,7 +235,7 @@ PassResult MemRefDataFlowOpt::runOnMLFunction(Function *f) {
   for (auto *memref : memrefsToErase) {
     // If the memref hasn't been alloc'ed in this function, skip.
     OperationInst *defInst = memref->getDefiningInst();
-    if (!defInst || !cast<OperationInst>(defInst)->isa<AllocOp>())
+    if (!defInst || !defInst->isa<AllocOp>())
       // TODO(mlir-team): if the memref was returned by a 'call' instruction, we
       // could still erase it if the call has no side-effects.
       continue;

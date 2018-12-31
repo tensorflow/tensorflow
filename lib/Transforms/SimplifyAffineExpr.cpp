@@ -21,7 +21,7 @@
 
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/InstVisitor.h"
+#include "mlir/IR/Instructions.h"
 #include "mlir/Pass.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -34,17 +34,13 @@ namespace {
 
 /// Simplifies all affine expressions appearing in the operation instructions of
 /// the Function. This is mainly to test the simplifyAffineExpr method.
-//  TODO(someone): Gradually, extend this to all affine map references found in
-//  ML functions and CFG functions.
-struct SimplifyAffineStructures : public FunctionPass,
-                                  InstWalker<SimplifyAffineStructures> {
+/// TODO(someone): This should just be defined as a canonicalization pattern
+/// on AffineMap and driven from the existing canonicalization pass.
+struct SimplifyAffineStructures : public FunctionPass {
   explicit SimplifyAffineStructures()
       : FunctionPass(&SimplifyAffineStructures::passID) {}
 
-  PassResult runOnMLFunction(Function *f) override;
-  // Does nothing on CFG functions for now. No reusable walkers/visitors exist
-  // for this yet? TODO(someone).
-  PassResult runOnCFGFunction(Function *f) override { return success(); }
+  PassResult runOnFunction(Function *f) override;
 
   void visitIfInst(IfInst *ifInst);
   void visitOperationInst(OperationInst *opInst);
@@ -86,8 +82,14 @@ void SimplifyAffineStructures::visitOperationInst(OperationInst *opInst) {
   }
 }
 
-PassResult SimplifyAffineStructures::runOnMLFunction(Function *f) {
-  walk(f);
+PassResult SimplifyAffineStructures::runOnFunction(Function *f) {
+  f->walkInsts([&](Instruction *inst) {
+    if (auto *opInst = dyn_cast<OperationInst>(inst))
+      visitOperationInst(opInst);
+    if (auto *ifInst = dyn_cast<IfInst>(inst))
+      visitIfInst(ifInst);
+  });
+
   return success();
 }
 
