@@ -74,6 +74,22 @@ public:
   }
 };
 
+/// A class for computing basic postdominance information.
+class PostDominanceInfo : public PostDominatorTreeBase {
+  using super = PostDominatorTreeBase;
+
+public:
+  PostDominanceInfo(Function *F);
+
+  /// Return true if instruction A properly postdominates instruction B.
+  bool properlyPostDominates(const Instruction *a, const Instruction *b);
+
+  /// Return true if instruction A postdominates instruction B.
+  bool postDominates(const Instruction *a, const Instruction *b) {
+    return a == b || properlyPostDominates(a, b);
+  }
+};
+
 } //  end namespace mlir
 
 namespace llvm {

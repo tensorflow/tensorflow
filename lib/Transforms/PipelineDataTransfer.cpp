@@ -227,7 +227,7 @@ static void findMatchingStartFinishInsts(
     auto *memref = dmaStartOp->getOperand(dmaStartOp->getFasterMemPos());
     bool escapingUses = false;
     for (const auto &use : memref->getUses()) {
-      if (!dominates(*forInst->getBody()->begin(), *use.getOwner())) {
+      if (!forInst->getBody()->findAncestorInstInBlock(*use.getOwner())) {
         LLVM_DEBUG(llvm::dbgs()
                        << "can't pipeline: buffer is live out of loop\n";);
         escapingUses = true;

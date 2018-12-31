@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"
+#include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/MLFunctionMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
@@ -650,10 +651,12 @@ static bool emitSlice(MaterializationState *state,
 /// Additionally, this set is limited to instructions in the same lexical scope
 /// because we currently disallow vectorization of defs that come from another
 /// scope.
+/// TODO(ntv): please document return value.
 static bool materialize(Function *f,
                         const SetVector<OperationInst *> &terminators,
                         MaterializationState *state) {
   DenseSet<Instruction *> seen;
+  DominanceInfo domInfo(f);
   for (auto *term : terminators) {
     // Short-circuit test, a given terminator may have been reached by some
     // other previous transitive use-def chains.
@@ -669,13 +672,13 @@ static bool materialize(Function *f,
     // Note for the justification of this restriction.
     // TODO(ntv): relax scoping constraints.
     auto *enclosingScope = term->getParentInst();
-    auto keepIfInSameScope = [enclosingScope](Instruction *inst) {
+    auto keepIfInSameScope = [enclosingScope, &domInfo](Instruction *inst) {
       assert(inst && "NULL inst");
       if (!enclosingScope) {
         // by construction, everyone is always under the top scope (null scope).
         return true;
       }
-      return properlyDominates(*enclosingScope, *inst);
+      return domInfo.properlyDominates(enclosingScope, inst);
     };
     SetVector<Instruction *> slice =
         getSlice(term, keepIfInSameScope, keepIfInSameScope);

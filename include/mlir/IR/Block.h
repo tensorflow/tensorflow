@@ -156,11 +156,10 @@ public:
   /// the latter fails.
   /// TODO: This is very specific functionality that should live somewhere else,
   /// probably in Dominance.cpp.
-  const Instruction *findAncestorInstInBlock(const Instruction &inst) const;
-  // TODO: it doesn't make sense for the former method to take the instruction
-  // by reference but this one to take it by pointer.
-  Instruction *findAncestorInstInBlock(Instruction *inst) {
-    return const_cast<Instruction *>(findAncestorInstInBlock(*inst));
+  Instruction *findAncestorInstInBlock(Instruction *inst);
+  const Instruction *findAncestorInstInBlock(const Instruction &inst) const {
+    return const_cast<Block *>(this)->findAncestorInstInBlock(
+        const_cast<Instruction *>(&inst));
   }
 
   //===--------------------------------------------------------------------===//

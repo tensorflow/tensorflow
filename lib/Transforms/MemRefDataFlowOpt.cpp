@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/AffineAnalysis.h"
+#include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/InstVisitor.h"
 #include "mlir/Pass.h"
@@ -73,6 +74,11 @@ struct MemRefDataFlowOpt : public FunctionPass, InstWalker<MemRefDataFlowOpt> {
 
   // A list of memref's that are potentially dead / could be eliminated.
   SmallPtrSet<Value *, 4> memrefsToErase;
+  // Load op's whose results were replaced by those forwarded from stores.
+  std::vector<OperationInst *> loadOpsToErase;
+
+  DominanceInfo *domInfo = nullptr;
+  PostDominanceInfo *postDomInfo = nullptr;
 
   static char passID;
 };
@@ -152,7 +158,7 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
       // strictly a necessary condition since dominance isn't a prerequisite for
       // a memref element store to reach a load, but this is sufficient and
       // reasonably powerful in practice.
-      if (!dominates(*storeOpInst, *loadOpInst))
+      if (!domInfo->dominates(storeOpInst, loadOpInst))
         break;
 
       // Finally, forwarding is only possible if the load touches a single
@@ -182,7 +188,7 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
     // unique store providing the value to the load, i.e., provably the last
     // writer to that memref loc.
     if (llvm::all_of(depSrcStores, [&](OperationInst *depStore) {
-          return postDominates(*storeOpInst, *depStore);
+          return postDomInfo->postDominates(storeOpInst, depStore);
         })) {
       lastWriteStoreOp = storeOpInst;
       break;
@@ -200,14 +206,26 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
   loadOp->getResult()->replaceAllUsesWith(storeVal);
   // Record the memref for a later sweep to optimize away.
   memrefsToErase.insert(loadOp->getMemRef());
-  loadOp->erase();
+  // Record this to erase later.
+  loadOpsToErase.push_back(loadOpInst);
 }
 
 PassResult MemRefDataFlowOpt::runOnMLFunction(Function *f) {
+  DominanceInfo theDomInfo(f);
+  domInfo = &theDomInfo;
+  PostDominanceInfo thePostDomInfo(f);
+  postDomInfo = &thePostDomInfo;
+
+  loadOpsToErase.clear();
   memrefsToErase.clear();
 
   // Walk all load's and perform load/store forwarding.
   walk(f);
+
+  // Erase all load op's whose results were replaced with store fwd'ed ones.
+  for (auto *loadOp : loadOpsToErase) {
+    loadOp->erase();
+  }
 
   // Check if the store fwd'ed memrefs are now left with only stores and can
   // thus be completely deleted. Note: the canononicalize pass should be able

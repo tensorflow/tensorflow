@@ -665,7 +665,8 @@ public:
   }
 
 private:
-  // The Block for the body.
+  // The Block for the body. By construction, this list always contains exactly
+  // one block.
   BlockList body;
 
   // Affine map for the lower bound.

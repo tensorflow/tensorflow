@@ -50,12 +50,6 @@ bool properlyDominates(const Instruction &a, const Instruction &b);
 //  TODO(bondhugula): handle 'if' inst's.
 void getLoopIVs(const Instruction &inst, SmallVectorImpl<ForInst *> *loops);
 
-/// Returns true if instruction 'a' postdominates instruction b.
-bool postDominates(const Instruction &a, const Instruction &b);
-
-/// Returns true if instruction 'a' properly postdominates instruction b.
-bool properlyPostDominates(const Instruction &a, const Instruction &b);
-
 /// Returns the nesting depth of this instruction, i.e., the number of loops
 /// surrounding this instruction.
 unsigned getNestingDepth(const Instruction &stmt);

@@ -60,11 +60,10 @@ void Block::eraseFromFunction() {
 /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
 /// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
 /// the latter fails.
-const Instruction *
-Block::findAncestorInstInBlock(const Instruction &inst) const {
+Instruction *Block::findAncestorInstInBlock(Instruction *inst) {
   // Traverse up the instruction hierarchy starting from the owner of operand to
   // find the ancestor instruction that resides in the block of 'forInst'.
-  const auto *currInst = &inst;
+  auto *currInst = inst;
   while (currInst->getBlock() != this) {
     currInst = currInst->getParentInst();
     if (!currInst)

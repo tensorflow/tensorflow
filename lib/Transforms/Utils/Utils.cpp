@@ -24,6 +24,7 @@
 
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
+#include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/InstVisitor.h"
@@ -82,13 +83,17 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
   assert(oldMemRef->getType().cast<MemRefType>().getElementType() ==
          newMemRef->getType().cast<MemRefType>().getElementType());
 
+  std::unique_ptr<DominanceInfo> domInfo;
+  if (domInstFilter)
+    domInfo = std::make_unique<DominanceInfo>(domInstFilter->getFunction());
+
   // Walk all uses of old memref. Operation using the memref gets replaced.
   for (auto it = oldMemRef->use_begin(); it != oldMemRef->use_end();) {
     InstOperand &use = *(it++);
     auto *opInst = cast<OperationInst>(use.getOwner());
 
     // Skip this use if it's not dominated by domInstFilter.
-    if (domInstFilter && !dominates(*domInstFilter, *opInst))
+    if (domInstFilter && !domInfo->dominates(domInstFilter, opInst))
       continue;
 
     // Check if the memref was used in a non-deferencing context. It is fine for

@@ -937,17 +937,16 @@ static const Block *getCommonBlock(const MemRefAccess &srcAccess,
   return cast<ForInst>(commonForValue)->getBody();
 }
 
-// Returns true if the ancestor operation instruction of 'srcAccess' properly
-// dominates the ancestor operation instruction of 'dstAccess' in the same
+// Returns true if the ancestor operation instruction of 'srcAccess' appears
+// before the ancestor operation instruction of 'dstAccess' in the same
 // instruction block. Returns false otherwise.
 // Note that because 'srcAccess' or 'dstAccess' may be nested in conditionals,
-// the function is named 'srcMayExecuteBeforeDst'.
+// the function is named 'srcAppearsBeforeDstInCommonBlock'.
 // Note that 'numCommonLoops' is the number of contiguous surrounding outer
 // loops.
-static bool srcMayExecuteBeforeDst(const MemRefAccess &srcAccess,
-                                   const MemRefAccess &dstAccess,
-                                   const FlatAffineConstraints &srcDomain,
-                                   unsigned numCommonLoops) {
+static bool srcAppearsBeforeDstInCommonBlock(
+    const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
+    const FlatAffineConstraints &srcDomain, unsigned numCommonLoops) {
   // Get Block common to 'srcAccess.opInst' and 'dstAccess.opInst'.
   auto *commonBlock =
       getCommonBlock(srcAccess, dstAccess, srcDomain, numCommonLoops);
@@ -957,7 +956,17 @@ static bool srcMayExecuteBeforeDst(const MemRefAccess &srcAccess,
   assert(srcInst != nullptr);
   auto *dstInst = commonBlock->findAncestorInstInBlock(*dstAccess.opInst);
   assert(dstInst != nullptr);
-  return mlir::properlyDominates(*srcInst, *dstInst);
+
+  // Do a linear scan to determine whether dstInst comes after srcInst.
+  auto aIter = Block::const_iterator(srcInst);
+  auto bIter = Block::const_iterator(dstInst);
+  auto aBlockStart = srcInst->getBlock()->begin();
+  while (bIter != aBlockStart) {
+    --bIter;
+    if (bIter == aIter)
+      return true;
+  }
+  return false;
 }
 
 // Adds ordering constraints to 'dependenceDomain' based on number of loops
@@ -1231,8 +1240,8 @@ bool mlir::checkMemrefAccessDependence(
   unsigned numCommonLoops = getNumCommonLoops(srcDomain, dstDomain);
   assert(loopDepth <= numCommonLoops + 1);
   if (loopDepth > numCommonLoops &&
-      !srcMayExecuteBeforeDst(srcAccess, dstAccess, srcDomain,
-                              numCommonLoops)) {
+      !srcAppearsBeforeDstInCommonBlock(srcAccess, dstAccess, srcDomain,
+                                        numCommonLoops)) {
     return false;
   }
   // Build dim and symbol position maps for each access from access operand
