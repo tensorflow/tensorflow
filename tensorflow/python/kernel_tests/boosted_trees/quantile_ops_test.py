@@ -145,7 +145,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
           num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
 
@@ -177,7 +177,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
           num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
 
