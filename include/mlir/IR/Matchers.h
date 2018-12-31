@@ -104,7 +104,7 @@ template <typename OpClass> struct op_matcher {
 
 } // end namespace detail
 
-/// Entry point for matching a pattern over an SSAValue.
+/// Entry point for matching a pattern over a Value.
 template <typename Pattern>
 inline bool matchPattern(Value *value, const Pattern &pattern) {
   // TODO: handle other cases
