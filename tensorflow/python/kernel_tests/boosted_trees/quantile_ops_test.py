@@ -164,7 +164,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
       save.save(sess, save_path)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
           num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
       save = saver.Saver()
@@ -195,7 +195,7 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       accumulator = boosted_trees_ops.QuantileAccumulator(
           num_streams=2, num_quantiles=3, epsilon=self.eps, name="q0")
       save = saver.Saver()
