@@ -173,7 +173,7 @@ void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   se::DeviceMemory<float> nan_ptr{
       se::DeviceMemoryBase{static_cast<float*>(allocated_ptr), req_size}};
 
-  Status result = stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size, 
+  Status result = stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size,
                                                      &nan_ptr);
   if (!result.ok()) {
     LOG(ERROR) << "Could not initialize to NaNs";
@@ -189,7 +189,7 @@ void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
                             std::nanf(""));
     se::DeviceMemory<float> nan_ptr{
         se::DeviceMemoryBase{static_cast<float*>(ptr), req_size}};
-    Status result = stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size, 
+    Status result = stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size,
                                                        &nan_ptr);
     if (!result.ok()) {
       LOG(ERROR) << "Could not initialize to NaNs";
