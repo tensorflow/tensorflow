@@ -2093,8 +2093,11 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     // Fast path for nodes types that don't need special handling
     DCHECK_EQ(input_frame, output_frame);
     // Normal path for most nodes
+    {
+      mutex_lock l(output_frame->mu);
+      output_frame->ActivateNodes(item, is_dead, output_iter, outputs, ready);
+    }
     mutex_lock l(input_frame->mu);
-    output_frame->ActivateNodes(item, is_dead, output_iter, outputs, ready);
     is_frame_done = input_frame->DecrementOutstandingOpsLocked(
         &impl_->gview_, input_iter, ready);
   } else if (item->is_enter) {
@@ -2156,6 +2159,7 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
     if (output_frame != nullptr) {
       // This is the case when node is not Enter, Exit, or NextIteration.
       DCHECK(input_frame == output_frame);
+      mutex_lock l(output_frame->mu);
       output_frame->ActivateNodes(item, is_dead, output_iter, outputs, ready);
     }
     is_frame_done = input_frame->DecrementOutstandingOpsLocked(
