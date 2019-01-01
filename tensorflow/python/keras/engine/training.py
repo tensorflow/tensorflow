@@ -257,7 +257,7 @@ class Model(Network):
       raise ValueError(
           'When running a model in eager execution, the optimizer must be an '
           'instance of tf.train.Optimizer. Received: '
-          '%s' % optimizer)
+          '%s' % type(optimizer))
 
     self.optimizer = optimizer
     # We've disabled automatic dependency tracking for this method, but do want
