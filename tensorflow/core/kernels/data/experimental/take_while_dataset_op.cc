@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,8 +33,6 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -44,22 +42,19 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
                                                  &captured_func));
     
     // TODO (squadrick): check short-circuit
-    *output = new Dataset(ctx, input, func_, std::move(captured_func), 
-                          preserve_cardinality_);
+    *output = new Dataset(ctx, input, func_, std::move(captured_func));
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func,
-            std::unique_ptr<CapturedFunction> captured_func,
-            bool preserve_cardinality)
+            const NameAttrList& func, 
+            std::unique_ptr<CapturedFunction> captured_func)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
-          captured_func_(std::move(captured_func)),
-          preserve_cardinality_(preserve_cardinality) {
+          captured_func_(std::move(captured_func)) {
       input_->Ref();
     }
 
@@ -74,13 +69,14 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     const DataTypeVector& output_dtypes() const override {
       return input_->output_dtypes();
     }
+
     const std::vector<PartialTensorShape>& output_shapes() const override {
       return input_->output_shapes();
     }
 
     string DebugString() const override { return "TakeWhileDatasetOp::Dataset"; }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64 Cardinality() const override { return kUnknownCardinality; }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -112,16 +108,11 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       AttrValue other_arguments_types_attr;
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
 
-      AttrValue preserve_cardinality_attr;
-      b->BuildAttrValue(preserve_cardinality_, &preserve_cardinality_attr);
-
       TF_RETURN_IF_ERROR(b->AddDataset(
             this, {std::make_pair(0, input_node)},
             {std::make_pair(1, other_arguments)},
             {std::make_pair("predicate", f_attr),
-             std::make_pair("Targuments", other_arguments_types_attr),
-             std::make_pair("preserve_cardinality", 
-                            preserve_cardinality_attr)},
+             std::make_pair("Targuments", other_arguments_types_attr)},
              output));
       return Status::OK();
     }
@@ -168,27 +159,12 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
             return errors::InvalidArgument(
                 "`predicate` must returns a scalar bool tensor.");
           }
-          auto cond = bool_output[0].scalar<bool>()();
-          if (!cond) { // predicate is false
-            *end_of_sequence = true;
-            return Status::OK();
-          }
-        } else if (errors::IsOutOfRange(s)) {
-          if (dataset()->preserve_cardinality_) {
-            // To guarantee that the transformation preserves the cardinality of
-            // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
-            // former may be interpreted by a caller as the end of sequence.
-            return errors::InvalidArgument(
-                "Function invocation produced OutOfRangeError: ",
-                s.error_message());
-          } else {
-            // `f` may deliberately raise `errors::OutOfRange` to indicate
-            // that we should terminate the iteration early.
+          if (!bool_output[0].scalar<bool>()()) {
             *end_of_sequence = true;
             return Status::OK();
           }
         }
-        return s;
+        return s; // propagate error to caller
       }
 
      protected:
@@ -227,11 +203,9 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     const DatasetBase* const input_;
     const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
-    const bool preserve_cardinality_;
   };
 
   NameAttrList func_;
-  bool preserve_cardinality_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExperimentalTakeWhileDataset").Device(DEVICE_CPU),

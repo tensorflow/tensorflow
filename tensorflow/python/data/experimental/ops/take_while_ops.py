@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ class _TakeWhileDataset(dataset_ops.UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
             predicate,
-            self._transformation_name(),
+            "tf.data.experimental.take_while()",
             dataset=self._input_dataset)
     
     if not wrapped_func.output_structure.is_compatible_with(
@@ -49,15 +49,11 @@ class _TakeWhileDataset(dataset_ops.UnaryUnchangedStructureDataset):
             self._input_dataset._variant_tensor,
             other_arguments=self._predicate.function.captured_inputs,
             predicate=self._predicate.function,
-            preserve_cardinality=True,
             **dataset_ops.flat_structure(self))
     super(_TakeWhileDataset, self).__init__(input_dataset, variant_tensor)
 
   def _functions(self):
       return [self._predicate]
-
-  def _transformation_name(self):
-      return "tf.data.experimental.take_while()"
 
 
 @tf_export("data.experimental.take_while")
