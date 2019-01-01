@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN is a lightweight library for training and evaluating GANs.
+"""TF-GAN is a lightweight library for training and evaluating GANs.
 
 In addition to providing the infrastructure for easily training and evaluating
 GANS, this library contains modules for a TFGAN-backed Estimator,
