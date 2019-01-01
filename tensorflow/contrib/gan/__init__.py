@@ -24,7 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# Collapse TFGAN into a tiered namespace.
+# Collapse TF-GAN into a tiered namespace.
 from tensorflow.contrib.gan.python import estimator
 from tensorflow.contrib.gan.python import eval  # pylint:disable=redefined-builtin
 from tensorflow.contrib.gan.python import features
