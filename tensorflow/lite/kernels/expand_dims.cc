@@ -27,7 +27,6 @@ namespace builtin {
 namespace expand_dims {
 constexpr int kInput = 0;
 constexpr int kAxis = 1;
-constexpr int kOutput = 0;
 
 namespace {
 TfLiteStatus ExpandTensorDim(TfLiteContext* context, const TfLiteTensor& input,
