@@ -360,7 +360,6 @@ REGISTER_OP("ExperimentalTakeWhileDataset")
     .Attr("Targuments: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalUnbatchDataset")
