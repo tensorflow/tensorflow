@@ -1167,7 +1167,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
                           CheckMoveDeviceToHostRequired(engine_changed));
 
       if (move_device_to_host) {
-        MoveDeviceToHost();
+        TF_RETURN_IF_ERROR(MoveDeviceToHost());
       }
 
       if (engine_changed) {
