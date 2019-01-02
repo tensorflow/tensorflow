@@ -513,6 +513,65 @@ REGISTER_TENSOR_LIST_GET_ITEM_GPU(bool)
 
 #endif  // GOOGLE_CUDA
 
+class TensorListResize : public OpKernel {
+ public:
+  explicit TensorListResize(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    const TensorList* input_list =
+        c->input(0).scalar<Variant>()().get<TensorList>();
+    OP_REQUIRES(c, input_list != nullptr,
+                errors::InvalidArgument(
+                    "Input handle is not a list. Saw: '",
+                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    int32 size = c->input(1).scalar<int32>()();
+    OP_REQUIRES(
+        c, size >= 0,
+        errors::InvalidArgument(
+            "TensorListSlice expects size to be non-negative. Got: ", size));
+
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    std::unique_ptr<Tensor> maybe_result = c->forward_input(
+        0, 0, DT_VARIANT, TensorShape{}, c->input_memory_type(0), attr);
+    if (maybe_result != nullptr) {
+      maybe_result->scalar<Variant>()().get<TensorList>()->tensors.resize(
+          size, Tensor(DT_INVALID));
+    } else {
+      Tensor* result;
+      OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape{}, &result, attr));
+      TensorList output_list;
+      output_list.element_shape = input_list->element_shape;
+      output_list.element_dtype = input_list->element_dtype;
+      output_list.max_num_elements = input_list->max_num_elements;
+      if (size > input_list->tensors.size()) {
+        output_list.tensors.insert(output_list.tensors.begin(),
+                                   input_list->tensors.begin(),
+                                   input_list->tensors.end());
+        // Add DT_INVALID tensors to the end of the list if the requested size
+        // is larger than the list length.
+        output_list.tensors.resize(size, Tensor(DT_INVALID));
+      } else {
+        output_list.tensors.insert(output_list.tensors.begin(),
+                                   input_list->tensors.begin(),
+                                   input_list->tensors.begin() + size);
+      }
+      result->scalar<Variant>()() = std::move(output_list);
+    }
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("TensorListResize").Device(DEVICE_CPU),
+                        TensorListResize);
+
+#if GOOGLE_CUDA
+
+REGISTER_KERNEL_BUILDER(
+    Name("TensorListResize").Device(DEVICE_GPU).HostMemory("size"),
+    TensorListResize);
+
+#endif  // GOOGLE_CUDA
+
 class TensorListSetItem : public OpKernel {
  public:
   explicit TensorListSetItem(OpKernelConstruction* c) : OpKernel(c) {

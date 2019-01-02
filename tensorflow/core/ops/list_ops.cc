@@ -367,6 +367,24 @@ REGISTER_OP("TensorListGetItem")
       return Status::OK();
     });
 
+REGISTER_OP("TensorListResize")
+    .Input("input_handle: variant")
+    .Input("size: int32")
+    .Output("output_handle: variant")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // Check that `size` has scalar shape.
+      shape_inference::ShapeHandle size_shape = c->input(1);
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(size_shape, 0, &unused));
+      c->set_output(0, c->Scalar());
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("TensorListSetItem")
     .Input("input_handle: variant")
     .Input("index: int32")

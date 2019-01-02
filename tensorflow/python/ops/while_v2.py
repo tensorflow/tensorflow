@@ -849,19 +849,8 @@ def _pack_sequence_as(structure_with_tas, loop_vars):
   """Like `nest.pack_sequence_as` but also replaces flows with TensorArrays."""
 
   def flow_to_tensor_array(flow, ta):  # pylint: disable=missing-docstring
-    if isinstance(ta, tensor_array_ops.TensorArray):
-      # pylint: disable=protected-access
-      new_ta = tensor_array_ops.TensorArray(
-          dtype=ta.dtype,
-          handle=ta.handle,
-          flow=flow,
-          infer_shape=ta._infer_shape,
-          colocate_with_first_write_call=ta._colocate_with_first_write_call)
-      new_ta._colocate_with = ta._colocate_with
-      new_ta._element_shape = ta._element_shape
-      # pylint: enable=protected-access
-      return new_ta
-    return flow
+    return (tensor_array_ops.build_ta_with_new_flow(ta, flow) if isinstance(  # pylint: disable=g-long-ternary
+        ta, tensor_array_ops.TensorArray) else flow)
 
   flattened_loop_vars = [
       flow_to_tensor_array(*z)
