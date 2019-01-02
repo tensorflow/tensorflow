@@ -77,6 +77,13 @@ class KerasMeanTest(test.TestCase):
     self.assertEqual(self.evaluate(m.total), 0)
     self.assertEqual(self.evaluate(m.count), 0)
 
+    # Check save and restore config
+    m2 = metrics.Mean.from_config(m.get_config())
+    self.assertEqual(m2.name, 'my_mean')
+    self.assertTrue(m2.stateful)
+    self.assertEqual(m2.dtype, dtypes.float32)
+    self.assertEqual(len(m2.variables), 2)
+
   def test_mean_with_sample_weight(self):
     m = metrics.Mean(dtype=dtypes.float64)
     self.assertEqual(m.dtype, dtypes.float64)
@@ -189,6 +196,13 @@ class KerasAccuracyTest(test.TestCase):
     self.evaluate(update_op)
     result = self.evaluate(acc_obj.result())
     self.assertEqual(result, 1)  # 2/2
+
+    # Check save and restore config
+    a2 = metrics.Accuracy.from_config(acc_obj.get_config())
+    self.assertEqual(a2.name, 'my acc')
+    self.assertTrue(a2.stateful)
+    self.assertEqual(len(a2.variables), 2)
+    self.assertEqual(a2.dtype, dtypes.float32)
 
     # check with sample_weight
     result_t = acc_obj([[2], [1]], [[2], [0]], sample_weight=[[0.5], [0.2]])
@@ -331,6 +345,12 @@ class FalsePositivesTest(test.TestCase):
     self.assertEqual(len(fp_obj.variables), 1)
     self.assertEqual(fp_obj.thresholds, [0.4, 0.9])
 
+    # Check save and restore config
+    fp_obj2 = metrics.FalsePositives.from_config(fp_obj.get_config())
+    self.assertEqual(fp_obj2.name, 'my_fp')
+    self.assertEqual(len(fp_obj2.variables), 1)
+    self.assertEqual(fp_obj2.thresholds, [0.4, 0.9])
+
   def test_unweighted(self):
     fp_obj = metrics.FalsePositives()
     self.evaluate(variables.variables_initializer(fp_obj.variables))
@@ -405,6 +425,12 @@ class FalseNegativesTest(test.TestCase):
     self.assertEqual(len(fn_obj.variables), 1)
     self.assertEqual(fn_obj.thresholds, [0.4, 0.9])
 
+    # Check save and restore config
+    fn_obj2 = metrics.FalseNegatives.from_config(fn_obj.get_config())
+    self.assertEqual(fn_obj2.name, 'my_fn')
+    self.assertEqual(len(fn_obj2.variables), 1)
+    self.assertEqual(fn_obj2.thresholds, [0.4, 0.9])
+
   def test_unweighted(self):
     fn_obj = metrics.FalseNegatives()
     self.evaluate(variables.variables_initializer(fn_obj.variables))
@@ -466,6 +492,12 @@ class TrueNegativesTest(test.TestCase):
     self.assertEqual(tn_obj.name, 'my_tn')
     self.assertEqual(len(tn_obj.variables), 1)
     self.assertEqual(tn_obj.thresholds, [0.4, 0.9])
+
+    # Check save and restore config
+    tn_obj2 = metrics.TrueNegatives.from_config(tn_obj.get_config())
+    self.assertEqual(tn_obj2.name, 'my_tn')
+    self.assertEqual(len(tn_obj2.variables), 1)
+    self.assertEqual(tn_obj2.thresholds, [0.4, 0.9])
 
   def test_unweighted(self):
     tn_obj = metrics.TrueNegatives()
@@ -529,6 +561,12 @@ class TruePositivesTest(test.TestCase):
     self.assertEqual(len(tp_obj.variables), 1)
     self.assertEqual(tp_obj.thresholds, [0.4, 0.9])
 
+    # Check save and restore config
+    tp_obj2 = metrics.TruePositives.from_config(tp_obj.get_config())
+    self.assertEqual(tp_obj2.name, 'my_tp')
+    self.assertEqual(len(tp_obj2.variables), 1)
+    self.assertEqual(tp_obj2.thresholds, [0.4, 0.9])
+
   def test_unweighted(self):
     tp_obj = metrics.TruePositives()
     self.evaluate(variables.variables_initializer(tp_obj.variables))
@@ -591,6 +629,12 @@ class PrecisionTest(test.TestCase):
     self.assertEqual([v.name for v in p_obj.variables],
                      ['true_positives:0', 'false_positives:0'])
     self.assertEqual(p_obj.thresholds, [0.4, 0.9])
+
+    # Check save and restore config
+    p_obj2 = metrics.Precision.from_config(p_obj.get_config())
+    self.assertEqual(p_obj2.name, 'my_precision')
+    self.assertEqual(len(p_obj2.variables), 2)
+    self.assertEqual(p_obj2.thresholds, [0.4, 0.9])
 
   def test_value_is_idempotent(self):
     p_obj = metrics.Precision(thresholds=[0.3, 0.72])
@@ -704,6 +748,12 @@ class RecallTest(test.TestCase):
                      ['true_positives:0', 'false_negatives:0'])
     self.assertEqual(r_obj.thresholds, [0.4, 0.9])
 
+    # Check save and restore config
+    r_obj2 = metrics.Recall.from_config(r_obj.get_config())
+    self.assertEqual(r_obj2.name, 'my_recall')
+    self.assertEqual(len(r_obj2.variables), 2)
+    self.assertEqual(r_obj2.thresholds, [0.4, 0.9])
+
   def test_value_is_idempotent(self):
     r_obj = metrics.Recall(thresholds=[0.3, 0.72])
     y_pred = random_ops.random_uniform(shape=(10, 3))
@@ -812,8 +862,15 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
         0.4, num_thresholds=100, name='sensitivity_at_specificity_1')
     self.assertEqual(s_obj.name, 'sensitivity_at_specificity_1')
     self.assertLen(s_obj.variables, 4)
-    self.assertEqual(s_obj.value, 0.4)
-    self.assertLen(s_obj.thresholds, 100)
+    self.assertEqual(s_obj.specificity, 0.4)
+    self.assertEqual(s_obj.num_thresholds, 100)
+
+    # Check save and restore config
+    s_obj2 = metrics.SensitivityAtSpecificity.from_config(s_obj.get_config())
+    self.assertEqual(s_obj2.name, 'sensitivity_at_specificity_1')
+    self.assertLen(s_obj2.variables, 4)
+    self.assertEqual(s_obj2.specificity, 0.4)
+    self.assertEqual(s_obj2.num_thresholds, 100)
 
   def test_value_is_idempotent(self):
     s_obj = metrics.SensitivityAtSpecificity(0.7)
@@ -901,8 +958,15 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
         0.4, num_thresholds=100, name='specificity_at_sensitivity_1')
     self.assertEqual(s_obj.name, 'specificity_at_sensitivity_1')
     self.assertLen(s_obj.variables, 4)
-    self.assertEqual(s_obj.value, 0.4)
-    self.assertLen(s_obj.thresholds, 100)
+    self.assertEqual(s_obj.sensitivity, 0.4)
+    self.assertEqual(s_obj.num_thresholds, 100)
+
+    # Check save and restore config
+    s_obj2 = metrics.SpecificityAtSensitivity.from_config(s_obj.get_config())
+    self.assertEqual(s_obj2.name, 'specificity_at_sensitivity_1')
+    self.assertLen(s_obj2.variables, 4)
+    self.assertEqual(s_obj2.sensitivity, 0.4)
+    self.assertEqual(s_obj2.num_thresholds, 100)
 
   def test_value_is_idempotent(self):
     s_obj = metrics.SpecificityAtSensitivity(0.7)
@@ -990,6 +1054,11 @@ class CosineProximityTest(test.TestCase):
     self.assertEqual(cosine_obj.name, 'my_cos')
     self.assertEqual(cosine_obj._dtype, dtypes.int32)
 
+    # Check save and restore config
+    cosine_obj2 = metrics.CosineProximity.from_config(cosine_obj.get_config())
+    self.assertEqual(cosine_obj2.name, 'my_cos')
+    self.assertEqual(cosine_obj2._dtype, dtypes.int32)
+
   def test_unweighted(self):
     cosine_obj = metrics.CosineProximity()
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
@@ -1023,6 +1092,11 @@ class MeanAbsoluteErrorTest(test.TestCase):
     mae_obj = metrics.MeanAbsoluteError(name='my_mae', dtype=dtypes.int32)
     self.assertEqual(mae_obj.name, 'my_mae')
     self.assertEqual(mae_obj._dtype, dtypes.int32)
+
+    # Check save and restore config
+    mae_obj2 = metrics.MeanAbsoluteError.from_config(mae_obj.get_config())
+    self.assertEqual(mae_obj2.name, 'my_mae')
+    self.assertEqual(mae_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     mae_obj = metrics.MeanAbsoluteError()
@@ -1058,6 +1132,12 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
     self.assertEqual(mape_obj.name, 'my_mape')
     self.assertEqual(mape_obj._dtype, dtypes.int32)
 
+    # Check save and restore config
+    mape_obj2 = metrics.MeanAbsolutePercentageError.from_config(
+        mape_obj.get_config())
+    self.assertEqual(mape_obj2.name, 'my_mape')
+    self.assertEqual(mape_obj2._dtype, dtypes.int32)
+
   def test_unweighted(self):
     mape_obj = metrics.MeanAbsolutePercentageError()
     self.evaluate(variables.variables_initializer(mape_obj.variables))
@@ -1090,6 +1170,11 @@ class MeanSquaredErrorTest(test.TestCase):
     mse_obj = metrics.MeanSquaredError(name='my_mse', dtype=dtypes.int32)
     self.assertEqual(mse_obj.name, 'my_mse')
     self.assertEqual(mse_obj._dtype, dtypes.int32)
+
+    # Check save and restore config
+    mse_obj2 = metrics.MeanSquaredError.from_config(mse_obj.get_config())
+    self.assertEqual(mse_obj2.name, 'my_mse')
+    self.assertEqual(mse_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     mse_obj = metrics.MeanSquaredError()
@@ -1125,6 +1210,12 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
     self.assertEqual(msle_obj.name, 'my_msle')
     self.assertEqual(msle_obj._dtype, dtypes.int32)
 
+    # Check save and restore config
+    msle_obj2 = metrics.MeanSquaredLogarithmicError.from_config(
+        msle_obj.get_config())
+    self.assertEqual(msle_obj2.name, 'my_msle')
+    self.assertEqual(msle_obj2._dtype, dtypes.int32)
+
   def test_unweighted(self):
     msle_obj = metrics.MeanSquaredLogarithmicError()
     self.evaluate(variables.variables_initializer(msle_obj.variables))
@@ -1157,6 +1248,11 @@ class HingeTest(test.TestCase):
     hinge_obj = metrics.Hinge(name='hinge', dtype=dtypes.int32)
     self.assertEqual(hinge_obj.name, 'hinge')
     self.assertEqual(hinge_obj._dtype, dtypes.int32)
+
+    # Check save and restore config
+    hinge_obj2 = metrics.Hinge.from_config(hinge_obj.get_config())
+    self.assertEqual(hinge_obj2.name, 'hinge')
+    self.assertEqual(hinge_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     hinge_obj = metrics.Hinge()
@@ -1191,6 +1287,11 @@ class SquaredHingeTest(test.TestCase):
     self.assertEqual(sq_hinge_obj.name, 'sq_hinge')
     self.assertEqual(sq_hinge_obj._dtype, dtypes.int32)
 
+    # Check save and restore config
+    sq_hinge_obj2 = metrics.SquaredHinge.from_config(sq_hinge_obj.get_config())
+    self.assertEqual(sq_hinge_obj2.name, 'sq_hinge')
+    self.assertEqual(sq_hinge_obj2._dtype, dtypes.int32)
+
   def test_unweighted(self):
     sq_hinge_obj = metrics.SquaredHinge()
     self.evaluate(variables.variables_initializer(sq_hinge_obj.variables))
@@ -1224,6 +1325,12 @@ class CategoricalHingeTest(test.TestCase):
         name='cat_hinge', dtype=dtypes.int32)
     self.assertEqual(cat_hinge_obj.name, 'cat_hinge')
     self.assertEqual(cat_hinge_obj._dtype, dtypes.int32)
+
+    # Check save and restore config
+    cat_hinge_obj2 = metrics.CategoricalHinge.from_config(
+        cat_hinge_obj.get_config())
+    self.assertEqual(cat_hinge_obj2.name, 'cat_hinge')
+    self.assertEqual(cat_hinge_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     cat_hinge_obj = metrics.CategoricalHinge()
