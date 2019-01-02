@@ -179,6 +179,9 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
                                                      num_threads);
     }
 
+    // If dimensions do not pass basic sanity checks return immediately.
+    if (kc_ <= 0 || mc_ <= 0 || nc_ <= 0) return;
+
     // If we are using default Eigen gebp kernel there is no need to adjust the
     // block sizes for MKL-DNN.
     if (!UseCustomContractionKernels()) return;

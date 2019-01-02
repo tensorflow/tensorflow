@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_KERNELS_TEST_UTILS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_KERNELS_TEST_UTILS_H_
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_TESTING_TEST_UTILS_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_TESTING_TEST_UTILS_H_
 
 #include <cstdarg>
 #include <initializer_list>
@@ -21,8 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/experimental/micro/kernels/test_utils.h"
+#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 namespace tflite {
@@ -164,7 +163,20 @@ inline TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,
   return CreateQuantized32Tensor(data.begin(), dims, name, min, max);
 }
 
+// Do a simple string comparison for testing purposes, without requiring the
+// standard C library.
+inline int TestStrcmp(const char* a, const char* b) {
+  if ((a == nullptr) || (b == nullptr)) {
+    return -1;
+  }
+  while ((*a != 0) && (*a == *b)) {
+    a++;
+    b++;
+  }
+  return *(const unsigned char*)a - *(const unsigned char*)b;
+}
+
 }  // namespace testing
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_KERNELS_TEST_UTILS_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_TESTING_TEST_UTILS_H_

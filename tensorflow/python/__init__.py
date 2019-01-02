@@ -121,6 +121,8 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 
+from tensorflow.python.compat import v2_compat
+
 from tensorflow.python.util.all_util import make_all
 from tensorflow.python.util.tf_export import tf_export
 

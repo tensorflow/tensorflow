@@ -43,16 +43,24 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // specified.
   explicit HloEvaluator(int64 max_loop_iterations = -1);
 
-  // Evaluates an HLO module and an array of pointers to literals.
-  // Returns the evaluated result as a literal if successful.
+  // Evaluates an HLO module and an array of pointers to literals.  Returns the
+  // evaluated result as a literal if successful.
+  //
   // Precondition: The indices of arg_literals correspond to the parameter
   // numbers of the HLO parameters in the computation. See comment below for an
   // example.
-  // `LiteralPtr` accepts either Literal or const Literal*
-  // type.
-  template <typename LiteralPtr>
+  //
+  // (Dummy template arg is to reduce the overloading priority of one overload
+  // so that Evaluate(module, {}) resolves unambiguously.)
   StatusOr<Literal> Evaluate(const HloModule& module,
-                             absl::Span<const LiteralPtr> arg_literals);
+                             absl::Span<const Literal* const> arg_literals) {
+    return Evaluate(*module.entry_computation(), arg_literals);
+  }
+  template <typename Dummy = void>
+  StatusOr<Literal> Evaluate(const HloModule& module,
+                             absl::Span<const Literal> arg_literals) {
+    return Evaluate(*module.entry_computation(), arg_literals);
+  }
 
   // Evaluates an HLO computation and an array of pointers to literals.
   // Returns the evaluated result as a literal if successful.
@@ -70,29 +78,24 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // where Parameter0 has parameter_number 0 and Parameter1 has parameter_number
   // 1 in this computation. The input literals array will then have its first
   // literal map to Parameter0 and the second map to Parameter1.
-  // `LiteralPtr` accepts either Literal or const Literal*
-  // type.
-  template <typename LiteralPtr>
+  //
+  // (Dummy template arg is to reduce the overloading priority of one overload
+  // so that Evaluate(module, {}) resolves unambiguously.)
   StatusOr<Literal> Evaluate(const HloComputation& computation,
-                             absl::Span<const LiteralPtr> arg_literals);
+                             absl::Span<const Literal* const> arg_literals);
+  template <typename Dummy = void>
+  StatusOr<Literal> Evaluate(const HloComputation& computation,
+                             absl::Span<const Literal> arg_literals) {
+    std::vector<const Literal*> arg_literal_ptrs;
+    for (const auto& l : arg_literals) {
+      arg_literal_ptrs.push_back(&l);
+    }
+    return Evaluate(computation, arg_literal_ptrs);
+  }
 
-  // Evaluates a single HLO instruction and an array of pointers to literals.
-  // Return the evaluated result as literal if successful.
-  // Precondition:
-  // 1. argument literals correspond to the input instruction's parameters in
-  // their post-ordering.
-  // 2. the instruction's operands must be of either Parameter or Constant type.
-  // `LiteralPtr` accepts either Literal or const Literal*
-  // type.
-  template <typename LiteralPtr>
-  StatusOr<Literal> Evaluate(HloInstruction* instruction,
-                             absl::Span<const LiteralPtr> arg_literals);
-
-  // Evaluates a single HLO instruction with constant operands.
-  // Returns the evaluated result as literal if successful.
-  // Precondition:
-  // 1. all operands of the input instruction are constants.
-  // 2. the instruction is not a Parameter operation.
+  // Gets the value of running a single HLO instruction.
+  //
+  // All of the operands to this instruction must be constants.
   StatusOr<Literal> Evaluate(HloInstruction* instruction);
 
   // Same as Evaluate, except returning false on error and accepts an output

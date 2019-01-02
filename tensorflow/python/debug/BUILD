@@ -19,6 +19,7 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "py_binary")
+load("//tensorflow:tensorflow.bzl", "if_not_v2")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 py_library(
@@ -406,9 +407,10 @@ py_library(
         ":debug_errors",
         ":debug_fibonacci",
         ":debug_keras",
+    ] + if_not_v2([
         ":debug_mnist",
         ":debug_tflearn_iris",
-    ],
+    ]),
 )
 
 py_binary(

@@ -118,6 +118,10 @@ OpKernel::OpKernel(OpKernelConstruction* context,
 
 OpKernel::~OpKernel() {}
 
+const uint64 OpKernel::kInitialCostEstimateCycles;
+const uint64 OpKernel::kOpIsExpensiveThresholdCycles;
+const uint64 OpKernel::kCostDecay;
+
 const string& OpKernel::name() const { return def_->name(); }
 const string& OpKernel::type_string() const { return def_->op(); }
 const string& OpKernel::requested_device() const { return def_->device(); }

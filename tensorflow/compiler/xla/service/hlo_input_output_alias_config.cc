@@ -17,9 +17,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
+
+bool HloInputOutputAliasConfig::OutputHasAlias(
+    const ShapeIndex& output_index) const {
+  return aliased_output_indices_.count(output_index) > 0;
+}
+
 Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
                                              int64 param_number,
                                              const ShapeIndex& param_index) {
+  TF_RET_CHECK(!OutputHasAlias(output_index))
+      << "Output index " << output_index << " already has an alias setup";
   TF_RET_CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
       << absl::StrCat("Tring to set up alias at ", output_index.ToString(),
                       " which is an invalid index for shape ",
@@ -33,6 +41,7 @@ Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
       alias_.element(output_index)->second.ToString());
   (*alias_.mutable_element(output_index)) =
       std::make_pair(param_number, param_index);
+  aliased_output_indices_.insert(output_index);
   VLOG(4) << "Set up alias between output index " << output_index.ToString()
           << " and parameter " << param_index << " at index "
           << param_index.ToString();

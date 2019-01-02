@@ -198,40 +198,30 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
       });
 }
 
-template <typename LiteralPtr>
-StatusOr<Literal> HloEvaluator::Evaluate(
-    const HloModule& module, absl::Span<const LiteralPtr> arg_literals) {
-  XLA_VLOG_LINES(2, "HloEvaluator::Evaluate module:\n" + module.ToString());
-
-  evaluated_.clear();
-  arg_literals_.clear();
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literals_.push_back(&*literal_ptr);
-  }
-
-  TF_RETURN_IF_ERROR(module.entry_computation()->Accept(this));
-
-  return GetEvaluatedLiteralFor(module.entry_computation()->root_instruction())
-      .Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    const HloModule& module, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literal_ptrs.push_back(&literal_ptr);
-  }
-  return Evaluate<const Literal*>(module, arg_literal_ptrs);
-}
-
-template <typename LiteralPtr>
 StatusOr<Literal> HloEvaluator::Evaluate(
     const HloComputation& computation,
-    absl::Span<const LiteralPtr> arg_literals) {
+    absl::Span<const Literal* const> arg_literals) {
   CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
+
+  if (arg_literals.size() != computation.num_parameters()) {
+    return InvalidArgument(
+        "Expected %d argument%s, but got %d.", computation.num_parameters(),
+        computation.num_parameters() == 1 ? "" : "s", arg_literals.size());
+  }
+  for (int64 i = 0; i < arg_literals.size(); ++i) {
+    const auto& computation_shape =
+        computation.parameter_instruction(i)->shape();
+    const auto& arg_shape = arg_literals[i]->shape();
+    if (!ShapeUtil::Equal(computation_shape, arg_shape)) {
+      return InvalidArgument(
+          "Shape mismatch at parameter %d. Computation expected %s, but arg "
+          "was %s.",
+          i, ShapeUtil::HumanStringWithLayout(computation_shape),
+          ShapeUtil::HumanString(arg_shape));
+    }
+  }
 
   evaluated_.clear();
   arg_literals_.clear();
@@ -241,56 +231,6 @@ StatusOr<Literal> HloEvaluator::Evaluate(
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
   return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    const HloComputation& computation, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literal_ptrs.push_back(&literal_ptr);
-  }
-  return Evaluate<const Literal*>(computation, arg_literal_ptrs);
-}
-
-template <typename LiteralPtr>
-StatusOr<Literal> HloEvaluator::Evaluate(
-    HloInstruction* instruction, absl::Span<const LiteralPtr> arg_literals) {
-  TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
-
-  evaluated_.clear();
-  arg_literals_.clear();
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literals_.push_back(&*literal_ptr);
-  }
-
-  // Evaluate operands of Parameter type against the input literals which
-  // caches the evaluated literal results.
-  for (const auto operand : instruction->operands()) {
-    if (operand->opcode() == HloOpcode::kParameter) {
-      const Literal* input_literal = arg_literals_[operand->parameter_number()];
-      VLOG(2) << "Parameter operand evaluated to: "
-              << input_literal->ToString();
-      TF_RET_CHECK(ShapeUtil::Equal(operand->shape(), input_literal->shape()));
-
-      evaluated_[operand] = input_literal->Clone();
-    }
-  }
-
-  TF_RETURN_IF_ERROR(Preprocess(instruction));
-  TF_RETURN_IF_ERROR(instruction->Visit(this));
-  TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return GetEvaluatedLiteralFor(instruction).Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    HloInstruction* instruction, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal : arg_literals) {
-    arg_literal_ptrs.push_back(&literal);
-  }
-  return Evaluate<const Literal*>(instruction, arg_literal_ptrs);
 }
 
 StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
@@ -1127,9 +1067,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
-  Literal result =
-      embedded_evaluator.Evaluate<const Literal*>(*computation, arg_literals)
-          .ConsumeValueOrDie();
+  Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
+                       .ConsumeValueOrDie();
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -1160,8 +1099,7 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
 
   HloEvaluator embedded_evaluator;
   Literal result =
-      embedded_evaluator
-          .Evaluate<const Literal*>(*readded_computation, arg_literals)
+      embedded_evaluator.Evaluate(*readded_computation, arg_literals)
           .ConsumeValueOrDie();
 
   evaluated_[fusion] = std::move(result);
@@ -1181,14 +1119,12 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   HloEvaluator embedded_evaluator;
   Literal result;
   if (pred.Get<bool>({})) {
-    result = embedded_evaluator
-                 .Evaluate<const Literal*>(*true_computation,
-                                           {&true_computation_arg})
-                 .ConsumeValueOrDie();
+    result =
+        embedded_evaluator.Evaluate(*true_computation, {&true_computation_arg})
+            .ConsumeValueOrDie();
   } else {
     result = embedded_evaluator
-                 .Evaluate<const Literal*>(*false_computation,
-                                           {&false_computation_arg})
+                 .Evaluate(*false_computation, {&false_computation_arg})
                  .ConsumeValueOrDie();
   }
 
@@ -1242,11 +1178,11 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
                              while_hlo->name(), max_loop_iterations_);
     }
     TF_ASSIGN_OR_RETURN(auto cond_val,
-                        cond_evaluator.Evaluate<Literal*>(*cond_comp, {&lcv}));
+                        cond_evaluator.Evaluate(*cond_comp, {&lcv}));
     keep_going = cond_val.GetFirstElement<bool>();
     if (keep_going) {
-      TF_ASSIGN_OR_RETURN(auto body_val, loop_body_evaluator.Evaluate<Literal*>(
-                                             *body_comp, {&lcv}));
+      TF_ASSIGN_OR_RETURN(auto body_val,
+                          loop_body_evaluator.Evaluate(*body_comp, {&lcv}));
       VLOG(3) << "Loop iteration result: " << body_val.ToString();
       lcv = std::move(body_val);
       cond_evaluator.ResetVisitStates();
@@ -1454,18 +1390,6 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
   }
   return Status::OK();
 }
-
-// Explicit instantiation of templatized Evaluate* methods.
-//
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    const HloModule& module, absl::Span<const Literal* const> arg_literals);
-
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    const HloComputation& computation,
-    absl::Span<const Literal* const> arg_literals);
-
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    HloInstruction* instruction, absl::Span<const Literal* const> arg_literals);
 
 namespace {
 template <typename T>

@@ -682,8 +682,9 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
 
-  bool ints_on_device = fdef.attr().count("experimental_ints_on_device") != 0 &&
-                        fdef.attr().at("experimental_ints_on_device").b();
+  bool ints_on_device =
+      fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
+      fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b();
 
   FunctionInstantiationHelper helper(get_function, result);
   Status s;
@@ -868,7 +869,8 @@ string FunctionLibraryRuntime::ExecutorType(const InstantiateOptions& options,
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
-  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
+  entries.reserve(attrs.size() + static_cast<int>(options.target.empty()) +
+                  options.input_devices.size());
   for (auto p : attrs) {
     if (p.first != kExecutorAttr) {
       entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
@@ -877,6 +879,14 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   if (!options.target.empty()) {
     entries.push_back(
         strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+  }
+  for (int i = 0; i < options.input_devices.size(); ++i) {
+    entries.push_back(strings::StrCat(
+        "_input_dev", i, "=", str_util::CEscape(options.input_devices[i])));
+  }
+  for (int i = 0; i < options.output_devices.size(); ++i) {
+    entries.push_back(strings::StrCat(
+        "_output_dev", i, "=", str_util::CEscape(options.output_devices[i])));
   }
   if (options.overlay_lib) {
     entries.push_back(strings::StrCat(
@@ -1491,6 +1501,9 @@ NodeDef FunctionDefHelper::Node::ToNodeDef() const {
   for (const string& d : this->dep) {
     n.add_input(strings::StrCat("^", d));
   }
+  if (!this->device.empty()) {
+    n.set_device(this->device);
+  }
   return n;
 }
 
@@ -1533,6 +1546,7 @@ FunctionDef FunctionDefHelper::Create(
       fdef.mutable_signature()->set_is_stateful(true);
     }
   }
+
   return fdef;
 }
 
@@ -1640,4 +1654,4 @@ Status GetOpGradientCreator(const string& op, Creator* creator) {
 
 }  // end namespace gradient
 
-}  // end namespace tensorflow
+}  // namespace tensorflow

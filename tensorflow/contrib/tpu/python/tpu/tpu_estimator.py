@@ -31,11 +31,13 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.tpu.ops import gen_tpu_ordinal_selector_op
 from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
-from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import error_handling
+from tensorflow.contrib.tpu.python.tpu import functional as tpu_functional
 from tensorflow.contrib.tpu.python.tpu import session_support
+from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_context
@@ -55,6 +57,7 @@ from tensorflow.python.estimator.export import export_output as export_output_li
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -90,6 +93,7 @@ _ONE_GIGABYTE = 1024 * 1024 * 1024
 _TPU_ENQUEUE_OPS = '_tpu_enqueue_ops'
 _TPU_TRAIN_OP = '_tpu_train_op'
 _REWRITE_FOR_INFERENCE_MODE = '_rewrite_for_inference'
+_KEY_WHEN_PREDICTIONS_IS_A_TENSOR = '_key_when_predictions_is_a_tensor'
 
 # Ideally _USE_TPU_KEY should be reserved as well. However there are already
 # models that make use of this key, thus it can not be reserved now to prevent
@@ -1303,6 +1307,44 @@ class _InputPipeline(object):
         logging.warn(err_msg)
 
 
+def call_computation(computation,
+                     experimental_exported_model_uses_all_cores=True):
+  """Call computation.
+
+  computation uses a single-core for TPU inference. If
+  `experimental_exported_model_uses_all_cores` is `True`, this function will
+  round-robin
+  computation among all TPU cores visible to the host; otherwise, it will use
+  a single core.
+
+  Args:
+    computation: A Python function that takes no inputs and builds computation
+      graph. If `computation` returns m outputs, this function will return a
+      list of m Tensors.
+    experimental_exported_model_uses_all_cores: Whether to round-robin among all
+      cores visible to the host, or to use a single core.
+
+  Returns:
+    A list of output tensors.
+  """
+  if experimental_exported_model_uses_all_cores:
+    # Using `TPUPartitionedCall` makes it possible to target a different
+    # TPU core with every `Session.run()` call. Note that the entire inference
+    # graph executes on a single core, and that invocations of this graph
+    # will round-robin among the cores attached to a host.
+    @function.Defun()
+    def tpu_subgraph():
+      return computation()
+
+    return tpu_functional.TPUPartitionedCall(
+        args=tpu_subgraph.captured_inputs,
+        device_ordinal=gen_tpu_ordinal_selector_op.tpu_ordinal_selector(),
+        Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
+        f=tpu_subgraph)
+  else:
+    return computation()
+
+
 class _ModelFnWrapper(object):
   """A `model_fn` wrapper.
 
@@ -2100,7 +2142,8 @@ class TPUEstimator(estimator_lib.Estimator):
                batch_axis=None,
                eval_on_tpu=True,
                export_to_tpu=True,
-               warm_start_from=None):
+               warm_start_from=None,
+               experimental_exported_model_uses_all_cores=False):
     """Constructs an `TPUEstimator` instance.
 
     Args:
@@ -2149,6 +2192,12 @@ class TPUEstimator(estimator_lib.Estimator):
         configure warm-starting.  If the string filepath is provided instead of
         a `WarmStartSettings`, then all variables are warm-started, and it is
         assumed that vocabularies and Tensor names are unchanged.
+      experimental_exported_model_uses_all_cores: Whether to round-robin among
+        all cores visible to the host which is serving the saved model, or to
+        use a single core. This is a temporary flag to enable using all TPU
+        cores for inference with TPUPartitionedCall(). Once outside compilation
+        is supported in TPUPartitionedCall(), this flag will be enabled by
+        default.
 
     Raises:
       ValueError: `params` has reserved keys already.
@@ -2213,6 +2262,8 @@ class TPUEstimator(estimator_lib.Estimator):
         use_tpu, eval_on_tpu)
 
     self._export_to_tpu = export_to_tpu
+    self._experimental_exported_model_uses_all_cores = (
+        experimental_exported_model_uses_all_cores)
 
     self._is_input_fn_invoked = None
     self._rendezvous = {}
@@ -2269,6 +2320,79 @@ class TPUEstimator(estimator_lib.Estimator):
       raise ValueError('mode must be {}; '
                        'got {}.'.format(_REWRITE_FOR_INFERENCE_MODE, mode))
 
+    computation, capture = self._build_computation_for_inference(
+        features, labels, mode, config)
+    tensors = call_computation(
+        computation,
+        experimental_exported_model_uses_all_cores=self
+        ._experimental_exported_model_uses_all_cores)
+    estimator_spec, export_outputs_dict, predictions_dict, none_indices = (
+        capture.get())
+    predictions_list = tensors[:len(predictions_dict)]
+    export_outputs_list_without_none = tensors[len(predictions_dict):]
+
+    # Reinsert `None`s which we've taken out in
+    # `_build_computation_for_inference()`.
+    export_outputs_list = []
+    while none_indices or export_outputs_list_without_none:
+      if none_indices and none_indices[0] == len(export_outputs_list):
+        export_outputs_list.append(None)
+        none_indices.pop(0)
+      else:
+        export_outputs_list.append(export_outputs_list_without_none.pop(0))
+
+    # Reconstruct `export_outputs` with updated tensors.
+    new_export_outputs_dict = nest.pack_sequence_as(export_outputs_dict,
+                                                    export_outputs_list)
+    export_outputs = estimator_spec.export_outputs
+    new_export_outputs = collections.OrderedDict(
+        (k, _clone_export_output_with_tensors(export_outputs[k], v))
+        for k, v in six.iteritems(new_export_outputs_dict))
+    # Reconstruct `predictions` with updated tensors.
+    new_predictions = nest.pack_sequence_as(predictions_dict, predictions_list)
+    if (len(new_predictions) == 1 and
+        _KEY_WHEN_PREDICTIONS_IS_A_TENSOR in new_predictions):
+      new_predictions = new_predictions[_KEY_WHEN_PREDICTIONS_IS_A_TENSOR]
+
+    return estimator_spec._replace(
+        export_outputs=new_export_outputs, predictions=new_predictions)
+
+  def _build_computation_for_inference(self, features, labels, mode, config):
+    capture = _CapturedObject()
+
+    def computation():
+      """Computation to be passed to `TPUPartitionedCall()`."""
+      tpu_computation, tpu_capture = self._build_tpu_computation_for_inference(
+          features, labels, mode, config)
+
+      tensors_on_cpu = tpu.rewrite_for_inference(tpu_computation)
+      (estimator_spec, export_outputs_dict, export_outputs_list,
+       predictions_dict) = (
+           tpu_capture.get())
+      predictions_list = tensors_on_cpu[:len(predictions_dict)]
+      export_outputs_tpu_on_cpu_list = tensors_on_cpu[len(predictions_dict):]
+
+      # Reconstruct tensors used in export_outputs, with TPU tensors replaced
+      # with their CPU counterpart returned from `rewrite_for_inference()`.
+      # `function.Defun()` does not like `None`s in return values, so we leave
+      # `None`s out but record their positions for later reconstruction.
+      export_outputs_list_without_none = []
+      none_indices = []
+      for i, t in enumerate(export_outputs_list):
+        if t is None:
+          none_indices.append(i)
+        else:
+          export_outputs_list_without_none.append(
+              export_outputs_tpu_on_cpu_list.pop(0))
+
+      capture.capture((estimator_spec, export_outputs_dict, predictions_dict,
+                       none_indices))
+      return predictions_list + export_outputs_list_without_none
+
+    return computation, capture
+
+  def _build_tpu_computation_for_inference(self, features, labels, mode,
+                                           config):
     capture = _CapturedObject()
 
     def computation():
@@ -2289,38 +2413,30 @@ class TPUEstimator(estimator_lib.Estimator):
 
       # We pick the TPU tensors out from `export_output` and later return them
       # from `computation` for rewriting.
-      tensors_dict = collections.OrderedDict(
+      export_outputs_dict = collections.OrderedDict(
           (k, _export_output_to_tensors(v))
           for k, v in six.iteritems(estimator_spec.export_outputs))
-      tensors = nest.flatten(tensors_dict)
-      tpu_tensors = [t for t in tensors if t is not None]
+      export_outputs_list = nest.flatten(export_outputs_dict)
+      export_outputs_tpu_list = [
+          t for t in export_outputs_list if t is not None
+      ]
 
-      # We cannot return anything other than `tpu_tensors` here so we capture
-      # the rest for later use.
-      capture.capture((estimator_spec, tensors_dict, tensors))
-      return tpu_tensors
-
-    tpu_tensors_on_cpu = tpu.rewrite_for_inference(computation)
-    estimator_spec, tensors_dict, tensors = capture.get()
-
-    # Reconstruct `tensors`, but with `tpu_tensors` replaced with
-    # `tpu_tensors_on_cpu`.
-    new_tensors = []
-    for t in tensors:
-      if t is None:
-        new_tensors.append(None)
+      if isinstance(estimator_spec.predictions, dict):
+        predictions_dict = collections.OrderedDict(
+            (k, v) for k, v in six.iteritems(estimator_spec.predictions))
       else:
-        new_tensors.append(tpu_tensors_on_cpu.pop(0))
+        predictions_dict = {
+            _KEY_WHEN_PREDICTIONS_IS_A_TENSOR: estimator_spec.predictions
+        }
+      predictions_list = nest.flatten(predictions_dict)
 
-    # Reconstruct `tensors_dict`.
-    new_tensors_dict = nest.pack_sequence_as(tensors_dict, new_tensors)
-    # Reconstruct `export_outputs`.
-    export_outputs = estimator_spec.export_outputs
-    new_export_outputs = collections.OrderedDict(
-        (k, _clone_export_output_with_tensors(export_outputs[k], v))
-        for k, v in six.iteritems(new_tensors_dict))
+      # We cannot return everything we want through the return values, so
+      # capture the rest here for later use.
+      capture.capture((estimator_spec, export_outputs_dict, export_outputs_list,
+                       predictions_dict))
+      return predictions_list + export_outputs_tpu_list
 
-    return estimator_spec._replace(export_outputs=new_export_outputs)
+    return computation, capture
 
   def _create_global_step(self, graph):
     """Creates a global step suitable for TPUs.

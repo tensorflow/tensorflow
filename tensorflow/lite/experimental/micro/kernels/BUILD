@@ -48,22 +48,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "test_utils",
-    srcs = [
-    ],
-    hdrs = [
-        "test_utils.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/testing:micro_test",
-    ],
-)
-
 tflite_micro_cc_test(
     name = "depthwise_conv_test",
     srcs = [
@@ -71,7 +55,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":test_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -85,7 +68,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":test_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -99,7 +81,6 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":all_ops_resolver",
-        ":test_utils",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
