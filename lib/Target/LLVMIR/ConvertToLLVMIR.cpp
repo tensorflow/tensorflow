@@ -712,6 +712,14 @@ bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
     return false;
   }
 
+  if (auto selectOp = inst.dyn_cast<SelectOp>()) {
+    valueMapping[selectOp->getResult()] =
+        builder.CreateSelect(valueMapping.lookup(selectOp->getCondition()),
+                             valueMapping.lookup(selectOp->getTrueValue()),
+                             valueMapping.lookup(selectOp->getFalseValue()));
+    return false;
+  }
+
   // Terminators.
   if (auto returnInst = inst.dyn_cast<ReturnOp>()) {
     unsigned numOperands = returnInst->getNumOperands();

@@ -614,7 +614,11 @@ cfgfunc @ops(f32, f32, i32, i32) -> (f32, i32) {
 ^bb0(%arg0: f32, %arg1: f32, %arg2: i32, %arg3: i32):
 // CHECK-NEXT: fsub float %0, %1
   %0 = subf %arg0, %arg1: f32
-// CHECK-NEXT: sub i32 %2, %3
+// CHECK-NEXT: %6 = sub i32 %2, %3
   %1 = subi %arg2, %arg3: i32
-  return %0, %1 : f32, i32
+// CHECK-NEXT: %7 = icmp slt i32 %2, %6
+  %2 = cmpi "slt", %arg2, %1 : i32
+// CHECK-NEXT: select i1 %7, i32 %2, i32 %6
+  %3 = select %2, %arg2, %1 : i32
+  return %0, %3 : f32, i32
 }
