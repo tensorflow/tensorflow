@@ -85,45 +85,32 @@ private:
 } // end namespace
 
 void Pattern::emitAttributeValue(Record *constAttr) {
-  Record *type = constAttr->getValueAsDef("type");
+  Record *attr = constAttr->getValueAsDef("attr");
   auto value = constAttr->getValue("value");
+  Record *type = attr->getValueAsDef("type");
+  auto storageType = attr->getValueAsString("storageType").trim();
 
-  // Construct the attribute based on `type`.
-  // TODO(jpienaar): Generalize this to avoid hardcoding here.
-  if (type->isSubClassOf("F")) {
-    string mlirType;
-    switch (type->getValueAsInt("bitwidth")) {
-    case 32:
-      mlirType = "Type::getF32(context)";
-      break;
-    default:
-      PrintFatalError("unsupported floating point width");
-    }
-    // TODO(jpienaar): Verify the floating point constant here.
-    os << formatv("FloatAttr::get({0}, {1})", mlirType,
+  // For attributes stored as strings we do not need to query builder etc.
+  if (storageType == "StringAttr") {
+    os << formatv("rewriter.getStringAttr({0})",
+                  value->getValue()->getAsString());
+    return;
+  }
+
+  // Construct the attribute based on storage type and builder.
+  if (auto b = type->getValue("builderCall")) {
+    if (isa<UnsetInit>(b->getValue()))
+      PrintFatalError(pattern->getLoc(),
+                      "no builder specified for " + type->getName());
+    CodeInit *builder = cast<CodeInit>(b->getValue());
+    // TODO(jpienaar): Verify the constants here
+    os << formatv("{0}::get(rewriter.{1}, {2})", storageType,
+                  builder->getValue(),
                   value->getValue()->getAsUnquotedString());
     return;
   }
 
-  // Fallback to the type of value.
-  switch (value->getType()->getRecTyKind()) {
-  case RecTy::IntRecTyKind:
-    // TODO(jpienaar): This is using 64-bits for all the bitwidth of the
-    // type could instead be queried. These are expected to be mostly used
-    // for enums or constant indices and so no arithmetic operations are
-    // expected on these.
-    os << formatv("IntegerAttr::get(Type::getInteger(64, context), {0})",
-                  value->getValue()->getAsString());
-    break;
-  case RecTy::StringRecTyKind:
-    os << formatv("StringAttr::get({0}, context)",
-                  value->getValue()->getAsString());
-    break;
-  default:
-    PrintFatalError(pattern->getLoc(),
-                    Twine("unsupported/unimplemented value type for ") +
-                        value->getName());
-  }
+  PrintFatalError(pattern->getLoc(), "unable to emit attribute");
 }
 
 void Pattern::collectBoundArguments(DagInit *tree) {
@@ -237,7 +224,6 @@ void Pattern::emit(StringRef rewriteName) {
   os << formatv(R"(
   void rewrite(OperationInst *op, std::unique_ptr<PatternState> state,
                PatternRewriter &rewriter) const override {
-    auto* context = op->getContext(); (void)context;
     auto& s = *static_cast<MatchedState *>(state.get());
     rewriter.replaceOpWithNewOp<{0}>(op, op->getResult(0)->getType())",
                 resultOp.cppClassName());
@@ -273,7 +259,7 @@ void Pattern::emit(StringRef rewriteName) {
     (os << ",\n").indent(6);
 
     // The argument in the result DAG pattern.
-    std::string name = resultTree->getArgNameStr(i);
+    auto name = resultOp.getArgName(i);
     auto defInit = dyn_cast<DefInit>(resultTree->getArg(i));
     auto *value = defInit ? defInit->getDef()->getValue("value") : nullptr;
     if (!value)

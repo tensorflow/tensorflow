@@ -24,11 +24,15 @@
 //===----------------------------------------------------------------------===//
 
 // Base class for all types.
-class Type;
+class Type {
+  // The builder call to invoke (if specified) to construct the Type.
+  code builderCall = ?;
+}
 
 // Integer types.
 class I<int width> : Type {
   int bitwidth = width;
+  let builderCall = "getIntegerType(" # bitwidth # ")";
 }
 def I1  : I<1>;
 def I32 : I<32>;
@@ -37,7 +41,9 @@ def I32 : I<32>;
 class F<int width> : Type {
   int bitwidth = width;
 }
-def F32 : F<32>;
+def F32 : F<32> {
+  let builderCall = "getF32Type()";
+}
 
 // Vector types.
 class Vector<Type t, list<int> dims> : Type {
@@ -108,10 +114,18 @@ class DerivedAttr<code ReturnType, code Body> : Attr<DerivedAttrBody> {
   code body = Body;
 }
 
+// Derived attribute that returns a mlir::Type.
+class DerivedTypeAttr<code body> : DerivedAttr<"Type", body>;
+
+// Represents a constant attribute of specific Attr type. The leaf class that
+// derives from this should additionally include a `value` member.
+class ConstantAttr<Attr attribute> {
+  Attr attr = attribute;
+}
+
 // The values for const F32 attributes are set as strings as floating point
 // values can't be provided directly in TableGen.
-class ConstF32Attr<string val> {
-  Type type = F32;
+class ConstF32Attr<string val> : ConstantAttr<F32Attr> {
   string value = val;
 }
 
