@@ -15,7 +15,7 @@
 """TF-GAN estimator module.
 
 GANEstimator provides all the infrastructure support of a TensorFlow Estimator
-with the feature support of TFGAN.
+with the feature support of TF-GAN.
 """
 
 from __future__ import absolute_import
