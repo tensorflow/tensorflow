@@ -22,15 +22,26 @@
 #ifndef MLIR_INCLUDE_MLIR_TRANSFORMS_LOWERINGUTILS_H
 #define MLIR_INCLUDE_MLIR_TRANSFORMS_LOWERINGUTILS_H
 
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Location.h"
+#include "mlir/Support/LLVM.h"
+
 namespace mlir {
 
 class AffineApplyOp;
+class FuncBuilder;
+class Value;
 
-/// Convert the affine_apply operation `op` into a sequence of primitive
-/// arithmetic instructions that have the same effect and insert them at the
-/// current location of the `op`.  Erase the `op` from its parent.  Return true
-/// if any errors happened during expansion.
-bool expandAffineApply(AffineApplyOp *op);
+/// Expand the `affineMap` applied to `operands` into a sequence of primitive
+/// arithmetic instructions that have the same effect.  The list of operands
+/// contains the values of dimensions, followed by those of symbols.  Use
+/// `builder` to create new instructions.  Report errors at the specificed
+/// location `loc`.  Return a list of results, or `None` if any expansion
+/// failed.
+Optional<SmallVector<Value *, 8>> expandAffineMap(FuncBuilder *builder,
+                                                  Location loc,
+                                                  AffineMap affineMap,
+                                                  ArrayRef<Value *> operands);
 
 } // namespace mlir
 

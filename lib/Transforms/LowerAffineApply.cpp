@@ -43,6 +43,30 @@ struct LowerAffineApply : public FunctionPass {
 
 char LowerAffineApply::passID = 0;
 
+// Given an affine expression `expr` extracted from `op`, build the sequence of
+// primitive instructions that correspond to the affine expression in the
+// `builder`.
+static bool expandAffineApply(AffineApplyOp *op) {
+  if (!op)
+    return true;
+
+  FuncBuilder builder(op->getInstruction());
+  auto maybeExpandedMap =
+      expandAffineMap(&builder, op->getLoc(), op->getAffineMap(),
+                      llvm::to_vector<8>(op->getOperands()));
+  if (!maybeExpandedMap)
+    return true;
+  for (auto pair : llvm::zip(op->getResults(), *maybeExpandedMap)) {
+    Value *original = std::get<0>(pair);
+    Value *expanded = std::get<1>(pair);
+    if (!expanded)
+      return true;
+    original->replaceAllUsesWith(expanded);
+  }
+  op->erase();
+  return false;
+}
+
 PassResult LowerAffineApply::runOnFunction(Function *f) {
   SmallVector<OpPointer<AffineApplyOp>, 8> affineApplyInsts;
 

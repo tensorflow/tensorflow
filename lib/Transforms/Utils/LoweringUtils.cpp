@@ -26,6 +26,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 
 using namespace mlir;
@@ -37,10 +38,12 @@ namespace {
 class AffineApplyExpander
     : public AffineExprVisitor<AffineApplyExpander, Value *> {
 public:
-  // This internal clsas expects arguments to be non-null, checks must be
+  // This internal class expects arguments to be non-null, checks must be
   // performed at the call site.
-  AffineApplyExpander(FuncBuilder *builder, AffineApplyOp *op)
-      : builder(*builder), applyOp(*op), loc(op->getLoc()) {}
+  AffineApplyExpander(FuncBuilder *builder, ArrayRef<Value *> dimValues,
+                      ArrayRef<Value *> symbolValues, Location loc)
+      : builder(*builder), dimValues(dimValues), symbolValues(symbolValues),
+        loc(loc) {}
 
   template <typename OpTy> Value *buildBinaryExpr(AffineBinaryOpExpr expr) {
     auto lhs = visit(expr.getLHS());
@@ -86,52 +89,49 @@ public:
   }
 
   Value *visitDimExpr(AffineDimExpr expr) {
-    assert(expr.getPosition() < applyOp.getNumOperands() &&
+    assert(expr.getPosition() < dimValues.size() &&
            "affine dim position out of range");
-    // FIXME: this assumes a certain order of AffineApplyOp operands, the
-    // cleaner interface would be to separate them at the op level.
-    return applyOp.getOperand(expr.getPosition());
+    return dimValues[expr.getPosition()];
   }
 
   Value *visitSymbolExpr(AffineSymbolExpr expr) {
-    // FIXME: this assumes a certain order of AffineApplyOp operands, the
-    // cleaner interface would be to separate them at the op level.
-    assert(expr.getPosition() + applyOp.getAffineMap().getNumDims() <
-               applyOp.getNumOperands() &&
+    assert(expr.getPosition() < symbolValues.size() &&
            "symbol dim position out of range");
-    return applyOp.getOperand(expr.getPosition() +
-                              applyOp.getAffineMap().getNumDims());
+    return symbolValues[expr.getPosition()];
   }
 
 private:
   FuncBuilder &builder;
-  AffineApplyOp &applyOp;
+  ArrayRef<Value *> dimValues;
+  ArrayRef<Value *> symbolValues;
 
   Location loc;
 };
 } // namespace
 
-// Given an affine expression `expr` extracted from `op`, build the sequence of
-// primitive instructions that correspond to the affine expression in the
-// `builder`.
-static mlir::Value *expandAffineExpr(FuncBuilder *builder, AffineExpr expr,
-                                     AffineApplyOp *op) {
-  auto expander = AffineApplyExpander(builder, op);
-  return expander.visit(expr);
+// Create a sequence of instructions that implement the `expr` applied to the
+// given dimension and symbol values.
+static inline mlir::Value *expandAffineExpr(FuncBuilder *builder, Location loc,
+                                            AffineExpr expr,
+                                            ArrayRef<Value *> dimValues,
+                                            ArrayRef<Value *> symbolValues) {
+  return AffineApplyExpander(builder, dimValues, symbolValues, loc).visit(expr);
 }
 
-bool mlir::expandAffineApply(AffineApplyOp *op) {
-  if (!op)
-    return true;
-
-  FuncBuilder builder(op->getInstruction());
-  auto affineMap = op->getAffineMap();
-  for (auto numberedExpr : llvm::enumerate(affineMap.getResults())) {
-    Value *expanded = expandAffineExpr(&builder, numberedExpr.value(), op);
-    if (!expanded)
-      return true;
-    op->getResult(numberedExpr.index())->replaceAllUsesWith(expanded);
-  }
-  op->erase();
-  return false;
+// Create a sequence of instructions that implement the `affineMap` applied to
+// the given `operands` (as it it were an AffineApplyOp).
+Optional<SmallVector<Value *, 8>>
+mlir::expandAffineMap(FuncBuilder *builder, Location loc, AffineMap affineMap,
+                      ArrayRef<Value *> operands) {
+  auto numDims = affineMap.getNumDims();
+  auto expanded = functional::map(
+      [numDims, builder, loc, operands](AffineExpr expr) {
+        return expandAffineExpr(builder, loc, expr,
+                                operands.take_front(numDims),
+                                operands.drop_front(numDims));
+      },
+      affineMap.getResults());
+  if (llvm::all_of(expanded, [](Value *v) { return v; }))
+    return expanded;
+  return None;
 }
