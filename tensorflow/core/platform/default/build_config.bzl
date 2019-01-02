@@ -663,6 +663,8 @@ def tf_additional_cloud_op_deps():
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
@@ -670,13 +672,15 @@ def tf_additional_cloud_op_deps():
         ],
     })
 
-# TODO(jart, jhseu): Delete when GCP is default on.
+# TODO(jhseu): Delete when GCP is default on.
 def tf_additional_cloud_kernel_deps():
     return select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",

@@ -248,6 +248,12 @@ class BatchDescriptor {
   string ToString() const;
   string ToShortString() const;
 
+  // Pre-condition:
+  //   value_max_ == 0
+  //   value_min_ == 0
+  //   quantized_activation_mode_ == QuantizedActivationMode::k8Bit
+  TensorDescriptorProto ToProto(DataType data_type) const;
+
   // Accessors.
   int64 count() const { return tensor_.dimensions(0); }
   int64 feature_map_count() const { return tensor_.dimensions(1); }
@@ -420,6 +426,7 @@ class FilterDescriptor {
 
   string ToString() const;
   string ToShortString() const;
+  TensorDescriptorProto ToProto(DataType data_type) const;
 
   // Returns the number of weights required as parameters for a convolution
   // using this filter descriptor.
@@ -509,6 +516,7 @@ class ConvolutionDescriptor {
 
   string ToString() const;
   string ToShortString() const;
+  ConvolutionDescriptorProto ToProto() const { return proto_; }
 
   ConvolutionDescriptor& set_zero_padding_height(int64 value) {
     SetDim(padding(), DimIndex::Y, value);
@@ -744,6 +752,8 @@ class AlgorithmDesc {
            tensor_ops_enabled() == other.tensor_ops_enabled();
   }
   uint64 hash() const;
+
+  AlgorithmProto ToProto() const { return proto_; }
 
  private:
   AlgorithmProto proto_;

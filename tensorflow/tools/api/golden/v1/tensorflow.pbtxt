@@ -1081,6 +1081,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "disable_v2_batch_normalization"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "disable_v2_behavior"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -1122,6 +1126,10 @@ tf_module {
   }
   member_method {
     name: "enable_resource_variables"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_v2_batch_normalization"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {

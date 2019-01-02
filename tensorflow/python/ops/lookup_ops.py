@@ -339,6 +339,16 @@ class TableInitializerBase(checkpointable_base.CheckpointableBase):
     """Returns the table initialization op."""
     raise NotImplementedError
 
+  @property
+  def _shared_name(self):
+    """Returns a shared name to be used by the table."""
+    shared_name = ""
+    if context.executing_eagerly():
+      # Ensure a unique name when eager execution is enabled to avoid spurious
+      # sharing issues.
+      shared_name += str(ops.uid())
+    return shared_name
+
 
 class KeyValueTensorInitializer(TableInitializerBase):
   """Table initializers given `keys` and `values` tensors."""
@@ -498,6 +508,7 @@ class TextFileInitializer(TableInitializerBase):
     if not isinstance(filename, ops.Tensor) and not filename:
       raise ValueError("Filename required for %s." % name)
 
+    self._filename_arg = filename
     key_dtype = dtypes.as_dtype(key_dtype)
     value_dtype = dtypes.as_dtype(value_dtype)
 
@@ -568,6 +579,23 @@ class TextFileInitializer(TableInitializerBase):
     if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
+
+  @property
+  def _shared_name(self):
+    if self._vocab_size:
+      # Keep the shared_name:
+      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%d_%s_%s" % (self._filename_arg,
+                                                self._vocab_size,
+                                                self._key_index,
+                                                self._value_index)
+    else:
+      # Keep the shared_name
+      # <table_type>_<filename>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%s_%s" % (self._filename_arg,
+                                             self._key_index,
+                                             self._value_index)
+    return shared_name
 
 
 class TextFileStringTableInitializer(TextFileInitializer):

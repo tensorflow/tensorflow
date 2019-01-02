@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -310,7 +311,10 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
     module->add_computations()->Swap(&e.second);
   }
   module->add_computations()->Swap(&entry);
-
+  if (!input_output_aliases_.empty()) {
+    TF_RETURN_IF_ERROR(
+        PopulateInputOutputAlias(module, program_shape, input_output_aliases_));
+  }
   *(module->mutable_dynamic_parameter_binding()) =
       dynamic_parameter_binding_.ToProto();
 
@@ -321,6 +325,34 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
   this->parameter_numbers_.clear();
 
   return std::move(computation);
+}
+
+/* static */ Status XlaBuilder::PopulateInputOutputAlias(
+    HloModuleProto* module, const ProgramShape& program_shape,
+    const std::vector<InputOutputAlias>& input_output_aliases) {
+  HloInputOutputAliasConfig config(program_shape.result());
+  for (auto& alias : input_output_aliases) {
+    // The HloInputOutputAliasConfig does not do parameter validation as it only
+    // carries the result shape. Maybe it should be constructed with a
+    // ProgramShape to allow full validation. We will still get an error when
+    // trying to compile the HLO module, but would be better to have validation
+    // at this stage.
+    if (alias.param_number >= program_shape.parameters_size()) {
+      return InvalidArgument("Invalid parameter number %ld (total %ld)",
+                             alias.param_number,
+                             program_shape.parameters_size());
+    }
+    const Shape& parameter_shape = program_shape.parameters(alias.param_number);
+    if (!ShapeUtil::IndexIsValid(parameter_shape, alias.param_index)) {
+      return InvalidArgument("Invalid parameter %ld index: %s",
+                             alias.param_number,
+                             alias.param_index.ToString().c_str());
+    }
+    TF_RETURN_IF_ERROR(config.SetUpAlias(alias.output_index, alias.param_number,
+                                         alias.param_index));
+  }
+  *module->mutable_input_output_alias() = config.ToProto();
+  return Status::OK();
 }
 
 StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
@@ -659,7 +691,7 @@ XlaOp XlaBuilder::DynamicSlice(const XlaOp& operand, const XlaOp& start_indices,
                         GetShape(start_indices));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferDynamicSliceShape(
-                            operand_shape, start_indices_shape, slice_sizes));
+                            operand_shape, {start_indices_shape}, slice_sizes));
     *instr.mutable_shape() = shape.ToProto();
 
     for (int64 size : slice_sizes) {
@@ -680,9 +712,9 @@ XlaOp XlaBuilder::DynamicUpdateSlice(const XlaOp& operand, const XlaOp& update,
     TF_ASSIGN_OR_RETURN(const Shape& update_shape, GetShape(update));
     TF_ASSIGN_OR_RETURN(const Shape& start_indices_shape,
                         GetShape(start_indices));
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferDynamicUpdateSliceShape(
-                            operand_shape, update_shape, start_indices_shape));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape, ShapeInference::InferDynamicUpdateSliceShape(
+                         operand_shape, update_shape, {start_indices_shape}));
     *instr.mutable_shape() = shape.ToProto();
 
     return AddInstruction(std::move(instr), HloOpcode::kDynamicUpdateSlice,

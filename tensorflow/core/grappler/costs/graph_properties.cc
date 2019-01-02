@@ -425,9 +425,11 @@ NodeDef MakeConstNodeDefFromShape(InferenceContext* ic,
 // information is refined.
 class TopoQueue {
  public:
-  explicit TopoQueue(const std::unordered_map<const NodeDef*, int>& topo_order)
-      : topo_order_(topo_order) {}
+  explicit TopoQueue(const std::vector<const NodeDef*>& topo_order)
+      : topo_order_(TopoOrder(topo_order)) {}
+
   void push(const NodeDef* n) { queue_.emplace(n, topo_order_.at(n)); }
+
   const NodeDef* pop() {
     CHECK(!empty());
     auto it = queue_.begin();
@@ -448,7 +450,18 @@ class TopoQueue {
       return lhs.second < rhs.second;
     }
   };
-  const std::unordered_map<const NodeDef*, int>& topo_order_;
+
+  const std::unordered_map<const NodeDef*, int> TopoOrder(
+      const std::vector<const NodeDef*>& topo_order) const {
+    std::unordered_map<const NodeDef*, int> map;
+    map.reserve(topo_order.size());
+    for (int i = 0; i < topo_order.size(); ++i) {
+      map.emplace(topo_order[i], i);
+    }
+    return map;
+  }
+
+  const std::unordered_map<const NodeDef*, int> topo_order_;
   std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
@@ -1970,7 +1983,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
   }
 
   std::unordered_map<const NodeDef*, const NodeDef*> resource_handles;
-  std::vector<std::pair<const NodeDef*, const NodeDef*>> extra_deps;
+  std::vector<TopologicalDependency> extra_deps;
   for (const auto& resource : resources) {
     for (const NodeDef* src : resource.second.first) {
       resource_handles[src] = resource.first;
@@ -1982,8 +1995,8 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
     }
   }
 
-  std::unordered_map<const NodeDef*, int> topo_order;
-  Status s = ComputeTopologicalOrder(item_.graph, &topo_order, &extra_deps);
+  std::vector<const NodeDef*> topo_order;
+  Status s = ComputeTopologicalOrder(item_.graph, extra_deps, &topo_order);
   if (!s.ok()) {
     if (extra_deps.empty()) {
       return s;
@@ -1992,8 +2005,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
       // order. This will make the shape inference less precise but since this
       // isn't common it's not worth to figure out where to break the loop and
       // do a proper relaxation.
-      TF_RETURN_IF_ERROR(
-          ComputeTopologicalOrder(item_.graph, &topo_order, nullptr));
+      TF_RETURN_IF_ERROR(ComputeTopologicalOrder(item_.graph, &topo_order));
     }
   }
 

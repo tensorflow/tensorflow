@@ -26,6 +26,7 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -130,7 +131,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     self._collective_keys = cross_device_utils.CollectiveKeys()
     self._initialize_local(local_devices)
-    self._input_workers = values.InputWorkers(
+    self._input_workers = input_lib.InputWorkers(
         self._device_map, [(self._worker_device, self.worker_devices)])
     self._cross_device_ops = cross_device_ops_lib.CollectiveAllReduce(
         num_workers=self._num_workers,
@@ -229,13 +230,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     """Distributes the dataset to each local GPU."""
     # TODO(yuefengz): shard the dataset.
     worker_index = 0
-    return values.PerReplicaDataset(
+    return input_lib.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._input_workers, worker_index,
         prefetch_on_device=True)
 
   def _make_dataset_iterator(self, dataset):
-    return values.DatasetIterator(dataset, self._input_workers,
-                                  self._num_replicas_in_sync)
+    return input_lib.DatasetIterator(dataset, self._input_workers,
+                                     self._num_replicas_in_sync)
 
   def _make_input_fn_iterator(
       self,
@@ -252,7 +253,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
 
-    return values.InputFunctionIterator(
+    return input_lib.InputFunctionIterator(
         input_fn, self._input_workers, [input_context])
 
   def _configure(self,

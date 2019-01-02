@@ -574,6 +574,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
     with ops.Graph().as_default(), self.cached_session():
       init = lookup_ops.KeyValueTensorInitializer(
           ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string, dtypes.int64)
+      self.assertEqual("", init._shared_name)
       table = lookup_ops.HashTable(init, default_value=-1)
       table.initializer.run()
 
@@ -583,6 +584,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
         init1 = lookup_ops.KeyValueTensorInitializer(
             ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string,
             dtypes.int64)
+        self.assertEqual("", init1._shared_name)
         table1 = lookup_ops.HashTable(init1, default_value=-1)
         self.assertEquals("hash_table", table1.name)
         self.assertEquals("table_scope/hash_table",
@@ -590,6 +592,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
         init2 = lookup_ops.KeyValueTensorInitializer(
             ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string,
             dtypes.int64)
+        self.assertEqual("", init2._shared_name)
         table2 = lookup_ops.HashTable(init2, default_value=-1)
         self.assertEquals("hash_table_1", table2.name)
         self.assertEquals("table_scope/hash_table_1",
@@ -599,6 +602,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
     with ops.Graph().as_default(), self.cached_session():
       init = lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
                                                   dtypes.int64, dtypes.int64)
+      self.assertEqual("", init._shared_name)
       table = lookup_ops.HashTable(init, default_value=-1)
       table.initializer.run()
 
@@ -607,6 +611,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
     with ops.Graph().as_default(), self.cached_session():
       init = lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
                                                   dtypes.int32, dtypes.int64)
+      self.assertEqual("", init._shared_name)
       table = lookup_ops.HashTable(init, default_value=-1)
       with self.assertRaisesRegexp(
           errors_impl.OpError, "No OpKernel was registered"):
@@ -885,10 +890,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
   def testInitializeStringTable(self):
     vocabulary_file = self._createVocabFile("one_column_1.txt")
     default_value = -1
-    table = lookup_ops.HashTable(
-        lookup_ops.TextFileInitializer(
-            vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
-            dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER), default_value)
+    init = lookup_ops.TextFileInitializer(
+        vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+        dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
+    self.assertTrue("one_column_1.txt_-2_-1" in init._shared_name)
+    table = lookup_ops.HashTable(init, default_value)
     self.evaluate(table.initializer)
 
     output = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
@@ -903,11 +909,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
 
     with self.cached_session():
       default_value = -1
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(
-              vocabulary_file, dtypes.int64,
-              lookup_ops.TextFileIndex.WHOLE_LINE, dtypes.int64,
-              lookup_ops.TextFileIndex.LINE_NUMBER), default_value)
+      init = lookup_ops.TextFileInitializer(
+          vocabulary_file, dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
+      self.assertTrue("one_column_int64.txt_-2_-1" in init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
       table.initializer.run()
 
       output = table.lookup(
@@ -924,10 +930,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
       default_value = "UNK"
       key_index = lookup_ops.TextFileIndex.LINE_NUMBER
       value_index = lookup_ops.TextFileIndex.WHOLE_LINE
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(vocabulary_file, dtypes.int64,
-                                         key_index, dtypes.string, value_index),
-          default_value)
+      init = lookup_ops.TextFileInitializer(vocabulary_file, dtypes.int64,
+                                            key_index, dtypes.string,
+                                            value_index)
+      self.assertTrue("one_column_2.txt_-1_-2" in init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
       table.initializer.run()
 
       input_values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
@@ -947,10 +954,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
       key_index = 1
       value_index = 2
 
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
-                                         key_index, dtypes.int64, value_index),
-          default_value)
+      init = lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
+                                            key_index, dtypes.int64,
+                                            value_index)
+      self.assertTrue("three_columns.txt_1_2" in init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
       table.initializer.run()
 
       input_string = constant_op.constant(["brain", "salad", "surgery"])
@@ -969,10 +977,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
       default_value = -1
       key_index = 2
       value_index = 1
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
-                                         key_index, dtypes.int64, value_index),
-          default_value)
+      init = lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
+                                            key_index, dtypes.int64,
+                                            value_index)
+      self.assertTrue("three_columns.txt_2_1" in init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
       with self.assertRaisesOpError("is not a valid"):
         table.initializer.run()
 
@@ -985,10 +994,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
       value_index = lookup_ops.TextFileIndex.LINE_NUMBER
 
       with self.assertRaises(ValueError):
-        lookup_ops.HashTable(
-            lookup_ops.TextFileInitializer(vocabulary_file, dtypes.int64,
-                                           key_index, dtypes.string,
-                                           value_index), default_value)
+        init = lookup_ops.TextFileInitializer(vocabulary_file, dtypes.int64,
+                                              key_index, dtypes.string,
+                                              value_index)
+        self.assertTrue("one_column_3.txt_-2_-1" in init._shared_name)
+        lookup_ops.HashTable(init, default_value)
 
   @test_util.run_deprecated_v1
   def testInvalidIndex(self):
@@ -997,10 +1007,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
       default_value = -1
       key_index = 1  # second column of the line
       value_index = lookup_ops.TextFileIndex.LINE_NUMBER
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
-                                         key_index, dtypes.int64, value_index),
-          default_value)
+      init = lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
+                                            key_index, dtypes.int64,
+                                            value_index)
+      self.assertTrue("one_column_4.txt_1_-1" in init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
 
       with self.assertRaisesOpError("Invalid number of columns"):
         table.initializer.run()
@@ -1009,30 +1020,27 @@ class InitializeTableFromFileOpTest(test.TestCase):
   def testInitializeSameTableWithMultipleNodes(self):
     vocabulary_file = self._createVocabFile("one_column_5.txt")
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       shared_name = "shared-one-columm"
       default_value = -1
-      table1 = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
-                                         lookup_ops.TextFileIndex.WHOLE_LINE,
-                                         dtypes.int64,
-                                         lookup_ops.TextFileIndex.LINE_NUMBER),
-          default_value,
-          shared_name=shared_name)
-      table2 = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
-                                         lookup_ops.TextFileIndex.WHOLE_LINE,
-                                         dtypes.int64,
-                                         lookup_ops.TextFileIndex.LINE_NUMBER),
-          default_value,
-          shared_name=shared_name)
-      table3 = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(vocabulary_file, dtypes.string,
-                                         lookup_ops.TextFileIndex.WHOLE_LINE,
-                                         dtypes.int64,
-                                         lookup_ops.TextFileIndex.LINE_NUMBER),
-          default_value,
-          shared_name=shared_name)
+      init1 = lookup_ops.TextFileInitializer(
+          vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
+      self.assertTrue("one_column_5.txt_-2_-1" in init1._shared_name)
+      table1 = lookup_ops.HashTable(init1, default_value,
+                                    shared_name=shared_name)
+      init2 = lookup_ops.TextFileInitializer(
+          vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
+      self.assertTrue("one_column_5.txt_-2_-1" in init2._shared_name)
+      table2 = lookup_ops.HashTable(init2, default_value,
+                                    shared_name=shared_name)
+      init3 = lookup_ops.TextFileInitializer(
+          vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
+      self.assertTrue("one_column_5.txt_-2_-1" in init3._shared_name)
+      table3 = lookup_ops.HashTable(init3, default_value,
+                                    shared_name=shared_name)
 
       lookup_ops.tables_initializer().run()
 
@@ -1063,14 +1071,12 @@ class InitializeTableFromFileOpTest(test.TestCase):
       default_value = -1
       vocab_size = 3
       vocabulary_file1 = self._createVocabFile("one_column6.txt")
-      table1 = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(
-              vocabulary_file1,
-              dtypes.string,
-              lookup_ops.TextFileIndex.WHOLE_LINE,
-              dtypes.int64,
-              lookup_ops.TextFileIndex.LINE_NUMBER,
-              vocab_size=vocab_size), default_value)
+      init1 = lookup_ops.TextFileInitializer(
+          vocabulary_file1, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
+          vocab_size=vocab_size)
+      self.assertTrue("one_column6.txt_3_-2_-1" in init1._shared_name)
+      table1 = lookup_ops.HashTable(init1, default_value)
 
       # Initialize from file.
       table1.initializer.run()
@@ -1078,27 +1084,23 @@ class InitializeTableFromFileOpTest(test.TestCase):
 
       vocabulary_file2 = self._createVocabFile("one_column7.txt")
       vocab_size = 5
-      table2 = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(
-              vocabulary_file2,
-              dtypes.string,
-              lookup_ops.TextFileIndex.WHOLE_LINE,
-              dtypes.int64,
-              lookup_ops.TextFileIndex.LINE_NUMBER,
-              vocab_size=vocab_size), default_value)
+      init2 = lookup_ops.TextFileInitializer(
+          vocabulary_file2, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
+          vocab_size=vocab_size)
+      self.assertTrue("one_column7.txt_5_-2_-1" in init2._shared_name)
+      table2 = lookup_ops.HashTable(init2, default_value)
       with self.assertRaisesOpError("Invalid vocab_size"):
         table2.initializer.run()
 
       vocab_size = 1
       vocabulary_file3 = self._createVocabFile("one_column3.txt")
-      table3 = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(
-              vocabulary_file3,
-              dtypes.string,
-              lookup_ops.TextFileIndex.WHOLE_LINE,
-              dtypes.int64,
-              lookup_ops.TextFileIndex.LINE_NUMBER,
-              vocab_size=vocab_size), default_value)
+      init3 = lookup_ops.TextFileInitializer(
+          vocabulary_file3, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER,
+          vocab_size=vocab_size)
+      self.assertTrue("one_column3.txt_1_-2_-1" in init3._shared_name)
+      table3 = lookup_ops.HashTable(init3, default_value)
 
       # Smaller vocab size reads only vocab_size records.
       table3.initializer.run()
@@ -1110,11 +1112,11 @@ class InitializeTableFromFileOpTest(test.TestCase):
 
     with self.cached_session():
       default_value = -1
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileInitializer(
-              "old_file.txt", dtypes.string,
-              lookup_ops.TextFileIndex.WHOLE_LINE, dtypes.int64,
-              lookup_ops.TextFileIndex.LINE_NUMBER), default_value)
+      init = lookup_ops.TextFileInitializer(
+          "old_file.txt", dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
+          dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
+      self.assertTrue("old_file.txt_-2_-1" in init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
 
       # Initialize with non existing file (old_file.txt) should fail.
       # TODO(yleon): Update message, which might change per FileSystem.
@@ -1162,9 +1164,10 @@ class InitializeTableFromFileOpTest(test.TestCase):
     with self.cached_session():
       default_value = "UNK"
       vocab_size = 3
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileStringTableInitializer(
-              vocab_file, vocab_size=vocab_size), default_value)
+      init = lookup_ops.TextFileStringTableInitializer(
+          vocab_file, vocab_size=vocab_size)
+      self.assertTrue("feat_to_id_1.txt_3_-1_-2", init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
 
       table.initializer.run()
 
@@ -1181,9 +1184,10 @@ class InitializeTableFromFileOpTest(test.TestCase):
     with self.cached_session():
       default_value = -1
       vocab_size = 3
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileIdTableInitializer(
-              vocab_file, vocab_size=vocab_size), default_value)
+      init = lookup_ops.TextFileIdTableInitializer(
+          vocab_file, vocab_size=vocab_size)
+      self.assertTrue("feat_to_id_2.txt_3_-1_-2", init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
       table.initializer.run()
 
       input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
@@ -1199,10 +1203,10 @@ class InitializeTableFromFileOpTest(test.TestCase):
     with self.cached_session():
       default_value = -1
       vocab_size = 3
-      table = lookup_ops.HashTable(
-          lookup_ops.TextFileIdTableInitializer(
-              vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
-          default_value)
+      init = lookup_ops.TextFileIdTableInitializer(
+          vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64)
+      self.assertTrue("feat_to_id_3.txt_3_-1_-2", init._shared_name)
+      table = lookup_ops.HashTable(init, default_value)
       table.initializer.run()
 
       out = table.lookup(

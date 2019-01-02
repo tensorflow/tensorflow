@@ -9,6 +9,18 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CategoricalHinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CosineProximity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Hinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MeanAbsoluteError"
     mtype: "<type \'type\'>"
   }
@@ -22,6 +34,10 @@ tf_module {
   }
   member {
     name: "MeanSquaredLogarithmicError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SquaredHinge"
     mtype: "<type \'type\'>"
   }
   member_method {

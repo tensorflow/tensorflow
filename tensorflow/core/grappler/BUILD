@@ -63,6 +63,36 @@ tf_cuda_library(
 )
 
 cc_library(
+    name = "graph_topology_view",
+    srcs = ["graph_topology_view.cc"],
+    hdrs = ["graph_topology_view.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_view",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_topology_view_test",
+    srcs = ["graph_topology_view_test.cc"],
+    deps = [
+        ":graph_topology_view",
+        ":graph_view",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "graph_view",
     srcs = ["graph_view.cc"],
     hdrs = ["graph_view.h"],

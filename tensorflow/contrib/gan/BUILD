@@ -1,4 +1,4 @@
-# Files for using TFGAN framework.
+# Files for using TF-GAN framework.
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(default_visibility = [
@@ -145,16 +145,15 @@ py_library(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
+        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/losses",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -570,22 +569,18 @@ py_test(
     deps = [
         ":namedtuples",
         ":stargan_estimator",
-        ":tuple_losses",
         "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/learn",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
-        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:numpy_io",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",

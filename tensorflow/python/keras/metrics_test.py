@@ -279,6 +279,47 @@ class KerasAccuracyTest(test.TestCase):
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
+  def test_sparse_categorical_accuracy_mismatched_dims(self):
+    acc_obj = metrics.SparseCategoricalAccuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([2, 1], [[0.1, 0.1, 0.8], [0.05, 0.95, 0]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    result_t = acc_obj([2, 1], [[0.1, 0.1, 0.8], [0.05, 0, 0.95]],
+                       [[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
+
+  def test_sparse_categorical_accuracy_mismatched_dims_dynamic(self):
+    with context.graph_mode(), self.cached_session() as sess:
+      acc_obj = metrics.SparseCategoricalAccuracy(name='my acc')
+      self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+      t = array_ops.placeholder(dtypes.float32)
+      p = array_ops.placeholder(dtypes.float32)
+      w = array_ops.placeholder(dtypes.float32)
+
+      result_t = acc_obj(t, p, w)
+      result = sess.run(
+          result_t,
+          feed_dict=({
+              t: [2, 1],
+              p: [[0.1, 0.1, 0.8], [0.05, 0, 0.95]],
+              w: [[0.5], [0.2]]
+          }))
+      self.assertAlmostEqual(result, 0.71, 2)  # 2.5/2.7
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class FalsePositivesTest(test.TestCase):

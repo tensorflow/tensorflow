@@ -1324,7 +1324,7 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
     if (newly_created_tuple_instr) {
       HloInstruction* new_instr = parent()->AddInstruction(
           HloInstruction::CreateGetTupleElement(fused_root->shape(), this, 0));
-      TF_CHECK_OK(ReplaceAllUsesWith(new_instr));
+      TF_CHECK_OK(ReplaceAllUsesWithDifferentShape(new_instr));
     }
     int64 index = tuple_elements.size();
     if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
@@ -2007,6 +2007,18 @@ HloDynamicSliceInstruction::HloDynamicSliceInstruction(
   AppendOperand(start_indices);
 }
 
+HloDynamicSliceInstruction::HloDynamicSliceInstruction(
+    const Shape& shape, HloInstruction* operand,
+    absl::Span<HloInstruction* const> start_indices,
+    absl::Span<const int64> slice_sizes)
+    : HloDynamicIndexInstruction(HloOpcode::kDynamicSlice, shape),
+      dynamic_slice_sizes_(slice_sizes.begin(), slice_sizes.end()) {
+  AppendOperand(operand);
+  for (HloInstruction* index : start_indices) {
+    AppendOperand(index);
+  }
+}
+
 HloDynamicUpdateSliceInstruction::HloDynamicUpdateSliceInstruction(
     const Shape& shape, HloInstruction* operand, HloInstruction* update,
     HloInstruction* start_indices)
@@ -2014,6 +2026,17 @@ HloDynamicUpdateSliceInstruction::HloDynamicUpdateSliceInstruction(
   AppendOperand(operand);
   AppendOperand(update);
   AppendOperand(start_indices);
+}
+
+HloDynamicUpdateSliceInstruction::HloDynamicUpdateSliceInstruction(
+    const Shape& shape, HloInstruction* operand, HloInstruction* update,
+    absl::Span<HloInstruction* const> start_indices)
+    : HloDynamicIndexInstruction(HloOpcode::kDynamicUpdateSlice, shape) {
+  AppendOperand(operand);
+  AppendOperand(update);
+  for (HloInstruction* index : start_indices) {
+    AppendOperand(index);
+  }
 }
 
 HloInstructionProto HloDynamicSliceInstruction::ToProto() const {
@@ -2041,9 +2064,14 @@ std::unique_ptr<HloInstruction>
 HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  CHECK_EQ(new_operands.size(), 2);
-  return absl::make_unique<HloDynamicSliceInstruction>(
-      shape, new_operands[0], new_operands[1], dynamic_slice_sizes_);
+  if (new_operands.size() == 2 && new_operands[1]->shape().rank() == 1) {
+    // TODO(b/118437727): Old form, remove this path.
+    return absl::make_unique<HloDynamicSliceInstruction>(
+        shape, new_operands[0], new_operands[1], dynamic_slice_sizes_);
+  } else {
+    return absl::make_unique<HloDynamicSliceInstruction>(
+        shape, new_operands[0], new_operands.subspan(1), dynamic_slice_sizes_);
+  }
 }
 
 HloGatherInstruction::HloGatherInstruction(

@@ -1,7 +1,7 @@
 # To push a new version, run:
 # $ docker build -f Dockerfile.rbe.cuda10.0-cudnn7-ubuntu14.04 \
-#       --tag "gcr.io/asci-toolchain/nosla-cuda10.0-cudnn7-ubuntu14.04" .
-# $ docker push gcr.io/asci-toolchain/nosla-cuda10.0-cudnn7-ubuntu14.04
+#       --tag "gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu14.04" .
+# $ docker push gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu14.04
 
 FROM ubuntu:14.04
 LABEL maintainer="Manuel Klimek <klimek@google.com>"
@@ -67,6 +67,15 @@ RUN ln -s libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 # libnccl is resolved, delete this block.
 RUN ln -s /usr/lib/x86_64-linux-gnu/libnccl.so /usr/lib/libnccl.so \
  && ln -s /usr/lib/x86_64-linux-gnu/libnccl.so /usr/lib/libnccl.so.2
+
+# Install a newer version of libstdc++, as new clang versions do not work
+# with the stock ubuntu 14.04 libstdc++.
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:ubuntu-toolchain-r/test -y && \
+    apt-get update && \
+    apt-get install -y libstdc++-7-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
