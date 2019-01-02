@@ -86,16 +86,8 @@ class FunctionPass : public Pass {
 public:
   explicit FunctionPass(const void *passID) : Pass(passID) {}
 
-  /// Implement this function to be run on every function in the module.  If you
-  /// do not implement this, the default implementation will dispatch to
-  /// runOnCFGFunction or runOnMLFunction.
-  virtual PassResult runOnFunction(Function *fn);
-
-  /// Implement this function if you want to see CFG Function's specifically.
-  virtual PassResult runOnCFGFunction(Function *fn) { return success(); }
-
-  /// Implement this function if you want to see ML Function's specifically.
-  virtual PassResult runOnMLFunction(Function *fn) { return success(); }
+  /// Implement this function to be run on every function in the module.
+  virtual PassResult runOnFunction(Function *fn) = 0;
 
   // Iterates over all functions in a module, halting upon failure.
   virtual PassResult runOnModule(Module *m) override;

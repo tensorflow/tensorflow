@@ -2142,14 +2142,8 @@ Value *FunctionParser::resolveSSAUse(SSAUseInfo useInfo, Type type) {
     return (emitError(useInfo.loc, "reference to invalid result number"),
             nullptr);
 
-  // Otherwise, this is a forward reference.  If we are in ML function return
-  // an error. In CFG function, create a placeholder and remember
+  // Otherwise, this is a forward reference.  Create a placeholder and remember
   // that we did so.
-  if (function->isML())
-    return (
-        emitError(useInfo.loc, "use of undefined SSA value " + useInfo.name),
-        nullptr);
-
   auto *result = createForwardReferencePlaceholder(useInfo.loc, type);
   entries[useInfo.number].first = result;
   entries[useInfo.number].second = useInfo.loc;

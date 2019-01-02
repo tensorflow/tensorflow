@@ -49,15 +49,6 @@ PassResult FunctionPass::runOnModule(Module *m) {
   return success();
 }
 
-PassResult FunctionPass::runOnFunction(Function *fn) {
-  if (fn->isML())
-    return runOnMLFunction(fn);
-  if (fn->isCFG())
-    return runOnCFGFunction(fn);
-
-  return success();
-}
-
 // TODO: The pass registry and pass name parsing should be moved out.
 static llvm::ManagedStatic<llvm::DenseMap<const void *, PassInfo>> passRegistry;
 

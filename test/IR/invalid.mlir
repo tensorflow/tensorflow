@@ -432,7 +432,7 @@ cfgfunc @undef() {
 // -----
 
 mlfunc @undef() {
-  %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undefined SSA value %y}}
+  %x = "xxx"(%y) : (i32)->i32   // expected-error {{use of undeclared SSA value name}}
   return
 }
 
