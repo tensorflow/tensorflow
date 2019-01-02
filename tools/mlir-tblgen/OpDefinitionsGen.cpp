@@ -520,15 +520,6 @@ void OpEmitter::emitTraits() {
 static void emitOpClasses(const RecordKeeper &recordKeeper,
                           const std::vector<Record *> &defs, raw_ostream &os) {
   IfDefScope scope("GET_OP_CLASSES", os);
-
-  // Enumeration of all the ops defined.
-  os << "enum class OpCode {\n";
-  for (int i = 0, e = defs.size(); i != e; ++i) {
-    auto &def = defs[i];
-    os << (i != 0 ? "," : "") << "k" << def->getName();
-  }
-  os << "\n};\n";
-
   for (auto *def : defs)
     OpEmitter::emit(*def, os);
 }
