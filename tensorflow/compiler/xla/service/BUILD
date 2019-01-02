@@ -3688,6 +3688,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "dynamic_index_splitter",
+    srcs = ["dynamic_index_splitter.cc"],
+    hdrs = ["dynamic_index_splitter.h"],
+    deps = [
+        ":hlo_casting_utils",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "dynamic_index_splitter_test",
+    srcs = ["dynamic_index_splitter_test.cc"],
+    deps = [
+        ":dynamic_index_splitter",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 tf_cc_test(
     name = "ar_crs_combiner_test",
     srcs = ["ar_crs_combiner_test.cc"],
