@@ -352,7 +352,11 @@ cc_library(
 xla_test(
     name = "quantize_test",
     srcs = ["quantize_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
+    # TODO(b/122119490): re-enable TAP after fixing.
+    tags = [
+        "enable_for_xla_interpreter",
+        "notap",
+    ],
     deps = [
         ":quantize",
         "//tensorflow/compiler/xla:test",
