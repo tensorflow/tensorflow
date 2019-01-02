@@ -21,17 +21,18 @@ performance data parallel systems. Beyond its representational capabilities, its
 single continuous design provides a framework to lower from dataflow graphs to
 high performance target specific code.
 
-MLIR stands for one of "Multidimensional Loop IR" or "Machine Learning IR" or
-"Mid Level IR", we prefer the first. This document only provides the rationale
-behind MLIR -- its actual [specification document](LangRef.md),
+MLIR stands for one of "Multi-Level IR" or "Multi-dimensional Loop IR" or
+"Machine Learning IR" or "Mid Level IR", we prefer the first. This document only
+provides the rationale behind MLIR -- its actual
+[specification document](LangRef.md),
 [system design documentation](https://docs.google.com/document/d/1yRqja94Da6NtKmPxSYtTx6xbUtughLANyeD7dZ7mOBM/edit#)
 and other content is hosted elsewhere.
 
 ## Introduction and Motivation {#introduction-and-motivation}
 
-The Multidimensional loop intermediate representation (MLIR) is intended for
-easy expression and optimization of computations involving deep loop nests and
-dense matrices of high dimensionality. It is thus well-suited to deep learning
+The Multi-Level Intermediate Representation (MLIR) is intended for easy
+expression and optimization of computations involving deep loop nests and dense
+matrices of high dimensionality. It is thus well-suited to deep learning
 computations in particular. Yet it is general enough to also represent arbitrary
 sequential computation. The representation allows high-level optimization and
 parallelization for a wide range of parallel architectures including those with
@@ -113,21 +114,17 @@ The 'load' and 'store' instructions are specifically crafted to fully resolve to
 an element of a memref. These instructions take as arguments n+1 indices for an
 n-ranked tensor. This disallows the equivalent of pointer arithmetic or the
 ability to index into the same memref in other ways (something which C arrays
-allow for example). Furthermore, in an ML function, the compiler can follow
-use-def chains (e.g. through
+allow for example). Furthermore, in an affine constructs, the compiler can
+follow use-def chains (e.g. through
 [affine_apply instructions](https://docs.google.com/document/d/1lwJ3o6MrkAa-jiqEwoORBLW3bAI1f4ONofjRqMK1-YU/edit?ts=5b208818#heading=h.kt8lzanb487r))
 to precisely analyze references at compile-time using polyhedral techniques.
 This is possible because of the
-[restrictions on dimensions and symbols](https://docs.google.com/document/d/1lwJ3o6MrkAa-jiqEwoORBLW3bAI1f4ONofjRqMK1-YU/edit?ts=5b208818#heading=h.fnmv1awabfj)
-in ML functions. However, for CFG functions that are called from ML functions, a
-calling context sensitive analysis has to be performed for accesses in CFG
-functions in order to determine if they could be treated as affine accesses when
-analyzing or optimizing the calling ML function.
+[restrictions on dimensions and symbols](https://docs.google.com/document/d/1lwJ3o6MrkAa-jiqEwoORBLW3bAI1f4ONofjRqMK1-YU/edit?ts=5b208818#heading=h.fnmv1awabfj).
 
 A scalar of element-type (a primitive type or a vector type) that is stored in
 memory is modeled as a 0-d memref. This is also necessary for scalars that are
-live out of for loops and if conditionals in an ML function, for which we don't
-yet have an SSA representation (in an ML function) --
+live out of for loops and if conditionals in a function, for which we don't yet
+have an SSA representation --
 [an extension](#mlfunction-extensions-for-"escaping-scalars") to allow that is
 described later in this doc.
 
@@ -141,17 +138,17 @@ unknown dimension can be queried using the "dim" builtin as shown below.
 Example:
 
 ```mlir {.mlir}
-mlfunc foo(...) {
+func foo(...) {
   %A = alloc <8x?xf32, #lmap> (%N)
   ...
   call bar(%A) : (memref<8x?xf32, #lmap>)
 }
 
-mlfunc bar(%A : memref<8x?xf32, #lmap>) {
+func bar(%A : memref<8x?xf32, #lmap>) {
   // Type of %A indicates that %A has dynamic shape with 8 rows
   // and unknown number of columns. The number of columns is queried
   // dynamically using dim instruction.
-  %N = builtin "dim"(%A){index : 1} : (memref<8x?xf32, #lmap>) -> int
+  %N = dim %A, 1 : memref<8x?xf32, #lmap>
 
   for %i = 0 to 8 {
     for %j = 0 to %N {
@@ -173,9 +170,9 @@ change.
 
 ### Block Arguments vs PHI nodes {#block-arguments-vs-phi-nodes}
 
-MLIR CFG Functions represent SSA using "[block arguments](LangRef.md#blocks)"
-rather than [PHI instructions](http://llvm.org/docs/LangRef.html#i-phi) used in
-LLVM. This choice is representationally identical (the same constructs can be
+MLIR Functions represent SSA using "[block arguments](LangRef.md#blocks)" rather
+than [PHI instructions](http://llvm.org/docs/LangRef.html#i-phi) used in LLVM.
+This choice is representationally identical (the same constructs can be
 represented in either form) but block arguments have several advantages:
 
 1.  LLVM PHI nodes always have to be kept at the top of a block, and
@@ -236,7 +233,7 @@ More information about this split is available in an old
 [talk on youtube](https://www.youtube.com/watch?v=VeRaLPupGks) talking about
 LLVM 2.0.
 
-### Index type disallowed in aggregate types {#index-type-disallowed-in-aggregate-types}
+### Index type disallowed in vector/tensor/memref types {#index-type-disallowed-in-aggregate-types}
 
 Index types are not allowed as elements of `vector`, `tensor` or `memref` type.
 Index types are intended to be used for platform-specific "size" values and may
@@ -397,8 +394,8 @@ experience. When we do, we should chat with benoitjacob@ and
 
 ## Examples {#examples}
 
-This section describes a few very simple examples that help understand how ML
-functions and CFG functions work together.
+This section describes a few very simple examples that help understand how MLIR
+represents computation.
 
 ### Non-affine control flow {#non-affine-control-flow}
 
@@ -415,12 +412,11 @@ for (i=0; i<N; i++) {
 }
 ```
 
-The presence of dynamic control flow leads to a CFG function nested in an ML
-function: an ML function captures the outer loop while the inner loop is
-represented in the CFG function.
+The presence of dynamic control flow leads to an inner non-affine function
+nested in an outer function that using affine loops.
 
 ```mlir {.mlir}
-mlfunc @search(memref<?x?xi32 %A, <?xi32> %S, i32 %key) {
+func @search(memref<?x?xi32 %A, <?xi32> %S, i32 %key) {
   %ni = dim %A, 0 : memref<?x?xi32>
   // This loop can be parallelized
   for %i = 0 to %ni {
@@ -429,8 +425,7 @@ mlfunc @search(memref<?x?xi32 %A, <?xi32> %S, i32 %key) {
   return
 }
 
-cfgfunc @search_body(memref<?x?xi32>, memref<?xi32>, i32) {
-^bb0(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32)
+func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32) {
   %nj = dim %A, 1 : memref<?x?xi32>
   br ^bb1(0)
 
@@ -444,7 +439,7 @@ cfgfunc @search_body(memref<?x?xi32>, memref<?xi32>, i32) {
   br_cond %p2, ^bb3(%j), ^bb4
 
 ^bb3(%j: i32)
-  store %j to %S[%i] : memref<?xi32>
+  store %j, %S[%i] : memref<?xi32>
   br ^bb5
 
 ^bb4:
@@ -458,14 +453,14 @@ cfgfunc @search_body(memref<?x?xi32>, memref<?xi32>, i32) {
 
 As per the [MLIR spec](LangRef.md), the restrictions on dimensions and symbol
 identifiers to be used with the affine_apply instruction only apply to accesses
-inside ML functions. However, an analysis of accesses inside the called CFG
-function (`@search_body`) is necessary to determine if the `%i` loop could be
-parallelized: such CFG function access analysis is calling context sensitive.
+inside `for` and `if` instructions. However, an analysis of accesses inside the
+called function (`@search_body`) is necessary to determine if the `%i` loop
+could be parallelized: such function access analysis is calling context
+sensitive.
 
 ### Non-affine loop bounds {#non-affine-loop-bounds}
 
-Loop bounds that are not affine lead to a nesting of ML functions and CFG
-functions as shown below.
+Loop bounds that are not affine lead to a nesting of functions as shown below.
 
 ```c
 for (i=0; i <N; i++)
@@ -479,25 +474,26 @@ for (i=0; i <N; i++)
 ```
 
 ```mlir {.mlir}
-mlfunc @outer_nest(%n) : (i32) {
+func @outer_nest(%n) : (i32) {
   for %i = 0 to %n {
     for %j = 0 to %n {
       call @inner_nest(%i, %j, %n)
     }
   }
+  return
 }
 
-cfgfunc @inner_nest(i32, i32, i32) {
-^bb0(%i, %j, %n):
+func @inner_nest(%i: i32, %j: i32, %n: i32) {
   %pow = call @pow(2, %j) : (f32, f32) ->  f32
   // TODO(missing cast from f32 to i32)
   call @inner_nest2(%pow, %n)
+  return
 }
 
-mlfunc @inner_nest2(%m, %n) : (i32) {
-  for k = 0 to %m {
-    for l = 0 to %n {
-      ….
+func @inner_nest2(%m, %n) -> i32 {
+  for %k = 0 to %m {
+    for %l = 0 to %n {
+      ...
     }
   }
   return
@@ -507,12 +503,12 @@ mlfunc @inner_nest2(%m, %n) : (i32) {
 ### Reference 2D Convolution {#reference-2d-convolution}
 
 The following example illustrates a reference implementation of a 2D
-convolution, which uses an integer set `@@domain` to represent valid input data
+convolution, which uses an integer set `#domain` to represent valid input data
 in a dilated convolution.
 
 ```mlir {.mlir}
 // Dilation factors S0 and S1 can be constant folded if constant at compile time.
-@@domain = (d0, d1)[S0,S1,S2,S3]: (d0 % S0 == 0, d1 % S1 == 0, d0 >= 0, d1 >= 0,
+#domain = (d0, d1)[S0,S1,S2,S3]: (d0 % S0 == 0, d1 % S1 == 0, d0 >= 0, d1 >= 0,
                                    S3 - d0 - 1 >= 0, S4 - d1 - 1 >= 0)
 // Identity map (shown here for illustration).
 #map0 = (d0, d1, d2, d3, d4, d5, d6) -> (d0, d1, d2, d3, d4, d5, d6)
@@ -534,16 +530,16 @@ in a dilated convolution.
 // input:   [batch, input_height, input_width, input_feature]
 // kernel: [kernel_height, kernel_width, input_feature, output_feature]
 // output: [batch, output_height, output_width, output_feature]
-mlfunc @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
-                             memref<5x5x3x32xf32, #lm0, vmem> %kernel,
-      memref<16x512x512x32xf32, #lm0, vmem> %output) {
-  for %b = 0 … %batch {
-    for %oh = 0 … %output_height {
-      for %ow = 0 ... %output_width {
-        for %of = 0 … %output_feature {
-          for %kh = 0 … %kernel_height {
-            for %kw = 0 … %kernel_width {
-              for %if = 0 … %input_feature {
+func @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
+             memref<5x5x3x32xf32, #lm0, vmem> %kernel,
+             memref<16x512x512x32xf32, #lm0, vmem> %output) {
+  for %b = 0 to %batch {
+    for %oh = 0 to %output_height {
+      for %ow = 0 to %output_width {
+        for %of = 0 to %output_feature {
+          for %kh = 0 to %kernel_height {
+            for %kw = 0 to %kernel_width {
+              for %if = 0 to %input_feature {
                 %0 = affine_apply #map0 (%b, %oh, %ow, %of, %kh, %kw, %if)
                 // Calculate input indices.
                 %1 = affine_apply #map1 (%0#1, %0#2, %0#4, %0#5)
@@ -551,7 +547,7 @@ mlfunc @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
                    %h_pad_low, %w_pad_low]
 
                 // Check if access is not in padding.
-                if @@domain(%1#0, %1#1)
+                if #domain(%1#0, %1#1)
                                        [%h_base_dilation, %w_kernel_dilation, %h_bound, %w_bound] {
                   %2 = affine_apply #map2 (%1#0, %1#1)
                   // Compute: output[output_indices] += input[input_indices] * kernel[kernel_indices]
@@ -579,7 +575,7 @@ consideration on demand. We will revisit these discussions when we have more
 implementation experience and learn more about the challenges and limitations of
 our current design in practice.
 
-### ML Function representation alternatives: polyhedral schedule lists vs polyhedral schedules trees vs affine loop/If forms {#mlfunction-representation-alternatives-polyhedral-schedule-lists-vs-polyhedral-schedules-trees-vs-affine-loop-if-forms}
+### Polyhedral code representation alternatives: schedule lists vs schedules trees vs affine loop/if forms {#mlfunction-representation-alternatives-polyhedral-schedule-lists-vs-polyhedral-schedules-trees-vs-affine-loop-if-forms}
 
 The current MLIR uses a representation of polyhedral schedules using a tree of
 if/for loops. We extensively debated the tradeoffs involved in the typical
@@ -592,19 +588,19 @@ this document:
 
 At a high level, we have two alternatives here:
 
-1.  Schedule tree representation for MLFunctions instead of an affine loop AST
-    form: The current proposal uses an affine loop and conditional tree form,
-    which is syntactic and with no separation of domains as sets and schedules
-    as multidimensional affine functions. A schedule tree form however makes
-    polyhedral domains and schedules a first class concept in the IR allowing
-    compact expression of transformations through the schedule tree without
-    changing the domains of instructions. Such a representation also hides
-    prologues, epilogues, partial tiles, complex loop bounds and conditionals
-    making loop nests free of "syntax". Cost models instead look at domains and
-    schedules. In addition, if necessary such a domain schedule representation
-    can be normalized to explicitly propagate the schedule into domains and
-    model all the cleanup code. An example and more detail on the schedule tree
-    form is in the next section.
+1.  Schedule tree representation instead of an affine loop AST form: The current
+    proposal uses an affine loop and conditional tree form, which is syntactic
+    and with no separation of domains as sets and schedules as multidimensional
+    affine functions. A schedule tree form however makes polyhedral domains and
+    schedules a first class concept in the IR allowing compact expression of
+    transformations through the schedule tree without changing the domains of
+    instructions. Such a representation also hides prologues, epilogues, partial
+    tiles, complex loop bounds and conditionals making loop nests free of
+    "syntax". Cost models instead look at domains and schedules. In addition, if
+    necessary such a domain schedule representation can be normalized to
+    explicitly propagate the schedule into domains and model all the cleanup
+    code. An example and more detail on the schedule tree form is in the next
+    section.
 1.  Having two different forms of MLFunctions: an affine loop tree form
     (AffineLoopTreeFunction) and a polyhedral schedule tree form as two
     different forms of MLFunctions. Or in effect, having four different forms
@@ -629,10 +625,10 @@ instruction that appears in that branch. Each leaf node is an ML Instruction.
 // A tiled matmul code (128x128x128) represented in schedule tree form
 
 // #map0 = (d0, d1, d2, d3, d4, d5) -> (128*d0 + d3, 128*d1 + d4, 128*d2 + d5)
-@@intset_ij = (i, j) [M, N, K]  : i >= 0, -i + N - 1 >= 0, j >= 0, -j + N-1 >= 0
-@@intset_ijk = (i, j, k) [M, N, K] : i >= 0, -i + N - 1 >= 0, j >= 0,
+#intset_ij = (i, j) [M, N, K]  : i >= 0, -i + N - 1 >= 0, j >= 0, -j + N-1 >= 0
+#intset_ijk = (i, j, k) [M, N, K] : i >= 0, -i + N - 1 >= 0, j >= 0,
                                      -j +  M-1 >= 0, k >= 0, -k + N - 1 >= 0)
-mlfunc @matmul(%A, %B, %C, %M, %N, %K) : (...)  { // %M, N, K are symbols
+func @matmul(%A, %B, %C, %M, %N, %K) : (...)  { // %M, N, K are symbols
   // t1, t2, t3, t4, t5, t6  are abstract polyhedral loops
   mldim %t1 : {S1,S2,S3,S4,S5}  floordiv (i, 128) {
     mldim %t2 : {S1,S2,S3,S4,S5}  floordiv (j, 128) {
@@ -642,22 +638,22 @@ mlfunc @matmul(%A, %B, %C, %M, %N, %K) : (...)  { // %M, N, K are symbols
       mldim %t3 :   {S2,S3,S4,S5} floordiv (k, 128) {
         // (%i, %j, %k) = affine_apply (d0, d1, d2)
         //                          -> (128*d0, 128*d1, 128*d2)  (%t1, %t2, %t3)
-        call dma_hbm_to_vmem(%A, ...) with @@inset_ijk (%i, %j, %k) [%M, %N, %K]
+        call dma_hbm_to_vmem(%A, ...) with #inset_ijk (%i, %j, %k) [%M, %N, %K]
         // (%i, %j, %k) = affine_apply (d0, d1, d2)
         //                          -> (128*d0, 128*d1, 128*d2)  (%t1, %t2, %t3)
-        call dma_hbm_to_vmem(%B, ...) with @@inset_ijk (%i, %j, %k) [%M, %N, %K]
+        call dma_hbm_to_vmem(%B, ...) with #inset_ijk (%i, %j, %k) [%M, %N, %K]
         mldim %t4 : {S4} i mod 128 {
           mldim %t5 : {S4} j mod 128 {
             mldim %t6 : {S4} k mod 128 {
               // (%i, %j, %k) = affine_apply #map0 (%t1, %t2, %t3, %t4, %t5, %t6)
               call matmul_body(A, B, C, %i, %j, %k, %M, %N, %K)
-                  with @@inset_ijk(%i, %j, %k) [%M, %N, %K]
+                  with #inset_ijk(%i, %j, %k) [%M, %N, %K]
             } // end mld4im t6
           } // end mldim t5
         } // end mldim t4
       } // end mldim t3
       // (%i, %j) = affine_apply (d0, d1) -> (128*d0, 128*d1) (%t1, %t2)
-      call $dma_vmem_to_hbm_C ... with @@intset(%i, %j) [%M, %N, %K]
+      call $dma_vmem_to_hbm_C ... with #intset(%i, %j) [%M, %N, %K]
     }  // end mldim t2
   } // end mldim t1
   return
@@ -714,7 +710,7 @@ Example:
 // read relation: two elements ( d0 <= r0 <= d0+1 )
 ##aff_rel9 = (d0) -> (r0) : r0 - d0 >= 0, d0 - r0 + 1 >= 0
 
-cfgfunc @count ( memref<128xf32, (d0) -> (d0)> %A, i32 %pos) -> f32
+func @count (memref<128xf32, (d0) -> (d0)> %A, i32 %pos) -> f32
   reads: {%A ##aff_rel9 (%pos)}
   writes: /* empty */
   may_reads: /* empty */
@@ -722,7 +718,7 @@ cfgfunc @count ( memref<128xf32, (d0) -> (d0)> %A, i32 %pos) -> f32
 bb0 (%0, %1: memref<128xf32>, i64):
   %val = load %A [(d0) -> (d0) (%pos)]
   %val = load %A [(d0) -> (d0 + 1) (%pos)]
-  %p = builtin mulf(%val, %val) :  (f32, f32) -> f32
+  %p = mulf %val, %val : f32
   return %p
 }
 ```
@@ -738,21 +734,21 @@ such calls on sub-tensors. For user-provided or custom hand-tuned functions, the
 read/write/may_read/may_write sets could be provided a-priori by a user as part
 of the external function signature or they could be part of a database.
 
-TODO: figure out the right syntax.
+TODO: Design this, and update to use function attribute syntax.
 
 Example:
 
 ```mlir {.mlir}
 ##rel9 ( ) [s0] -> (r0, r1) : 0 <= r0 <= 1023, 0 <= r1 <= s0 - 1
 
-extfunc @cblas_reduce_ffi(memref<1024 x ? x f32, #layout_map0, hbm> %M) -> f32 [
+func @cblas_reduce_ffi(memref<1024 x ? x f32, #layout_map0, hbm> %M) -> f32 [
   reads: {%M, ##rel9() }
   writes: /* empty */
   may_reads: /* empty */
   may_writes: /* empty */
 ]
 
-extfunc @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
+func @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
     offset, memref<1024 x f32, #layout_map0, vmem> %b,
     memref<1024 x f32, #layout_map0> %c
 ) [
@@ -785,14 +781,17 @@ extfunc @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
     representation. 2(b) requires no change, but impacts how cost models look at
     index and layout maps.
 
-### ML Function Extensions for "Escaping Scalars" {#mlfunction-extensions-for-"escaping-scalars"}
+### `if` and `for` Extensions for "Escaping Scalars" {#extensions-for-"escaping-scalars"}
 
 We considered providing a representation for SSA values that are live out of
-if/else conditional bodies or for loops of ML functions. We ultimately abandoned
-this approach due to its complexity. In the current design of MLIR, scalar
-variables cannot escape for loops or if instructions. In situations, where
-escaping is necessary, we use zero-dimensional tensors and memrefs instead of
-scalars.
+`if/else` conditional bodies and loop carried in `for` loops. We ultimately
+abandoned this approach due to its complexity. In the current design of MLIR,
+scalar variables cannot escape for loops or if instructions. In situations,
+where escaping is necessary, we use zero-dimensional tensors and memrefs instead
+of scalars.
+
+**TODO**: This whole section is obsolete and should be updated to use block
+arguments and a yield like terminator in for/if instructions.
 
 The abandoned design of supporting escaping scalars is as follows:
 
@@ -815,7 +814,7 @@ Example:
 
 ```mlir {.mlir}
 // Return sum of elements in 1-dimensional mref A
-mlfunc int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
+func int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
    %init = 0
    %result = for %i = 0 to N with %tmp(%init) {
       %value = load %A[%i]
@@ -845,7 +844,7 @@ Example:
 
 ```mlir {.mlir}
 // Compute sum of half of the array
-mlfunc int32 @sum_half(%A, %N) {
+func int32 @sum_half(%A, %N) {
    %s0 = 0
    %s1 = for %i = 1 ... N step 1 with %s2 (%s0) {
        %s3 = if (%i >= %N / 2) {

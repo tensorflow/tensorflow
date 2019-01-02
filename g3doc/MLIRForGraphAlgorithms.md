@@ -155,13 +155,11 @@ turned into zero:
 
 ```mlir
   // RUN: mlir-opt %s -canonicalize | FileCheck %s
-  cfgfunc @test_subi_zero_cfg(i32) -> i32 {
-  ^bb0(%arg0: i32):
+  func @test_subi_zero_cfg(%arg0: i32) -> i32 {
     %y = subi %arg0, %arg0 : i32
     return %y: i32
   }
-  // CHECK-LABEL: cfgfunc @test_subi_zero_cfg
-  // CHECK-NEXT: bb0(%arg0: i32):
+  // CHECK-LABEL: func @test_subi_zero_cfg(%arg0: i32)
   // CHECK-NEXT: %c0_i32 = constant 0 : i32
   // CHECK-NEXT: return %c0
 ```
@@ -211,7 +209,7 @@ write tests like this:
 
 ```mlir {.mlir}
   // RUN: mlir-opt %s -memref-dependence-check -verify
-  mlfunc @different_memrefs() {
+  func @different_memrefs() {
     %m.a = alloc() : memref<100xf32>
     %m.b = alloc() : memref<100xf32>
     %c0 = constant 0 : index

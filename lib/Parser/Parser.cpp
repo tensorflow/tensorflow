@@ -3284,7 +3284,8 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
 
 /// Function declarations.
 ///
-///   func ::= `func` function-signature function-attributes? `{` block+ `}`
+///   function ::= `func` function-signature function-attributes? function-body?
+///   function-body ::= `{` block+ `}`
 ///   function-attributes ::= `attributes` attribute-dict
 ///
 ParseResult ModuleParser::parseFunc() {

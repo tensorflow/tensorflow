@@ -29,16 +29,10 @@ document describes the human-readable textual form.
 ## High-Level Structure {#high-level-structure}
 
 The top-level unit of code in MLIR is a [Module](#module). A module contains a
-list of [Functions](#functions), and there are two types of function
-definitions, a "[CFG Function](#cfg-functions)" and an
-"[ML Function](#ml-functions)". Both kinds of functions are represented as a
-composition of [operations](#operations), but represent control flow in
-different ways: A CFG Function control flow using a CFG of [Blocks](#blocks),
-which contain instructions and end with
-[control flow terminator instructions](#terminator-instructions) (like
-branches). ML Functions represents control flow with a nest of affine loops and
-if conditions. Both types of functions can call back and forth between each
-other arbitrarily.
+list of [Functions](#functions). Functions are represented as a composition of
+[operations](#operations) and contain a Control Flow Graph (CFG) of
+[Blocks](#blocks), which contain instructions and end with
+[terminator operations](#terminator-operations) (like branches).
 
 MLIR is an
 [SSA-based](https://en.wikipedia.org/wiki/Static_single_assignment_form) IR,
@@ -46,12 +40,12 @@ which means that values are defined before use and have scope defined by their
 dominance relations. Operations may produce zero or more results, and each is a
 distinct SSA value with its own type defined by the [type system](#type-system).
 
-MLIR incorporates polyhedral compiler concepts, including `MLFunctions` with
-affine loops and if conditions. It also includes affine maps integrated into the
-type system - they are key to the representation of data and
-[MemRefs](#memref-type), which are the representation for tensors in addressable
-memory. MLIR also supports a first-class Tensor type allowing it to concisely
-represent operations on N-dimensional arrays.
+MLIR incorporates polyhedral compiler concepts, including `for` and `if`
+instructions, which model affine loops and affine conditionals. It also includes
+affine maps integrated into the type system - they are key to the representation
+of data and [MemRefs](#memref-type), which are the representation for tensors in
+addressable memory. MLIR also supports a first-class Tensor type allowing it to
+concisely represent operations on N-dimensional arrays.
 
 Finally, MLIR supports operations for allocating buffers, producing views to
 transform them, represent target-independent arithmetic, target-specific
@@ -61,12 +55,10 @@ operations.
 Here's an example of an MLIR module:
 
 ```mlir {.mlir}
-// Compute A*B using mlfunc implementation of multiply kernel and print the
+// Compute A*B using an implementation of multiply kernel and print the
 // result using a TensorFlow op. The dimensions of A and B are partially
 // known. The shapes are assumed to match.
-cfgfunc @mul(tensor<100x?xf32>, tensor<?x50xf32>) -> (tensor<100x50xf32>) {
-// Block ^bb0. %A and %B come from function arguments.
-^bb0(%A: tensor<100x?xf32>, %B: tensor<?x50xf32>):
+func @mul(%A: tensor<100x?xf32>, %B: tensor<?x50xf32>) -> (tensor<100x50xf32>) {
   // Compute the inner dimension of %A using the dim operation.
   %n = dim %A, 1 : tensor<100x?xf32>
 
@@ -96,8 +88,8 @@ cfgfunc @mul(tensor<100x?xf32>, tensor<?x50xf32>) -> (tensor<100x50xf32>) {
   return %C : tensor<100x50xf32>
 }
 
-// ML function that multiplies two memrefs and returns the result.
-mlfunc @multiply(%A: memref<100x?xf32>, %B: memref<?x50xf32>)
+// A function that multiplies two memrefs and returns the result.
+func @multiply(%A: memref<100x?xf32>, %B: memref<?x50xf32>)
           -> (memref<100x50xf32>)  {
   // Compute the inner dimension of %A.
   %n = dim %A, 1 : memref<100x?xf32>
@@ -112,10 +104,10 @@ mlfunc @multiply(%A: memref<100x?xf32>, %B: memref<?x50xf32>)
         for %k = 0 to %n {
            %a_v  = load %A[%i, %k] : memref<100x?xf32>
            %b_v  = load %B[%k, %j] : memref<?x50xf32>
-           %prod = "mulf"(%a_v, %b_v) : (f32, f32) -> f32
+           %prod = mulf %a_v, %b_v : f32
            %c_v  = load %C[%i, %j] : memref<100x50xf32>
-           %sum  = "addf"(%c_v, %prod) : (f32, f32) -> f32
-           store %sum to %C[%i, %j] : memref<100x50xf32>
+           %sum  = addf %c_v, %prod : f32
+           store %sum, %C[%i, %j] : memref<100x50xf32>
         }
      }
   }
@@ -199,9 +191,9 @@ used in an MLIR text file but are not persisted as part of the IR - the printer
 will give them anonymous names like `%42`.
 
 MLIR guarantees identifiers never collide with keywords by prefixing identifiers
-with a sigil (e.g. `%`, `#`, `@`). In certain unambiguous contexts (e.g. affine
-expressions), identifiers are not prefixed, for brevity. New keywords may be
-added to future versions of MLIR without danger of collision with existing
+with a sigil (e.g. `%`, `#`, `@`, `^`). In certain unambiguous contexts (e.g.
+affine expressions), identifiers are not prefixed, for brevity. New keywords may
+be added to future versions of MLIR without danger of collision with existing
 identifiers.
 
 The scope of SSA values is defined based on the standard definition of
@@ -253,13 +245,10 @@ dim-and-symbol-use-list ::= dim-use-list symbol-use-list?
 
 SSA values bound to dimensions and symbols must always have 'index' type.
 
-In a [CFG Function](#cfg-functions), any SSA value can be bound to dimensional
-and symbol identifiers.
-
-In an [ML Function](#ml-functions), a symbolic identifier can be bound to an SSA
-value that is either an argument to the function, a value defined at the top
-level of that function (outside of all loops and if instructions), the result of
-a [`constant` operation](#'constant'-operation), or the result of an
+A symbolic identifier can be bound to an SSA value that is either an argument to
+the function, a value defined at the top level of that function (outside of all
+loops and if instructions), the result of a
+[`constant` operation](#'constant'-operation), or the result of an
 [`affine_apply`](#'affine_apply'-operation) operation that recursively takes as
 arguments any symbolic identifiers. Dimensions may be bound not only to anything
 that a symbol is bound to, but also to induction variables of enclosing
@@ -510,6 +499,8 @@ number of primitive types (like integers) and also aggregate types for tensors
 and memory buffers. MLIR does not include complex numbers, tuples, structures,
 arrays, or dictionaries.
 
+TODO: Revisit this in light of dialect extensible type systems.
+
 ``` {.ebnf}
 type ::= integer-type
        | index-type
@@ -546,7 +537,7 @@ MLIR supports arbitrary precision integer types. Integer types are signless, but
 have a designated width.
 
 **Rationale:** low precision integers (like `i2`, `i4` etc) are useful for
-cutting edge inference work, and arbitrary precision integers are useful for
+low-precision inference chips, and arbitrary precision integers are useful for
 hardware synthesis (where a 13 bit multiplier is a lot cheaper/smaller than a 16
 bit one).
 
@@ -852,11 +843,9 @@ attribute-value ::= bool-literal
                   | function-id `:` function-type
 ```
 
-It is possible to attach attributes to operations, and the set of expected
-attributes, their structure, and the definition of that meaning is contextually
-dependent on the operation they are attached to.
-
-TODO: we should allow attaching attributes to functions.
+It is possible to attach attributes to instructions and functions, and the set
+of expected attributes, their structure, and the definition of that meaning is
+contextually dependent on the operation they are attached to.
 
 ## Module {#module}
 
@@ -875,71 +864,47 @@ detect common errors).
 
 ## Functions {#functions}
 
-MLIR has three kinds of functions: external functions (functions with bodies
-that are defined outside of this module), [CFGFunctions](#cfg-functions) and
-[MLFunctions](#ml-functions), each of which are described below.
+MLIR functions have a signature (including argument and result types) and
+associated attributes according to the following grammar:
 
 ``` {.ebnf}
-function ::= ext-func | cfg-func | ml-func
-```
+function ::= `func` function-signature function-attributes? function-body?
 
-The different kinds of function affect the structure and sort of code that can
-be represented inside of the function, but callers are unaffected by the choice
-of representation, and all functions have the same caller side capabilities.
-
-### External Functions {#external-functions}
-
-External functions are a declaration that a function exists, without a
-definition of its body. It is used when referring to things defined outside of
-the current module.
-
-``` {.ebnf}
-argument-list ::= type (`,` type)* | /*empty*/
 function-signature ::= function-id `(` argument-list `)` (`->` type-list)?
-ext-func ::= `extfunc` function-signature (`attributes` attribute-dict)?
+argument-list ::= named-argument (`,` named-argument)* | /*empty*/
+argument-list ::= type (`,` type)* | /*empty*/ named-argument ::= ssa-id `:`
+type
+
+function-attributes ::= `attributes` attribute-dict
+function-body ::= `{` block+ `}`
 ```
+
+An external function declaration (used when referring to a function declared in
+some other module) has no body.  A function definition contains a control
+flow graph made up of one or more blocks. While the MLIR textual form provides a
+nice inline syntax for function arguments, they are internally represented as
+"block arguments" to the first block in the function.
 
 Examples:
 
 ```mlir {.mlir}
-extfunc @abort()
-extfunc @scribble(i32, i64, memref<? x 128 x f32, #layout_map0>) -> f64
-```
+// External function definitions.
+func @abort()
+func @scribble(i32, i64, memref<? x 128 x f32, #layout_map0>) -> f64
 
-TODO: This will eventually be expanded include mod-ref sets
-(read/write/may_read/may_write) and attributes.
-
-### CFG Functions {#cfg-functions}
-
-Syntax:
-
-``` {.ebnf}
-cfg-func ::= `cfgfunc` function-signature
-             (`attributes` attribute-dict)? `{` block+ `}`
-```
-
-A simple CFG function that returns its argument twice looks like this:
-
-```mlir {.mlir}
-cfgfunc @count(i64) -> (i64, i64)
+// A function that returns its argument twice:
+func @count(%x: i64) -> (i64, i64)
   attributes {fruit: "banana"} {
-^bb0(%x: i64):
   return %x, %x: i64, i64
 }
 ```
-
-**Context:** CFG functions are capable of representing arbitrary computation at
-either a high- or low-level: for example, they can represent an entire
-TensorFlow dataflow graph, where the instructions are TensorFlow "ops" producing
-values of Tensor type. It can also represent scalar math, and can be used as a
-way to lower [ML Functions](#ml-functions) before late code generation.
 
 #### Blocks {#blocks}
 
 Syntax:
 
 ``` {.ebnf}
-block           ::= bb-label operation* terminator-inst
+block           ::= bb-label instruction+
 bb-label        ::= bb-id bb-arg-list? `:`
 bb-id           ::= caret-id
 ssa-id-and-type ::= ssa-id `:` type
@@ -953,18 +918,17 @@ bb-arg-list ::= `(` ssa-id-and-type-list? `)`
 A [basic block](https://en.wikipedia.org/wiki/Basic_block) is a sequential list
 of instructions without control flow (calls are not considered control flow for
 this purpose) that are executed from top to bottom. The last instruction in a
-block is a [terminator instruction](#terminator-instructions), which ends the
-block.
+block is a [terminator operation](#terminator-operations), which ends the block.
 
-Blocks in MLIR take a list of arguments, which represent SSA PHI nodes in a
-functional notation. The arguments are defined by the block, and values are
+Blocks in MLIR take a list of block arguments, which represent SSA PHI nodes in
+a functional notation. The arguments are defined by the block, and values are
 provided for these block arguments by branches that go to the block.
 
 Here is a simple example function showing branches, returns, and block
 arguments:
 
 ```mlir {.mlir}
-cfgfunc @simple(i64, i1) -> i64 {
+func @simple(i64, i1) -> i64 {
 ^bb0(%a: i64, %cond: i1): // Code dominated by ^bb0 may refer to %a
   br_cond %cond, ^bb1, ^bb2
 
@@ -972,7 +936,7 @@ cfgfunc @simple(i64, i1) -> i64 {
   br ^bb3(%a: i64)    // Branch passes %a as the argument
 
 ^bb2:
-  %b = "add"(%a, %a) : (i64, i64) -> i64
+  %b = addi %a, %a : i64
   br ^bb3(%b: i64)    // Branch passes %b as the argument
 
 // ^bb3 receives an argument, named %c, from predecessors
@@ -994,112 +958,15 @@ of SSA is immediately apparent, and function arguments are no longer a special
 case: they become arguments to the entry block
 [[more rationale](Rationale.md#block-arguments-vs-phi-nodes)].
 
-Control flow within a CFG function is implemented with unconditional branches,
-conditional branches, and a `return` instruction.
+### Instruction Kinds
 
-TODO: We can add
-[switches](http://llvm.org/docs/LangRef.html#switch-instruction),
-[indirect gotos](http://llvm.org/docs/LangRef.html#indirectbr-instruction), etc
-if/when there is demand.
-
-#### Terminator instructions {#terminator-instructions}
-
-##### 'br' terminator instruction {#'br'-terminator-instruction}
-
-Syntax:
+MLIR has three kinds of instructions: [dialect-defined operations](#operations),
+an affine [`for` instruction](#'for'-instruction), and an affine
+[`if` instruction](#'if'-instruction).
 
 ``` {.ebnf}
-terminator-inst ::= `br` bb-id branch-use-list?
-branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
-```
-
-The `br` terminator instruction represents an unconditional jump to a target
-block. The count and types of operands to the branch must align with the
-arguments in the target block.
-
-The MLIR branch instruction is not allowed to target the entry block for a
-function.
-
-##### 'cond_br' terminator instruction {#'cond_br'-terminator-instruction}
-
-Syntax:
-
-``` {.ebnf}
-terminator-inst ::=
-  `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id branch-use-list?
-```
-
-The `cond_br` terminator instruction represents a conditional branch on a
-boolean (1-bit integer) value. If the bit is set, then the first destination is
-jumped to; if it is false, the second destination is chosen. The count and types
-of operands must align with the arguments in the corresponding target blocks.
-
-The MLIR conditional branch instruction is not allowed to target the entry block
-for a function. The two destinations of the conditional branch instruction are
-allowed to be the same.
-
-The following example illustrates a CFG function with a conditional branch
-instruction that targets the same block:
-
-```mlir {.mlir}
-cfgfunc @select(%a : i32, %b :i32, %flag : i1) -> i32 {
-^bb0:
-    // Both targets are the same, operands differ
-    cond_br %flag, ^bb1(%a : i32), ^bb1(%b : i32)
-
-^bb1(%x : i32) :
-    return %x : i32
-}
-```
-
-##### 'return' terminator instruction {#'return'-terminator-instruction}
-
-Syntax:
-
-``` {.ebnf}
-terminator-inst ::= `return` (ssa-use-list `:` type-list-no-parens)?
-```
-
-The `return` terminator instruction represents the completion of a cfg function,
-and produces the result values. The count and types of the operands must match
-the result types of the enclosing function. It is legal for multiple blocks in a
-single function to return.
-
-### ML Functions {#ml-functions}
-
-Syntax:
-
-``` {.ebnf}
-ml-func ::= `mlfunc` ml-func-signature
-            (`attributes` attribute-dict)? `{` inst* return-inst `}`
-
-ml-argument      ::= ssa-id `:` type
-ml-argument-list ::= ml-argument (`,` ml-argument)* | /*empty*/
-ml-func-signature ::= function-id `(` ml-argument-list `)` (`->` type-list)?
-
 inst ::= operation | for-inst | if-inst
 ```
-
-The body of an ML Function is made up of nested affine for loops, conditionals,
-and [operation](#operations) instructions, and ends with a return instruction.
-Each of the control flow instructions is made up a list of instructions and
-other control flow instructions.
-
-While ML Functions are restricted to affine loops and conditionals, they may
-freely call (and be called) by CFG Functions which do not have these
-restrictions. As such, the expressivity of MLIR is not restricted in general;
-one can choose to apply MLFunctions when it is beneficial.
-
-#### 'return' instruction {#'return'-instruction}
-
-Syntax:
-
-``` {.ebnf}
-return-inst ::= `return` (ssa-use-list `:` type-list-no-parens)?
-```
-
-The arity and operand types of the return instruction must match the result of
-the enclosing function.
 
 #### 'for' instruction {#'for'-instruction}
 
@@ -1114,9 +981,9 @@ upper-bound ::= `min`? affine-map dim-and-symbol-use-list | shorthand-bound
 shorthand-bound ::= ssa-id | `-`? integer-literal
 ```
 
-The `for` instruction in an ML Function represents an affine loop nest, defining
-an SSA value for its induction variable. This SSA value always has type
-[`index`](#index-type), which is the size of the machine word.
+The `for` instruction represents an affine loop nest, defining an SSA value for
+its induction variable. This SSA value always has type [`index`](#index-type),
+which is the size of the machine word.
 
 The `for` instruction executes its body a number of times iterating from a lower
 bound to an upper bound by a stride. The stride, represented by `step`, is a
@@ -1146,7 +1013,7 @@ Example showing reverse iteration of the inner loop:
 ```mlir {.mlir}
 #map57 = (d0, d1)[s0] -> (d0, s0 - d1 - 1)
 
-mlfunc @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
+func @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
   %N = dim %A, 0 : memref<?x?xf32>
   for %i = 0 to %N step 1 {
     for %j = 0 to %N {   // implicitly steps by 1
@@ -1172,10 +1039,10 @@ if-inst ::= if-inst-head
           | if-inst-head `else` `{` inst* `}`
 ```
 
-The `if` instruction in an ML Function restricts execution to a subset of the
-loop iteration space defined by an integer set (a conjunction of affine
-constraints). A single `if` may have a number of optional `else if` clauses, and
-may end with an optional `else` clause.
+The `if` instruction restricts execution to a subset of the loop iteration space
+defined by an integer set (a conjunction of affine constraints). A single `if`
+may have a number of optional `else if` clauses, and may end with an optional
+`else` clause.
 
 The condition of the `if` is represented by an [integer set](#integer-sets) (a
 conjunction of affine constraints), and the SSA values bound to the dimensions
@@ -1188,7 +1055,7 @@ Example:
 ```mlir {.mlir}
 #set = (d0, d1)[s0]: (d0 - 10 >= 0, s0 - d0 - 9 >= 0,
                       d1 - 10 >= 0, s0 - d1 - 9 >= 0)
-mlfunc @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
+func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
   for %i = 0 to %N {
      for %j = 0 to %N {
        %0 = affine_apply #map42(%i, %j)
@@ -1212,11 +1079,10 @@ operation ::= (ssa-id `=`)? string-literal `(` ssa-use-list? `)`
               attribute-dict? `:` function-type
 ```
 
-While CFG and ML Functions have two different ways of representing control flow
-within their body, MLIR represents the computation within them with a uniform
-concept called _operations_. Operations in MLIR are fully extensible (there is
-no fixed list of operations), and have application-specific semantics. For
-example, MLIR supports [target-independent operations](#memory-operations),
+MLIR represents computation within functions with a uniform concept called
+_operations_. Operations in MLIR are fully extensible (there is no fixed list of
+operations), and have application-specific semantics. For example, MLIR supports
+[target-independent operations](#memory-operations),
 [high-level TensorFlow ops](#tensorflow-operations), and
 [target-specific machine instructions](#target-specific-operations).
 
@@ -1256,6 +1122,68 @@ TODO: shape, which returns a 1D tensor, and can take an unknown rank tensor as
 input.
 
 TODO: rank, which returns an index.
+
+#### Terminator operations {#terminator-operations}
+
+##### 'br' terminator operation {#'br'-terminator-operation}
+
+Syntax:
+
+``` {.ebnf}
+operation ::= `br` bb-id branch-use-list?
+branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
+```
+
+The `br` terminator instruction represents an unconditional jump to a target
+block. The count and types of operands to the branch must align with the
+arguments in the target block.
+
+The MLIR branch instruction is not allowed to target the entry block for a
+function.
+
+##### 'cond_br' terminator operation {#'cond_br'-terminator-operation}
+
+Syntax:
+
+``` {.ebnf}
+operation ::=
+  `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id branch-use-list?
+```
+
+The `cond_br` terminator instruction represents a conditional branch on a
+boolean (1-bit integer) value. If the bit is set, then the first destination is
+jumped to; if it is false, the second destination is chosen. The count and types
+of operands must align with the arguments in the corresponding target blocks.
+
+The MLIR conditional branch instruction is not allowed to target the entry block
+for a function. The two destinations of the conditional branch instruction are
+allowed to be the same.
+
+The following example illustrates a CFG function with a conditional branch
+instruction that targets the same block:
+
+```mlir {.mlir}
+func @select(%a : i32, %b :i32, %flag : i1) -> i32 {
+    // Both targets are the same, operands differ
+    cond_br %flag, ^bb1(%a : i32), ^bb1(%b : i32)
+
+^bb1(%x : i32) :
+    return %x : i32
+}
+```
+
+##### 'return' terminator operation {#'return'-terminator-operation}
+
+Syntax:
+
+``` {.ebnf}
+operation ::= `return` (ssa-use-list `:` type-list-no-parens)?
+```
+
+The `return` terminator instruction represents the completion of a function, and
+produces the result values. The count and types of the operands must match the
+result types of the enclosing function. It is legal for multiple blocks in a
+single function to return.
 
 ### Core Operations {#core-operations}
 
@@ -1553,7 +1481,7 @@ Blocks until the completion of a DMA operation associated with the tag element
 specified with a tag memref and its indices. The operands include the tag memref
 followed by its indices and the number of elements associated with the DMA being
 waited on. The indices of the tag memref have the same restrictions as
-load/store indices when appearing in MLFunctions.
+load/store indices.
 
 Example:
 
