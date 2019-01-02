@@ -612,6 +612,7 @@ class _ConfusionMatrixConditionCount(Metric):
     """
     super(_ConfusionMatrixConditionCount, self).__init__(name=name, dtype=dtype)
     self._confusion_matrix_cond = confusion_matrix_cond
+    self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
     self.accumulator = self.add_weight(
@@ -647,6 +648,11 @@ class _ConfusionMatrixConditionCount(Metric):
     num_thresholds = len(to_list(self.thresholds))
     for v in self.variables:
       K.set_value(v, np.zeros((num_thresholds,)))
+
+  def get_config(self):
+    config = {'thresholds': self.init_thresholds}
+    base_config = super(_ConfusionMatrixConditionCount, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.metrics.FalsePositives')
@@ -894,6 +900,7 @@ class Precision(Metric):
       dtype: (Optional) data type of the metric result.
     """
     super(Precision, self).__init__(name=name, dtype=dtype)
+    self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
     self.tp = self.add_weight(
@@ -931,6 +938,11 @@ class Precision(Metric):
     num_thresholds = len(to_list(self.thresholds))
     for v in self.variables:
       K.set_value(v, np.zeros((num_thresholds,)))
+
+  def get_config(self):
+    config = {'thresholds': self.init_thresholds}
+    base_config = super(Precision, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.metrics.Recall')
@@ -978,6 +990,7 @@ class Recall(Metric):
       dtype: (Optional) data type of the metric result.
     """
     super(Recall, self).__init__(name=name, dtype=dtype)
+    self.init_thresholds = thresholds
     self.thresholds = metrics_utils.parse_init_thresholds(
         thresholds, default_threshold=0.5)
     self.tp = self.add_weight(
@@ -1015,6 +1028,11 @@ class Recall(Metric):
     num_thresholds = len(to_list(self.thresholds))
     for v in self.variables:
       K.set_value(v, np.zeros((num_thresholds,)))
+
+  def get_config(self):
+    config = {'thresholds': self.init_thresholds}
+    base_config = super(Recall, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -1132,6 +1150,8 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
     """
     if specificity < 0 or specificity > 1:
       raise ValueError('`specificity` must be in the range [0, 1].')
+    self.specificity = specificity
+    self.num_thresholds = num_thresholds
     super(SensitivityAtSpecificity, self).__init__(
         specificity, num_thresholds=num_thresholds, name=name, dtype=dtype)
 
@@ -1148,6 +1168,14 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
     # Compute sensitivity at that index.
     return math_ops.div_no_nan(self.tp[min_index],
                                self.tp[min_index] + self.fn[min_index])
+
+  def get_config(self):
+    config = {
+        'num_thresholds': self.num_thresholds,
+        'specificity': self.specificity
+    }
+    base_config = super(SensitivityAtSpecificity, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.metrics.SpecificityAtSensitivity')
@@ -1201,6 +1229,8 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     """
     if sensitivity < 0 or sensitivity > 1:
       raise ValueError('`sensitivity` must be in the range [0, 1].')
+    self.sensitivity = sensitivity
+    self.num_thresholds = num_thresholds
     super(SpecificityAtSensitivity, self).__init__(
         sensitivity, num_thresholds=num_thresholds, name=name, dtype=dtype)
 
@@ -1217,6 +1247,14 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     # Compute specificity at that index.
     return math_ops.div_no_nan(self.tn[min_index],
                                self.tn[min_index] + self.fp[min_index])
+
+  def get_config(self):
+    config = {
+        'num_thresholds': self.num_thresholds,
+        'sensitivity': self.sensitivity
+    }
+    base_config = super(SpecificityAtSensitivity, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
 
 @keras_export('keras.metrics.CosineProximity')
