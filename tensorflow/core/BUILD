@@ -2010,6 +2010,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "framework/step_stats_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/step_stats.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "framework/types_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/types.proto",
