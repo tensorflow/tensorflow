@@ -1,4 +1,4 @@
-//===- LowerIfAndFor.cpp - Lower If and For instructions to CFG -----------===//
+//===- LowerAffine.cpp - Lower affine constructs to primitives ------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,33 +15,141 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file lowers If and For instructions within a function into their lower
-// level CFG equivalent blocks.
+// This file lowers affine constructs (If and For statements, AffineApply
+// operations) within a function into their lower level CFG equivalent blocks.
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
-#include "mlir/Transforms/LoweringUtils.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Transforms/Passes.h"
 using namespace mlir;
 
 namespace {
-class LowerIfAndForPass : public FunctionPass {
+// Visit affine expressions recursively and build the sequence of instructions
+// that correspond to it.  Visitation functions return an Value of the
+// expression subtree they visited or `nullptr` on error.
+class AffineApplyExpander
+    : public AffineExprVisitor<AffineApplyExpander, Value *> {
 public:
-  LowerIfAndForPass() : FunctionPass(&passID) {}
+  // This internal class expects arguments to be non-null, checks must be
+  // performed at the call site.
+  AffineApplyExpander(FuncBuilder *builder, ArrayRef<Value *> dimValues,
+                      ArrayRef<Value *> symbolValues, Location loc)
+      : builder(*builder), dimValues(dimValues), symbolValues(symbolValues),
+        loc(loc) {}
+
+  template <typename OpTy> Value *buildBinaryExpr(AffineBinaryOpExpr expr) {
+    auto lhs = visit(expr.getLHS());
+    auto rhs = visit(expr.getRHS());
+    if (!lhs || !rhs)
+      return nullptr;
+    auto op = builder.create<OpTy>(loc, lhs, rhs);
+    return op->getResult();
+  }
+
+  Value *visitAddExpr(AffineBinaryOpExpr expr) {
+    return buildBinaryExpr<AddIOp>(expr);
+  }
+
+  Value *visitMulExpr(AffineBinaryOpExpr expr) {
+    return buildBinaryExpr<MulIOp>(expr);
+  }
+
+  // TODO(zinenko): implement when the standard operators are made available.
+  Value *visitModExpr(AffineBinaryOpExpr) {
+    builder.getContext()->emitError(loc, "unsupported binary operator: mod");
+    return nullptr;
+  }
+
+  Value *visitFloorDivExpr(AffineBinaryOpExpr) {
+    builder.getContext()->emitError(loc,
+                                    "unsupported binary operator: floor_div");
+    return nullptr;
+  }
+
+  Value *visitCeilDivExpr(AffineBinaryOpExpr) {
+    builder.getContext()->emitError(loc,
+                                    "unsupported binary operator: ceil_div");
+    return nullptr;
+  }
+
+  Value *visitConstantExpr(AffineConstantExpr expr) {
+    auto valueAttr =
+        builder.getIntegerAttr(builder.getIndexType(), expr.getValue());
+    auto op =
+        builder.create<ConstantOp>(loc, valueAttr, builder.getIndexType());
+    return op->getResult();
+  }
+
+  Value *visitDimExpr(AffineDimExpr expr) {
+    assert(expr.getPosition() < dimValues.size() &&
+           "affine dim position out of range");
+    return dimValues[expr.getPosition()];
+  }
+
+  Value *visitSymbolExpr(AffineSymbolExpr expr) {
+    assert(expr.getPosition() < symbolValues.size() &&
+           "symbol dim position out of range");
+    return symbolValues[expr.getPosition()];
+  }
+
+private:
+  FuncBuilder &builder;
+  ArrayRef<Value *> dimValues;
+  ArrayRef<Value *> symbolValues;
+
+  Location loc;
+};
+} // namespace
+
+// Create a sequence of instructions that implement the `expr` applied to the
+// given dimension and symbol values.
+static mlir::Value *expandAffineExpr(FuncBuilder *builder, Location loc,
+                                     AffineExpr expr,
+                                     ArrayRef<Value *> dimValues,
+                                     ArrayRef<Value *> symbolValues) {
+  return AffineApplyExpander(builder, dimValues, symbolValues, loc).visit(expr);
+}
+
+// Create a sequence of instructions that implement the `affineMap` applied to
+// the given `operands` (as it it were an AffineApplyOp).
+Optional<SmallVector<Value *, 8>> static expandAffineMap(
+    FuncBuilder *builder, Location loc, AffineMap affineMap,
+    ArrayRef<Value *> operands) {
+  auto numDims = affineMap.getNumDims();
+  auto expanded = functional::map(
+      [numDims, builder, loc, operands](AffineExpr expr) {
+        return expandAffineExpr(builder, loc, expr,
+                                operands.take_front(numDims),
+                                operands.drop_front(numDims));
+      },
+      affineMap.getResults());
+  if (llvm::all_of(expanded, [](Value *v) { return v; }))
+    return expanded;
+  return None;
+}
+
+namespace {
+class LowerAffinePass : public FunctionPass {
+public:
+  LowerAffinePass() : FunctionPass(&passID) {}
   PassResult runOnFunction(Function *function) override;
 
   bool lowerForInst(ForInst *forInst);
   bool lowerIfInst(IfInst *ifInst);
+  bool lowerAffineApply(AffineApplyOp *op);
 
   static char passID;
 };
 } // end anonymous namespace
 
-char LowerIfAndForPass::passID = 0;
+char LowerAffinePass::passID = 0;
 
 // Given a range of values, emit the code that reduces them with "min" or "max"
 // depending on the provided comparison predicate.  The predicate defines which
@@ -112,7 +220,7 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 //      |   <code after the ForInst>     |
 //      +--------------------------------+
 //
-bool LowerIfAndForPass::lowerForInst(ForInst *forInst) {
+bool LowerAffinePass::lowerForInst(ForInst *forInst) {
   auto loc = forInst->getLoc();
 
   // Start by splitting the block containing the 'for' into two parts.  The part
@@ -244,7 +352,7 @@ bool LowerIfAndForPass::lowerForInst(ForInst *forInst) {
 //      |   <code after the IfInst>      |
 //      +--------------------------------+
 //
-bool LowerIfAndForPass::lowerIfInst(IfInst *ifInst) {
+bool LowerAffinePass::lowerIfInst(IfInst *ifInst) {
   auto loc = ifInst->getLoc();
 
   // Start by splitting the block containing the 'if' into two parts.  The part
@@ -278,7 +386,7 @@ bool LowerIfAndForPass::lowerIfInst(IfInst *ifInst) {
                                         oldElse->begin(), oldElse->end());
     builder.setInsertionPointToEnd(elseBlock);
     builder.create<BranchOp>(loc, continueBlock);
-   }
+  }
 
   // Ok, now we just have to handle the condition logic.
   auto integerSet = ifInst->getCondition().getIntegerSet();
@@ -341,6 +449,26 @@ bool LowerIfAndForPass::lowerIfInst(IfInst *ifInst) {
   return false;
 }
 
+// Convert an "affine_apply" operation into a sequence of arithmetic
+// instructions using the StandardOps dialect.  Return true on error.
+bool LowerAffinePass::lowerAffineApply(AffineApplyOp *op) {
+  FuncBuilder builder(op->getInstruction());
+  auto maybeExpandedMap =
+      expandAffineMap(&builder, op->getLoc(), op->getAffineMap(),
+                      llvm::to_vector<8>(op->getOperands()));
+  if (!maybeExpandedMap)
+    return true;
+  for (auto pair : llvm::zip(op->getResults(), *maybeExpandedMap)) {
+    Value *original = std::get<0>(pair);
+    Value *expanded = std::get<1>(pair);
+    if (!expanded)
+      return true;
+    original->replaceAllUsesWith(expanded);
+  }
+  op->erase();
+  return false;
+}
+
 // Entry point of the function convertor.
 //
 // Conversion is performed by recursively visiting instructions of a Function.
@@ -359,13 +487,16 @@ bool LowerIfAndForPass::lowerIfInst(IfInst *ifInst) {
 // construction.  When an Value is used, it gets replaced with the
 // corresponding Value that has been defined previously.  The value flow
 // starts with function arguments converted to basic block arguments.
-PassResult LowerIfAndForPass::runOnFunction(Function *function) {
+PassResult LowerAffinePass::runOnFunction(Function *function) {
   SmallVector<Instruction *, 8> instsToRewrite;
 
-  // Collect all the If and For statements.  We do this as a prepass to avoid
-  // invalidating the walker with our rewrite.
+  // Collect all the If and For instructions as well as AffineApplyOps.  We do
+  // this as a prepass to avoid invalidating the walker with our rewrite.
   function->walkInsts([&](Instruction *inst) {
     if (isa<IfInst>(inst) || isa<ForInst>(inst))
+      instsToRewrite.push_back(inst);
+    auto op = dyn_cast<OperationInst>(inst);
+    if (op && op->isa<AffineApplyOp>())
       instsToRewrite.push_back(inst);
   });
 
@@ -375,8 +506,12 @@ PassResult LowerIfAndForPass::runOnFunction(Function *function) {
     if (auto *ifInst = dyn_cast<IfInst>(inst)) {
       if (lowerIfInst(ifInst))
         return failure();
+    } else if (auto *forInst = dyn_cast<ForInst>(inst)) {
+      if (lowerForInst(forInst))
+        return failure();
     } else {
-      if (lowerForInst(cast<ForInst>(inst)))
+      auto op = cast<OperationInst>(inst);
+      if (lowerAffineApply(op->cast<AffineApplyOp>()))
         return failure();
     }
 
@@ -385,10 +520,8 @@ PassResult LowerIfAndForPass::runOnFunction(Function *function) {
 
 /// Lowers If and For instructions within a function into their lower level CFG
 /// equivalent blocks.
-FunctionPass *mlir::createLowerIfAndForPass() {
-  return new LowerIfAndForPass();
-}
+FunctionPass *mlir::createLowerAffinePass() { return new LowerAffinePass(); }
 
-static PassRegistration<LowerIfAndForPass>
-    pass("lower-if-and-for",
-         "Lower If and For instructions to CFG equivalents");
+static PassRegistration<LowerAffinePass>
+    pass("lower-affine",
+         "Lower If, For, AffineApply instructions to primitive equivalents");

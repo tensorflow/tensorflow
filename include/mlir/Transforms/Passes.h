@@ -79,8 +79,10 @@ FunctionPass *createPipelineDataTransferPass();
 /// Creates a pass which composes all affine maps applied to loads and stores.
 FunctionPass *createComposeAffineMapsPass();
 
-/// Lowers IfInst and ForInst to the equivalent lower level CFG structures.
-FunctionPass *createLowerIfAndForPass();
+/// Lowers affine control flow instructions (ForStmt, IfStmt and AffineApplyOp)
+/// to equivalent lower-level constructs (flow of basic blocks and arithmetic
+/// primitives).
+FunctionPass *createLowerAffinePass();
 
 /// Creates a pass to perform tiling on loop nests.
 FunctionPass *createLoopTilingPass();
@@ -90,12 +92,6 @@ FunctionPass *createLoopTilingPass();
 FunctionPass *createDmaGenerationPass(unsigned lowMemorySpace,
                                       unsigned highMemorySpace,
                                       int minDmaTransferSize = 1024);
-
-/// Replaces affine_apply operations in CFGFunctions with the arithmetic
-/// primitives (addition, multplication) they comprise.  Errors out on
-/// any Function since it may contain affine_applies baked into the For loop
-/// bounds that cannot be replaced.
-FunctionPass *createLowerAffineApplyPass();
 
 /// Creates a pass to lower VectorTransferReadOp and VectorTransferWriteOp.
 FunctionPass *createLowerVectorTransfersPass();
