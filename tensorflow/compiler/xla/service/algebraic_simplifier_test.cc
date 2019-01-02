@@ -2709,6 +2709,74 @@ TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortWrongDimensions) {
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
+TEST_F(AlgebraicSimplifierTest, RemoveUnusedSortOperandArrayResult) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = s32[64,8732]{1,0} parameter(1)
+      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values),
+        dimensions={1}
+      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, RemoveUnusedSortOperandTuple) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,87] parameter(0)
+      values.0 = s32[64,87] parameter(1)
+      values.1 = u32[64,87] parameter(2)
+      sort = (f32[64,87], s32[64,87], u32[64,87]) sort(
+          keys, values.0, values.1),
+        dimensions={1}
+      gte.0 = f32[64,87] get-tuple-element(sort), index=0
+      gte.1 = u32[64,87] get-tuple-element(sort), index=2
+      ROOT tuple = (f32[64,87], u32[64,87]) tuple(gte.0, gte.1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(m::Sort(m::Parameter(0), m::Parameter(2)), 0),
+          m::GetTupleElement(m::Sort(m::Parameter(0), m::Parameter(2)), 1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DontRemoveUnusedSortKey) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = s32[64,8732]{1,0} parameter(1)
+      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}
+      ROOT gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   auto builder = HloComputation::Builder(TestName());
 
