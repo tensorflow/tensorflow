@@ -548,6 +548,20 @@ class Model(Network):
       trainable_weights = self.trainable_weights
       self._collected_trainable_weights = trainable_weights
 
+      # Validate all variables were correctly created in distribution scope.
+      if self._distribution_strategy and not self._compile_distribution:
+        for v in self.variables:
+          if v.distribute_strategy is not self._distribution_strategy:
+            raise ValueError(
+                'Variable (%s) was not created in the distribution strategy '
+                'scope of (%s). It is most likely due to not all layers or '
+                'the model or optimizer being created outside the distribution '
+                'strategy scope. Try to make sure your code looks similar '
+                'to the following.\n'
+                'with strategy.scope():\n'
+                '  model=_create_model()\n'
+                '  model.compile(...)'% (v, self._distribution_strategy))
+
   @property
   def metrics(self):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
