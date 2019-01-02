@@ -79,6 +79,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
+        "//tensorflow:internal",
         "//tensorflow/python/estimator:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
