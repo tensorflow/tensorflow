@@ -3,13 +3,18 @@ FROM ubuntu:18.04
 LABEL maintainer="Clayne Robison <clayne.b.robison@intel.com>"
 
 # These parameters can be overridden by parameterized_docker_build.sh
-ARG TF_BUILD_VERSION=r1.12
+ARG TF_BUILD_VERSION=r1.13
 ARG PYTHON="python"
 ARG PYTHON3_DEV=""
 ARG WHL_DIR="/tmp/pip"
 ARG PIP="pip"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+        ${PYTHON} \
+        ${PYTHON}-dev \
+        ${PYTHON}-pip \
+        ${PYTHON}-setuptools \
+        ${PYTHON}-wheel \
         build-essential \
         curl \
         git \
@@ -17,35 +22,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libpng-dev \
-        libzmq3-dev \
         libssl-dev \
+        libzmq3-dev \
+        openjdk-8-jdk \
+        openjdk-8-jre-headless \
         pkg-config \
         rsync \
         software-properties-common \
         unzip \
         zip \
         zlib1g-dev \
-        openjdk-8-jdk \
-        openjdk-8-jre-headless
-
-#install Python 3
-RUN if [ ${PYTHON} = "python3.6" ]; then \
-      curl https://www.python.org/ftp/python/3.6.5/Python-3.6.5.tar.xz -o /opt/python.tar.xz && \
-      cd /opt && tar xvf python.tar.xz && \
-      cd /opt/*/ && ./configure && \
-      make && make install; \
-    else \
-      apt-get install -y --no-install-recommends \
-        python-dev \
-        ${PYTHON3_DEV}; \
-    fi
-
-RUN    apt-get clean && \
+        && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
-    ${PYTHON} get-pip.py && \
-    rm get-pip.py
 
 RUN ${PIP} --no-cache-dir install \
         Pillow \
@@ -57,17 +47,12 @@ RUN ${PIP} --no-cache-dir install \
         matplotlib \
         mock \
         numpy \
+        pandas \
         scipy \
         sklearn \
-        pandas \
         && \
     ${PYTHON} -m ipykernel.kernelspec
 
-RUN if [ "${PYTHON}" = "python3" ]; then \
-      ln -s -f /usr/bin/python3 /usr/bin/python; \
-  elif [ "${PYTHON}" = "python3.6" ]; then \
-      ln -s -f /usr/local/bin/python3.6 /usr/bin/python; \
-  fi
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/

@@ -3,42 +3,43 @@ FROM ubuntu:18.04
 LABEL maintainer="Cong Xu <cong.xu@intel.com>"
 
 # These parameters can be overridden by parameterized_docker_build.sh
-ARG TF_BUILD_VERSION=r1.11
+ARG TF_BUILD_VERSION=r1.13
 ARG PYTHON="python"
 ARG PYTHON3_DEV=""
 ARG WHL_DIR="/tmp/pip"
 ARG PIP="pip"
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+        ${PYTHON} \
+        ${PYTHON}-dev \
+        ${PYTHON}-pip \
+        ${PYTHON}-setuptools \
+        ${PYTHON}-wheel \
         build-essential \
         curl \
         git \
         libcurl3-dev \
         libfreetype6-dev \
         libhdf5-serial-dev \
+        libnuma-dev \
         libpng-dev \
         libzmq3-dev \
+        openjdk-8-jdk \
+        openjdk-8-jre-headless \
+        openssh-client \
+        openssh-server \
         pkg-config \
-        python-dev \
-        ${PYTHON3_DEV} \
         rsync \
         software-properties-common \
         unzip \
+        wget \
         zip \
         zlib1g-dev \
-        openjdk-8-jdk \
-        openjdk-8-jre-headless \
-        wget \
-        libnuma-dev \
-        openssh-client \
-        openssh-server \
         && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
-    ${PYTHON} get-pip.py && \
-    rm get-pip.py
 
 RUN ${PIP} --no-cache-dir install \
         Pillow \
@@ -56,9 +57,6 @@ RUN ${PIP} --no-cache-dir install \
         && \
     ${PYTHON} -m ipykernel.kernelspec
 
-RUN if [ "${PYTHON}" = "python3" ]; then \
-  ln -s -f /usr/bin/python3 /usr/bin/python; \
-  fi
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
