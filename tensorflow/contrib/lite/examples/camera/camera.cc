@@ -373,7 +373,7 @@ void RunInference(Settings* s) {
     exit(-1);
   }
 
-  for (int i = 0; i < 100; i++) {
+  for (int i = 0; i < s->frames_to_catch; i++) {
     LOG(INFO) << "The " << i << "th frame ! \n";
     // Captur a frame.
     //{
@@ -547,6 +547,7 @@ void display_usage() {
             << "--profiling, -p: [0|1], profiling or not\n"
             << "--num_results, -r: number of results to show\n"
             << "--threads, -t: number of threads\n"
+            << "--frames, -f: frames to catch for recognize\n"
             << "--verbose, -v: [0|1] print more information\n"
             << "\n";
 }
@@ -568,6 +569,7 @@ int Main(int argc, char** argv) {
         {"input_mean", required_argument, nullptr, 'b'},
         {"input_std", required_argument, nullptr, 's'},
         {"num_results", required_argument, nullptr, 'r'},
+        {"frames", required_argument, nullptr, 'f'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
@@ -590,6 +592,10 @@ int Main(int argc, char** argv) {
         s.loop_count =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
         break;
+      case 'f':
+        s.frames_to_catch =
+            strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;        
       case 'i':
         s.input_bmp_name = optarg;
         break;
