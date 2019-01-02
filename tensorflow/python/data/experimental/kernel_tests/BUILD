@@ -639,6 +639,28 @@ py_library(
 )
 
 py_test(
+    name = "take_while_test",
+    size = "small",
+    srcs = ["take_while_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:take_while_ops",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "tf_record_writer_test",
     size = "small",
     srcs = ["tf_record_writer_test.py"],
