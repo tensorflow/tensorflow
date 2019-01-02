@@ -384,7 +384,8 @@ void OpEmitter::emitBuilder() {
 
   // Attributes
   if (attrs.empty()) {
-    os << "    assert(!attributes.size() && \"no attributes expected\");\n}\n";
+    os << "    assert(!attributes.size() && \"no attributes expected\");\n"
+       << "  }\n";
   } else {
     os << "    assert(attributes.size() >= " << attrs.size()
        << "u && \"not enough attributes\");\n"
