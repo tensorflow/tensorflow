@@ -181,7 +181,8 @@ Status DoCachedConvolutionWithScaledAdd(
   CHECK_EQ(const_inst->opcode(), HloOpcode::kConstant);
 
   double lr;
-  TF_ASSIGN_OR_RETURN(lr, LiteralScalarDoubleToDouble(const_inst->literal()));
+  TF_ASSIGN_OR_RETURN(lr,
+                      LiteralScalarToNativeType<double>(const_inst->literal()));
 
   switch (root->opcode()) {
     case HloOpcode::kAdd: {

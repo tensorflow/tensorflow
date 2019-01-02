@@ -309,17 +309,23 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<WideConstFinder>();
     pipeline.AddPass<CommutativeInstructionReorderOperands>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
-    pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<WhileLoopConstantSinking>();
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        false, [](const Shape&, const Shape&) { return false; }, false, false);
-    pipeline.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
-    pipeline.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
-    pipeline.AddPass<FuseWideConst>(resources.annotations);
+    {
+      auto& pass =
+          pipeline.AddPass<HloPassFix<HloPassPipeline>>("repeated-fusing");
+      pass.AddPass<HloCSE>(true);
+      pass.AddPass<HloDCE>();
+      pass.AddPass<WhileLoopConstantSinking>();
+      pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
+          false, [](const Shape&, const Shape&) { return false; }, false,
+          false);
+      pass.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
+      pass.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
+      pass.AddPass<FuseWideConst>(resources.annotations);
+      pass.AddPass<HloDCE>();
+      pass.AddPass<WhileLoopConditionSimplify>();
+      pass.AddPass<WhileLoopToRepeatSimplify>(resources.annotations);
+    }
     pipeline.AddPass<HloSubcomputationUnification>();
-    pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<WhileLoopConditionSimplify>();
-    pipeline.AddPass<WhileLoopToRepeatSimplify>(resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<InplaceFinder>(resources.annotations);
     pipeline.AddPass<ShardingPass>();

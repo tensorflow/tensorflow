@@ -350,13 +350,360 @@ ENTRY entry {
   EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
   const HloInstruction* while_init = while_inst->operand(0);
   const HloInstruction* counter = while_init->operand(0);
-  VLOG(0) << while_init->parent()->ToString();
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
-  int32 loop_counter =
-      LiteralScalarInt32toInt32(counter->literal()).ValueOrDie();
+  int64 loop_counter =
+      LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
   EXPECT_EQ(loop_counter, 10);
 }
 
+TEST_F(WhileLoopToRepeatSimplifyTest,
+       SingleConditionalHoistTheConstantNoIterations) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[]) p_body), index=0
+  const = s32[] constant(1)
+  neg = s32[] negate(const)
+  add = s32[] add(p_body.0, neg)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[]) p_body), index=1
+  ROOT root = (s32[],s32[]) tuple(add, p_body.1)
+}
+
+condition {
+  p_cond = (s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] greater-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(10)
+  const_1 = s32[] constant(10)
+  while_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Get the trip count
+  EXPECT_EQ(annotations.while_loop_num_iterations
+                [module.get()->entry_computation()->root_instruction()],
+            0);
+  // Check the constant got hoisted out.
+  HloInstruction* while_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while_init = while_inst->operand(0);
+  const HloInstruction* counter = while_init->operand(0);
+  EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
+  int64 loop_counter =
+      LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
+  EXPECT_EQ(loop_counter, 10);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest,
+       SingleConditionalHoistTheConstantNegativeDeltaUnsginedType) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (u32[],u32[]) parameter(0)
+  p_body.0 = u32[] get-tuple-element((u32[],u32[]) p_body), index=0
+  const = u32[] constant(1)
+  neg = u32[] negate(const)
+  add = u32[] add(p_body.0, neg)
+  p_body.1 = u32[] get-tuple-element((u32[],u32[]) p_body), index=1
+  ROOT root = (u32[],u32[]) tuple(add, p_body.1)
+}
+
+condition {
+  p_cond = (u32[],u32[]) parameter(0)
+  p_cond.0 = u32[] get-tuple-element((u32[],u32[]) p_cond), index=0
+  const = u32[] constant(10)
+  ROOT result = pred[] greater-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = u32[] constant(20)
+  const_1 = u32[] constant(10)
+  while_init = (u32[],u32[]) tuple(const_0, const_1)
+  ROOT while = (u32[],u32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Get the trip count
+  EXPECT_EQ(annotations.while_loop_num_iterations
+                [module.get()->entry_computation()->root_instruction()],
+            10);
+  // Check the constant got hoisted out.
+  HloInstruction* while_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while_init = while_inst->operand(0);
+  const HloInstruction* counter = while_init->operand(0);
+  EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
+  int64 loop_counter =
+      LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
+  EXPECT_EQ(loop_counter, 10);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest,
+       SingleConditionalMultipleCountersHoistTheConstant) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (s32[],s32[],s32[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[],s32[]) p_body), index=0
+  p_body.2 = s32[] get-tuple-element((s32[],s32[],s32[]) p_body), index=2
+  const = s32[] constant(1)
+  add1 = s32[] add(p_body.0, const)
+  add2 = s32[] add(p_body.2, const)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[],s32[]) p_body), index=1
+  ROOT root = (s32[],s32[],s32[]) tuple(add1, p_body.1, add2)
+}
+
+condition {
+  p_cond = (s32[],s32[],s32[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[],s32[]) p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] less-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] constant(10)
+  const_2 = s32[] constant(10)
+  while_init = (s32[],s32[],s32[]) tuple(const_0, const_1, const_2)
+  ROOT while = (s32[],s32[],s32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Get the trip count
+  EXPECT_EQ(annotations.while_loop_num_iterations
+                [module.get()->entry_computation()->root_instruction()],
+            10);
+  // Check the constant got hoisted out.
+  HloInstruction* while_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while_init = while_inst->operand(0);
+  const HloInstruction* counter = while_init->operand(0);
+  const HloInstruction* unused_counter = while_init->operand(2);
+  EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
+  EXPECT_EQ(unused_counter->opcode(), HloOpcode::kConstant);
+  int64 loop_counter =
+      LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
+  EXPECT_EQ(loop_counter, 10);
+  int64 loop_unused_counter =
+      LiteralScalarToNativeType<int64>(unused_counter->literal()).ValueOrDie();
+  // Note that the other counter started at 10
+  EXPECT_EQ(loop_unused_counter, 20);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest,
+       SingleConditionalMultipleCountersHoistTheConstantOverflow) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  p_body = (s32[],s32[],u8[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=0
+  p_body.2 = u8[] get-tuple-element((s32[],s32[],u8[]) p_body), index=2
+  const = s32[] constant(1)
+  const1 = u8[] constant(1)
+  neg = u8[] negate(const1)
+  add1 = s32[] add(p_body.0, const)
+  add2 = u8[] add(p_body.2, neg)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=1
+  ROOT root = (s32[],s32[],u8[]) tuple(add1, p_body.1, add2)
+}
+
+condition {
+  p_cond = (s32[],s32[],u8[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] less-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] constant(10)
+  const_2 = u8[] constant(5)
+  while_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
+  ROOT while = (s32[],s32[],u8[]) while(while_init), condition=condition, body=body
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Get the trip count
+  EXPECT_EQ(annotations.while_loop_num_iterations
+                [module.get()->entry_computation()->root_instruction()],
+            10);
+  // Check the constant got hoisted out.
+  HloInstruction* while_inst = module->entry_computation()->root_instruction();
+  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
+  const HloInstruction* while_init = while_inst->operand(0);
+  const HloInstruction* counter = while_init->operand(0);
+  const HloInstruction* unused_counter = while_init->operand(2);
+  EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
+  EXPECT_EQ(unused_counter->opcode(), HloOpcode::kConstant);
+  int64 loop_counter =
+      LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
+  EXPECT_EQ(loop_counter, 10);
+  int64 loop_unused_counter =
+      LiteralScalarToNativeType<int64>(unused_counter->literal()).ValueOrDie();
+  EXPECT_EQ(loop_unused_counter, 251);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest,
+       SingleConditionalMultipleCountersHoistTheConstantResultUser) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body1 {
+  p_body = (s32[],s32[],u8[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=0
+  p_body.2 = u8[] get-tuple-element((s32[],s32[],u8[]) p_body), index=2
+  const = s32[] constant(1)
+  const1 = u8[] constant(1)
+  neg = u8[] negate(const1)
+  add1 = s32[] add(p_body.0, const)
+  add2 = u8[] add(p_body.2, neg)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=1
+  ROOT root = (s32[],s32[],u8[]) tuple(add1, p_body.1, add2)
+}
+
+condition1 {
+  p_cond = (s32[],s32[],u8[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] less-than(p_cond.0, const)
+}
+
+body2 {
+  p_body = (u8[]) parameter(0)
+  p_body.0 = u8[] get-tuple-element((u8[]) p_body), index=0
+  const = u8[] constant(1)
+  add = u8[] add(p_body.0, const)
+  ROOT root = (u8[]) tuple(add)
+}
+
+condition2 {
+  p_cond = (u8[]) parameter(0)
+  p_cond.0 = u8[] get-tuple-element((u8[]) p_cond), index=0
+  const = u8[] constant(200)
+  ROOT result = pred[] greater-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] constant(10)
+  const_2 = u8[] constant(5)
+  while_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
+  while = (s32[],s32[],u8[]) while(while_init), condition=condition1, body=body1
+  ROOT gte = u8[] get-tuple-element((s32[],s32[],u8[]) while), index=2
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Expect that the loop got simplified to just a return constant
+  HloInstruction* root = module.get()->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
+  int64 result = LiteralScalarToNativeType<int64>(root->literal()).ValueOrDie();
+  EXPECT_EQ(result, 251);
+}
+
+TEST_F(WhileLoopToRepeatSimplifyTest, MultipleLoops) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body1 {
+  p_body = (s32[],s32[],u8[]) parameter(0)
+  p_body.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=0
+  p_body.2 = u8[] get-tuple-element((s32[],s32[],u8[]) p_body), index=2
+  const = s32[] constant(1)
+  const1 = u8[] constant(1)
+  neg = u8[] negate(const1)
+  add1 = s32[] add(p_body.0, const)
+  add2 = u8[] add(p_body.2, neg)
+  p_body.1 = s32[] get-tuple-element((s32[],s32[],u8[]) p_body), index=1
+  ROOT root = (s32[],s32[],u8[]) tuple(add1, p_body.1, add2)
+}
+
+condition1 {
+  p_cond = (s32[],s32[],u8[]) parameter(0)
+  p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
+  const = s32[] constant(10)
+  ROOT result = pred[] less-than(p_cond.0, const)
+}
+
+body2 {
+  p_body = (u8[]) parameter(0)
+  p_body.0 = u8[] get-tuple-element((u8[]) p_body), index=0
+  const = u8[] constant(1)
+  add = u8[] add(p_body.0, const)
+  ROOT root = (u8[]) tuple(add)
+}
+
+condition2 {
+  p_cond = (u8[]) parameter(0)
+  p_cond.0 = u8[] get-tuple-element((u8[]) p_cond), index=0
+  const = u8[] constant(255)
+  ROOT result = pred[] less-than(p_cond.0, const)
+}
+
+ENTRY entry {
+  const_0 = s32[] constant(0)
+  const_1 = s32[] constant(10)
+  const_2 = u8[] constant(5)
+  while_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
+  while = (s32[],s32[],u8[]) while(while_init), condition=condition1, body=body1
+  gte = u8[] get-tuple-element((s32[],s32[],u8[]) while), index=2
+  while_init1 = (u8[]) tuple(gte)
+  while1 = (u8[]) while(while_init1), condition=condition2, body=body2
+  ROOT gte1 = u8[] get-tuple-element((u8[]) while1), index=0
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  CompilerAnnotations annotations(module.get());
+  WhileLoopToRepeatSimplify wltrs(annotations);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+
+  // Expect that the loop got simplified to just a return constant
+  HloInstruction* root = module.get()->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kConstant);
+  int64 result = LiteralScalarToNativeType<int64>(root->literal()).ValueOrDie();
+  EXPECT_EQ(result, 255);
+}
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalDontHoistTheConstant) {
   const char* const hlo_string = R"(
 HloModule ModuleWithWhile
@@ -401,9 +748,9 @@ ENTRY entry {
   EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
   const HloInstruction* while_init = while_inst->operand(0);
   const HloInstruction* counter = while_init->operand(0);
-  VLOG(0) << while_init->parent()->ToString();
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
-  int32 loop_start = LiteralScalarInt32toInt32(counter->literal()).ValueOrDie();
+  int64 loop_start =
+      LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
   EXPECT_EQ(loop_start, 0);
 }
 

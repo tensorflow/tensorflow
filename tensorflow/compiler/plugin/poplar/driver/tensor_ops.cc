@@ -40,11 +40,10 @@ StatusOr<poplar::program::Program> CreateSliceUpdateOp(
   std::vector<int64> begin;
   if (root->operand(2)->opcode() == HloOpcode::kConstant) {
     TF_ASSIGN_OR_RETURN(
-        begin, LiteralVectorToInt64Vector(root->operand(2)->literal()));
+        begin, LiteralVectorToNativeType<int64>(root->operand(2)->literal()));
   } else {
-    const HloInstruction* bcast = root->operand(2);
-    const HloInstruction* constant = bcast->operand(0);
-    TF_ASSIGN_OR_RETURN(begin, WideConstToInt64Vector(bcast, constant));
+    const HloInstruction* wide_const = root->operand(2);
+    TF_ASSIGN_OR_RETURN(begin, WideConstToNativeType<int64>(wide_const));
   }
 
   if (begin.size() != input.rank()) {
@@ -97,11 +96,10 @@ StatusOr<poplar::program::Program> CreateSliceOp(CompilerResources& res,
   std::vector<int64> begin;
   if (root->operand(1)->opcode() == HloOpcode::kConstant) {
     TF_ASSIGN_OR_RETURN(
-        begin, LiteralVectorToInt64Vector(root->operand(1)->literal()));
+        begin, LiteralVectorToNativeType<int64>(root->operand(1)->literal()));
   } else {
-    const HloInstruction* bcast = root->operand(1);
-    const HloInstruction* constant = bcast->operand(0);
-    TF_ASSIGN_OR_RETURN(begin, WideConstToInt64Vector(bcast, constant));
+    const HloInstruction* wide_const = root->operand(1);
+    TF_ASSIGN_OR_RETURN(begin, WideConstToNativeType<int64>(wide_const));
   }
 
   if (begin.size() != input.rank()) {

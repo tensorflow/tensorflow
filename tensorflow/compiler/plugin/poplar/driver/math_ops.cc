@@ -321,7 +321,8 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
 
   // Get the scalar multiplier
   double mul;
-  TF_ASSIGN_OR_RETURN(mul, LiteralScalarDoubleToDouble(const_inst->literal()));
+  TF_ASSIGN_OR_RETURN(mul,
+                      LiteralScalarToNativeType<double>(const_inst->literal()));
 
   // Call the inplace op
   switch (root_inst->opcode()) {

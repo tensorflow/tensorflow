@@ -104,11 +104,8 @@ TEST_F(WhileLoopConditionSimplifyTest, SimplifyDoubleConditionalTie) {
     EXPECT_TRUE(lt1_cond->parent() != comp_cond);
     EXPECT_TRUE(and_cond->parent() != comp_cond);
     EXPECT_TRUE(c0_body->parent() == comp_body);
-    EXPECT_TRUE(c1_body->parent() != comp_body);
     EXPECT_TRUE(new_c0_body->parent() == comp_body);
-    EXPECT_TRUE(new_c1_body->parent() != comp_body);
     EXPECT_EQ(new_tuple_body->operand(0), new_c0_body);
-    EXPECT_EQ(new_tuple_body->operand(1), new_c0_body);
   } else {
     EXPECT_TRUE(limit0_cond->parent() != comp_cond);
     EXPECT_TRUE(limit1_cond->parent() == comp_cond);
@@ -117,11 +114,8 @@ TEST_F(WhileLoopConditionSimplifyTest, SimplifyDoubleConditionalTie) {
     EXPECT_TRUE(lt0_cond->parent() != comp_cond);
     EXPECT_TRUE(lt1_cond->parent() == comp_cond);
     EXPECT_TRUE(and_cond->parent() != comp_cond);
-    EXPECT_TRUE(c0_body->parent() != comp_body);
     EXPECT_TRUE(c1_body->parent() == comp_body);
-    EXPECT_TRUE(new_c0_body->parent() != comp_body);
     EXPECT_TRUE(new_c1_body->parent() == comp_body);
-    EXPECT_EQ(new_tuple_body->operand(0), new_c1_body);
     EXPECT_EQ(new_tuple_body->operand(1), new_c1_body);
   }
 }
@@ -203,11 +197,8 @@ TEST_F(WhileLoopConditionSimplifyTest, SimplifyDoubleConditionalUneven) {
   EXPECT_TRUE(lt1_cond->parent() != comp_cond);
   EXPECT_TRUE(and_cond->parent() != comp_cond);
   EXPECT_TRUE(c0_body->parent() == comp_body);
-  EXPECT_TRUE(c1_body->parent() != comp_body);
   EXPECT_TRUE(new_c0_body->parent() == comp_body);
-  EXPECT_TRUE(new_c1_body->parent() != comp_body);
   EXPECT_EQ(new_tuple_body->operand(0), new_c0_body);
-  EXPECT_EQ(new_tuple_body->operand(1), new_c0_body);
 }
 
 TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyNonIntegral) {
@@ -485,99 +476,6 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyNonConst) {
   hlo_module->AddEntryComputation(builder_main.Build());
   WhileLoopConditionSimplify wlcs;
   EXPECT_FALSE(wlcs.Run(hlo_module.get()).ValueOrDie());
-}
-
-TEST_F(WhileLoopConditionSimplifyTest,
-       SimplifyDoubleConditionalCheckUsesReplaced) {
-  auto hlo_module = CreateNewModule();
-
-  Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
-  Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape, scalar_shape});
-  int32 loop_bound0 = 10;
-  int32 loop_bound1 = 9;
-  /* Create while condition */
-  auto builder_cond = HloComputation::Builder(TestName());
-  auto tuple_cond = builder_cond.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "cond_tuple"));
-  auto limit0_cond = builder_cond.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(loop_bound0)));
-  auto limit1_cond = builder_cond.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(loop_bound1)));
-  auto c0_cond =
-      builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
-          ShapeUtil::MakeShape(S32, {}), tuple_cond, 0));
-  auto c1_cond =
-      builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
-          ShapeUtil::MakeShape(S32, {}), tuple_cond, 1));
-  auto lt0_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0_cond, limit0_cond));
-  auto lt1_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c1_cond, limit1_cond));
-  auto and_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0_cond, lt1_cond));
-  HloComputation* comp_cond =
-      hlo_module->AddEmbeddedComputation(builder_cond.Build());
-
-  /* Create while body */
-  auto builder_body = HloComputation::Builder(TestName());
-  auto tuple_body = builder_body.AddInstruction(
-      HloInstruction::CreateParameter(0, tuple_shape, "body_tuple"));
-  auto c0_body = builder_body.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape, tuple_body, 0));
-  auto c1_body = builder_body.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape, tuple_body, 1));
-  auto val = builder_body.AddInstruction(
-      HloInstruction::CreateGetTupleElement(scalar_shape, tuple_body, 2));
-  auto one = builder_body.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
-  auto new_c0_body = builder_body.AddInstruction(HloInstruction::CreateBinary(
-      c0_body->shape(), HloOpcode::kAdd, c0_body, one));
-  auto new_c1_body = builder_body.AddInstruction(HloInstruction::CreateBinary(
-      c1_body->shape(), HloOpcode::kAdd, c1_body, one));
-  auto new_val = builder_body.AddInstruction(HloInstruction::CreateBinary(
-      val->shape(), HloOpcode::kAdd, c0_body, val));
-
-  auto new_tuple_body = builder_body.AddInstruction(
-      HloInstruction::CreateTuple({new_c0_body, new_c1_body, new_val}));
-
-  HloComputation* comp_body =
-      hlo_module->AddEmbeddedComputation(builder_body.Build());
-
-  /* Create main computation */
-  auto builder_main = HloComputation::Builder(TestName());
-  auto c0_init = builder_main.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
-  auto c1_init = builder_main.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
-  auto val_init = builder_main.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
-
-  auto init = builder_main.AddInstruction(
-      HloInstruction::CreateTuple({c0_init, c1_init, val_init}));
-
-  auto main = builder_main.AddInstruction(
-      HloInstruction::CreateWhile(tuple_shape, comp_cond, comp_body, init));
-
-  builder_main.AddInstruction(HloInstruction::CreateTuple({main}));
-
-  hlo_module->AddEntryComputation(builder_main.Build());
-  WhileLoopConditionSimplify wlcs;
-  EXPECT_TRUE(wlcs.Run(hlo_module.get()).ValueOrDie());
-  EXPECT_TRUE(limit0_cond->parent() != comp_cond);
-  EXPECT_TRUE(limit1_cond->parent() == comp_cond);
-  EXPECT_TRUE(c0_cond->parent() != comp_cond);
-  EXPECT_TRUE(c1_cond->parent() == comp_cond);
-  EXPECT_TRUE(lt0_cond->parent() != comp_cond);
-  EXPECT_TRUE(lt1_cond->parent() == comp_cond);
-  EXPECT_TRUE(and_cond->parent() != comp_cond);
-  EXPECT_TRUE(c0_body->parent() != comp_body);
-  EXPECT_TRUE(c1_body->parent() == comp_body);
-  EXPECT_TRUE(new_c0_body->parent() != comp_body);
-  EXPECT_TRUE(new_c1_body->parent() == comp_body);
-  EXPECT_EQ(new_val->operand(0), c1_body);
-  EXPECT_EQ(new_tuple_body->operand(0), new_c1_body);
-  EXPECT_EQ(new_tuple_body->operand(1), new_c1_body);
 }
 
 TEST_F(WhileLoopConditionSimplifyTest, DontSimplifySingleConditional) {
