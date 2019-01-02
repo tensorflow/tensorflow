@@ -227,7 +227,10 @@ tf_custom_op_library(
         "kernels/lstm_ops_gpu.cu.cc",
         "kernels/lstm_ops.h",
     ],
-    deps = ["//tensorflow/core/kernels:eigen_helpers"],
+    deps = [
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
+    ],
 )
 
 tf_gen_op_wrapper_py(
@@ -249,7 +252,10 @@ tf_custom_op_library(
         "kernels/gru_ops_gpu.cu.cc",
         "kernels/gru_ops.h",
     ],
-    deps = ["//tensorflow/core/kernels:eigen_helpers"],
+    deps = [
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
+    ],
 )
 
 tf_gen_op_wrapper_py(
@@ -346,6 +352,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:eigen_helpers",
         "//third_party/eigen3",
     ],
