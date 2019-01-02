@@ -430,6 +430,7 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
 
 
 @tf_export("rank")
+@dispatch.add_dispatch_support
 def rank(input, name=None):
   # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
