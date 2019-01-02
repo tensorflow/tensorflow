@@ -486,6 +486,14 @@ void ModulePrinter::printDenseElementsAttr(DenseElementsAttr attr) {
 
 void ModulePrinter::printType(Type type) {
   switch (type.getKind()) {
+  default: {
+    auto &dialect = type.getDialect();
+    os << "!" << dialect.getNamespace() << "<\"";
+    assert(dialect.typePrintHook && "Expected dialect type printing hook.");
+    dialect.typePrintHook(type, os);
+    os << "\">";
+    return;
+  }
   case Type::Kind::Index:
     os << "index";
     return;
@@ -500,27 +508,6 @@ void ModulePrinter::printType(Type type) {
     return;
   case Type::Kind::F64:
     os << "f64";
-    return;
-  case Type::Kind::TFControl:
-    os << "tf_control";
-    return;
-  case Type::Kind::TFResource:
-    os << "tf_resource";
-    return;
-  case Type::Kind::TFVariant:
-    os << "tf_variant";
-    return;
-  case Type::Kind::TFComplex64:
-    os << "tf_complex64";
-    return;
-  case Type::Kind::TFComplex128:
-    os << "tf_complex128";
-    return;
-  case Type::Kind::TFF32REF:
-    os << "tf_f32ref";
-    return;
-  case Type::Kind::TFString:
-    os << "tf_string";
     return;
 
   case Type::Kind::Integer: {

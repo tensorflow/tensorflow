@@ -354,6 +354,9 @@ public:
   /// operations.
   StringMap<AbstractOperation> registeredOperations;
 
+  /// This is a mapping from type identifier to Dialect for registered types.
+  DenseMap<const void *, Dialect *> registeredTypes;
+
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
 
@@ -557,6 +560,16 @@ void Dialect::addOperation(AbstractOperation opInfo) {
   }
 }
 
+/// Register a dialect-specific type with the current context.
+void Dialect::addType(const void *const typeID) {
+  auto &impl = context->getImpl();
+  if (impl.registeredTypes.count(typeID)) {
+    llvm::errs() << "error: type already registered.\n";
+    abort();
+  }
+  impl.registeredTypes.try_emplace(typeID, this);
+}
+
 /// Look up the specified operation in the operation set and return a pointer
 /// to it if present.  Otherwise, return a null pointer.
 const AbstractOperation *AbstractOperation::lookup(StringRef opName,
@@ -717,7 +730,7 @@ llvm::BumpPtrAllocator &TypeStorageAllocator::getAllocator() {
 
 /// Get or create a uniqued type by it's kind. This overload is used for
 /// simple types that are only uniqued by kind.
-TypeStorage *TypeUniquer::getSimple(unsigned kind) {
+TypeStorage *TypeUniquer::getSimple(const Dialect &dialect, unsigned kind) {
   auto &impl = ctx->getImpl();
 
   // Check for an existing instance with this kind.
@@ -727,7 +740,14 @@ TypeStorage *TypeUniquer::getSimple(unsigned kind) {
 
   // Otherwise, create a new instance and return it.
   result = impl.allocator.Allocate<DefaultTypeStorage>();
-  return new (result) DefaultTypeStorage{kind, ctx};
+  return new (result) DefaultTypeStorage{dialect, kind};
+}
+
+/// Get the dialect that registered the type with the provided typeid.
+const Dialect &TypeUniquer::lookupDialectForType(const void *const typeID) {
+  auto &impl = ctx->getImpl();
+  assert(impl.registeredTypes.count(typeID) && "typeID is not registered.");
+  return *impl.registeredTypes[typeID];
 }
 
 /// Look up a uniqued type with a lookup key. This is used if the type defines
@@ -755,10 +775,6 @@ static DerivedType constructUniqueType(MLIRContext *context, Type::Kind kind,
 
 IndexType IndexType::get(MLIRContext *context) {
   return constructUniqueType<IndexType>(context, Kind::Index);
-}
-
-OtherType OtherType::get(Kind kind, MLIRContext *context) {
-  return constructUniqueType<OtherType>(context, kind);
 }
 
 static IntegerType getIntegerType(unsigned width, MLIRContext *context,

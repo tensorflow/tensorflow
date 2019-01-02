@@ -66,24 +66,6 @@ FloatType Builder::getF64Type() { return Type::getF64(context); }
 
 IndexType Builder::getIndexType() { return Type::getIndex(context); }
 
-OtherType Builder::getTFControlType() { return Type::getTFControl(context); }
-
-OtherType Builder::getTFResourceType() { return Type::getTFResource(context); }
-
-OtherType Builder::getTFVariantType() { return Type::getTFVariant(context); }
-
-OtherType Builder::getTFComplex64Type() {
-  return Type::getTFComplex64(context);
-}
-
-OtherType Builder::getTFComplex128Type() {
-  return Type::getTFComplex128(context);
-}
-
-OtherType Builder::getTFF32REFType() { return Type::getTFF32REF(context); }
-
-OtherType Builder::getTFStringType() { return Type::getTFString(context); }
-
 IntegerType Builder::getI1Type() { return Type::getInteger(1, context); }
 
 IntegerType Builder::getIntegerType(unsigned width) {

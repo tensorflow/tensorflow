@@ -34,6 +34,8 @@ using namespace mlir;
 BuiltinDialect::BuiltinDialect(MLIRContext *context)
     : Dialect(/*namePrefix=*/"", context) {
   addOperations<AffineApplyOp, BranchOp, CondBranchOp, ConstantOp, ReturnOp>();
+  addTypes<IndexType, FloatType, IntegerType, FunctionType, VectorType,
+           RankedTensorType, UnrankedTensorType, MemRefType>();
 }
 
 void mlir::printDimAndSymbolList(OperationInst::const_operand_iterator begin,
@@ -357,12 +359,6 @@ bool ConstantOp::verify() const {
   if (type.isa<VectorOrTensorType>()) {
     if (!value.isa<ElementsAttr>())
       return emitOpError("requires 'value' to be a vector/tensor constant");
-    return false;
-  }
-
-  if (type.isTFString()) {
-    if (!value.isa<StringAttr>())
-      return emitOpError("requires 'value' to be a string constant");
     return false;
   }
 

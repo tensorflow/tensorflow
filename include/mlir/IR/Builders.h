@@ -76,14 +76,6 @@ public:
 
   IndexType getIndexType();
 
-  OtherType getTFControlType();
-  OtherType getTFStringType();
-  OtherType getTFResourceType();
-  OtherType getTFVariantType();
-  OtherType getTFComplex64Type();
-  OtherType getTFComplex128Type();
-  OtherType getTFF32REFType();
-
   IntegerType getI1Type();
   IntegerType getIntegerType(unsigned width);
   FunctionType getFunctionType(ArrayRef<Type> inputs, ArrayRef<Type> results);
@@ -93,6 +85,11 @@ public:
   VectorType getVectorType(ArrayRef<int> shape, Type elementType);
   RankedTensorType getTensorType(ArrayRef<int> shape, Type elementType);
   UnrankedTensorType getTensorType(Type elementType);
+
+  /// Get or construct an instance of the type 'ty' with provided arguments.
+  template <typename Ty, typename... Args> Ty getType(Args... args) {
+    return Ty::get(context, args...);
+  }
 
   // Attributes.
   BoolAttr getBoolAttr(bool value);

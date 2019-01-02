@@ -125,6 +125,8 @@ Token Lexer::lexToken() {
   case '@':
     return lexAtIdentifier(tokStart);
 
+  case '!':
+    LLVM_FALLTHROUGH;
   case '^':
     LLVM_FALLTHROUGH;
   case '#':
@@ -236,6 +238,10 @@ Token Lexer::lexPrefixedIdentifier(const char *tokStart) {
   case '^':
     kind = Token::caret_identifier;
     errorKind = "invalid block name";
+    break;
+  case '!':
+    kind = Token::exclamation_identifier;
+    errorKind = "invalid dialect type namespace";
     break;
   default:
     llvm_unreachable("invalid caller");

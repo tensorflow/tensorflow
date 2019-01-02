@@ -25,9 +25,13 @@
 #include "mlir/IR/OperationSupport.h"
 
 namespace mlir {
+class Type;
 
 using DialectConstantFoldHook = std::function<bool(
     const OperationInst *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
+using DialectTypeParserHook =
+    std::function<Type(StringRef, Location, MLIRContext *)>;
+using DialectTypePrinterHook = std::function<void(Type, raw_ostream &)>;
 
 /// Dialects are groups of MLIR operations and behavior associated with the
 /// entire group.  For example, hooks into other systems for constant folding,
@@ -53,9 +57,13 @@ public:
       [](const OperationInst *op, ArrayRef<Attribute> operands,
          SmallVectorImpl<Attribute> &results) { return true; };
 
-  // TODO: Hook to return the list of named types that are known.
+  /// Registered parsing/printing hooks for types registered to the dialect.
+  DialectTypeParserHook typeParseHook = nullptr;
+  /// Note: The data printed for the provided type must not include any '"'
+  /// characters.
+  DialectTypePrinterHook typePrintHook = nullptr;
 
-  // TODO: Hook to return list of dialect defined types, like tf_control.
+  // TODO: Hook to return the list of named types that are known.
 
   virtual ~Dialect();
 
@@ -94,6 +102,31 @@ protected:
   };
 
   void addOperation(AbstractOperation opInfo);
+
+  /// This method is used by derived classes to add their types to the set.
+  template <typename... Args> void addTypes() {
+    VariadicTypeAdder<Args...>::addToSet(*this);
+  }
+
+  // It would be nice to define this as variadic functions instead of a nested
+  // variadic type, but we can't do that: function template partial
+  // specialization is not allowed, and we can't define an overload set
+  // because we don't have any arguments of the types we are pushing around.
+  template <typename First, typename... Rest> class VariadicTypeAdder {
+  public:
+    static void addToSet(Dialect &dialect) {
+      VariadicTypeAdder<First>::addToSet(dialect);
+      VariadicTypeAdder<Rest...>::addToSet(dialect);
+    }
+  };
+
+  template <typename First> class VariadicTypeAdder<First> {
+  public:
+    static void addToSet(Dialect &dialect) { dialect.addType(&First::typeID); }
+  };
+
+  // Register a type with its given unqiue type identifer.
+  void addType(const void *const typeID);
 
 private:
   Dialect(const Dialect &) = delete;

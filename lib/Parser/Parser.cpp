@@ -181,6 +181,7 @@ public:
   VectorType parseVectorType();
   ParseResult parseXInDimensionList();
   ParseResult parseDimensionListRanked(SmallVectorImpl<int> &dimensions);
+  Type parseDialectType();
   Type parseTensorType();
   Type parseMemRefType();
   Type parseFunctionType();
@@ -286,7 +287,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///   type ::= integer-type
 ///          | index-type
 ///          | float-type
-///          | other-type
+///          | dialect-type
 ///          | vector-type
 ///          | tensor-type
 ///          | memref-type
@@ -294,7 +295,6 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///
 ///   index-type ::= `index`
 ///   float-type ::= `f16` | `bf16` | `f32` | `f64`
-///   other-type ::= `tf_control`
 ///
 Type Parser::parseType() {
   switch (getToken().getKind()) {
@@ -337,25 +337,9 @@ Type Parser::parseType() {
     consumeToken(Token::kw_index);
     return builder.getIndexType();
 
-  // other-type
-  case Token::kw_tf_control:
-    consumeToken(Token::kw_tf_control);
-    return builder.getTFControlType();
-  case Token::kw_tf_resource:
-    consumeToken(Token::kw_tf_resource);
-    return builder.getTFResourceType();
-  case Token::kw_tf_variant:
-    consumeToken(Token::kw_tf_variant);
-    return builder.getTFVariantType();
-  case Token::kw_tf_complex64:
-    consumeToken(Token::kw_tf_complex64);
-    return builder.getTFComplex64Type();
-  case Token::kw_tf_complex128:
-    consumeToken(Token::kw_tf_complex128);
-    return builder.getTFComplex128Type();
-  case Token::kw_tf_string:
-    consumeToken(Token::kw_tf_string);
-    return builder.getTFStringType();
+  // dialect-specific type
+  case Token::exclamation_identifier:
+    return parseDialectType();
   }
 }
 
@@ -448,6 +432,51 @@ ParseResult Parser::parseDimensionListRanked(SmallVectorImpl<int> &dimensions) {
   }
 
   return ParseSuccess;
+}
+
+/// Parse a dialect-specific type.
+///
+///   dialect-type ::= `!` dialect-namespace `<` '"' type-data '"' `>`
+///
+Type Parser::parseDialectType() {
+  assert(getToken().is(Token::exclamation_identifier));
+
+  // Parse the dialect namespace.
+  StringRef dialectName = getTokenSpelling().drop_front();
+  consumeToken(Token::exclamation_identifier);
+
+  auto *dialect = state.context->getRegisteredDialect(dialectName);
+  if (!dialect)
+    return (emitError("no registered dialect with namespace: " + dialectName),
+            nullptr);
+
+  // Make sure that the dialect provides a parsing hook.
+  if (!dialect->typeParseHook)
+    return (emitError("dialect '" + dialect->getNamespace() +
+                      "' provides no type parsing hook"),
+            nullptr);
+
+  // Consume the '<'.
+  if (parseToken(Token::less, "expected '<' in dialect type"))
+    return nullptr;
+
+  // Parse the type specific data.
+  if (getToken().isNot(Token::string))
+    return (emitError("expected string literal type data in dialect type"),
+            nullptr);
+
+  auto typeData = getToken().getStringValue();
+  auto loc = getEncodedSourceLocation(getToken().getLoc());
+  consumeToken(Token::string);
+
+  Type result = dialect->typeParseHook(typeData, loc, state.context);
+  if (!result)
+    return nullptr;
+
+  // Consume the '>'.
+  if (parseToken(Token::greater, "expected '>' in dialect type"))
+    return nullptr;
+  return result;
 }
 
 /// Parse a tensor type.

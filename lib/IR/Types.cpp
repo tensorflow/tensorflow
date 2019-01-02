@@ -18,6 +18,7 @@
 #include "mlir/IR/Types.h"
 #include "TypeDetail.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/Support/raw_ostream.h"
@@ -25,11 +26,12 @@
 using namespace mlir;
 using namespace mlir::detail;
 
-Type::Kind Type::getKind() const {
-  return static_cast<Type::Kind>(type->getKind());
-}
+unsigned Type::getKind() const { return type->getKind(); }
 
-MLIRContext *Type::getContext() const { return type->getContext(); }
+/// Get the dialect this type is registered to.
+const Dialect &Type::getDialect() const { return type->getDialect(); }
+
+MLIRContext *Type::getContext() const { return getDialect().getContext(); }
 
 unsigned Type::getSubclassData() const { return type->getSubclassData(); }
 void Type::setSubclassData(unsigned val) { type->setSubclassData(val); }
@@ -207,3 +209,13 @@ unsigned MemRefType::getNumDynamicDims() const {
   }
   return numDynamicDims;
 }
+
+// Define type identifiers.
+char IndexType::typeID = 0;
+char FloatType::typeID = 0;
+char IntegerType::typeID = 0;
+char FunctionType::typeID = 0;
+char VectorType::typeID = 0;
+char RankedTensorType::typeID = 0;
+char UnrankedTensorType::typeID = 0;
+char MemRefType::typeID = 0;

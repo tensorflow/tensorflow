@@ -1,4 +1,4 @@
-//===- TypeSupport.h -------------------------------------------*- C++ -*-===//
+//===- TypeSupport.h --------------------------------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines support types for the type system.
+// This file defines support types for registering dialect extended types.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,6 +28,7 @@
 #include <memory>
 
 namespace mlir {
+class Dialect;
 class MLIRContext;
 
 //===----------------------------------------------------------------------===//
@@ -46,47 +47,44 @@ protected:
   /// This constructor is used by derived classes as part of the TypeUniquer.
   /// When using this constructor, the initializeTypeInfo function must be
   /// invoked afterwards for the storage to be valid.
-  TypeStorage(unsigned subclassData = 0) : kind(0), context(nullptr) {
-    setSubclassData(subclassData);
-  }
+  TypeStorage(unsigned subclassData = 0)
+      : dialect(nullptr), kind(0), subclassData(subclassData) {}
 
 public:
+  /// Get the dialect that this type is registered to.
+  const Dialect &getDialect() const {
+    assert(dialect && "Malformed type storage object.");
+    return *dialect;
+  }
+
   /// Get the kind classification of this type.
   unsigned getKind() const { return kind; }
-
-  /// Get the context this type storage was uniqued in.
-  MLIRContext *getContext() const { return context; }
 
   /// Get the subclass data.
   unsigned getSubclassData() const { return subclassData; }
 
-  /// Set the subclass data for this type. The value provided must fit within
-  /// the bitsize of the subclass data.
-  void setSubclassData(unsigned val) {
-    subclassData = val;
-    // Ensure we don't have any accidental truncation.
-    assert(getSubclassData() == val && "Subclass data too large for field");
-  }
+  /// Set the subclass data.
+  void setSubclassData(unsigned val) { subclassData = val; }
 
 private:
   // Constructor used for simple type storage that have no subclass data. This
   // constructor should not be used by derived storage classes.
-  TypeStorage(unsigned kind, MLIRContext *ctx)
-      : kind(kind), context(ctx), subclassData(0) {}
+  TypeStorage(const Dialect &dialect, unsigned kind)
+      : dialect(&dialect), kind(kind), subclassData(0) {}
 
   // Initialize an existing type storage with a kind and a context. This is used
   // by the TypeUniquer when initializing a newly constructed derived type
   // storage object.
-  void initializeTypeInfo(unsigned newKind, MLIRContext *ctx) {
+  void initializeTypeInfo(const Dialect &newDialect, unsigned newKind) {
+    dialect = &newDialect;
     kind = newKind;
-    context = ctx;
   }
+
+  /// The registered information for the current type.
+  const Dialect *dialect;
 
   /// Classification of the subclass, used for type checking.
   unsigned kind;
-
-  /// The context the storage was uniqued in.
-  MLIRContext *context;
 
   /// Space for subclasses to store data.
   unsigned subclassData;
@@ -179,11 +177,14 @@ public:
     if (storage)
       return T(storage);
 
+    // Get the dialect this type was registered to.
+    auto &dialect = lookupDialectForType<T>();
+
     // Otherwise, construct and initialize the derived storage for this type
     // instance.
     TypeStorageAllocator allocator(ctx);
     storage = ImplType::construct(allocator, args...);
-    storage->initializeTypeInfo(kind, ctx);
+    storage->initializeTypeInfo(dialect, kind);
 
     // Insert the new type storage instance into the context.
     insert(hashValue, storage);
@@ -198,13 +199,22 @@ public:
       std::is_same<typename T::ImplType, detail::DefaultTypeStorage>::value,
       T>::type
   get(unsigned kind) {
-    return T(getSimple(kind));
+    auto &dialect = lookupDialectForType<T>();
+    return T(getSimple(dialect, kind));
   }
 
 private:
+  /// Get the dialect that the type 'T' was registered with.
+  template <typename T> const Dialect &lookupDialectForType() {
+    return lookupDialectForType(&T::typeID);
+  }
+
+  /// Get the dialect that registered the type with the provided typeid.
+  const Dialect &lookupDialectForType(const void *const typeID);
+
   /// Get or create a uniqued type by its kind. This overload is used for
   /// simple types that are only uniqued by kind.
-  detail::TypeStorage *getSimple(unsigned kind);
+  detail::TypeStorage *getSimple(const Dialect &dialect, unsigned kind);
 
   /// Utilities for generating a derived storage key.
   /// Overload for if the key can be directly constructed from the provided

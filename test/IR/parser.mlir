@@ -537,10 +537,10 @@ func @opaquetensorattr() -> () {
 // CHECK: "opaqueFloatTensor"() {bar: opaque<tensor<2x1x4xf32>, "0x68656C6C6F">} : () -> ()
   "opaqueFloatTensor"(){bar: opaque<tensor<2x1x4xf32>, "0x68656C6C6F">} : () -> ()
   
-// CHECK: "opaqueStringTensor"() {bar: opaque<tensor<2x1x4xtf_string>, "0x68656C6C6F">} : () -> ()
-  "opaqueStringTensor"(){bar: opaque<tensor<2x1x4xtf_string>, "0x68656C6C6F">} : () -> ()
-// CHECK: "opaqueResourceTensor"() {bar: opaque<tensor<2x1x4xtf_resource>, "0x68656C6C6F">} : () -> ()
-  "opaqueResourceTensor"(){bar: opaque<tensor<2x1x4xtf_resource>, "0x68656C6C6F">} : () -> ()
+// CHECK: "opaqueStringTensor"() {bar: opaque<tensor<2x1x4x!tf<"string">>, "0x68656C6C6F">} : () -> ()
+  "opaqueStringTensor"(){bar: opaque<tensor<2x1x4x!tf<"string">>, "0x68656C6C6F">} : () -> ()
+// CHECK: "opaqueResourceTensor"() {bar: opaque<tensor<2x1x4x!tf<"resource">>, "0x68656C6C6F">} : () -> ()
+  "opaqueResourceTensor"(){bar: opaque<tensor<2x1x4x!tf<"resource">>, "0x68656C6C6F">} : () -> ()
   return
 }
 

@@ -18,6 +18,7 @@
 #ifndef MLIR_IR_TYPES_H
 #define MLIR_IR_TYPES_H
 
+#include "mlir/IR/TypeSupport.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"
@@ -33,21 +34,9 @@ class IndexType;
 class IntegerType;
 class Location;
 class MLIRContext;
-class OtherType;
 
 namespace detail {
-
 struct TypeStorage;
-
-struct IntegerTypeStorage;
-struct FunctionTypeStorage;
-struct VectorOrTensorTypeStorage;
-struct VectorTypeStorage;
-struct TensorTypeStorage;
-struct RankedTensorTypeStorage;
-struct UnrankedTensorTypeStorage;
-struct MemRefTypeStorage;
-
 } // namespace detail
 
 /// Instances of the Type class are immutable and uniqued.  They wrap a pointer
@@ -65,6 +54,8 @@ struct MemRefTypeStorage;
 /// Derived type classes are expected to implement several required
 /// implementaiton hooks:
 ///  * Required:
+///    - static char typeID;
+///      * A unique identifier for this type used during registration.
 ///
 ///    - static bool kindof(unsigned kind);
 ///      * Returns if the provided type kind corresponds to an instance of the
@@ -100,7 +91,11 @@ struct MemRefTypeStorage;
 class Type {
 public:
   /// Integer identifier for all the concrete type kinds.
-  enum class Kind {
+  /// Note: This is not an enum class as each dialect will likely define a
+  /// separate enumeration for the specific types that they define. Not being an
+  /// enum class also simplifies the handling of type kinds by not requiring
+  /// casts for each use.
+  enum Kind {
     // Target pointer sized integer, used (e.g.) in affine mappings.
     Index,
 
@@ -132,6 +127,13 @@ public:
     RankedTensor,
     UnrankedTensor,
     MemRef,
+
+    LAST_BUILTIN_TYPE = 0xff,
+
+  // Reserve type kinds for dialect specific type system extensions.
+#define DEFINE_TYPE_KIND_RANGE(Dialect)                                        \
+  FIRST_##Dialect##_TYPE, LAST_##Dialect##_TYPE = FIRST_##Dialect##_TYPE + 0xff,
+#include "DialectTypeRegistry.def"
   };
 
   using ImplType = detail::TypeStorage;
@@ -158,25 +160,21 @@ public:
   template <typename U> U cast() const;
 
   /// Return the classification for this type.
-  Kind getKind() const;
+  unsigned getKind() const;
 
   /// Return the LLVMContext in which this type was uniqued.
   MLIRContext *getContext() const;
 
-  // Convenience predicates.  This is only for 'other' and floating point types,
+  /// Get the dialect this type is registered to.
+  const Dialect &getDialect() const;
+
+  // Convenience predicates.  This is only for floating point types,
   // derived types should use isa/dyn_cast.
-  bool isIndex() const { return getKind() == Kind::Index; }
-  bool isTFControl() const { return getKind() == Kind::TFControl; }
-  bool isTFResource() const { return getKind() == Kind::TFResource; }
-  bool isTFVariant() const { return getKind() == Kind::TFVariant; }
-  bool isTFComplex64() const { return getKind() == Kind::TFComplex64; }
-  bool isTFComplex128() const { return getKind() == Kind::TFComplex128; }
-  bool isTFF32REF() const { return getKind() == Kind::TFF32REF; }
-  bool isTFString() const { return getKind() == Kind::TFString; }
-  bool isBF16() const { return getKind() == Kind::BF16; }
-  bool isF16() const { return getKind() == Kind::F16; }
-  bool isF32() const { return getKind() == Kind::F32; }
-  bool isF64() const { return getKind() == Kind::F64; }
+  bool isIndex() const;
+  bool isBF16() const;
+  bool isF16() const;
+  bool isF32() const;
+  bool isF64() const;
 
   /// Return true if this is an integer type with the specified width.
   bool isInteger(unsigned width) const;
@@ -199,13 +197,6 @@ public:
   static FloatType getF16(MLIRContext *ctx);
   static FloatType getF32(MLIRContext *ctx);
   static FloatType getF64(MLIRContext *ctx);
-  static OtherType getTFControl(MLIRContext *ctx);
-  static OtherType getTFString(MLIRContext *ctx);
-  static OtherType getTFResource(MLIRContext *ctx);
-  static OtherType getTFVariant(MLIRContext *ctx);
-  static OtherType getTFComplex64(MLIRContext *ctx);
-  static OtherType getTFComplex128(MLIRContext *ctx);
-  static OtherType getTFF32REF(MLIRContext *ctx);
 
   /// Print the current type.
   void print(raw_ostream &os) const;
@@ -233,6 +224,27 @@ inline raw_ostream &operator<<(raw_ostream &os, Type type) {
   return os;
 }
 
+/// Standard Type Utilities.
+
+namespace detail {
+
+struct IntegerTypeStorage;
+struct FunctionTypeStorage;
+struct VectorOrTensorTypeStorage;
+struct VectorTypeStorage;
+struct TensorTypeStorage;
+struct RankedTensorTypeStorage;
+struct UnrankedTensorTypeStorage;
+struct MemRefTypeStorage;
+
+} // namespace detail
+
+inline bool Type::isIndex() const { return getKind() == Kind::Index; }
+inline bool Type::isBF16() const { return getKind() == Kind::BF16; }
+inline bool Type::isF16() const { return getKind() == Kind::F16; }
+inline bool Type::isF32() const { return getKind() == Kind::F32; }
+inline bool Type::isF64() const { return getKind() == Kind::F64; }
+
 /// Integer types can have arbitrary bitwidth up to a large fixed limit.
 class IntegerType : public Type {
 public:
@@ -254,7 +266,10 @@ public:
   unsigned getWidth() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Integer; }
+  static bool kindof(unsigned kind) { return kind == Kind::Integer; }
+
+  /// Unique identifier for this type class.
+  static char typeID;
 
   /// Integer representation maximal bitwidth.
   static constexpr unsigned kMaxWidth = 4096;
@@ -290,7 +305,7 @@ public:
   static FloatType get(Kind kind, MLIRContext *context);
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) {
+  static bool kindof(unsigned kind) {
     return kind >= Kind::FIRST_FLOATING_POINT_TYPE &&
            kind <= Kind::LAST_FLOATING_POINT_TYPE;
   }
@@ -300,6 +315,9 @@ public:
 
   /// Return the floating semantics of this float type.
   const llvm::fltSemantics &getFloatSemantics() const;
+
+  /// Unique identifier for this type class.
+  static char typeID;
 };
 
 inline FloatType Type::getBF16(MLIRContext *ctx) {
@@ -325,45 +343,14 @@ public:
   static IndexType get(MLIRContext *context);
 
   /// Support method to enable LLVM-style type casting.
-  static bool kindof(Kind kind) { return kind == Kind::Index; }
-};
+  static bool kindof(unsigned kind) { return kind == Kind::Index; }
 
-/// This is a type for the random collection of special base types.
-class OtherType : public Type {
-public:
-  using Type::Type;
-
-  static OtherType get(Kind kind, MLIRContext *context);
-
-  /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) {
-    return kind >= Kind::FIRST_OTHER_TYPE && kind <= Kind::LAST_OTHER_TYPE;
-  }
+  /// Unique identifier for this type class.
+  static char typeID;
 };
 
 inline IndexType Type::getIndex(MLIRContext *ctx) {
   return IndexType::get(ctx);
-}
-inline OtherType Type::getTFControl(MLIRContext *ctx) {
-  return OtherType::get(Kind::TFControl, ctx);
-}
-inline OtherType Type::getTFResource(MLIRContext *ctx) {
-  return OtherType::get(Kind::TFResource, ctx);
-}
-inline OtherType Type::getTFString(MLIRContext *ctx) {
-  return OtherType::get(Kind::TFString, ctx);
-}
-inline OtherType Type::getTFVariant(MLIRContext *ctx) {
-  return OtherType::get(Kind::TFVariant, ctx);
-}
-inline OtherType Type::getTFComplex64(MLIRContext *ctx) {
-  return OtherType::get(Kind::TFComplex64, ctx);
-}
-inline OtherType Type::getTFComplex128(MLIRContext *ctx) {
-  return OtherType::get(Kind::TFComplex128, ctx);
-}
-inline OtherType Type::getTFF32REF(MLIRContext *ctx) {
-  return OtherType::get(Kind::TFF32REF, ctx);
 }
 
 /// Function types map from a list of inputs to a list of results.
@@ -390,7 +377,10 @@ public:
   ArrayRef<Type> getResults() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Function; }
+  static bool kindof(unsigned kind) { return kind == Kind::Function; }
+
+  /// Unique identifier for this type class.
+  static char typeID;
 };
 
 /// This is a common base class between Vector, UnrankedTensor, and RankedTensor
@@ -438,7 +428,7 @@ public:
   long getSizeInBits() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) {
+  static bool kindof(unsigned kind) {
     return kind == Kind::Vector || kind == Kind::RankedTensor ||
            kind == Kind::UnrankedTensor;
   }
@@ -469,7 +459,10 @@ public:
   ArrayRef<int> getShape() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) { return kind == Kind::Vector; }
+  static bool kindof(unsigned kind) { return kind == Kind::Vector; }
+
+  /// Unique identifier for this type class.
+  static char typeID;
 };
 
 /// Tensor types represent multi-dimensional arrays, and have two variants:
@@ -479,20 +472,19 @@ public:
   using ImplType = detail::TensorTypeStorage;
   using VectorOrTensorType::VectorOrTensorType;
 
-  /// Return true if the specified element type is a TensorFlow type that is ok
-  /// in a tensor.
-  static bool isValidTFElementType(Type type) {
-    return type.isa<FloatType>() || type.isa<IntegerType>() ||
-           type.isa<OtherType>();
-  }
-
   /// Return true if the specified element type is ok in a tensor.
   static bool isValidElementType(Type type) {
-    return isValidTFElementType(type) || type.isa<VectorType>();
+    // TODO(riverriddle): TensorFlow types are currently considered valid for
+    // legacy reasons.
+    return type.isIntOrFloat() || type.isa<VectorType>() ||
+           (type.getKind() >=
+                static_cast<unsigned>(Kind::FIRST_TENSORFLOW_TYPE) &&
+            type.getKind() <=
+                static_cast<unsigned>(Kind::LAST_TENSORFLOW_TYPE));
   }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool kindof(Kind kind) {
+  static bool kindof(unsigned kind) {
     return kind == Kind::RankedTensor || kind == Kind::UnrankedTensor;
   }
 };
@@ -518,7 +510,10 @@ public:
 
   ArrayRef<int> getShape() const;
 
-  static bool kindof(Kind kind) { return kind == Kind::RankedTensor; }
+  static bool kindof(unsigned kind) { return kind == Kind::RankedTensor; }
+
+  /// Unique identifier for this type class.
+  static char typeID;
 };
 
 /// Unranked tensor types represent multi-dimensional arrays that have an
@@ -540,7 +535,10 @@ public:
 
   ArrayRef<int> getShape() const { return ArrayRef<int>(); }
 
-  static bool kindof(Kind kind) { return kind == Kind::UnrankedTensor; }
+  static bool kindof(unsigned kind) { return kind == Kind::UnrankedTensor; }
+
+  /// Unique identifier for this type class.
+  static char typeID;
 };
 
 /// MemRef types represent a region of memory that have a shape with a fixed
@@ -591,7 +589,10 @@ public:
   /// Returns the number of dimensions with dynamic size.
   unsigned getNumDynamicDims() const;
 
-  static bool kindof(Kind kind) { return kind == Kind::MemRef; }
+  static bool kindof(unsigned kind) { return kind == Kind::MemRef; }
+
+  /// Unique identifier for this type class.
+  static char typeID;
 
 private:
   static MemRefType getSafe(ArrayRef<int> shape, Type elementType,
@@ -651,4 +652,4 @@ public:
 
 } // namespace llvm
 
-#endif  // MLIR_IR_TYPES_H
+#endif // MLIR_IR_TYPES_H

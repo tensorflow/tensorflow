@@ -50,11 +50,12 @@ TOK_MARKER(eof)
 TOK_MARKER(error)
 
 // Identifiers.
-TOK_IDENTIFIER(bare_identifier)      // foo
-TOK_IDENTIFIER(at_identifier)        // @foo
-TOK_IDENTIFIER(hash_identifier)      // #foo
-TOK_IDENTIFIER(percent_identifier)   // %foo
-TOK_IDENTIFIER(caret_identifier)     // ^foo
+TOK_IDENTIFIER(bare_identifier)        // foo
+TOK_IDENTIFIER(at_identifier)          // @foo
+TOK_IDENTIFIER(hash_identifier)        // #foo
+TOK_IDENTIFIER(percent_identifier)     // %foo
+TOK_IDENTIFIER(caret_identifier)       // ^foo
+TOK_IDENTIFIER(exclamation_identifier) // !foo
 
 // Literals
 TOK_LITERAL(floatliteral)               // 2.0
@@ -109,13 +110,6 @@ TOK_KEYWORD(opaque)
 TOK_KEYWORD(size)
 TOK_KEYWORD(step)
 TOK_KEYWORD(tensor)
-TOK_KEYWORD(tf_control)
-TOK_KEYWORD(tf_resource)
-TOK_KEYWORD(tf_variant)
-TOK_KEYWORD(tf_complex64)
-TOK_KEYWORD(tf_complex128)
-TOK_KEYWORD(tf_string)
-TOK_KEYWORD(tf_f32ref)
 TOK_KEYWORD(to)
 TOK_KEYWORD(true)
 TOK_KEYWORD(sparse)
