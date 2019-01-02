@@ -51,6 +51,29 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
+_TPU_INITIALIZE_SYSTEM_COLLECTION = "TPU_STRATEGY_INITIALIZE"
+
+
+def initialize_tpu_system(cluster_resolver=None):
+  """Initialize the TPU devices in a separate session and graph.
+
+  Args:
+    cluster_resolver: A tf.contrib.cluster_resolver.TPUClusterResolver,
+        which provides information about the TPU cluster.
+  """
+  if cluster_resolver is None:
+    cluster_resolver = resolver_lib.TPUClusterResolver("")
+  master = cluster_resolver.master()
+
+  logging.info("Initializing the TPU system.")
+  session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+
+  with ops.Graph().as_default():
+    with session_lib.Session(config=session_config, target=master) as sess:
+      sess.run([tpu.initialize_system()])
+  logging.info("Finished initializing TPU system.")
+
+
 def get_tpu_system_metadata(tpu_cluster_resolver):
   """Retrieves TPU system metadata given a TPUClusterResolver."""
   master = tpu_cluster_resolver.master()
@@ -164,11 +187,6 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 class TPUExtended(distribute_lib.DistributionStrategyExtended):
   """Implementation of TPUStrategy."""
 
-  # Track what TPU devices have been initialized. This is *intentionally*
-  # shared across all instances of TPUExtended as we want to keep track of which
-  # devices are initialized globally.
-  _initialized_devices = []
-
   def __init__(self,
                container_strategy,
                tpu_cluster_resolver=None,
@@ -212,32 +230,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     # at a time is comparable to multiple steps.
     self.steps_per_run = steps_per_run
     self._require_static_shapes = True
-
-    # Initialize the TPU devices.
-    self._initialize_tpu()
-
-  def _initialize_tpu(self):
-    """Initialize the TPU devices in a separate session and graph.
-
-    We keep track of all the TPU devices that we're initialized as we should
-    only be running TPU initialize once for the entire process.
-    """
-    master = self._tpu_cluster_resolver.master()
-    # Verify TPU has not already been initialized in this process.
-    if master in TPUExtended._initialized_devices:
-      logging.info("TPU master %s has already been initialized." % master)
-      return
-
-    logging.info("Initializing the TPU system.")
-    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
-    self._configure(session_config)
-    with ops.Graph().as_default():
-      with session_lib.Session(config=session_config, target=master) as sess:
-        sess.run([tpu.initialize_system()])
-    logging.info("Finized initializing TPU system.")
-
-    # Update Strategy state to make sure we can track device initialization.
-    TPUExtended._initialized_devices.append(master)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_tpu_variable(colocate_with_variable, self)
@@ -468,7 +460,15 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
       raise NotImplementedError("Eager mode not supported in TPUStrategy.")
     else:
-      return []
+      # TODO(jhseu): We need this hack because DistributionStrategies must be
+      # pickleable for copy.deepcopy(). Remove when initialize_system goes away.
+      graph = ops.get_default_graph()
+      tpu_init = graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
+      if tpu_init:
+        return tpu_init
+      graph.add_to_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION,
+                              tpu.initialize_system())
+      return graph.get_collection(_TPU_INITIALIZE_SYSTEM_COLLECTION)
 
   def _finalize(self):
     if context.executing_eagerly():
