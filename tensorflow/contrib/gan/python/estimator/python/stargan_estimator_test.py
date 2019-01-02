@@ -80,7 +80,7 @@ class StarGetGANModelTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(input_data, gan_model.input_data)
     self.assertIsNotNone(gan_model.generated_data)
     self.assertIsNotNone(gan_model.generated_data_domain_target)
-    self.assertEqual(1, len(gan_model.generator_variables))
+    self.assertLen(gan_model.generator_variables, 1)
     self.assertIsNotNone(gan_model.generator_scope)
     self.assertIsNotNone(gan_model.generator_fn)
     if mode == model_fn_lib.ModeKeys.PREDICT:
@@ -109,7 +109,7 @@ class StarGetGANModelTest(test.TestCase, parameterized.TestCase):
           gan_model.discriminator_input_data_domain_predication)
       self.assertIsNotNone(
           gan_model.discriminator_generated_data_domain_predication)
-      self.assertEqual(2, len(gan_model.discriminator_variables))  # 1 FC layer
+      self.assertLen(gan_model.discriminator_variables, 2)  # 1 FC layer
       self.assertIsNotNone(gan_model.discriminator_scope)
       self.assertIsNotNone(gan_model.discriminator_fn)
 
@@ -163,6 +163,7 @@ class GetEstimatorSpecTest(test.TestCase, parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
+    super(GetEstimatorSpecTest, cls).setUpClass()
     cls._generator_optimizer = training.GradientDescentOptimizer(1.0)
     cls._discriminator_optimizer = training.GradientDescentOptimizer(1.0)
 
