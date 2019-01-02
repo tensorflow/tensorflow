@@ -45,6 +45,6 @@ platform(
     remote_execution_properties = """
         properties: {
             name: "container-image"
-            value:"docker://gcr.io/asci-toolchain/nosla-cuda10.0-cudnn7-ubuntu14.04@%s"
+            value:"docker://gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu14.04@%s"
         }""" % container_digests["cuda10.0-cudnn7-ubuntu14.04"],
 )
