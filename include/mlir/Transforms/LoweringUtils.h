@@ -32,6 +32,14 @@ class AffineApplyOp;
 class FuncBuilder;
 class Value;
 
+/// Expand the affine expression `expr` applied to the given dimension and
+/// symbol values into a sequence of primitive arithmetic instructions that have
+/// the same effect.  Report errors at location `loc`.  Return the resulting
+/// value that the expression evaluates to, or `nullptr` in case of error.
+mlir::Value *expandAffineExpr(FuncBuilder *builder, Location loc,
+                              AffineExpr expr, ArrayRef<Value *> dimValues,
+                              ArrayRef<Value *> symbolValues);
+
 /// Expand the `affineMap` applied to `operands` into a sequence of primitive
 /// arithmetic instructions that have the same effect.  The list of operands
 /// contains the values of dimensions, followed by those of symbols.  Use

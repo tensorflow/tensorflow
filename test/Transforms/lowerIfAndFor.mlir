@@ -1,29 +1,5 @@
 // RUN: mlir-opt -lower-if-and-for %s | FileCheck %s
 
-// CHECK-DAG: [[map0:#map[0-9]+]] = () -> (0)
-// CHECK-DAG: [[map1:#map[0-9]+]] = () -> (1)
-// CHECK-DAG: [[map7:#map[0-9]+]] = () -> (7)
-// CHECK-DAG: [[map18:#map[0-9]+]] = () -> (18)
-// CHECK-DAG: [[map37:#map[0-9]+]] = () -> (37)
-// CHECK-DAG: [[map42:#map[0-9]+]] = () -> (42)
-// CHECK-DAG: [[map56:#map[0-9]+]] = () -> (56)
-// CHECK-DAG: [[map1Sym:#map[0-9]+]] = ()[s0] -> (s0)
-// CHECK-DAG: [[map1Id:#map[0-9]+]] = (d0) -> (d0)
-// CHECK-DAG: [[mapAdd1:#map[0-9]+]] = (d0) -> (d0 + 1)
-// CHECK-DAG: [[mapAdd2:#map[0-9]+]] = (d0) -> (d0 + 2)
-// CHECK-DAG: [[mapAdd3:#map[0-9]+]] = (d0) -> (d0 + 3)
-// CHECK-DAG: [[multiMap1:#map[0-9]+]] = (d0)[s0] -> (d0, d0 * -1 + s0)
-// CHECK-DAG: [[multiMap2:#map[0-9]+]] = (d0)[s0] -> (s0, d0 + 10)
-// CHECK-DAG: [[multi7Map:#map[0-9]+]] = (d0) -> (d0, d0, d0, d0, d0, d0, d0)
-// Maps produced from individual affine expressions that appear in "if" conditions.
-// CHECK-DAG: [[setMap20:#map[0-9]+]] = (d0) -> (d0 * -1 + 20)
-// CHECK-DAG: [[setMap10:#map[0-9]+]] = (d0) -> (d0 - 10)
-// CHECK-DAG: [[setMapDiff:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (d0 * -1 + s0 + 1)
-// CHECK-DAG: [[setMapS0:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s0 - 1)
-// CHECK-DAG: [[setMapS1:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s1 - 1)
-// CHECK-DAG: [[setMapS2:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s2 - 1)
-// CHECK-DAG: [[setMapS3:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s3 - 42)
-
 // CHECK-LABEL: func @empty() {
 func @empty() {
   return     // CHECK:  return
@@ -33,16 +9,17 @@ func @body(index) -> ()
 
 // Simple loops are properly converted.
 // CHECK-LABEL: func @simple_loop() {
-// CHECK-NEXT:   %0 = affine_apply [[map1]]()
-// CHECK-NEXT:   %1 = affine_apply [[map42]]()
-// CHECK-NEXT:   br ^bb1(%0 : index)
-// CHECK-NEXT: ^bb1(%2: index):	// 2 preds: ^bb0, ^bb2
-// CHECK-NEXT:   %3 = cmpi "slt", %2, %1 : index
-// CHECK-NEXT:   cond_br %3, ^bb2, ^bb3
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %c42 = constant 42 : index
+// CHECK-NEXT:   br ^bb1(%c1 : index)
+// CHECK-NEXT: ^bb1(%0: index):	// 2 preds: ^bb0, ^bb2
+// CHECK-NEXT:   %1 = cmpi "slt", %0, %c42 : index
+// CHECK-NEXT:   cond_br %1, ^bb2, ^bb3
 // CHECK-NEXT: ^bb2:	// pred: ^bb1
-// CHECK-NEXT:   call @body(%2) : (index) -> ()
-// CHECK-NEXT:   %4 = affine_apply [[mapAdd1]](%2)
-// CHECK-NEXT:   br ^bb1(%4 : index)
+// CHECK-NEXT:   call @body(%0) : (index) -> ()
+// CHECK-NEXT:   %c1_0 = constant 1 : index
+// CHECK-NEXT:   %2 = addi %0, %c1_0 : index
+// CHECK-NEXT:   br ^bb1(%2 : index)
 // CHECK-NEXT: ^bb3:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
@@ -53,88 +30,6 @@ func @simple_loop() {
   return
 }
 
-// Direct calls get renamed if asked (IR data structures properly updated) and
-// keep the same name otherwise.
-func @simple_caller() {
-^bb0:
-// CHECK: call @simple_loop() : () -> ()
-  call @simple_loop() : () -> ()
-  return
-}
-
-// Constant loads get renamed if asked (IR data structure properly updated) and
-// keep the same name otherwise.
-func @simple_indirect_caller() {
-^bb0:
-// CHECK: %f = constant @simple_loop : () -> ()
-  %f = constant @simple_loop : () -> ()
-  call_indirect %f() : () -> ()
-  return
-}
-
-func @nested_attributes() {
-^bb0:
-  %0 = constant 0 : index
-// CHECK: call @body(%c0) {attr1: [@simple_loop : () -> (), @simple_loop : () -> ()]} : (index) -> ()
-  call @body(%0) {attr1: [@simple_loop : () -> (), @simple_loop : () -> ()]} : (index) -> ()
-// Note: the {{\[}} construct is necessary to prevent FileCheck from
-// interpreting [[ as the start of its variable in the pattern below.
-// CHECK: call @body(%c0) {attr2: {{\[}}{{\[}}{{\[}}@simple_loop : () -> ()]], [@simple_loop : () -> ()]]} : (index) -> ()
-  call @body(%0) {attr2: [[[@simple_loop : () -> ()]], [@simple_loop : () -> ()]]} : (index) -> ()
-  return
-}
-
-// CHECK-LABEL: func @ml_caller() {
-func @ml_caller() {
-// Direct calls inside ML functions are renamed if asked (given that the
-// function itself is also converted).
-// CHECK: call @simple_loop() : () -> ()
-  call @simple_loop() : () -> ()
-// Direct calls to not yet declared ML functions are also renamed.
-// CHECK: call @more_imperfectly_nested_loops() : () -> ()
-  call @more_imperfectly_nested_loops() : () -> ()
-  return
-}
-
-/////////////////////////////////////////////////////////////////////
-
-func @body_args(index) -> (index)
-func @other(index, i32) -> (i32)
-
-// Arguments and return values of the functions are converted.
-// CHECK-LABEL: func @func_args(%arg0: i32, %arg1: i32) -> (i32, i32) {
-// CHECK-NEXT:   %c0_i32 = constant 0 : i32
-// CHECK-NEXT:   %0 = affine_apply [[map0]]()
-// CHECK-NEXT:   %1 = affine_apply [[map42]]()
-// CHECK-NEXT:   br ^bb1(%0 : index)
-// CHECK-NEXT: ^bb1(%2: index):	// 2 preds: ^bb0, ^bb2
-// CHECK-NEXT:   %3 = cmpi "slt", %2, %1 : index
-// CHECK-NEXT:   cond_br %3, ^bb2, ^bb3
-// CHECK-NEXT: ^bb2:	// pred: ^bb1
-// CHECK-NEXT:   %4 = call @body_args(%2) : (index) -> index
-// CHECK-NEXT:   %5 = call @other(%4, %arg0) : (index, i32) -> i32
-// CHECK-NEXT:   %6 = call @other(%4, %5) : (index, i32) -> i32
-// CHECK-NEXT:   %7 = call @other(%4, %arg1) : (index, i32) -> i32
-// CHECK-NEXT:   %8 = affine_apply [[mapAdd1]](%2)
-// CHECK-NEXT:   br ^bb1(%8 : index)
-// CHECK-NEXT: ^bb3:	// pred: ^bb1
-// CHECK-NEXT:   %c0 = constant 0 : index
-// CHECK-NEXT:   %9 = call @other(%c0, %c0_i32) : (index, i32) -> i32
-// CHECK-NEXT:   return %c0_i32, %9 : i32, i32
-// CHECK-NEXT: }
-func @func_args(%a : i32, %b : i32) -> (i32, i32) {
-  %r1 = constant 0 : i32
-  for %i = 0 to 42 {
-    %1 = call @body_args(%i) : (index) -> (index)
-    %2 = call @other(%1, %a) : (index, i32) -> (i32)
-    %3 = call @other(%1, %2) : (index, i32) -> (i32)
-    %4 = call @other(%1, %b) : (index, i32) -> (i32)
-  }
-  %ri = constant 0 : index
-  %r2 = call @other(%ri, %r1) : (index, i32) -> (i32)
-  return %r1, %r2 : i32, i32
-}
-
 /////////////////////////////////////////////////////////////////////
 
 func @pre(index) -> ()
@@ -142,28 +37,30 @@ func @body2(index, index) -> ()
 func @post(index) -> ()
 
 // CHECK-LABEL: func @imperfectly_nested_loops() {
-// CHECK-NEXT:   %0 = affine_apply [[map0]]()
-// CHECK-NEXT:   %1 = affine_apply [[map42]]()
-// CHECK-NEXT:   br ^bb1(%0 : index)
-// CHECK-NEXT: ^bb1(%2: index):	// 2 preds: ^bb0, ^bb5
-// CHECK-NEXT:   %3 = cmpi "slt", %2, %1 : index
-// CHECK-NEXT:   cond_br %3, ^bb2, ^bb6
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %c42 = constant 42 : index
+// CHECK-NEXT:   br ^bb1(%c0 : index)
+// CHECK-NEXT: ^bb1(%0: index):	// 2 preds: ^bb0, ^bb5
+// CHECK-NEXT:   %1 = cmpi "slt", %0, %c42 : index
+// CHECK-NEXT:   cond_br %1, ^bb2, ^bb6
 // CHECK-NEXT: ^bb2:	// pred: ^bb1
-// CHECK-NEXT:   call @pre(%2) : (index) -> ()
-// CHECK-NEXT:   %4 = affine_apply [[map7]]()
-// CHECK-NEXT:   %5 = affine_apply [[map56]]()
-// CHECK-NEXT:   br ^bb3(%4 : index)
-// CHECK-NEXT: ^bb3(%6: index):	// 2 preds: ^bb2, ^bb4
-// CHECK-NEXT:   %7 = cmpi "slt", %6, %5 : index
-// CHECK-NEXT:   cond_br %7, ^bb4, ^bb5
+// CHECK-NEXT:   call @pre(%0) : (index) -> ()
+// CHECK-NEXT:   %c7 = constant 7 : index
+// CHECK-NEXT:   %c56 = constant 56 : index
+// CHECK-NEXT:   br ^bb3(%c7 : index)
+// CHECK-NEXT: ^bb3(%2: index):	// 2 preds: ^bb2, ^bb4
+// CHECK-NEXT:   %3 = cmpi "slt", %2, %c56 : index
+// CHECK-NEXT:   cond_br %3, ^bb4, ^bb5
 // CHECK-NEXT: ^bb4:	// pred: ^bb3
-// CHECK-NEXT:   call @body2(%2, %6) : (index, index) -> ()
-// CHECK-NEXT:   %8 = affine_apply [[mapAdd2]](%6)
-// CHECK-NEXT:   br ^bb3(%8 : index)
+// CHECK-NEXT:   call @body2(%0, %2) : (index, index) -> ()
+// CHECK-NEXT:   %c2 = constant 2 : index
+// CHECK-NEXT:   %4 = addi %2, %c2 : index
+// CHECK-NEXT:   br ^bb3(%4 : index)
 // CHECK-NEXT: ^bb5:	// pred: ^bb3
-// CHECK-NEXT:   call @post(%2) : (index) -> ()
-// CHECK-NEXT:   %9 = affine_apply [[mapAdd1]](%2)
-// CHECK-NEXT:   br ^bb1(%9 : index)
+// CHECK-NEXT:   call @post(%0) : (index) -> ()
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %5 = addi %0, %c1 : index
+// CHECK-NEXT:   br ^bb1(%5 : index)
 // CHECK-NEXT: ^bb6:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
@@ -184,40 +81,43 @@ func @mid(index) -> ()
 func @body3(index, index) -> ()
 
 // CHECK-LABEL: func @more_imperfectly_nested_loops() {
-// CHECK-NEXT:   %0 = affine_apply [[map0]]()
-// CHECK-NEXT:   %1 = affine_apply [[map42]]()
-// CHECK-NEXT:   br ^bb1(%0 : index)
-// CHECK-NEXT: ^bb1(%2: index):	// 2 preds: ^bb0, ^bb8
-// CHECK-NEXT:   %3 = cmpi "slt", %2, %1 : index
-// CHECK-NEXT:   cond_br %3, ^bb2, ^bb9
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %c42 = constant 42 : index
+// CHECK-NEXT:   br ^bb1(%c0 : index)
+// CHECK-NEXT: ^bb1(%0: index):	// 2 preds: ^bb0, ^bb8
+// CHECK-NEXT:   %1 = cmpi "slt", %0, %c42 : index
+// CHECK-NEXT:   cond_br %1, ^bb2, ^bb9
 // CHECK-NEXT: ^bb2:	// pred: ^bb1
-// CHECK-NEXT:   call @pre(%2) : (index) -> ()
-// CHECK-NEXT:   %4 = affine_apply [[map7]]()
-// CHECK-NEXT:   %5 = affine_apply [[map56]]()
-// CHECK-NEXT:   br ^bb3(%4 : index)
-// CHECK-NEXT: ^bb3(%6: index):	// 2 preds: ^bb2, ^bb4
-// CHECK-NEXT:   %7 = cmpi "slt", %6, %5 : index
-// CHECK-NEXT:   cond_br %7, ^bb4, ^bb5
+// CHECK-NEXT:   call @pre(%0) : (index) -> ()
+// CHECK-NEXT:   %c7 = constant 7 : index
+// CHECK-NEXT:   %c56 = constant 56 : index
+// CHECK-NEXT:   br ^bb3(%c7 : index)
+// CHECK-NEXT: ^bb3(%2: index):	// 2 preds: ^bb2, ^bb4
+// CHECK-NEXT:   %3 = cmpi "slt", %2, %c56 : index
+// CHECK-NEXT:   cond_br %3, ^bb4, ^bb5
 // CHECK-NEXT: ^bb4:	// pred: ^bb3
-// CHECK-NEXT:   call @body2(%2, %6) : (index, index) -> ()
-// CHECK-NEXT:   %8 = affine_apply [[mapAdd2]](%6)
-// CHECK-NEXT:   br ^bb3(%8 : index)
+// CHECK-NEXT:   call @body2(%0, %2) : (index, index) -> ()
+// CHECK-NEXT:   %c2 = constant 2 : index
+// CHECK-NEXT:   %4 = addi %2, %c2 : index
+// CHECK-NEXT:   br ^bb3(%4 : index)
 // CHECK-NEXT: ^bb5:	// pred: ^bb3
-// CHECK-NEXT:   call @mid(%2) : (index) -> ()
-// CHECK-NEXT:   %9 = affine_apply [[map18]]()
-// CHECK-NEXT:   %10 = affine_apply [[map37]]()
-// CHECK-NEXT:   br ^bb6(%9 : index)
-// CHECK-NEXT: ^bb6(%11: index):	// 2 preds: ^bb5, ^bb7
-// CHECK-NEXT:   %12 = cmpi "slt", %11, %10 : index
-// CHECK-NEXT:   cond_br %12, ^bb7, ^bb8
+// CHECK-NEXT:   call @mid(%0) : (index) -> ()
+// CHECK-NEXT:   %c18 = constant 18 : index
+// CHECK-NEXT:   %c37 = constant 37 : index
+// CHECK-NEXT:   br ^bb6(%c18 : index)
+// CHECK-NEXT: ^bb6(%5: index):	// 2 preds: ^bb5, ^bb7
+// CHECK-NEXT:   %6 = cmpi "slt", %5, %c37 : index
+// CHECK-NEXT:   cond_br %6, ^bb7, ^bb8
 // CHECK-NEXT: ^bb7:	// pred: ^bb6
-// CHECK-NEXT:   call @body3(%2, %11) : (index, index) -> ()
-// CHECK-NEXT:   %13 = affine_apply [[mapAdd3]](%11)
-// CHECK-NEXT:   br ^bb6(%13 : index)
+// CHECK-NEXT:   call @body3(%0, %5) : (index, index) -> ()
+// CHECK-NEXT:   %c3 = constant 3 : index
+// CHECK-NEXT:   %7 = addi %5, %c3 : index
+// CHECK-NEXT:   br ^bb6(%7 : index)
 // CHECK-NEXT: ^bb8:	// pred: ^bb6
-// CHECK-NEXT:   call @post(%2) : (index) -> ()
-// CHECK-NEXT:   %14 = affine_apply [[mapAdd1]](%2)
-// CHECK-NEXT:   br ^bb1(%14 : index)
+// CHECK-NEXT:   call @post(%0) : (index) -> ()
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %8 = addi %0, %c1 : index
+// CHECK-NEXT:   br ^bb1(%8 : index)
 // CHECK-NEXT: ^bb9:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
@@ -237,29 +137,29 @@ func @more_imperfectly_nested_loops() {
 }
 
 // CHECK-LABEL: func @affine_apply_loops_shorthand(%arg0: index) {
-// CHECK-NEXT:    %0 = affine_apply #map3()
-// CHECK-NEXT:    %1 = affine_apply #map10()[%arg0]
-// CHECK-NEXT:    br ^bb1(%0 : index)
-// CHECK-NEXT:  ^bb1(%2: index):        // 2 preds: ^bb0, ^bb5
-// CHECK-NEXT:    %3 = cmpi "slt", %2, %1 : index
-// CHECK-NEXT:    cond_br %3, ^bb2, ^bb6
-// CHECK-NEXT:  ^bb2:   // pred: ^bb1
-// CHECK-NEXT:    %4 = affine_apply #map11(%2)
-// CHECK-NEXT:    %5 = affine_apply #map1()
-// CHECK-NEXT:    br ^bb3(%4 : index)
-// CHECK-NEXT:  ^bb3(%6: index):        // 2 preds: ^bb2, ^bb4
-// CHECK-NEXT:    %7 = cmpi "slt", %6, %5 : index
-// CHECK-NEXT:    cond_br %7, ^bb4, ^bb5
-// CHECK-NEXT:  ^bb4:   // pred: ^bb3
-// CHECK-NEXT:    call @body2(%2, %6) : (index, index) -> ()
-// CHECK-NEXT:    %8 = affine_apply #map2(%6)
-// CHECK-NEXT:    br ^bb3(%8 : index)
-// CHECK-NEXT:  ^bb5:   // pred: ^bb3
-// CHECK-NEXT:    %9 = affine_apply #map2(%2)
-// CHECK-NEXT:    br ^bb1(%9 : index)
-// CHECK-NEXT:  ^bb6:   // pred: ^bb1
-// CHECK-NEXT:    return
-// CHECK-NEXT:  }
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   br ^bb1(%c0 : index)
+// CHECK-NEXT: ^bb1(%0: index):	// 2 preds: ^bb0, ^bb5
+// CHECK-NEXT:   %1 = cmpi "slt", %0, %arg0 : index
+// CHECK-NEXT:   cond_br %1, ^bb2, ^bb6
+// CHECK-NEXT: ^bb2:	// pred: ^bb1
+// CHECK-NEXT:   %c42 = constant 42 : index
+// CHECK-NEXT:   br ^bb3(%0 : index)
+// CHECK-NEXT: ^bb3(%2: index):	// 2 preds: ^bb2, ^bb4
+// CHECK-NEXT:   %3 = cmpi "slt", %2, %c42 : index
+// CHECK-NEXT:   cond_br %3, ^bb4, ^bb5
+// CHECK-NEXT: ^bb4:	// pred: ^bb3
+// CHECK-NEXT:   call @body2(%0, %2) : (index, index) -> ()
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %4 = addi %2, %c1 : index
+// CHECK-NEXT:   br ^bb3(%4 : index)
+// CHECK-NEXT: ^bb5:	// pred: ^bb3
+// CHECK-NEXT:   %c1_0 = constant 1 : index
+// CHECK-NEXT:   %5 = addi %0, %c1_0 : index
+// CHECK-NEXT:   br ^bb1(%5 : index)
+// CHECK-NEXT: ^bb6:	// pred: ^bb1
+// CHECK-NEXT:   return
+// CHECK-NEXT: }
 func @affine_apply_loops_shorthand(%N : index) {
   for %i = 0 to %N {
     for %j = %i to 42 {
@@ -279,9 +179,12 @@ func @get_idx() -> (index)
 // CHECK-LABEL: func @if_only() {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
-// CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
-// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
-// CHECK-NEXT:   cond_br %2, [[thenBB:\^bb[0-9]+]], [[endBB:\^bb[0-9]+]]
+// CHECK-NEXT:   %c-1 = constant -1 : index
+// CHECK-NEXT:   %1 = muli %0, %c-1 : index
+// CHECK-NEXT:   %c20 = constant 20 : index
+// CHECK-NEXT:   %2 = addi %1, %c20 : index
+// CHECK-NEXT:   %3 = cmpi "sge", %2, %c0 : index
+// CHECK-NEXT:   cond_br %3, [[thenBB:\^bb[0-9]+]], [[endBB:\^bb[0-9]+]]
 // CHECK-NEXT: [[thenBB]]:
 // CHECK-NEXT:   call @body(%0) : (index) -> ()
 // CHECK-NEXT:   br [[endBB]]
@@ -299,9 +202,12 @@ func @if_only() {
 // CHECK-LABEL: func @if_else() {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
-// CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
-// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
-// CHECK-NEXT:   cond_br %2, [[thenBB:\^bb[0-9]+]], [[elseBB:\^bb[0-9]+]]
+// CHECK-NEXT:   %c-1 = constant -1 : index
+// CHECK-NEXT:   %1 = muli %0, %c-1 : index
+// CHECK-NEXT:   %c20 = constant 20 : index
+// CHECK-NEXT:   %2 = addi %1, %c20 : index
+// CHECK-NEXT:   %3 = cmpi "sge", %2, %c0 : index
+// CHECK-NEXT:   cond_br %3, [[thenBB:\^bb[0-9]+]], [[elseBB:\^bb[0-9]+]]
 // CHECK-NEXT: [[thenBB]]:
 // CHECK-NEXT:   call @body(%0) : (index) -> ()
 // CHECK-NEXT:   br [[endBB:\^bb[0-9]+]]
@@ -324,30 +230,35 @@ func @if_else() {
 // CHECK-LABEL: func @nested_ifs() {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
-// CHECK-NEXT:   %1 = affine_apply #map12(%0)
-// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
-// CHECK-NEXT:   cond_br %2, ^bb1, ^bb4
-// CHECK-NEXT: ^bb1:   // pred: ^bb0
+// CHECK-NEXT:   %c-1 = constant -1 : index
+// CHECK-NEXT:   %1 = muli %0, %c-1 : index
+// CHECK-NEXT:   %c20 = constant 20 : index
+// CHECK-NEXT:   %2 = addi %1, %c20 : index
+// CHECK-NEXT:   %3 = cmpi "sge", %2, %c0 : index
+// CHECK-NEXT:   cond_br %3, ^bb1, ^bb4
+// CHECK-NEXT: ^bb1:	// pred: ^bb0
 // CHECK-NEXT:   %c0_0 = constant 0 : index
-// CHECK-NEXT:   %3 = affine_apply #map13(%0)
-// CHECK-NEXT:   %4 = cmpi "sge", %3, %c0_0 : index
-// CHECK-NEXT:   cond_br %4, ^bb2, ^bb3
-// CHECK-NEXT: ^bb2:   // pred: ^bb1
+// CHECK-NEXT:   %c-10 = constant -10 : index
+// CHECK-NEXT:   %4 = addi %0, %c-10 : index
+// CHECK-NEXT:   %5 = cmpi "sge", %4, %c0_0 : index
+// CHECK-NEXT:   cond_br %5, ^bb2, ^bb3
+// CHECK-NEXT: ^bb2:	// pred: ^bb1
 // CHECK-NEXT:   call @body(%0) : (index) -> ()
 // CHECK-NEXT:   br ^bb3
-// CHECK-NEXT: ^bb3:   // 2 preds: ^bb1, ^bb2
+// CHECK-NEXT: ^bb3:	// 2 preds: ^bb1, ^bb2
 // CHECK-NEXT:   br ^bb7
-// CHECK-NEXT: ^bb4:   // pred: ^bb0
+// CHECK-NEXT: ^bb4:	// pred: ^bb0
 // CHECK-NEXT:   %c0_1 = constant 0 : index
-// CHECK-NEXT:   %5 = affine_apply #map13(%0)
-// CHECK-NEXT:   %6 = cmpi "sge", %5, %c0_1 : index
-// CHECK-NEXT:   cond_br %6, ^bb5, ^bb6
-// CHECK-NEXT: ^bb5:   // pred: ^bb4
+// CHECK-NEXT:   %c-10_2 = constant -10 : index
+// CHECK-NEXT:   %6 = addi %0, %c-10_2 : index
+// CHECK-NEXT:   %7 = cmpi "sge", %6, %c0_1 : index
+// CHECK-NEXT:   cond_br %7, ^bb5, ^bb6
+// CHECK-NEXT: ^bb5:	// pred: ^bb4
 // CHECK-NEXT:   call @mid(%0) : (index) -> ()
 // CHECK-NEXT:   br ^bb6
-// CHECK-NEXT: ^bb6:   // 2 preds: ^bb4, ^bb5
+// CHECK-NEXT: ^bb6:	// 2 preds: ^bb4, ^bb5
 // CHECK-NEXT:   br ^bb7
-// CHECK-NEXT: ^bb7:   // 2 preds: ^bb3, ^bb6
+// CHECK-NEXT: ^bb7:	// 2 preds: ^bb3, ^bb6
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
 func @nested_ifs() {
@@ -369,25 +280,33 @@ func @nested_ifs() {
 // CHECK-LABEL: func @multi_cond(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
-// CHECK-NEXT:   %1 = affine_apply [[setMapDiff]](%0)[%arg0, %arg1, %arg2, %arg3]
-// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
-// CHECK-NEXT:   cond_br %2, [[cond2BB:\^bb[0-9]+]], [[elseBB:\^bb[0-9]+]]
-// CHECK-NEXT: [[cond2BB]]:
-// CHECK-NEXT:   %3 = affine_apply [[setMapS0]](%0)[%arg0, %arg1, %arg2, %arg3]
+// CHECK-NEXT:   %c-1 = constant -1 : index
+// CHECK-NEXT:   %1 = muli %0, %c-1 : index
+// CHECK-NEXT:   %2 = addi %1, %arg0 : index
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %3 = addi %2, %c1 : index
 // CHECK-NEXT:   %4 = cmpi "sge", %3, %c0 : index
-// CHECK-NEXT:   cond_br %4, [[cond3BB:\^bb[0-9]+]], [[elseBB]]
-// CHECK-NEXT: [[cond3BB]]:
-// CHECK-NEXT:   %5 = affine_apply [[setMapS1]](%0)[%arg0, %arg1, %arg2, %arg3]
+// CHECK-NEXT:   cond_br %4, [[cond2BB:\^bb[0-9]+]], [[elseBB:\^bb[0-9]+]]
+// CHECK-NEXT: [[cond2BB]]:
+// CHECK-NEXT:   %c-1_0 = constant -1 : index
+// CHECK-NEXT:   %5 = addi %arg0, %c-1_0 : index
 // CHECK-NEXT:   %6 = cmpi "sge", %5, %c0 : index
-// CHECK-NEXT:   cond_br %6, [[cond4BB:\^bb[0-9]+]], [[elseBB]]
-// CHECK-NEXT: [[cond4BB]]:
-// CHECK-NEXT:   %7 = affine_apply [[setMapS2]](%0)[%arg0, %arg1, %arg2, %arg3]
+// CHECK-NEXT:   cond_br %6, [[cond3BB:\^bb[0-9]+]], [[elseBB]]
+// CHECK-NEXT: [[cond3BB]]:
+// CHECK-NEXT:   %c-1_1 = constant -1 : index
+// CHECK-NEXT:   %7 = addi %arg1, %c-1_1 : index
 // CHECK-NEXT:   %8 = cmpi "sge", %7, %c0 : index
-// CHECK-NEXT:   cond_br %8, [[cond5BB:\^bb[0-9]+]], [[elseBB]]
+// CHECK-NEXT:   cond_br %8, [[cond4BB:\^bb[0-9]+]], [[elseBB]]
+// CHECK-NEXT: [[cond4BB]]:
+// CHECK-NEXT:   %c-1_2 = constant -1 : index
+// CHECK-NEXT:   %9 = addi %arg2, %c-1_2 : index
+// CHECK-NEXT:   %10 = cmpi "sge", %9, %c0 : index
+// CHECK-NEXT:   cond_br %10, [[cond5BB:\^bb[0-9]+]], [[elseBB]]
 // CHECK-NEXT: [[cond5BB]]:
-// CHECK-NEXT:   %9 = affine_apply [[setMapS3]](%0)[%arg0, %arg1, %arg2, %arg3]
-// CHECK-NEXT:   %10 = cmpi "eq", %9, %c0 : index
-// CHECK-NEXT:   cond_br %10, [[thenBB:\^bb[0-9]+]], [[elseBB]]
+// CHECK-NEXT:   %c-42 = constant -42 : index
+// CHECK-NEXT:   %11 = addi %arg3, %c-42 : index
+// CHECK-NEXT:   %12 = cmpi "eq", %11, %c0 : index
+// CHECK-NEXT:   cond_br %12, [[thenBB:\^bb[0-9]+]], [[elseBB]]
 // CHECK-NEXT: [[thenBB]]:
 // CHECK-NEXT:   call @body(%0) : (index) -> ()
 // CHECK-NEXT:   br [[endBB:\^bb[0-9]+]]
@@ -412,27 +331,32 @@ func @if_for() {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
   %i = call @get_idx() : () -> (index)
 // CHECK-NEXT:   %c0 = constant 0 : index
-// CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
-// CHECK-NEXT:   %2 = cmpi "sge", %1, %c0 : index
-// CHECK-NEXT:   cond_br %2, [[midLoopInitBB:\^bb[0-9]+]], [[outerEndBB:\^bb[0-9]+]]
+// CHECK-NEXT:   %c-1 = constant -1 : index
+// CHECK-NEXT:   %1 = muli %0, %c-1 : index
+// CHECK-NEXT:   %c20 = constant 20 : index
+// CHECK-NEXT:   %2 = addi %1, %c20 : index
+// CHECK-NEXT:   %3 = cmpi "sge", %2, %c0 : index
+// CHECK-NEXT:   cond_br %3, [[midLoopInitBB:\^bb[0-9]+]], [[outerEndBB:\^bb[0-9]+]]
 // CHECK-NEXT: [[midLoopInitBB]]:
-// CHECK-NEXT:   %3 = affine_apply [[map0]]()
-// CHECK-NEXT:   %4 = affine_apply [[map42]]()
-// CHECK-NEXT:   br [[midLoopCondBB:\^bb[0-9]+]](%3 : index)
-// CHECK-NEXT: [[midLoopCondBB]](%5: index):
-// CHECK-NEXT:   %6 = cmpi "slt", %5, %4 : index
-// CHECK-NEXT:   cond_br %6, [[midLoopBodyBB:\^bb[0-9]+]], [[outerEndBB:\^bb[0-9]+]]
-// CHECK-NEXT: [[midLoopBodyBB]]:
 // CHECK-NEXT:   %c0_0 = constant 0 : index
-// CHECK-NEXT:   %7 = affine_apply [[setMap10]](%5)
-// CHECK-NEXT:   %8 = cmpi "sge", %7, %c0_0 : index
-// CHECK-NEXT:   cond_br %8, [[innerThenBB:\^bb[0-9]+]], [[innerEndBB:\^bb[0-9]+]]
+// CHECK-NEXT:   %c42 = constant 42 : index
+// CHECK-NEXT:   br [[midLoopCondBB:\^bb[0-9]+]](%c0_0 : index)
+// CHECK-NEXT: [[midLoopCondBB]](%4: index):
+// CHECK-NEXT:   %5 = cmpi "slt", %4, %c42 : index
+// CHECK-NEXT:   cond_br %5, [[midLoopBodyBB:\^bb[0-9]+]], [[outerEndBB:\^bb[0-9]+]]
+// CHECK-NEXT: [[midLoopBodyBB]]:
+// CHECK-NEXT:   %c0_1 = constant 0 : index
+// CHECK-NEXT:   %c-10 = constant -10 : index
+// CHECK-NEXT:   %6 = addi %4, %c-10 : index
+// CHECK-NEXT:   %7 = cmpi "sge", %6, %c0_1 : index
+// CHECK-NEXT:   cond_br %7, [[innerThenBB:\^bb[0-9]+]], [[innerEndBB:\^bb[0-9]+]]
 // CHECK-NEXT: [[innerThenBB:\^bb[0-9]+]]:
-// CHECK-NEXT:   call @body2(%0, %5) : (index, index) -> ()
+// CHECK-NEXT:   call @body2(%0, %4) : (index, index) -> ()
 // CHECK-NEXT:   br [[innerEndBB]]
 // CHECK-NEXT: [[innerEndBB]]:
-// CHECK-NEXT:   %9 = affine_apply [[mapAdd1]](%5)
-// CHECK-NEXT:   br [[midLoopCondBB]](%9 : index)
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %8 = addi %4, %c1 : index
+// CHECK-NEXT:   br [[midLoopCondBB]](%8 : index)
 // CHECK-NEXT: [[outerEndBB]]:
 // CHECK-NEXT:   br [[outerLoopInit:\^bb[0-9]+]]
   if #set1(%i) {
@@ -443,33 +367,36 @@ func @if_for() {
     }
   }
 // CHECK-NEXT: [[outerLoopInit]]:
-// CHECK-NEXT:   %10 = affine_apply [[map0]]()
-// CHECK-NEXT:   %11 = affine_apply [[map42]]()
-// CHECK-NEXT:   br [[outerLoopCond:\^bb[0-9]+]](%10 : index)
-// CHECK-NEXT: [[outerLoopCond]](%12: index):
-// CHECK-NEXT:   %13 = cmpi "slt", %12, %11 : index
-// CHECK-NEXT:   cond_br %13, [[outerLoopBody:\^bb[0-9]+]], [[outerLoopEnd:\^bb[0-9]+]]
+// CHECK-NEXT:   %c0_2 = constant 0 : index
+// CHECK-NEXT:   %c42_3 = constant 42 : index
+// CHECK-NEXT:   br [[outerLoopCond:\^bb[0-9]+]](%c0_2 : index)
+// CHECK-NEXT: [[outerLoopCond]](%9: index):
+// CHECK-NEXT:   %10 = cmpi "slt", %9, %c42_3 : index
+// CHECK-NEXT:   cond_br %10, [[outerLoopBody:\^bb[0-9]+]], [[outerLoopEnd:\^bb[0-9]+]]
 // CHECK-NEXT: [[outerLoopBody]]:
-// CHECK-NEXT:   %c0_1 = constant 0 : index
-// CHECK-NEXT:   %14 = affine_apply [[setMap10]](%12)
-// CHECK-NEXT:   %15 = cmpi "sge", %14, %c0_1 : index
-// CHECK-NEXT:   cond_br %15, [[innerLoopInitBB:\^bb[0-9]+]], [[midEndBB:\^bb[0-9]+]]
+// CHECK-NEXT:   %c0_4 = constant 0 : index
+// CHECK-NEXT:   %c-10_5 = constant -10 : index
+// CHECK-NEXT:   %11 = addi %9, %c-10_5 : index
+// CHECK-NEXT:   %12 = cmpi "sge", %11, %c0_4 : index
+// CHECK-NEXT:   cond_br %12, [[innerLoopInitBB:\^bb[0-9]+]], [[midEndBB:\^bb[0-9]+]]
 // CHECK-NEXT: [[innerLoopInitBB:\^bb[0-9]+]]:
-// CHECK-NEXT:   %16 = affine_apply [[map0]]()
-// CHECK-NEXT:   %17 = affine_apply [[map42]]()
-// CHECK-NEXT:   br [[innerLoopCondBB:\^bb[0-9]+]](%16 : index)
-// CHECK-NEXT: [[innerLoopCondBB]](%18: index):
-// CHECK-NEXT:   %19 = cmpi "slt", %18, %17 : index
-// CHECK-NEXT:   cond_br %19, [[innerLoopBodyBB:\^bb[0-9]+]], [[innerLoopEndBB:\^bb[0-9]+]]
+// CHECK-NEXT:   %c0_6 = constant 0 : index
+// CHECK-NEXT:   %c42_7 = constant 42 : index
+// CHECK-NEXT:   br [[innerLoopCondBB:\^bb[0-9]+]](%c0_6 : index)
+// CHECK-NEXT: [[innerLoopCondBB]](%13: index):
+// CHECK-NEXT:   %14 = cmpi "slt", %13, %c42_7 : index
+// CHECK-NEXT:   cond_br %14, [[innerLoopBodyBB:\^bb[0-9]+]], [[innerLoopEndBB:\^bb[0-9]+]]
 // CHECK-NEXT: [[innerLoopBodyBB]]:
-// CHECK-NEXT:   call @body3(%12, %18) : (index, index) -> ()
-// CHECK-NEXT:   %20 = affine_apply [[mapAdd1]](%18)
-// CHECK-NEXT:   br [[innerLoopCondBB]](%20 : index)
+// CHECK-NEXT:   call @body3(%9, %13) : (index, index) -> ()
+// CHECK-NEXT:   %c1_8 = constant 1 : index
+// CHECK-NEXT:   %15 = addi %13, %c1_8 : index
+// CHECK-NEXT:   br [[innerLoopCondBB]](%15 : index)
 // CHECK-NEXT: [[innerLoopEndBB]]:
 // CHECK-NEXT:   br [[midEndBB]]
 // CHECK-NEXT: [[midEndBB]]:
-// CHECK-NEXT:   %21 = affine_apply [[mapAdd1]](%12)
-// CHECK-NEXT:   br [[outerLoopCond]](%21 : index)
+// CHECK-NEXT:   %c1_9 = constant 1 : index
+// CHECK-NEXT:   %16 = addi %9, %c1_9 : index
+// CHECK-NEXT:   br [[outerLoopCond]](%16 : index)
   for %k = 0 to 42 {
     if #set2(%k) {
       for %l = 0 to 42 {
@@ -486,30 +413,35 @@ func @if_for() {
 #ubMultiMap = (d0)[s0] -> (s0, d0 + 10)
 
 // CHECK-LABEL: func @loop_min_max(%arg0: index) {
-// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map0]]()
-// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map42]]()
-// CHECK-NEXT:   br ^bb1(%{{[0-9]+}} : index)
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %c42 = constant 42 : index
+// CHECK-NEXT:   br ^bb1(%c0 : index)
 // CHECK-NEXT: ^bb1(%{{[0-9]+}}: index):	// 2 preds: ^bb0, ^bb5
-// CHECK-NEXT:   %{{[0-9]+}} = cmpi "slt", %{{[0-9]+}}, %{{[0-9]+}} : index
+// CHECK-NEXT:   %1 = cmpi "slt", %0, %c42 : index
 // CHECK-NEXT:   cond_br %{{[0-9]+}}, ^bb2, ^bb6
 // CHECK-NEXT: ^bb2:	// pred: ^bb1
-// CHECK-NEXT:   %[[lb:[0-9]+]] = affine_apply [[multiMap1]](%{{[0-9]+}})[%arg0]
-// CHECK-NEXT:   %[[lbc:[0-9]+]] = cmpi "sgt", %[[lb]]#0, %[[lb]]#1 : index
-// CHECK-NEXT:   %[[lbv:[0-9]+]] = select %[[lbc]], %[[lb]]#0, %[[lb]]#1 : index
-// CHECK-NEXT:   %[[ub:[0-9]+]] = affine_apply [[multiMap2]](%{{[0-9]+}})[%arg0]
-// CHECK-NEXT:   %[[ubc:[0-9]+]] = cmpi "slt", %[[ub]]#0, %[[ub]]#1 : index
-// CHECK-NEXT:   %[[ubv:[0-9]+]] = select %[[ubc]], %[[ub]]#0, %[[ub]]#1 : index
-// CHECK-NEXT:   br ^bb3(%[[lbv]] : index)
-// CHECK-NEXT: ^bb3(%{{[0-9]+}}: index):	// 2 preds: ^bb2, ^bb4
-// CHECK-NEXT:   %{{[0-9]+}} = cmpi "slt", %{{[0-9]+}}, %[[ubv]] : index
-// CHECK-NEXT:   cond_br %{{[0-9]+}}, ^bb4, ^bb5
+// CHECK-NEXT:   %c-1 = constant -1 : index
+// CHECK-NEXT:   %2 = muli %0, %c-1 : index
+// CHECK-NEXT:   %3 = addi %2, %arg0 : index
+// CHECK-NEXT:   %4 = cmpi "sgt", %0, %3 : index
+// CHECK-NEXT:   %5 = select %4, %0, %3 : index
+// CHECK-NEXT:   %c10 = constant 10 : index
+// CHECK-NEXT:   %6 = addi %0, %c10 : index
+// CHECK-NEXT:   %7 = cmpi "slt", %arg0, %6 : index
+// CHECK-NEXT:   %8 = select %7, %arg0, %6 : index
+// CHECK-NEXT:   br ^bb3(%5 : index)
+// CHECK-NEXT: ^bb3(%9: index):	// 2 preds: ^bb2, ^bb4
+// CHECK-NEXT:   %10 = cmpi "slt", %9, %8 : index
+// CHECK-NEXT:   cond_br %10, ^bb4, ^bb5
 // CHECK-NEXT: ^bb4:	// pred: ^bb3
-// CHECK-NEXT:   call @body2(%{{[0-9]+}}, %{{[0-9]+}}) : (index, index) -> ()
-// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[mapAdd1]](%{{[0-9]+}})
-// CHECK-NEXT:   br ^bb3(%{{[0-9]+}} : index)
+// CHECK-NEXT:   call @body2(%0, %9) : (index, index) -> ()
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %11 = addi %9, %c1 : index
+// CHECK-NEXT:   br ^bb3(%11 : index)
 // CHECK-NEXT: ^bb5:	// pred: ^bb3
-// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[mapAdd1]](%{{[0-9]+}})
-// CHECK-NEXT:   br ^bb1(%{{[0-9]+}} : index)
+// CHECK-NEXT:   %c1_0 = constant 1 : index
+// CHECK-NEXT:   %12 = addi %0, %c1_0 : index
+// CHECK-NEXT:   br ^bb1(%12 : index)
 // CHECK-NEXT: ^bb6:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
@@ -528,27 +460,27 @@ func @loop_min_max(%N : index) {
 // correctly for a an affine map with 7 results.
 
 // CHECK-LABEL: func @min_reduction_tree(%arg0: index) {
-// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map0]]()
-// CHECK-NEXT:   %[[applr:[0-9]+]] = affine_apply [[multi7Map]](%arg0)
-// CHECK-NEXT:   %[[c01:.+]] = cmpi "slt", %[[applr]]#0, %[[applr]]#1 : index
-// CHECK-NEXT:   %[[r01:.+]] = select %[[c01]], %[[applr]]#0, %[[applr]]#1 : index
-// CHECK-NEXT:   %[[c012:.+]] = cmpi "slt", %[[r01]], %[[applr]]#2 : index
-// CHECK-NEXT:   %[[r012:.+]] = select %[[c012]], %[[r01]], %[[applr]]#2 : index
-// CHECK-NEXT:   %[[c0123:.+]] = cmpi "slt", %[[r012]], %[[applr]]#3 : index
-// CHECK-NEXT:   %[[r0123:.+]] = select %[[c0123]], %[[r012]], %[[applr]]#3 : index
-// CHECK-NEXT:   %[[c01234:.+]] = cmpi "slt", %[[r0123]], %[[applr]]#4 : index
-// CHECK-NEXT:   %[[r01234:.+]] = select %[[c01234]], %[[r0123]], %[[applr]]#4 : index
-// CHECK-NEXT:   %[[c012345:.+]] = cmpi "slt", %[[r01234]], %[[applr]]#5 : index
-// CHECK-NEXT:   %[[r012345:.+]] = select %[[c012345]], %[[r01234]], %[[applr]]#5 : index
-// CHECK-NEXT:   %[[c0123456:.+]] = cmpi "slt", %[[r012345]], %[[applr]]#6 : index
-// CHECK-NEXT:   %[[r0123456:.+]] = select %[[c0123456]], %[[r012345]], %[[applr]]#6 : index
-// CHECK-NEXT:   br ^bb1(%0 : index)
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %[[c01:.+]] = cmpi "slt", %arg0, %arg0 : index
+// CHECK-NEXT:   %[[r01:.+]] = select %[[c01]], %arg0, %arg0 : index
+// CHECK-NEXT:   %[[c012:.+]] = cmpi "slt", %[[r01]], %arg0 : index
+// CHECK-NEXT:   %[[r012:.+]] = select %[[c012]], %[[r01]], %arg0 : index
+// CHECK-NEXT:   %[[c0123:.+]] = cmpi "slt", %[[r012]], %arg0 : index
+// CHECK-NEXT:   %[[r0123:.+]] = select %[[c0123]], %[[r012]], %arg0 : index
+// CHECK-NEXT:   %[[c01234:.+]] = cmpi "slt", %[[r0123]], %arg0 : index
+// CHECK-NEXT:   %[[r01234:.+]] = select %[[c01234]], %[[r0123]], %arg0 : index
+// CHECK-NEXT:   %[[c012345:.+]] = cmpi "slt", %[[r01234]], %arg0 : index
+// CHECK-NEXT:   %[[r012345:.+]] = select %[[c012345]], %[[r01234]], %arg0 : index
+// CHECK-NEXT:   %[[c0123456:.+]] = cmpi "slt", %[[r012345]], %arg0 : index
+// CHECK-NEXT:   %[[r0123456:.+]] = select %[[c0123456]], %[[r012345]], %arg0 : index
+// CHECK-NEXT:   br ^bb1(%c0 : index)
 // CHECK-NEXT: ^bb1(%{{[0-9]+}}: index):	// 2 preds: ^bb0, ^bb2
 // CHECK-NEXT:   %{{[0-9]+}} = cmpi "slt", %{{[0-9]+}}, %[[r0123456]] : index
 // CHECK-NEXT:   cond_br %{{[0-9]+}}, ^bb2, ^bb3
 // CHECK-NEXT: ^bb2:	// pred: ^bb1
 // CHECK-NEXT:   call @body(%{{[0-9]+}}) : (index) -> ()
-// CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[mapAdd1]](%{{[0-9]+}})
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %14 = addi %12, %c1 : index
 // CHECK-NEXT:   br ^bb1(%{{[0-9]+}} : index)
 // CHECK-NEXT: ^bb3:	// pred: ^bb1
 // CHECK-NEXT:   return

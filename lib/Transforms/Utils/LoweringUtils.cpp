@@ -111,10 +111,10 @@ private:
 
 // Create a sequence of instructions that implement the `expr` applied to the
 // given dimension and symbol values.
-static inline mlir::Value *expandAffineExpr(FuncBuilder *builder, Location loc,
-                                            AffineExpr expr,
-                                            ArrayRef<Value *> dimValues,
-                                            ArrayRef<Value *> symbolValues) {
+mlir::Value *mlir::expandAffineExpr(FuncBuilder *builder, Location loc,
+                                    AffineExpr expr,
+                                    ArrayRef<Value *> dimValues,
+                                    ArrayRef<Value *> symbolValues) {
   return AffineApplyExpander(builder, dimValues, symbolValues, loc).visit(expr);
 }
 

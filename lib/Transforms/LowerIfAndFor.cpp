@@ -24,6 +24,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/Transforms/LoweringUtils.h"
 #include "mlir/Transforms/Passes.h"
 using namespace mlir;
 
@@ -33,8 +34,8 @@ public:
   LowerIfAndForPass() : FunctionPass(&passID) {}
   PassResult runOnFunction(Function *function) override;
 
-  void lowerForInst(ForInst *forInst);
-  void lowerIfInst(IfInst *ifInst);
+  bool lowerForInst(ForInst *forInst);
+  bool lowerIfInst(IfInst *ifInst);
 
   static char passID;
 };
@@ -53,10 +54,9 @@ char LowerIfAndForPass::passID = 0;
 // Multiple values are scanned in a linear sequence.  This creates a data
 // dependences that wouldn't exist in a tree reduction, but is easier to
 // recognize as a reduction by the subsequent passes.
-static Value *buildMinMaxReductionSeq(
-    Location loc, CmpIPredicate predicate,
-    llvm::iterator_range<OperationInst::result_iterator> values,
-    FuncBuilder &builder) {
+static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
+                                      ArrayRef<Value *> values,
+                                      FuncBuilder &builder) {
   assert(!llvm::empty(values) && "empty min/max chain");
 
   auto valueIt = values.begin();
@@ -69,7 +69,7 @@ static Value *buildMinMaxReductionSeq(
   return value;
 }
 
-// Convert a "for" loop to a flow of blocks.
+// Convert a "for" loop to a flow of blocks.  Return `false` on success.
 //
 // Create an SESE region for the loop (including its body) and append it to the
 // end of the current region.  The loop region consists of the initialization
@@ -112,7 +112,7 @@ static Value *buildMinMaxReductionSeq(
 //      |   <code after the ForInst>     |
 //      +--------------------------------+
 //
-void LowerIfAndForPass::lowerForInst(ForInst *forInst) {
+bool LowerIfAndForPass::lowerForInst(ForInst *forInst) {
   auto loc = forInst->getLoc();
 
   // Start by splitting the block containing the 'for' into two parts.  The part
@@ -139,32 +139,38 @@ void LowerIfAndForPass::lowerForInst(ForInst *forInst) {
   forInst->replaceAllUsesWith(iv);
 
   // Append the induction variable stepping logic and branch back to the exit
-  // condition block.  Construct an affine map f : (x -> x+step) and apply this
-  // map to the induction variable.
+  // condition block.  Construct an affine expression f : (x -> x+step) and
+  // apply this expression to the induction variable.
   FuncBuilder builder(bodyBlock);
   auto affStep = builder.getAffineConstantExpr(forInst->getStep());
   auto affDim = builder.getAffineDimExpr(0);
-  auto affStepMap = builder.getAffineMap(1, 0, {affDim + affStep}, {});
-  auto stepOp = builder.create<AffineApplyOp>(loc, affStepMap, iv);
-  builder.create<BranchOp>(loc, conditionBlock, stepOp->getResult(0));
+  auto stepped = expandAffineExpr(&builder, loc, affDim + affStep, iv, {});
+  if (!stepped)
+    return true;
+  // We know we applied a one-dimensional map.
+  builder.create<BranchOp>(loc, conditionBlock, stepped);
 
   // Now that the body block done, fill in the code to compute the bounds of the
   // induction variable in the init block.
   builder.setInsertionPointToEnd(initBlock);
 
-  // Compute loop bounds using an affine_apply.
+  // Compute loop bounds.
   SmallVector<Value *, 8> operands(forInst->getLowerBoundOperands());
-  auto lbAffineApply =
-      builder.create<AffineApplyOp>(loc, forInst->getLowerBoundMap(), operands);
-  Value *lowerBound = buildMinMaxReductionSeq(
-      loc, CmpIPredicate::SGT, lbAffineApply->getResults(), builder);
+  auto lbValues = expandAffineMap(&builder, forInst->getLoc(),
+                                  forInst->getLowerBoundMap(), operands);
+  if (!lbValues)
+    return true;
+  Value *lowerBound =
+      buildMinMaxReductionSeq(loc, CmpIPredicate::SGT, *lbValues, builder);
 
   operands.assign(forInst->getUpperBoundOperands().begin(),
                   forInst->getUpperBoundOperands().end());
-  auto ubAffineApply =
-      builder.create<AffineApplyOp>(loc, forInst->getUpperBoundMap(), operands);
-  Value *upperBound = buildMinMaxReductionSeq(
-      loc, CmpIPredicate::SLT, ubAffineApply->getResults(), builder);
+  auto ubValues = expandAffineMap(&builder, forInst->getLoc(),
+                                  forInst->getUpperBoundMap(), operands);
+  if (!ubValues)
+    return true;
+  Value *upperBound =
+      buildMinMaxReductionSeq(loc, CmpIPredicate::SLT, *ubValues, builder);
   builder.create<BranchOp>(loc, conditionBlock, lowerBound);
 
   // With the body block done, we can fill in the condition block.
@@ -176,6 +182,7 @@ void LowerIfAndForPass::lowerForInst(ForInst *forInst) {
 
   // Ok, we're done!
   forInst->erase();
+  return false;
 }
 
 // Convert an "if" instruction into a flow of basic blocks.
@@ -237,7 +244,7 @@ void LowerIfAndForPass::lowerForInst(ForInst *forInst) {
 //      |   <code after the IfInst>      |
 //      +--------------------------------+
 //
-void LowerIfAndForPass::lowerIfInst(IfInst *ifInst) {
+bool LowerIfAndForPass::lowerIfInst(IfInst *ifInst) {
   auto loc = ifInst->getLoc();
 
   // Start by splitting the block containing the 'if' into two parts.  The part
@@ -298,14 +305,15 @@ void LowerIfAndForPass::lowerIfInst(IfInst *ifInst) {
     auto *nextBlock = new Block();
     nextBlock->insertBefore(thenBlock);
 
-    // Build and apply an affine map.
-    auto affineMap =
-        builder.getAffineMap(integerSet.getNumDims(),
-                             integerSet.getNumSymbols(), constraintExpr, {});
+    // Build and apply an affine expression
     SmallVector<Value *, 8> operands(ifInst->getOperands());
-    auto affineApplyOp =
-        builder.create<AffineApplyOp>(loc, affineMap, operands);
-    Value *affResult = affineApplyOp->getResult(0);
+    auto operandsRef = ArrayRef<Value *>(operands);
+    auto numDims = integerSet.getNumDims();
+    Value *affResult = expandAffineExpr(&builder, loc, constraintExpr,
+                                        operandsRef.take_front(numDims),
+                                        operandsRef.drop_front(numDims));
+    if (!affResult)
+      return true;
 
     // Compare the result of the apply and branch.
     auto comparisonOp = builder.create<CmpIOp>(
@@ -330,6 +338,7 @@ void LowerIfAndForPass::lowerIfInst(IfInst *ifInst) {
 
   // Ok, we're done!
   ifInst->erase();
+  return false;
 }
 
 // Entry point of the function convertor.
@@ -363,10 +372,13 @@ PassResult LowerIfAndForPass::runOnFunction(Function *function) {
   // Rewrite all of the ifs and fors.  We walked the instructions in preorder,
   // so we know that we will rewrite them in the same order.
   for (auto *inst : instsToRewrite)
-    if (auto *ifInst = dyn_cast<IfInst>(inst))
-      lowerIfInst(ifInst);
-    else
-      lowerForInst(cast<ForInst>(inst));
+    if (auto *ifInst = dyn_cast<IfInst>(inst)) {
+      if (lowerIfInst(ifInst))
+        return failure();
+    } else {
+      if (lowerForInst(cast<ForInst>(inst)))
+        return failure();
+    }
 
   return success();
 }
