@@ -671,6 +671,12 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 
 def _custom_compile_for_predict(model):
   """Custom compile for TPU predict mode."""
+  if not model.built:
+    # Model is not compilable because it does not know its number of inputs
+    # and outputs, nor their shapes and names. We will compile after the first
+    # time the model gets called on training data.
+    return
+  model._is_compiled = True
   model.total_loss = None
   model._fit_function = None
   model._eval_function = None
