@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 import os
 from absl.testing import parameterized
 import numpy as np
@@ -1247,6 +1248,40 @@ class CategoricalHingeTest(test.TestCase):
     sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
     result = cat_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
     self.assertAllClose(0.5, self.evaluate(result), atol=1e-5)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class RootMeanSquaredErrorTest(test.TestCase):
+
+  def test_config(self):
+    rmse_obj = metrics.RootMeanSquaredError(name='rmse', dtype=dtypes.int32)
+    self.assertEqual(rmse_obj.name, 'rmse')
+    self.assertEqual(rmse_obj._dtype, dtypes.int32)
+
+    rmse_obj2 = metrics.RootMeanSquaredError.from_config(rmse_obj.get_config())
+    self.assertEqual(rmse_obj2.name, 'rmse')
+    self.assertEqual(rmse_obj2._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    rmse_obj = metrics.RootMeanSquaredError()
+    self.evaluate(variables.variables_initializer(rmse_obj.variables))
+    y_true = constant_op.constant((2, 4, 6))
+    y_pred = constant_op.constant((1, 3, 2))
+
+    update_op = rmse_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = rmse_obj.result()
+    # error = [-1, -1, -4], square(error) = [1, 1, 16], mean = 18/3 = 6
+    self.assertAllClose(math.sqrt(6), result, atol=1e-3)
+
+  def test_weighted(self):
+    rmse_obj = metrics.RootMeanSquaredError()
+    self.evaluate(variables.variables_initializer(rmse_obj.variables))
+    y_true = constant_op.constant((2, 4, 6, 8))
+    y_pred = constant_op.constant((1, 3, 2, 3))
+    sample_weight = constant_op.constant((0, 1, 0, 1))
+    result = rmse_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose(math.sqrt(13), self.evaluate(result), atol=1e-3)
 
 
 def _get_model(compile_metrics):

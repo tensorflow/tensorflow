@@ -1491,6 +1491,53 @@ class CategoricalHinge(MeanMetricWrapper):
     return super(CategoricalHinge, cls).from_config(config)
 
 
+class RootMeanSquaredError(Mean):
+  """Computes root mean squared error metric between `y_true` and `y_pred`.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.RootMeanSquaredError()
+  m.update_state([2., 4., 6.], [1., 3., 2.])
+  print('Final result: ', m.result().numpy())  # Final result: 2.449
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.RootMeanSquaredError()])
+  ```
+  """
+
+  def __init__(self, name='root_mean_squared_error', dtype=None):
+    super(RootMeanSquaredError, self).__init__(name, dtype=dtype)
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates root mean squared error statistics.
+
+    Args:
+      y_true: The ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional weighting of each example. Defaults to 1. Can be a
+        `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
+        be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
+    """
+    y_true = math_ops.cast(y_true, self._dtype)
+    y_pred = math_ops.cast(y_pred, self._dtype)
+    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
+        y_pred, y_true, sample_weight)
+    error_sq = math_ops.square(y_pred - y_true)
+    return super(RootMeanSquaredError, self).update_state(
+        error_sq, sample_weight=sample_weight)
+
+  def result(self):
+    return math_ops.sqrt(math_ops.div_no_nan(self.total, self.count))
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
