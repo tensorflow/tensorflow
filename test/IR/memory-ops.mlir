@@ -2,8 +2,8 @@
 
 // CHECK: #map0 = (d0, d1)[s0] -> (d0 + s0, d1)
 
-// CHECK-LABEL: cfgfunc @alloc() {
-cfgfunc @alloc() {
+// CHECK-LABEL: func @alloc() {
+func @alloc() {
 ^bb0:
   // Test simple alloc.
   // CHECK: %0 = alloc() : memref<1024x64xf32, 1>
@@ -33,8 +33,8 @@ cfgfunc @alloc() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @dealloc() {
-cfgfunc @dealloc() {
+// CHECK-LABEL: func @dealloc() {
+func @dealloc() {
 ^bb0:
   // CHECK: %0 = alloc() : memref<1024x64xf32>
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 0>
@@ -44,8 +44,8 @@ cfgfunc @dealloc() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @load_store
-cfgfunc @load_store() {
+// CHECK-LABEL: func @load_store
+func @load_store() {
 ^bb0:
   // CHECK: %0 = alloc() : memref<1024x64xf32, 1>
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
@@ -62,8 +62,8 @@ cfgfunc @load_store() {
   return
 }
 
-// CHECK-LABEL: mlfunc @dma_ops()
-mlfunc @dma_ops() {
+// CHECK-LABEL: func @dma_ops()
+func @dma_ops() {
   %c0 = constant 0 : index
   %stride = constant 32 : index
   %elt_per_stride = constant 16 : index

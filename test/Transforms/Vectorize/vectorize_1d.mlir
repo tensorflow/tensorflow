@@ -16,7 +16,7 @@
 #set0 = (i) : (i >= 0)
 
 // Maps introduced to vectorize fastest varying memory index.
-mlfunc @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
+func @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
 // CHECK-DAG: [[C0:%[a-z0-9_]+]] = constant 0 : index
 // CHECK-DAG: [[ARG_M:%[0-9]+]] = dim %arg0, 0 : memref<?x?xf32>
 // CHECK-DAG: [[ARG_N:%[0-9]+]] = dim %arg0, 1 : memref<?x?xf32>
@@ -129,7 +129,7 @@ mlfunc @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
    return
 }
 
-mlfunc @vector_add_2d(%M : index, %N : index) -> f32 {
+func @vector_add_2d(%M : index, %N : index) -> f32 {
   %A = alloc (%M, %N) : memref<?x?xf32, 0>
   %B = alloc (%M, %N) : memref<?x?xf32, 0>
   %C = alloc (%M, %N) : memref<?x?xf32, 0>
@@ -182,7 +182,7 @@ mlfunc @vector_add_2d(%M : index, %N : index) -> f32 {
 
 // This should not vectorize and should not crash.
 // CHECK-LABEL: @vec_rejected
-mlfunc @vec_rejected(%A : memref<?x?xf32>, %C : memref<?x?xf32>) {
+func @vec_rejected(%A : memref<?x?xf32>, %C : memref<?x?xf32>) {
   %N = dim %A, 0 : memref<?x?xf32>
   for %i = 0 to %N {
 // CHECK-NOT: vector

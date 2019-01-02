@@ -6,7 +6,7 @@
 // CHECK-DAG: #[[map_instance_3:map[0-9]+]] = (d0, d1, d2, d3) -> (d0, d1 + 3, d2, d3)
 // CHECK-DAG: #[[map_proj_d0d1d2d3d4_d1d0:map[0-9]+]] = (d0, d1, d2, d3) -> (d1, d0)
 
-mlfunc @materialize(%M : index, %N : index, %O : index, %P : index) {
+func @materialize(%M : index, %N : index, %O : index, %P : index) {
   %A = alloc (%M, %N, %O, %P) : memref<?x?x?x?xf32, 0>
   %f1 = constant splat<vector<4x4x4xf32>, 1.000000e+00> : vector<4x4x4xf32>
   // CHECK:  for %i0 = 0 to %arg0 step 4 {

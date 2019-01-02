@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -memref-dataflow-opt -verify | FileCheck %s
 
-// CHECK-LABEL: mlfunc @simple_store_load() {
-mlfunc @simple_store_load() {
+// CHECK-LABEL: func @simple_store_load() {
+func @simple_store_load() {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10xf32>
   for %i0 = 0 to 10 {
@@ -17,8 +17,8 @@ mlfunc @simple_store_load() {
 // CHECK-NEXT:  return
 }
 
-// CHECK-LABEL: mlfunc @multi_store_load() {
-mlfunc @multi_store_load() {
+// CHECK-LABEL: func @multi_store_load() {
+func @multi_store_load() {
   %c0 = constant 0 : index
   %cf7 = constant 7.0 : f32
   %cf8 = constant 8.0 : f32
@@ -49,8 +49,8 @@ mlfunc @multi_store_load() {
 
 // The store-load forwarding can see through affine apply's since it relies on
 // dependence information.
-// CHECK-LABEL: mlfunc @store_load_affine_apply
-mlfunc @store_load_affine_apply() -> memref<10x10xf32> {
+// CHECK-LABEL: func @store_load_affine_apply
+func @store_load_affine_apply() -> memref<10x10xf32> {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10x10xf32>
   for %i0 = 0 to 10 {
@@ -78,8 +78,8 @@ mlfunc @store_load_affine_apply() -> memref<10x10xf32> {
 // CHECK-NEXT:  return %0 : memref<10x10xf32>
 }
 
-// CHECK-LABEL: mlfunc @store_load_nested
-mlfunc @store_load_nested(%N : index) {
+// CHECK-LABEL: func @store_load_nested
+func @store_load_nested(%N : index) {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10xf32>
   for %i0 = 0 to 10 {
@@ -102,8 +102,8 @@ mlfunc @store_load_nested(%N : index) {
 // No forwarding happens here since either of the two stores could be the last
 // writer; store/load forwarding will however be possible here once loop live
 // out SSA scalars are available.
-// CHECK-LABEL: mlfunc @multi_store_load_nested_no_fwd
-mlfunc @multi_store_load_nested_no_fwd(%N : index) {
+// CHECK-LABEL: func @multi_store_load_nested_no_fwd
+func @multi_store_load_nested_no_fwd(%N : index) {
   %cf7 = constant 7.0 : f32
   %cf8 = constant 8.0 : f32
   %m = alloc() : memref<10xf32>
@@ -123,8 +123,8 @@ mlfunc @multi_store_load_nested_no_fwd(%N : index) {
 
 // No forwarding happens here since both stores have a value going into
 // the load.
-// CHECK-LABEL: mlfunc @store_load_store_nested_no_fwd
-mlfunc @store_load_store_nested_no_fwd(%N : index) {
+// CHECK-LABEL: func @store_load_store_nested_no_fwd
+func @store_load_store_nested_no_fwd(%N : index) {
   %cf7 = constant 7.0 : f32
   %cf9 = constant 9.0 : f32
   %m = alloc() : memref<10xf32>
@@ -142,8 +142,8 @@ mlfunc @store_load_store_nested_no_fwd(%N : index) {
 
 // Forwarding happens here since the last store postdominates all other stores
 // and other forwarding criteria are satisfied.
-// CHECK-LABEL: mlfunc @multi_store_load_nested_fwd
-mlfunc @multi_store_load_nested_fwd(%N : index) {
+// CHECK-LABEL: func @multi_store_load_nested_fwd
+func @multi_store_load_nested_fwd(%N : index) {
   %cf7 = constant 7.0 : f32
   %cf8 = constant 8.0 : f32
   %cf9 = constant 9.0 : f32
@@ -168,8 +168,8 @@ mlfunc @multi_store_load_nested_fwd(%N : index) {
 }
 
 // No one-to-one dependence here between the store and load.
-// CHECK-LABEL: mlfunc @store_load_no_fwd
-mlfunc @store_load_no_fwd() {
+// CHECK-LABEL: func @store_load_no_fwd
+func @store_load_no_fwd() {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10xf32>
   for %i0 = 0 to 10 {
@@ -186,8 +186,8 @@ mlfunc @store_load_no_fwd() {
 }
 
 // Forwarding happens here as there is a one-to-one store-load correspondence.
-// CHECK-LABEL: mlfunc @store_load_fwd
-mlfunc @store_load_fwd() {
+// CHECK-LABEL: func @store_load_fwd
+func @store_load_fwd() {
   %cf7 = constant 7.0 : f32
   %c0 = constant 0 : index
   %m = alloc() : memref<10xf32>
@@ -207,7 +207,7 @@ mlfunc @store_load_fwd() {
 // Although there is a dependence from the second store to the load, it is
 // satisfied by the outer surrounding loop, and does not prevent the first
 // store to be forwarded to the load.
-mlfunc @store_load_store_nested_fwd(%N : index) -> f32 {
+func @store_load_store_nested_fwd(%N : index) -> f32 {
   %cf7 = constant 7.0 : f32
   %cf9 = constant 9.0 : f32
   %c0 = constant 0 : index

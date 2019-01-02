@@ -12,7 +12,7 @@
 ///     |_______________|
 ///             |
 ///             9
-mlfunc @slicing_test() {
+func @slicing_test() {
   // Fake 0 to align on 1 and match ASCII art.
   %0 = alloc() : memref<1xi32>
 

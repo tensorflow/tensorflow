@@ -2,8 +2,8 @@
 
 // -----
 
-// CHECK-LABEL: mlfunc @test() {
-mlfunc @test() {
+// CHECK-LABEL: func @test() {
+func @test() {
   %zero = constant 0 : index
   %minusone = constant -1 : index
   %sym = constant 111 : index
@@ -37,8 +37,8 @@ mlfunc @test() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_mod_floordiv_ceildiv
-mlfunc @test_mod_floordiv_ceildiv() {
+// CHECK-LABEL: func @test_mod_floordiv_ceildiv
+func @test_mod_floordiv_ceildiv() {
   %zero = constant 0 : index
   %A = alloc() : memref<128 x 64 x 64 x i32>
 
@@ -57,8 +57,8 @@ mlfunc @test_mod_floordiv_ceildiv() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_no_out_of_bounds()
-mlfunc @test_no_out_of_bounds() {
+// CHECK-LABEL: func @test_no_out_of_bounds()
+func @test_no_out_of_bounds() {
   %zero = constant 0 : index
   %A = alloc() : memref<257 x 256 x i32>
   %C = alloc() : memref<257 x i32>
@@ -83,8 +83,8 @@ mlfunc @test_no_out_of_bounds() {
   return
 }
 
-// CHECK-LABEL: mlfunc @mod_div
-mlfunc @mod_div() {
+// CHECK-LABEL: func @mod_div
+func @mod_div() {
   %zero = constant 0 : index
   %A = alloc() : memref<128 x 64 x 64 x i32>
 
@@ -103,8 +103,8 @@ mlfunc @mod_div() {
 }
 
 // Tests with nested mod's and floordiv's.
-// CHECK-LABEL: mlfunc @mod_floordiv_nested() {
-mlfunc @mod_floordiv_nested() {
+// CHECK-LABEL: func @mod_floordiv_nested() {
+func @mod_floordiv_nested() {
   %A = alloc() : memref<256 x 256 x i32>
   for %i = 0 to 256 {
     for %j = 0 to 256 {
@@ -115,8 +115,8 @@ mlfunc @mod_floordiv_nested() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_semi_affine_bailout
-mlfunc @test_semi_affine_bailout(%N : index) {
+// CHECK-LABEL: func @test_semi_affine_bailout
+func @test_semi_affine_bailout(%N : index) {
   %B = alloc() : memref<10 x i32>
   for %i = 0 to 10 {
     %idx = affine_apply (d0)[s0] -> (d0 * s0)(%i)[%N]
@@ -125,8 +125,8 @@ mlfunc @test_semi_affine_bailout(%N : index) {
   return
 }
 
-// CHECK-LABEL: mlfunc @multi_mod_floordiv
-mlfunc @multi_mod_floordiv() {
+// CHECK-LABEL: func @multi_mod_floordiv
+func @multi_mod_floordiv() {
   %A = alloc() : memref<2x2xi32>
   for %ii = 0 to 64 {
       %idx = affine_apply (d0) -> ((d0 mod 147456) floordiv 1152,
@@ -136,8 +136,8 @@ mlfunc @multi_mod_floordiv() {
   return
 }
 
-// CHECK-LABEL: mlfunc @delinearize_mod_floordiv
-mlfunc @delinearize_mod_floordiv() {
+// CHECK-LABEL: func @delinearize_mod_floordiv
+func @delinearize_mod_floordiv() {
   %c0 = constant 0 : index
   %in = alloc() : memref<2x2x3x3x16x1xi32>
   %out = alloc() : memref<64x9xi32>

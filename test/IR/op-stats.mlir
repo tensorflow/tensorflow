@@ -1,6 +1,6 @@
 // RUN: mlir-opt -print-op-stats %s -o=/dev/null 2>&1 | FileCheck %s
 
-cfgfunc @main(tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> {
+func @main(tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>):
   %0 = addf %arg0, %arg1 : tensor<4xf32>
   %1 = addf %arg0, %arg1 : tensor<4xf32>

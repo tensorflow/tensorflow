@@ -10,7 +10,7 @@
 // CHECK-DAG: [[MAP3:#.*]] = (d0, d1) -> (d0 + 1, d1 + 8)
 // CHECK-DAG: [[MAP4:#.*]] = (d0, d1) -> (d0 + 2, d1)
 // CHECK-DAG: [[MAP5:#.*]] = (d0, d1) -> (d0 + 2, d1 + 8)
-mlfunc @vector_add_2d(%M : index, %N : index) -> f32 {
+func @vector_add_2d(%M : index, %N : index) -> f32 {
   %A = alloc (%M, %N) : memref<?x?xf32, 0>
   %B = alloc (%M, %N) : memref<?x?xf32, 0>
   %C = alloc (%M, %N) : memref<?x?xf32, 0>

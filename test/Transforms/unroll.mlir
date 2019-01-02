@@ -40,8 +40,8 @@
 // UNROLL-BY-4: #map8 = (d0) -> (d0 + 10)
 // UNROLL-BY-4: #map9 = (d0) -> (d0 + 15)
 
-// CHECK-LABEL: mlfunc @loop_nest_simplest() {
-mlfunc @loop_nest_simplest() {
+// CHECK-LABEL: func @loop_nest_simplest() {
+func @loop_nest_simplest() {
   // CHECK: for %i0 = 0 to 100 step 2 {
   for %i = 0 to 100 step 2 {
     // CHECK: %c1_i32 = constant 1 : i32
@@ -55,8 +55,8 @@ mlfunc @loop_nest_simplest() {
   return  // CHECK:  return
 }         // CHECK }
 
-// CHECK-LABEL: mlfunc @loop_nest_simple_iv_use() {
-mlfunc @loop_nest_simple_iv_use() {
+// CHECK-LABEL: func @loop_nest_simple_iv_use() {
+func @loop_nest_simple_iv_use() {
   // CHECK: %c0 = constant 0 : index
   // CHECK-NEXT: for %i0 = 0 to 100 step 2 {
   for %i = 0 to 100 step 2 {
@@ -75,8 +75,8 @@ mlfunc @loop_nest_simple_iv_use() {
 }         // CHECK }
 
 // Operations in the loop body have results that are used therein.
-// CHECK-LABEL: mlfunc @loop_nest_body_def_use() {
-mlfunc @loop_nest_body_def_use() {
+// CHECK-LABEL: func @loop_nest_body_def_use() {
+func @loop_nest_body_def_use() {
   // CHECK: %c0 = constant 0 : index
   // CHECK-NEXT: for %i0 = 0 to 100 step 2 {
   for %i = 0 to 100 step 2 {
@@ -102,8 +102,8 @@ mlfunc @loop_nest_body_def_use() {
   return  // CHECK:  return
 }         // CHECK }
 
-// CHECK-LABEL: mlfunc @loop_nest_strided() {
-mlfunc @loop_nest_strided() {
+// CHECK-LABEL: func @loop_nest_strided() {
+func @loop_nest_strided() {
   // CHECK: %c2 = constant 2 : index
   // CHECK-NEXT: %c2_0 = constant 2 : index
   // CHECK-NEXT: for %i0 = 0 to 100 {
@@ -135,8 +135,8 @@ mlfunc @loop_nest_strided() {
   return  // CHECK:  return
 }         // CHECK }
 
-// CHECK-LABEL: mlfunc @loop_nest_multiple_results() {
-mlfunc @loop_nest_multiple_results() {
+// CHECK-LABEL: func @loop_nest_multiple_results() {
+func @loop_nest_multiple_results() {
   // CHECK: %c0 = constant 0 : index
   // CHECK-NEXT: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
@@ -163,8 +163,8 @@ mlfunc @loop_nest_multiple_results() {
 
 
 // Imperfect loop nest. Unrolling innermost here yields a perfect nest.
-// CHECK-LABEL: mlfunc @loop_nest_seq_imperfect(%arg0: memref<128x128xf32>) {
-mlfunc @loop_nest_seq_imperfect(%a : memref<128x128xf32>) {
+// CHECK-LABEL: func @loop_nest_seq_imperfect(%arg0: memref<128x128xf32>) {
+func @loop_nest_seq_imperfect(%a : memref<128x128xf32>) {
   // CHECK: %c0 = constant 0 : index
   // CHECK-NEXT: %c128 = constant 128 : index
   %c128 = constant 128 : index
@@ -201,8 +201,8 @@ mlfunc @loop_nest_seq_imperfect(%a : memref<128x128xf32>) {
   return  // CHECK:  return
 }
 
-// CHECK-LABEL: mlfunc @loop_nest_seq_multiple() {
-mlfunc @loop_nest_seq_multiple() {
+// CHECK-LABEL: func @loop_nest_seq_multiple() {
+func @loop_nest_seq_multiple() {
   // CHECK: c0 = constant 0 : index
   // CHECK-NEXT: %c0_0 = constant 0 : index
   // CHECK-NEXT: %0 = affine_apply #map0(%c0_0)
@@ -247,8 +247,8 @@ mlfunc @loop_nest_seq_multiple() {
   return  // CHECK:  return
 }         // CHECK }
 
-// SHORT-LABEL: mlfunc @loop_nest_outer_unroll() {
-mlfunc @loop_nest_outer_unroll() {
+// SHORT-LABEL: func @loop_nest_outer_unroll() {
+func @loop_nest_outer_unroll() {
   // SHORT:      for %i0 = 0 to 4 {
   // SHORT-NEXT:   %0 = affine_apply #map0(%i0)
   // SHORT-NEXT:   %1 = "addi32"(%0, %0) : (index, index) -> index
@@ -270,8 +270,8 @@ mlfunc @loop_nest_outer_unroll() {
 // We aren't doing any file check here. We just need this test case to
 // successfully run. Both %i0 and i1 will get unrolled here with the min trip
 // count threshold set to 2.
-// SHORT-LABEL: mlfunc @loop_nest_seq_long() -> i32 {
-mlfunc @loop_nest_seq_long() -> i32 {
+// SHORT-LABEL: func @loop_nest_seq_long() -> i32 {
+func @loop_nest_seq_long() -> i32 {
   %A = alloc() : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
   %B = alloc() : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
   %C = alloc() : memref<512 x 512 x i32, (d0, d1) -> (d0, d1), 2>
@@ -318,8 +318,8 @@ mlfunc @loop_nest_seq_long() -> i32 {
   return %ret : i32
 }
 
-// UNROLL-BY-4-LABEL: mlfunc @unroll_unit_stride_no_cleanup() {
-mlfunc @unroll_unit_stride_no_cleanup() {
+// UNROLL-BY-4-LABEL: func @unroll_unit_stride_no_cleanup() {
+func @unroll_unit_stride_no_cleanup() {
   // UNROLL-BY-4: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
     // UNROLL-BY-4: for [[L1:%i[0-9]+]] = 0 to 8 step 4 {
@@ -347,8 +347,8 @@ mlfunc @unroll_unit_stride_no_cleanup() {
   return
 }
 
-// UNROLL-BY-4-LABEL: mlfunc @unroll_unit_stride_cleanup() {
-mlfunc @unroll_unit_stride_cleanup() {
+// UNROLL-BY-4-LABEL: func @unroll_unit_stride_cleanup() {
+func @unroll_unit_stride_cleanup() {
   // UNROLL-BY-4: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
     // UNROLL-BY-4: for [[L1:%i[0-9]+]] = 0 to 7 step 4 {
@@ -376,8 +376,8 @@ mlfunc @unroll_unit_stride_cleanup() {
   return
 }
 
-// UNROLL-BY-4-LABEL: mlfunc @unroll_non_unit_stride_cleanup() {
-mlfunc @unroll_non_unit_stride_cleanup() {
+// UNROLL-BY-4-LABEL: func @unroll_non_unit_stride_cleanup() {
+func @unroll_non_unit_stride_cleanup() {
   // UNROLL-BY-4: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
     // UNROLL-BY-4: for [[L1:%i[0-9]+]] = 2 to 37 step 20 {
@@ -406,7 +406,7 @@ mlfunc @unroll_non_unit_stride_cleanup() {
 }
 
 // Both the unrolled loop and the cleanup loop are single iteration loops.
-mlfunc @loop_nest_single_iteration_after_unroll(%N: index) {
+func @loop_nest_single_iteration_after_unroll(%N: index) {
   // UNROLL-BY-4: %c0 = constant 0 : index
   // UNROLL-BY-4: %c4 = constant 4 : index
   // UNROLL-BY-4: for %i0 = 0 to %arg0 {
@@ -430,8 +430,8 @@ mlfunc @loop_nest_single_iteration_after_unroll(%N: index) {
 // Test cases with loop bound operands.
 
 // No cleanup will be generated here.
-// UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand1() {
-mlfunc @loop_nest_operand1() {
+// UNROLL-BY-4-LABEL: func @loop_nest_operand1() {
+func @loop_nest_operand1() {
 // UNROLL-BY-4:      for %i0 = 0 to 100 step 2 {
 // UNROLL-BY-4-NEXT:   for %i1 = (d0) -> (0)(%i0) to #map{{[0-9]+}}(%i0) step 4
 // UNROLL-BY-4-NEXT:      %0 = "foo"() : () -> i32
@@ -450,8 +450,8 @@ mlfunc @loop_nest_operand1() {
 }
 
 // No cleanup will be generated here.
-// UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand2() {
-mlfunc @loop_nest_operand2() {
+// UNROLL-BY-4-LABEL: func @loop_nest_operand2() {
+func @loop_nest_operand2() {
 // UNROLL-BY-4:      for %i0 = 0 to 100 step 2 {
 // UNROLL-BY-4-NEXT:   for %i1 = (d0) -> (d0)(%i0) to #map{{[0-9]+}}(%i0) step 4 {
 // UNROLL-BY-4-NEXT:     %0 = "foo"() : () -> i32
@@ -471,8 +471,8 @@ mlfunc @loop_nest_operand2() {
 
 // Difference between loop bounds is constant, but not a multiple of unroll
 // factor. The cleanup loop happens to be a single iteration one and is promoted.
-// UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand3() {
-mlfunc @loop_nest_operand3() {
+// UNROLL-BY-4-LABEL: func @loop_nest_operand3() {
+func @loop_nest_operand3() {
   // UNROLL-BY-4: for %i0 = 0 to 100 step 2 {
   for %i = 0 to 100 step 2 {
     // UNROLL-BY-4: for %i1 = (d0) -> (d0)(%i0) to #map{{[0-9]+}}(%i0) step 4 {
@@ -489,8 +489,8 @@ mlfunc @loop_nest_operand3() {
   return
 }
 
-// UNROLL-BY-4-LABEL: mlfunc @loop_nest_operand4(%arg0: index) {
-mlfunc @loop_nest_operand4(%N : index) {
+// UNROLL-BY-4-LABEL: func @loop_nest_operand4(%arg0: index) {
+func @loop_nest_operand4(%N : index) {
   // UNROLL-BY-4: for %i0 = 0 to 100 {
   for %i = 0 to 100 {
     // UNROLL-BY-4: for %i1 = ()[s0] -> (0)()[%arg0] to #map{{[0-9]+}}()[%arg0] step 4 {
@@ -511,8 +511,8 @@ mlfunc @loop_nest_operand4(%N : index) {
   return
 }
 
-// CHECK-LABEL: mlfunc @loop_nest_unroll_full() {
-mlfunc @loop_nest_unroll_full() {
+// CHECK-LABEL: func @loop_nest_unroll_full() {
+func @loop_nest_unroll_full() {
   // CHECK-NEXT: %0 = "foo"() : () -> i32
   // CHECK-NEXT: %1 = "bar"() : () -> i32
   // CHECK-NEXT:  return

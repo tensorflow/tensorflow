@@ -1,6 +1,6 @@
 // RUN: mlir-opt %s -split-input-file -verify
 
-cfgfunc @dim(tensor<1xf32>) {
+func @dim(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
   "dim"(%0){index: "xyz"} : (tensor<1xf32>)->i32 // expected-error {{'dim' op requires an integer attribute named 'index'}}
   return
@@ -8,7 +8,7 @@ cfgfunc @dim(tensor<1xf32>) {
 
 // -----
 
-cfgfunc @dim2(tensor<1xf32>) {
+func @dim2(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
   "dim"(){index: "xyz"} : ()->i32 // expected-error {{'dim' op requires a single operand}}
   return
@@ -16,7 +16,7 @@ cfgfunc @dim2(tensor<1xf32>) {
 
 // -----
 
-cfgfunc @dim3(tensor<1xf32>) {
+func @dim3(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
   "dim"(%0){index: 1} : (tensor<1xf32>)->i32 // expected-error {{'dim' op index is out of range}}
   return
@@ -24,7 +24,7 @@ cfgfunc @dim3(tensor<1xf32>) {
 
 // -----
 
-cfgfunc @constant() {
+func @constant() {
 ^bb:
   %x = "constant"(){value: "xyz"} : () -> i32 // expected-error {{'constant' op requires 'value' to be an integer for an integer result type}}
   return
@@ -32,7 +32,7 @@ cfgfunc @constant() {
 
 // -----
 
-cfgfunc @constant_out_of_range() {
+func @constant_out_of_range() {
 ^bb:
   %x = "constant"(){value: 100} : () -> i1 // expected-error {{'constant' op requires 'value' to be an integer within the range of the integer result type}}
   return
@@ -40,7 +40,7 @@ cfgfunc @constant_out_of_range() {
 
 // -----
 
-cfgfunc @affine_apply_no_map() {
+func @affine_apply_no_map() {
 ^bb0:
   %i = "constant"() {value: 0} : () -> index
   %x = "affine_apply" (%i) { } : (index) -> (index) //  expected-error {{'affine_apply' op requires an affine map}}
@@ -49,7 +49,7 @@ cfgfunc @affine_apply_no_map() {
 
 // -----
 
-cfgfunc @affine_apply_wrong_operand_count() {
+func @affine_apply_wrong_operand_count() {
 ^bb0:
   %i = "constant"() {value: 0} : () -> index
   %x = "affine_apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index) -> (index) //  expected-error {{'affine_apply' op operand count and affine map dimension and symbol count must match}}
@@ -58,7 +58,7 @@ cfgfunc @affine_apply_wrong_operand_count() {
 
 // -----
 
-cfgfunc @affine_apply_wrong_result_count() {
+func @affine_apply_wrong_result_count() {
 ^bb0:
   %i = "constant"() {value: 0} : () -> index
   %j = "constant"() {value: 1} : () -> index
@@ -68,7 +68,7 @@ cfgfunc @affine_apply_wrong_result_count() {
 
 // -----
 
-cfgfunc @unknown_custom_op() {
+func @unknown_custom_op() {
 ^bb0:
   %i = crazyThing() {value: 0} : () -> index  // expected-error {{custom op 'crazyThing' is unknown}}
   return
@@ -76,7 +76,7 @@ cfgfunc @unknown_custom_op() {
 
 // -----
 
-cfgfunc @bad_alloc_wrong_dynamic_dim_count() {
+func @bad_alloc_wrong_dynamic_dim_count() {
 ^bb0:
   %0 = "constant"() {value: 7} : () -> index
   // Test alloc with wrong number of dynamic dimensions.
@@ -86,7 +86,7 @@ cfgfunc @bad_alloc_wrong_dynamic_dim_count() {
 
 // -----
 
-cfgfunc @bad_alloc_wrong_symbol_count() {
+func @bad_alloc_wrong_symbol_count() {
 ^bb0:
   %0 = "constant"() {value: 7} : () -> index
   // Test alloc with wrong number of symbols
@@ -96,7 +96,7 @@ cfgfunc @bad_alloc_wrong_symbol_count() {
 
 // -----
 
-cfgfunc @test_store_zero_results() {
+func @test_store_zero_results() {
 ^bb0:
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
   %1 = "constant"() {value: 0} : () -> index
@@ -109,14 +109,14 @@ cfgfunc @test_store_zero_results() {
 
 // -----
 
-mlfunc @test_store_zero_results2(%x: i32, %p: memref<i32>) {
+func @test_store_zero_results2(%x: i32, %p: memref<i32>) {
   "store"(%x,%p) : (i32, memref<i32>) -> i32  // expected-error {{'store' op requires zero results}}
   return
 }
 
 // -----
 
-cfgfunc @test_alloc_memref_map_rank_mismatch() {
+func @test_alloc_memref_map_rank_mismatch() {
 ^bb0:
   %0 = alloc() : memref<1024x64xf32, (d0) -> (d0), 1> // expected-error {{memref affine map dimension mismatch}}
   return
@@ -124,7 +124,7 @@ cfgfunc @test_alloc_memref_map_rank_mismatch() {
 
 // -----
 
-cfgfunc @intlimit2() {
+func @intlimit2() {
 ^bb:
   %0 = "constant"() {value: 0} : () -> i4096
   %1 = "constant"() {value: 1} : () -> i4097 // expected-error {{integer bitwidth is limited to 4096 bits}}
@@ -133,42 +133,42 @@ cfgfunc @intlimit2() {
 
 // -----
 
-mlfunc @mlfunc_constant() {
+func @func_constant() {
   %x = "constant"(){value: "xyz"} : () -> i32 // expected-error {{'constant' op requires 'value' to be an integer for an integer result type}}
   return
 }
 
 // -----
 
-mlfunc @mlfunc_constant_out_of_range() {
+func @func_constant_out_of_range() {
   %x = "constant"(){value: 100} : () -> i1 // expected-error {{'constant' op requires 'value' to be an integer within the range of the integer result type}}
   return
 }
 
 // -----
 
-mlfunc @calls(%arg0: i32) {
+func @calls(%arg0: i32) {
   %x = call @calls() : () -> i32  // expected-error {{reference to function with mismatched type}}
   return
 }
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(f32) {
+func @func_with_ops(f32) {
 ^bb0(%a : f32):
   %sf = addf %a, %a, %a : f32  // expected-error {{custom op 'addf' expected 2 operands}}
 }
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(f32) {
+func @func_with_ops(f32) {
 ^bb0(%a : f32):
   %sf = addf(%a, %a) : f32  // expected-error {{unexpected delimiter}}
 }
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(f32) {
+func @func_with_ops(f32) {
 ^bb0(%a : f32):
   %sf = addf{%a, %a} : f32  // expected-error {{invalid operand}}
 }
@@ -176,14 +176,14 @@ cfgfunc @cfgfunc_with_ops(f32) {
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(i32) {
+func @func_with_ops(i32) {
 ^bb0(%a : i32):
   %sf = addf %a, %a : i32  // expected-error {{'addf' op requires a floating point type}}
 }
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(i32) {
+func @func_with_ops(i32) {
 ^bb0(%a : i32):
   // expected-error@+1 {{'predicate' attribute value out of range}}
   %r = "cmpi"(%a, %b) {predicate: 42} : (i32, i32) -> i1
@@ -192,7 +192,7 @@ cfgfunc @cfgfunc_with_ops(i32) {
 // -----
 
 // Comparison are defined for arguments of the same type.
-cfgfunc @cfgfunc_with_ops(i32, i64) {
+func @func_with_ops(i32, i64) {
 ^bb0(%a : i32, %b : i64): // expected-error {{prior use here}}
   %r = cmpi "eq", %a, %b : i32 // expected-error {{use of value '%b' expects different type than prior uses}}
 }
@@ -200,7 +200,7 @@ cfgfunc @cfgfunc_with_ops(i32, i64) {
 // -----
 
 // Comparisons must have the "predicate" attribute.
-cfgfunc @cfgfunc_with_ops(i32, i32) {
+func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
   %r = cmpi %a, %b : i32 // expected-error {{expected type}}
 }
@@ -208,7 +208,7 @@ cfgfunc @cfgfunc_with_ops(i32, i32) {
 // -----
 
 // Integer comparisons are not recognized for float types.
-cfgfunc @cfgfunc_with_ops(f32, f32) {
+func @func_with_ops(f32, f32) {
 ^bb0(%a : f32, %b : f32):
   %r = cmpi "eq", %a, %b : f32 // expected-error {{op requires an integer or index type}}
 }
@@ -216,14 +216,14 @@ cfgfunc @cfgfunc_with_ops(f32, f32) {
 // -----
 
 // Result type must be boolean like.
-cfgfunc @cfgfunc_with_ops(i32, i32) {
+func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
   %r = "cmpi"(%a, %b) {predicate: 0} : (i32, i32) -> i32 // expected-error {{op requires a bool result type}}
 }
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(i32, i32) {
+func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
   // expected-error@+1 {{requires an integer attribute named 'predicate'}}
   %r = "cmpi"(%a, %b) {foo: 1} : (i32, i32) -> i1
@@ -231,7 +231,7 @@ cfgfunc @cfgfunc_with_ops(i32, i32) {
 
 // -----
 
-cfgfunc @cfgfunc_with_ops() {
+func @func_with_ops() {
 ^bb0:
   %c = constant splat<vector<42 x i32>, 0> : vector<42 x i32>
   // expected-error@+1 {{op requires the same shape for all operands and results}}
@@ -240,7 +240,7 @@ cfgfunc @cfgfunc_with_ops() {
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(i32, i32, i32) {
+func @func_with_ops(i32, i32, i32) {
 ^bb0(%cond : i32, %t : i32, %f : i32):
   // expected-error@+2 {{different type than prior uses}}
   // expected-error@-2 {{prior use here}}
@@ -249,7 +249,7 @@ cfgfunc @cfgfunc_with_ops(i32, i32, i32) {
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(i32, i32, i32) {
+func @func_with_ops(i32, i32, i32) {
 ^bb0(%cond : i32, %t : i32, %f : i32):
   // expected-error@+1 {{elemental type i1}}
   %r = "select"(%cond, %t, %f) : (i32, i32, i32) -> i32
@@ -257,7 +257,7 @@ cfgfunc @cfgfunc_with_ops(i32, i32, i32) {
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(i1, i32, i64) {
+func @func_with_ops(i1, i32, i64) {
 ^bb0(%cond : i1, %t : i32, %f : i64):
   // expected-error@+1 {{'true' and 'false' arguments to be of the same type}}
   %r = "select"(%cond, %t, %f) : (i1, i32, i64) -> i32
@@ -265,7 +265,7 @@ cfgfunc @cfgfunc_with_ops(i1, i32, i64) {
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(i1, vector<42xi32>, vector<42xi32>) {
+func @func_with_ops(i1, vector<42xi32>, vector<42xi32>) {
 ^bb0(%cond : i1, %t : vector<42xi32>, %f : vector<42xi32>):
   // expected-error@+1 {{requires the condition to have the same shape as arguments}}
   %r = "select"(%cond, %t, %f) : (i1, vector<42xi32>, vector<42xi32>) -> vector<42xi32>
@@ -273,7 +273,7 @@ cfgfunc @cfgfunc_with_ops(i1, vector<42xi32>, vector<42xi32>) {
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
+func @func_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
 ^bb0(%cond : i1, %t : tensor<42xi32>, %f : tensor<?xi32>):
   // expected-error@+1 {{'true' and 'false' arguments to be of the same type}}
   %r = "select"(%cond, %t, %f) : (i1, tensor<42xi32>, tensor<?xi32>) -> tensor<42xi32>
@@ -281,7 +281,7 @@ cfgfunc @cfgfunc_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
 
 // -----
 
-cfgfunc @cfgfunc_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
+func @func_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
 ^bb0(%cond : tensor<?xi1>, %t : tensor<42xi32>, %f : tensor<42xi32>):
   // expected-error@+1 {{requires the condition to have the same shape as arguments}}
   %r = "select"(%cond, %t, %f) : (tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) -> tensor<42xi32>
@@ -289,7 +289,7 @@ cfgfunc @cfgfunc_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -299,7 +299,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -309,7 +309,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -319,7 +319,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -329,7 +329,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -339,7 +339,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -349,7 +349,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -359,7 +359,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -368,7 +368,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?xf32>) {
 }
 // -----
 
-cfgfunc @test_vector_transfer_read(memref<?x?x?xf32>) {
+func @test_vector_transfer_read(memref<?x?x?xf32>) {
 ^bb0(%arg0: memref<?x?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
@@ -378,7 +378,7 @@ cfgfunc @test_vector_transfer_read(memref<?x?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
@@ -388,7 +388,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
@@ -398,7 +398,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
@@ -408,7 +408,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
@@ -418,7 +418,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
@@ -428,7 +428,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
@@ -438,7 +438,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
@@ -448,7 +448,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?xf32>) {
 ^bb0(%arg0: memref<?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<128 x f32>, 3.0>  : vector<128 x f32>
@@ -457,7 +457,7 @@ cfgfunc @test_vector_transfer_write(memref<?x?xf32>) {
 }
 // -----
 
-cfgfunc @test_vector_transfer_write(memref<?x?x?xf32>) {
+func @test_vector_transfer_write(memref<?x?x?xf32>) {
 ^bb0(%arg0: memref<?x?x?xf32>):
   %c3 = constant 3 : index
   %cst = constant splat<vector<3 x 7 x f32>, 3.0>  : vector<3 x 7 x f32>

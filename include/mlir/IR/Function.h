@@ -47,23 +47,15 @@ using NamedAttribute = std::pair<Identifier, Attribute>;
 /// This is the base class for all of the MLIR function types.
 class Function : public llvm::ilist_node_with_parent<Function, Module> {
 public:
-  enum class Kind { ExtFunc, CFGFunc, MLFunc };
-
-  Function(Kind kind, Location location, StringRef name, FunctionType type,
+  Function(Location location, StringRef name, FunctionType type,
            ArrayRef<NamedAttribute> attrs = {});
   ~Function();
-
-  Kind getKind() const { return nameAndKind.getInt(); }
-  void setKind(Kind kind) { nameAndKind.setInt(kind); }
-
-  bool isCFG() const { return getKind() == Kind::CFGFunc; }
-  bool isML() const { return getKind() == Kind::MLFunc; }
 
   /// The source location the operation was defined or derived from.
   Location getLoc() const { return location; }
 
   /// Return the name of this function, without the @.
-  Identifier getName() const { return nameAndKind.getPointer(); }
+  Identifier getName() const { return name; }
 
   /// Return the type of this function.
   FunctionType getType() const { return type; }
@@ -74,6 +66,10 @@ public:
   MLIRContext *getContext() const;
   Module *getModule() { return module; }
   const Module *getModule() const { return module; }
+
+  /// Add an entry block to an empty function, and set up the block arguments
+  /// to match the signature of the function.
+  void addEntryBlock();
 
   /// Unlink this function from its module and delete it.
   void erase();
@@ -187,8 +183,8 @@ public:
   void viewGraph() const;
 
 private:
-  /// The name of the function and the kind of function this is.
-  llvm::PointerIntPair<Identifier, 2, Kind> nameAndKind;
+  /// The name of the function.
+  Identifier name;
 
   /// The module this function is embedded into.
   Module *module = nullptr;

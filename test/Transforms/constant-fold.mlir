@@ -4,7 +4,7 @@
 // CHECK: [[MAP1:#map[0-9]+]] = ()[s0] -> (100, s0)
 
 // CHECK-LABEL: @test(%arg0: memref<f32>) {
-mlfunc @test(%p : memref<f32>) {
+func @test(%p : memref<f32>) {
   for %i0 = 0 to 128 {
     for %i1 = 0 to 8 { // CHECK: for %i1 = 0 to 8 {
       %0 = constant 4.5 : f32
@@ -20,8 +20,8 @@ mlfunc @test(%p : memref<f32>) {
   return
 }
 
-// CHECK-LABEL: cfgfunc @simple_addf
-cfgfunc @simple_addf() -> f32 {
+// CHECK-LABEL: func @simple_addf
+func @simple_addf() -> f32 {
   %0 = constant 4.5 : f32
   %1 = constant 1.5 : f32
 
@@ -32,8 +32,8 @@ cfgfunc @simple_addf() -> f32 {
   return %2 : f32
 }
 
-// CHECK-LABEL: cfgfunc @simple_addi
-cfgfunc @simple_addi() -> i32 {
+// CHECK-LABEL: func @simple_addi
+func @simple_addi() -> i32 {
   %0 = constant 1 : i32
   %1 = constant 5 : i32
 
@@ -44,8 +44,8 @@ cfgfunc @simple_addi() -> i32 {
   return %2 : i32
 }
 
-// CHECK-LABEL: cfgfunc @simple_subf
-cfgfunc @simple_subf() -> f32 {
+// CHECK-LABEL: func @simple_subf
+func @simple_subf() -> f32 {
   %0 = constant 4.5 : f32
   %1 = constant 1.5 : f32
 
@@ -56,8 +56,8 @@ cfgfunc @simple_subf() -> f32 {
   return %2 : f32
 }
 
-// CHECK-LABEL: cfgfunc @simple_subi
-cfgfunc @simple_subi() -> i32 {
+// CHECK-LABEL: func @simple_subi
+func @simple_subi() -> i32 {
   %0 = constant 4 : i32
   %1 = constant 1 : i32
 
@@ -68,8 +68,8 @@ cfgfunc @simple_subi() -> i32 {
   return %2 : i32
 }
 
-// CHECK-LABEL: mlfunc @affine_apply
-mlfunc @affine_apply(%variable : index) -> (index, index, index) {
+// CHECK-LABEL: func @affine_apply
+func @affine_apply(%variable : index) -> (index, index, index) {
   %c177 = constant 177 : index
   %c211 = constant 211 : index
   %N = constant 1075 : index
@@ -86,8 +86,8 @@ mlfunc @affine_apply(%variable : index) -> (index, index, index) {
   return %x#0, %x#1, %y : index, index, index
 }
 
-// CHECK-LABEL:  mlfunc @constant_fold_bounds(%arg0: index) {
-mlfunc @constant_fold_bounds(%N : index) {
+// CHECK-LABEL:  func @constant_fold_bounds(%arg0: index) {
+func @constant_fold_bounds(%N : index) {
   // CHECK:      %c3 = constant 3 : index
   // CHECK-NEXT: %0 = "foo"() : () -> index
   %c9 = constant 9 : index
@@ -116,8 +116,8 @@ mlfunc @constant_fold_bounds(%N : index) {
 }
 
 
-// CHECK-LABEL: cfgfunc @simple_mulf
-cfgfunc @simple_mulf() -> f32 {
+// CHECK-LABEL: func @simple_mulf
+func @simple_mulf() -> f32 {
   %0 = constant 4.5 : f32
   %1 = constant 1.5 : f32
 
@@ -128,8 +128,8 @@ cfgfunc @simple_mulf() -> f32 {
   return %2 : f32
 }
 
-// CHECK-LABEL: cfgfunc @muli(%arg0: i32)
-cfgfunc @muli(i32) -> (i32, i32) {
+// CHECK-LABEL: func @muli(%arg0: i32)
+func @muli(i32) -> (i32, i32) {
 ^bb0(%a : i32):
   %0 = constant 4 : i32
   %1 = constant 2 : i32
@@ -146,8 +146,8 @@ cfgfunc @muli(i32) -> (i32, i32) {
   return %2, %3 : i32, i32
 }
 
-// CHECK-LABEL: mlfunc @dim
-mlfunc @dim(%x : tensor<8x4xf32>) -> index {
+// CHECK-LABEL: func @dim
+func @dim(%x : tensor<8x4xf32>) -> index {
 
   // CHECK: %c4 = constant 4 : index
   %0 = dim %x, 1 : tensor<8x4xf32>

@@ -24,15 +24,15 @@
 // CHECK-DAG: [[setMapS2:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s2 - 1)
 // CHECK-DAG: [[setMapS3:#map[0-9]+]] = (d0)[s0, s1, s2, s3] -> (s3 - 42)
 
-// CHECK-LABEL: cfgfunc @empty() {
-mlfunc @empty() {
+// CHECK-LABEL: func @empty() {
+func @empty() {
   return     // CHECK:  return
 }            // CHECK: }
 
-extfunc @body(index) -> ()
+func @body(index) -> ()
 
 // Simple loops are properly converted.
-// CHECK-LABEL: cfgfunc @simple_loop() {
+// CHECK-LABEL: func @simple_loop() {
 // CHECK-NEXT:   %0 = affine_apply [[map1]]()
 // CHECK-NEXT:   %1 = affine_apply [[map42]]()
 // CHECK-NEXT:   br ^bb1(%0 : index)
@@ -46,7 +46,7 @@ extfunc @body(index) -> ()
 // CHECK-NEXT: ^bb3:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @simple_loop() {
+func @simple_loop() {
   for %i = 1 to 42 {
     call @body(%i) : (index) -> ()
   }
@@ -55,7 +55,7 @@ mlfunc @simple_loop() {
 
 // Direct calls get renamed if asked (IR data structures properly updated) and
 // keep the same name otherwise.
-cfgfunc @simple_caller() {
+func @simple_caller() {
 ^bb0:
 // CHECK: call @simple_loop() : () -> ()
   call @simple_loop() : () -> ()
@@ -64,7 +64,7 @@ cfgfunc @simple_caller() {
 
 // Constant loads get renamed if asked (IR data structure properly updated) and
 // keep the same name otherwise.
-cfgfunc @simple_indirect_caller() {
+func @simple_indirect_caller() {
 ^bb0:
 // CHECK: %f = constant @simple_loop : () -> ()
   %f = constant @simple_loop : () -> ()
@@ -72,7 +72,7 @@ cfgfunc @simple_indirect_caller() {
   return
 }
 
-cfgfunc @nested_attributes() {
+func @nested_attributes() {
 ^bb0:
   %0 = constant 0 : index
 // CHECK: call @body(%c0) {attr1: [@simple_loop : () -> (), @simple_loop : () -> ()]} : (index) -> ()
@@ -84,8 +84,8 @@ cfgfunc @nested_attributes() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @ml_caller() {
-mlfunc @ml_caller() {
+// CHECK-LABEL: func @ml_caller() {
+func @ml_caller() {
 // Direct calls inside ML functions are renamed if asked (given that the
 // function itself is also converted).
 // CHECK: call @simple_loop() : () -> ()
@@ -98,11 +98,11 @@ mlfunc @ml_caller() {
 
 /////////////////////////////////////////////////////////////////////
 
-extfunc @body_args(index) -> (index)
-extfunc @other(index, i32) -> (i32)
+func @body_args(index) -> (index)
+func @other(index, i32) -> (i32)
 
 // Arguments and return values of the functions are converted.
-// CHECK-LABEL: cfgfunc @mlfunc_args(%arg0: i32, %arg1: i32) -> (i32, i32) {
+// CHECK-LABEL: func @func_args(%arg0: i32, %arg1: i32) -> (i32, i32) {
 // CHECK-NEXT:   %c0_i32 = constant 0 : i32
 // CHECK-NEXT:   %0 = affine_apply [[map0]]()
 // CHECK-NEXT:   %1 = affine_apply [[map42]]()
@@ -122,7 +122,7 @@ extfunc @other(index, i32) -> (i32)
 // CHECK-NEXT:   %9 = call @other(%c0, %c0_i32) : (index, i32) -> i32
 // CHECK-NEXT:   return %c0_i32, %9 : i32, i32
 // CHECK-NEXT: }
-mlfunc @mlfunc_args(%a : i32, %b : i32) -> (i32, i32) {
+func @func_args(%a : i32, %b : i32) -> (i32, i32) {
   %r1 = constant 0 : i32
   for %i = 0 to 42 {
     %1 = call @body_args(%i) : (index) -> (index)
@@ -137,11 +137,11 @@ mlfunc @mlfunc_args(%a : i32, %b : i32) -> (i32, i32) {
 
 /////////////////////////////////////////////////////////////////////
 
-extfunc @pre(index) -> ()
-extfunc @body2(index, index) -> ()
-extfunc @post(index) -> ()
+func @pre(index) -> ()
+func @body2(index, index) -> ()
+func @post(index) -> ()
 
-// CHECK-LABEL: cfgfunc @imperfectly_nested_loops() {
+// CHECK-LABEL: func @imperfectly_nested_loops() {
 // CHECK-NEXT:   %0 = affine_apply [[map0]]()
 // CHECK-NEXT:   %1 = affine_apply [[map42]]()
 // CHECK-NEXT:   br ^bb1(%0 : index)
@@ -167,7 +167,7 @@ extfunc @post(index) -> ()
 // CHECK-NEXT: ^bb6:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @imperfectly_nested_loops() {
+func @imperfectly_nested_loops() {
   for %i = 0 to 42 {
     call @pre(%i) : (index) -> ()
     for %j = 7 to 56 step 2 {
@@ -180,10 +180,10 @@ mlfunc @imperfectly_nested_loops() {
 
 /////////////////////////////////////////////////////////////////////
 
-extfunc @mid(index) -> ()
-extfunc @body3(index, index) -> ()
+func @mid(index) -> ()
+func @body3(index, index) -> ()
 
-// CHECK-LABEL: cfgfunc @more_imperfectly_nested_loops() {
+// CHECK-LABEL: func @more_imperfectly_nested_loops() {
 // CHECK-NEXT:   %0 = affine_apply [[map0]]()
 // CHECK-NEXT:   %1 = affine_apply [[map42]]()
 // CHECK-NEXT:   br ^bb1(%0 : index)
@@ -221,7 +221,7 @@ extfunc @body3(index, index) -> ()
 // CHECK-NEXT: ^bb9:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @more_imperfectly_nested_loops() {
+func @more_imperfectly_nested_loops() {
   for %i = 0 to 42 {
     call @pre(%i) : (index) -> ()
     for %j = 7 to 56 step 2 {
@@ -236,7 +236,7 @@ mlfunc @more_imperfectly_nested_loops() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @affine_apply_loops_shorthand(%arg0: index) {
+// CHECK-LABEL: func @affine_apply_loops_shorthand(%arg0: index) {
 // CHECK-NEXT:    %0 = affine_apply #map3()
 // CHECK-NEXT:    %1 = affine_apply #map10()[%arg0]
 // CHECK-NEXT:    br ^bb1(%0 : index)
@@ -260,7 +260,7 @@ mlfunc @more_imperfectly_nested_loops() {
 // CHECK-NEXT:  ^bb6:   // pred: ^bb1
 // CHECK-NEXT:    return
 // CHECK-NEXT:  }
-mlfunc @affine_apply_loops_shorthand(%N : index) {
+func @affine_apply_loops_shorthand(%N : index) {
   for %i = 0 to %N {
     for %j = %i to 42 {
       call @body2(%i, %j) : (index, index) -> ()
@@ -271,12 +271,12 @@ mlfunc @affine_apply_loops_shorthand(%N : index) {
 
 /////////////////////////////////////////////////////////////////////
 
-extfunc @get_idx() -> (index)
+func @get_idx() -> (index)
 
 #set1 = (d0) : (20 - d0 >= 0)
 #set2 = (d0) : (d0 - 10 >= 0)
 
-// CHECK-LABEL: cfgfunc @if_only() {
+// CHECK-LABEL: func @if_only() {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
@@ -288,7 +288,7 @@ extfunc @get_idx() -> (index)
 // CHECK-NEXT: [[endBB]]:
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @if_only() {
+func @if_only() {
   %i = call @get_idx() : () -> (index)
   if #set1(%i) {
     call @body(%i) : (index) -> ()
@@ -296,7 +296,7 @@ mlfunc @if_only() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @if_else() {
+// CHECK-LABEL: func @if_else() {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %1 = affine_apply [[setMap20]](%0)
@@ -311,7 +311,7 @@ mlfunc @if_only() {
 // CHECK-NEXT: [[endBB]]:
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @if_else() {
+func @if_else() {
   %i = call @get_idx() : () -> (index)
   if #set1(%i) {
     call @body(%i) : (index) -> ()
@@ -321,7 +321,7 @@ mlfunc @if_else() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @nested_ifs() {
+// CHECK-LABEL: func @nested_ifs() {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %1 = affine_apply #map12(%0)
@@ -350,7 +350,7 @@ mlfunc @if_else() {
 // CHECK-NEXT: ^bb7:   // 2 preds: ^bb3, ^bb6
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @nested_ifs() {
+func @nested_ifs() {
   %i = call @get_idx() : () -> (index)
   if #set1(%i) {
     if #set2(%i) {
@@ -366,7 +366,7 @@ mlfunc @nested_ifs() {
 
 #setN = (d0)[N,M,K,L] : (N - d0 + 1 >= 0, N - 1 >= 0, M - 1 >= 0, K - 1 >= 0, L - 42 == 0)
 
-// CHECK-LABEL: cfgfunc @multi_cond(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
+// CHECK-LABEL: func @multi_cond(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %1 = affine_apply [[setMapDiff]](%0)[%arg0, %arg1, %arg2, %arg3]
@@ -397,7 +397,7 @@ mlfunc @nested_ifs() {
 // CHECK-NEXT: [[endBB]]:
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @multi_cond(%N : index, %M : index, %K : index, %L : index) {
+func @multi_cond(%N : index, %M : index, %K : index, %L : index) {
   %i = call @get_idx() : () -> (index)
   if #setN(%i)[%N,%M,%K,%L] {
     call @body(%i) : (index) -> ()
@@ -407,8 +407,8 @@ mlfunc @multi_cond(%N : index, %M : index, %K : index, %L : index) {
   return
 }
 
-// CHECK-LABEL: cfgfunc @if_for() {
-mlfunc @if_for() {
+// CHECK-LABEL: func @if_for() {
+func @if_for() {
 // CHECK-NEXT:   %0 = call @get_idx() : () -> index
   %i = call @get_idx() : () -> (index)
 // CHECK-NEXT:   %c0 = constant 0 : index
@@ -485,7 +485,7 @@ mlfunc @if_for() {
 #lbMultiMap = (d0)[s0] -> (d0, s0 - d0)
 #ubMultiMap = (d0)[s0] -> (s0, d0 + 10)
 
-// CHECK-LABEL: cfgfunc @loop_min_max(%arg0: index) {
+// CHECK-LABEL: func @loop_min_max(%arg0: index) {
 // CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map0]]()
 // CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map42]]()
 // CHECK-NEXT:   br ^bb1(%{{[0-9]+}} : index)
@@ -513,7 +513,7 @@ mlfunc @if_for() {
 // CHECK-NEXT: ^bb6:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @loop_min_max(%N : index) {
+func @loop_min_max(%N : index) {
   for %i = 0 to 42 {
     for %j = max #lbMultiMap(%i)[%N] to min #ubMultiMap(%i)[%N] {
       call @body2(%i, %j) : (index, index) -> ()
@@ -527,7 +527,7 @@ mlfunc @loop_min_max(%N : index) {
 // Check that the "min" (cmpi "slt" + select) reduction sequence is emitted
 // correctly for a an affine map with 7 results.
 
-// CHECK-LABEL: cfgfunc @min_reduction_tree(%arg0: index) {
+// CHECK-LABEL: func @min_reduction_tree(%arg0: index) {
 // CHECK-NEXT:   %{{[0-9]+}} = affine_apply [[map0]]()
 // CHECK-NEXT:   %[[applr:[0-9]+]] = affine_apply [[multi7Map]](%arg0)
 // CHECK-NEXT:   %[[c01:.+]] = cmpi "slt", %[[applr]]#0, %[[applr]]#1 : index
@@ -553,7 +553,7 @@ mlfunc @loop_min_max(%N : index) {
 // CHECK-NEXT: ^bb3:	// pred: ^bb1
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
-mlfunc @min_reduction_tree(%v : index) {
+func @min_reduction_tree(%v : index) {
   for %i = 0 to min #map_7_values(%v)[] {
     call @body(%i) : (index) -> ()
   }

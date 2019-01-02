@@ -1072,19 +1072,7 @@ void FunctionPrinter::print() {
 }
 
 void FunctionPrinter::printFunctionSignature() {
-  switch (function->getKind()) {
-  case Function::Kind::CFGFunc:
-    os << "cfgfunc ";
-    break;
-  case Function::Kind::MLFunc:
-    os << "mlfunc ";
-    break;
-  case Function::Kind::ExtFunc:
-    os << "extfunc ";
-    break;
-  }
-
-  os << '@' << function->getName() << '(';
+  os << "func @" << function->getName() << '(';
 
   auto fnType = function->getType();
 

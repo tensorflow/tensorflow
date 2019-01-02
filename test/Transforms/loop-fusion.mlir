@@ -6,14 +6,14 @@
 //    added to iteration domain in dependence check.
 // *) Add a test w/ floordiv/ceildiv/mod when supported in dependence check.
 // *) Add tests which check fused computation slice indexing and loop bounds.
-// TODO(andydavis) Test clean up: move memref allocs to mlfunc args.
+// TODO(andydavis) Test clean up: move memref allocs to func args.
 
 // -----
 
 // CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
 
-// CHECK-LABEL: mlfunc @should_fuse_raw_dep_for_locality() {
-mlfunc @should_fuse_raw_dep_for_locality() {
+// CHECK-LABEL: func @should_fuse_raw_dep_for_locality() {
+func @should_fuse_raw_dep_for_locality() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -36,8 +36,8 @@ mlfunc @should_fuse_raw_dep_for_locality() {
 
 // CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
 
-// CHECK-LABEL: mlfunc @should_fuse_reduction_to_pointwise() {
-mlfunc @should_fuse_reduction_to_pointwise() {
+// CHECK-LABEL: func @should_fuse_reduction_to_pointwise() {
+func @should_fuse_reduction_to_pointwise() {
   %a = alloc() : memref<10x10xf32>
   %b = alloc() : memref<10xf32>
   %c = alloc() : memref<10xf32>
@@ -79,8 +79,8 @@ mlfunc @should_fuse_reduction_to_pointwise() {
 // CHECK: [[MAP_SHIFT_MINUS_ONE:#map[0-9]+]] = (d0) -> (d0 - 1)
 // CHECK: [[MAP_SHIFT_BY_ONE:#map[0-9]+]] = (d0, d1) -> (d0 + 1, d1 + 1)
 
-// CHECK-LABEL: mlfunc @should_fuse_loop_nests_with_shifts() {
-mlfunc @should_fuse_loop_nests_with_shifts() {
+// CHECK-LABEL: func @should_fuse_loop_nests_with_shifts() {
+func @should_fuse_loop_nests_with_shifts() {
   %a = alloc() : memref<10x10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -113,8 +113,8 @@ mlfunc @should_fuse_loop_nests_with_shifts() {
 
 // CHECK: [[MAP_IDENTITY:#map[0-9]+]] = (d0) -> (d0)
 
-// CHECK-LABEL: mlfunc @should_fuse_loop_nest() {
-mlfunc @should_fuse_loop_nest() {
+// CHECK-LABEL: func @should_fuse_loop_nest() {
+func @should_fuse_loop_nest() {
   %a = alloc() : memref<10x10xf32>
   %b = alloc() : memref<10x10xf32>
   %cf7 = constant 7.0 : f32
@@ -156,8 +156,8 @@ mlfunc @should_fuse_loop_nest() {
 
 // CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
 
-// CHECK-LABEL: mlfunc @should_fuse_across_intermediate_loop_with_no_deps() {
-mlfunc @should_fuse_across_intermediate_loop_with_no_deps() {
+// CHECK-LABEL: func @should_fuse_across_intermediate_loop_with_no_deps() {
+func @should_fuse_across_intermediate_loop_with_no_deps() {
   %a = alloc() : memref<10xf32>
   %b = alloc() : memref<10xf32>
   %c = alloc() : memref<10xf32>
@@ -193,8 +193,8 @@ mlfunc @should_fuse_across_intermediate_loop_with_no_deps() {
 
 // CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
 
-// CHECK-LABEL: mlfunc @should_fuse_all_loops() {
-mlfunc @should_fuse_all_loops() {
+// CHECK-LABEL: func @should_fuse_all_loops() {
+func @should_fuse_all_loops() {
   %a = alloc() : memref<10xf32>
   %b = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
@@ -228,8 +228,8 @@ mlfunc @should_fuse_all_loops() {
 
 // CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
 
-// CHECK-LABEL: mlfunc @should_fuse_first_and_second_loops() {
-mlfunc @should_fuse_first_and_second_loops() {
+// CHECK-LABEL: func @should_fuse_first_and_second_loops() {
+func @should_fuse_first_and_second_loops() {
   %a = alloc() : memref<10xf32>
   %b = alloc() : memref<10xf32>
   %c = alloc() : memref<10xf32>
@@ -264,8 +264,8 @@ mlfunc @should_fuse_first_and_second_loops() {
 
 // -----
 
-// CHECK-LABEL: mlfunc @should_not_fuse_would_create_cycle() {
-mlfunc @should_not_fuse_would_create_cycle() {
+// CHECK-LABEL: func @should_not_fuse_would_create_cycle() {
+func @should_not_fuse_would_create_cycle() {
   %a = alloc() : memref<10xf32>
   %b = alloc() : memref<10xf32>
   %c = alloc() : memref<10xf32>
@@ -307,8 +307,8 @@ mlfunc @should_not_fuse_would_create_cycle() {
 
 // -----
 
-// CHECK-LABEL: mlfunc @should_not_fuse_raw_dep_would_be_violated() {
-mlfunc @should_not_fuse_raw_dep_would_be_violated() {
+// CHECK-LABEL: func @should_not_fuse_raw_dep_would_be_violated() {
+func @should_not_fuse_raw_dep_would_be_violated() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -337,8 +337,8 @@ mlfunc @should_not_fuse_raw_dep_would_be_violated() {
 
 // -----
 
-// CHECK-LABEL: mlfunc @should_not_fuse_waw_dep_would_be_violated() {
-mlfunc @should_not_fuse_waw_dep_would_be_violated() {
+// CHECK-LABEL: func @should_not_fuse_waw_dep_would_be_violated() {
+func @should_not_fuse_waw_dep_would_be_violated() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -367,8 +367,8 @@ mlfunc @should_not_fuse_waw_dep_would_be_violated() {
 
 // -----
 
-// CHECK-LABEL: mlfunc @should_not_fuse_war_dep_would_be_violated() {
-mlfunc @should_not_fuse_war_dep_would_be_violated() {
+// CHECK-LABEL: func @should_not_fuse_war_dep_would_be_violated() {
+func @should_not_fuse_war_dep_would_be_violated() {
   %a = alloc() : memref<10xf32>
   %b = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
@@ -400,8 +400,8 @@ mlfunc @should_not_fuse_war_dep_would_be_violated() {
 
 // -----
 
-// CHECK-LABEL: mlfunc @should_not_fuse_if_top_level_access() {
-mlfunc @should_not_fuse_if_top_level_access() {
+// CHECK-LABEL: func @should_not_fuse_if_top_level_access() {
+func @should_not_fuse_if_top_level_access() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -428,8 +428,8 @@ mlfunc @should_not_fuse_if_top_level_access() {
 
 // CHECK: [[MAP0:#map[0-9]+]] = (d0) -> (d0)
 
-// CHECK-LABEL: mlfunc @should_fuse_no_top_level_access() {
-mlfunc @should_fuse_no_top_level_access() {
+// CHECK-LABEL: func @should_fuse_no_top_level_access() {
+func @should_fuse_no_top_level_access() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -452,8 +452,8 @@ mlfunc @should_fuse_no_top_level_access() {
 
 #set0 = (d0) : (1 == 0)
 
-// CHECK-LABEL: mlfunc @should_not_fuse_if_inst_at_top_level() {
-mlfunc @should_not_fuse_if_inst_at_top_level() {
+// CHECK-LABEL: func @should_not_fuse_if_inst_at_top_level() {
+func @should_not_fuse_if_inst_at_top_level() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
@@ -480,8 +480,8 @@ mlfunc @should_not_fuse_if_inst_at_top_level() {
 
 #set0 = (d0) : (1 == 0)
 
-// CHECK-LABEL: mlfunc @should_not_fuse_if_inst_in_loop_nest() {
-mlfunc @should_not_fuse_if_inst_in_loop_nest() {
+// CHECK-LABEL: func @should_not_fuse_if_inst_in_loop_nest() {
+func @should_not_fuse_if_inst_in_loop_nest() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
   %c4 = constant 4 : index
@@ -513,8 +513,8 @@ mlfunc @should_not_fuse_if_inst_in_loop_nest() {
 // CHECK: [[MAP1:#map[0-9]+]] = (d0, d1, d2) -> (d0, d1, d2)
 // CHECK: [[MAP2:#map[0-9]+]] = (d0, d1, d2) -> (d1, d2, d0)
 
-// CHECK-LABEL: mlfunc @remap_ivs() {
-mlfunc @remap_ivs() {
+// CHECK-LABEL: func @remap_ivs() {
+func @remap_ivs() {
   %m = alloc() : memref<10x20x30xf32>
 
   %cf7 = constant 7.0 : f32
@@ -557,8 +557,8 @@ mlfunc @remap_ivs() {
 // DEPTH1: #map0 = (d0) -> (d0)
 // DEPTH1: #map1 = (d0, d1, d2) -> (d0, d1, d2)
 
-// DEPTH1-LABEL: mlfunc @fuse_slice_at_depth1() {
-mlfunc @fuse_slice_at_depth1() {
+// DEPTH1-LABEL: func @fuse_slice_at_depth1() {
+func @fuse_slice_at_depth1() {
   %m = alloc() : memref<100x16x100xf32>
 
   %cf7 = constant 7.0 : f32

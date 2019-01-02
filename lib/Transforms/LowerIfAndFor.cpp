@@ -368,8 +368,6 @@ PassResult LowerIfAndForPass::runOnFunction(Function *function) {
     else
       lowerForInst(cast<ForInst>(inst));
 
-  // Change the kind of the function to indicate it has no If's or For's.
-  function->setKind(Function::Kind::CFGFunc);
   return success();
 }
 

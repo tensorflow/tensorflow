@@ -7,7 +7,7 @@
 // CHECK-DAG: [[UB:#map[0-9]+]] = ()[s0, s1] -> (s0, 4096 floordiv s1)
 // CHECK-DAG: [[UB_INTRA_TILE:#map[0-9]+]] = (d0, d1, d2) -> (d2 + 32, s0, 4096 floordiv s1)
 
-// CHECK-LABEL: mlfunc @loop_tiling()
+// CHECK-LABEL: func @loop_tiling()
 // CHECK-NEXT:   for %i0 = 0 to 256 step 32 {
 // CHECK-NEXT:     for %i1 = 0 to 512 step 32 {
 // CHECK-NEXT:       for %i2 = 0 to 1024 step 32 {
@@ -32,7 +32,7 @@
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
-mlfunc @loop_tiling() {
+func @loop_tiling() {
   for %i = 0 to 256 {
     for %j = 0 to 512 {
       for %k = 0 to 1024 {
@@ -55,8 +55,8 @@ mlfunc @loop_tiling() {
 
 #lb = ()[s0] -> (0, s0)
 #ub = ()[s0, s1] -> (s0, 4096 floordiv s1)
-// CHECK-LABEL: mlfunc @loop_max_min_bound(%arg0: memref<?xi32>, %arg1: index, %arg2: index) {
-mlfunc @loop_max_min_bound(%A : memref<? x i32>, %L : index, %U : index) {
+// CHECK-LABEL: func @loop_max_min_bound(%arg0: memref<?xi32>, %arg1: index, %arg2: index) {
+func @loop_max_min_bound(%A : memref<? x i32>, %L : index, %U : index) {
   %M = dim %A, 0 : memref<? x i32>
   for %iTT = max #lb()[%L] to min #ub()[%M, %U] {
       %out = affine_apply (d0) -> (d0) (%iTT)

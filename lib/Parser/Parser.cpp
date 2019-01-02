@@ -780,8 +780,7 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
   if (!function) {
     auto &entry = state.functionForwardRefs[name];
     if (!entry)
-      entry = new Function(Function::Kind::ExtFunc,
-                           getEncodedSourceLocation(nameLoc), name, type,
+      entry = new Function(getEncodedSourceLocation(nameLoc), name, type,
                            /*attrs=*/{});
     function = entry;
   }
@@ -3159,7 +3158,7 @@ private:
                                 SmallVectorImpl<StringRef> &argNames);
   ParseResult parseFunctionSignature(StringRef &name, FunctionType &type,
                                      SmallVectorImpl<StringRef> &argNames);
-  ParseResult parseFunc(Function::Kind kind);
+  ParseResult parseFunc();
 };
 } // end anonymous namespace
 
@@ -3285,17 +3284,10 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
 
 /// Function declarations.
 ///
-///   ext-func ::= `extfunc` function-signature function-attributes?
-//
-///   ml-func ::= `mlfunc` function-signature function-attributes?
-///              `{` inst* return-inst `}`
-///
-///   cfg-func ::= `cfgfunc` function-signature function-attributes?
-///               `{` basic-block+ `}`
-///
+///   func ::= `func` function-signature function-attributes? `{` block+ `}`
 ///   function-attributes ::= `attributes` attribute-dict
 ///
-ParseResult ModuleParser::parseFunc(Function::Kind kind) {
+ParseResult ModuleParser::parseFunc() {
   consumeToken();
 
   StringRef name;
@@ -3315,7 +3307,7 @@ ParseResult ModuleParser::parseFunc(Function::Kind kind) {
 
   // Okay, the function signature was parsed correctly, create the function now.
   auto *function =
-      new Function(kind, getEncodedSourceLocation(loc), name, type, attrs);
+      new Function(getEncodedSourceLocation(loc), name, type, attrs);
   getModule()->getFunctions().push_back(function);
 
   // Verify no name collision / redefinition.
@@ -3324,7 +3316,7 @@ ParseResult ModuleParser::parseFunc(Function::Kind kind) {
                      "redefinition of function named '" + name.str() + "'");
 
   // External functions have no body.
-  if (kind == Function::Kind::ExtFunc)
+  if (getToken().isNot(Token::l_brace))
     return ParseSuccess;
 
   // Create the parser.
@@ -3332,13 +3324,8 @@ ParseResult ModuleParser::parseFunc(Function::Kind kind) {
 
   bool hadNamedArguments = !argNames.empty();
 
-  // CFG functions don't auto-create a block, so create one now.
-  // TODO(clattner): FIX THIS.
-  if (kind == Function::Kind::CFGFunc) {
-    auto *entry = new Block();
-    function->push_back(entry);
-    entry->addArguments(type.getInputs());
-  }
+  // Add the entry block and argument list.
+  function->addEntryBlock();
 
   // Add definitions of the function arguments.
   if (hadNamedArguments) {
@@ -3411,18 +3398,8 @@ ParseResult ModuleParser::parseModule() {
         return ParseFailure;
       break;
 
-    case Token::kw_extfunc:
-      if (parseFunc(Function::Kind::ExtFunc))
-        return ParseFailure;
-      break;
-
-    case Token::kw_cfgfunc:
-      if (parseFunc(Function::Kind::CFGFunc))
-        return ParseFailure;
-      break;
-
-    case Token::kw_mlfunc:
-      if (parseFunc(Function::Kind::MLFunc))
+    case Token::kw_func:
+      if (parseFunc())
         return ParseFailure;
       break;
     }

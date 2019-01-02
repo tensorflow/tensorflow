@@ -27,8 +27,8 @@
 // Affine maps for test case: arg_used_as_dim_and_symbol
 // CHECK: [[MAP14:#map[0-9]+]] = (d0, d1, d2, d3)[s0, s1] -> (d2, d3 + s0 + s1 - (d0 + d1))
 
-// CHECK-LABEL: mlfunc @compose_affine_maps_1dto2d_no_symbols() {
-mlfunc @compose_affine_maps_1dto2d_no_symbols() {
+// CHECK-LABEL: func @compose_affine_maps_1dto2d_no_symbols() {
+func @compose_affine_maps_1dto2d_no_symbols() {
   %0 = alloc() : memref<4x4xf32>
 
   for %i0 = 0 to 15 {
@@ -64,8 +64,8 @@ mlfunc @compose_affine_maps_1dto2d_no_symbols() {
   return
 }
 
-// CHECK-LABEL: mlfunc @compose_affine_maps_1dto2d_with_symbols() {
-mlfunc @compose_affine_maps_1dto2d_with_symbols() {
+// CHECK-LABEL: func @compose_affine_maps_1dto2d_with_symbols() {
+func @compose_affine_maps_1dto2d_with_symbols() {
   %0 = alloc() : memref<4x4xf32>
   
   for %i0 = 0 to 15 {
@@ -102,8 +102,8 @@ mlfunc @compose_affine_maps_1dto2d_with_symbols() {
   return
 }
 
-// CHECK-LABEL: mlfunc @compose_affine_maps_2d_tile() {
-mlfunc @compose_affine_maps_2d_tile() {
+// CHECK-LABEL: func @compose_affine_maps_2d_tile() {
+func @compose_affine_maps_2d_tile() {
   %0 = alloc() : memref<16x32xf32>
   %1 = alloc() : memref<16x32xf32>
 
@@ -134,8 +134,8 @@ mlfunc @compose_affine_maps_2d_tile() {
   return
 }
 
-// CHECK-LABEL: mlfunc @compose_affine_maps_dependent_loads() {
-mlfunc @compose_affine_maps_dependent_loads() {
+// CHECK-LABEL: func @compose_affine_maps_dependent_loads() {
+func @compose_affine_maps_dependent_loads() {
   %0 = alloc() : memref<16x32xf32>
   %1 = alloc() : memref<16x32xf32>
 
@@ -178,8 +178,8 @@ mlfunc @compose_affine_maps_dependent_loads() {
   return
 }
 
-// CHECK-LABEL: mlfunc @compose_affine_maps_diamond_dependency() {
-mlfunc @compose_affine_maps_diamond_dependency() {
+// CHECK-LABEL: func @compose_affine_maps_diamond_dependency() {
+func @compose_affine_maps_diamond_dependency() {
   %0 = alloc() : memref<4x4xf32>
 
   for %i0 = 0 to 15 {
@@ -195,8 +195,8 @@ mlfunc @compose_affine_maps_diamond_dependency() {
   return
 }
 
-// CHECK-LABEL: mlfunc @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
-mlfunc @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
+// CHECK-LABEL: func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
+func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
   %c9 = constant 9 : index
   %1 = alloc() : memref<100x100xf32, 1>
   %2 = alloc() : memref<1xi32>

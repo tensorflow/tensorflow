@@ -92,22 +92,9 @@ bool FuncVerifier::verify() {
   llvm::PrettyStackTraceFormat fmt("MLIR Verifier: func @%s",
                                    fn.getName().c_str());
 
-  // If this is an external function, it must be empty.
-  if (fn.getKind() == Function::Kind::ExtFunc) {
-    if (!fn.empty())
-      return failure("extfunc must not have any blocks", fn);
-
-    // nothing else to check.
-    return false;
-  }
-
+  // External functions have nothing more to check.
   if (fn.empty())
-    return failure("function must have at least one block", fn);
-
-  // ML Functions should have exactly one block.
-  // TODO(clattner): This will change real soon now.
-  if (fn.isML() && fn.getBlocks().size() != 1)
-    return fn.emitError("mlfunc should have exactly one block");
+    return false;
 
   // Verify the first block has no predecessors.
   auto *firstBB = &fn.front();

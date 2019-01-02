@@ -56,7 +56,7 @@
                              d0 * 7 + d1 * 5 + s0 * 11 + s1 == 0,
                              d0 - 1 == 0, d0 + 2 == 0)
 
-mlfunc @test() {
+func @test() {
   for %n0 = 0 to 127 {
     for %n1 = 0 to 7 {
       %x  = affine_apply #map0(%n0, %n1)
@@ -72,8 +72,8 @@ mlfunc @test() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_gaussian_elimination_empty_set0() {
-mlfunc @test_gaussian_elimination_empty_set0() {
+// CHECK-LABEL: func @test_gaussian_elimination_empty_set0() {
+func @test_gaussian_elimination_empty_set0() {
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
       // CHECK: [[SET_EMPTY_2D]](%i0, %i1)
@@ -84,8 +84,8 @@ mlfunc @test_gaussian_elimination_empty_set0() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_gaussian_elimination_empty_set1() {
-mlfunc @test_gaussian_elimination_empty_set1() {
+// CHECK-LABEL: func @test_gaussian_elimination_empty_set1() {
+func @test_gaussian_elimination_empty_set1() {
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
       // CHECK: [[SET_EMPTY_2D]](%i0, %i1)
@@ -96,8 +96,8 @@ mlfunc @test_gaussian_elimination_empty_set1() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_gaussian_elimination_non_empty_set2() {
-mlfunc @test_gaussian_elimination_non_empty_set2() {
+// CHECK-LABEL: func @test_gaussian_elimination_non_empty_set2() {
+func @test_gaussian_elimination_non_empty_set2() {
   for %i0 = 1 to 10 {
     for %i1 = 1 to 100 {
       // CHECK: #set1(%i0, %i1)
@@ -108,8 +108,8 @@ mlfunc @test_gaussian_elimination_non_empty_set2() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_gaussian_elimination_empty_set3() {
-mlfunc @test_gaussian_elimination_empty_set3() {
+// CHECK-LABEL: func @test_gaussian_elimination_empty_set3() {
+func @test_gaussian_elimination_empty_set3() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
   for %i0 = 1 to 10 {
@@ -122,8 +122,8 @@ mlfunc @test_gaussian_elimination_empty_set3() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_gaussian_elimination_non_empty_set4() {
-mlfunc @test_gaussian_elimination_non_empty_set4() {
+// CHECK-LABEL: func @test_gaussian_elimination_non_empty_set4() {
+func @test_gaussian_elimination_non_empty_set4() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
   for %i0 = 1 to 10 {
@@ -136,8 +136,8 @@ mlfunc @test_gaussian_elimination_non_empty_set4() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_gaussian_elimination_empty_set5() {
-mlfunc @test_gaussian_elimination_empty_set5() {
+// CHECK-LABEL: func @test_gaussian_elimination_empty_set5() {
+func @test_gaussian_elimination_empty_set5() {
   %c7 = constant 7 : index
   %c11 = constant 11 : index
   for %i0 = 1 to 10 {
@@ -150,8 +150,8 @@ mlfunc @test_gaussian_elimination_empty_set5() {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_empty_set(%arg0: index) {
-mlfunc @test_empty_set(%N : index) {
+// CHECK-LABEL: func @test_empty_set(%arg0: index) {
+func @test_empty_set(%N : index) {
   for %i = 0 to 10 {
     for %j = 0 to 10 {
       // CHECK: if [[SET_EMPTY_2D]](%i0, %i1)

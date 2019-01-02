@@ -3,7 +3,7 @@
 // Permutation maps used in vectorization.
 // CHECK-DAG: #[[map_proj_d0d1d2_d2d1:map[0-9]+]] = (d0, d1, d2) -> (d2, d1)
 
-mlfunc @vec2d(%A : memref<?x?x?xf32>) {
+func @vec2d(%A : memref<?x?x?xf32>) {
    %M = dim %A, 0 : memref<?x?x?xf32>
    %N = dim %A, 1 : memref<?x?x?xf32>
    %P = dim %A, 2 : memref<?x?x?xf32>
@@ -33,7 +33,7 @@ mlfunc @vec2d(%A : memref<?x?x?xf32>) {
    return
 }
 
-mlfunc @vec2d_imperfectly_nested(%A : memref<?x?x?xf32>) {
+func @vec2d_imperfectly_nested(%A : memref<?x?x?xf32>) {
    %0 = dim %A, 0 : memref<?x?x?xf32>
    %1 = dim %A, 1 : memref<?x?x?xf32>
    %2 = dim %A, 2 : memref<?x?x?xf32>

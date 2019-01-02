@@ -9,8 +9,8 @@
 // CHECK-DAG: [[MAP_ORIG_ACCESS:#map[0-9]+]] = (d0, d1)[s0, s1] -> (d0, d1 + s0 + s1)
 // CHECK-DAG: [[MAP_SUB_OFFSET:#map[0-9]+]] = (d0, d1, d2) -> (d1, d2 - (d0 + 9))
 
-// CHECK-LABEL: mlfunc @loop_nest_1d() {
-mlfunc @loop_nest_1d() {
+// CHECK-LABEL: func @loop_nest_1d() {
+func @loop_nest_1d() {
   %A = alloc() : memref<256 x f32>
   %B = alloc() : memref<512 x f32>
   %F = alloc() : memref<256 x f32, 1>
@@ -47,7 +47,7 @@ mlfunc @loop_nest_1d() {
   return
 }
 
-// CHECK-LABEL: mlfunc @loop_nest_high_d
+// CHECK-LABEL: func @loop_nest_high_d
 // CHECK:       %c16384 = constant 16384 : index
 // CHECK-NEXT:  %0 = alloc() : memref<512x32xf32, 1>
 // CHECK-NEXT:  %1 = alloc() : memref<1xi32>
@@ -98,7 +98,7 @@ mlfunc @loop_nest_1d() {
 // CHECK-NEXT:  dma_wait %6[%c0], %c16384 : memref<1xi32>
 // CHECK-NEXT:  return
 // CHECK-NEXT:}
-mlfunc @loop_nest_high_d(%A: memref<512 x 32 x f32>,
+func @loop_nest_high_d(%A: memref<512 x 32 x f32>,
     %B: memref<512 x 32 x f32>, %C: memref<512 x 32 x f32>) {
   // DMAs will be performed at this level (jT is the first loop without a stride).
   // A and B are read, while C is both read and written. A total of three new buffers
@@ -133,7 +133,7 @@ mlfunc @loop_nest_high_d(%A: memref<512 x 32 x f32>,
 // A loop nest with a modulo 2 access. A strided DMA is not needed here a 1x2
 // region within a 256 x 8 memref.
 //
-// CHECK-LABEL: mlfunc @loop_nest_modulo() {
+// CHECK-LABEL: func @loop_nest_modulo() {
 // CHECK:       %0 = alloc() : memref<256x8xf32>
 // CHECK-NEXT:    for %i0 = 0 to 32 step 4 {
 // CHECK-NEXT:      %1 = affine_apply #map{{[0-9]+}}(%i0)
@@ -147,7 +147,7 @@ mlfunc @loop_nest_high_d(%A: memref<512 x 32 x f32>,
 // CHECK:           }
 // CHECK-NEXT:    }
 // CHECK-NEXT:    return
-mlfunc @loop_nest_modulo() {
+func @loop_nest_modulo() {
   %A = alloc() : memref<256 x 8 x f32>
   for %i = 0 to 32 step 4 {
     // DMAs will be performed at this level (%j is the first unit stride loop)
@@ -162,8 +162,8 @@ mlfunc @loop_nest_modulo() {
 
 // DMA on tiled loop nest. This also tests the case where the bounds are
 // dependent on outer loop IVs.
-// CHECK-LABEL: mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
-mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
+// CHECK-LABEL: func @loop_nest_tiled() -> memref<256x1024xf32> {
+func @loop_nest_tiled() -> memref<256x1024xf32> {
   %0 = alloc() : memref<256x1024xf32>
   for %i0 = 0 to 256 step 32 {
     for %i1 = 0 to 1024 step 32 {
@@ -187,8 +187,8 @@ mlfunc @loop_nest_tiled() -> memref<256x1024xf32> {
   return %0 : memref<256x1024xf32>
 }
 
-// CHECK-LABEL: mlfunc @dma_constant_dim_access
-mlfunc @dma_constant_dim_access(%A : memref<100x100xf32>) {
+// CHECK-LABEL: func @dma_constant_dim_access
+func @dma_constant_dim_access(%A : memref<100x100xf32>) {
   %one = constant 1 : index
   %N = constant 100 : index
   // CHECK:      %0 = alloc() : memref<1x100xf32, 1>
@@ -206,8 +206,8 @@ mlfunc @dma_constant_dim_access(%A : memref<100x100xf32>) {
   return
 }
 
-// CHECK-LABEL: mlfunc @dma_with_symbolic_accesses
-mlfunc @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
+// CHECK-LABEL: func @dma_with_symbolic_accesses
+func @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
   %N = constant 9 : index
   for %i = 0 to 100 {
     for %j = 0 to 100 {
@@ -230,8 +230,8 @@ mlfunc @dma_with_symbolic_accesses(%A : memref<100x100xf32>, %M : index) {
 // CHECK-NEXT:  return
 }
 
-// CHECK-LABEL: mlfunc @dma_with_symbolic_loop_bounds
-mlfunc @dma_with_symbolic_loop_bounds(%A : memref<100x100xf32>, %M : index, %N: index) {
+// CHECK-LABEL: func @dma_with_symbolic_loop_bounds
+func @dma_with_symbolic_loop_bounds(%A : memref<100x100xf32>, %M : index, %N: index) {
   %K = constant 9 : index
 // The buffer size can't be bound by a constant smaller than the original
 // memref size; so the DMA buffer is the entire 100x100.
@@ -248,8 +248,8 @@ mlfunc @dma_with_symbolic_loop_bounds(%A : memref<100x100xf32>, %M : index, %N: 
   return
 }
 
-// CHECK-LABEL: mlfunc @dma_unknown_size
-mlfunc @dma_unknown_size(%arg0: memref<?x?xf32>) {
+// CHECK-LABEL: func @dma_unknown_size
+func @dma_unknown_size(%arg0: memref<?x?xf32>) {
   %M = dim %arg0, 0 : memref<? x ? x f32>
   %N = dim %arg0, 0 : memref<? x ? x f32>
   for %i = 0 to %M {
@@ -263,8 +263,8 @@ mlfunc @dma_unknown_size(%arg0: memref<?x?xf32>) {
   return
 }
 
-// CHECK-LABEL: mlfunc @dma_memref_3d
-mlfunc @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
+// CHECK-LABEL: func @dma_memref_3d
+func @dma_memref_3d(%arg0: memref<1024x1024x1024xf32>) {
   for %i = 0 to 1024 {
     for %j = 0 to 1024 {
       for %k = 0 to 1024 {

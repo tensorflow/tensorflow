@@ -4,8 +4,8 @@
 
 #set0 = (d0) : (1 == 0)
 
-// CHECK-LABEL: mlfunc @store_may_execute_before_load() {
-mlfunc @store_may_execute_before_load() {
+// CHECK-LABEL: func @store_may_execute_before_load() {
+func @store_may_execute_before_load() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
   %c0 = constant 4 : index
@@ -31,8 +31,8 @@ mlfunc @store_may_execute_before_load() {
 
 // -----
 
-// CHECK-LABEL: mlfunc @dependent_loops() {
-mlfunc @dependent_loops() {
+// CHECK-LABEL: func @dependent_loops() {
+func @dependent_loops() {
   %0 = alloc() : memref<10xf32>
   %cst = constant 7.000000e+00 : f32
   // There is a dependence from 0 to 1 at depth 1 (common surrounding loops 0)
@@ -53,8 +53,8 @@ mlfunc @dependent_loops() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @different_memrefs() {
-mlfunc @different_memrefs() {
+// CHECK-LABEL: func @different_memrefs() {
+func @different_memrefs() {
   %m.a = alloc() : memref<100xf32>
   %m.b = alloc() : memref<100xf32>
   %c0 = constant 0 : index
@@ -69,8 +69,8 @@ mlfunc @different_memrefs() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_different_elements() {
-mlfunc @store_load_different_elements() {
+// CHECK-LABEL: func @store_load_different_elements() {
+func @store_load_different_elements() {
   %m = alloc() : memref<100xf32>
   %c0 = constant 0 : index
   %c1 = constant 1 : index
@@ -85,8 +85,8 @@ mlfunc @store_load_different_elements() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @load_store_different_elements() {
-mlfunc @load_store_different_elements() {
+// CHECK-LABEL: func @load_store_different_elements() {
+func @load_store_different_elements() {
   %m = alloc() : memref<100xf32>
   %c0 = constant 0 : index
   %c1 = constant 1 : index
@@ -101,8 +101,8 @@ mlfunc @load_store_different_elements() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_same_element() {
-mlfunc @store_load_same_element() {
+// CHECK-LABEL: func @store_load_same_element() {
+func @store_load_same_element() {
   %m = alloc() : memref<100xf32>
   %c11 = constant 11 : index
   %c7 = constant 7.0 : f32
@@ -116,8 +116,8 @@ mlfunc @store_load_same_element() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @load_load_same_element() {
-mlfunc @load_load_same_element() {
+// CHECK-LABEL: func @load_load_same_element() {
+func @load_load_same_element() {
   %m = alloc() : memref<100xf32>
   %c11 = constant 11 : index
   %c7 = constant 7.0 : f32
@@ -131,8 +131,8 @@ mlfunc @load_load_same_element() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_same_symbol(%arg0: index) {
-mlfunc @store_load_same_symbol(%arg0: index) {
+// CHECK-LABEL: func @store_load_same_symbol(%arg0: index) {
+func @store_load_same_symbol(%arg0: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   store %c7, %m[%arg0] : memref<100xf32>
@@ -145,8 +145,8 @@ mlfunc @store_load_same_symbol(%arg0: index) {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_different_symbols(%arg0: index, %arg1: index) {
-mlfunc @store_load_different_symbols(%arg0: index, %arg1: index) {
+// CHECK-LABEL: func @store_load_different_symbols(%arg0: index, %arg1: index) {
+func @store_load_different_symbols(%arg0: index, %arg1: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   store %c7, %m[%arg0] : memref<100xf32>
@@ -159,8 +159,8 @@ mlfunc @store_load_different_symbols(%arg0: index, %arg1: index) {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_diff_element_affine_apply_const() {
-mlfunc @store_load_diff_element_affine_apply_const() {
+// CHECK-LABEL: func @store_load_diff_element_affine_apply_const() {
+func @store_load_diff_element_affine_apply_const() {
   %m = alloc() : memref<100xf32>
   %c1 = constant 1 : index
   %c8 = constant 8.0 : f32
@@ -176,8 +176,8 @@ mlfunc @store_load_diff_element_affine_apply_const() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_same_element_affine_apply_const() {
-mlfunc @store_load_same_element_affine_apply_const() {
+// CHECK-LABEL: func @store_load_same_element_affine_apply_const() {
+func @store_load_same_element_affine_apply_const() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c9 = constant 9 : index
@@ -194,8 +194,8 @@ mlfunc @store_load_same_element_affine_apply_const() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_affine_apply_symbol(%arg0: index) {
-mlfunc @store_load_affine_apply_symbol(%arg0: index) {
+// CHECK-LABEL: func @store_load_affine_apply_symbol(%arg0: index) {
+func @store_load_affine_apply_symbol(%arg0: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %a0 = affine_apply (d0) -> (d0) (%arg0)
@@ -210,8 +210,8 @@ mlfunc @store_load_affine_apply_symbol(%arg0: index) {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_affine_apply_symbol_offset(%arg0: index) {
-mlfunc @store_load_affine_apply_symbol_offset(%arg0: index) {
+// CHECK-LABEL: func @store_load_affine_apply_symbol_offset(%arg0: index) {
+func @store_load_affine_apply_symbol_offset(%arg0: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %a0 = affine_apply (d0) -> (d0) (%arg0)
@@ -226,8 +226,8 @@ mlfunc @store_load_affine_apply_symbol_offset(%arg0: index) {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_range_load_after_range() {
-mlfunc @store_range_load_after_range() {
+// CHECK-LABEL: func @store_range_load_after_range() {
+func @store_range_load_after_range() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c10 = constant 10 : index
@@ -249,8 +249,8 @@ mlfunc @store_range_load_after_range() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_load_func_symbol(%arg0: index, %arg1: index) {
-mlfunc @store_load_func_symbol(%arg0: index, %arg1: index) {
+// CHECK-LABEL: func @store_load_func_symbol(%arg0: index, %arg1: index) {
+func @store_load_func_symbol(%arg0: index, %arg1: index) {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c10 = constant 10 : index
@@ -272,8 +272,8 @@ mlfunc @store_load_func_symbol(%arg0: index, %arg1: index) {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_range_load_last_in_range() {
-mlfunc @store_range_load_last_in_range() {
+// CHECK-LABEL: func @store_range_load_last_in_range() {
+func @store_range_load_last_in_range() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c10 = constant 10 : index
@@ -300,8 +300,8 @@ mlfunc @store_range_load_last_in_range() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_range_load_before_range() {
-mlfunc @store_range_load_before_range() {
+// CHECK-LABEL: func @store_range_load_before_range() {
+func @store_range_load_before_range() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c0 = constant 0 : index
@@ -323,8 +323,8 @@ mlfunc @store_range_load_before_range() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_range_load_first_in_range() {
-mlfunc @store_range_load_first_in_range() {
+// CHECK-LABEL: func @store_range_load_first_in_range() {
+func @store_range_load_first_in_range() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c0 = constant 0 : index
@@ -349,8 +349,8 @@ mlfunc @store_range_load_first_in_range() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @store_plus_3() {
-mlfunc @store_plus_3() {
+// CHECK-LABEL: func @store_plus_3() {
+func @store_plus_3() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 1 to 11 {
@@ -371,8 +371,8 @@ mlfunc @store_plus_3() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @load_minus_2() {
-mlfunc @load_minus_2() {
+// CHECK-LABEL: func @load_minus_2() {
+func @load_minus_2() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 2 to 11 {
@@ -393,8 +393,8 @@ mlfunc @load_minus_2() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @perfectly_nested_loops_loop_independent() {
-mlfunc @perfectly_nested_loops_loop_independent() {
+// CHECK-LABEL: func @perfectly_nested_loops_loop_independent() {
+func @perfectly_nested_loops_loop_independent() {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 0 to 11 {
@@ -422,8 +422,8 @@ mlfunc @perfectly_nested_loops_loop_independent() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @perfectly_nested_loops_loop_carried_at_depth1() {
-mlfunc @perfectly_nested_loops_loop_carried_at_depth1() {
+// CHECK-LABEL: func @perfectly_nested_loops_loop_carried_at_depth1() {
+func @perfectly_nested_loops_loop_carried_at_depth1() {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 0 to 9 {
@@ -451,8 +451,8 @@ mlfunc @perfectly_nested_loops_loop_carried_at_depth1() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @perfectly_nested_loops_loop_carried_at_depth2() {
-mlfunc @perfectly_nested_loops_loop_carried_at_depth2() {
+// CHECK-LABEL: func @perfectly_nested_loops_loop_carried_at_depth2() {
+func @perfectly_nested_loops_loop_carried_at_depth2() {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 0 to 10 {
@@ -480,8 +480,8 @@ mlfunc @perfectly_nested_loops_loop_carried_at_depth2() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @one_common_loop() {
-mlfunc @one_common_loop() {
+// CHECK-LABEL: func @one_common_loop() {
+func @one_common_loop() {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
   // There is a loop-independent dependence from access 0 to 1 at depth 2.
@@ -509,8 +509,8 @@ mlfunc @one_common_loop() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @dependence_cycle() {
-mlfunc @dependence_cycle() {
+// CHECK-LABEL: func @dependence_cycle() {
+func @dependence_cycle() {
   %m.a = alloc() : memref<100xf32>
   %m.b = alloc() : memref<100xf32>
 
@@ -563,8 +563,8 @@ mlfunc @dependence_cycle() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
-mlfunc @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
+// CHECK-LABEL: func @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
+func @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 0 to %arg0 {
@@ -591,8 +591,8 @@ mlfunc @negative_and_positive_direction_vectors(%arg0: index, %arg1: index) {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @war_raw_waw_deps() {
-mlfunc @war_raw_waw_deps() {
+// CHECK-LABEL: func @war_raw_waw_deps() {
+func @war_raw_waw_deps() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 0 to 10 {
@@ -619,8 +619,8 @@ mlfunc @war_raw_waw_deps() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @mod_deps() {
-mlfunc @mod_deps() {
+// CHECK-LABEL: func @mod_deps() {
+func @mod_deps() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   for %i0 = 0 to 10 {
@@ -643,8 +643,8 @@ mlfunc @mod_deps() {
 }
 
 // -----
-// CHECK-LABEL: mlfunc @loop_nest_depth() {
-mlfunc @loop_nest_depth() {
+// CHECK-LABEL: func @loop_nest_depth() {
+func @loop_nest_depth() {
   %0 = alloc() : memref<100x100xf32>
   %c7 = constant 7.0 : f32
 
@@ -679,8 +679,8 @@ mlfunc @loop_nest_depth() {
 // -----
 // Test case to exercise sanity when flattening multiple expressions involving
 // mod/div's successively.
-// CHECK-LABEL: mlfunc @mod_div_3d() {
-mlfunc @mod_div_3d() {
+// CHECK-LABEL: func @mod_div_3d() {
+func @mod_div_3d() {
   %M = alloc() : memref<2x2x2xi32>
   %c0 = constant 0 : i32
   for %i0 = 0 to 8 {
@@ -700,8 +700,8 @@ mlfunc @mod_div_3d() {
 
 // -----
 // This test case arises in the context of a 6-d to 2-d reshape.
-// CHECK-LABEL: mlfunc @delinearize_mod_floordiv
-mlfunc @delinearize_mod_floordiv() {
+// CHECK-LABEL: func @delinearize_mod_floordiv
+func @delinearize_mod_floordiv() {
   %c0 = constant 0 : index
   %val = constant 0 : i32
   %in = alloc() : memref<2x2x3x3x16x1xi32>

@@ -4,8 +4,8 @@
 // This should be matched to M1, but M1 is defined later.
 // CHECK: {{#map[0-9]+}} = ()[s0] -> (s0 + 8)
 
-// CHECK-LABEL: mlfunc @unroll_jam_imperfect_nest() {
-mlfunc @unroll_jam_imperfect_nest() {
+// CHECK-LABEL: func @unroll_jam_imperfect_nest() {
+func @unroll_jam_imperfect_nest() {
   // CHECK: %c100 = constant 100 : index
   // CHECK-NEXT: for %i0 = 0 to 99 step 2 {
   for %i = 0 to 101 {
@@ -37,8 +37,8 @@ mlfunc @unroll_jam_imperfect_nest() {
   return
 }
 
-// UNROLL-BY-4-LABEL: mlfunc @loop_nest_unknown_count_1(%arg0: index) {
-mlfunc @loop_nest_unknown_count_1(%N : index) {
+// UNROLL-BY-4-LABEL: func @loop_nest_unknown_count_1(%arg0: index) {
+func @loop_nest_unknown_count_1(%N : index) {
   // UNROLL-BY-4-NEXT: for %i0 = 1 to  #map{{[0-9]+}}()[%arg0] step 4 {
     // UNROLL-BY-4-NEXT: for %i1 = 1 to 100 {
       // UNROLL-BY-4-NEXT: %0 = "foo"() : () -> i32
@@ -62,8 +62,8 @@ mlfunc @loop_nest_unknown_count_1(%N : index) {
   return
 }
 
-// UNROLL-BY-4-LABEL: mlfunc @loop_nest_unknown_count_2(%arg0: index) {
-mlfunc @loop_nest_unknown_count_2(%arg : index) {
+// UNROLL-BY-4-LABEL: func @loop_nest_unknown_count_2(%arg0: index) {
+func @loop_nest_unknown_count_2(%arg : index) {
   // UNROLL-BY-4-NEXT: for %i0 = %arg0 to  #map{{[0-9]+}}()[%arg0] step 4 {
     // UNROLL-BY-4-NEXT: for %i1 = 1 to 100 {
       // UNROLL-BY-4-NEXT: %0 = "foo"(%i0) : (index) -> i32

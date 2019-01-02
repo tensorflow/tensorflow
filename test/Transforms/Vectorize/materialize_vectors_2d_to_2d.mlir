@@ -5,7 +5,7 @@
 
 // vector<3x32xf32> -> vector<3x16xf32>
 // CHECK-DAG: [[MAP1:#.*]] = (d0, d1) -> (d0, d1 + 16)
-mlfunc @vector_add_2d(%M : index, %N : index) -> f32 {
+func @vector_add_2d(%M : index, %N : index) -> f32 {
   %A = alloc (%M, %N) : memref<?x?xf32, 0>
   %B = alloc (%M, %N) : memref<?x?xf32, 0>
   %C = alloc (%M, %N) : memref<?x?xf32, 0>

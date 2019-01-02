@@ -105,7 +105,6 @@ public:
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
-  bool verify() const;
 
   /// Return the block this branch jumps to.
   Block *getDest();

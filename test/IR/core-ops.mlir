@@ -13,8 +13,8 @@
 // CHECK-DAG: #[[map_proj_d0d1_d1:map[0-9]+]] = (d0, d1) -> (d1)
 // CHECK-DAG: #[[map_proj_d0d1_d1d0:map[0-9]+]] = (d0, d1) -> (d1, d0)
 
-// CHECK-LABEL: cfgfunc @cfgfunc_with_ops(%arg0: f32) {
-cfgfunc @cfgfunc_with_ops(f32) {
+// CHECK-LABEL: func @func_with_ops(%arg0: f32) {
+func @func_with_ops(f32) {
 ^bb0(%a : f32):
   // CHECK: %0 = "getTensor"() : () -> tensor<4x4x?xf32>
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
@@ -29,8 +29,8 @@ cfgfunc @cfgfunc_with_ops(f32) {
   return
 }
 
-// CHECK-LABEL: cfgfunc @standard_instrs(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index) {
-cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
+// CHECK-LABEL: func @standard_instrs(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index) {
+func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 ^bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
@@ -86,8 +86,8 @@ cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %cst = constant 4.300000e+01 : bf16
   %9 = constant 43.0 : bf16
 
-  // CHECK: %f = constant @cfgfunc_with_ops : (f32) -> ()
-  %10 = constant @cfgfunc_with_ops : (f32) -> ()
+  // CHECK: %f = constant @func_with_ops : (f32) -> ()
+  %10 = constant @func_with_ops : (f32) -> ()
 
   // CHECK: %f_1 = constant @affine_apply : () -> ()
   %11 = constant @affine_apply : () -> ()
@@ -144,8 +144,8 @@ cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   return
 }
 
-// CHECK-LABEL: cfgfunc @affine_apply() {
-cfgfunc @affine_apply() {
+// CHECK-LABEL: func @affine_apply() {
+func @affine_apply() {
   %i = "constant"() {value: 0: index} : () -> index
   %j = "constant"() {value: 1: index} : () -> index
 
@@ -166,8 +166,8 @@ cfgfunc @affine_apply() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @load_store
-cfgfunc @load_store(memref<4x4xi32>, index) {
+// CHECK-LABEL: func @load_store
+func @load_store(memref<4x4xi32>, index) {
 ^bb0(%0: memref<4x4xi32>, %1: index):
   // CHECK: %0 = load %arg0[%arg1, %arg1] : memref<4x4xi32>
   %2 = "load"(%0, %1, %1) : (memref<4x4xi32>, index, index)->i32
@@ -178,14 +178,14 @@ cfgfunc @load_store(memref<4x4xi32>, index) {
   return
 }
 
-// CHECK-LABEL: mlfunc @return_op(%arg0: i32) -> i32 {
-mlfunc @return_op(%a : i32) -> i32 {
+// CHECK-LABEL: func @return_op(%arg0: i32) -> i32 {
+func @return_op(%a : i32) -> i32 {
   // CHECK: return %arg0 : i32
   "return" (%a) : (i32)->()
 }
 
-// CHECK-LABEL: mlfunc @calls(%arg0: i32) {
-mlfunc @calls(%arg0: i32) {
+// CHECK-LABEL: func @calls(%arg0: i32) {
+func @calls(%arg0: i32) {
   // CHECK: %0 = call @return_op(%arg0) : (i32) -> i32
   %x = call @return_op(%arg0) : (i32) -> i32
   // CHECK: %1 = call @return_op(%0) : (i32) -> i32
@@ -211,8 +211,8 @@ mlfunc @calls(%arg0: i32) {
   return
 }
 
-// CHECK-LABEL: mlfunc @extract_element(%arg0: tensor<*xi32>, %arg1: tensor<4x4xf32>) -> i32 {
-mlfunc @extract_element(%arg0: tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
+// CHECK-LABEL: func @extract_element(%arg0: tensor<*xi32>, %arg1: tensor<4x4xf32>) -> i32 {
+func @extract_element(%arg0: tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
   %c0 = "constant"() {value: 0: index} : () -> index
 
   // CHECK: %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>
@@ -224,8 +224,8 @@ mlfunc @extract_element(%arg0: tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
   return %0 : i32
 }
 
-// CHECK-LABEL: mlfunc @tensor_cast(%arg0
-mlfunc @tensor_cast(%arg0: tensor<*xf32>, %arg1 : tensor<4x4xf32>, %arg2: tensor<?x?xf32>) {
+// CHECK-LABEL: func @tensor_cast(%arg0
+func @tensor_cast(%arg0: tensor<*xf32>, %arg1 : tensor<4x4xf32>, %arg2: tensor<?x?xf32>) {
   // CHECK: %0 = tensor_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
   %0 = tensor_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
 
@@ -241,8 +241,8 @@ mlfunc @tensor_cast(%arg0: tensor<*xf32>, %arg1 : tensor<4x4xf32>, %arg2: tensor
   return
 }
 
-// CHECK-LABEL: mlfunc @memref_cast(%arg0
-mlfunc @memref_cast(%arg0: memref<4xf32>, %arg1 : memref<?xf32>) {
+// CHECK-LABEL: func @memref_cast(%arg0
+func @memref_cast(%arg0: memref<4xf32>, %arg1 : memref<?xf32>) {
   // CHECK: %0 = memref_cast %arg0 : memref<4xf32> to memref<?xf32>
   %0 = memref_cast %arg0 : memref<4xf32> to memref<?xf32>
 
@@ -251,8 +251,8 @@ mlfunc @memref_cast(%arg0: memref<4xf32>, %arg1 : memref<?xf32>) {
   return
 }
 
-// CHECK-LABEL: mlfunc @test_dimop(%arg0
-mlfunc @test_dimop(%arg0: tensor<4x4x?xf32>) {
+// CHECK-LABEL: func @test_dimop(%arg0
+func @test_dimop(%arg0: tensor<4x4x?xf32>) {
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   // use dim as an affine_int to ensure type correctness
@@ -261,8 +261,8 @@ mlfunc @test_dimop(%arg0: tensor<4x4x?xf32>) {
 }
 
 
-// CHECK-LABEL: mlfunc @test_vector_transfer_ops(%arg0
-mlfunc @test_vector_transfer_ops(%arg0: memref<?x?xf32>) {
+// CHECK-LABEL: func @test_vector_transfer_ops(%arg0
+func @test_vector_transfer_ops(%arg0: memref<?x?xf32>) {
   %c3 = constant 3 : index
   %cst = constant 3.0 : f32
   // CHECK: %0 = vector_transfer_read %arg0, %c3, %c3 {permutation_map: #[[map_proj_d0d1_d0]]} : (memref<?x?xf32>, index, index) -> vector<128xf32>

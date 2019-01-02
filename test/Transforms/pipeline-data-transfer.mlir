@@ -4,8 +4,8 @@
 // CHECK-DAG: [[MOD_2:#map[0-9]+]] = (d0) -> (d0 mod 2)
 // CHECK-DAG: [[REMAP_SHIFT_MINUS_4:#map[0-9]+]] = (d0) -> (d0 - 4)
 
-// CHECK-LABEL: mlfunc @loop_nest_dma() {
-mlfunc @loop_nest_dma() {
+// CHECK-LABEL: func @loop_nest_dma() {
+func @loop_nest_dma() {
 // CHECK:        %0 = alloc() : memref<256xf32>
 // CHECK:        %1 = alloc() : memref<2x32xf32, 1>
 // CHECK:        %2 = alloc() : memref<2x1xf32>
@@ -58,7 +58,7 @@ mlfunc @loop_nest_dma() {
 }
 
 // CHECK-LABEL: @loop_step
-mlfunc @loop_step(%arg0: memref<512xf32>,
+func @loop_step(%arg0: memref<512xf32>,
                   %arg1: memref<512xf32>) {
   %c0 = constant 0 : index
   %c4 = constant 4 : index
@@ -95,8 +95,8 @@ mlfunc @loop_step(%arg0: memref<512xf32>,
 #map0 = (d0, d1) -> (d0, d1)
 #map1 = (d0, d1) -> ((d0 * 2048 + d1 * 256) floordiv 32, 0)
 #map2 = (d0) -> ((d0 * 2048) floordiv 32, 0)
-// CHECK: mlfunc @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>
-mlfunc @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<512x32xvector<8xf32>, #map0>, %arg2: memref<512x32xvector<8xf32>, #map0>) {
+// CHECK: func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>
+func @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memref<512x32xvector<8xf32>, #map0>, %arg2: memref<512x32xvector<8xf32>, #map0>) {
   %num_elts = constant 256 : index
   %c0 = constant 0 : index
   %0 = alloc() : memref<64x4xvector<8xf32>, #map0, 2>
@@ -160,8 +160,8 @@ mlfunc @loop_dma_nested(%arg0: memref<512x32xvector<8xf32>, #map0>, %arg1: memre
   return // CHECK-NEXT: return
 }
 
-// CHECK: mlfunc @loop_dma_dependent
-mlfunc @loop_dma_dependent(%arg2: memref<512x32xvector<8xf32>>) {
+// CHECK: func @loop_dma_dependent
+func @loop_dma_dependent(%arg2: memref<512x32xvector<8xf32>>) {
   %num_elts = constant 256 : index
   %c0 = constant 0 : index
   %0 = alloc() : memref<64x4xvector<8xf32>, 2>
@@ -186,8 +186,8 @@ mlfunc @loop_dma_dependent(%arg2: memref<512x32xvector<8xf32>>) {
   return // CHECK-NEXT: return
 }
 
-// CHECK-LABEL: mlfunc @escaping_use
-mlfunc @escaping_use(%arg0: memref<512 x 32 x f32>) {
+// CHECK-LABEL: func @escaping_use
+func @escaping_use(%arg0: memref<512 x 32 x f32>) {
   %c32 = constant 32 : index
   %num_elt = constant 512 : index
   %zero = constant 0 : index
@@ -210,8 +210,8 @@ mlfunc @escaping_use(%arg0: memref<512 x 32 x f32>) {
 // CHECK-NEXT: return
 }
 
-// CHECK-LABEL: mlfunc @live_out_use
-mlfunc @live_out_use(%arg0: memref<512 x 32 x f32>) -> f32 {
+// CHECK-LABEL: func @live_out_use
+func @live_out_use(%arg0: memref<512 x 32 x f32>) -> f32 {
   %c32 = constant 32 : index
   %num_elt = constant 512 : index
   %zero = constant 0 : index
@@ -233,8 +233,8 @@ mlfunc @live_out_use(%arg0: memref<512 x 32 x f32>) -> f32 {
 // CHECK-NEXT: return
 }
 
-// CHECK-LABEL: mlfunc @dynamic_shape_dma_buffer
-mlfunc @dynamic_shape_dma_buffer(%arg0: memref<512 x 32 x f32>) {
+// CHECK-LABEL: func @dynamic_shape_dma_buffer
+func @dynamic_shape_dma_buffer(%arg0: memref<512 x 32 x f32>) {
   %c32 = constant 32 : index
   %num_elt = constant 512 : index
   %zero = constant 0 : index

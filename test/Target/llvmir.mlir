@@ -16,17 +16,17 @@
 // CHECK-LABEL: define void @empty() {
 // CHECK-NEXT:    ret void
 // CHECK-NEXT:  }
-cfgfunc @empty() {
+func @empty() {
 ^bb0:
   return
 }
 
 // CHECK-LABEL: declare void @body(i64)
-extfunc @body(index)
+func @body(index)
 
 
 // CHECK-LABEL: define void @simple_loop() {
-cfgfunc @simple_loop() {
+func @simple_loop() {
 ^bb0:
 // CHECK: br label %[[SIMPLE_bb1:[0-9]+]]
   br ^bb1
@@ -67,13 +67,13 @@ cfgfunc @simple_loop() {
 // CHECK-NEXT:   call void @simple_loop()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-cfgfunc @simple_caller() {
+func @simple_caller() {
 ^bb0:
   call @simple_loop() : () -> ()
   return
 }
 
-//cfgfunc @simple_indirect_caller() {
+//func @simple_indirect_caller() {
 //^bb0:
 //  %f = constant @simple_loop : () -> ()
 //  call_indirect %f() : () -> ()
@@ -85,7 +85,7 @@ cfgfunc @simple_caller() {
 // CHECK-NEXT:   call void @more_imperfectly_nested_loops()
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-cfgfunc @ml_caller() {
+func @ml_caller() {
 ^bb0:
   call @simple_loop() : () -> ()
   call @more_imperfectly_nested_loops() : () -> ()
@@ -93,13 +93,13 @@ cfgfunc @ml_caller() {
 }
 
 // CHECK-LABEL: declare i64 @body_args(i64)
-extfunc @body_args(index) -> index
+func @body_args(index) -> index
 // CHECK-LABEL: declare i32 @other(i64, i32)
-extfunc @other(index, i32) -> i32
+func @other(index, i32) -> i32
 
-// CHECK-LABEL: define i32 @mlfunc_args(i32, i32) {
+// CHECK-LABEL: define i32 @func_args(i32, i32) {
 // CHECK-NEXT: br label %[[ARGS_bb1:[0-9]+]]
-cfgfunc @mlfunc_args(i32, i32) -> i32 {
+func @func_args(i32, i32) -> i32 {
 ^bb0(%arg0: i32, %arg1: i32):
   %c0_i32 = constant 0 : i32
   br ^bb1
@@ -145,17 +145,17 @@ cfgfunc @mlfunc_args(i32, i32) -> i32 {
 }
 
 // CHECK: declare void @pre(i64)
-extfunc @pre(index)
+func @pre(index)
 
 // CHECK: declare void @body2(i64, i64)
-extfunc @body2(index, index)
+func @body2(index, index)
 
 // CHECK: declare void @post(i64)
-extfunc @post(index)
+func @post(index)
 
 // CHECK-LABEL: define void @imperfectly_nested_loops() {
 // CHECK-NEXT:   br label %[[IMPER_bb1:[0-9]+]]
-cfgfunc @imperfectly_nested_loops() {
+func @imperfectly_nested_loops() {
 ^bb0:
   br ^bb1
 
@@ -223,10 +223,10 @@ cfgfunc @imperfectly_nested_loops() {
 }
 
 // CHECK: declare void @mid(i64)
-extfunc @mid(index)
+func @mid(index)
 
 // CHECK: declare void @body3(i64, i64)
-extfunc @body3(index, index)
+func @body3(index, index)
 
 // A complete function transformation check.
 // CHECK-LABEL: define void @more_imperfectly_nested_loops() {
@@ -270,7 +270,7 @@ extfunc @body3(index, index)
 // CHECK: ; <label>:21:                                     ; preds = %2
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
-cfgfunc @more_imperfectly_nested_loops() {
+func @more_imperfectly_nested_loops() {
 ^bb0:
   br ^bb1
 ^bb1:	// pred: ^bb0
@@ -324,7 +324,7 @@ cfgfunc @more_imperfectly_nested_loops() {
 //
 
 // CHECK-LABEL: define void @memref_alloc()
-cfgfunc @memref_alloc() {
+func @memref_alloc() {
 ^bb0:
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 400)
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
@@ -335,10 +335,10 @@ cfgfunc @memref_alloc() {
 }
 
 // CHECK-LABEL: declare i64 @get_index()
-extfunc @get_index() -> index
+func @get_index() -> index
 
 // CHECK-LABEL: define void @store_load_static()
-cfgfunc @store_load_static() {
+func @store_load_static() {
 ^bb0:
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 40)
 // CHECK-NEXT: %{{[0-9]+}} = bitcast i8* %{{[0-9]+}} to float*
@@ -394,7 +394,7 @@ cfgfunc @store_load_static() {
 }
 
 // CHECK-LABEL: define void @store_load_dynamic(i64)
-cfgfunc @store_load_dynamic(index) {
+func @store_load_dynamic(index) {
 ^bb0(%arg0: index):
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 %{{[0-9]+}}, 4
 // CHECK-NEXT: %{{[0-9]+}} = call i8* @__mlir_alloc(i64 %{{[0-9]+}})
@@ -453,7 +453,7 @@ cfgfunc @store_load_dynamic(index) {
 }
 
 // CHECK-LABEL: define void @store_load_mixed(i64)
-cfgfunc @store_load_mixed(index) {
+func @store_load_mixed(index) {
 ^bb0(%arg0: index):
   %c10 = constant 10 : index
 // CHECK-NEXT: %{{[0-9]+}} = mul i64 2, %{{[0-9]+}}
@@ -503,7 +503,7 @@ cfgfunc @store_load_mixed(index) {
 }
 
 // CHECK-LABEL: define { float*, i64 } @memref_args_rets({ float* }, { float*, i64 }, { float*, i64 }) {
-cfgfunc @memref_args_rets(memref<10xf32>, memref<?xf32>, memref<10x?xf32>) -> memref<10x?xf32> {
+func @memref_args_rets(memref<10xf32>, memref<?xf32>, memref<10x?xf32>) -> memref<10x?xf32> {
 ^bb0(%arg0: memref<10xf32>, %arg1: memref<?xf32>, %arg2: memref<10x?xf32>):
   %c7 = constant 7 : index
 // CHECK-NEXT: %{{[0-9]+}} = call i64 @get_index()
@@ -538,7 +538,7 @@ cfgfunc @memref_args_rets(memref<10xf32>, memref<?xf32>, memref<10x?xf32>) -> me
 
 
 // CHECK-LABEL: define i64 @memref_dim({ float*, i64, i64 })
-cfgfunc @memref_dim(memref<42x?x10x?xf32>) -> index {
+func @memref_dim(memref<42x?x10x?xf32>) -> index {
 ^bb0(%arg0: memref<42x?x10x?xf32>):
 // Expecting this to create an LLVM constant.
   %d0 = dim %arg0, 0 : memref<42x?x10x?xf32>
@@ -560,12 +560,12 @@ cfgfunc @memref_dim(memref<42x?x10x?xf32>) -> index {
   return %d0123 : index
 }
 
-extfunc @get_i64() -> (i64)
-extfunc @get_f32() -> (f32)
-extfunc @get_memref() -> (memref<42x?x10x?xf32>)
+func @get_i64() -> (i64)
+func @get_f32() -> (f32)
+func @get_memref() -> (memref<42x?x10x?xf32>)
 
 // CHECK-LABEL: define { i64, float, { float*, i64, i64 } } @multireturn() {
-cfgfunc @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
+func @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
 ^bb0:
   %0 = call @get_i64() : () -> (i64)
   %1 = call @get_f32() : () -> (f32)
@@ -579,7 +579,7 @@ cfgfunc @multireturn() -> (i64, f32, memref<42x?x10x?xf32>) {
 
 
 // CHECK-LABEL: define void @multireturn_caller() {
-cfgfunc @multireturn_caller() {
+func @multireturn_caller() {
 ^bb0:
 // CHECK-NEXT:   %1 = call { i64, float, { float*, i64, i64 } } @multireturn()
 // CHECK-NEXT:   [[ret0:%[0-9]+]] = extractvalue { i64, float, { float*, i64, i64 } } %1, 0
@@ -602,7 +602,7 @@ cfgfunc @multireturn_caller() {
 // CHECK-NEXT:    %2 = fadd <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
 // CHECK-NEXT:    ret <4 x float> %2
 // CHECK-NEXT:  }
-cfgfunc @vector_ops(vector<4xf32>) -> vector<4xf32> {
+func @vector_ops(vector<4xf32>) -> vector<4xf32> {
 ^bb0(%arg0: vector<4xf32>):
   %0 = constant splat<vector<4xf32>, 42.> : vector<4xf32>
   %1 = addf %arg0, %0 : vector<4xf32>
@@ -610,7 +610,7 @@ cfgfunc @vector_ops(vector<4xf32>) -> vector<4xf32> {
 }
 
 // CHECK-LABEL: @ops
-cfgfunc @ops(f32, f32, i32, i32) -> (f32, i32) {
+func @ops(f32, f32, i32, i32) -> (f32, i32) {
 ^bb0(%arg0: f32, %arg1: f32, %arg2: i32, %arg3: i32):
 // CHECK-NEXT: fsub float %0, %1
   %0 = subf %arg0, %arg1: f32

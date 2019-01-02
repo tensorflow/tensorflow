@@ -26,23 +26,11 @@
 #include "llvm/ADT/StringRef.h"
 using namespace mlir;
 
-Function::Function(Kind kind, Location location, StringRef name,
-                   FunctionType type, ArrayRef<NamedAttribute> attrs)
-    : nameAndKind(Identifier::get(name, type.getContext()), kind),
-      location(location), type(type), blocks(this) {
+Function::Function(Location location, StringRef name, FunctionType type,
+                   ArrayRef<NamedAttribute> attrs)
+    : name(Identifier::get(name, type.getContext())), location(location),
+      type(type), blocks(this) {
   this->attrs = AttributeListStorage::get(attrs, getContext());
-
-  // Creating of a Function automatically populates the entry block and
-  // arguments.
-  // TODO(clattner): Unify this behavior.
-  if (kind == Kind::MLFunc) {
-    // The body of an ML Function always has one block.
-    auto *entry = new Block();
-    blocks.push_back(entry);
-
-    // Initialize the arguments.
-    entry->addArguments(type.getInputs());
-  }
 }
 
 Function::~Function() {
@@ -94,8 +82,7 @@ void llvm::ilist_traits<Function>::addNodeToList(Function *function) {
       nameBuffer.resize(originalLength);
       nameBuffer += '_';
       nameBuffer += std::to_string(module->uniquingCounter++);
-      function->nameAndKind.setPointer(
-          Identifier::get(nameBuffer, module->getContext()));
+      function->name = Identifier::get(nameBuffer, module->getContext());
     } while (
         !module->symbolTable.insert({function->getName(), function}).second);
   }
@@ -160,6 +147,15 @@ bool Function::emitError(const Twine &message) const {
 //===----------------------------------------------------------------------===//
 // Function implementation.
 //===----------------------------------------------------------------------===//
+
+/// Add an entry block to an empty function, and set up the block arguments
+/// to match the signature of the function.
+void Function::addEntryBlock() {
+  assert(empty() && "function already has an entry block");
+  auto *entry = new Block();
+  push_back(entry);
+  entry->addArguments(type.getInputs());
+}
 
 void Function::walkInsts(std::function<void(Instruction *)> callback) {
   struct Walker : public InstWalker<Walker> {

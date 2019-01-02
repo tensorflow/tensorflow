@@ -8,8 +8,8 @@
 #map5 = (d0,d1,d2) -> (d0,d1,d2)
 #map6 = (d0,d1,d2) -> (d0 + d1 + d2)
 
-// CHECK-LABEL: cfgfunc @affine_applies()
-cfgfunc @affine_applies() {
+// CHECK-LABEL: func @affine_applies()
+func @affine_applies() {
 ^bb0:
 // CHECK: %c0 = constant 0 : index
   %zero = affine_apply #map0()
@@ -63,8 +63,8 @@ cfgfunc @affine_applies() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @multiresult_affine_apply()
-cfgfunc @multiresult_affine_apply() {
+// CHECK-LABEL: func @multiresult_affine_apply()
+func @multiresult_affine_apply() {
 // CHECK-NEXT: %c1 = constant 1 : index
 // CHECK-NEXT: %0 = addi %c1, %c1 : index
 // CHECK-NEXT: %1 = addi %0, %c1 : index
@@ -74,8 +74,8 @@ cfgfunc @multiresult_affine_apply() {
   return
 }
 
-// CHECK-LABEL: cfgfunc @args_ret_affine_apply(%arg0: index, %arg1: index)
-cfgfunc @args_ret_affine_apply(index, index) -> (index, index) {
+// CHECK-LABEL: func @args_ret_affine_apply(%arg0: index, %arg1: index)
+func @args_ret_affine_apply(index, index) -> (index, index) {
 ^bb0(%0 : index, %1 : index):
 // CHECK-NEXT: return %arg0, %arg1 : index, index
   %00 = affine_apply #map2 (%0)

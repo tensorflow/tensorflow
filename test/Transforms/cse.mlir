@@ -4,7 +4,7 @@
 #map0 = (d0) -> (d0 mod 2, d0 mod 2)
 
 // CHECK-LABEL: @simple_constant_ml
-mlfunc @simple_constant_ml() -> (i32, i32) {
+func @simple_constant_ml() -> (i32, i32) {
   // CHECK: %c1_i32 = constant 1 : i32
   %0 = constant 1 : i32
   %1 = constant 1 : i32
@@ -14,7 +14,7 @@ mlfunc @simple_constant_ml() -> (i32, i32) {
 }
 
 // CHECK-LABEL: @simple_constant_cfg
-cfgfunc @simple_constant_cfg() -> (i32, i32) {
+func @simple_constant_cfg() -> (i32, i32) {
   // CHECK-NEXT: %c1_i32 = constant 1 : i32
   %0 = constant 1 : i32
 
@@ -24,7 +24,7 @@ cfgfunc @simple_constant_cfg() -> (i32, i32) {
 }
 
 // CHECK-LABEL: @basic_ml
-mlfunc @basic_ml() -> (index, index) {
+func @basic_ml() -> (index, index) {
   // CHECK: %c0 = constant 0 : index
   %c0 = constant 0 : index
   %c1 = constant 0 : index
@@ -38,7 +38,7 @@ mlfunc @basic_ml() -> (index, index) {
 }
 
 // CHECK-LABEL: @many_cfg
-cfgfunc @many_cfg(f32, f32) -> (f32) {
+func @many_cfg(f32, f32) -> (f32) {
 ^bb0(%a : f32, %b : f32): 
   // CHECK-NEXT: %0 = addf %arg0, %arg1 : f32
   %c = addf %a, %b : f32
@@ -64,7 +64,7 @@ cfgfunc @many_cfg(f32, f32) -> (f32) {
 
 /// Check that operations are not eliminated if they have different operands.
 // CHECK-LABEL: @different_ops_ml
-mlfunc @different_ops_ml() -> (i32, i32) {
+func @different_ops_ml() -> (i32, i32) {
   // CHECK: %c0_i32 = constant 0 : i32
   // CHECK: %c1_i32 = constant 1 : i32
   %0 = constant 0 : i32
@@ -77,7 +77,7 @@ mlfunc @different_ops_ml() -> (i32, i32) {
 /// Check that operations are not eliminated if they have different result
 /// types.
 // CHECK-LABEL: @different_results_ml
-mlfunc @different_results_ml(%arg0: tensor<*xf32>) -> (tensor<?x?xf32>, tensor<4x?xf32>) {
+func @different_results_ml(%arg0: tensor<*xf32>) -> (tensor<?x?xf32>, tensor<4x?xf32>) {
   // CHECK: %0 = tensor_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
   // CHECK-NEXT: %1 = tensor_cast %arg0 : tensor<*xf32> to tensor<4x?xf32>
   %0 = tensor_cast %arg0 : tensor<*xf32> to tensor<?x?xf32>
@@ -89,7 +89,7 @@ mlfunc @different_results_ml(%arg0: tensor<*xf32>) -> (tensor<?x?xf32>, tensor<4
 
 /// Check that operations are not eliminated if they have different attributes.
 // CHECK-LABEL: @different_attributes_cfg
-cfgfunc @different_attributes_cfg(index, index) -> (i1, i1, i1) {
+func @different_attributes_cfg(index, index) -> (i1, i1, i1) {
 ^bb0(%a : index, %b : index):
   // CHECK: %0 = cmpi "slt", %arg0, %arg1 : index
   %0 = cmpi "slt", %a, %b : index
@@ -105,7 +105,7 @@ cfgfunc @different_attributes_cfg(index, index) -> (i1, i1, i1) {
 
 /// Check that operations with side effects are not eliminated.
 // CHECK-LABEL: @side_effect_ml
-mlfunc @side_effect_ml() -> (memref<2x1xf32>, memref<2x1xf32>) {
+func @side_effect_ml() -> (memref<2x1xf32>, memref<2x1xf32>) {
   // CHECK: %0 = alloc() : memref<2x1xf32>
   %0 = alloc() : memref<2x1xf32>
 
@@ -119,7 +119,7 @@ mlfunc @side_effect_ml() -> (memref<2x1xf32>, memref<2x1xf32>) {
 /// Check that operation definitions are properly propagated down the dominance
 /// tree.
 // CHECK-LABEL: @down_propagate_for_ml
-mlfunc @down_propagate_for_ml() {
+func @down_propagate_for_ml() {
   // CHECK: %c1_i32 = constant 1 : i32
   %0 = constant 1 : i32
 
@@ -133,7 +133,7 @@ mlfunc @down_propagate_for_ml() {
 }
 
 // CHECK-LABEL: @down_propagate_cfg
-cfgfunc @down_propagate_cfg() -> i32 {
+func @down_propagate_cfg() -> i32 {
   // CHECK-NEXT: %c1_i32 = constant 1 : i32
   %0 = constant 1 : i32
 
@@ -154,7 +154,7 @@ cfgfunc @down_propagate_cfg() -> i32 {
 
 /// Check that operation definitions are NOT propagated up the dominance tree.
 // CHECK-LABEL: @up_propagate_ml
-mlfunc @up_propagate_ml() -> i32 {
+func @up_propagate_ml() -> i32 {
   // CHECK: for %i0 = 0 to 4 {
   for %i = 0 to 4 {
     // CHECK-NEXT: %c1_i32 = constant 1 : i32
@@ -169,8 +169,8 @@ mlfunc @up_propagate_ml() -> i32 {
   return %1 : i32
 }
 
-// CHECK-LABEL: cfgfunc @up_propagate_cfg
-cfgfunc @up_propagate_cfg() -> i32 {
+// CHECK-LABEL: func @up_propagate_cfg
+func @up_propagate_cfg() -> i32 {
   // CHECK-NEXT:  %c0_i32 = constant 0 : i32
   %0 = constant 0 : i32
 

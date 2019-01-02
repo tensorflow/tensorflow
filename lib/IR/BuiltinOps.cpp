@@ -186,13 +186,6 @@ void BranchOp::print(OpAsmPrinter *p) const {
   p->printSuccessorAndUseList(getInstruction(), 0);
 }
 
-bool BranchOp::verify() const {
-  // ML functions do not have branching terminators.
-  if (getInstruction()->getFunction()->isML())
-    return (emitOpError("cannot occur in a ML function"), true);
-  return false;
-}
-
 Block *BranchOp::getDest() { return getInstruction()->getSuccessor(0); }
 
 void BranchOp::setDest(Block *block) {
@@ -255,9 +248,6 @@ void CondBranchOp::print(OpAsmPrinter *p) const {
 }
 
 bool CondBranchOp::verify() const {
-  // ML functions do not have branching terminators.
-  if (getInstruction()->getFunction()->isML())
-    return (emitOpError("cannot occur in a ML function"), true);
   if (!getCondition()->getType().isInteger(1))
     return emitOpError("expected condition type was boolean (i1)");
   return false;

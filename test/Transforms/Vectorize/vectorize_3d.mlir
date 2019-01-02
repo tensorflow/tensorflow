@@ -3,7 +3,7 @@
 // Permutation maps used in vectorization.
 // CHECK: #[[map_proj_d0d1d2_d0d1d2:map[0-9]+]] = (d0, d1, d2) -> (d0, d1, d2)
 
-mlfunc @vec3d(%A : memref<?x?x?xf32>) {
+func @vec3d(%A : memref<?x?x?xf32>) {
    %0 = dim %A, 0 : memref<?x?x?xf32>
    %1 = dim %A, 1 : memref<?x?x?xf32>
    %2 = dim %A, 2 : memref<?x?x?xf32>
