@@ -512,7 +512,8 @@ bool OperationInst::constantFold(ArrayRef<Attribute> operands,
   // If this operation hasn't been registered or doesn't have abstract
   // operation, fall back to a dialect which matches the prefix.
   auto opName = getName().getStringRef();
-  if (auto *dialect = getContext()->getRegisteredDialect(opName)) {
+  auto dialectPrefix = opName.split('.').first;
+  if (auto *dialect = getContext()->getRegisteredDialect(dialectPrefix)) {
     return dialect->constantFoldHook(llvm::cast<OperationInst>(this), operands,
                                      results);
   }

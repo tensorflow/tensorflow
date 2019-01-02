@@ -53,8 +53,10 @@ void mlir::registerAllDialects(MLIRContext *context) {
     fn(context);
 }
 
-Dialect::Dialect(StringRef opPrefix, MLIRContext *context)
-    : opPrefix(opPrefix), context(context) {
+Dialect::Dialect(StringRef namePrefix, MLIRContext *context)
+    : namePrefix(namePrefix), context(context) {
+  assert(!namePrefix.contains('.') &&
+         "Dialect names cannot contain '.' characters.");
   registerDialect(context);
 }
 

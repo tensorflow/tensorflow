@@ -34,7 +34,7 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 SuperVectorOpsDialect::SuperVectorOpsDialect(MLIRContext *context)
-    : Dialect(/*opPrefix=*/"", context) {
+    : Dialect(/*namePrefix=*/"", context) {
   addOperations<VectorTransferReadOp, VectorTransferWriteOp,
                 VectorTypeCastOp>();
 }

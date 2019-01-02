@@ -32,7 +32,7 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 BuiltinDialect::BuiltinDialect(MLIRContext *context)
-    : Dialect(/*opPrefix=*/"", context) {
+    : Dialect(/*namePrefix=*/"", context) {
   addOperations<AffineApplyOp, BranchOp, CondBranchOp, ConstantOp, ReturnOp>();
 }
 

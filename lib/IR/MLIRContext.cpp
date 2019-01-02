@@ -506,17 +506,13 @@ std::vector<Dialect *> MLIRContext::getRegisteredDialects() const {
   return result;
 }
 
-/// Get registered IR dialect which has the longest matching with the given
-/// prefix. If none is found, returns nullptr.
-Dialect *MLIRContext::getRegisteredDialect(StringRef prefix) const {
-  Dialect *result = nullptr;
-  for (auto &dialect : getImpl().dialects) {
-    if (prefix.startswith(dialect->getOperationPrefix()))
-      if (!result || result->getOperationPrefix().size() <
-                         dialect->getOperationPrefix().size())
-        result = dialect.get();
-  }
-  return result;
+/// Get a registered IR dialect with the given namespace. If none is found,
+/// then return nullptr.
+Dialect *MLIRContext::getRegisteredDialect(StringRef name) const {
+  for (auto &dialect : getImpl().dialects)
+    if (name == dialect->getNamespace())
+      return dialect.get();
+  return nullptr;
 }
 
 /// Register this dialect object with the specified context.  The context
@@ -549,8 +545,8 @@ std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() const {
 }
 
 void Dialect::addOperation(AbstractOperation opInfo) {
-  assert(opInfo.name.startswith(opPrefix) &&
-         "op name doesn't start with prefix");
+  assert((namePrefix.empty() || (opInfo.name.split('.').first == namePrefix)) &&
+         "op name doesn't start with dialect prefix");
   assert(&opInfo.dialect == this && "Dialect object mismatch");
 
   auto &impl = context->getImpl();

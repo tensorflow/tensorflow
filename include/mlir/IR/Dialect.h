@@ -40,7 +40,7 @@ class Dialect {
 public:
   MLIRContext *getContext() const { return context; }
 
-  StringRef getOperationPrefix() const { return opPrefix; }
+  StringRef getNamespace() const { return namePrefix; }
 
   /// Registered fallback constant fold hook for the dialect. Like the constant
   /// fold hook of each operation, it attempts to constant fold the operation
@@ -60,9 +60,13 @@ public:
   virtual ~Dialect();
 
 protected:
-  /// The prefix should be common across all ops in this set, e.g. "" for the
-  /// standard operation set, and "tf." for the TensorFlow ops like "tf.add".
-  Dialect(StringRef opPrefix, MLIRContext *context);
+  /// Note: The namePrefix can be empty, but it must not contain '.' characters.
+  /// Note: If the name is non empty, then all operations belonging to this
+  /// dialect will need to start with the namePrefix followed by a '.'.
+  /// Example:
+  ///       - "" for the standard operation set.
+  ///       - "tf" for the TensorFlow ops like "tf.add".
+  Dialect(StringRef namePrefix, MLIRContext *context);
 
   /// This method is used by derived classes to add their operations to the set.
   ///
@@ -99,9 +103,8 @@ private:
   /// takes ownership of the heap allocated dialect.
   void registerDialect(MLIRContext *context);
 
-  /// This is the prefix that all operations belonging to this operation set
-  /// start with.
-  StringRef opPrefix;
+  /// This is the namespace used as a prefix for IR defined by this dialect.
+  StringRef namePrefix;
 
   /// This is the context that owns this Dialect object.
   MLIRContext *context;

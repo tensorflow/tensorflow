@@ -36,7 +36,7 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
-    : Dialect(/*opPrefix=*/"", context) {
+    : Dialect(/*namePrefix=*/"", context) {
   addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, CmpIOp,
                 DeallocOp, DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp,
                 LoadOp, MemRefCastOp, MulFOp, MulIOp, SelectOp, StoreOp, SubFOp,
