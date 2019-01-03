@@ -150,7 +150,6 @@ cc_library_with_android_deps(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
     ],
 )
