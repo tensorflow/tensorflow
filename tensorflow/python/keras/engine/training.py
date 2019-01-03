@@ -2191,7 +2191,6 @@ class Model(Network):
         else:
           x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
 
-        x = dataset_ops.Dataset.from_tensor_slices((var_x, var_y))
         if shuffle:
           # 1024 is a good buffer size since it is much larger than the average
           # batch size provided by the user and provides sufficient randomness.
