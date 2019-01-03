@@ -141,5 +141,99 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
   return Status::OK();
 }
 
+Status VariantTensorDataReader::status() const { return status_; }
+
+Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
+  return ReadScalarInternal(key, val);
+}
+
+Status VariantTensorDataReader::ReadScalar(StringPiece key, string* val) {
+  return ReadScalarInternal(key, val);
+}
+
+Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) {
+  return ReadTensorInternal(key, val);
+}
+
+bool VariantTensorDataReader::Contains(StringPiece key) {
+  return map_.find(string(key)) != map_.end();
+}
+
+void VariantTensorDataReader::PreProcess() {
+  string metadata;
+  data_->get_metadata(&metadata);
+  IteratorStateMetadata proto;
+  if (!proto.ParseFromString(metadata)) {
+    status_ = errors::Internal("Error parsing IteratorStateMetadata.");
+    return;
+  }
+  size_t num_entries = proto.keys_size();
+  CHECK_EQ(num_entries, data_->tensors_size());
+  for (size_t i = 0; i < num_entries; i++) {
+    map_[proto.keys(i)] = i;
+  }
+}
+
+template <typename T>
+Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
+  if (map_.find(string(key)) == map_.end()) {
+    return errors::NotFound(key);
+  }
+  *val = data_->tensors(map_[string(key)]).scalar<T>()();
+  return Status::OK();
+}
+
+Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
+                                                   Tensor* val) {
+  if (map_.find(string(key)) == map_.end()) {
+    return errors::NotFound(key);
+  }
+  *val = data_->tensors(map_[string(key)]);
+  return Status::OK();
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
+  return WriteScalarInternal(key, val);
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece key,
+                                            const string& val) {
+  return WriteScalarInternal(key, val);
+}
+
+Status VariantTensorDataWriter::WriteTensor(StringPiece key,
+                                            const Tensor& val) {
+  return WriteTensorInternal(key, val);
+}
+
+Status VariantTensorDataWriter::Flush() {
+  string metadata;
+  if (!metadata_proto_.SerializeToString(&metadata)) {
+    return errors::Internal("Unable to serialize IteratorStateMetadata.");
+  }
+  data_->set_metadata(metadata);
+  return Status::OK();
+}
+
+template <typename T>
+Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
+                                                    const T& val) {
+  Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+  val_t.scalar<T>()() = val;
+  return WriteTensorInternal(key, val_t);
+}
+
+Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
+                                                    const Tensor& val) {
+  // Write key to the metadata proto. This gets written to `data_`
+  // when `Flush()` is called. We do this lazily to avoid multiple
+  // serialization calls.
+  metadata_proto_.add_keys(string(key));
+
+  // Update tensors.
+  *(data_->add_tensors()) = val;
+  return Status::OK();
+}
+
 }  // namespace data
 }  // namespace tensorflow
