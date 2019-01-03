@@ -271,10 +271,11 @@ class Dimension(object):
     Dimensions are combined as follows:
 
     ```python
-    tf.Dimension(n)   .merge_with(tf.Dimension(n))    == tf.Dimension(n)
-    tf.Dimension(n)   .merge_with(tf.Dimension(None)) == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(n))    == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(None)) == tf.Dimension(None)
+    tf.Dimension(n)   .merge_with(tf.Dimension(n))     == tf.Dimension(n)
+    tf.Dimension(n)   .merge_with(tf.Dimension(None))  == tf.Dimension(n)
+    tf.Dimension(None).merge_with(tf.Dimension(n))     == tf.Dimension(n)
+    # equivalent to tf.Dimension(None)
+    tf.Dimension(None).merge_with(tf.Dimension(None))
 
     # raises ValueError for n != m
     tf.Dimension(n)   .merge_with(tf.Dimension(m))
@@ -304,10 +305,10 @@ class Dimension(object):
     Dimensions are summed as follows:
 
     ```python
-    tf.Dimension(m)    + tf.Dimension(n)    == tf.Dimension(m + n)
-    tf.Dimension(m)    + tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    + tf.Dimension(n)     == tf.Dimension(m + n)
+    tf.Dimension(m)    + tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -339,10 +340,10 @@ class Dimension(object):
     Dimensions are subtracted as follows:
 
     ```python
-    tf.Dimension(m)    - tf.Dimension(n)    == tf.Dimension(m - n)
-    tf.Dimension(m)    - tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    - tf.Dimension(n)     == tf.Dimension(m - n)
+    tf.Dimension(m)    - tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -378,10 +379,10 @@ class Dimension(object):
     Dimensions are summed as follows:
 
     ```python
-    tf.Dimension(m)    * tf.Dimension(n)    == tf.Dimension(m * n)
-    tf.Dimension(m)    * tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    * tf.Dimension(n)     == tf.Dimension(m * n)
+    tf.Dimension(m)    * tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -417,10 +418,10 @@ class Dimension(object):
     Dimensions are divided as follows:
 
     ```python
-    tf.Dimension(m)    // tf.Dimension(n)    == tf.Dimension(m // n)
-    tf.Dimension(m)    // tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    // tf.Dimension(n)     == tf.Dimension(m // n)
+    tf.Dimension(m)    // tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -475,10 +476,10 @@ class Dimension(object):
     Dimension moduli are computed as follows:
 
     ```python
-    tf.Dimension(m)    % tf.Dimension(n)    == tf.Dimension(m % n)
-    tf.Dimension(m)    % tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    % tf.Dimension(n)     == tf.Dimension(m % n)
+    tf.Dimension(m)    % tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
