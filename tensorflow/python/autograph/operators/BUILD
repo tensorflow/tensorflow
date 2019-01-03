@@ -38,6 +38,7 @@ py_library(
         "//tensorflow/python:list_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/utils",
         "//tensorflow/python/data/ops:dataset_ops",
