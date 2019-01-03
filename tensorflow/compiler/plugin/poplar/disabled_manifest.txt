@@ -57,3 +57,4 @@ CumprodTest.test6D # Too long
 CumprodTest.test3D # Too long
 QuantizedOpsTest # No bfloat16
 DeuantizedOpsTest # No bfloat16
+ArrayElementwiseOpTest.ClampF32 # Incorrect NaN passing
