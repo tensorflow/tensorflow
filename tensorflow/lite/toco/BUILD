@@ -348,7 +348,8 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -387,7 +388,8 @@ tf_cc_test(
         ":model",
         ":tooling_util",
         "//tensorflow/core:lib",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -451,12 +453,13 @@ tf_cc_test(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         # We cannot embed the core:ops dependency directly into :toco_tooling as
         # it can conflict with downstream deps when toco is used as a library.
         "//tensorflow/core:ops",
+        "//tensorflow/lite/testing:util",
     ],
 )
 
@@ -468,6 +471,7 @@ tf_cc_test(
     ],
     deps = [
         ":toco_port",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
     ],
 )
