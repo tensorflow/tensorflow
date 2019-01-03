@@ -38,8 +38,19 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
+
+
+def validate_not_in_strategy_scope():
+  """Validate fit/eval/predict are not running in DS scope."""
+  if distribution_strategy_context.has_distribution_strategy():
+    if distribution_strategy_context.in_cross_replica_context():
+      raise RuntimeError(
+          'Fit/Eval/Predict should not be run inside the distribution strategy '
+          'scope. Only model creation and compilation should be in '
+          'distribution strategy scope.')
 
 
 def set_weights(distribution_strategy, dist_model, weights):

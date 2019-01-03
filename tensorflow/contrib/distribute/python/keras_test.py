@@ -1161,8 +1161,8 @@ class TestDistributionStrategyWithNormalizationLayer(
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
 
-class TestDistributionStrategyVariableValidation(test.TestCase,
-                                                 parameterized.TestCase):
+class TestDistributionStrategyValidation(test.TestCase,
+                                         parameterized.TestCase):
 
   @combinations.generate(all_strategy_combinations_minus_default())
   def test_layer_outside_scope(self, distribution):
@@ -1191,6 +1191,21 @@ class TestDistributionStrategyVariableValidation(test.TestCase,
           loss = 'mse'
           metrics = ['mae', keras.metrics.CategoricalAccuracy()]
           model.compile(optimizer, loss, metrics=metrics)
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_loop_in_scope(self, distribution):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          RuntimeError, 'should not be run inside the distribution strategy'):
+        with distribution.scope():
+          x = keras.layers.Input(shape=(3,), name='input')
+          y = keras.layers.Dense(4, name='dense')(x)
+          model = keras.Model(x, y)
+          optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+          loss = 'mse'
+          model.compile(optimizer, loss)
+          input_array = np.zeros((3, 3), dtype=np.float32)
+          model.predict(input_array)
 
 
 if __name__ == '__main__':
