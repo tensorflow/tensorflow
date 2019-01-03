@@ -1,8 +1,12 @@
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
+
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+
+#include "absl/types/optional.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -34,64 +38,88 @@ std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape) {
   return out;
 }
 
-StatusOr<std::vector<int64>> LiteralVectorToInt64Vector(
+template <typename NativeT>
+StatusOr<NativeT> LiteralScalarToNativeType(const xla::Literal& lit) {
+  auto primitive_type = primitive_util::NativeToPrimitiveType<NativeT>();
+  if (!ShapeUtil::IsScalar(lit.shape())) {
+    return xla::FailedPrecondition("Literal is not scalar");
+  }
+
+  Literal converted_lit;
+  TF_ASSIGN_OR_RETURN(converted_lit, lit.Convert(primitive_type));
+
+  return *static_cast<const NativeT*>(converted_lit.untyped_data());
+}
+
+template <typename NativeT>
+StatusOr<std::vector<NativeT>> LiteralVectorToNativeType(
     const xla::Literal& lit) {
+  auto primitive_type = primitive_util::NativeToPrimitiveType<NativeT>();
   if (lit.shape().dimensions_size() != 1) {
     return xla::FailedPrecondition("Literal rank != 1");
   }
 
-  Literal s64_lit;
-  TF_ASSIGN_OR_RETURN(s64_lit, lit.Convert(S64));
+  Literal converted_lit;
+  TF_ASSIGN_OR_RETURN(converted_lit, lit.Convert(primitive_type));
 
-  const int64* start = static_cast<const int64*>(s64_lit.untyped_data());
-  return std::vector<int64>(start, start + s64_lit.shape().dimensions(0));
+  const NativeT* start =
+      static_cast<const NativeT*>(converted_lit.untyped_data());
+  return std::vector<NativeT>(start,
+                              start + converted_lit.shape().dimensions(0));
 }
 
-StatusOr<std::vector<int64>> WideConstToInt64Vector(
-    const xla::HloInstruction* bcast, const xla::HloInstruction* constant) {
-  CHECK_EQ(bcast->opcode(), HloOpcode::kBroadcast);
-  if (bcast->shape().dimensions_size() != 1) {
+template <typename NativeT>
+StatusOr<std::vector<NativeT>> WideConstToNativeType(
+    const xla::HloInstruction* wide_const) {
+  CHECK_EQ(wide_const->opcode(), HloOpcode::kBroadcast);
+  if (wide_const->shape().dimensions_size() != 1) {
     return xla::FailedPrecondition("Literal rank != 1");
   }
+  const HloInstruction* constant = wide_const->operand(0);
   CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
 
-  int64 val;
-  TF_ASSIGN_OR_RETURN(val, LiteralScalarInt64toInt64(constant->literal()));
-  return std::vector<int64>(bcast->shape().dimensions(0), val);
+  TF_ASSIGN_OR_RETURN(NativeT val,
+                      LiteralScalarToNativeType<NativeT>(constant->literal()));
+  return std::vector<NativeT>(wide_const->shape().dimensions(0), val);
 }
 
-StatusOr<int32> LiteralScalarInt32toInt32(const xla::Literal& lit) {
-  if (!ShapeUtil::IsScalar(lit.shape())) {
-    return xla::FailedPrecondition("Literal is not scalar");
-  }
+template StatusOr<uint8> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<uint16> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<uint32> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<uint64> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<int8> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<int16> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<int32> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<int64> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<half> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<bfloat16> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<float> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<double> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<complex64> LiteralScalarToNativeType(const xla::Literal& lit);
+template StatusOr<bool> LiteralScalarToNativeType(const xla::Literal& lit);
 
-  Literal s32_lit;
-  TF_ASSIGN_OR_RETURN(s32_lit, lit.Convert(S32));
+#define INITIALISE_FOR_ALL_NATIVE_VECTOR_TYPES(func) \
+  template StatusOr<std::vector<uint8>> func;        \
+  template StatusOr<std::vector<uint16>> func;       \
+  template StatusOr<std::vector<uint32>> func;       \
+  template StatusOr<std::vector<uint64>> func;       \
+  template StatusOr<std::vector<int8>> func;         \
+  template StatusOr<std::vector<int16>> func;        \
+  template StatusOr<std::vector<int32>> func;        \
+  template StatusOr<std::vector<int64>> func;        \
+  template StatusOr<std::vector<half>> func;         \
+  template StatusOr<std::vector<bfloat16>> func;     \
+  template StatusOr<std::vector<float>> func;        \
+  template StatusOr<std::vector<double>> func;       \
+  template StatusOr<std::vector<complex64>> func;    \
+  template StatusOr<std::vector<bool>> func;
 
-  return *static_cast<const int32*>(s32_lit.untyped_data());
-}
+INITIALISE_FOR_ALL_NATIVE_VECTOR_TYPES(
+    LiteralVectorToNativeType(const xla::Literal& lit));
+INITIALISE_FOR_ALL_NATIVE_VECTOR_TYPES(
+    WideConstToNativeType(const xla::HloInstruction* wide_const));
 
-StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit) {
-  if (!ShapeUtil::IsScalar(lit.shape())) {
-    return xla::FailedPrecondition("Literal is not scalar");
-  }
-
-  Literal s64_lit;
-  TF_ASSIGN_OR_RETURN(s64_lit, lit.Convert(S64));
-
-  return *static_cast<const int64*>(s64_lit.untyped_data());
-}
-
-StatusOr<double> LiteralScalarDoubleToDouble(const xla::Literal& lit) {
-  if (!ShapeUtil::IsScalar(lit.shape())) {
-    return xla::FailedPrecondition("Literal is not scalar");
-  }
-
-  Literal double_lit;
-  TF_ASSIGN_OR_RETURN(double_lit, lit.Convert(F64));
-
-  return *static_cast<const double*>(double_lit.untyped_data());
-}
+#undef INITIALISE_FOR_ALL_NATIVE_VECTOR_TYPES
 
 bool IsPopOpsCall(const xla::HloComputation* comp, const std::string& postfix) {
   return tensorflow::str_util::StartsWith(comp->name(), "_pop_op_" + postfix);

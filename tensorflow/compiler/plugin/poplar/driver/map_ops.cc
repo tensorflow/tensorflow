@@ -371,7 +371,7 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
 
   poplar::program::Sequence main_seq;
 
-  uint64 repeat_count;
+  int64 repeat_count;
   auto it = res.annotations.while_loop_num_iterations.find(inst);
   if (it != res.annotations.while_loop_num_iterations.end()) {
     repeat_count = it->second;

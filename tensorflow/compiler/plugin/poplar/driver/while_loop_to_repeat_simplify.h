@@ -39,7 +39,7 @@ class WhileLoopToRepeatSimplify : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  std::map<const HloInstruction*, uint64>& while_loop_num_iterations;
+  std::map<const HloInstruction*, int64>& while_loop_num_iterations;
 };
 
 }  // namespace poplarplugin
