@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -3334,36 +3338,37 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
 }
 
 void ArithmeticOptimizer::DedupComputations() {
-  bool stop = true;
-  SimpleGraphView graph_view;
-  if (!graph_view.Initialize(*optimized_graph_).ok()) {
-    LOG(WARNING) << "Failed to build SimpleGraphView.";
+  GraphTopologyView graph_view;
+  if (!graph_view.InitializeFromGraph(*optimized_graph_).ok()) {
+    LOG(WARNING) << "Failed to initialize GraphTopologyView.";
     return;
   }
-  std::set<int> duplicates;
+
+  const absl::flat_hash_set<string> ops_to_traverse = {
+      "Identity", "IdentityN", "Reshape", "ExpandDims",
+      "Enter",    "Switch",    "Merge"};
+
   // Populate feed_inplace_op;
-  std::unordered_set<const NodeDef*> feeds_inplace_op;
-  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    const NodeDef& root = optimized_graph_->node(i);
-    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) {
-      continue;
-    }
+  absl::flat_hash_set<const NodeDef*> feeds_inplace_op;
+
+  for (const NodeDef& root : optimized_graph_->node()) {
+    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) continue;
 
     if (ModifiesInputsInPlace(root)) {
-      const std::unordered_set<string> op_types_to_traverse = {
-          root.op(),    "Identity", "IdentityN", "Reshape",
-          "ExpandDims", "Enter",    "Switch",    "Merge"};
+      const auto is_continue_traversal = [&](const NodeDef* node) -> bool {
+        return node->op() == root.op() || ops_to_traverse.count(node->op()) > 0;
+      };
 
-      graph_view.DepthFirstSearchWithCallback(
-          op_types_to_traverse, i,
-          [&](const NodeDef& node) {
-            feeds_inplace_op.insert(&node);
-            return false;
-          },
-          SimpleGraphView::kFollowInputs /* search through inputs */);
+      DfsTraversal(graph_view, {&root}, TraversalDirection::kFollowInputs,
+                   DfsPredicates::Advance(is_continue_traversal),
+                   DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                     feeds_inplace_op.insert(node);
+                   }));
     }
   }
 
+  bool stop = true;
+  std::set<int> duplicates;
   do {
     stop = true;
     UniqueNodes nodes;

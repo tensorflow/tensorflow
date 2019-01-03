@@ -159,7 +159,7 @@ TEST(TraversalTest, OutputDfsWithLoop) {
   EXPECT_EQ(back_edges, expected_edges);
 }
 
-TEST(TraversalTest, DfsWithPredicate) {
+TEST(TraversalTest, DfsWithEnterPredicate) {
   const string op = "OpIsNotImportantInThisTest";
 
   GraphDef graph = ::tensorflow::test::function::GDef(  //
@@ -171,8 +171,8 @@ TEST(TraversalTest, DfsWithPredicate) {
        NDef("6", op, {"3", "5"}, {})},                  //
       /*funcs=*/{});
 
-  // Do not go through nodes '2' and '3'.
-  const auto predicate = [](const NodeDef* node) {
+  // Do not enter the nodes '2' and '3'.
+  const auto enter = [](const NodeDef* node) {
     return node->name() != "2" && node->name() != "3";
   };
 
@@ -185,10 +185,48 @@ TEST(TraversalTest, DfsWithPredicate) {
   GraphTopologyView graph_view;
   TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
   DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowOutputs,
-               predicate, MkCallbacks(&pre_order, &post_order, &back_edges));
+               DfsPredicates::Enter(enter),
+               MkCallbacks(&pre_order, &post_order, &back_edges));
 
   const std::vector<string> expected_pre = {"1", "4", "5", "6"};
   const std::vector<string> expected_post = {"6", "5", "4", "1"};
+
+  EXPECT_EQ(pre_order, expected_pre);
+  EXPECT_EQ(post_order, expected_post);
+  EXPECT_TRUE(back_edges.empty());
+}
+
+TEST(TraversalTest, DfsWithAdvancePredicate) {
+  const string op = "OpIsNotImportantInThisTest";
+
+  GraphDef graph = ::tensorflow::test::function::GDef(  //
+      {NDef("1", op, {}, {}),                           //       2 -> 3
+       NDef("2", op, {"1"}, {}),                        // 1 -> /      \ -> 6
+       NDef("3", op, {"2"}, {}),                        //      \      /
+       NDef("4", op, {"1"}, {}),                        //       4 -> 5
+       NDef("5", op, {"4"}, {}),                        //
+       NDef("6", op, {"3", "5"}, {})},                  //
+      {} /* empty function library*/);
+
+  // Do not advance from the nodes '2' and '3'.
+  const auto advance = [](const NodeDef* node) {
+    return node->name() != "2" && node->name() != "3";
+  };
+
+  std::vector<const NodeDef*> start_nodes = {&graph.node(0)};
+
+  std::vector<string> pre_order;
+  std::vector<string> post_order;
+  std::vector<string> back_edges;
+
+  GraphTopologyView graph_view;
+  TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
+  DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowOutputs,
+               DfsPredicates::Advance(advance),
+               MkCallbacks(&pre_order, &post_order, &back_edges));
+
+  const std::vector<string> expected_pre = {"1", "4", "5", "6", "2"};
+  const std::vector<string> expected_post = {"6", "5", "4", "2", "1"};
 
   EXPECT_EQ(pre_order, expected_pre);
   EXPECT_EQ(post_order, expected_post);
