@@ -449,7 +449,9 @@ inline bool AffineValueMap::isMultipleOf(unsigned idx, int64_t factor) const {
 /// with the AffineDimExpr in the underlying AffineMap.
 bool AffineValueMap::isFunctionOf(unsigned idx, Value *value) const {
   unsigned index;
-  findIndex(value, operands, /*indexStart=*/0, &index);
+  if (!findIndex(value, operands, /*indexStart=*/0, &index)) {
+    return false;
+  }
   auto expr = const_cast<AffineValueMap *>(this)->getAffineMap().getResult(idx);
   // TODO(ntv): this is better implemented on a flattened representation.
   // At least for now it is conservative.
