@@ -500,6 +500,46 @@ class CategoricalHinge(Loss):
     return categorical_hinge(y_true, y_pred)
 
 
+class LogLoss(Loss):
+  """Computes the log loss between `y_true` and `y_pred`.
+
+  logloss = -y log(p) - (1-y) log(1-p)
+
+  Usage:
+
+  ```python
+  l = tf.losses.LogLoss()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 10.745
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.LogLoss())
+  ```
+
+  Args:
+    epsilon: A small increment to add to avoid taking a log of zero.
+    reduction: Type of `tf.losses.Reduction` to apply to loss. Default value is
+      `SUM_OVER_BATCH_SIZE`.
+    name: Optional name for the op.
+  """
+
+  def __init__(self,
+               epsilon=1e-7,
+               reduction=losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE,
+               name=None):
+    super(LogLoss, self).__init__(reduction=reduction, name=name)
+    self.epsilon = epsilon
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return logloss(y_true, y_pred, epsilon=self.epsilon)
+
+
 @keras_export('keras.metrics.mean_squared_error',
               'keras.metrics.mse',
               'keras.metrics.MSE',
@@ -560,6 +600,12 @@ def categorical_hinge(y_true, y_pred):
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
   return math_ops.maximum(0., neg - pos + 1.)
+
+
+def logloss(y_true, y_pred, epsilon=1e-7):
+  losses = math_ops.multiply(y_true, math_ops.log(y_pred + epsilon))
+  losses += math_ops.multiply((1 - y_true), math_ops.log(1 - y_pred + epsilon))
+  return K.mean(-losses, axis=-1)
 
 
 @keras_export('keras.losses.logcosh')
