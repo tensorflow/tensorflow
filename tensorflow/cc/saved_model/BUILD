@@ -81,6 +81,7 @@ cc_library(
     ] + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ]) + if_android([
@@ -100,6 +101,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
         # mobile not supported yet
