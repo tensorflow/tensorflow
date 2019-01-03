@@ -63,15 +63,6 @@ RUN apt-get update --allow-insecure-repositories && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-
-# Override the default rocBLAS and MIOpen installs with a newer version with support for BnA fusion
-RUN mkdir -p $HOME/pkgs/rocblas
-RUN cd $HOME/pkgs/rocblas && wget https://github.com/ROCmSoftwarePlatform/rocBLAS/releases/download/v14.3.0/rocblas-0.14.3.158-Linux.deb && dpkg -i *.deb
-
-RUN mkdir -p $HOME/pkgs/MIOpen
-RUN cd $HOME/pkgs/MIOpen && wget https://www.dropbox.com/s/ppk5cqeylfsgnya/MIOpen-HIP-1.6.0-fa431f0-Linux.deb && dpkg -i *.deb
-
-
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
 ENV OPENCL_ROOT=$ROCM_PATH/opencl
@@ -79,17 +70,8 @@ ENV PATH="$HCC_HOME/bin:$HIP_PATH/bin:${PATH}"
 ENV PATH="$ROCM_PATH/bin:${PATH}"
 ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
-# Workadround : build HIP from source using fork that holds roc-1.9.x with HIP PR 692
-RUN cd $HOME && git clone -b roc-1.9.x-reinit https://github.com/whchung/HIP.git
-RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && make -j$(nproc) package && dpkg -i *.deb
-
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
-
-# Setup environment variables, and add those environment variables at the end of ~/.bashrc 
-ARG HCC_HOME=/opt/rocm/hcc
-ARG HIP_PATH=/opt/rocm/hip
-ARG PATH=$HCC_HOME/bin:$HIP_PATH/bin:$PATH
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
