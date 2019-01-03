@@ -2378,6 +2378,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   };
 
   {
+    // Input is weights, should fail.
+    Reset();
     NodeDef node_def = get_strided_slice_nodedef();
     AddTestWeights<int32>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
@@ -2616,6 +2618,106 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_strided_slice",
                        &output_data);
     EXPECT_THAT(output_data, ElementsAreArray(ok_params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertConv2D) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_conv2d", "Conv2D", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Two inputs are expected for Conv2D, at my_conv2d");
+  }
+
+  // Get nodedef for Conv2D layer.
+  auto get_conv2d_nodedef = [](
+      std::vector<int> strides = {1, 1, 1, 1}, string padding = "SAME",
+      string data_format = "NCHW",
+      std::vector<int> dilations = {1, 1, 1, 1}) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
+    ops::Conv2D::Attrs attrs =
+        ops::Conv2D::Attrs().DataFormat(data_format).Dilations(dilations);
+    auto conv2d = ops::Conv2D(s.WithOpName("my_conv2d"), input, filter, strides,
+                              padding, attrs);
+    return conv2d.operation.node()->def();
+  };
+
+  {
+    // Input is weights, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Conv2D is only implemented for tensors, not weights, at my_conv2d");
+  }
+  {
+    // Filter is tensor, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("weights", {3, 3, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Kernel for Conv2D must be constant weights, at my_conv2d");
+  }
+  {
+    // Filter is not 4D, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Conv2D expects kernel of dimension 4, at my_conv2d");
+  }
+  {
+    // Dilations is not 4D, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NCHW", {1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Convolution dilations field must specify 4 dimensions, at my_conv2d");
+  }
+  {
+    // Dilation value is not 1 for channel, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NCHW", {1, 2, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Dilation rate must be 1 for batch and channel "
+                               "dimensions, at my_conv2d");
+  }
+  {
+    // Strides is not 4D, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1}, "SAME", "NCHW", {1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Convolution strides field must specify 4 dimensions, at my_conv2d");
+  }
+  {
+    // Stride value is not 1 for channel, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 2, 1, 1}, "SAME", "NCHW", {1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Stride must be 1 for batch and channel dimensions, at my_conv2d");
   }
 }
 

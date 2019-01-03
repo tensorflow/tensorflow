@@ -1556,6 +1556,11 @@ enum class ConvolutionType { DEFAULT, DEPTHWISE_CONV };
 tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  if (inputs.size() != 2) {
+    return tensorflow::errors::InvalidArgument("Two inputs are expected for ",
+                                               node_def.op(), ", at ",
+                                               node_def.name());
+  }
   if (inputs.at(0).is_weights()) {
     return tensorflow::errors::Unimplemented(
         node_def.op(), " is only implemented for tensors, not weights, at ",
@@ -1568,8 +1573,8 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   }
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
   if (weights_rsck.shape_.nbDims != 4) {
-    return tensorflow::errors::Internal(
-        "Conv2D expects kernel of dimension 4, at: " + node_def.name());
+    return tensorflow::errors::InvalidArgument(
+        "Conv2D expects kernel of dimension 4, at " + node_def.name());
   }
   TFAttrs attrs(node_def);
   auto data_format = attrs.get<string>("data_format");
@@ -1587,8 +1592,13 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
         "Dilation rate must be 1 for batch and channel dimensions, at ",
         node_def.name());
   }
-  nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
+  const nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
   const auto tf_stride = attrs.get<std::vector<int>>("strides");
+  if (tf_stride.size() != 4) {
+    return tensorflow::errors::InvalidArgument(
+        "Convolution strides field must specify 4 dimensions, at ",
+        node_def.name());
+  }
   if (tf_stride[0] != 1 || tf_stride[c_index] != 1) {
     return tensorflow::errors::Unimplemented(
         "Stride must be 1 for batch and channel dimensions, at ",
@@ -1608,10 +1618,9 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   // Dimensions of transposed tensor.
   const auto tensor_dim = tensor->getDimensions();
 
-  // This is a depthwise convolution when num_groups is 0. Otherwise, num_groups
-  // will be 1.
-  int num_groups = group;
-  if (num_groups == 0) num_groups = tensor_dim.d[0];
+  // For depthwise convolution, group will be 0 so set num_groups to size of
+  // input's channel dim. For a non-depthwise conv, num_groups will be 1.
+  const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
   if (params->converter->precision_mode() == FP16MODE) {
     weights_rsck =
