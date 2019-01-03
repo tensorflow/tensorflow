@@ -137,14 +137,9 @@ static void matchOp(DagInit *tree, int depth, raw_ostream &os) {
   if (depth != 0) {
     // Skip if there is no defining instruction (e.g., arguments to function).
     os.indent(indent) << formatv("if (!op{0}) return matchFailure();\n", depth);
-    // TODO(jpienaar): This is bad, we should not be checking strings here, we
-    // should be matching using mOp (and helpers). Currently doing this to allow
-    // for TF ops that aren't registed. Fix it.
     os.indent(indent) << formatv(
-                             "if (op{0}->getName().getStringRef() != \"{1}\")",
-                             depth, op.getOperationName())
-                      << "\n";
-    os.indent(indent + 2) << "return matchFailure();\n";
+        "if (!op{0}->isa<{1}>()) return matchFailure();\n", depth,
+        op.qualifiedCppClassName());
   }
   for (int i = 0, e = tree->getNumArgs(); i != e; ++i) {
     auto arg = tree->getArg(i);

@@ -44,6 +44,9 @@ StringRef Operator::getOperationName() const {
 }
 
 StringRef Operator::cppClassName() { return getSplitDefName().back(); }
+std::string Operator::qualifiedCppClassName() {
+  return llvm::join(getSplitDefName(), "::");
+}
 
 StringRef Operator::getArgName(int index) const {
   DagInit *argumentValues = def.getValueAsDag("arguments");

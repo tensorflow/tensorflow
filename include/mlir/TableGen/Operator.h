@@ -49,6 +49,9 @@ public:
   // Returns the class name of the op.
   StringRef cppClassName();
 
+  // Returns the class name of the op with namespace added.
+  std::string qualifiedCppClassName();
+
   // Operations attribute accessors.
   struct Attribute {
     llvm::StringInit *name;
