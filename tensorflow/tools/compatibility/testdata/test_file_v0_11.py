@@ -203,7 +203,8 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       # make some variables
       _ = [tf.Variable([1, 2, 3], dtype=tf.float32),
            tf.Variable([1, 2, 3], dtype=tf.int32)]
-      s.run(tf.initialize_all_variables())
+      #s.run(tf.initialize_all_variables())
+      s.run(tf.global_variables_initializer())
       _ = [v.name for v in tf.all_variables()]
       _ = [v.name for v in tf.local_variables()]
 
