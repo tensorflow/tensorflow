@@ -2653,7 +2653,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT, typename std::enable_if<std::is_same<
                                   double, NativeT>::value>::type* = nullptr>
   Status HandleReducePrecision(HloInstruction* reduce_precision) {
-    return InvalidArgument("Double not supported for reduce precision");
+    return InvalidArgument("Double is not supported for reduce precision");
   }
 
   template <
@@ -2717,6 +2717,103 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
   Status HandleIota(HloInstruction* iota) override {
     return HandleIota<ReturnT>(iota);
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                !(std::is_integral<NativeT>::value ||
+                  std::is_floating_point<NativeT>::value)>::type* = nullptr>
+  Status HandleRng(HloInstruction* random) {
+    return UnsupportedTypeError(random);
+  }
+  template <typename NativeT,
+            typename std::enable_if<
+                (std::is_floating_point<NativeT>::value)>::type* = nullptr>
+  Status HandleRng(HloInstruction* random) {
+    RandomDistribution distribution = random->random_distribution();
+    const auto result_shape = random->shape();
+    Literal result(result_shape);
+
+    switch (distribution) {
+      case RNG_UNIFORM: {
+        const Literal& low =
+            parent_->GetEvaluatedLiteralFor(random->operand(0));
+        const Literal& high =
+            parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+        std::uniform_real_distribution<NativeT> generator(
+            low.Get<NativeT>({}), high.Get<NativeT>({}));
+
+        TF_RETURN_IF_ERROR(
+            result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
+              return generator(parent_->engine_);
+            }));
+        break;
+      }
+      case RNG_NORMAL: {
+        const Literal& mean =
+            parent_->GetEvaluatedLiteralFor(random->operand(0));
+        const Literal& stddev =
+            parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+        std::normal_distribution<NativeT> generator(mean.Get<NativeT>({}),
+                                                    stddev.Get<NativeT>({}));
+
+        TF_RETURN_IF_ERROR(
+            result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
+              return generator(parent_->engine_);
+            }));
+        break;
+      }
+      default:
+        return UnimplementedStrCat("The distribution ",
+                                   RandomDistribution_Name(distribution),
+                                   " is not implemented.");
+    }
+    parent_->evaluated_[random] = std::move(result);
+    return Status::OK();
+  }
+  template <typename NativeT,
+            typename std::enable_if<(std::is_integral<NativeT>::value)>::type* =
+                nullptr>
+  Status HandleRng(HloInstruction* random) {
+    RandomDistribution distribution = random->random_distribution();
+    const auto result_shape = random->shape();
+    Literal result(result_shape);
+
+    switch (distribution) {
+      case RNG_UNIFORM: {
+        const Literal& low =
+            parent_->GetEvaluatedLiteralFor(random->operand(0));
+        const Literal& high =
+            parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+        // Note std::uniform_int_distribution assumes interval is closed, i.e.,
+        // [low, high], but we want [low, high) instead. Hence high-1 is used as
+        // the upper range.
+        std::uniform_int_distribution<int64> generator(
+            low.Get<NativeT>({}), high.Get<NativeT>({}) - 1);
+
+        TF_RETURN_IF_ERROR(
+            result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
+              return static_cast<NativeT>(generator(parent_->engine_));
+            }));
+        break;
+      }
+      case RNG_NORMAL: {
+        return Unimplemented(
+            "Normal distribution is not supported for integral types.");
+      }
+      default:
+        return UnimplementedStrCat("The distribution ",
+                                   RandomDistribution_Name(distribution),
+                                   " is not implemented.");
+    }
+    parent_->evaluated_[random] = std::move(result);
+    return Status::OK();
+  }
+  Status HandleRng(HloInstruction* random) override {
+    return HandleRng<ReturnT>(random);
   }
 
  private:

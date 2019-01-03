@@ -290,6 +290,11 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   // Max loop iterations to execute with no maximum if negative.
   int64 max_loop_iterations_;
 
+  // Module-level seed handle.
+  uint64 seed_;
+  // RNG engine.
+  std::minstd_rand0 engine_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(HloEvaluator);
 };
 
