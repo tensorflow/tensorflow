@@ -138,6 +138,11 @@ StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
 
 }  // namespace
 
+// Note that unsupported types by the typed visitor does not necessarily imply
+// the non-typed HloEvaluator (parent evaluator) would not support them either
+// in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
+// type-agnostic evaluator will be able to accept Tuple primitive type, whereas
+// HloEvaluatorTypedVisitor cannot.
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] =
