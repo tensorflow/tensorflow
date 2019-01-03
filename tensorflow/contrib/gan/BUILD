@@ -132,6 +132,7 @@ py_library(
         ":clip_weights",
         ":conditioning_utils",
         ":random_tensor_pool",
+        ":spectral_normalization",
         ":virtual_batchnorm",
         "//tensorflow/python:util",
     ],
@@ -673,6 +674,48 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "spectral_normalization",
+    srcs = [
+        "python/features/python/spectral_normalization.py",
+        "python/features/python/spectral_normalization_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:standard_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/keras:engine",
+    ],
+)
+
+py_test(
+    name = "spectral_normalization_test",
+    srcs = ["python/features/python/spectral_normalization_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":spectral_normalization",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/slim",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/keras:layers",
         "//third_party/py/numpy",
     ],
 )
