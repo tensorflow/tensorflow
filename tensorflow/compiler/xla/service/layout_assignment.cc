@@ -1239,7 +1239,7 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
 namespace {
 // A transpose or a reshape that only changes trivial dimensions have meaningful
 // layouts that are valuable to propagate in a depthfirst manner to avoid
-// unassinged layouts in the graph.
+// unassigned layouts in the graph.
 bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
     case HloOpcode::kReshape:
