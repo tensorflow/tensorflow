@@ -39,7 +39,7 @@ class AdamOptimizer(optimizer.Optimizer):
 
   def __init__(self, learning_rate=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8,
                use_locking=False, name="Adam"):
-    """Construct a new Adam optimizer.
+    r"""Construct a new Adam optimizer.
 
     Initialization:
 

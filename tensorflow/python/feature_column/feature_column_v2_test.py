@@ -2052,7 +2052,7 @@ class LinearModelTest(test.TestCase):
       }
     with self.assertRaisesRegexp(
         ValueError,
-        'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
       model = fc.LinearModel([price1, price2])
       model(features)
 
@@ -2068,7 +2068,7 @@ class LinearModelTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         model = fc.LinearModel([price1, price2, price3])
         model(features)
 
@@ -2818,7 +2818,7 @@ class OldLinearModelTest(test.TestCase):
       }
     with self.assertRaisesRegexp(
         ValueError,
-        'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+        r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
       fc_old.linear_model(features, [price1, price2])
 
   def test_subset_of_static_batch_size_mismatch(self):
@@ -2833,7 +2833,7 @@ class OldLinearModelTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc_old.linear_model(features, [price1, price2, price3])
 
   def test_runtime_batch_size_mismatch(self):
@@ -3435,7 +3435,7 @@ class DenseFeaturesTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.DenseFeatures([price1, price2])(features)
 
   def test_subset_of_static_batch_size_mismatch(self):
@@ -3450,7 +3450,7 @@ class DenseFeaturesTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc.DenseFeatures([price1, price2, price3])(features)
 
   def test_runtime_batch_size_mismatch(self):
@@ -4141,7 +4141,7 @@ class FunctionalInputLayerTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc_old.input_layer(features, [price1, price2])
 
   def test_subset_of_static_batch_size_mismatch(self):
@@ -4156,7 +4156,7 @@ class FunctionalInputLayerTest(test.TestCase):
       }
       with self.assertRaisesRegexp(
           ValueError,
-          'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
+          r'Batch size \(first dimension\) of each feature must be same.'):  # pylint: disable=anomalous-backslash-in-string
         fc_old.input_layer(features, [price1, price2, price3])
 
   def test_runtime_batch_size_mismatch(self):
