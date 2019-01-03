@@ -19,6 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#ifdef OP_BASE
+#else
+#define OP_BASE
+
 //===----------------------------------------------------------------------===//
 // Types.
 //===----------------------------------------------------------------------===//
@@ -249,3 +253,4 @@ class Pattern<dag patternToMatch, list<dag> resultOps> {
 // Form of a pattern which produces a single result.
 class Pat<dag pattern, dag result> : Pattern<pattern, [result]>;
 
+#endif // OP_BASE
