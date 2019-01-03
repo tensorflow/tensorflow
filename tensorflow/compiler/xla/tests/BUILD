@@ -1422,10 +1422,6 @@ xla_test(
 xla_test(
     name = "prng_test",
     srcs = ["prng_test.cc"],
-    blacklisted_backends = [
-        # TODO(b/122047800) support RNGs on the interpreter backend.
-        "interpreter",
-    ],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
