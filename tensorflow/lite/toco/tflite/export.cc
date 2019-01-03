@@ -106,16 +106,17 @@ void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
 namespace details {
 
 OperatorKey::OperatorKey(
-    const ::toco::Operator& op,
+    const ::toco::OperatorSignature& op_signature,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     bool enable_select_tf_ops) {
   // Get the op name (by Toco definition).
+  const ::toco::Operator& op = *op_signature.op;
   string name = HelpfulOperatorTypeName(op);
 
   bool is_builtin = false;
   const auto& builtin_ops = GetBuiltinOpsMap();
   if (ops_by_type.count(op.type) != 0) {
-    version_ = ops_by_type.at(op.type)->GetVersion(op);
+    version_ = ops_by_type.at(op.type)->GetVersion(op_signature);
     name = ops_by_type.at(op.type)->name();
     is_builtin = (builtin_ops.count(name) > 0);
   }
@@ -190,7 +191,8 @@ void LoadOperatorsMap(
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(OperatorKey(*op, ops_by_type, enable_select_tf_ops));
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    keys.insert(OperatorKey(op_signature, ops_by_type, enable_select_tf_ops));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -301,8 +303,9 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
   std::map<int, Offset<OperatorCode>> ordered_opcodes;
 
   for (const auto& op : model.operators) {
-    const details::OperatorKey operator_key =
-        details::OperatorKey(*op, ops_by_type, params.enable_select_tf_ops);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const details::OperatorKey operator_key = details::OperatorKey(
+        op_signature, ops_by_type, params.enable_select_tf_ops);
     int op_index = operators_map.at(operator_key);
 
     flatbuffers::Offset<flatbuffers::String> custom_code = 0;
@@ -349,9 +352,9 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     for (const string& output : op->outputs) {
       outputs.push_back(tensors_map.at(output));
     }
-
-    const auto key =
-        details::OperatorKey(*op, ops_by_type, params.enable_select_tf_ops);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const auto key = details::OperatorKey(op_signature, ops_by_type,
+                                          params.enable_select_tf_ops);
     int op_index = operators_map.at(key);
 
     auto tflite_op_it = ops_by_type.find(op->type);

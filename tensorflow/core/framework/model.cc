@@ -29,6 +29,32 @@ std::shared_ptr<Parameter> MakeParameter(const string& name,
 
 namespace {
 
+// Given the average time between output events (`output_time`), the average
+// time between input events (`input_time`) and the buffer size, the method
+// computes the expected time an input event will have to wait.
+//
+// The wait time is approximated as the product of the probability the buffer
+// will be empty and the time it takes to produce an element into the buffer.
+//
+// The formula used for computing the probability is derived by modeling the
+// problem as an M/M/1/K queue
+// (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
+int64 ComputeWaitTime(int64 output_time, int64 input_time, int64 buffer_size) {
+  if (output_time == 0 || input_time == 0) {
+    return output_time;
+  }
+  if (input_time == output_time) {
+    const double p_buffer_empty = 1.0L / static_cast<double>(buffer_size + 1);
+    return p_buffer_empty * output_time;
+  }
+  const double alpha = 1.0L / static_cast<double>(input_time);
+  const double beta = 1.0L / static_cast<double>(output_time);
+  const double p_buffer_empty =
+      (1.0L - beta / alpha) /
+      (1.0L - std::pow((beta / alpha), static_cast<double>(buffer_size + 1)));
+  return p_buffer_empty * output_time;
+}
+
 // The first input of InterleaveMany corresponds to the input dataset whose
 // elements are used to create the (derived) input datasets whose elements are
 // interleaved as output.
@@ -119,8 +145,8 @@ class AsyncInterleaveMany : public Node {
         static_cast<double>(OutputTimeForInputs(input_times) -
                             inputs_.front()->OutputTime(input_times)) /
         static_cast<double>(inputs_.size() - 1) / parallelism;
-    return std::max(0LL,
-                    NanosPerElementLocked() + output_time - old_input_time);
+    return ComputeWaitTime(NanosPerElementLocked() + output_time,
+                           old_input_time, parallelism);
   }
 
   int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
@@ -202,7 +228,7 @@ class AsyncKnownRatio : public Node {
     if (ratio_ == 0.0) {
       int64 output_time =
           static_cast<double>(NanosPerElementLocked()) / parallelism;
-      return std::max(0LL, output_time - input_times->back());
+      return ComputeWaitTime(output_time, input_times->back(), parallelism);
     }
     int64 old_input_time = input_times->back();
     int64 new_input_time = static_cast<int64>(
@@ -213,7 +239,7 @@ class AsyncKnownRatio : public Node {
     int64 output_time = static_cast<int64>(
         static_cast<double>(NanosPerElementLocked()) / parallelism +
         ratio_ * OutputTimeForInputs(input_times));
-    return std::max(0LL, output_time - old_input_time);
+    return ComputeWaitTime(output_time, old_input_time, parallelism);
   }
 
   int64 ProcessingTimeLocked() const override SHARED_LOCKS_REQUIRED(mu_) {
@@ -356,6 +382,8 @@ std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
   if (output) {
     output->add_input(node);
   }
+  collect_resource_usage_ =
+      collect_resource_usage_ || node->has_tunable_parameters();
   lookup_table_.insert(std::make_pair(name, node));
   return node;
 }
@@ -441,7 +469,7 @@ void Model::RecordElement(const string& name) {
 void Model::RecordStart(const string& name, bool stop_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node) {
+  if (collect_resource_usage_ && node) {
     int64 now_nanos = Env::Default()->NowNanos();
     if (stop_output && (*node)->output()) {
       (*node)->output()->record_stop(now_nanos);
@@ -453,7 +481,7 @@ void Model::RecordStart(const string& name, bool stop_output) {
 void Model::RecordStop(const string& name, bool start_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node) {
+  if (collect_resource_usage_ && node) {
     int64 now_nanos = Env::Default()->NowNanos();
     (*node)->record_stop(now_nanos);
     if (start_output && (*node)->output()) {

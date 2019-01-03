@@ -99,7 +99,7 @@ def while_loop(cond,
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
-    add_control_dependencies = util.in_defun()
+    add_control_dependencies = ops.get_default_graph()._add_control_dependencies
 
     # Build a `cond` wrapper that can handle the extra counter loop_var.
     def wrapped_cond(loop_counter, *args):
@@ -242,13 +242,19 @@ def while_loop(cond,
 @ops.RegisterGradient("While")
 def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   """The gradient of a While op produced by while_loop."""
-  cond_graph = _get_graph(op, "cond")
-  body_graph = _get_graph(op, "body")
+  # Note that op is not always the same as while_op because the gradient tape,
+  # for eager mode compatibility, forgets information about the proper op. Since
+  # the loop cannot run in eager mode, however, we can safely introspect into
+  # the graph here.
+  while_op = op.outputs[0].op
+  cond_graph = _get_graph(while_op, "cond")
+  body_graph = _get_graph(while_op, "body")
   orig_num_params = len(body_graph.outputs)
 
   maximum_iterations = op.get_attr(
       "_maximum_iterations") if _is_in_xla_context() else None
   assert not _is_in_xla_context() or maximum_iterations is not None
+  maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
 
   # Set the incoming gradient of non-trainable inputs to None. It is possible
   # that we receive non-None gradients for non-trainable types in nested while
@@ -265,10 +271,6 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       for grad, output in zip(grads, body_graph.outputs)
   ]
 
-  # Ensure that all non-resource trainable outputs have incoming gradients.
-  assert all(g is not None or o.dtype == dtypes.resource or not _is_trainable(o)
-             for o, g in zip(body_graph.outputs, grads)
-            ), "All trainable loop vars must receive incoming gradients."
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
   # outputs.
@@ -291,16 +293,17 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     new_inputs = body_grad_graph.empty_tensor_lists
     new_outputs = body_graph.outputs[orig_num_params:]
 
-    op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
-    op._set_func_attr("body", util.create_new_tf_function(body_graph))
-    op._set_type_list_attr("T", body_graph.output_types)
-    op._set_shape_list_attr("output_shapes", body_graph.output_shapes)
-    op._add_while_inputs(new_inputs)
-    op._add_outputs([t.dtype for t in new_outputs],
-                    [t.shape for t in new_outputs])
+    while_op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
+    while_op._set_func_attr("body", util.create_new_tf_function(body_graph))
+    while_op._set_type_list_attr("T", body_graph.output_types)
+    while_op._set_shape_list_attr("output_shapes", body_graph.output_shapes)
+    while_op._add_while_inputs(new_inputs)
+    while_op._add_outputs([t.dtype for t in new_outputs],
+                          [t.shape for t in new_outputs])
     _copy_handle_data(new_outputs, op.outputs[orig_num_params:])
 
-  captured_inputs = _resolve_grad_captures(body_graph, body_grad_graph, op)
+  captured_inputs = _resolve_grad_captures(body_graph, body_grad_graph,
+                                           while_op)
   loop_vars = args + captured_inputs
 
   def grad_cond(counter, max_iters, *unused_args):
@@ -318,7 +321,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(cond_grad_graph),
       util.create_new_tf_function(body_grad_graph),
       output_shapes=[t.shape for t in body_grad_graph.outputs],
-      name="%s_grad" % op.name)
+      name="%s_grad" % while_op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
   util.maybe_set_lowering_attr(outputs[0].op)
@@ -374,28 +377,30 @@ def _validate_and_convert_to_tensor(maximum_iterations):
   Raises:
     ValueError: If `maximum_iterations` is invalid.
   """
-  if _is_in_xla_context():
-    if maximum_iterations is None:
-      raise ValueError("maximum_iterations is None. It is required and must "
-                       "be statically known (e.g. a constant value or known "
-                       "shape dimension) when building while_loop in XLA "
-                       "context.")
-    if isinstance(maximum_iterations, ops.Tensor):
-      # Get the constant value from the `maximum_iterations` tensor to avoid
-      # capturing a Const tensor from outside this graph.
-      maximum_iterations = tensor_util.constant_value(maximum_iterations)
-      if maximum_iterations is None:
-        raise ValueError("maximum_iterations must be statically known (e.g. a "
-                         "constant value or known shape dimension) when "
-                         "building while_loop in XLA context.")
+  if maximum_iterations is None:
+    return None
 
-  if maximum_iterations is not None:
-    # EmptyTensorList expects `max_num_elements` to be of type int32.
-    maximum_iterations = ops.convert_to_tensor(
-        maximum_iterations, dtype=dtypes.int32, name="maximum_iterations")
-    if maximum_iterations.shape.ndims != 0:
-      raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
-                       maximum_iterations.shape)
+  if _is_in_xla_context() and isinstance(maximum_iterations, ops.Tensor):
+    # Get the constant value from the `maximum_iterations` tensor to avoid
+    # capturing a Const tensor from outside this graph.
+    value = tensor_util.constant_value(maximum_iterations)
+    if value is None:
+      # XLA requires maximum_iterations to be statically known (e.g. a
+      # constant value or known shape dimension) when intermediate values
+      # from the forward pass are needed in the gradients pass. However,
+      # maximum_iterations may not be required if the gradient isn't built
+      # or no intermediates are required, thus we return the tensor as is.
+      return maximum_iterations
+
+    maximum_iterations = value
+
+  # EmptyTensorList expects `max_num_elements` to be of type int32.
+  maximum_iterations = ops.convert_to_tensor(
+      maximum_iterations, dtype=dtypes.int32, name="maximum_iterations")
+  if maximum_iterations.shape.ndims != 0:
+    raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
+                     maximum_iterations.shape)
+
   return maximum_iterations
 
 
@@ -813,7 +818,7 @@ def _copy_handle_data(src_tensors, tgt_tensors):
 
 
 def _maybe_set_maximum_iterations_attr(op, maximum_iterations):
-  if control_flow_util.IsInXLAContext(op):
+  if maximum_iterations is not None and control_flow_util.IsInXLAContext(op):
     # Store the maximum_iterations to use in the gradient pass.
     op._set_attr(  # pylint: disable=protected-access
         "_maximum_iterations",
@@ -844,19 +849,8 @@ def _pack_sequence_as(structure_with_tas, loop_vars):
   """Like `nest.pack_sequence_as` but also replaces flows with TensorArrays."""
 
   def flow_to_tensor_array(flow, ta):  # pylint: disable=missing-docstring
-    if isinstance(ta, tensor_array_ops.TensorArray):
-      # pylint: disable=protected-access
-      new_ta = tensor_array_ops.TensorArray(
-          dtype=ta.dtype,
-          handle=ta.handle,
-          flow=flow,
-          infer_shape=ta._infer_shape,
-          colocate_with_first_write_call=ta._colocate_with_first_write_call)
-      new_ta._colocate_with = ta._colocate_with
-      new_ta._element_shape = ta._element_shape
-      # pylint: enable=protected-access
-      return new_ta
-    return flow
+    return (tensor_array_ops.build_ta_with_new_flow(ta, flow) if isinstance(  # pylint: disable=g-long-ternary
+        ta, tensor_array_ops.TensorArray) else flow)
 
   flattened_loop_vars = [
       flow_to_tensor_array(*z)

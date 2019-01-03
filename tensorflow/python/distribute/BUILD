@@ -219,6 +219,7 @@ py_library(
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
+        ":input_lib",
         ":multi_worker_util",
         ":reduce_util",
         ":shared_variable_creator",
@@ -254,6 +255,23 @@ py_library(
 )
 
 py_library(
+    name = "input_lib",
+    srcs = ["input_lib.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":input_ops",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
     name = "input_ops",
     srcs = ["input_ops.py"],
     deps = [
@@ -270,6 +288,7 @@ cuda_py_test(
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/data/util:traverse",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -347,14 +366,12 @@ py_library(
     deps = [
         ":device_util",
         ":distribute_lib",
-        ":input_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",

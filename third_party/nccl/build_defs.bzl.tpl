@@ -1,60 +1,71 @@
 """Repository rule for NCCL."""
 
-load("@org_tensorflow//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
-def _process_srcs_impl(ctx):
-    """Appends .cc to .cu files, patches include directives."""
-    files = []
-    for src in ctx.files.srcs:
-        substitutions = {
-            "\"collectives.h": "\"collectives/collectives.h",
-            "\"../collectives.h": "\"collectives/collectives.h",
-            # Clang does not define __CUDACC_VER_*__, use CUDA_VERSION instead.
-            # TODO(csigg): Apply substitutions upstream and remove here.
-            "#if __CUDACC_VER_MAJOR__ >= 10 || (__CUDACC_VER_MAJOR__ >= 9 && __CUDACC_VER_MINOR__ >= 2)": "#if CUDA_VERSION >= 9200",
-            "#if __CUDACC_VER_MAJOR__ >= 10": "#if CUDA_VERSION >= 10000",
-            "#if __CUDACC_VER_MAJOR__ >= 9": "#if CUDA_VERSION >= 9000",
-            "#if __CUDACC_VER_MAJOR__ < 9": "#if CUDA_VERSION < 9000",
-            "nullptr_t": "std::nullptr_t",
-        }
-        name = src.basename
-        if name == "nccl.in.h":
-            name = "nccl.h"
-            substitutions.update({
-                "${nccl:Major}": "2",
-                "${nccl:Minor}": "3",
-                "${nccl:Patch}": "5",
-                "${nccl:Suffix}": "",
-                "${nccl:Version}": "2305",
-            })
-        if name == "functions.cu":
+def _process_src_impl(ctx):
+    """Applies various patches to the NCCL source."""
+    substitutions = {
+        "\"collectives.h": "\"collectives/collectives.h",
+        "\"../collectives.h": "\"collectives/collectives.h",
+        # Clang does not define __CUDACC_VER_*__, use CUDA_VERSION instead.
+        # TODO(csigg): Apply substitutions upstream and remove here.
+        "#if __CUDACC_VER_MAJOR__ >= 10 || (__CUDACC_VER_MAJOR__ >= 9 && __CUDACC_VER_MINOR__ >= 2)": "#if CUDART_VERSION >= 9200",
+        "#if __CUDACC_VER_MAJOR__ >= 10": "#if CUDART_VERSION >= 10000",
+        "#if __CUDACC_VER_MAJOR__ >= 9": "#if CUDART_VERSION >= 9000",
+        "#if __CUDACC_VER_MAJOR__ < 9": "#if CUDART_VERSION < 9000",
+        "nullptr_t": "std::nullptr_t",
+    }
+    if ctx.file.src.basename == "nccl.h.in":
+        substitutions.update({
+          "${nccl:Major}": "2",
+          "${nccl:Minor}": "3",
+          "${nccl:Patch}": "5",
+          "${nccl:Suffix}": "",
+          "${nccl:Version}": "2305",
+        })
+    if ctx.file.src.basename == "function.cu":
+        substitutions.update({
             # Don't try to initialize the host shadow copy of this device-side
             # global variable. There is no host pointer to a device-side
             # function, which confuses clang.
             # TODO(csigg): remove when fixed in clang.
-            substitutions.update({
-                "NCCL_FUNCS2B(ncclBroadcast),": "#if __CUDA_ARCH__\nNCCL_FUNCS2B(ncclBroadcast),",
-                "NCCL_FUNCS2A(ncclAllReduce)": "NCCL_FUNCS2A(ncclAllReduce)\n#endif",
-            })
-        if src.extension == "cu":
-            name += ".cc"
-        file = ctx.actions.declare_file(name, sibling = src)
-        ctx.actions.expand_template(
-            output = file,
-            template = src,
-            substitutions = substitutions,
-        )
-        files.append(file)
-    return [DefaultInfo(files = depset(files))]
+            "NCCL_FUNCS2B(ncclBroadcast),": "#if __CUDA_ARCH__\nNCCL_FUNCS2B(ncclBroadcast),",
+            "NCCL_FUNCS2A(ncclAllReduce)": "NCCL_FUNCS2A(ncclAllReduce)\n#endif",
+        })
+    ctx.actions.expand_template(
+        output = ctx.outputs.out,
+        template = ctx.file.src,
+        substitutions = substitutions,
+    )
 
-process_srcs = rule(
-    implementation = _process_srcs_impl,
+_process_src = rule(
+    implementation = _process_src_impl,
     attrs = {
-        "srcs": attr.label_list(allow_files = True),
+        "src": attr.label(allow_single_file = True),
+        "out": attr.output(),
     },
 )
-"""Processes the NCCL srcs so they can be compiled with bazel and clang."""
+"""Processes one NCCL source file so it can be compiled with bazel and clang."""
+
+def _out(src):
+    if not src.startswith("src/"):
+      fail("Source file not under src/...:", src)
+    src = src[4:]  # Strip 'src/'
+    if src == "nccl.h.in":
+      return "nccl.h"
+    if src.endswith(".cu"):
+      return src + ".cc"
+    return src
+
+def process_srcs(srcs):
+    """Processes files under src/ and copies them to the parent directory."""
+    [_process_src(
+      name = "_" + src,
+      src = src,
+      out = _out(src),
+    ) for src in srcs]
+    return ["_" + src for src in srcs]
 
 def _gen_device_srcs_impl(ctx):
     files = []
@@ -88,7 +99,7 @@ def _rdc_copts():
     # https://github.com/NVIDIA/nccl/blob/f93fe9bfd94884cec2ba711897222e0df5569a53/makefiles/common.mk#L48
     maxrregcount = "-maxrregcount=96"
 
-    return select({
+    return cuda_default_copts() + select({
         "@local_config_cuda//cuda:using_nvcc": [
             "-nvcc_options",
             "relocatable-device-code=true",
@@ -319,7 +330,7 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
 
     # Compile host and device code into library.
     lib = name + "_lib"
-    tf_cuda_library(
+    native.cc_library(
         name = lib,
         hdrs = hdrs,
         copts = _rdc_copts() + copts,

@@ -491,6 +491,7 @@ cuda_py_tests(
         "test/binary_tensor_weight_broadcast_test.py",
         "test/concatenation_test.py",
         "test/const_broadcast_test.py",
+        "test/identity_output_test.py",
         "test/manual_test.py",
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
@@ -549,6 +550,7 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/121194394): re-enable in OSS after OOM is fixed.
         "no_pip",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",

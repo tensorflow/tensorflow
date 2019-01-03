@@ -169,11 +169,13 @@ public final class InterpreterTest {
   public void testRunForMultipleInputsOutputs() {
     Interpreter interpreter = new Interpreter(MULTIPLE_INPUTS_MODEL_FILE);
     assertThat(interpreter.getInputTensorCount()).isEqualTo(4);
+    assertThat(interpreter.getInputTensor(0).index()).isGreaterThan(-1);
     assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
     assertThat(interpreter.getInputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
     assertThat(interpreter.getInputTensor(2).dataType()).isEqualTo(DataType.FLOAT32);
     assertThat(interpreter.getInputTensor(3).dataType()).isEqualTo(DataType.FLOAT32);
     assertThat(interpreter.getOutputTensorCount()).isEqualTo(2);
+    assertThat(interpreter.getOutputTensor(0).index()).isGreaterThan(-1);
     assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
     assertThat(interpreter.getOutputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
 
@@ -332,6 +334,30 @@ public final class InterpreterTest {
     interpreter.close();
   }
 
+  @Test
+  public void testNullInputs() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    try {
+      interpreter.run(null, new float[2][8][8][3]);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
+    interpreter.close();
+  }
+
+  @Test
+  public void testNullOutputs() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    try {
+      interpreter.run(new float[2][8][8][3], null);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
+    interpreter.close();
+  }
+
   /** Smoke test validating that flex model loading fails when the flex delegate is not linked. */
   @Test
   public void testFlexModel() throws Exception {
@@ -361,10 +387,57 @@ public final class InterpreterTest {
     float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
     float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
     float[][][][] fourD = {threeD, threeD};
-    float[] output = new float[1];
-    interpreter.run(fourD, output);
-    float[] expected = {7.0f};
-    assertThat(output).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    interpreter.run(fourD, parsedOutputs);
+    float[] outputOneD = parsedOutputs[0][0][0];
+    float[] expected = {7.0f, 7.0f, 7.0f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+
+    interpreter.close();
+  }
+
+  @Test
+  public void testNullInputsAndOutputsWithDelegate() throws Exception {
+    System.loadLibrary("tensorflowlite_test_jni");
+    Delegate delegate =
+        new Delegate() {
+          @Override
+          public long getNativeHandle() {
+            return getNativeHandleForDelegate();
+          }
+        };
+    Interpreter interpreter =
+        new Interpreter(MODEL_FILE, new Interpreter.Options().addDelegate(delegate));
+    // The delegate installs a custom buffer handle for all tensors, in turn allowing null to be
+    // provided for the inputs/outputs (as the client can reference the buffer directly).
+    interpreter.run(new float[2][8][8][3], null);
+    interpreter.run(null, new float[2][8][8][3]);
+    interpreter.close();
+  }
+
+  @Test
+  public void testModifyGraphWithDelegate() throws Exception {
+    System.loadLibrary("tensorflowlite_test_jni");
+    Delegate delegate =
+        new Delegate() {
+          @Override
+          public long getNativeHandle() {
+            return getNativeHandleForDelegate();
+          }
+        };
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
+    interpreter.modifyGraphWithDelegate(delegate);
+
+    // The native delegate stubs out the graph with a single op that produces the scalar value 7.
+    float[] oneD = {1.23f, 6.54f, 7.81f};
+    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+    float[][][][] fourD = {threeD, threeD};
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    interpreter.run(fourD, parsedOutputs);
+    float[] outputOneD = parsedOutputs[0][0][0];
+    float[] expected = {7.0f, 7.0f, 7.0f};
+    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
 
     interpreter.close();
   }

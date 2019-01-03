@@ -46,7 +46,7 @@ import unittest
 from absl.testing import parameterized
 import six
 
-from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
 from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
 from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
@@ -321,22 +321,30 @@ class NamedDistribution(object):
     return self._required_tpu
 
 
+def _get_tpu_strategy_creator(steps_per_run):
+  def _create_tpu_strategy():
+    resolver = cluster_resolver.TPUClusterResolver("")
+    tpu_lib.initialize_tpu_system(resolver)
+    strategy = tpu_lib.TPUStrategy(resolver, steps_per_run=steps_per_run)
+    return strategy
+  return _create_tpu_strategy
+
+
 # pylint: disable=g-long-lambda
 default_strategy = NamedDistribution(
     "Default",
-    distribution_strategy_context._get_default_distribution_strategy,  # pylint: disable=protected-access
+    distribution_strategy_context._get_default_strategy,  # pylint: disable=protected-access
     required_gpus=None)
 one_device_strategy = NamedDistribution(
     "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
     required_gpus=None)
 tpu_strategy = NamedDistribution(
-    "TPU", lambda: tpu_lib.TPUStrategy(
-        TPUClusterResolver(""), steps_per_run=2),
+    "TPU", _get_tpu_strategy_creator(steps_per_run=2),
     required_tpu=True)
 tpu_strategy_one_step = NamedDistribution(
-    "TPUOneStep", lambda: tpu_lib.TPUStrategy(
-        TPUClusterResolver(""), steps_per_run=1),
+    "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1),
     required_tpu=True)
+
 mirrored_strategy_with_one_cpu = NamedDistribution(
     "Mirrored1CPU",
     lambda: mirrored_lib.MirroredStrategy(["/cpu:0"]))

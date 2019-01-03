@@ -226,8 +226,9 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   tensorflow::tensorrt::convert::ConversionParams cp;
 
   if (use_calibration_ && precision_mode_ != INT8MODE) {
-    LOG(ERROR) << "Calibration with FP32 or FP16 is not implemented. "
-               << "Falling back to use_calibration = False.";
+    VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
+            << "Falling back to use_calibration = False."
+            << "Note that the default value of use_calibration is True.";
     use_calibration_ = false;
   }
 

@@ -38,7 +38,7 @@ class TestBFloat16Support : public BFloat16Support {
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kTuple ||
         hlo.opcode() == HloOpcode::kGetTupleElement ||
-        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
+        hlo.opcode() == HloOpcode::kAllReduce) {
       return true;
     }
     return false;
@@ -49,7 +49,7 @@ class TestBFloat16Support : public BFloat16Support {
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kTuple ||
         hlo.opcode() == HloOpcode::kGetTupleElement ||
-        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
+        hlo.opcode() == HloOpcode::kAllReduce) {
       return true;
     }
     return false;
@@ -58,7 +58,7 @@ class TestBFloat16Support : public BFloat16Support {
   bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
     if (hlo.opcode() == HloOpcode::kAdd || hlo.opcode() == HloOpcode::kTuple ||
         hlo.opcode() == HloOpcode::kGetTupleElement ||
-        hlo.opcode() == HloOpcode::kCrossReplicaSum) {
+        hlo.opcode() == HloOpcode::kAllReduce) {
       return true;
     }
     return false;
@@ -213,7 +213,7 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
   EXPECT_EQ(tuple->operand(1), convert0);
 }
 
-TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
+TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
   auto builder = HloComputation::Builder(TestName());
 
   auto module = CreateNewVerifiedModule();
@@ -236,11 +236,10 @@ TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateParameter(1, f32_shape, "b"));
 
-  HloInstruction* crs =
-      builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
-          ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b},
-          sum, /*replica_groups=*/{}, /*barrier=*/"",
-          /*all_reduce_id=*/absl::nullopt));
+  HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
+      ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}, sum,
+      /*replica_groups=*/{}, /*barrier=*/"",
+      /*all_reduce_id=*/absl::nullopt));
   HloInstruction* gte_a = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(f32_shape, crs, 0));
   HloInstruction* gte_b = builder.AddInstruction(

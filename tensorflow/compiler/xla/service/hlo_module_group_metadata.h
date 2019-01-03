@@ -38,7 +38,7 @@ namespace xla {
 // Class for bookkeeping the information on the given modules, in particular on
 // the interaction between computations.
 //
-// Companion instructions are one of the information collected as we build the
+// Companion instructions are one piece of information collected as we build the
 // metadata. For example, for each While instruction, companion instructions
 // refer to a set of While instructions in other computations that communicate
 // with each other.
@@ -50,6 +50,13 @@ namespace xla {
 //   While_1() { Send(0) }    While_3() { Send(1) }      While_6() { Recv(1) }
 // }                          While_4() { Recv(0) }
 //                          }
+//
+// Each instruction can belong to at most one companion set: While_0 and While_5
+// are in the same set even though they don't communicate with each other,
+// because they both communicate with While_2.
+//
+// A send and the matching recv must both have the same level of nesting of
+// companion instructions.
 //
 // Companion instructions are used to detect cycles in the graph and also for
 // global scheduling.
@@ -215,11 +222,8 @@ class HloModuleGroupMetadata {
   // * Each channel has all 4 instructions (Send, Recv, SendDone, RecvDone).
   // * The shape of channel instructions match.
   // * The nest level of channel instructions match.
-  // * Channel instructions are used in allowed computations; i.e., in the
+  // * Channel instructions are used in allowed computations, i.e., in the
   //   entry computation of the module or condition/body of While computations.
-  //
-  // TODO(b/62064342): Currently, HloModuleGroupScheduler checks if there is a
-  // cycle in the graph, but it would be good to verify here.
   Status VerifyChannelInstructions();
 
   // Adds metadata that the given two instructions are companions.
@@ -231,8 +235,8 @@ class HloModuleGroupMetadata {
   Status CheckCommunicatingInstruction(HloInstruction* instruction) const;
 
   // Performs a consistency check on the companion sets built for the input
-  // modules. Check that a companion set does not include instructions from the
-  // same module/device.
+  // modules. Checks that each instruction in a companion set is in a different
+  // module/device.
   Status VerifyCompanionSets() const;
 
   // Retrieves a pointer to the stored TrackedInstruction associated with a

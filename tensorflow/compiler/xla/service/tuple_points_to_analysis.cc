@@ -210,7 +210,7 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
             &logical_buffer_analysis_->GetBuffer(hlo_instruction, index));
       });
 
-  if (ShapeUtil::IsTuple(hlo_instruction->shape())) {
+  if (hlo_instruction->shape().IsTuple()) {
     // If the hlo instruction is a tuple-shaped, then trivially the instruction
     // itself is the source of the tuple.
     points_to_set.add_tuple_source({}, hlo_instruction);

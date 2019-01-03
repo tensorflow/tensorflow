@@ -236,6 +236,10 @@ class PolymorphicFunction(object):
     """
     self._python_function = python_function
     self._input_signature = input_signature
+    # TODO(vbardiovsky): Both _stateful_fn and _stateless_fn are populating the
+    # same FunctionSpec. Consider removing it from both and passing in instead.
+    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+        python_function, input_signature)
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
     if self._experimental_autograph_options is not None:
@@ -249,10 +253,13 @@ class PolymorphicFunction(object):
   def _defun_with_scope(self, scope):
     """Creates a defun wrapped inside a variable creator scope."""
 
+    weak_wrapped_fn = None
     def wrapped_fn(*args, **kwds):
       with variable_scope.variable_creator_scope(scope):
-        # __wrapped__ allows AutoGraph to swap in a converted function.
-        return wrapped_fn.__wrapped__(*args, **kwds)
+        # __wrapped__ allows AutoGraph to swap in a converted function. We give
+        # the function a weak reference to itself to avoid a reference cycle.
+        return weak_wrapped_fn().__wrapped__(*args, **kwds)
+    weak_wrapped_fn = weakref.ref(wrapped_fn)
 
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
@@ -260,24 +267,46 @@ class PolymorphicFunction(object):
         input_signature=self._input_signature,
         autograph=self._autograph)
 
-  def _initialize(self, args, kwds, add_initializers_to=None):
-    """Initializes, on the first call."""
+  def _canonicalize_function_inputs(self, args, kwds):
+    """Canonicalize the inputs to the Python function."""
+    if self._input_signature is None or args or kwds:
+      return self._function_spec.canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
+    # If an input signature is defined, we may need to fetch a concrete function
+    # without any inputs specified. In this case args and kwds should be ignored
+    # but running _canonicalize_function_inputs would raise an exception.
+    return (), {}
 
-    self._created_variables = []
+  def _initialize(self, args, kwds, add_initializers_to=None):
+    """Initializes, on the first call.
+
+    Creates two polymorphic functions, one that will allow creation of variables
+    and one that won't.
+
+    Additionally runs a trace for the polymorphic function that allows creation
+    of variables.
+
+    Args:
+      args: Arguments to the underlying python callable.
+      kwds: Keyword arguments to the python callable.
+      add_initializers_to: Where to collect variable initializers, if not None.
+    """
+
+    created_variables = []
 
     def variable_capturing_scope(unused_next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
       v = UnliftedInitializerVariable(
           add_initializers_to=add_initializers_to, **kwds)
-      self._created_variables.append(weakref.ref(v))
+      created_variables.append(weakref.ref(v))
       return v
 
+    self._created_variables = created_variables
     self._stateful_fn = self._defun_with_scope(variable_capturing_scope)
     self._stateful_fn._name = self._name  # pylint: disable=protected-access
-
     # Force the definition of the function for these arguments
     self._concrete_stateful_fn = (
-        self._stateful_fn._get_concrete_function_internal(*args, **kwds))  # pylint: disable=protected-access
+        self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
+            *args, **kwds))
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
       """Disables variable creation."""
@@ -287,12 +316,6 @@ class PolymorphicFunction(object):
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
-    if self._input_signature is None or args or kwds:
-      return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
-    # If an input signature is defined, we may need to fetch a concrete function
-    # without any inputs specified. In this case args and kwds should be ignored
-    # but running _canonicalize_function_inputs would raise an exception.
-    return (), {}
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
@@ -309,7 +332,9 @@ class PolymorphicFunction(object):
                          " decorated with tf.function.")
       return results
 
-    canon_args, canon_kwds = self._initialize(args, kwds)
+    # This is the first call of __call__, so we have to initialize.
+    self._initialize(args, kwds)
+    canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
 
     if not self._created_variables:
       # If we did not create any variables the trace we have is good enough.
@@ -322,9 +347,39 @@ class PolymorphicFunction(object):
         variable = wr()
         if variable is None:
           raise ValueError(
-              "Variable created in a tf.function garbage-collected. Code needs"
-              " to keep python references to variables created in a"
-              " tf.function.")
+              "A tf.Variable created inside your tf.function has been"
+              " garbage-collected. Your code needs to keep Python references"
+              " to variables created inside `tf.function`s.\n"
+              "\n"
+              "A common way to raise this error is to create and return a"
+              " variable only referenced inside your function:\n"
+              "\n"
+              "@tf.function\n"
+              "def f():\n"
+              "  v = tf.Variable(1.0)\n"
+              "  return v\n"
+              "\n"
+              "v = f()  # Crashes with this error message!\n"
+              "\n"
+              "The reason this crashes is that @tf.function annotated"
+              " function returns a **`tf.Tensor`** with the **value** of the"
+              " variable when the function is called rather than the"
+              " variable instance itself. As such there is no code holding a"
+              " reference to the `v` created inside the function and Python"
+              " garbage collects it.\n"
+              "\n"
+              "The simplest way to fix this issue is to create variables"
+              " outside the function and capture them:\n"
+              "\n"
+              "v = tf.Variable(1.0)\n"
+              "\n"
+              "@tf.function\n"
+              "def f():\n"
+              "  return v\n"
+              "\n"
+              "f()  # <tf.Tensor: ... numpy=1.>\n"
+              "v.assign_add(1.)\n"
+              "f()  # <tf.Tensor: ... numpy=2.>")
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
                 variable.handle))
@@ -346,6 +401,10 @@ class PolymorphicFunction(object):
   @property
   def input_signature(self):
     return self._input_signature
+
+  @property
+  def function_spec(self):
+    return self._function_spec
 
   def get_initialization_function(self, *args, **kwargs):
     """Returns a `Function` object which initializes this function's variables.

@@ -276,7 +276,22 @@ class XlaBuilder {
                            int64 target_param_num,
                            ShapeIndex target_param_index, int64 target_dim_num);
 
+  // Adds a new input/output alias. Since the input/ouput shape information are
+  // not available until the computation is built, and eventual error in the
+  // arguments of this API will be detected only at computation Build() time.
+  void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
+                  const ShapeIndex& param_index) {
+    input_output_aliases_.push_back({output_index, param_number, param_index});
+  }
+
  private:
+  // Describes an input/output alias as inserted by the SetUpAlias() API.
+  struct InputOutputAlias {
+    ShapeIndex output_index;
+    int64 param_number;
+    ShapeIndex param_index;
+  };
+
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id);
 
@@ -387,28 +402,28 @@ class XlaBuilder {
 
   XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
              absl::Span<const int64> window_strides, Padding padding,
-             int64 feature_group_count = 1,
+             int64 feature_group_count = 1, int64 batch_group_count = 1,
              const PrecisionConfig* precision_config = nullptr);
 
   XlaOp ConvWithGeneralPadding(
       const XlaOp& lhs, const XlaOp& rhs,
       absl::Span<const int64> window_strides,
       absl::Span<const std::pair<int64, int64>> padding,
-      int64 feature_group_count = 1,
+      int64 feature_group_count = 1, int64 batch_group_count = 1,
       const PrecisionConfig* precision_config = nullptr);
 
   XlaOp ConvWithGeneralDimensions(
       const XlaOp& lhs, const XlaOp& rhs,
       absl::Span<const int64> window_strides, Padding padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count = 1,
+      int64 feature_group_count = 1, int64 batch_group_count = 1,
       const PrecisionConfig* precision_config = nullptr);
 
   XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                     absl::Span<const int64> window_strides,
                     absl::Span<const std::pair<int64, int64>> padding,
                     const ConvolutionDimensionNumbers& dimension_numbers,
-                    int64 feature_group_count = 1,
+                    int64 feature_group_count = 1, int64 batch_group_count = 1,
                     const PrecisionConfig* precision_config = nullptr);
 
   XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
@@ -418,6 +433,7 @@ class XlaBuilder {
                            absl::Span<const int64> rhs_dilation,
                            const ConvolutionDimensionNumbers& dimension_numbers,
                            int64 feature_group_count = 1,
+                           int64 batch_group_count = 1,
                            const PrecisionConfig* precision_config = nullptr);
 
   XlaOp Fft(const XlaOp& operand, FftType fft_type,
@@ -729,6 +745,12 @@ class XlaBuilder {
 
   int64 GetNextId() { return ++next_id_; }
 
+  // Populates the module with the input/output alias information stored within
+  // the input_output_aliases vector.
+  static Status PopulateInputOutputAlias(
+      HloModuleProto* module, const ProgramShape& program_shape,
+      const std::vector<InputOutputAlias>& input_output_aliases);
+
   string name_;  // Name to use for the built computation.
 
   // The next sequential ID for every instruction/computation contained within
@@ -747,6 +769,9 @@ class XlaBuilder {
 
   // Dynamic parameter configuration of this computation.
   DynamicParameterBinding dynamic_parameter_binding_;
+
+  // Holds the input/output alias information populated by the SetUpAlias() API.
+  std::vector<InputOutputAlias> input_output_aliases_;
 
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
@@ -881,23 +906,25 @@ class XlaBuilder {
                           const PrecisionConfig* precision_config);
   friend XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
                     absl::Span<const int64> window_strides, Padding padding,
-                    int64 feature_group_count,
+                    int64 feature_group_count, int64 batch_group_count,
                     const PrecisionConfig* precision_config);
   friend XlaOp ConvWithGeneralPadding(
       const XlaOp& lhs, const XlaOp& rhs,
       absl::Span<const int64> window_strides,
       absl::Span<const std::pair<int64, int64>> padding,
-      int64 feature_group_count, const PrecisionConfig* precision_config);
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config);
   friend XlaOp ConvWithGeneralDimensions(
       const XlaOp& lhs, const XlaOp& rhs,
       absl::Span<const int64> window_strides, Padding padding,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count, const PrecisionConfig* precision_config);
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config);
   friend XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                            absl::Span<const int64> window_strides,
                            absl::Span<const std::pair<int64, int64>> padding,
                            const ConvolutionDimensionNumbers& dimension_numbers,
-                           int64 feature_group_count,
+                           int64 feature_group_count, int64 batch_group_count,
                            const PrecisionConfig* precision_config);
   friend XlaOp ConvGeneralDilated(
       const XlaOp& lhs, const XlaOp& rhs,
@@ -906,7 +933,8 @@ class XlaBuilder {
       absl::Span<const int64> lhs_dilation,
       absl::Span<const int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      int64 feature_group_count, const PrecisionConfig* precision_config);
+      int64 feature_group_count, int64 batch_group_count,
+      const PrecisionConfig* precision_config);
   friend XlaOp Fft(const XlaOp& operand, FftType fft_type,
                    absl::Span<const int64> fft_length);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
@@ -1372,7 +1400,7 @@ XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
 // default convolution dimension numbers.
 XlaOp Conv(const XlaOp& lhs, const XlaOp& rhs,
            absl::Span<const int64> window_strides, Padding padding,
-           int64 feature_group_count = 1,
+           int64 feature_group_count = 1, int64 batch_group_count = 1,
            const PrecisionConfig* precision_config = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
@@ -1381,6 +1409,7 @@ XlaOp ConvWithGeneralPadding(const XlaOp& lhs, const XlaOp& rhs,
                              absl::Span<const int64> window_strides,
                              absl::Span<const std::pair<int64, int64>> padding,
                              int64 feature_group_count = 1,
+                             int64 batch_group_count = 1,
                              const PrecisionConfig* precision_config = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
@@ -1388,7 +1417,7 @@ XlaOp ConvWithGeneralPadding(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp ConvWithGeneralDimensions(
     const XlaOp& lhs, const XlaOp& rhs, absl::Span<const int64> window_strides,
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
-    int64 feature_group_count = 1,
+    int64 feature_group_count = 1, int64 batch_group_count = 1,
     const PrecisionConfig* precision_config = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
@@ -1397,7 +1426,7 @@ XlaOp ConvGeneral(const XlaOp& lhs, const XlaOp& rhs,
                   absl::Span<const int64> window_strides,
                   absl::Span<const std::pair<int64, int64>> padding,
                   const ConvolutionDimensionNumbers& dimension_numbers,
-                  int64 feature_group_count = 1,
+                  int64 feature_group_count = 1, int64 batch_group_count = 1,
                   const PrecisionConfig* precision_config = nullptr);
 
 // Enqueues a convolution instruction onto the computation, with the caller
@@ -1409,6 +1438,7 @@ XlaOp ConvGeneralDilated(const XlaOp& lhs, const XlaOp& rhs,
                          absl::Span<const int64> rhs_dilation,
                          const ConvolutionDimensionNumbers& dimension_numbers,
                          int64 feature_group_count = 1,
+                         int64 batch_group_count = 1,
                          const PrecisionConfig* precision_config = nullptr);
 
 // Enqueues an FFT instruction onto the computation, of the given type and

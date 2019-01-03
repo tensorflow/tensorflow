@@ -61,11 +61,11 @@ XLA_TEST_F(TestUtilsTest, Token) {
                     R"(HloModule outfeed_module
 
     ENTRY InfeedToOutfeed {
-      token = token[] parameter(0)
-      infeed = ((u32[3]{0}, pred[]), token[]) infeed(token)
+      token0 = token[] parameter(0)
+      infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
       infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
-      outfeed = token[] outfeed(infeed.data, token)
-      ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token)
+      outfeed = token[] outfeed(infeed.data, token0)
+      ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token0)
       infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
       infeed.1.token = token[] get-tuple-element(infeed.1), index=1
       outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
@@ -196,6 +196,34 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
   for (const bfloat16& value : key_arg.data<bfloat16>()) {
     EXPECT_TRUE(key_set.insert(absl::bit_cast<uint16>(value)).second);
   }
+}
+
+XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsR0InputToDynamicSlice) {
+  auto module = ParseHloString(R"(
+HloModule Test
+
+ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
+  %parameter.1 = f32[20,20]{1,0} parameter(1)
+  %constant.1 = s32[1]{0} constant({0})
+  %parameter.0 = s32[] parameter(0)
+  %bitcast.3 = s32[1]{0} bitcast(s32[] %parameter.0)
+  %concatenate.1 = s32[2]{0} concatenate(s32[1]{0} %constant.1, s32[1]{0} %bitcast.3), dimensions={0}
+  %dynamic-slice.2 = f32[20,1]{1,0} dynamic-slice(f32[20,20]{1,0} %parameter.1, s32[2]{0} %concatenate.1), dynamic_slice_sizes={20,1}
+  %bitcast.4 = f32[20]{0} bitcast(f32[20,1]{1,0} %dynamic-slice.2)
+  %dynamic-slice.3 = f32[1]{0} dynamic-slice(f32[20]{0} %bitcast.4, s32[1]{0} %bitcast.3), dynamic_slice_sizes={1}
+  ROOT %bitcast.5 = f32[] bitcast(f32[1]{0} %dynamic-slice.3)
+}
+)")
+                    .ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+  EXPECT_TRUE(ShapeUtil::Equal(args[0].shape(), ShapeUtil::MakeShape(S32, {})))
+      << ShapeUtil::HumanString(args[0].shape());
+  EXPECT_TRUE(
+      ShapeUtil::Equal(args[1].shape(), ShapeUtil::MakeShape(F32, {20, 20})))
+      << ShapeUtil::HumanString(args[1].shape());
 }
 
 }  // namespace

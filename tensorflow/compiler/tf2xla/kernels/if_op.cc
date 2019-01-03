@@ -56,6 +56,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Building If: " << input_types_.size() << " inputs";
 
   std::vector<XlaCompiler::Argument> arguments(input_types_.size());
+  int num_resource_args = 0;
   for (int i = 0; i < input_types_.size(); ++i) {
     XlaCompiler::Argument& arg = arguments[i];
     DataType type = ctx->input_type(i + 1);
@@ -81,6 +82,8 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.shape.DebugString()
               << " initialized: " << arg.initialized;
+
+      num_resource_args++;
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = input_types_[i];
@@ -147,12 +150,12 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES(ctx, then_result.xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
   xla::Shape then_input_shape = then_result.xla_input_shapes[0];
-  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(then_input_shape),
+  OP_REQUIRES(ctx, then_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
   OP_REQUIRES(ctx, else_result.xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
   xla::Shape else_input_shape = else_result.xla_input_shapes[0];
-  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(else_input_shape),
+  OP_REQUIRES(ctx, else_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
   OP_REQUIRES(ctx,
               xla::ShapeUtil::Compatible(then_input_shape, else_input_shape),
@@ -236,12 +239,16 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     ctx->SetOutput(i, output_handle);
   }
   if (has_token_input_output_) {
-    // Set token output for this "if" op.
+    // Set token output for this "If" op. Token output is the last output of
+    // XLA computation, which comes after all "normal" TF outputs and resource
+    // updates. For "If" node, num of resource updates equals to number of
+    // resource args because we set `return_updated_values_for_all_resources`
+    // to true in XlaCompiler option.
     xla::XlaOp token_output =
-        xla::GetTupleElement(outputs, output_types_.size());
+        xla::GetTupleElement(outputs, output_types_.size() + num_resource_args);
     auto shape_or = b->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    OP_REQUIRES(ctx, xla::ShapeUtil::IsToken(shape_or.ValueOrDie()),
+    OP_REQUIRES(ctx, shape_or.ValueOrDie().IsToken(),
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));

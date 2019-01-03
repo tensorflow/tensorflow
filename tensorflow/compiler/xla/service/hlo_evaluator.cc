@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -137,6 +138,11 @@ StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
 
 }  // namespace
 
+// Note that unsupported types by the typed visitor does not necessarily imply
+// the non-typed HloEvaluator (parent evaluator) would not support them either
+// in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
+// type-agnostic evaluator will be able to accept Tuple primitive type, whereas
+// HloEvaluatorTypedVisitor cannot.
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] =
@@ -197,99 +203,47 @@ HloEvaluator::HloEvaluator(int64 max_loop_iterations)
       });
 }
 
-template <typename LiteralPtr>
-StatusOr<Literal> HloEvaluator::Evaluate(
-    const HloModule& module, absl::Span<const LiteralPtr> arg_literals) {
-  XLA_VLOG_LINES(2, "HloEvaluator::Evaluate module:\n" + module.ToString());
-
-  evaluated_.clear();
-  arg_literals_.clear();
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literals_.push_back(&*literal_ptr);
-  }
-
-  TF_RETURN_IF_ERROR(module.entry_computation()->Accept(this));
-
-  return GetEvaluatedLiteralFor(module.entry_computation()->root_instruction())
-      .Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    const HloModule& module, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literal_ptrs.push_back(&literal_ptr);
-  }
-  return Evaluate<const Literal*>(module, arg_literal_ptrs);
-}
-
-template <typename LiteralPtr>
 StatusOr<Literal> HloEvaluator::Evaluate(
     const HloComputation& computation,
-    absl::Span<const LiteralPtr> arg_literals) {
+    absl::Span<const Literal* const> arg_literals) {
   CHECK(computation.parent() != nullptr);
   XLA_VLOG_LINES(
       2, "HloEvaluator::Evaluate computation:\n" + computation.ToString());
 
-  evaluated_.clear();
-  arg_literals_.clear();
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literals_.push_back(&*literal_ptr);
+  if (arg_literals.size() != computation.num_parameters()) {
+    return InvalidArgument(
+        "Expected %d argument%s, but got %d.", computation.num_parameters(),
+        computation.num_parameters() == 1 ? "" : "s", arg_literals.size());
   }
-
-  TF_RETURN_IF_ERROR(computation.Accept(this));
-  return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    const HloComputation& computation, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literal_ptrs.push_back(&literal_ptr);
-  }
-  return Evaluate<const Literal*>(computation, arg_literal_ptrs);
-}
-
-template <typename LiteralPtr>
-StatusOr<Literal> HloEvaluator::Evaluate(
-    HloInstruction* instruction, absl::Span<const LiteralPtr> arg_literals) {
-  TF_RET_CHECK(hlo_query::AllOperandsAreParametersOrConstants(*instruction));
-
-  evaluated_.clear();
-  arg_literals_.clear();
-  for (const auto& literal_ptr : arg_literals) {
-    arg_literals_.push_back(&*literal_ptr);
-  }
-
-  // Evaluate operands of Parameter type against the input literals which
-  // caches the evaluated literal results.
-  for (const auto operand : instruction->operands()) {
-    if (operand->opcode() == HloOpcode::kParameter) {
-      const Literal* input_literal = arg_literals_[operand->parameter_number()];
-      VLOG(2) << "Parameter operand evaluated to: "
-              << input_literal->ToString();
-      TF_RET_CHECK(ShapeUtil::Equal(operand->shape(), input_literal->shape()));
-
-      evaluated_[operand] = input_literal->Clone();
+  for (int64 i = 0; i < arg_literals.size(); ++i) {
+    const auto& computation_shape =
+        computation.parameter_instruction(i)->shape();
+    const auto& arg_shape = arg_literals[i]->shape();
+    if (!ShapeUtil::Equal(computation_shape, arg_shape)) {
+      return InvalidArgument(
+          "Shape mismatch at parameter %d. Computation expected %s, but arg "
+          "was %s.",
+          i, ShapeUtil::HumanStringWithLayout(computation_shape),
+          ShapeUtil::HumanString(arg_shape));
     }
   }
 
-  TF_RETURN_IF_ERROR(Preprocess(instruction));
-  TF_RETURN_IF_ERROR(instruction->Visit(this));
-  TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return GetEvaluatedLiteralFor(instruction).Clone();
-}
-
-template <>
-StatusOr<Literal> HloEvaluator::Evaluate<Literal>(
-    HloInstruction* instruction, absl::Span<const Literal> arg_literals) {
-  std::vector<const Literal*> arg_literal_ptrs;
-  for (const auto& literal : arg_literals) {
-    arg_literal_ptrs.push_back(&literal);
+  evaluated_.clear();
+  arg_literals_.clear();
+  for (const auto& literal_ptr : arg_literals) {
+    arg_literals_.push_back(&*literal_ptr);
   }
-  return Evaluate<const Literal*>(instruction, arg_literal_ptrs);
+  if (computation.parent()->config().seed()) {
+    seed_ = computation.parent()->config().seed();
+  } else {
+    std::random_device rd;
+    seed_ = rd();
+  }
+
+  engine_ = std::minstd_rand0(seed_);
+
+  TF_RETURN_IF_ERROR(computation.Accept(this));
+  return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
 }
 
 StatusOr<Literal> HloEvaluator::Evaluate(HloInstruction* instruction) {
@@ -441,8 +395,8 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
   // The result concatenate dimension is going to be the sum of all
   // concatenate dimensions of the operands taking part of the operation.
   const Shape& reference_shape = operands[0]->shape();
-  CHECK(ShapeUtil::IsArray(reference_shape));
-  const int64 rank = ShapeUtil::Rank(reference_shape);
+  CHECK(reference_shape.IsArray());
+  const int64 rank = reference_shape.rank();
   const int64 concat_dim = concatenate->dimensions()[0];
   CHECK_GE(concat_dim, 0);
   CHECK_LT(concat_dim, rank);
@@ -452,7 +406,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
   for (int64 i = 1; i < operands.size(); ++i) {
     const Shape& operand_shape = operands[i]->shape();
-    CHECK(ShapeUtil::IsArray(operand_shape));
+    CHECK(operand_shape.IsArray());
     // Accumulate the concat dimension from all tensors taking part to the
     // operation.
     concat_dimensions[concat_dim] +=
@@ -564,6 +518,22 @@ Status HloEvaluator::HandleImag(HloInstruction* imag) {
       GetEvaluatedLiteralFor(imag->operand(0)));
 
   TF_ASSIGN_OR_RETURN(evaluated_[imag], std::move(result_or));
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleComplex(HloInstruction* complex) {
+  const Literal& real = GetEvaluatedLiteralFor(complex->operand(0));
+  const Literal& imag = GetEvaluatedLiteralFor(complex->operand(1));
+  TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
+
+  Literal result(complex->shape());
+  TF_RETURN_IF_ERROR(
+      result.Populate<complex64>([&](absl::Span<const int64> multi_index) {
+        return std::complex<float>(real.Get<float>(multi_index),
+                                   imag.Get<float>(multi_index));
+      }));
+
+  evaluated_[complex] = std::move(result);
   return Status::OK();
 }
 
@@ -1035,11 +1005,9 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
 Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
 
-  TF_RET_CHECK(broadcast->dimensions().size() ==
-               ShapeUtil::Rank(operand.shape()))
+  TF_RET_CHECK(broadcast->dimensions().size() == operand.shape().rank())
       << "broadcast dimensions is of size: " << broadcast->dimensions().size()
-      << " and rank of operand_to_broadcast is: "
-      << ShapeUtil::Rank(operand.shape());
+      << " and rank of operand_to_broadcast is: " << operand.shape().rank();
   // Checks that operand's dimensions are the same as the broadcast's
   // dimensions along the dimensions to be broadcasted.
   for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
@@ -1112,9 +1080,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
-  Literal result =
-      embedded_evaluator.Evaluate<const Literal*>(*computation, arg_literals)
-          .ConsumeValueOrDie();
+  Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
+                       .ConsumeValueOrDie();
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -1145,8 +1112,7 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
 
   HloEvaluator embedded_evaluator;
   Literal result =
-      embedded_evaluator
-          .Evaluate<const Literal*>(*readded_computation, arg_literals)
+      embedded_evaluator.Evaluate(*readded_computation, arg_literals)
           .ConsumeValueOrDie();
 
   evaluated_[fusion] = std::move(result);
@@ -1166,14 +1132,12 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   HloEvaluator embedded_evaluator;
   Literal result;
   if (pred.Get<bool>({})) {
-    result = embedded_evaluator
-                 .Evaluate<const Literal*>(*true_computation,
-                                           {&true_computation_arg})
-                 .ConsumeValueOrDie();
+    result =
+        embedded_evaluator.Evaluate(*true_computation, {&true_computation_arg})
+            .ConsumeValueOrDie();
   } else {
     result = embedded_evaluator
-                 .Evaluate<const Literal*>(*false_computation,
-                                           {&false_computation_arg})
+                 .Evaluate(*false_computation, {&false_computation_arg})
                  .ConsumeValueOrDie();
   }
 
@@ -1227,11 +1191,11 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
                              while_hlo->name(), max_loop_iterations_);
     }
     TF_ASSIGN_OR_RETURN(auto cond_val,
-                        cond_evaluator.Evaluate<Literal*>(*cond_comp, {&lcv}));
+                        cond_evaluator.Evaluate(*cond_comp, {&lcv}));
     keep_going = cond_val.GetFirstElement<bool>();
     if (keep_going) {
-      TF_ASSIGN_OR_RETURN(auto body_val, loop_body_evaluator.Evaluate<Literal*>(
-                                             *body_comp, {&lcv}));
+      TF_ASSIGN_OR_RETURN(auto body_val,
+                          loop_body_evaluator.Evaluate(*body_comp, {&lcv}));
       VLOG(3) << "Loop iteration result: " << body_val.ToString();
       lcv = std::move(body_val);
       cond_evaluator.ResetVisitStates();
@@ -1250,7 +1214,7 @@ template <typename KeyType, typename ValueType>
 StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
                                        const Literal& keys_literal,
                                        const Literal& values_literal) {
-  auto rank = ShapeUtil::Rank(keys_literal.shape());
+  auto rank = keys_literal.shape().rank();
   TF_RET_CHECK(
       ShapeUtil::SameDimensions(keys_literal.shape(), values_literal.shape()))
       << "Sort keys and values must have the same dimensions";
@@ -1383,7 +1347,7 @@ StatusOr<Literal> EvaluateSort(HloInstruction* sort,
 }  // namespace
 
 Status HloEvaluator::HandleSort(HloInstruction* sort) {
-  if (!ShapeUtil::IsTuple(sort->shape())) {
+  if (!sort->shape().IsTuple()) {
     return DefaultAction(sort);
   } else {
     // This is a really stupid work-around for the fact it's hard to support a
@@ -1408,7 +1372,7 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
 }
 
 Status HloEvaluator::HandleReduce(HloInstruction* reduce) {
-  if (!ShapeUtil::IsTuple(reduce->shape())) {
+  if (!reduce->shape().IsTuple()) {
     return DefaultAction(reduce);
   } else {
     auto first_element_type = reduce->shape().tuple_shapes(0).element_type();
@@ -1440,16 +1404,46 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
   return Status::OK();
 }
 
-// Explicit instantiation of templatized Evaluate* methods.
-//
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    const HloModule& module, absl::Span<const Literal* const> arg_literals);
+namespace {
+template <typename T>
+std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
+    const Array2D<T>& lhs, const Array2D<T>& rhs,
+    const std::function<void(
+        const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m, int64 n,
+        int64 k, int32 transpose_lhs, int32 transpose_rhs)>& impl_fn) {
+  CHECK_EQ(lhs.width(), rhs.height());
+  int m = lhs.height();
+  int n = rhs.width();
+  int k = lhs.width();
+  auto result = absl::make_unique<Array2D<T>>(m, n);
+  // Because Eigen is a header-oriented library, make sure that the Eigen code
+  // is the same as the code used by the CPU backend (otherwise the linker will
+  // randomly pick *some* definition).
+  impl_fn(
+      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
+      k,
+      /*transpose_lhs=*/0,
+      /*transpose_rhs=*/0);
+  return result;
+}
+}  // namespace
 
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    const HloComputation& computation,
-    absl::Span<const Literal* const> arg_literals);
+std::unique_ptr<Array2D<Eigen::half>> HloEvaluator::MatmulArray2D(
+    const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
+  return MatmulArray2DImpl<Eigen::half>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
+}
 
-template StatusOr<Literal> HloEvaluator::Evaluate<const Literal*>(
-    HloInstruction* instruction, absl::Span<const Literal* const> arg_literals);
+std::unique_ptr<Array2D<float>> HloEvaluator::MatmulArray2D(
+    const Array2D<float>& lhs, const Array2D<float>& rhs) {
+  return MatmulArray2DImpl<float>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
+}
+
+std::unique_ptr<Array2D<double>> HloEvaluator::MatmulArray2D(
+    const Array2D<double>& lhs, const Array2D<double>& rhs) {
+  return MatmulArray2DImpl<double>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
+}
 
 }  // namespace xla

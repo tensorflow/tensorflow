@@ -36,9 +36,10 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.parameters((-2), (-42))
   def testInvalidBufferSize(self, buffer_size):
-    dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
-    self.assertDatasetProduces(
-        dataset, expected_error=(errors.InvalidArgumentError, "buffer_size"))
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = dataset_ops.Dataset.range(10).prefetch(buffer_size=buffer_size)
+      self.evaluate(dataset._variant_tensor)
+
 
 if __name__ == "__main__":
   test.main()

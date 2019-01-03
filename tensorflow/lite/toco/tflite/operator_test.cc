@@ -111,8 +111,6 @@ class OperatorTest : public ::testing::Test {
 };
 
 TEST_F(OperatorTest, SimpleOperators) {
-  CheckSimpleOperator<DequantizeOperator>("DEQUANTIZE",
-                                          OperatorType::kDequantize);
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
   CheckSimpleOperator<CeilOperator>("CEIL", OperatorType::kCeil);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
@@ -470,6 +468,12 @@ TEST_F(OperatorTest, BuiltinArgMin) {
   EXPECT_EQ(op.output_data_type, output_toco_op->output_data_type);
 }
 
+TEST_F(OperatorTest, BuiltinDequantize) {
+  DequantizeOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("DEQUANTIZE", OperatorType::kDequantize), op);
+}
+
 TEST_F(OperatorTest, BuiltinTransposeConv) {
   TransposeConvOperator op;
   op.stride_width = 123;
@@ -611,10 +615,11 @@ TEST_F(OperatorTest, TestShouldExportAsFlexOp) {
   EXPECT_FALSE(ShouldExportAsFlexOp(false, "Conv2D"));
   EXPECT_TRUE(ShouldExportAsFlexOp(true, "Conv2D"));
   EXPECT_TRUE(ShouldExportAsFlexOp(true, "EluGrad"));
+  EXPECT_TRUE(ShouldExportAsFlexOp(true, "RFFT"));
   EXPECT_FALSE(ShouldExportAsFlexOp(true, "MyAwesomeCustomOp"));
-  // While the RFFT op is available on desktop, it is not in the kernel
+  // While the RandomShuffle op is available on desktop, it is not in the kernel
   // set available on mobile and should be excluded.
-  EXPECT_FALSE(ShouldExportAsFlexOp(true, "RFFT"));
+  EXPECT_FALSE(ShouldExportAsFlexOp(true, "RandomShuffle"));
 }
 
 TEST_F(OperatorTest, BuiltinMirrorPad) {

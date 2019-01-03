@@ -224,7 +224,17 @@ message DebugOptions {
   // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
   bool xla_gpu_disable_ptxas_optimizations = 103;
 
-  // Next id: 105
+  // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
+  bool xla_hlo_dump_as_html = 105;
+
+  // Enable fast math with eigen in the HLO evaluator.
+  bool xla_hlo_evaluator_use_fast_path = 106;
+
+  // Temporary option to allow support for both the R1 and the scalar index
+  // versions of DynamicSlice and DynamicUpdateSlice. Only used for testing.
+  bool xla_allow_scalar_index_dynamic_ops = 107;
+
+  // Next id: 108
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

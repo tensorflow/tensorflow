@@ -734,7 +734,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // Returns all users of 'fusion_paran' at 'tuple_index'.
   std::vector<HloInstruction*> GetFusionParameterUsersAt(
       HloInstruction* fusion_param, int64 tuple_index) {
-    CHECK(ShapeUtil::IsTuple(fusion_param->shape()));
+    CHECK(fusion_param->shape().IsTuple());
     std::vector<HloInstruction*> users_at_tuple_index;
     for (auto user : fusion_param->users()) {
       CHECK_EQ(HloOpcode::kGetTupleElement, user->opcode());

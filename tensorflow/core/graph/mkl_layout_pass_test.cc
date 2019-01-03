@@ -707,7 +707,7 @@ TEST_F(MklLayoutPassTest, NodeMerge_PadWithConv2D_Negative) {
       "C:control->DMT/_0:control;C:control->DMT/_1:control;"
       "D->E:1;DMT/_0->E:2;DMT/_1->E:3;E->Z;Y->Z:1");
 }
-#ifdef ENABLE_TRANSPOSE_OPTIMIZATION
+
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
   InitGraph(
       "node { name: 'Input0' op: 'Input'}"
@@ -1016,7 +1016,6 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Negative) {
       "Transpose0:control->DMT/"
       "_1:control;Transpose1->Relu;Transpose1:control->DMT/_2:control");
 }
-#endif  // ENABLE_TRANSPOSE_OPTIMIZATION
 
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to rewriting node to Mkl node
@@ -1043,6 +1042,28 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Conv2D_Basic) {
             "DMT/_1(Const)|A->C;A:control->DMT/_0:control;"
             "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"
             "DMT/_1->C:3");
+}
+
+// Test case for the Depthwise FWD pass
+TEST_F(MklLayoutPassTest, NodeRewrite_DepthwiseConv2dNative_Basic) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'DepthwiseConv2dNative'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " input: ['A', 'B']}"
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['B', 'C'] }");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);C(_MklDepthwiseConv2dNative);D(Zeta);DMT/_0(Const);"
+      "DMT/_1(Const)|A->C;A:control->DMT/_0:control;"
+      "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"
+      "DMT/_1->C:3");
 }
 
 // 2 Conv2D Ops in sequence. Both should get transformed and 1st Conv2D will
@@ -1646,6 +1667,85 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Relu6Relu6Grad_Positive) {
             "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"
             "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"
             "DMT/_1->C:2");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_LeakyRelu_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'LeakyRelu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'alpha'            value { f: 0.1 } }"
+      " input: ['A'] }"
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'B'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(_MklLeakyRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;"
+            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_LeakyRelu_Negative) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'LeakyRelu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'alpha'            value { f: 2.0 } }"
+      " input: ['A'] }"
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'B'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(LeakyRelu);C(Zeta)|A->B;A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_LeakyReluGrad_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'LeakyReluGrad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'alpha'            value { f: 0.1 } }"
+      " input: ['A', 'B'] }"
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'C'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);"
+            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"
+            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_LeakyReluGrad_Negative) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'LeakyReluGrad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'alpha'            value { f: 2.0 } }"
+      " input: ['A', 'B'] }"
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'C'] }");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);C(LeakyReluGrad);D(Zeta)|A->C;A->D;B->C:1;C->D:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_LeakyReluLeakyReluGrad_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'LeakyRelu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'alpha'            value { f: 0.1 } }"
+      " input: ['A'] }"
+      "node { name: 'C' op: 'LeakyReluGrad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'alpha'            value { f: 0.1 } }"
+      " input: ['A', 'B'] }"
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'C'] }");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(_MklLeakyRelu);C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);"
+      "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"
+      "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"
+      "DMT/_1->C:2");
 }
 
 TEST_F(MklLayoutPassTest, NodeRewrite_AvgPool_Positive) {

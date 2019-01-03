@@ -640,7 +640,8 @@ Status Conditional::ExtractBodies(Graph* graph) {
 Status Conditional::BuildIfNode(Graph* graph,
                                 FunctionLibraryDefinition* library) {
   VLOG(2) << "Build cond function for " << name();
-  NodeDefBuilder builder(name(), "If", library);
+  NodeDebugInfo debug_info((*merges_.begin())->def());
+  NodeDefBuilder builder(name(), "If", library, &debug_info);
   const string branch_name[] = {"else_branch", "then_branch"};
   for (auto branch : {BranchType::kElseBranch, BranchType::kThenBranch}) {
     int branch_index = static_cast<int>(branch);

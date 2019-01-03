@@ -76,9 +76,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
 
   Status Initialize(IteratorContext* ctx) override {
     mutex_lock l(*mu_);
-    if (num_parallel_calls_->value == kAutoTune) {
+    if (num_parallel_calls_->value == model::kAutoTune) {
       num_parallel_calls_->value = ctx->runner_threadpool_size();
-      num_parallel_calls_->tunable = true;
     }
     TF_RETURN_IF_ERROR(
         input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));

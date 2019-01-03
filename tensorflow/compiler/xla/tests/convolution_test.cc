@@ -98,7 +98,7 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     precision.add_operand_precision(PrecisionConfig::HIGHEST);
     precision.add_operand_precision(PrecisionConfig::DEFAULT);
     Conv(lhs, rhs, {1, 1}, Padding::kValid, /*feature_group_count=*/1,
-         &precision);
+         /*batch_group_count=*/1, &precision);
 
     ComputeAndCompare(&builder, {}, error_spec_);
   }

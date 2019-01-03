@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -46,6 +47,9 @@ class HloInputOutputAliasConfig {
   // buffers.
   bool ParameterHasAlias(int64 param_number,
                          const ShapeIndex& param_index) const;
+
+  // Checks whether the provided output index has already been aliased.
+  bool OutputHasAlias(const ShapeIndex& output_index) const;
 
   // (De)Serializes an HloInputOutoutAliasConfig to/from an
   // HloInputOutoutAliasProto.
@@ -93,6 +97,9 @@ class HloInputOutputAliasConfig {
   // is a pair of parameter number and index into the buffer. If the value is
   // nullopt, it means there is no parameter aliasing for this output.
   ShapeTree<absl::optional<std::pair<int64, ShapeIndex>>> alias_;
+
+  // The indices of the output which have been aliased.
+  absl::flat_hash_set<ShapeIndex> aliased_output_indices_;
 };
 
 std::ostream& operator<<(std::ostream& out,

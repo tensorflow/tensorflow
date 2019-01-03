@@ -139,7 +139,7 @@ llvm::JITSymbol SimpleOrcJIT::ResolveRuntimeSymbol(const std::string& name) {
   }
 
   if (func_addr == nullptr) {
-    VLOG(2) << "Unable to resolve runtime symbol: " << name;
+    LOG(ERROR) << "Unable to resolve runtime symbol: " << name;
     return nullptr;
   }
   llvm::JITEvaluatedSymbol symbol_info(reinterpret_cast<uint64_t>(func_addr),
@@ -316,6 +316,7 @@ bool RegisterKnownJITSymbols() {
   registry->Register("memset", reinterpret_cast<void*>(memset));
 
 #ifdef __APPLE__
+  registry->Register("__bzero", reinterpret_cast<void*>(bzero));
   registry->Register("memset_pattern16",
                      reinterpret_cast<void*>(memset_pattern16));
 #endif

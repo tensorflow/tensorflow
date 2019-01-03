@@ -31,7 +31,7 @@ This initial preview release is designed to get early feedback, and is not inten
 Building requires a Linux or OS X machine.
 
  - Open a terminal
- - Download the TensorFlow source with `git clone https://github.com/tensorflow`
+ - Download the TensorFlow source with `git clone https://github.com/tensorflow/tensorflow.git`
  - Enter the source root directory by running `cd tensorflow`
  - Download the dependencies by running `tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`. This may take a few minutes
  - Build and test the library with `make -f tensorflow/lite/experimental/micro/tools/make/Makefile test`
@@ -126,3 +126,114 @@ debug logs here, along with the magic string `~~~ALL TESTS PASSED~~~`. This is
 the exact same code as before, just compiled and run on the STM32F103 rather
 than your desktop. We hope that the simplicity of this testing approach will
 help make adding support for new platforms as easy as possible.
+
+## Building for "Hifive1" SiFive FE310 development board
+We've targeted the ["HiFive1" Arduino-compatible development board](https://www.sifive.com/boards/hifive1) as a test platform for RISC-V MCU.
+
+Similar to Blue Pill setup, you will need Docker installed. The binary can be executed on either HiFive1 board or emulated using [Renode project](https://renode.io/) on your desktop machine.
+
+The following instructions builds and transfers the source files to the Docker
+```
+docker build -t riscv_build \
+-f {PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/testing/Dockerfile.riscv \
+{PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/testing/
+```
+
+You should see output that looks something like this:
+
+```
+Sending build context to Docker daemon  28.16kB
+Step 1/4 : FROM antmicro/renode:latest
+ ---> 19c08590e817
+Step 2/4 : LABEL maintainer="Pete Warden <petewarden@google.com>"
+ ---> Using cache
+ ---> 5a7770d3d3f5
+Step 3/4 : RUN apt-get update
+ ---> Using cache
+ ---> b807ab77eeb1
+Step 4/4 : RUN apt-get install -y curl git unzip make g++
+ ---> Using cache
+ ---> 8da1b2aa2438
+Successfully built 8da1b2aa2438
+Successfully tagged riscv_build:latest
+```
+
+Building micro_speech_test binary
+
+ - Lauch the Docker that we just created using: `docker run -it-v /tmp/copybara_out:/workspace riscv_build:latest bash`
+ - Enter the source root directory by running `cd /workspace`
+ - Download the dependencies by running `./tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh`. This may take a few minutes.
+ - Set the path to RISC-V tools: `export PATH=${PATH}:/workspace/tensorflow/lite/experimental/micro/tools/make/downloads/riscv_toolchain/bin/`
+ - Build the binary: `make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=riscv32_mcu`
+
+Lauching Renode to test the binary, currently this set up is not automated.
+
+ - Until https://github.com/renode/renode/pull/30 is in the Docker image, patch the change manully: `sed -E -i 's/"rv32g"/"rv32imac"/g' /opt/renode/platforms/cpus/sifive-fe310.repl`
+
+
+ - Execute the binary on Renode: `renode -P 5000 --disable-xwt -e 's @/workspace/tensorflow/lite/experimental/micro/testing/sifive_fe310.resc'`
+
+You should see the following log with the magic string `~~~ALL TEST PASSED~~~`:
+
+```
+02:25:22.2059 [DEBUG] uart0: [+17.25s host +80ms virt 80ms virt from start] core freq at 0 Hz
+02:25:22.2065 [DEBUG] uart0: [+0.61ms host +0s virt 80ms virt from start]   Testing TestInvoke
+02:25:22.4243 [DEBUG] uart0: [+0.22s host +0.2s virt 0.28s virt from start]   Ran successfully
+02:25:22.4244 [DEBUG] uart0: [+42µs host +0s virt 0.28s virt from start]
+02:25:22.4245 [DEBUG] uart0: [+0.15ms host +0s virt 0.28s virt from start]   1/1 tests passed
+02:25:22.4247 [DEBUG] uart0: [+62µs host +0s virt 0.28s virt from start]   ~~~ALL TESTS PASSED~~~
+02:25:22.4251 [DEBUG] uart0: [+8µs host +0s virt 0.28s virt from start]
+02:25:22.4252 [DEBUG] uart0: [+0.39ms host +0s virt 0.28s virt from start]
+02:25:22.4253 [DEBUG] uart0: [+0.16ms host +0s virt 0.28s virt from start]   Progam has exited with code:0x00000000
+```
+
+## Building for Apollo3
+
+Follow these steps to get the pushbutton yes/no example working on Apollo 3:
+
+1.  Make sure to run the "Getting Started" section before performing the
+    following steps
+2.  Download Apollo3-SDK-2018.08.13 and place in
+    `tensorflow/lite/experimental/micro/tools/make/downloads`. This is not yet
+    publicly released, but you can contact ashah@ambiqmicro.com to request a
+    copy.
+3.  Compile the project with the following command: make -f
+    tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=apollo3evb
+    pushbutton_cmsis_speech_test_bin
+4.  Install [Segger JLink tools](https://www.segger.com/downloads/jlink/)
+5.  Connect the Apollo3 EVB (with mic shield) to the computer and power it on
+6.  Start the GDB server in a new terminal with the following command:
+    JLinkGDBServer -select USB -device AMA3B1KK-KBR -endian little -if SWD
+    -speed 1000 -noir -noLocalhostOnly
+    1.  The command has run successfully if you see the message "Waiting for GDB
+        connection"
+7.  Back in the original terminal, run the program via the debugger
+    1.  Navigate to
+        tensorflow/lite/experimental/micro/examples/micro_speech/apollo3
+    2.  Start gdb by entering the following command: arm-none-eabi-gdb
+    3.  Run the command script by entering the following command: source
+        pushbutton_cmsis_scores.cmd. This script does the following:
+        1.  Load the binary created in step 6
+        2.  Set a breakpoint after inference scores have been computed
+        3.  Tell the debugger what variables should be printed out at this
+            breakpoint
+        4.  Begin program execution
+        5.  Press Ctrl+c to exit
+    4.  Press BTN2. An LED will flash for 1 second. Speak your utterance during
+        this one second
+    5.  The debugger will print out four numbers. They are the probabilites for
+        1) no speech, 2) unknown speech, 3) yes, 4) no
+    6.  The EVB LEDs will indicate detection.
+        1.  LED0 (rightmost LED) - ON when capturing 1sec of audio
+        2.  LED1 - ON when detecting silence
+        3.  LED2 - ON when detecting UNKNOWN utterance
+        4.  LED3 - ON when detecting YES utterance
+        5.  LED4 (leftmost LED) - ON when detecting NO utterance
+
+### Additional Apollo3 Instructions
+
+To flash a part with JFlash Lite, do the following: 1. At the command line:
+JFlashLiteExe 2. Device = AMA3B1KK-KBR 3. Interface = SWD at 1000 kHz 4. Data
+file =
+tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin
+5. Prog Addr = 0x0000C000

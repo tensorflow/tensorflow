@@ -69,11 +69,11 @@ StatusOr<HloInstruction*> MakeConvolveHlo(
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(Shape convolve_shape,
                       ShapeInference::InferConvolveShape(
-                          lhs->shape(), rhs->shape(), feature_group_count,
+                          lhs->shape(), rhs->shape(), feature_group_count, 1,
                           window, dimension_numbers));
   return computation->AddInstruction(HloInstruction::CreateConvolve(
-      convolve_shape, lhs, rhs, feature_group_count, window, dimension_numbers,
-      precision_config));
+      convolve_shape, lhs, rhs, feature_group_count, 1, window,
+      dimension_numbers, precision_config));
 }
 
 StatusOr<HloInstruction*> MakeTransposeHlo(HloInstruction* operand,
@@ -108,7 +108,7 @@ StatusOr<HloInstruction*> MakeDynamicSliceHlo(
   TF_ASSIGN_OR_RETURN(
       Shape dynamic_slice_shape,
       ShapeInference::InferDynamicSliceShape(
-          operand->shape(), start_indices->shape(), slice_sizes));
+          operand->shape(), {start_indices->shape()}, slice_sizes));
   return computation->AddInstruction(HloInstruction::CreateDynamicSlice(
       dynamic_slice_shape, operand, start_indices, slice_sizes));
 }
@@ -122,7 +122,7 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
   TF_ASSIGN_OR_RETURN(
       Shape dynamic_update_slice_shape,
       ShapeInference::InferDynamicUpdateSliceShape(
-          operand->shape(), update->shape(), start_indices->shape()));
+          operand->shape(), update->shape(), {start_indices->shape()}));
   return computation->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       dynamic_update_slice_shape, operand, update, start_indices));
 }
@@ -189,8 +189,7 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
   for (const HloInstruction* operand : operands) {
     CHECK_EQ(computation, operand->parent());
     operand_shapes.push_back(&operand->shape());
-    max_operand_rank =
-        std::max(max_operand_rank, ShapeUtil::Rank(operand->shape()));
+    max_operand_rank = std::max(max_operand_rank, operand->shape().rank());
   }
   std::vector<int64> map_dims(max_operand_rank);
   std::iota(map_dims.begin(), map_dims.end(), 0);
@@ -207,7 +206,7 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloOpcode binary_opcode,
                                         HloModule* module) {
   DCHECK_NE(nullptr, module);
-  std::vector<int64> all_dims(ShapeUtil::Rank(operand->shape()));
+  std::vector<int64> all_dims(operand->shape().rank());
   std::iota(all_dims.begin(), all_dims.end(), 0);
 
   auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});

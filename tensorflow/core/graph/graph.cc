@@ -216,6 +216,16 @@ void Node::set_requested_device(const string& device) {
   props_->node_def.set_device(device);
 }
 
+void Node::set_original_node_names(const std::vector<string>& names) {
+  MaybeCopyOnWrite();
+  props_->node_def.mutable_experimental_debug_info()
+      ->clear_original_node_names();
+  if (!names.empty()) {
+    *props_->node_def.mutable_experimental_debug_info()
+         ->mutable_original_node_names() = {names.begin(), names.end()};
+  }
+}
+
 Status Node::input_edge(int idx, const Edge** e) const {
   if (idx < 0 || idx >= num_inputs()) {
     return errors::InvalidArgument("Invalid input_edge index: ", idx, ", Node ",
@@ -291,6 +301,16 @@ Status Node::input_tensor(int idx, OutputTensor* t) const {
   DCHECK(e != nullptr);
   *t = OutputTensor(e->src(), e->src_output());
   return Status::OK();
+}
+
+// NodeDebugInfo
+
+NodeDebugInfo::NodeDebugInfo(const Node& n) : NodeDebugInfo(n.def()) {}
+NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef) : name(ndef.name()) {
+  if (ndef.has_experimental_debug_info()) {
+    const auto& names = ndef.experimental_debug_info().original_node_names();
+    original_node_names.assign(names.begin(), names.end());
+  }
 }
 
 // InputTensor

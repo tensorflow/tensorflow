@@ -548,17 +548,23 @@ Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
 area and a computation is performed for each possible position of the window.
 
-| Arguments             | Type                 | Semantics                     |
-| --------------------- | -------------------- | ----------------------------- |
-| `lhs`                 | `XlaOp`              | rank n+2 array of inputs      |
-| `rhs`                 | `XlaOp`              | rank n+2 array of kernel      |
-:                       :                      : weights                       :
-| `window_strides`      | `ArraySlice<int64>`  | n-d array of kernel strides   |
-| `padding`             | `ArraySlice<         | n-d array of (low, high)      |
-:                       : pair<int64, int64>>` : padding                       :
-| `lhs_dilation`        | `ArraySlice<int64>`  | n-d lhs dilation factor array |
-| `rhs_dilation`        | `ArraySlice<int64>`  | n-d rhs dilation factor array |
-| `feature_group_count` | int64                | the number of feature groups  |
+| Arguments             | Type                     | Semantics                |
+| --------------------- | ------------------------ | ------------------------ |
+| `lhs`                 | `XlaOp`                  | rank n+2 array of inputs |
+| `rhs`                 | `XlaOp`                  | rank n+2 array of kernel |
+:                       :                          : weights                  :
+| `window_strides`      | `ArraySlice<int64>`      | n-d array of kernel      |
+:                       :                          : strides                  :
+| `padding`             | `ArraySlice< pair<int64, | n-d array of (low, high) |
+:                       : int64>>`                 : padding                  :
+| `lhs_dilation`        | `ArraySlice<int64>`      | n-d lhs dilation factor  |
+:                       :                          : array                    :
+| `rhs_dilation`        | `ArraySlice<int64>`      | n-d rhs dilation factor  |
+:                       :                          : array                    :
+| `feature_group_count` | int64                    | the number of feature    |
+:                       :                          : groups                   :
+| `batch_group_count`   | int64                    | the number of batch      |
+:                       :                          : groups                   :
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course
@@ -628,12 +634,21 @@ input feature dimension, and the filter would be reshaped from
 `[filter_height, filter_width, 1, in_channels * channel_multiplier]`. For more
 details, see `tf.nn.depthwise_conv2d`.
 
+The `batch_group_count` (default value 1) argument can be used for depthwise
+filters during backpropagation. `batch_group_count` needs to be a divisor of the
+size of the `lhs` batch dimension. If `batch_group_count` is greater than 1, it
+means that conceptually the output batch dimension is split evenely in
+`batch_group_count` groups, such that each group consists of a consecutive
+subsequence of batches. Each output batch element is the reduced value of the
+batch group size.
+
 The output shape has these dimensions, in this order:
 
-*   `batch`: Same size as `batch` on the input (`lhs`).
+*   `batch`: The size of this dimension times `batch_group_count` should equal
+    the size of the `batch` dimension in lhs.
 *   `z`: Same size as `output-z` on the kernel (`rhs`).
 *   `spatial_dims`: One value for each valid placement of the convolutional
-window.
+    window.
 
 The valid placements of the convolutional window are determined by the strides
 and the size of the base area after padding.
@@ -1080,7 +1095,7 @@ When `Op` is `Rem`, the sign of the result is taken from the dividend, and the
 absolute value of the result is always less than the divisor's absolute value.
 
 Integer division overflow (signed/unsigned division/remainder by zero or signed
-divison/remainder of `INT_SMIN` with `-1`) produces an implementation defined
+division/remainder of `INT_SMIN` with `-1`) produces an implementation defined
 value.
 
 An alternative variant with different-rank broadcasting support exists for these

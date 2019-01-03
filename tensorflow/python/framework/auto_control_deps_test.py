@@ -39,7 +39,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testBasic(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       with acd.AutomaticControlDependencies() as c:
         v.assign(v + 1)
         v.assign(2 * v)
@@ -51,7 +51,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondMustRun(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -73,7 +73,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondMustRunSeparateRead(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -97,7 +97,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondNested(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       q = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
@@ -132,7 +132,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondOneBranch(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -153,7 +153,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondOneBranchUpdateBefore(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
         v.assign(v * 2)
@@ -175,7 +175,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testCondOneBranchUpdateAfter(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -211,7 +211,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testDecorator(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       @acd.automatic_control_dependencies
       def f():

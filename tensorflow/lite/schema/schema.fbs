@@ -205,7 +205,8 @@ enum BuiltinOperator : byte {
   MIRROR_PAD = 100,
   ABS = 101,
   SPLIT_V = 102,
-  CEIL = 103,
+  UNIQUE = 103,
+  CEIL = 104,
 }
 
 // Options for the builtin operators.
@@ -289,6 +290,7 @@ union BuiltinOptions {
   MirrorPadOptions,
   AbsOptions,
   SplitVOptions,
+  UniqueOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -444,12 +446,19 @@ table UnidirectionalSequenceLSTMOptions {
 }
 
 table BidirectionalSequenceLSTMOptions {
+  // Parameters supported by version 1:
   fused_activation_function:ActivationFunctionType;
   cell_clip: float; // Optional, 0.0 means no clipping
   proj_clip: float; // Optional, 0.0 means no clipping
 
   // If true, store the outputs of both directions into the first output.
   merge_outputs: bool;
+
+  // Parameters supported by version 2:
+  // If true then first dimension is sequence, otherwise batch.
+  // Version 1 implementations assumed time_major to be true, so this default
+  // value should never change.
+  time_major: bool = true;
 }
 
 table ResizeBilinearOptions {
@@ -693,6 +702,10 @@ enum MirrorPadMode : byte {
 
 table MirrorPadOptions {
   mode:MirrorPadMode;
+}
+
+table UniqueOptions {
+  idx_out_type:TensorType = INT32;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

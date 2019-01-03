@@ -248,6 +248,12 @@ class BatchDescriptor {
   string ToString() const;
   string ToShortString() const;
 
+  // Pre-condition:
+  //   value_max_ == 0
+  //   value_min_ == 0
+  //   quantized_activation_mode_ == QuantizedActivationMode::k8Bit
+  TensorDescriptorProto ToProto(DataType data_type) const;
+
   // Accessors.
   int64 count() const { return tensor_.dimensions(0); }
   int64 feature_map_count() const { return tensor_.dimensions(1); }
@@ -420,6 +426,7 @@ class FilterDescriptor {
 
   string ToString() const;
   string ToShortString() const;
+  TensorDescriptorProto ToProto(DataType data_type) const;
 
   // Returns the number of weights required as parameters for a convolution
   // using this filter descriptor.
@@ -509,6 +516,7 @@ class ConvolutionDescriptor {
 
   string ToString() const;
   string ToShortString() const;
+  ConvolutionDescriptorProto ToProto() const { return proto_; }
 
   ConvolutionDescriptor& set_zero_padding_height(int64 value) {
     SetDim(padding(), DimIndex::Y, value);
@@ -745,6 +753,8 @@ class AlgorithmDesc {
   }
   uint64 hash() const;
 
+  AlgorithmProto ToProto() const { return proto_; }
+
  private:
   AlgorithmProto proto_;
 };
@@ -906,9 +916,10 @@ class VersionInfo {
  public:
   VersionInfo(int major = 0, int minor = 0, int patch = 0)
       : major_(major), minor_(minor), patch_(patch) {}
-  int major_version() { return major_; }
-  int minor_version() { return minor_; }
-  int patch() { return patch_; }
+  int major_version() const { return major_; }
+  int minor_version() const { return minor_; }
+  int patch() const { return patch_; }
+
  private:
   int major_;
   int minor_;
@@ -2080,13 +2091,23 @@ class DnnSupport {
   // sequence. The caller retains the ownership of the returned descriptor.
   //
   // Arguments:
-  //  seq_length: the length of the sequence.
+  //  max_seq_length: the max length of the sequences.
   //  batch_size: the size of a minibatch.
   //  data_size: the size of the state.
+  //  seq_lenghs: the lengths of sequences in a batch.
   //  data_type: an enum to specify the type for the underlying data.
   virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "createRnnSequenceTensorDescriptor is unimplemented");
+  }
+
+  virtual port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+                                    int data_size,
+                                    const absl::Span<const int>& seq_lengths,
+                                    dnn::DataType data_type) {
     return port::Status(port::error::UNIMPLEMENTED,
                         "createRnnSequenceTensorDescriptor is unimplemented");
   }

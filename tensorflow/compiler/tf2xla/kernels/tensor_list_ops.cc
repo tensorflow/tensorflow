@@ -45,7 +45,7 @@ Status GetTensorListShape(xla::XlaBuilder* builder, xla::XlaOp op,
     return shape_or_status.status();
   }
   xla::Shape shape = shape_or_status.ValueOrDie();
-  TF_RET_CHECK(xla::ShapeUtil::IsTuple(shape));
+  TF_RET_CHECK(shape.IsTuple());
   return XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(shape, 0),
                                tensor_list_shape);
 }

@@ -69,6 +69,7 @@ static const char* param_structs[] = {"TfLiteConvParams",
                                       "TfLiteOneHotParams",
                                       "TfLiteLeakyReluParams",
                                       "TfLiteMirrorPaddingParams",
+                                      "TfLiteUniqueParams",
                                       nullptr};
 }  // namespace
 
@@ -156,6 +157,7 @@ class OpOptionData {
     op_to_option_["UNIDIRECTIONAL_SEQUENCE_RNN"] = "SequenceRNNOptions";
     op_to_option_["UNIDIRECTIONAL_SEQUENCE_RNN"] = "SequenceRNNOptions";
     op_to_option_["MIRROR_PAD"] = "";  // TODO(karimnosseir): MirrorPadOptions.
+    op_to_option_["UNIQUE"] = "";      // TODO(karimnosseir): UniqueOptions.
     // Manually specified mappings between ops and options (none)
     op_to_option_["EMBEDDING_LOOKUP"] =
         "";  // TODO(aselle): maybe something else.

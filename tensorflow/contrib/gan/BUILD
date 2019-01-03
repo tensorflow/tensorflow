@@ -1,11 +1,14 @@
-# Files for using TFGAN framework.
-package(default_visibility = ["//tensorflow:__subpackages__"])
+# Files for using TF-GAN framework.
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(default_visibility = [
+    "//learning/brain/contrib/tfgan:__subpackages__",
+    "//tensorflow:__subpackages__",
+])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "gan",
@@ -105,6 +108,7 @@ py_library(
         ":gan_estimator",
         ":head",
         ":stargan_estimator",
+        ":tpu_gan_estimator",
         "//tensorflow/python:util",
     ],
 )
@@ -141,16 +145,15 @@ py_library(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:clip_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
+        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/losses",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -518,15 +521,19 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:summary",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:numpy_io",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
@@ -562,22 +569,73 @@ py_test(
     deps = [
         ":namedtuples",
         ":stargan_estimator",
-        ":tuple_losses",
         "//tensorflow/contrib/layers:layers_py",
-        "//tensorflow/contrib/learn",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
-        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/estimator:numpy_io",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_gan_estimator",
+    srcs = [
+        "python/estimator/python/tpu_gan_estimator.py",
+        "python/estimator/python/tpu_gan_estimator_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":gan_estimator",
+        ":namedtuples",
+        ":train",
+        "//tensorflow/contrib/tpu:tpu_estimator",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/contrib/training:training_py",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:util",
+        "//tensorflow/python/estimator:model_fn",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
+py_test(
+    name = "tpu_gan_estimator_test",
+    srcs = ["python/estimator/python/tpu_gan_estimator_test.py"],
+    shard_count = 11,
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":namedtuples",
+        ":tpu_gan_estimator",
+        ":tuple_losses",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/contrib/tpu:tpu_estimator",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/estimator",
+        "//tensorflow/python/estimator:model_fn",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",

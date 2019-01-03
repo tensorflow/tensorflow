@@ -10,8 +10,10 @@ cc_library(
     name = "micro_test",
     hdrs = [
         "micro_test.h",
+        "test_utils.h",
     ],
     deps = [
+        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )

@@ -168,7 +168,7 @@ void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
 StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
                                           std::minstd_rand0* engine,
                                           bool no_duplicates) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     std::vector<Literal> elements;
     for (const Shape& element_shape : shape.tuple_shapes()) {
       TF_ASSIGN_OR_RETURN(
@@ -348,7 +348,7 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         const Shape& slice_shape = use->opcode() == HloOpcode::kDynamicSlice
                                        ? use->shape()
                                        : use->operand(1)->shape();
-        const int64 rank = ShapeUtil::Rank(indexed_shape);
+        const int64 rank = indexed_shape.rank();
         if (!index_space.empty()) {
           TF_RET_CHECK(rank == index_space.size());
           for (int64 i = 0; i < rank; ++i) {
@@ -394,7 +394,11 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (!index_space.empty()) {
-    return MakeRandomIndex(index_space, engine);
+    // constrained_uses looks through bitcasts, so param and indexed_space may
+    // not have the same shape.  (For example, param might be an R0 while
+    // indexed_space might have size 1.)
+    return MakeRandomIndex(index_space, engine)
+        .Reshape(param.shape().dimensions());
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
@@ -459,8 +463,8 @@ Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
 std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs) {
-  CHECK_EQ(ShapeUtil::Rank(lhs->shape()), 2);
-  CHECK_EQ(ShapeUtil::Rank(rhs->shape()), 2);
+  CHECK_EQ(lhs->shape().rank(), 2);
+  CHECK_EQ(rhs->shape().rank(), 2);
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
       2, PrecisionConfig::DEFAULT);

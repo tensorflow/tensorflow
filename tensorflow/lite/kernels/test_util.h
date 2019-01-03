@@ -161,17 +161,15 @@ class SingleOpModel {
   }
 
   void SymmetricQuantizeAndPopulate(int index, const std::vector<float>& data) {
-    TfLiteTensor* t = interpreter_->tensor(index);
-    const int length = data.size();
-    std::vector<int8_t> q(length);
-    float min, max, scaling_factor;
-    tensor_utils::SymmetricQuantizeFloats(data.data(), length, q.data(), &min,
-                                          &max, &scaling_factor);
-    // Update quantization params.
-    t->params.scale = scaling_factor;
-    t->params.zero_point = 0;
+    std::vector<int8_t> q = QuantizeTensor(index, data);
     PopulateTensor(index, /*offset=*/0, reinterpret_cast<uint8_t*>(q.data()),
                    reinterpret_cast<uint8_t*>(q.data() + q.size()));
+  }
+
+  void SignedSymmetricQuantizeAndPopulate(int index,
+                                          const std::vector<float>& data) {
+    std::vector<int8_t> q = QuantizeTensor(index, data);
+    PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
   }
 
   const std::vector<int>& GetShape(int id) { return tensor_data_.at(id).shape; }
@@ -307,10 +305,12 @@ class SingleOpModel {
 
     if (is_quantized) {
       if (t.min != 0 || t.max != 0) {
-        // TODO(b/119422369): Handle signed int8 here.
         if (t.type == TensorType_UINT8) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<uint8_t>(t.min, t.max);
+        } else if (t.type == TensorType_INT8) {
+          std::tie(t.scale, t.zero_point) =
+              QuantizationParams<int8_t>(t.min, t.max);
         } else if (t.type == TensorType_INT32) {
           std::tie(t.scale, t.zero_point) =
               QuantizationParams<int32_t>(t.min, t.max);
@@ -354,6 +354,20 @@ class SingleOpModel {
     tensor_data_[id] = t;
 
     return id;
+  }
+
+  std::vector<int8_t> QuantizeTensor(int index,
+                                     const std::vector<float>& data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    const int length = data.size();
+    std::vector<int8_t> q(length);
+    float min, max, scaling_factor;
+    tensor_utils::SymmetricQuantizeFloats(data.data(), length, q.data(), &min,
+                                          &max, &scaling_factor);
+    // Update quantization params.
+    t->params.scale = scaling_factor;
+    t->params.zero_point = 0;
+    return q;
   }
 
   std::map<int, TensorData> tensor_data_;

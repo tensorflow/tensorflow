@@ -22,6 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
@@ -33,8 +34,6 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.control_flow_ops import while_loop as while_loop_v1
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
@@ -117,6 +116,18 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertSequenceEqual(self.evaluate(grady_0), [55.])
       self.assertSequenceEqual(self.evaluate(grady_1), [6.])
       self.assertSequenceEqual(self.evaluate(grady_2), [61.])
+
+  @test_util.run_deprecated_v1
+  def testGradientTape(self):
+    with backprop.GradientTape() as t:
+      x = constant_op.constant(2.)
+      t.watch(x)
+      ret = while_loop_v2(
+          lambda v: v < 4., lambda v: v * v, [x],
+          return_same_structure=False)  # x**2
+    grad = t.gradient(ret, x)
+    with self.cached_session() as sess:
+      self.assertAllEqual(sess.run(grad), 4.0)
 
   @test_util.run_deprecated_v1
   def testMultipleWhileLoops(self):
@@ -409,38 +420,6 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       self.assertEqual(self.evaluate(ret), 16.)
       self.assertSequenceEqual(self.evaluate(grad), [32.])
-
-  @test_util.run_deprecated_v1
-  def testNestedWhileAndTensorArray(self):
-    n = constant_op.constant(3.0)
-
-    def Body(row, ta, n):
-
-      def InnerBody(row, col, ta, n):
-        # Note: row and col are 1-based.
-        ta = ta.write(
-            math_ops.cast(n * (row - 1.) + col - 1., dtypes.int32), row * col)
-        return row, col + 1., ta, n
-
-      # TODO(b/118457764): Remove n from loop_vars from both loops once fixed.
-      ta = while_loop_v2(
-          lambda _, col, _1, n: col <= n,
-          InnerBody, [row, constant_op.constant(1.), ta, n],
-          return_same_structure=False)[2]
-      return row + 1., ta, n
-
-    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
-    ta = while_loop_v2(
-        lambda row, _, _1: row <= n,
-        Body, [constant_op.constant(1.), ta, n],
-        return_same_structure=False)[1]
-
-    output = array_ops.reshape(ta.stack(), [3, 3])
-    self.assertAllEqual(
-        self.evaluate(output), [[1., 2., 3.], [2., 4., 6.], [3., 6., 9.]])
-    # TODO(b/117675481): This does not work with current TA. Enable with new TA.
-    # grad = gradients_impl.gradients(output, [n])
-    # self.assertEqual(self.evaluate(grad), 3.5)
 
   @test_util.run_deprecated_v1
   def testForwardPassRewrite(self):

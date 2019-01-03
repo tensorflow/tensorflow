@@ -224,7 +224,8 @@ class ResourceVariable(variables.RefVariable):
                dtype=None,
                variable_def=None,
                import_scope=None,
-               constraint=None):
+               constraint=None,
+               distribute_strategy=None):
     """Creates a variable.
 
     Args:
@@ -263,6 +264,8 @@ class ResourceVariable(variables.RefVariable):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      distribute_strategy: The tf.distribute.Strategy this variable is being
+        created inside of.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -274,6 +277,7 @@ class ResourceVariable(variables.RefVariable):
     collections.
     @end_compatibility
     """
+    self._distribute_strategy = distribute_strategy
     if variable_def:
       if initial_value is not None:
         raise ValueError("variable_def and initial_value are mutually "
@@ -608,6 +612,11 @@ class ResourceVariable(variables.RefVariable):
     """The shape of this variable."""
     return self._shape
 
+  @property
+  def distribute_strategy(self):
+    """The `tf.distribute.Strategy` that this variable was created under."""
+    return self._distribute_strategy
+
   def _shape_as_list(self):
     if self._cached_shape_as_list:
       return self._cached_shape_as_list
@@ -808,9 +817,6 @@ class ResourceVariable(variables.RefVariable):
       raise RuntimeError("from_proto not supported in EAGER mode.")
     return ResourceVariable(
         variable_def=variable_def, import_scope=import_scope)
-
-  def _AsTensor(self):
-    return self.value()
 
   def _ref(self):
     """Unsupported."""

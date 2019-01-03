@@ -346,6 +346,20 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(self.evaluate(tape.gradient(e, t)), 2.0)
 
   @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testSkipEagerSetItemIndexOutOfBounds(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[])
+    e0 = constant_op.constant(5.)
+    l = list_ops.tensor_list_set_item(
+        l, 0, 2. * e0, resize_if_index_out_of_bounds=True)
+    l = list_ops.tensor_list_set_item(
+        l, 1, 1., resize_if_index_out_of_bounds=True)
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    grad = gradients_impl.gradients(t, e0)[0]
+    self.assertAllEqual(self.evaluate(grad), 2.)
+
+  @test_util.run_deprecated_v1
   def testSetOnEmptyListWithMaxNumElementsFails(self):
     l = list_ops.empty_tensor_list(
         element_dtype=dtypes.float32, element_shape=[], max_num_elements=3)
@@ -1095,6 +1109,47 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         list_ops.tensor_list_split([[1.], [2.]],
                                    element_shape=[1],
                                    lengths=[1, 1])
+
+  def testResizeGrow(self):
+    l = list_ops.tensor_list_from_tensor([1., 2.], element_shape=[])
+    l = list_ops.tensor_list_resize(l, 4)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 4)
+    self.assertEqual(
+        self.evaluate(
+            list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)),
+        1.)
+    self.assertEqual(
+        self.evaluate(
+            list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)),
+        2.)
+
+  def testResizeShrink(self):
+    l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
+    l = list_ops.tensor_list_resize(l, 2)
+    self.assertEqual(self.evaluate(list_ops.tensor_list_length(l)), 2)
+    self.assertAllEqual(
+        self.evaluate(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)),
+        [1., 2.])
+
+  def testResizeWithInvalidSizeFails(self):
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "TensorListSlice expects size to be non-negative"):
+      l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
+      l = list_ops.tensor_list_resize(l, -1)
+      self.evaluate(l)
+
+  @test_util.run_deprecated_v1
+  @test_util.enable_control_flow_v2
+  def testSkipEagerResizeGrad(self):
+    t = constant_op.constant([1., 2., 3.])
+    l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+    l = list_ops.tensor_list_set_item(
+        l, 3, 4., resize_if_index_out_of_bounds=True)
+    t1 = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    grad = gradients_impl.gradients(t1, t)[0]
+    self.assertAllEqual(self.evaluate(grad), [1., 1., 1.])
 
 
 if __name__ == "__main__":

@@ -106,13 +106,50 @@ string SummarizeAttrs(const NodeDef& node_def) {
   return SummarizeAttrsHelper(node_def, node_def.device());
 }
 
+string FormatNodeForError(const NodeDebugInfo& debug_info) {
+  return debug_info.original_node_names.empty()
+             ? errors::FormatNodeNameForError(debug_info.name)
+             : errors::FormatNodeNamesForError(debug_info.original_node_names);
+}
+
 string FormatNodeForError(const Node& node) {
-  return FormatNodeDefForError(node.def());
+  return FormatNodeForError(NodeDebugInfo(node));
 }
 
 string FormatNodeDefForError(const NodeDef& node_def) {
-  VLOG(1) << "Error in the node: " << SummarizeNodeDef(node_def);
-  return errors::FormatNodeNameForError(node_def.name());
+  return FormatNodeForError(NodeDebugInfo(node_def));
+}
+
+void GetMergedOriginalNodeNames(const NodeDebugInfo& from,
+                                const NodeDebugInfo& to,
+                                std::set<string>* names) {
+  if (!from.original_node_names.empty()) {
+    names->insert(from.original_node_names.begin(),
+                  from.original_node_names.end());
+  } else {
+    names->insert(from.name);
+  }
+  names->insert(to.original_node_names.begin(), to.original_node_names.end());
+}
+
+void MergeDebugInfo(const NodeDebugInfo& from, Node* to) {
+  std::set<string> names;
+  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
+  to->set_original_node_names({names.begin(), names.end()});
+}
+
+void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to) {
+  std::set<string> names;
+  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
+  to->mutable_experimental_debug_info()->clear_original_node_names();
+  if (!names.empty()) {
+    *to->mutable_experimental_debug_info()->mutable_original_node_names() = {
+        names.begin(), names.end()};
+  }
+}
+
+void MergeDebugInfo(const NodeDef& from, NodeDef* to) {
+  MergeDebugInfo(NodeDebugInfo(from), to);
 }
 
 const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
@@ -660,15 +697,23 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
   return Status::OK();
 }
 
-Status AttachDef(const Status& status, const NodeDef& node_def) {
+Status AttachDef(const Status& status, const NodeDef& node_def,
+                 bool allow_multiple_formatted_node) {
   Status ret = status;
-  errors::AppendToMessage(
-      &ret, strings::StrCat(" [[", FormatNodeDefForError(node_def), "]]"));
+  string node_error;
+  if (!allow_multiple_formatted_node &&
+      status.error_message().find("{{node ") != string::npos) {
+    node_error = node_def.name();
+  } else {
+    node_error = FormatNodeDefForError(node_def);
+  }
+  errors::AppendToMessage(&ret, strings::StrCat(" [[", node_error, "]]"));
   return ret;
 }
 
-Status AttachDef(const Status& status, const Node& node) {
-  return AttachDef(status, node.def());
+Status AttachDef(const Status& status, const Node& node,
+                 bool allow_multiple_formatted_node) {
+  return AttachDef(status, node.def(), allow_multiple_formatted_node);
 }
 
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {

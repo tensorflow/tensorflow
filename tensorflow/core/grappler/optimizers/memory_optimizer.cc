@@ -498,6 +498,16 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
   // Look for AddN nodes (and equivalent) and record input names.
   MutableGraphView view(&item->graph);
 
+  // It's ok to use immutable GraphTopologyView here, because we do not destroy
+  // any of the nodes in the underlying graph, we only add new nodes.
+  GraphTopologyView graph_topology;
+  Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
+  if (!initialized_topology.ok()) {
+    VLOG(1) << "Failed to initialize graph topology view: "
+            << initialized_topology.error_message();
+    return false;
+  }
+
   std::unordered_map<string, std::unordered_set<NodeDef*>> addn_list;
   for (NodeDef& node : *item->graph.mutable_node()) {
     if (!IsAddN(node) && node.op() != "AccumulateNV2") {
@@ -579,12 +589,11 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
 
     // Compute a topological ordering for the node fanin.
     std::unordered_map<const NodeDef*, int> topo_order;
-    ReverseDfs(view, {node}, nullptr,
-               [&topo_order](const NodeDef* n) {
-                 int topo_index = topo_order.size();
-                 topo_order[n] = topo_index;
-               },
-               nullptr);
+    DfsTraversal(graph_topology, {node}, TraversalDirection::kFollowInputs,
+                 DfsCallbacks::PostOrder([&topo_order](const NodeDef* n) {
+                   int topo_index = static_cast<int>(topo_order.size());
+                   topo_order[n] = topo_index;
+                 }));
 
     std::vector<int> input_topo_index;
 
@@ -702,6 +711,13 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
                      const std::unordered_map<string, const NodeDef*>& name_map,
                      GraphDef* graph,
                      std::pair<NodeDef*, NodeDef*>* swap_pair) {
+  string task, device;
+  if (!DeviceNameUtils::SplitDeviceName(node->device(), &task, &device) ||
+      !str_util::StrContains(device, DEVICE_GPU)) {
+    return errors::InvalidArgument("Can't swap input ", input_to_swap,
+                                   " of node ", node->name(),
+                                   " since it is not on GPU");
+  }
   const OpDef* op_def;
   TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node->op(), &op_def));
   DataType input_type;

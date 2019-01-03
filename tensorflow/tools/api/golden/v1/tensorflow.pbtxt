@@ -321,6 +321,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "config"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "constant_initializer"
     mtype: "<type \'type\'>"
   }
@@ -1077,6 +1081,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "disable_v2_batch_normalization"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "disable_v2_behavior"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -1118,6 +1126,10 @@ tf_module {
   }
   member_method {
     name: "enable_resource_variables"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_v2_batch_normalization"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -1246,7 +1258,7 @@ tf_module {
   }
   member_method {
     name: "gather"
-    argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\'], "
+    argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\', \'axis\', \'batch_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'0\'], "
   }
   member_method {
     name: "gather_nd"

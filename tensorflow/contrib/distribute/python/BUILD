@@ -1,5 +1,9 @@
 # Implementation of a prototype TF distributed computation library.
 
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -10,9 +14,6 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
 # TODO(priyag): Figure out testonly issues that are preventing us from
 # including our tests in pip for now.
 
@@ -22,22 +23,41 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         ":mirrored_strategy",
-        ":multi_worker_test_base",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
+    ],
+    tags = [
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
+    name = "input_lib_test",
+    srcs = ["input_lib_test.py"],
+    additional_deps = [
+        ":combinations",
+        ":mirrored_strategy",
+        ":multi_worker_test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
     ],
     tags = [
         "no_pip",
@@ -50,8 +70,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:values",
     ],
 )
 
@@ -68,6 +88,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
@@ -118,6 +139,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
@@ -138,6 +160,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python/distribute:cross_device_ops",
         "//tensorflow/python/distribute:cross_device_utils",
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
@@ -288,6 +311,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
     ],
@@ -584,7 +608,10 @@ cuda_py_test(
 py_library(
     name = "keras_test_lib",
     testonly = 1,
-    srcs = ["keras_test.py"],
+    srcs = [
+        "keras_backward_compat_test.py",
+        "keras_test.py",
+    ],
     deps = [
         ":combinations",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
@@ -604,6 +631,57 @@ cuda_py_test(
     srcs = ["keras_test.py"],
     additional_deps = [
         ":keras_test_lib",
+    ],
+    shard_count = 16,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+)
+
+# TODO(b/121200287): Remove this in 2.0
+cuda_py_test(
+    name = "keras_backward_compat_test",
+    srcs = ["keras_backward_compat_test.py"],
+    additional_deps = [
+        ":keras_test_lib",
+    ],
+    shard_count = 16,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_pip",
+        "no_windows_gpu",
+        "notsan",
+    ],
+)
+
+py_library(
+    name = "keras_correctness_test_lib",
+    testonly = 1,
+    srcs = ["keras_correctness_test.py"],
+    deps = [
+        ":combinations",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/contrib/distribute/python:tpu_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_correctness_test",
+    srcs = ["keras_correctness_test.py"],
+    additional_deps = [
+        ":keras_correctness_test_lib",
     ],
     shard_count = 16,
     tags = [
@@ -676,5 +754,26 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
+    ],
+)
+
+tf_xla_py_test(
+    name = "checkpointing_test",
+    srcs = ["checkpointing_test.py"],
+    disabled_backends = [
+        # Only makes sense on TPUs
+        "cpu",
+        "gpu",
+        "cpu_ondemand",
+    ],
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/checkpointable:util",
     ],
 )

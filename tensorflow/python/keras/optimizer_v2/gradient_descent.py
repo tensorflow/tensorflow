@@ -21,10 +21,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import training_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export("keras.optimizers.SGD")
+@keras_export("keras.optimizers.SGD", v1=[])
 class SGD(optimizer_v2.OptimizerV2):
   """Stochastic gradient descent and momentum optimizer.
 
@@ -74,7 +74,11 @@ class SGD(optimizer_v2.OptimizerV2):
       nesterov: boolean. Whether to apply Nesterov momentum.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to 'SGD'.
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
     """
     super(SGD, self).__init__(name, **kwargs)
     self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))

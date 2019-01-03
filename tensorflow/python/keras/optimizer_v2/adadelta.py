@@ -22,10 +22,10 @@ import numpy as np
 
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.training import training_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.optimizers.Adadelta')
+@keras_export('keras.optimizers.Adadelta', v1=[])
 class Adadelta(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adadelta algorithm.
 
@@ -77,7 +77,11 @@ class Adadelta(optimizer_v2.OptimizerV2):
                to better conditioning the grad update.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     @compatibility(eager)
     When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can

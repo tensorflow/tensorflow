@@ -143,3 +143,12 @@ TfLiteStatus Preprocess(tflite::ErrorReporter* error_reporter,
   }
   return kTfLiteOk;
 }
+
+TfLiteStatus Preprocess_1sec(tflite::ErrorReporter* error_reporter,
+                             const int16_t* input, uint8_t* output) {
+  int i;
+  for (i = 0; i < 49; i++) {
+    Preprocess(error_reporter, input + i * 320, 480, 43, output + i * 43);
+  }
+  return kTfLiteOk;
+}

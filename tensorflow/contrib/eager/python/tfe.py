@@ -99,7 +99,6 @@ from tensorflow.contrib.eager.python.network import Network
 from tensorflow.contrib.eager.python.network import Sequential
 from tensorflow.contrib.eager.python.network import save_network_checkpoint
 from tensorflow.contrib.eager.python.network import restore_network_checkpoint
-from tensorflow.contrib.eager.python.remote import connect_to_remote_host
 from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
@@ -127,6 +126,7 @@ from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
+from tensorflow.python.eager.remote import connect_to_remote_host
 from tensorflow.python.framework.tensor_spec import TensorSpec
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import enable_eager_execution_internal as enable_remote_eager_execution

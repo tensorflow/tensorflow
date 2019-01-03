@@ -154,7 +154,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_matrix,
                           remapped_matrix.as_tensor().eval())
 
@@ -188,7 +188,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_matrix,
                           remapped_matrix.as_tensor().eval())
 
@@ -226,7 +226,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_matrix,
                           remapped_matrix.as_tensor().eval())
 
@@ -262,7 +262,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_matrix,
                           remapped_matrix.as_tensor().eval())
 
@@ -296,7 +296,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
                           remapped_embeddings.as_tensor().eval())
 
@@ -342,7 +342,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
                           remapped_embeddings.as_tensor().eval())
 
@@ -380,7 +380,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(2))
 
     with self.cached_session():
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(expected_remapped_embeddings,
                           remapped_embeddings.as_tensor().eval())
 

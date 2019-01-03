@@ -339,6 +339,16 @@ class TableInitializerBase(checkpointable_base.CheckpointableBase):
     """Returns the table initialization op."""
     raise NotImplementedError
 
+  @property
+  def _shared_name(self):
+    """Returns a shared name to be used by the table."""
+    shared_name = ""
+    if context.executing_eagerly():
+      # Ensure a unique name when eager execution is enabled to avoid spurious
+      # sharing issues.
+      shared_name += str(ops.uid())
+    return shared_name
+
 
 class KeyValueTensorInitializer(TableInitializerBase):
   """Table initializers given `keys` and `values` tensors."""
@@ -498,6 +508,7 @@ class TextFileInitializer(TableInitializerBase):
     if not isinstance(filename, ops.Tensor) and not filename:
       raise ValueError("Filename required for %s." % name)
 
+    self._filename_arg = filename
     key_dtype = dtypes.as_dtype(key_dtype)
     value_dtype = dtypes.as_dtype(value_dtype)
 
@@ -568,6 +579,23 @@ class TextFileInitializer(TableInitializerBase):
     if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
+
+  @property
+  def _shared_name(self):
+    if self._vocab_size:
+      # Keep the shared_name:
+      # <table_type>_<filename>_<vocab_size>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%d_%s_%s" % (self._filename_arg,
+                                                self._vocab_size,
+                                                self._key_index,
+                                                self._value_index)
+    else:
+      # Keep the shared_name
+      # <table_type>_<filename>_<key_index>_<value_index>
+      shared_name = "hash_table_%s_%s_%s" % (self._filename_arg,
+                                             self._key_index,
+                                             self._value_index)
+    return shared_name
 
 
 class TextFileStringTableInitializer(TextFileInitializer):
@@ -948,7 +976,7 @@ def index_table_from_file(vocabulary_file=None,
   `[vocabulary size, vocabulary size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `tf.tables_initializer.run()` or `table.init.run()` once.
+  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
 
   To specify multi-column vocabulary files, use key_column_index and
   value_column_index and delimiter.
@@ -1077,7 +1105,7 @@ def index_table_from_tensor(vocabulary_list,
   `[vocabulary list size, vocabulary list size + num_oov_buckets - 1]`.
 
   The underlying table must be initialized by calling
-  `tf.tables_initializer.run()` or `table.init.run()` once.
+  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
 
   Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
   the table initializer op, it will throw a `FailedPreconditionError`.
@@ -1179,7 +1207,7 @@ def index_to_string_table_from_file(vocabulary_file,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `tf.tables_initializer.run()` or `table.init.run()` once.
+  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
 
   To specify multi-column vocabulary files, use key_column_index and
   value_column_index and delimiter.
@@ -1276,7 +1304,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
   (an out-of-vocabulary entry) is assigned the `default_value`
 
   The underlying table must be initialized by calling
-  `tf.tables_initializer.run()` or `table.init.run()` once.
+  `session.run(tf.tables_initializer)` or `session.run(table.init)` once.
 
   Elements in `vocabulary_list` cannot have duplicates, otherwise when executing
   the table initializer op, it will throw a `FailedPreconditionError`.

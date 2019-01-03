@@ -43,6 +43,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dynamic"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "filters"
     mtype: "<type \'property\'>"
   }

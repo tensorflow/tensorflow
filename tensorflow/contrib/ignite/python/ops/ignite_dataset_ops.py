@@ -31,6 +31,7 @@ from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import deprecation
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -699,6 +700,10 @@ class IgniteDataset(dataset_ops.DatasetSource):
      Ignite Binary Client Protocol.
   """
 
+  @deprecation.deprecated(
+      None,
+      "tf.contrib.ignite will be removed in 2.0, the support for Apache Ignite "
+      "will continue to be provided through the tensorflow/io GitHub project.")
   def __init__(self,
                cache_name,
                host="localhost",

@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 
-#include <unordered_map>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
@@ -163,10 +164,10 @@ struct FunctionSpecializationSignature {
 
   string func_name;
   bool is_in_fetch_set;
-  gtl::FlatSet<OutputPort> active_outputs;
-  std::unordered_map<string, DataType> type_parameters;
-  std::unordered_map<string, AttrValue> body_parameters;
-  std::unordered_map<InputPort, string> const_inputs;
+  absl::flat_hash_set<OutputPort> active_outputs;
+  absl::flat_hash_map<string, DataType> type_parameters;
+  absl::flat_hash_map<string, AttrValue> body_parameters;
+  absl::flat_hash_map<InputPort, string> const_inputs;
 
   bool operator==(const FunctionSpecializationSignature& other) const {
     bool equals = func_name == other.func_name &&
@@ -189,48 +190,45 @@ struct FunctionSpecializationSignature {
     return true;
   }
 
-  // TODO(ezhulenev): Migrate to AbslHashValue.
-  // TODO(ezhulenev): Optimize performance by computing hashes of unordered
-  // values first, and then compute a hash of sorted hashes.
-  struct Hash {
-    uint64 operator()(FunctionSpecializationSignature const& s) const {
-      uint64 h = Hash64(s.func_name);
-      h = Hash64Combine(std::hash<bool>()(s.is_in_fetch_set), h);
+  template <typename H>
+  friend H AbslHashValue(H h, const FunctionSpecializationSignature& s) {
+    H base = H::combine(std::move(h), s.func_name, s.is_in_fetch_set);
 
-      // Use std::set/std::map for deterministic iteration order.
+    // First pre-compute hashes for all values in collections with
+    // non-deterministic iteration order.
+    std::vector<uint64> hashes;
+    hashes.reserve(s.active_outputs.size()         //
+                   + s.type_parameters.size() * 2  //
+                   + s.body_parameters.size() * 2  //
+                   + s.const_inputs.size() * 2);
 
-      std::set<OutputPort> active_outputs(s.active_outputs.begin(),
-                                          s.active_outputs.end());
-      for (const auto& active_output : active_outputs) {
-        h = Hash64Combine(std::hash<int>()(active_output), h);
-      }
+    absl::c_transform(s.active_outputs, std::back_inserter(hashes),
+                      hash<OutputPort>());
 
-      std::map<string, DataType> types(s.type_parameters.begin(),
-                                       s.type_parameters.end());
-      for (const auto& pair : types) {
-        AttrValue attr_value;
-        attr_value.set_type(pair.second);
-        h = Hash64Combine(Hash64(pair.first), h);
-        h = Hash64Combine(AttrValueHash(attr_value), h);
-      }
+    using TypeParam = std::pair<const string, DataType>;
+    absl::c_for_each(s.type_parameters, [&hashes](const TypeParam& type_param) {
+      AttrValue attr_value;
+      attr_value.set_type(type_param.second);
+      hashes.push_back(Hash64(type_param.first));
+      hashes.push_back(AttrValueHash(attr_value));
+    });
 
-      std::map<string, AttrValue> body(s.body_parameters.begin(),
-                                       s.body_parameters.end());
-      for (const auto& pair : body) {
-        h = Hash64Combine(Hash64(pair.first), h);
-        h = Hash64Combine(FastAttrValueHash(pair.second), h);
-      }
+    using BodyParam = std::pair<const string, AttrValue>;
+    absl::c_for_each(s.body_parameters, [&hashes](const BodyParam& body_param) {
+      hashes.push_back(Hash64(body_param.first));
+      hashes.push_back(FastAttrValueHash(body_param.second));
+    });
 
-      std::map<InputPort, string> inputs(s.const_inputs.begin(),
-                                         s.const_inputs.end());
-      for (const auto& pair : inputs) {
-        h = Hash64Combine(std::hash<int>()(pair.first), h);
-        h = Hash64Combine(Hash64(pair.second), h);
-      }
+    using ConstInput = std::pair<const InputPort, string>;
+    absl::c_for_each(s.const_inputs, [&hashes](const ConstInput& const_input) {
+      hashes.push_back(hash<InputPort>()(const_input.first));
+      hashes.push_back(Hash64(const_input.second));
+    });
 
-      return h;
-    }
-  };
+    // Combine all pre-computed hashes in a deterministic order.
+    absl::c_sort(hashes);
+    return H::combine_contiguous(std::move(base), hashes.data(), hashes.size());
+  }
 };
 
 struct FunctionSpecialization {
@@ -238,13 +236,13 @@ struct FunctionSpecialization {
   // True if the function caller node is in GrapplerItem fetch set.
   bool is_in_fetch_set;
   // Names of the tensors that were pushed down into the function body.
-  gtl::FlatSet<string> const_inputs;
+  absl::flat_hash_set<string> const_inputs;
   // Control dependencies of pushed down const inputs have to be attached to
   // function caller node.
-  gtl::FlatSet<string> control_deps;
+  absl::flat_hash_set<string> control_deps;
   // Output tensors (ports) that consumed by other nodes in the graph or in a
   // GrapplerItem fetch set.
-  gtl::FlatSet<int> active_outputs;
+  absl::flat_hash_set<int> active_outputs;
   // Mapping from original function output port to the output port of
   // specialized function. If function specialization changes the number of
   // function outputs it's required to update all node consumers.
@@ -285,12 +283,13 @@ class FunctionOptimizerContext {
     return flr_;
   }
 
-  const gtl::FlatMap<SafeTensorId, SafeTensorId, SafeTensorId::Hasher>&
+  const absl::flat_hash_map<SafeTensorId, SafeTensorId, SafeTensorId::Hasher>&
   tensor_mapping() const {
     return tensor_mapping_;
   }
 
-  const gtl::FlatMap<string, std::vector<string>>& control_overrides() const {
+  const absl::flat_hash_map<string, std::vector<string>>& control_overrides()
+      const {
     return control_overrides_;
   }
 
@@ -298,7 +297,9 @@ class FunctionOptimizerContext {
 
   const string& grappler_item_id() const { return grappler_item_id_; }
 
-  const gtl::FlatSet<string>& fetch_tensors() const { return fetch_tensors_; }
+  const absl::flat_hash_set<string>& fetch_tensors() const {
+    return fetch_tensors_;
+  }
 
   const DeviceSet* devices() const {
     // Create fake devices lazily only if we need a DeviceSet.
@@ -365,7 +366,7 @@ class FunctionOptimizerContext {
 
  private:
   void InitializeTrulyConstNodes(const GrapplerItem& item) {
-    gtl::FlatSet<string> feed_nodes;
+    absl::flat_hash_set<string> feed_nodes;
     for (const auto& feed : item.feed) {
       feed_nodes.insert(NodeName(feed.first));
     }
@@ -411,7 +412,7 @@ class FunctionOptimizerContext {
   FunctionLibraryRuntime* flr_ = nullptr;
 
   // Fully defined names of the devices available to the GrapplerItem.
-  const gtl::FlatSet<string> available_device_names_;
+  const absl::flat_hash_set<string> available_device_names_;
 
   // List of available `FakedDevices` (lazily initialized, see devices()).
   mutable std::vector<std::unique_ptr<Device>> available_devices_;
@@ -421,16 +422,15 @@ class FunctionOptimizerContext {
   mutable DeviceSet available_device_set_;
 
   // Nodes that are Const and not in feed.
-  std::unordered_map<string, const NodeDef*> truly_const_nodes_;
+  absl::flat_hash_map<string, const NodeDef*> truly_const_nodes_;
   // Specialized functions.
-  std::unordered_map<FunctionSpecializationSignature,
-                     const FunctionSpecialization,
-                     FunctionSpecializationSignature::Hash>
+  absl::flat_hash_map<FunctionSpecializationSignature,
+                      const FunctionSpecialization>
       specialized_functions_;
 
   // GrapplerItem.fetch is a vector of tensors.
-  gtl::FlatSet<string> fetch_tensors_;  // format: node_name:port
-  gtl::FlatSet<string> fetch_nodes_;    // format: node_name
+  absl::flat_hash_set<string> fetch_tensors_;  // format: node_name:port
+  absl::flat_hash_set<string> fetch_nodes_;    // format: node_name
 
   // After function inlining and specialization, the optimized graph might be in
   // invalid state, nodes can read from non-existing function call nodes that
@@ -439,7 +439,7 @@ class FunctionOptimizerContext {
   //
   // Tensor mapping that has to be applied to the graph after all functions
   // optimizations (invalidated tensor id -> optimized graph tensor id).
-  gtl::FlatMap<SafeTensorId, SafeTensorId, SafeTensorId::Hasher>
+  absl::flat_hash_map<SafeTensorId, SafeTensorId, SafeTensorId::Hasher>
       tensor_mapping_;
 
   // When we inline a function into the optimized graph, we no longer have the
@@ -448,7 +448,7 @@ class FunctionOptimizerContext {
   // to all side-effectful ops inside the function body.
   //
   // Invalidated function call node name -> Inlined side-effectful nodes
-  gtl::FlatMap<string, std::vector<string>> control_overrides_;
+  absl::flat_hash_map<string, std::vector<string>> control_overrides_;
 
   // Use graph view to find active outputs of the function caller nodes.
   GraphView graph_view_;
@@ -472,10 +472,10 @@ const FunctionDef* FindFunctionCall(const FunctionOptimizerContext& ctx,
   return ctx.function_library().Find(node.op());
 }
 
-gtl::FlatSet<int> GetActiveOutputs(const NodeDef& node,
-                                   const FunctionOptimizerContext& ctx,
-                                   int size_hint = 0) {
-  gtl::FlatSet<int> active_outputs;
+absl::flat_hash_set<int> GetActiveOutputs(const NodeDef& node,
+                                          const FunctionOptimizerContext& ctx,
+                                          int size_hint = 0) {
+  absl::flat_hash_set<int> active_outputs;
   active_outputs.reserve(static_cast<size_t>(size_hint));
 
   // 1. Output can be consumed by the other graph node.
@@ -508,7 +508,7 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
   // number of output args is the same as number of possible function caller
   // node outputs.
   int num_outputs = func.signature().output_arg_size();
-  const gtl::FlatSet<int> active_outputs =
+  const absl::flat_hash_set<int> active_outputs =
       GetActiveOutputs(func_node, ctx, /*size_hind*/ num_outputs);
 
   return active_outputs.size() != num_outputs;
@@ -519,7 +519,7 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
 FunctionDefLibrary PruneFunctionLibrary(const FunctionLibraryDefinition& flib,
                                         const GraphDef& optimized_graph) {
   FunctionLibraryDefinition pruned_flib =
-      ReachableFunctionLibraryDefinition(flib, optimized_graph);
+      flib.ReachableDefinitions(optimized_graph);
 
   int pruned_functions = static_cast<int>(pruned_flib.num_functions()) -
                          static_cast<int>(flib.num_functions());
@@ -534,8 +534,8 @@ FunctionDefLibrary PruneFunctionLibrary(const FunctionLibraryDefinition& flib,
 Status PushDownConstInputs(const NodeDef& func_node,
                            const FunctionOptimizerContext& ctx,
                            GrapplerFunctionItem* item,
-                           gtl::FlatSet<string>* const_inputs,
-                           gtl::FlatSet<string>* control_deps) {
+                           absl::flat_hash_set<string>* const_inputs,
+                           absl::flat_hash_set<string>* control_deps) {
   // Record node control dependencies in the control_deps set.
   const auto record_control_deps = [&](const NodeDef* const_input) {
     for (int i = const_input->input_size() - 1; i >= 0; --i) {
@@ -585,7 +585,7 @@ void RemovePushedDownConstInputs(const FunctionSpecialization& specialization,
 
   // Attach control dependencies of pushed down const input to the caller node.
   if (!specialization.control_deps.empty()) {
-    gtl::FlatSet<string> existing_control_deps;
+    absl::flat_hash_set<string> existing_control_deps;
 
     for (const string& input : keep_inputs) {
       existing_control_deps.insert(AsControlDependency(NodeName(input)));
@@ -797,8 +797,8 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 
   // Push const inputs into the function body, and keep track of their control
   // dependencies.
-  gtl::FlatSet<string> const_inputs;
-  gtl::FlatSet<string> control_deps;
+  absl::flat_hash_set<string> const_inputs;
+  absl::flat_hash_set<string> control_deps;
   TF_RETURN_IF_ERROR(PushDownConstInputs(func_node, *ctx, &item, &const_inputs,
                                          &control_deps));
 
@@ -1005,7 +1005,7 @@ Status InlineDirectFunctionCall(const NodeDef& func_node,
 
   // Mapping from input placeholder name to function input position.
   int idx = 0;
-  std::unordered_map<string, int> input_placeholders_idx;
+  absl::flat_hash_map<string, int> input_placeholders_idx;
   for (const InputArgExpansion& input_arg : item.inputs()) {
     for (const string& placeholder : input_arg.placeholders) {
       input_placeholders_idx[placeholder] = idx++;
@@ -1270,6 +1270,20 @@ Status IsInlinableIndirectFunctionCall(const FunctionOptimizerContext& ctx,
         SummarizeNodeDef(func_node));
   }
 
+  // TODO(b/120991525, b/120986912): We need to lower `If` and `While` nodes to
+  // `Switch` nodes after function inlining (one more PRE_PLACEMENT pass?), but
+  // because of the reason described above we are not sure that it's safe, for
+  // now just disable inlining functions with functional control flow.
+  const auto is_functional_ctrl_flow_op = [](const NodeDef& node) {
+    return IsIf(node) || IsWhile(node);
+  };
+  if (absl::c_any_of(func.node_def(), is_functional_ctrl_flow_op)) {
+    return errors::FailedPrecondition(
+        "Can't inline function with `If` or `While` nodes in the function "
+        "body: ",
+        SummarizeNodeDef(func_node));
+  }
+
   return Status::OK();
 }
 
@@ -1360,7 +1374,24 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
   const string prefix = strings::StrCat(func_node.name(), "/");
 
   // ------------------------------------------------------------------------ //
-  // First we need to assign device placements to all function body nodes.
+  // Before placing the function body nodes we pin input placeholders to the
+  // same device as their corresponding input nodes.
+
+  for (NodeDef& func_body_node : *item.graph.mutable_node()) {
+    if (item.IsInputPlaceholder(func_body_node.name())) {
+      const int input_idx = input_placeholders_idx[func_body_node.name()];
+      const GraphView::OutputPort output_port =
+          ctx->graph_view().GetRegularFanin({&func_node, input_idx});
+
+      VLOG(3) << "Pin inlined function input node '" << func_body_node.name()
+              << "' to the '" << output_port.node->device() << "' device.";
+      func_body_node.set_device(output_port.node->device());
+    }
+  }
+
+  // ------------------------------------------------------------------------ //
+  // After placing nodes corresponding to the function inputs, we need to assign
+  // device placements to all other function body nodes.
 
   GraphDef placed_graph_def;
 
@@ -1418,7 +1449,7 @@ Status InlineIndirectFunctionCall(const NodeDef& func_node,
       (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
       func_body_node.mutable_attr()->erase("dtype");
       func_body_node.mutable_attr()->erase("shape");
-      int input_idx = input_placeholders_idx[func_body_node.name()];
+      const int input_idx = input_placeholders_idx[func_body_node.name()];
       func_body_node.add_input(strings::StrCat(inputs[input_idx].ToString()));
 
       // All side effects must happen before inputs can start executing.
@@ -1668,7 +1699,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
   if (!ctx.control_overrides().empty()) {
     for (NodeDef& node : *optimized_graph->mutable_node()) {
       // Keep track of new control inputs to the node.
-      gtl::FlatSet<string> add_ctrl_inputs;
+      absl::flat_hash_set<string> add_ctrl_inputs;
 
       // Remove all invalidated control inputs.
       for (int idx = 0; idx < node.input_size(); /* see below */) {

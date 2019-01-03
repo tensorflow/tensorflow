@@ -50,6 +50,7 @@ tf_custom_op_py_library(
     visibility = [
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//tensorflow_estimator:__subpackages__",
         "//video/youtube/personalization:__subpackages__",
     ],
     deps = [

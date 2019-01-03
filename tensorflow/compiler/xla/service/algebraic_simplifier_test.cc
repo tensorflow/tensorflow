@@ -1273,7 +1273,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   // Create add computation.
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, /*feature_group_count=*/1,
-      window, dnums, DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
   m->AddEntryComputation(builder.Build());
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -1281,6 +1281,51 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceWindowIsReduceAndReshape) {
+  auto m = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {1, 2, 3, 4}), "param"));
+  Window window;
+  for (int64 i = 0; i < 4; ++i) {
+    WindowDimension* dim = window.add_dimensions();
+    // Makes 1x2x3x1 window.
+    dim->set_size((i % 3) + 1);
+    dim->set_stride(1);
+    dim->set_padding_low(0);
+    dim->set_padding_high(0);
+    dim->set_window_dilation(1);
+    dim->set_base_dilation(1);
+  }
+  // Create add computation.
+  HloComputation* add_computation = nullptr;
+  {
+    HloComputation::Builder builder(TestName() + ".add");
+    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+    HloInstruction* p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* p1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
+    add_computation = m->AddEmbeddedComputation(builder.Build());
+  }
+  builder.AddInstruction(HloInstruction::CreateReduceWindow(
+      ShapeUtil::MakeShape(F32, {1, 1, 1, 4}), param,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f))),
+      window, add_computation));
+  m->AddEntryComputation(builder.Build());
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(m::Reduce(m::Parameter(0), m::Constant()))));
 }
 
 TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
@@ -2047,6 +2092,27 @@ TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
             computation->root_instruction()->dimensions());
 }
 
+TEST_F(AlgebraicSimplifierTest, TransposeIsReshape) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[10] parameter(0)
+      reshaped = f32[1,1,10] reshape(f32[10] param)
+      transposed = f32[10,1,1] transpose(f32[1,1,10] reshaped), dimensions={2,1,0}
+      ROOT reshaped_again = f32[10] reshape(f32[10,1,1] transposed)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Parameter()));
+}
+
 // Test merging reshape and broadcast.
 TEST_F(AlgebraicSimplifierTest, ReshapeAndBroadcastMerged) {
   auto m = CreateNewVerifiedModule();
@@ -2643,6 +2709,74 @@ TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortWrongDimensions) {
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
+TEST_F(AlgebraicSimplifierTest, RemoveUnusedSortOperandArrayResult) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = s32[64,8732]{1,0} parameter(1)
+      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values),
+        dimensions={1}
+      ROOT gte = f32[64,8732]{1,0} get-tuple-element(sort), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Sort(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, RemoveUnusedSortOperandTuple) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,87] parameter(0)
+      values.0 = s32[64,87] parameter(1)
+      values.1 = u32[64,87] parameter(2)
+      sort = (f32[64,87], s32[64,87], u32[64,87]) sort(
+          keys, values.0, values.1),
+        dimensions={1}
+      gte.0 = f32[64,87] get-tuple-element(sort), index=0
+      gte.1 = u32[64,87] get-tuple-element(sort), index=2
+      ROOT tuple = (f32[64,87], u32[64,87]) tuple(gte.0, gte.1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      GmockMatch(m::Tuple(
+          m::GetTupleElement(m::Sort(m::Parameter(0), m::Parameter(2)), 0),
+          m::GetTupleElement(m::Sort(m::Parameter(0), m::Parameter(2)), 1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DontRemoveUnusedSortKey) {
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = s32[64,8732]{1,0} parameter(1)
+      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}
+      ROOT gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   auto builder = HloComputation::Builder(TestName());
 
@@ -2950,11 +3084,11 @@ TEST_P(ConvInputPaddingTest, DoTest) {
           .ValueOrDie();
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(lhs_pad->shape(), filter->shape(),
-                                         /*feature_group_count=*/1, window,
-                                         dnums)
+                                         /*feature_group_count=*/1,
+                                         /*batch_group_count=*/1, window, dnums)
           .ValueOrDie(),
-      lhs_pad, filter, /*feature_group_count=*/1, window, dnums,
-      DefaultPrecisionConfig(2)));
+      lhs_pad, filter, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
@@ -3067,11 +3201,11 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(input->shape(), rhs_pad->shape(),
-                                         /*feature_group_count=*/1, window,
-                                         dnums)
+                                         /*feature_group_count=*/1,
+                                         /*batch_group_count=*/1, window, dnums)
           .ValueOrDie(),
-      input, rhs_pad, /*feature_group_count=*/1, window, dnums,
-      precision_config));
+      input, rhs_pad, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      window, dnums, precision_config));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -3219,7 +3353,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
 
     b.AddInstruction(HloInstruction::CreateConvolve(
         out_shape, input, filter,
-        /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
+        /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+        DefaultPrecisionConfig(2)));
 
     // TODO(b/80488902): verify this module.
     auto module = CreateNewUnverifiedModule();
@@ -3431,7 +3566,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 
   // Create the reduce-window.
   Window window;
-  for (int64 i = 0; i < ShapeUtil::Rank(pad->shape()); ++i) {
+  for (int64 i = 0; i < pad->shape().rank(); ++i) {
     auto* dim = window.add_dimensions();
     dim->set_size(1);
     dim->set_padding_low(10);
@@ -3517,7 +3652,7 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
 
   // Create the reduce-window.
   Window window;
-  for (int64 i = 0; i < ShapeUtil::Rank(pad->shape()); ++i) {
+  for (int64 i = 0; i < pad->shape().rank(); ++i) {
     auto* dim = window.add_dimensions();
     dim->set_size(1);
     dim->set_padding_low(10);
@@ -4066,9 +4201,6 @@ PadReduceWindowEffectiveBroadcastCases() {
        /*reduce_window_spatials=*/{7, 7}, /*prepend_a=*/true,
        /*should_become_broadcast=*/false},  //
       {/*input_spatials=*/{1, 1}, /*symmetric_pad_amount=*/{2, 2},
-       /*reduce_window_spatials=*/{5, 5}, /*prepend_a=*/true,
-       /*should_become_broadcast=*/true},  //
-      {/*input_spatials=*/{1, 1}, /*symmetric_pad_amount=*/{2, 2},
        /*reduce_window_spatials=*/{1, 1}, /*prepend_a=*/true,
        /*should_become_broadcast=*/false},  //
       {/*input_spatials=*/{5, 1}, /*symmetric_pad_amount=*/{0, 2},
@@ -4082,6 +4214,57 @@ INSTANTIATE_TEST_CASE_P(
     PadReduceWindowEffectiveBroadcastInstantiation,
     PadReduceWindowEffectiveBroadcastTest,
     ::testing::ValuesIn(PadReduceWindowEffectiveBroadcastCases()));
+
+class BatchDotStrengthReductionTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<
+          ::testing::tuple<int, int, int, PrimitiveType>> {};
+TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
+  auto module = CreateNewVerifiedModule();
+  int m, k, n;
+  PrimitiveType element_type;
+  std::tie(m, k, n, element_type) = GetParam();
+
+  Shape dot_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, m, n});
+  Shape lhs_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, m, k});
+  Shape rhs_shape = ShapeUtil::MakeShape(element_type, {1, 3, 5, k, n});
+  HloComputation::Builder builder(TestName());
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, rhs_shape, "rhs"));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_batch_dimensions(0);
+  dot_dnums.add_lhs_batch_dimensions(1);
+  dot_dnums.add_lhs_batch_dimensions(2);
+  dot_dnums.add_rhs_batch_dimensions(0);
+  dot_dnums.add_rhs_batch_dimensions(1);
+  dot_dnums.add_rhs_batch_dimensions(2);
+  dot_dnums.add_lhs_contracting_dimensions(4);
+  dot_dnums.add_rhs_contracting_dimensions(3);
+  builder.AddInstruction(HloInstruction::CreateDot(
+      dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(default_options_);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
+  const bool dot_should_be_transformed = m == 1 || k == 1 || n == 1;
+  const bool computation_should_be_modified = dot_should_be_transformed;
+  EXPECT_EQ(changed, computation_should_be_modified);
+  bool has_no_dot = true;
+  for (const auto& hlo : computation->instructions()) {
+    if (hlo->opcode() == HloOpcode::kDot) {
+      has_no_dot = false;
+      break;
+    }
+  }
+  EXPECT_EQ(has_no_dot, dot_should_be_transformed);
+}
+
+INSTANTIATE_TEST_CASE_P(
+    BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
+    ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
+                       ::testing::Values(1, 2), ::testing::Values(F32, BF16)));
 
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,

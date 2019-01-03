@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 
-#include <stddef.h>
 #include <algorithm>
+#include <cstddef>
 #include <functional>
 #include <list>
 #include <queue>
@@ -332,7 +332,7 @@ void HloComputation::ComputeInstructionPostOrder(
       dfs_stack.emplace_back(op);
     }
 
-    // Add inputs for send->recv_done dependencies and cross-replica-sum
+    // Add inputs for send->recv_done dependencies and all-reduce
     // dependencies.
     switch (current->opcode()) {
       case HloOpcode::kRecvDone: {
@@ -344,7 +344,7 @@ void HloComputation::ComputeInstructionPostOrder(
         }
         break;
       }
-      case HloOpcode::kCrossReplicaSum: {
+      case HloOpcode::kAllReduce: {
         auto all_reduce_id = current->all_reduce_id();
         if (all_reduce_id) {
           auto it = channel_dependency_map.find(all_reduce_id.value());
@@ -372,7 +372,7 @@ HloComputation::ComputeChannelDependencies() const {
             instruction.get());
         break;
       }
-      case HloOpcode::kCrossReplicaSum: {
+      case HloOpcode::kAllReduce: {
         auto all_reduce_id = instruction->all_reduce_id();
         if (all_reduce_id) {
           auto& dependencies = channel_dependency_map[all_reduce_id.value()];
@@ -396,6 +396,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
   absl::flat_hash_map<HloInstruction*, VisitState> visited;
+  visited.reserve(instruction_count());
   for (auto& instruction : instructions_) {
     if (instruction->opcode() == HloOpcode::kTrace) {
       // Trace instructions aren't handled by the DFS visitor. Add trace
@@ -599,7 +600,7 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     const std::function<
         HloInstruction*(HloInstruction* leaf, const ShapeIndex& leaf_index,
                         HloComputation* computation)>& copy_leaf) {
-  if (ShapeUtil::IsTuple(instruction->shape())) {
+  if (instruction->shape().IsTuple()) {
     std::vector<HloInstruction*> elements;
     for (int64 i = 0; i < ShapeUtil::TupleElementCount(instruction->shape());
          i++) {
@@ -616,14 +617,14 @@ StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     }
     return AddInstruction(HloInstruction::CreateTuple(elements));
   }
-  if (ShapeUtil::IsToken(instruction->shape())) {
+  if (instruction->shape().IsToken()) {
     // Tokens have no on-device representation and cannot be copied. Pass
     // through transparently.
     return instruction;
   }
 
   // Array shape.
-  TF_RET_CHECK(ShapeUtil::IsArray(instruction->shape()));
+  TF_RET_CHECK(instruction->shape().IsArray());
   return copy_leaf(instruction, *index, this);
 }
 
@@ -710,8 +711,6 @@ bool HloComputation::operator==(const HloComputation& other) const {
       };
   return eq(root_instruction(), other.root_instruction());
 }
-
-uint64 HloComputation::Hash() const { return root_instruction()->Hash(); }
 
 Status HloComputation::ReplaceWithNewInstruction(
     HloInstruction* old_instruction,

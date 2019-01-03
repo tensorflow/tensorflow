@@ -201,6 +201,7 @@ cc_library(
         "//tensorflow/core/kernels/data:prefetch_dataset_op",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

@@ -117,7 +117,7 @@ XlaOp Any(XlaOp predicates) {
     XlaComputation logical_or = CreateScalarOrComputation(PRED, builder);
     TF_ASSIGN_OR_RETURN(const Shape& predicates_shape,
                         builder->GetShape(predicates));
-    std::vector<int64> all_dimensions(ShapeUtil::Rank(predicates_shape));
+    std::vector<int64> all_dimensions(predicates_shape.rank());
     std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
     return Reduce(predicates, f, logical_or, all_dimensions);
   });

@@ -264,12 +264,6 @@ class HloComputation {
   // Return whether `*this` and `other` are functionally equivalent.
   bool operator==(const HloComputation& other) const;
 
-  // Generates a hash value of an HLO computation. Hash considers
-  // information on opcode, shape, operands, and typically a root instruction.
-  // This function returns the same hash value for equivalent HLO computations,
-  // with respect to HloInstruction::Identical() method.
-  uint64 Hash() const;
-
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.
   Status ReplaceWithNewInstruction(
@@ -373,7 +367,7 @@ class HloComputation {
 
   // Returns a map from channel-id to directed dependencies of the channel
   // instructions. For send&recv pairs it means the send instruction and for
-  // cross-replica-sum the union of the dependencies for all participating
+  // all-reduce the union of the dependencies for all participating
   // instructions.
   using ChannelDependencyMap =
       absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>;

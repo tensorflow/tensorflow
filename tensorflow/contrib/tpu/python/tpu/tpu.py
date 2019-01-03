@@ -36,6 +36,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import nest
 
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
@@ -487,7 +488,11 @@ def replicate(computation,
     computation: A Python function that builds the computation to replicate.
     inputs: A list of lists of input tensors or `None` (equivalent to
       `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
-      have the same number of inputs.
+      have the same number of inputs. Each input can be a nested structure
+      containing values that are convertible to tensors. Note that passing an
+      N-dimension list of compatible values will result in a N-dimention list of
+      scalar tensors rather than a single Rank-N tensors. If you need different
+      behavior, convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to computation.
     device_assignment: If not `None`, a `DeviceAssignment` describing the
@@ -526,7 +531,11 @@ def split_compile_and_replicate(computation,
     computation: A Python function that builds the computation to replicate.
     inputs: A list of lists of input tensors or `None` (equivalent to
       `[[]]`), indexed by `[replica_num][input_num]`. All replicas must
-      have the same number of inputs.
+      have the same number of inputs. Each input can be a nested structure
+      containing values that are convertible to tensors. Note that passing an
+      N-dimension list of compatible values will result in a N-dimention list of
+      scalar tensors rather than a single Rank-N tensors. If you need different
+      behavior, convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to computation.
     device_assignment: If not `None`, a `DeviceAssignment` describing the
@@ -580,24 +589,32 @@ def split_compile_and_replicate(computation,
   if num_replicas == 0:
     return []
 
+  # Checks all replicas have the same structure.
+  for i in xrange(1, num_replicas):
+    nest.assert_same_structure(inputs[0], inputs[i])
+
+  # Flatten inputs.
+  flat_inputs = [
+      nest.flatten(per_replica_input) for per_replica_input in inputs
+  ]
   # Converts inputs to Tensors.
-  inputs = [[ops.convert_to_tensor(x) for x in inp] for inp in inputs]
+  flat_inputs = [[ops.convert_to_tensor(x) for x in inp] for inp in flat_inputs]
 
   # Verifies that all replicas have matching numbers and types of inputs
-  input_types = [x.dtype for x in inputs[0]]
-  input_arity = len(input_types)
+  flat_input_types = [x.dtype for x in flat_inputs[0]]
+  input_arity = len(inputs[0])
+  flat_input_arity = len(flat_input_types)
   for i in range(num_replicas):
     if len(inputs[i]) != input_arity:
       raise ValueError("Replicas must have the same number of inputs. "
                        "Replica 0 had {} inputs, replica {} had {} "
                        "inputs.".format(input_arity, i, len(inputs[i])))
 
-    types = [x.dtype for x in inputs[i]]
-    if types != input_types:
-      raise ValueError(
-          "Replicas must have matching input types. Replica 0 had "
-          "input types {}, replica {} had input types {}".format(
-              input_types, i, types))
+    types = [x.dtype for x in flat_inputs[i]]
+    if types != flat_input_types:
+      raise ValueError("Replicas must have matching input types. Replica 0 had "
+                       "input types {}, replica {} had input types {}".format(
+                           flat_input_types, i, types))
 
   arg_error = xla.check_function_argument_count(
       computation, input_arity, infeed_queue)
@@ -620,8 +637,8 @@ def split_compile_and_replicate(computation,
 
   # Fan-in: Builds a TPUReplicatedInput node for each input.
   computation_inputs = []
-  for i in range(0, input_arity):
-    replicas = [inputs[replica][i] for replica in xrange(num_replicas)]
+  for i in range(0, flat_input_arity):
+    replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
     computation_inputs.append(
         tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
 
@@ -646,6 +663,14 @@ def split_compile_and_replicate(computation,
           array_ops.identity(x, name="replicated_input_{}".format(i))
           for i, x in enumerate(computation_inputs)
       ]
+      for i in computation_inputs:
+        # pylint: disable=protected-access
+        i.op._set_attr("_tpu_input_identity", attr_value_pb2.AttrValue(b=True))
+        # pylint: enable=protected-access
+
+      # Unflatten the computation inputs to match original input structure.
+      computation_inputs = nest.pack_sequence_as(
+          structure=inputs[0], flat_sequence=computation_inputs)
 
       # If there is an infeed queue, adds the dequeued values to the
       # computation's inputs.
@@ -726,7 +751,11 @@ def split_compile_and_replicate(computation,
     new_output_tensors = []
     for t in output_tensors:
       with ops.device(t.device if t.device else core(0)):
-        new_output_tensors.append(array_ops.identity(t))
+        o = array_ops.identity(t)
+        # pylint: disable=protected-access
+        o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
+        # pylint: enable=protected-access
+        new_output_tensors.append(o)
     output_tensors = new_output_tensors
     context.ExitResult(output_tensors)
   finally:
@@ -775,6 +804,157 @@ def split_compile_and_replicate(computation,
           ]
                            for replica in xrange(num_replicas)]
       ]
+
+
+def split_compile_and_shard(computation,
+                            inputs=None,
+                            num_shards=1,
+                            input_shard_axes=None,
+                            outputs_from_all_shards=True,
+                            output_shard_axes=None,
+                            infeed_queue=None,
+                            device_assignment=None,
+                            name=None):
+  """Shards `computation` for parallel execution.
+
+  `inputs` must be a list of Tensors or None (equivalent to an empty list), each
+  of which has a corresponding split axis (from `input_shard_axes`). Each input
+  is split into `num_shards` pieces along the corresponding axis, and
+  computation is applied to each shard in parallel.
+
+  Tensors are broadcast to all shards if they are lexically captured by
+  `computation`. e.g.,
+
+  x = tf.constant(7)
+  def computation():
+    return x + 3
+  ... = shard(computation, ...)
+
+  TODO(phawkins): consider adding support for broadcasting Tensors passed
+  as inputs.
+
+  If `outputs_from_all_shards` is true, the outputs from all shards of
+  `computation` are concatenated back together along their `output_shards_axes`.
+  Otherwise, each output is taken from an arbitrary shard.
+
+  Inputs and outputs of the computation must be at least rank-1 Tensors.
+
+  Args:
+    computation: A Python function that builds a computation to apply to each
+      shard of the input.
+    inputs: A list of input tensors or None (equivalent to an empty list). Each
+      input tensor has a corresponding shard axes, given by `input_shard_axes`,
+      which must have size divisible by `num_shards`.
+    num_shards: The number of shards.
+    input_shard_axes: A list of dimensions along which to shard `inputs`, or
+      `None`. `None` means "shard all inputs along dimension 0". If not `None`,
+      there must be one dimension per input.
+    outputs_from_all_shards: Boolean or list of boolean. For each output, if
+      `True`, outputs from all shards are concatenated along the corresponding
+      `output_shard_axes` entry. Otherwise, each output is taken
+      from an arbitrary shard. If the argument is a boolean, the argument's
+      value is used for each output.
+    output_shard_axes: A list of dimensions along which to concatenate the
+      outputs of `computation`, or `None`. `None` means "concatenate all outputs
+      along dimension 0". If not `None`, there must be one dimension per output.
+      Ignored if `outputs_from_all_shards` is False.
+    infeed_queue: If not `None`, the `InfeedQueue` to use to augment the inputs
+      of `computation`.
+    device_assignment: If not `None`, a `DeviceAssignment` describing the
+      mapping between logical cores in the computation with physical cores in
+      the TPU topology. Uses a default device assignment if `None`. The
+      `DeviceAssignment` may be omitted if each shard of the computation uses
+      only one core, and there is either only one shard, or the number of shards
+      is equal to the number of cores in the TPU system.
+    name: (Deprecated) Does nothing.
+  Returns:
+    A tuple of (compile op, [output tensors]).
+  Raises:
+    ValueError: If num_shards <= 0
+    ValueError: If len(input_shard_axes) != len(inputs)
+    ValueError: If len(output_shard_axes) != len(outputs from `computation`)
+  """
+
+  if num_shards <= 0:
+    raise ValueError("num_shards must be a positive integer.")
+
+  inputs = [] if inputs is None else inputs
+  if not isinstance(inputs, list):
+    raise TypeError("tpu.shard()'s inputs must be a list of Tensors or None.")
+
+  # Converts inputs to Tensors.
+  inputs = [ops.convert_to_tensor(x) for x in inputs]
+
+  if input_shard_axes is None:
+    input_shard_axes = [0] * len(inputs)
+  if len(inputs) != len(input_shard_axes):
+    raise ValueError("Length of input_shard_axes must be equal to the number "
+                     "of inputs.")
+
+  if inputs:
+    # Splits the `inputs` along the corresponding `input_shard_axes`, giving
+    # lists with layout [input][shard]
+    split_inputs = [
+        array_ops.split(x, num_shards, axis=axis)
+        for (axis, x) in zip(input_shard_axes, inputs)]
+
+    # Transposes the input lists to have layout [shard][input]
+    transposed_inputs = [list(i) for i in zip(*split_inputs)]
+  else:
+    transposed_inputs = [[]] * num_shards
+
+  compile_op, outputs = split_compile_and_replicate(
+      computation,
+      transposed_inputs,
+      infeed_queue=infeed_queue,
+      device_assignment=device_assignment,
+      name=name)
+
+  # There must be at least one shard since num_shards > 0.
+  # TODO(b/36647078) remove disable when pylint bug is fixed.
+  # pylint: disable=indexing-exception
+  if isinstance(outputs[0], ops.Operation):
+    # pylint: enable=indexing-exception
+    # There were no outputs from the computation and replicate returned a list
+    # of NoOps with control dependencies on the computation. Return the first
+    # one so it can be used as a control dependency or fetch node.
+    # TODO(b/36647078) remove disable when pylint bug is fixed.
+    # pylint: disable=indexing-exception
+    return compile_op, [outputs[0]]
+    # pylint: enable=indexing-exception
+
+  # TODO(b/36647078) remove disable when pylint bug is fixed.
+  # pylint: disable=indexing-exception
+  num_outputs = len(outputs[0])
+  # pylint: enable=indexing-exception
+
+  if output_shard_axes is None:
+    output_shard_axes = [0] * num_outputs
+  if num_outputs != len(output_shard_axes):
+    raise ValueError("Length of output_shard_axes must be equal to the number "
+                     "of outputs.")
+
+  if isinstance(outputs_from_all_shards, bool):
+    outputs_from_all_shards = [outputs_from_all_shards] * num_outputs
+
+  if num_outputs != len(outputs_from_all_shards):
+    raise ValueError("Length of outputs_from_all_shards must be equal to the "
+                     "number of outputs.")
+
+  results = []
+  for (axis, all_shards, x) in zip(output_shard_axes, outputs_from_all_shards,
+                                   zip(*outputs)):
+    if all_shards:
+      # Concatenate all of the outputs together (use stack for scalars).
+      shape = x[0].shape
+      is_scalar = shape is not None and (shape.ndims == 0)
+      results.append((array_ops.stack(list(x)) if is_scalar
+                      else array_ops.concat(list(x), axis=axis)))
+    else:
+      # TODO(phawkins): use a smarter policy, e.g., round-robin across shards.
+      results.append(x[0])
+
+  return compile_op, results
 
 
 def shard(computation,
@@ -845,87 +1025,16 @@ def shard(computation,
     ValueError: If len(input_shard_axes) != len(inputs)
     ValueError: If len(output_shard_axes) != len(outputs from `computation`)
   """
-
-  if num_shards <= 0:
-    raise ValueError("num_shards must be a positive integer.")
-
-  inputs = [] if inputs is None else inputs
-  if not isinstance(inputs, list):
-    raise TypeError("tpu.shard()'s inputs must be a list of Tensors or None.")
-
-  # Converts inputs to Tensors.
-  inputs = [ops.convert_to_tensor(x) for x in inputs]
-
-  if input_shard_axes is None:
-    input_shard_axes = [0] * len(inputs)
-  if len(inputs) != len(input_shard_axes):
-    raise ValueError("Length of input_shard_axes must be equal to the number "
-                     "of inputs.")
-
-  if inputs:
-    # Splits the `inputs` along the corresponding `input_shard_axes`, giving
-    # lists with layout [input][shard]
-    split_inputs = [
-        array_ops.split(x, num_shards, axis=axis)
-        for (axis, x) in zip(input_shard_axes, inputs)]
-
-    # Transposes the input lists to have layout [shard][input]
-    transposed_inputs = [list(i) for i in zip(*split_inputs)]
-  else:
-    transposed_inputs = [[]] * num_shards
-
-  outputs = replicate(
+  return split_compile_and_shard(
       computation,
-      transposed_inputs,
+      inputs=inputs,
+      num_shards=num_shards,
+      input_shard_axes=input_shard_axes,
+      outputs_from_all_shards=outputs_from_all_shards,
+      output_shard_axes=output_shard_axes,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)
-
-  # There must be at least one shard since num_shards > 0.
-  # TODO(b/36647078) remove disable when pylint bug is fixed.
-  # pylint: disable=indexing-exception
-  if isinstance(outputs[0], ops.Operation):
-    # pylint: enable=indexing-exception
-    # There were no outputs from the computation and replicate returned a list
-    # of NoOps with control dependencies on the computation. Return the first
-    # one so it can be used as a control dependency or fetch node.
-    # TODO(b/36647078) remove disable when pylint bug is fixed.
-    # pylint: disable=indexing-exception
-    return [outputs[0]]
-    # pylint: enable=indexing-exception
-
-  # TODO(b/36647078) remove disable when pylint bug is fixed.
-  # pylint: disable=indexing-exception
-  num_outputs = len(outputs[0])
-  # pylint: enable=indexing-exception
-
-  if output_shard_axes is None:
-    output_shard_axes = [0] * num_outputs
-  if num_outputs != len(output_shard_axes):
-    raise ValueError("Length of output_shard_axes must be equal to the number "
-                     "of outputs.")
-
-  if isinstance(outputs_from_all_shards, bool):
-    outputs_from_all_shards = [outputs_from_all_shards] * num_outputs
-
-  if num_outputs != len(outputs_from_all_shards):
-    raise ValueError("Length of outputs_from_all_shards must be equal to the "
-                     "number of outputs.")
-
-  results = []
-  for (axis, all_shards, x) in zip(output_shard_axes, outputs_from_all_shards,
-                                   zip(*outputs)):
-    if all_shards:
-      # Concatenate all of the outputs together (use stack for scalars).
-      shape = x[0].shape
-      is_scalar = shape is not None and (shape.ndims == 0)
-      results.append((array_ops.stack(list(x)) if is_scalar
-                      else array_ops.concat(list(x), axis=axis)))
-    else:
-      # TODO(phawkins): use a smarter policy, e.g., round-robin across shards.
-      results.append(x[0])
-
-  return results
+      name=name)[1]
 
 
 def batch_parallel(computation,
@@ -1004,6 +1113,11 @@ def rewrite(computation,
       All `Operation`s constructed during `computation` will be executed when
       evaluating any of the returned output tensors, not just the ones returned.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
+      Each input can be a nested structure containing values that are
+      convertible to tensors. Note that passing an N-dimension list of
+      compatible values will result in a N-dimention list of scalar tensors
+      rather than a single Rank-N tensors. If you need different behavior,
+      convert part of inputs to tensors with `tf.convert_to_tensor`.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
     device_assignment: if not `None`, a `DeviceAssignment` describing the

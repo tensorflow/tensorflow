@@ -33,6 +33,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
+  opts.set_xla_hlo_dump_as_html(false);
 #ifdef INTEL_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
@@ -132,6 +133,11 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_hlo_dump_as_graphdef),
           flag_values->xla_hlo_dump_as_graphdef(),
           "Dump HLO graphs as TensorFlow GraphDefs."),
+      tensorflow::Flag("xla_hlo_dump_as_html",
+                       bool_setter_for(&DebugOptions::set_xla_hlo_dump_as_html),
+                       flag_values->xla_hlo_dump_as_html(),
+                       "Dump HLO graphs as an HTML (DOT rendered into SVG "
+                       "inlined in HTML)."),
       tensorflow::Flag(
           "xla_hlo_graph_sharding_color",
           bool_setter_for(&DebugOptions::set_xla_hlo_graph_sharding_color),
