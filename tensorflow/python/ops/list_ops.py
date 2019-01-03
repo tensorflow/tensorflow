@@ -71,11 +71,13 @@ def tensor_list_from_tensor(tensor, element_shape, name=None):
       name=name)
 
 
-def tensor_list_concat(input_handle, element_dtype, name=None):
+def tensor_list_concat(input_handle, element_dtype, element_shape=None,
+                       name=None):
   # Ignore the lengths output of TensorListConcat. It is only used during
   # gradient computation.
   return gen_list_ops.tensor_list_concat(
-      input_handle=input_handle, element_dtype=element_dtype, name=name)[0]
+      input_handle=input_handle, element_dtype=element_dtype,
+      element_shape=element_shape, name=name)[0]
 
 
 def tensor_list_split(tensor, element_shape, lengths, name=None):
