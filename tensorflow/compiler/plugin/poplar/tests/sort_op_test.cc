@@ -4,6 +4,7 @@
 #include <poplar/Graph.hpp>
 #include <poplar/IPUModel.hpp>
 #include <popops/ElementWise.hpp>
+#include <popops/Sort.hpp>
 #include <popops/codelets.hpp>
 #include <poputil/TileMapping.hpp>
 
@@ -26,30 +27,23 @@ using namespace poplar::program;
 namespace xla {
 namespace poplarplugin {
 
-static std::string GetPathToGraphProgFile(std::string filename) {
-  Dl_info dlInfo;
-  static const void* dummy;
-  if (dladdr(&dummy, &dlInfo)) {
-    std::string path(dlInfo.dli_fname);
-    path = path.substr(0, path.find_last_of('/') + 1);
-    path = path + "../compiler/plugin/poplar/" + filename;
-    if (access(path.c_str(), R_OK) != -1) {
-      return path;
-    }
-  }
+static poplar::program::Sequence Sort(poplar::Graph& graph,
+                                      const poplar::Tensor& t, unsigned dim) {
+  poplar::program::Sequence result;
 
-  // This is for unit tests
-  {
-    char buf[256];
-    getcwd(buf, 255);
-    std::string path(buf);
-    path = path + "/tensorflow/compiler/plugin/poplar/" + filename;
-    if (access(path.c_str(), R_OK) != -1) {
-      return path;
-    }
-  }
+  popops::sortInPlace(graph, t, dim, result);
 
-  return "";
+  return result;
+}
+
+static poplar::program::Sequence Sort(poplar::Graph& graph,
+                                      const poplar::Tensor& k,
+                                      const poplar::Tensor& v, unsigned dim) {
+  poplar::program::Sequence result;
+
+  popops::sortKeyValueInPlace(graph, k, v, dim, result);
+
+  return result;
 }
 
 template <typename T>
@@ -88,7 +82,6 @@ TEST(Sort, OneDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 1024;
 
@@ -97,9 +90,7 @@ TEST(Sort, OneDimension) {
   graph.createHostWrite("a-write", a);
   graph.createHostRead("a-read", a);
 
-  auto prog_status = CreateSort(graph, a, 0);
-  ASSERT_TRUE(prog_status.ok());
-  auto prog = prog_status.ValueOrDie();
+  auto prog = Sort(graph, a, 0);
 
   Engine engine(graph, prog);
   engine.load(device);
@@ -123,7 +114,6 @@ TEST(SortInt, OneDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 1024;
 
@@ -132,9 +122,7 @@ TEST(SortInt, OneDimension) {
   graph.createHostWrite("a-write", a);
   graph.createHostRead("a-read", a);
 
-  auto prog_status = CreateSort(graph, a, 0);
-  ASSERT_TRUE(prog_status.ok());
-  auto prog = prog_status.ValueOrDie();
+  auto prog = Sort(graph, a, 0);
 
   Engine engine(graph, prog);
   engine.load(device);
@@ -158,7 +146,6 @@ TEST(SortKV, OneDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 1024;
 
@@ -170,9 +157,7 @@ TEST(SortKV, OneDimension) {
   graph.createHostWrite("b-write", v);
   graph.createHostRead("b-read", v);
 
-  auto prog_status = CreateSort(graph, k, v, 0);
-  ASSERT_TRUE(prog_status.ok());
-  auto prog = prog_status.ValueOrDie();
+  auto prog = Sort(graph, k, v, 0);
 
   Engine engine(graph, prog);
   engine.load(device);
@@ -199,7 +184,6 @@ TEST(Sort, TwoDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 32;
 
@@ -208,9 +192,7 @@ TEST(Sort, TwoDimension) {
   graph.createHostWrite("a-write", a);
   graph.createHostRead("a-read", a);
 
-  auto prog_status = CreateSort(graph, a, 1);
-  ASSERT_TRUE(prog_status.ok());
-  auto prog = prog_status.ValueOrDie();
+  auto prog = Sort(graph, a, 1);
 
   Engine engine(graph, prog);
   engine.load(device);
@@ -241,7 +223,6 @@ TEST(Sort, ThreeDimension) {
   Device device = ipuModel.createDevice();
   Graph graph(device);
   popops::addCodelets(graph);
-  graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
 
   const std::size_t tensor_size = 64;
 
@@ -251,9 +232,7 @@ TEST(Sort, ThreeDimension) {
   graph.createHostWrite("a-write", a);
   graph.createHostRead("a-read", a);
 
-  auto prog_status = CreateSort(graph, a, 2);
-  ASSERT_TRUE(prog_status.ok());
-  auto prog = prog_status.ValueOrDie();
+  auto prog = Sort(graph, a, 2);
 
   Engine engine(graph, prog);
   engine.load(device);

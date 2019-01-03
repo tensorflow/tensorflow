@@ -268,8 +268,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                               module.get());
 
   resources.main_graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
-  resources.main_graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
-  resources.main_graph.addCodelets(GetPathToGraphProgFile("batch_norm.gp"));
   poplin::addCodelets(resources.main_graph);
   popnn::addCodelets(resources.main_graph);
   popops::addCodelets(resources.main_graph);
