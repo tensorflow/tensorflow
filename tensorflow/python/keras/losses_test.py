@@ -1003,5 +1003,96 @@ class CategoricalHingeTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class LogLossTest(test.TestCase):
+
+  def setup(self):
+    # TODO(psv): Change to setUp() after b/122319309 is fixed.
+    y_pred = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3))
+    y_true = np.asarray([1., 0., 1., 1., 0., 0.]).reshape((2, 3))
+    epsilon = 1e-7  # to avoid log 0
+
+    self.batch_size = 6
+    self.expected_losses = np.multiply(y_true, np.log(y_pred + epsilon))
+    self.expected_losses += np.multiply(1 - y_true,
+                                        np.log(1 - y_pred + epsilon))
+    self.expected_losses = -self.expected_losses
+
+    self.y_pred = constant_op.constant(y_pred)
+    self.y_true = constant_op.constant(y_true)
+
+  def test_config(self):
+    log_loss_obj = keras.losses.LogLoss(
+        reduction=losses_impl.ReductionV2.SUM, name='log')
+    self.assertEqual(log_loss_obj.name, 'log')
+    self.assertEqual(log_loss_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_all_correct(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    loss = log_loss_obj(self.y_true, self.y_true)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
+  def test_unweighted(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    loss = log_loss_obj(self.y_true, self.y_pred)
+    actual_loss = np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_scalar_weighted(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    sample_weight = 2.3
+    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = sample_weight * np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    sample_weight = constant_op.constant((1.2, 3.4), shape=(2, 1))
+
+    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    actual_loss = np.multiply(
+        self.expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
+    actual_loss = np.sum(actual_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_timestep_weighted(self):
+    log_loss_obj = keras.losses.LogLoss()
+
+    y_pred = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3, 1))
+    y_true = np.asarray([1., 0., 1., 1., 0., 0.]).reshape((2, 3, 1))
+    epsilon = 1e-7  # to avoid log 0
+    batch_size = 6
+
+    expected_losses = np.multiply(y_true, np.log(y_pred + epsilon))
+    expected_losses += np.multiply(1 - y_true, np.log(1 - y_pred + epsilon))
+
+    y_pred = constant_op.constant(y_pred)
+    y_true = constant_op.constant(y_true)
+    sample_weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3, 1))
+    loss = log_loss_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant(sample_weight, shape=(2, 3)))
+    actual_loss = np.multiply(-expected_losses, sample_weight)
+    actual_loss = np.sum(actual_loss) / batch_size
+    self.assertAlmostEqual(self.evaluate(loss), actual_loss, 3)
+
+  def test_zero_weighted(self):
+    self.setup()
+    log_loss_obj = keras.losses.LogLoss()
+    sample_weight = 0
+    loss = log_loss_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+
 if __name__ == '__main__':
   test.main()
