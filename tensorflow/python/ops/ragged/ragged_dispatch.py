@@ -418,6 +418,7 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.gather, _ragged_gather_v1, ['params', 'indices']),
     (array_ops.gather_v2, ragged_array_ops.gather, ['params', 'indices']),
     (array_ops.gather_nd, ragged_array_ops.gather_nd, ['params', 'indices']),
+    (array_ops.rank, ragged_array_ops.rank, ['input']),
     (array_ops.stack, ragged_array_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_array_ops.where, ['condition', 'x', 'y']),

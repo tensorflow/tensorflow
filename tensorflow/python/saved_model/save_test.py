@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import lookup_ops
@@ -305,6 +306,30 @@ class SaveTest(test.TestCase):
           node for node in func.definition.node_def if node.op == "Complex"]
       self.assertNotIn("T", complex_node.attr)
       self.assertNotIn("Tout", complex_node.attr)
+
+  def test_subclassed_no_signature(self):
+
+    class Subclassed(training.Model):
+
+      def call(self, inputs):
+        return inputs * 2.
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    model = Subclassed()
+    with self.assertRaisesRegexp(
+        ValueError, "no @tf.function-decorated methods"):
+      save.save(model, save_dir)
+
+    traced_call = def_function.function(
+        model.call,
+        input_signature=(tensor_spec.TensorSpec(
+            (None, None),
+            dtype=dtypes.float32),))
+    save.save(model, save_dir, traced_call)
+    self.assertAllClose({"output_0": [[8., 10.], [10., 12.]]},
+                        _import_and_infer(
+                            save_dir,
+                            {"inputs": [[4., 5.], [5., 6.]]}))
 
 
 class AssetTests(test.TestCase):

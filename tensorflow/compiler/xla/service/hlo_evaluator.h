@@ -211,6 +211,29 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleReduce(HloInstruction* reduce) override;
 
+  // Unsupported HLOs, note some of them (such as BatchNorm*) are typically
+  // expanded in a semantic-preserving way into other HLOs by adding exanpsion
+  // HLO pass to the HLO optimization pass during compilation, which can then be
+  // handled by the evaluator.
+  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override {
+    return Unimplemented("BatchNormGrad HLO is unsupported by the evaluator.");
+  };
+  Status HandleBatchNormInference(
+      HloInstruction* batch_norm_inference) override {
+    return Unimplemented(
+        "BatchNormInference HLO is unsupported by the evaluator.");
+  };
+  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override {
+    return Unimplemented(
+        "BatchNormTraining HLO is unsupported by the evaluator.");
+  };
+  Status HandleInfeed(HloInstruction* infeed) override {
+    return Unimplemented("Infeed HLO is unsupported by the evaluator.");
+  };
+  Status HandleOutfeed(HloInstruction* outfeed) override {
+    return Unimplemented("Outfeed HLO is unsupported by the evaluator.");
+  };
+
   // Returns the already-evaluated literal result for the instruction.
   // A Constant instruction is considered evaluated and its literal will be
   // returned directly without looking up the cache.

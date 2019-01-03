@@ -245,6 +245,18 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
+def all_strategy_combinations_minus_default():
+  strategy_minus_default_combinations = combinations.combine(
+      distribution=[
+          combinations.one_device_strategy,
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.mirrored_strategy_with_two_gpus,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_two_gpus],
+      mode=['graph', 'eager'])
+  return strategy_minus_default_combinations + tpu_strategy_combinations()
+
+
 # TODO(priyag): Add v2 optimizers here.
 def strategy_and_optimizer_combinations():
   return combinations.times(
@@ -1147,6 +1159,38 @@ class TestDistributionStrategyWithNormalizationLayer(
       out /= keras.backend.eval(norm.gamma)
       np.testing.assert_allclose(out.mean(), 0.0, atol=1e-1)
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
+
+
+class TestDistributionStrategyVariableValidation(test.TestCase,
+                                                 parameterized.TestCase):
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_layer_outside_scope(self, distribution):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          ValueError, 'was not created in the distribution strategy'):
+        x = keras.layers.Input(shape=(3,), name='input')
+        y = keras.layers.Dense(4, name='dense')(x)
+        with distribution.scope():
+          model = keras.Model(x, y)
+          optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+          loss = 'mse'
+          metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+          model.compile(optimizer, loss, metrics=metrics)
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_model_outside_scope(self, distribution):
+    with self.cached_session():
+      with self.assertRaisesRegexp(
+          ValueError, 'was not created in the distribution strategy'):
+        x = keras.layers.Input(shape=(3,), name='input')
+        y = keras.layers.Dense(4, name='dense')(x)
+        model = keras.Model(x, y)
+        with distribution.scope():
+          optimizer = gradient_descent.GradientDescentOptimizer(0.001)
+          loss = 'mse'
+          metrics = ['mae', keras.metrics.CategoricalAccuracy()]
+          model.compile(optimizer, loss, metrics=metrics)
 
 
 if __name__ == '__main__':

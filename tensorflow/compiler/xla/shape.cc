@@ -27,7 +27,19 @@ Shape::Shape(const ShapeProto& shape_proto) {
   for (const int64 dimension : shape_proto.dimensions()) {
     add_dimensions(dimension);
   }
-  for (int i = 0; i < shape_proto.is_dynamic_dimension_size(); i++) {
+  // A malformed proto may have different is_dynamic_dimension_size and
+  // dimensions_size. Since C++ is evil, and we have no good way of bailing out
+  // in a constructor, conservatively trim the is_dynamic_dimension size.
+  // TODO(b/120111794): Make this a hard error when we have a factory method
+  // instead of a constructor.
+  if (shape_proto.dimensions_size() !=
+      shape_proto.is_dynamic_dimension_size()) {
+    LOG(ERROR) << "Malformed shape proto: number of is_dynamic_dimension "
+                  "fields does not match number of dimension fields";
+  }
+  int64 num_dynamic_dimension_fields = std::min(
+      shape_proto.dimensions_size(), shape_proto.is_dynamic_dimension_size());
+  for (int i = 0; i < num_dynamic_dimension_fields; i++) {
     dynamic_dimensions_[i] = shape_proto.is_dynamic_dimension(i);
   }
   tuple_shapes_.reserve(shape_proto.tuple_shapes_size());

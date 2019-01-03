@@ -57,6 +57,15 @@ def InXlaContext(graph):
   return GetContainingXLAContext(ctxt) is not None
 
 
+def GraphOrParentsInXlaContext(graph):
+  while True:
+    if InXlaContext(graph): return True
+    try:
+      graph = graph.outer_graph
+    except AttributeError:
+      return False
+
+
 def IsInWhileLoop(op):
   ctxt = op._get_control_flow_context()  # pylint: disable=protected-access
   return GetContainingWhileContext(ctxt) is not None

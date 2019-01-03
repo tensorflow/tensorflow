@@ -917,7 +917,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
-          return std::fmin(high, std::fmax(value, low));
+          if (std::isnan(low) || std::isnan(high)) {
+            return static_cast<ElementwiseT>(NAN);
+          }
+          return static_cast<ElementwiseT>(
+              std::fmin(high, std::fmax(value, low)));
         };
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[clamp],
@@ -2664,12 +2668,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleReducePrecision<ElementwiseT>(reduce_precision);
   }
 
-  template <typename NativeT,
-            typename std::enable_if<
-                std::is_same<NativeT, bfloat16>::value ||
-                std::is_same<NativeT, Eigen::half>::value ||
-                std::is_integral<NativeT>::value ||
-                std::is_floating_point<NativeT>::value>::type* = nullptr>
+  template <
+      typename NativeT,
+      typename std::enable_if<
+          std::is_same<NativeT, bfloat16>::value ||
+          std::is_same<NativeT, Eigen::half>::value ||
+          std::is_integral<NativeT>::value || is_complex_t<NativeT>::value ||
+          std::is_floating_point<NativeT>::value>::type* = nullptr>
   Status HandleIota(HloInstruction* instruction) {
     auto* iota = Cast<HloIotaInstruction>(instruction);
     const int64 iota_size = iota->shape().dimensions(iota->iota_dimension());
@@ -2700,12 +2705,13 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
     return Status::OK();
   }
-  template <typename NativeT,
-            typename std::enable_if<
-                !(std::is_same<NativeT, bfloat16>::value ||
-                  std::is_same<NativeT, Eigen::half>::value ||
-                  std::is_integral<NativeT>::value ||
-                  std::is_floating_point<NativeT>::value)>::type* = nullptr>
+  template <
+      typename NativeT,
+      typename std::enable_if<
+          !(std::is_same<NativeT, bfloat16>::value ||
+            std::is_same<NativeT, Eigen::half>::value ||
+            std::is_integral<NativeT>::value || is_complex_t<NativeT>::value ||
+            std::is_floating_point<NativeT>::value)>::type* = nullptr>
   Status HandleIota(HloInstruction* iota) {
     return UnsupportedTypeError(iota);
   }

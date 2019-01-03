@@ -1878,7 +1878,7 @@ class HloInstructionPattern {
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
-  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape)
+  constexpr auto WithShapeEqualTo(const ::xla::Shape* shape) const
       -> decltype(this->WithShape(Shape().EqualTo(shape))) {
     return WithShape(Shape().EqualTo(shape));
   }
@@ -1886,7 +1886,7 @@ class HloInstructionPattern {
   // Make this a templated function to work around gcc 4.9.4 template infinite
   // recursion bug.
   template <typename Dummy = void>
-  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape)
+  constexpr auto WithShapeCompatibleTo(const ::xla::Shape* shape) const
       -> decltype(this->WithShape(Shape().CompatibleTo(shape))) {
     return WithShape(Shape().CompatibleTo(shape));
   }
@@ -2057,7 +2057,6 @@ XLA_UNOP_PATTERN(SendDone)
 XLA_UNOP_PATTERN(Sign)
 XLA_UNOP_PATTERN(Sin)
 XLA_UNOP_PATTERN(Slice)
-XLA_UNOP_PATTERN(Sort)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
 #undef XLA_UNOP_PATTERN
@@ -2238,6 +2237,7 @@ XLA_VARIADIC_OP_PATTERN(Concatenate);
 XLA_VARIADIC_OP_PATTERN(CustomCall);
 XLA_VARIADIC_OP_PATTERN(Map)
 XLA_VARIADIC_OP_PATTERN(Reduce);
+XLA_VARIADIC_OP_PATTERN(Sort);
 XLA_VARIADIC_OP_PATTERN(Tuple);
 
 // Helpers for matching non-constant instructions.
