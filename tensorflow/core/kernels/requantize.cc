@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <math.h>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -99,11 +99,5 @@ REGISTER_KERNEL_BUILDER(Name("Requantize")
                             .TypeConstraint<qint32>("Tinput")
                             .TypeConstraint<quint8>("out_type"),
                         RequantizeOp<qint32, quint8>);
-
-REGISTER_KERNEL_BUILDER(Name("Requantize")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<qint32>("Tinput")
-                            .TypeConstraint<qint8>("out_type"),
-                        RequantizeOp<qint32, qint8>);
 
 }  // namespace tensorflow
