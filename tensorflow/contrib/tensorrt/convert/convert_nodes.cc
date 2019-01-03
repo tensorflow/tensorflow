@@ -62,14 +62,14 @@ limitations under the License.
 
 #define TFTRT_RETURN_ERROR_IF_FALSE(status, node) \
   do {                                            \
-    if ((status) == false) {                      \
+    if (status == false) {                        \
       TFTRT_INTERNAL_ERROR_AT_NODE(node);         \
     }                                             \
   } while (0)
 
 #define TFTRT_RETURN_ERROR_IF_NULLPTR(ptr, node) \
   do {                                           \
-    if ((ptr) == nullptr) {                      \
+    if (ptr == nullptr) {                        \
       TFTRT_INTERNAL_ERROR_AT_NODE(node);        \
     }                                            \
   } while (0)
@@ -1593,6 +1593,7 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
         node_def.name());
   }
   const nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
+
   const auto tf_stride = attrs.get<std::vector<int>>("strides");
   if (tf_stride.size() != 4) {
     return tensorflow::errors::InvalidArgument(

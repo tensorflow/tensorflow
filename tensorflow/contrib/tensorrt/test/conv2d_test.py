@@ -51,37 +51,60 @@ def conv2d_layer(inputs, filters, kernel_size, strides=(1, 1), padding='valid',
 def div_round_up(n, d):
   return (n - 1) // d + 1
 
+def build_graph(input_dims, dtype, num_filters, data_format, kernel_sizes,
+                dilation_rates, padding='same'):
+  g = ops.Graph()
+  with g.as_default():
+    inp = array_ops.placeholder(
+        dtype=dtype, shape=[None] + input_dims[1:], name="input")
+    with g.device("/GPU:0"):
+      results = []
+      for kernel_size in kernel_sizes:
+        for dilation_rate in dilation_rates:
+          result = conv2d_layer(inp, num_filters, kernel_size, (1, 1),
+                                padding, data_format, dilation_rate)
+          results.append(result)
+      output = sum(results)
+      output = array_ops.identity(output, name="output")
+  return g
+
+
 class Conv2DNCHWTest(trt_test.TfTrtIntegrationTestBase):
 
   def GetParams(self):
     """Testing conversion of Conv2D (data_format=NCHW) in TF-TRT conversion."""
     np.random.seed(1234)
-    dtype = dtypes.float32
-    input_name = "input"
-    n, c, h, w = 13, 3, 7, 11
-    num_filters = 5
-    input_dims = [n, c, h, w]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
-      with g.device("/GPU:0"):
-        results = []
-        for kernel_size in [(3, 3), (3, 2)]:
-          for dilation_rate in [(1, 1), (2, 3)]:
-            result = conv2d_layer(inp, num_filters, kernel_size,
-                                  dilation_rate=dilation_rate, padding='same',
-                                  data_format='channels_first')
-            results.append(result)
-        output = sum(results)
-        output = array_ops.identity(output, name=output_name)
+    input_dims = [13, 3, 7, 11]
+    g = build_graph(input_dims=input_dims, dtype=dtypes.float32, num_filters=5,
+                    data_format="channels_first", kernel_sizes=[(3, 3), (3, 2)],
+                    dilation_rates=[(1, 1), (2, 3)])
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
-        input_names=[input_name],
+        input_names=["input"],
         input_dims=[input_dims],
-        output_names=[output_name],
-        expected_output_dims=[(n, num_filters, h, w)])
+        output_names=["output"],
+        expected_output_dims=[(13, 5, 7, 11)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return ["TRTEngineOp_0"]
+
+
+class Conv2DNHWCTest(trt_test.TfTrtIntegrationTestBase):
+
+  def GetParams(self):
+    """Testing conversion of Conv2D (data_format=NCHW) in TF-TRT conversion."""
+    np.random.seed(1234)
+    input_dims = [13, 7, 11, 3]
+    g = build_graph(input_dims=input_dims, dtype=dtypes.float32, num_filters=5,
+                    data_format="channels_last", kernel_sizes=[(3, 3), (3, 2)],
+                    dilation_rates=[(1, 1), (2, 3)])
+    return trt_test.TfTrtIntegrationTestParams(
+        gdef=g.as_graph_def(),
+        input_names=["input"],
+        input_dims=[input_dims],
+        output_names=["output"],
+        expected_output_dims=[(13, 7, 11, 5)])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -122,43 +145,6 @@ class Conv2DStridedNCHWTest(trt_test.TfTrtIntegrationTestBase):
         input_dims=[input_dims],
         output_names=[output_name],
         expected_output_dims=[(n, num_filters, h, w)])
-
-  def ExpectedEnginesToBuild(self, run_params):
-    """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
-
-
-class Conv2DNHWCTest(trt_test.TfTrtIntegrationTestBase):
-
-  def GetParams(self):
-    """Testing conversion of Conv2D (data_format=NHWC) in TF-TRT conversion."""
-    np.random.seed(1234)
-    dtype = dtypes.float32
-    input_name = "input"
-    n, h, w, c = 13, 7, 11, 3
-    num_filters = 5
-    input_dims = [n, h, w, c]
-    output_name = "output"
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
-      with g.device("/GPU:0"):
-        results = []
-        for kernel_size in [(3, 3), (3, 2)]:
-          for dilation_rate in [(1, 1), (2, 3)]:
-            result = conv2d_layer(inp, num_filters, kernel_size,
-                                  dilation_rate=dilation_rate, padding='same',
-                                  data_format='channels_last')
-            results.append(result)
-        output = sum(results)
-        output = array_ops.identity(output, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[input_dims],
-        output_names=[output_name],
-        expected_output_dims=[(n, h, w, num_filters)])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
