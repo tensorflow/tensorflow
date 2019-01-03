@@ -1391,6 +1391,82 @@ class RootMeanSquaredErrorTest(test.TestCase):
     self.assertAllClose(math.sqrt(13), self.evaluate(result), atol=1e-3)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class TopKCategoricalAccuracyTest(test.TestCase):
+
+  def test_config(self):
+    a_obj = metrics.TopKCategoricalAccuracy(name='topkca', dtype=dtypes.int32)
+    self.assertEqual(a_obj.name, 'topkca')
+    self.assertEqual(a_obj._dtype, dtypes.int32)
+
+    a_obj2 = metrics.TopKCategoricalAccuracy.from_config(a_obj.get_config())
+    self.assertEqual(a_obj2.name, 'topkca')
+    self.assertEqual(a_obj2._dtype, dtypes.int32)
+
+  def test_correctness(self):
+    a_obj = metrics.TopKCategoricalAccuracy()
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    y_true = constant_op.constant([[0, 0, 1], [0, 1, 0]])
+    y_pred = constant_op.constant([[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+
+    result = a_obj(y_true, y_pred)
+    self.assertEqual(1, self.evaluate(result))  # both the samples match
+
+    # With `k` < 5.
+    a_obj = metrics.TopKCategoricalAccuracy(k=1)
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    result = a_obj(y_true, y_pred)
+    self.assertEqual(0.5, self.evaluate(result))  # only sample #2 matches
+
+    # With `k` > 5.
+    y_true = constant_op.constant([[0, 0, 1, 0, 0, 0, 0],
+                                   [0, 1, 0, 0, 0, 0, 0]])
+    y_pred = constant_op.constant([[0.5, 0.9, 0.1, 0.7, 0.6, 0.5, 0.4],
+                                   [0.05, 0.95, 0, 0, 0, 0, 0]])
+    a_obj = metrics.TopKCategoricalAccuracy(k=6)
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    result = a_obj(y_true, y_pred)
+    self.assertEqual(0.5, self.evaluate(result))  # only 1 sample matches.
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class SparseTopKCategoricalAccuracyTest(test.TestCase):
+
+  def test_config(self):
+    a_obj = metrics.SparseTopKCategoricalAccuracy(
+        name='stopkca', dtype=dtypes.int32)
+    self.assertEqual(a_obj.name, 'stopkca')
+    self.assertEqual(a_obj._dtype, dtypes.int32)
+
+    a_obj2 = metrics.SparseTopKCategoricalAccuracy.from_config(
+        a_obj.get_config())
+    self.assertEqual(a_obj2.name, 'stopkca')
+    self.assertEqual(a_obj2._dtype, dtypes.int32)
+
+  def test_correctness(self):
+    a_obj = metrics.SparseTopKCategoricalAccuracy()
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    y_true = constant_op.constant([2, 1])
+    y_pred = constant_op.constant([[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+
+    result = a_obj(y_true, y_pred)
+    self.assertEqual(1, self.evaluate(result))  # both the samples match
+
+    # With `k` < 5.
+    a_obj = metrics.SparseTopKCategoricalAccuracy(k=1)
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    result = a_obj(y_true, y_pred)
+    self.assertEqual(0.5, self.evaluate(result))  # only sample #2 matches
+
+    # With `k` > 5.
+    y_pred = constant_op.constant([[0.5, 0.9, 0.1, 0.7, 0.6, 0.5, 0.4],
+                                   [0.05, 0.95, 0, 0, 0, 0, 0]])
+    a_obj = metrics.SparseTopKCategoricalAccuracy(k=6)
+    self.evaluate(variables.variables_initializer(a_obj.variables))
+    result = a_obj(y_true, y_pred)
+    self.assertEqual(0.5, self.evaluate(result))  # only 1 sample matches.
+
+
 def _get_model(compile_metrics):
   model_layers = [
       layers.Dense(3, activation='relu', kernel_initializer='ones'),

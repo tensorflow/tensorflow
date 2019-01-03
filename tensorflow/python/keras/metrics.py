@@ -590,6 +590,84 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
     return super(SparseCategoricalAccuracy, cls).from_config(config)
 
 
+class TopKCategoricalAccuracy(MeanMetricWrapper):
+  """Computes how often targets are in the top `K` predictions.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.TopKCategoricalAccuracy()
+  m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  print('Final result: ', m.result().numpy())  # Final result: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.TopKCategoricalAccuracy()])
+  ```
+  """
+
+  def __init__(self, k=5, name='top_k_categorical_accuracy', dtype=None):
+    """Creates a `TopKCategoricalAccuracy` instance.
+
+    Args:
+      k: (Optional) Number of top elements to look at for computing accuracy.
+        Defaults to 5.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(TopKCategoricalAccuracy, self).__init__(
+        top_k_categorical_accuracy, name, dtype=dtype, k=k)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(TopKCategoricalAccuracy, cls).from_config(config)
+
+
+class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
+  """Computes how often integer targets are in the top `K` predictions.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.SparseTopKCategoricalAccuracy()
+  m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  print('Final result: ', m.result().numpy())  # Final result: 1.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+    'sgd',
+    metrics=[tf.keras.metrics.SparseTopKCategoricalAccuracy()])
+  ```
+  """
+
+  def __init__(self, k=5, name='sparse_top_k_categorical_accuracy', dtype=None):
+    """Creates a `SparseTopKCategoricalAccuracy` instance.
+
+    Args:
+      k: (Optional) Number of top elements to look at for computing accuracy.
+        Defaults to 5.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(SparseTopKCategoricalAccuracy, self).__init__(
+        sparse_top_k_categorical_accuracy, name, dtype=dtype, k=k)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(SparseTopKCategoricalAccuracy, cls).from_config(config)
+
+
 class _ConfusionMatrixConditionCount(Metric):
   """Calculates the number of the given confusion matrix condition."""
 
