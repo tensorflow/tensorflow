@@ -124,15 +124,15 @@ makePermutationMap(OperationInst *opInst,
 namespace matcher {
 
 /// Matches vector_transfer_read, vector_transfer_write and ops that return a
-/// vector type that is at least a 2-multiple of the sub-vector type. This
-/// allows passing over other smaller vector types in the function and avoids
-/// interfering with operations on those.
+/// vector type that is a multiple of the sub-vector type. This allows passing
+/// over other smaller vector types in the function and avoids interfering with
+/// operations on those.
 /// This is a first approximation, it can easily be extended in the future.
 /// TODO(ntv): this could all be much simpler if we added a bit that a vector
 /// type to mark that a vector is a strict super-vector but it still does not
 /// warrant adding even 1 extra bit in the IR for now.
-bool operatesOnStrictSuperVectors(const OperationInst &inst,
-                                  VectorType subVectorType);
+bool operatesOnSuperVectors(const OperationInst &inst,
+                            VectorType subVectorType);
 
 } // end namespace matcher
 } // end namespace mlir

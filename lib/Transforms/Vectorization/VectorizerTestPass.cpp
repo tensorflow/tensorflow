@@ -106,7 +106,7 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
     assert(subVectorType.getElementType() ==
                Type::getF32(subVectorType.getContext()) &&
            "Only f32 supported for now");
-    if (!matcher::operatesOnStrictSuperVectors(*opInst, subVectorType)) {
+    if (!matcher::operatesOnSuperVectors(*opInst, subVectorType)) {
       return false;
     }
     if (opInst->getNumResults() != 1) {

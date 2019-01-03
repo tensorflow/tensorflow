@@ -741,7 +741,7 @@ PassResult MaterializeVectorsPass::runOnFunction(Function *f) {
     if (!opInst.isa<VectorTransferWriteOp>()) {
       return false;
     }
-    return matcher::operatesOnStrictSuperVectors(opInst, subVectorType);
+    return matcher::operatesOnSuperVectors(opInst, subVectorType);
   };
   auto pat = Op(filter);
   auto matches = pat.match(f);

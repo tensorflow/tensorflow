@@ -179,15 +179,15 @@ mlir::makePermutationMap(OperationInst *opInst,
                               enclosingLoopToVectorDim);
 }
 
-bool mlir::matcher::operatesOnStrictSuperVectors(const OperationInst &opInst,
-                                                 VectorType subVectorType) {
+bool mlir::matcher::operatesOnSuperVectors(const OperationInst &opInst,
+                                           VectorType subVectorType) {
   // First, extract the vector type and ditinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector_transfer_read,
   //      vector_transfer_write); and
   //   b. ops that *may* lower a super-vector (all other ops).
   // The ops that *may* lower a super-vector only do so if the super-vector to
-  // sub-vector ratio is striclty greater than 1. The ops that *must* lower a
-  // super-vector are explicitly checked for this property.
+  // sub-vector ratio exists. The ops that *must* lower a super-vector are
+  // explicitly checked for this property.
   /// TODO(ntv): there should be a single function for all ops to do this so we
   /// do not have to special case. Maybe a trait, or just a method, unclear atm.
   bool mustDivide = false;
@@ -235,13 +235,5 @@ bool mlir::matcher::operatesOnStrictSuperVectors(const OperationInst &opInst,
     return false;
   }
 
-  // A strict super-vector is at least 2 sub-vectors.
-  for (auto m : *ratio) {
-    if (m > 1) {
-      return true;
-    }
-  }
-
-  // Not a strict super-vector.
-  return false;
+  return true;
 }
