@@ -22,7 +22,7 @@
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Module.h"
-#include "mlir/IR/Types.h"
+#include "mlir/IR/StandardTypes.h"
 using namespace mlir;
 
 Builder::Builder(Module *module) : context(module->getContext()) {}

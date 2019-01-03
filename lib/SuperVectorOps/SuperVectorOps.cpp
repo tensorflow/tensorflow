@@ -25,7 +25,6 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 using namespace mlir;
 

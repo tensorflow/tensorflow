@@ -30,7 +30,7 @@
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/Types.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/DenseMap.h"
@@ -497,20 +497,20 @@ void ModulePrinter::printType(Type type) {
   case Type::Kind::Index:
     os << "index";
     return;
-  case Type::Kind::BF16:
+  case StandardTypes::BF16:
     os << "bf16";
     return;
-  case Type::Kind::F16:
+  case StandardTypes::F16:
     os << "f16";
     return;
-  case Type::Kind::F32:
+  case StandardTypes::F32:
     os << "f32";
     return;
-  case Type::Kind::F64:
+  case StandardTypes::F64:
     os << "f64";
     return;
 
-  case Type::Kind::Integer: {
+  case StandardTypes::Integer: {
     auto integer = type.cast<IntegerType>();
     os << 'i' << integer.getWidth();
     return;
@@ -530,7 +530,7 @@ void ModulePrinter::printType(Type type) {
     }
     return;
   }
-  case Type::Kind::Vector: {
+  case StandardTypes::Vector: {
     auto v = type.cast<VectorType>();
     os << "vector<";
     for (auto dim : v.getShape())
@@ -538,7 +538,7 @@ void ModulePrinter::printType(Type type) {
     os << v.getElementType() << '>';
     return;
   }
-  case Type::Kind::RankedTensor: {
+  case StandardTypes::RankedTensor: {
     auto v = type.cast<RankedTensorType>();
     os << "tensor<";
     for (auto dim : v.getShape()) {
@@ -551,14 +551,14 @@ void ModulePrinter::printType(Type type) {
     os << v.getElementType() << '>';
     return;
   }
-  case Type::Kind::UnrankedTensor: {
+  case StandardTypes::UnrankedTensor: {
     auto v = type.cast<UnrankedTensorType>();
     os << "tensor<*x";
     printType(v.getElementType());
     os << '>';
     return;
   }
-  case Type::Kind::MemRef: {
+  case StandardTypes::MemRef: {
     auto v = type.cast<MemRefType>();
     os << "memref<";
     for (auto dim : v.getShape()) {

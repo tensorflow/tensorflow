@@ -767,7 +767,7 @@ void TypeUniquer::insert(unsigned hashValue, TypeStorage *storage) {
 /// Construct a unique instance of `DerivedType` of the given `kind` in the
 /// given `context` by passing `args` to the type storage.
 template <typename DerivedType, typename... Args>
-static DerivedType constructUniqueType(MLIRContext *context, Type::Kind kind,
+static DerivedType constructUniqueType(MLIRContext *context, unsigned kind,
                                        Args... args) {
   return TypeUniquer(context).get<DerivedType>(static_cast<unsigned>(kind),
                                                args...);
@@ -787,7 +787,8 @@ static IntegerType getIntegerType(unsigned width, MLIRContext *context,
     return {};
   }
 
-  return constructUniqueType<IntegerType>(context, Type::Kind::Integer, width);
+  return constructUniqueType<IntegerType>(context, StandardTypes::Integer,
+                                          width);
 }
 
 IntegerType IntegerType::getChecked(unsigned width, MLIRContext *context,
@@ -801,9 +802,10 @@ IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
   return type;
 }
 
-FloatType FloatType::get(Type::Kind kind, MLIRContext *context) {
-  assert(kind >= Kind::FIRST_FLOATING_POINT_TYPE &&
-         kind <= Kind::LAST_FLOATING_POINT_TYPE && "Not an FP type kind");
+FloatType FloatType::get(StandardTypes::Kind kind, MLIRContext *context) {
+  assert(kind >= StandardTypes::FIRST_FLOATING_POINT_TYPE &&
+         kind <= StandardTypes::LAST_FLOATING_POINT_TYPE &&
+         "Not an FP type kind");
   return constructUniqueType<FloatType>(context, kind);
 }
 
@@ -841,7 +843,7 @@ static VectorType getVectorType(ArrayRef<int> shape, Type elementType,
     return {};
   }
 
-  return constructUniqueType<VectorType>(context, Type::Kind::Vector, shape,
+  return constructUniqueType<VectorType>(context, StandardTypes::Vector, shape,
                                          elementType);
 }
 
@@ -883,7 +885,7 @@ static RankedTensorType getRankedTensorType(ArrayRef<int> shape,
 
   auto *context = elementType.getContext();
   return constructUniqueType<RankedTensorType>(
-      context, Type::Kind::RankedTensor, shape, elementType);
+      context, StandardTypes::RankedTensor, shape, elementType);
 }
 
 RankedTensorType RankedTensorType::get(ArrayRef<int> shape, Type elementType) {
@@ -909,7 +911,7 @@ static UnrankedTensorType getUnrankedTensorType(Type elementType,
 
   auto *context = elementType.getContext();
   return constructUniqueType<UnrankedTensorType>(
-      context, Type::Kind::UnrankedTensor, elementType);
+      context, StandardTypes::UnrankedTensor, elementType);
 }
 
 UnrankedTensorType UnrankedTensorType::get(Type elementType) {
@@ -975,7 +977,7 @@ static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
   }
   affineMapComposition = cleanedAffineMapComposition;
 
-  return constructUniqueType<MemRefType>(context, Type::Kind::MemRef, shape,
+  return constructUniqueType<MemRefType>(context, StandardTypes::MemRef, shape,
                                          elementType, affineMapComposition,
                                          memorySpace);
 }
@@ -1343,10 +1345,10 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
   // Otherwise, allocate a new one, unique it and return it.
   auto eltType = type.getElementType();
   switch (eltType.getKind()) {
-  case Type::Kind::BF16:
-  case Type::Kind::F16:
-  case Type::Kind::F32:
-  case Type::Kind::F64: {
+  case StandardTypes::BF16:
+  case StandardTypes::F16:
+  case StandardTypes::F32:
+  case StandardTypes::F64: {
     auto *result = impl.allocator.Allocate<DenseFPElementsAttributeStorage>();
     auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
     std::uninitialized_copy(data.begin(), data.end(), copy);
@@ -1356,7 +1358,7 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
          {copy, data.size()}}};
     return *existing.first = result;
   }
-  case Type::Kind::Integer: {
+  case StandardTypes::Integer: {
     auto width = eltType.cast<IntegerType>().getWidth();
     auto *result = impl.allocator.Allocate<DenseIntElementsAttributeStorage>();
     auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);

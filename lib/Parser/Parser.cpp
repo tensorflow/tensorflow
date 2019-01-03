@@ -32,7 +32,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/Types.h"
+#include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/APInt.h"
@@ -711,10 +711,10 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
       return ParseResult::ParseFailure;
     // check result matches the element type.
     switch (eltTy.getKind()) {
-    case Type::Kind::BF16:
-    case Type::Kind::F16:
-    case Type::Kind::F32:
-    case Type::Kind::F64: {
+    case StandardTypes::BF16:
+    case StandardTypes::F16:
+    case StandardTypes::F32:
+    case StandardTypes::F64: {
       // Bitcast the APFloat value to APInt and store the bit representation.
       auto fpAttrResult = result.dyn_cast<FloatAttr>();
       if (!fpAttrResult)
@@ -731,7 +731,7 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
       addToStorage(apInt.getRawData()[0]);
       break;
     }
-    case Type::Kind::Integer: {
+    case StandardTypes::Integer: {
       if (!result.isa<IntegerAttr>())
         return p.emitError("expected tensor literal element has integer type");
       auto value = result.cast<IntegerAttr>().getValue();

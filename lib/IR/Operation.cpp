@@ -21,6 +21,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/StandardTypes.h"
 using namespace mlir;
 
 /// Form the OperationName for an op with the specified string.  This either is
@@ -293,8 +294,7 @@ bool OpTrait::impl::verifyIsTerminator(const OperationInst *op) {
 bool OpTrait::impl::verifyResultsAreBoolLike(const OperationInst *op) {
   for (auto *result : op->getResults()) {
     auto elementType = getTensorOrVectorElementType(result->getType());
-    auto intType = elementType.dyn_cast<IntegerType>();
-    bool isBoolType = intType && intType.getWidth() == 1;
+    bool isBoolType = elementType.isInteger(1);
     if (!isBoolType)
       return op->emitOpError("requires a bool result type");
   }

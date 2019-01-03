@@ -164,13 +164,13 @@ llvm::IntegerType *ModuleLowerer::convertIntegerType(IntegerType type) {
 llvm::Type *ModuleLowerer::convertFloatType(FloatType type) {
   MLIRContext *context = type.getContext();
   switch (type.getKind()) {
-  case Type::Kind::F32:
+  case StandardTypes::F32:
     return builder.getFloatTy();
-  case Type::Kind::F64:
+  case StandardTypes::F64:
     return builder.getDoubleTy();
-  case Type::Kind::F16:
+  case StandardTypes::F16:
     return builder.getHalfTy();
-  case Type::Kind::BF16:
+  case StandardTypes::BF16:
     return context->emitError(UnknownLoc::get(context),
                               "unsupported type: BF16"),
            nullptr;

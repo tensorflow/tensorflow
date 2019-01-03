@@ -32,6 +32,7 @@ class Type;
 class PrimitiveType;
 class IntegerType;
 class FunctionType;
+class MemRefType;
 class VectorType;
 class RankedTensorType;
 class UnrankedTensorType;
