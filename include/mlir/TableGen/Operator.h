@@ -63,7 +63,9 @@ public:
   attribute_iterator attribute_begin();
   attribute_iterator attribute_end();
   llvm::iterator_range<attribute_iterator> getAttributes();
+  int getNumAttributes() { return attributes.size(); }
   Attribute &getAttribute(int index) { return attributes[index]; }
+  const Attribute &getAttribute(int index) const { return attributes[index]; }
 
   // Operations operand accessors.
   struct Operand {
@@ -76,6 +78,8 @@ public:
   operand_iterator operand_end();
   llvm::iterator_range<operand_iterator> getOperands();
   Operand &getOperand(int index) { return operands[index]; }
+  const Operand &getOperand(int index) const { return operands[index]; }
+  int getNumOperands() { return operands.size(); }
 
   // Operations argument accessors.
   using Argument = llvm::PointerUnion<Attribute *, Operand *>;

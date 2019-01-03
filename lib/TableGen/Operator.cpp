@@ -112,18 +112,30 @@ void Operator::populateOperandsAndAttributes() {
     if (!givenName)
       PrintFatalError(argDef->getLoc(), "attributes must be named");
     bool isDerived = argDef->isSubClassOf(derivedAttrClass);
+    if (isDerived)
+      PrintFatalError(def.getLoc(),
+                      "derived attributes not allowed in argument list");
+    attributes.push_back({givenName, argDef, isDerived});
+  }
 
-    // Update start of derived attributes or ensure that non-derived and derived
-    // attributes are not interleaved.
-    if (derivedAttrStart == -1) {
-      if (isDerived)
-        derivedAttrStart = i;
-    } else {
-      if (!isDerived)
+  // Derived attributes.
+  derivedAttrStart = i;
+  for (const auto &val : def.getValues()) {
+    if (auto *record = dyn_cast<llvm::RecordRecTy>(val.getType())) {
+      if (!record->isSubClassOf(attrClass))
+        continue;
+      if (!record->isSubClassOf(derivedAttrClass))
+        PrintFatalError(def.getLoc(),
+                        "unexpected Attr where only DerivedAttr is allowed");
+
+      if (record->getClasses().size() != 1) {
         PrintFatalError(
             def.getLoc(),
-            "derived attributes have to follow non-derived attributes");
+            "unsupported attribute modelling, only single class expected");
+      }
+      attributes.push_back({cast<llvm::StringInit>(val.getNameInit()),
+                            cast<DefInit>(val.getValue())->getDef(),
+                            /*isDerived=*/true});
     }
-    attributes.push_back({givenName, argDef, isDerived});
   }
 }
