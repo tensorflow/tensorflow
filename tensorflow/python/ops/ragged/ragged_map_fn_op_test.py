@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.map_fn."""
+"""Tests for ragged_map_ops.map_fn."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,8 +26,12 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops as mo
-from tensorflow.python.ops import ragged
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.ops.ragged import ragged_map_ops
+from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -66,7 +70,7 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
           elems=[[1, 2, 3], [4, 5], [6, 7]],
           expected_output=[[2, 3, 4], [5, 6], [7, 8]],
           dtype=dtypes.int64,
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=1),
       ),
       # [d1, (d2), d3] -> [d1, (d2), d3]
@@ -75,45 +79,45 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
           elems=[[[1, 2], [3, 4]], [], [[5, 6], [7, 8], [9, 0]]],
           elems_ragged_rank=1,
           expected_ragged_rank=1,
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=1),
           expected_output=[[[2, 3], [4, 5]], [], [[6, 7], [8, 9], [10, 1]]],
       ),
       # [d1, (d2)] -> [d1, (d2), (d3)]
       dict(
-          fn=lambda x: ragged.RaggedTensor.from_row_starts(x, [0]),
+          fn=lambda x: ragged_tensor.RaggedTensor.from_row_starts(x, [0]),
           elems=[[1, 2, 3], [4, 5], [6, 7]],
           expected_output=[[[1, 2, 3]], [[4, 5]], [[6, 7]]],
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=2),
       ),
       # [d1, (d2), (d3)] -> [d1, (d2), (d3)]
       dict(
-          fn=lambda x: ragged.map_flat_values(mo.add, x, 1),
+          fn=lambda x: ragged_functional_ops.map_flat_values(mo.add, x, 1),
           elems=[[[1, 2, 3]], [[4, 5], [6, 7]]],
           expected_output=[[[2, 3, 4]], [[5, 6], [7, 8]]],
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=2),
       ),
       # [d1, (d2), (d3)] -> [d1, (d2)]
       dict(
-          fn=lambda x: ragged.reduce_sum(x, axis=1),
+          fn=lambda x: ragged_math_ops.reduce_sum(x, axis=1),
           elems=[[[1, 2, 3]], [[4, 5], [6, 7]]],
           expected_output=[[6], [9, 13]],
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=1),
       ),
       # [d1, (d2), (d3)] -> [d1, (d3)]
       dict(
-          fn=lambda x: ragged.reduce_sum(x, axis=0),
+          fn=lambda x: ragged_math_ops.reduce_sum(x, axis=0),
           elems=[[[1, 2, 3]], [[4, 5], [6, 7]]],
           expected_output=[[1, 2, 3], [10, 12]],
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=1),
       ),
       # [d1, (d2), (d3)] -> [d1]
       dict(
-          fn=ragged.reduce_sum,
+          fn=ragged_math_ops.reduce_sum,
           elems=[[[1, 2, 3]], [[4, 5], [6, 7]]],
           expected_output=[6, 22],
           result_dtype=dtypes.int64,
@@ -123,16 +127,16 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
           fn=mo.range,
           elems=[4, 0, 2],
           expected_output=[[0, 1, 2, 3], [], [0, 1]],
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=1),
       ),
       # [d1] -> [d1, (d2), (d3)]
       dict(
-          fn=lambda x: ragged.range(mo.range(x)),
+          fn=lambda x: ragged_math_ops.range(mo.range(x)),
           elems=[5, 0, 3],
           expected_output=[[[], [0], [0, 1], [0, 1, 2], [0, 1, 2, 3]], [],
                            [[], [0], [0, 1]]],
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=2),
       ),
       # [d1, (d2), (d3), (d4a), (d5)] ->  [d1, (d2), (d3), (d4b), (d5)]
@@ -141,7 +145,7 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
           elems=[[[[[1, 2, 3]], [[4], [5]]]], [[[[6, 7]]], [[[8], []]]]],
           expected_output=[[[[[2, 3, 4]], [[5], [6]]]], [[[[7, 8]]], [[[9],
                                                                        []]]]],
-          result_dtype=ragged.RaggedTensorType(
+          result_dtype=ragged_tensor.RaggedTensorType(
               dtype=dtypes.int64, ragged_rank=4),
       ),
   ])
@@ -158,25 +162,25 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
       result_dtype=None,
       infer_shape=False,
   ):
-    elems = ragged.constant(elems, dtype, elems_ragged_rank)
-    output = ragged.map_fn(
+    elems = ragged_factory_ops.constant(elems, dtype, elems_ragged_rank)
+    output = ragged_map_ops.map_fn(
         fn=fn, elems=elems, dtype=result_dtype, infer_shape=infer_shape)
 
-    expected_rt = ragged.constant(
+    expected_rt = ragged_factory_ops.constant(
         expected_output, ragged_rank=expected_ragged_rank)
     self.assertRaggedEqual(expected_rt, output)
 
   def testRaggedMapOnStructure(self):
-    batman = ragged.constant([[1, 2, 3], [4], [5, 6, 7]])
+    batman = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6, 7]])
     # [[10, 20, 30], [40], [50, 60, 70]]
-    robin = ragged.map_flat_values(mo.multiply, batman, 10)
+    robin = ragged_functional_ops.map_flat_values(mo.multiply, batman, 10)
 
     features = {'batman': batman, 'robin': robin}
 
     def _reduce_sum_from_all(f):
       return mo.reduce_sum(f['batman']) + mo.reduce_sum(f['robin'])
 
-    output = ragged.map_fn(
+    output = ragged_map_ops.map_fn(
         fn=_reduce_sum_from_all,
         elems=features,
         dtype=dtypes.int32,
@@ -186,9 +190,9 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
 
   # Test mapping over a dict of RTs can produce a dict of RTs.
   def testRaggedMapOnStructure_RaggedOutputs(self):
-    batman = ragged.constant([[1, 2, 3], [4], [5, 6, 7]])
+    batman = ragged_factory_ops.constant([[1, 2, 3], [4], [5, 6, 7]])
     # [[10, 20, 30], [40], [50, 60, 70]]
-    robin = ragged.map_flat_values(mo.multiply, batman, 10)
+    robin = ragged_functional_ops.map_flat_values(mo.multiply, batman, 10)
 
     features = {'batman': batman, 'robin': robin}
 
@@ -198,15 +202,17 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
           'robin': f['robin'] + 1,
       }
 
-    output = ragged.map_fn(
+    output = ragged_map_ops.map_fn(
         fn=_increment,
         elems=features,
         infer_shape=False,
         dtype={
             'batman':
-                ragged.RaggedTensorType(dtype=dtypes.int32, ragged_rank=1),
+                ragged_tensor.RaggedTensorType(
+                    dtype=dtypes.int32, ragged_rank=1),
             'robin':
-                ragged.RaggedTensorType(dtype=dtypes.int32, ragged_rank=1)
+                ragged_tensor.RaggedTensorType(
+                    dtype=dtypes.int32, ragged_rank=1)
         },
     )
 
@@ -214,8 +220,8 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
     self.assertRaggedEqual(output['robin'], [[11, 21, 31], [41], [51, 61, 71]])
 
   def testZip(self):
-    x = ragged.constant([[10, 20], [30, 40], [50, 60], [70], [80, 90, 100]],
-                        dtypes.int64)
+    x = ragged_factory_ops.constant(
+        [[10, 20], [30, 40], [50, 60], [70], [80, 90, 100]], dtypes.int64)
     y = array_ops.expand_dims(mo.range(x.nrows(), dtype=dtypes.int64), axis=1)
 
     def _zip(foo):
@@ -223,9 +229,9 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
       bar = backend.tile(y_val, array_ops.shape(x_val))
       return array_ops.stack([bar, x_val], axis=1)
 
-    output = ragged.map_fn(
+    output = ragged_map_ops.map_fn(
         _zip, (y, x),
-        dtype=ragged.RaggedTensorType(dtype=dtypes.int64, ragged_rank=1),
+        dtype=ragged_tensor.RaggedTensorType(dtype=dtypes.int64, ragged_rank=1),
         infer_shape=False)
 
     self.assertRaggedEqual(
@@ -233,43 +239,46 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
                  [[3, 70]], [[4, 80], [4, 90], [4, 100]]])
 
   def testBatchGather(self):
-    tokens = ragged.constant([['hello', '.', 'there'], ['merhaba'],
-                              ['bonjour', '.', 'ca va', '?']])
-    indices = ragged.constant([[0, 2], [0], [0, 2]])
+    tokens = ragged_factory_ops.constant([['hello', '.', 'there'], ['merhaba'],
+                                          ['bonjour', '.', 'ca va', '?']])
+    indices = ragged_factory_ops.constant([[0, 2], [0], [0, 2]])
 
     def gather(x):
       tokens_val, indices_val = x
       return array_ops.gather(tokens_val, indices_val)
 
     data = tokens, indices
-    out = ragged.map_fn(
+    out = ragged_map_ops.map_fn(
         gather,
         data,
-        dtype=ragged.RaggedTensorType(dtype=dtypes.string, ragged_rank=1),
+        dtype=ragged_tensor.RaggedTensorType(
+            dtype=dtypes.string, ragged_rank=1),
         infer_shape=False)
 
     self.assertRaggedEqual(
         out, [[b'hello', b'there'], [b'merhaba'], [b'bonjour', b'ca va']])
 
   def testMismatchRaggedRank(self):
-    elems = ragged.constant([[[1, 2, 3]], [[4, 5], [6, 7]]])
-    fn = lambda x: ragged.reduce_sum(x, axis=0)
+    elems = ragged_factory_ops.constant([[[1, 2, 3]], [[4, 5], [6, 7]]])
+    fn = lambda x: ragged_math_ops.reduce_sum(x, axis=0)
     with self.assertRaisesWithLiteralMatch(
         ValueError, r'The declared ragged rank (23) mismatches the result (1)'):
-      _ = ragged.map_fn(
+      _ = ragged_map_ops.map_fn(
           fn,
           elems,
-          dtype=ragged.RaggedTensorType(dtype=dtypes.int64, ragged_rank=23))
+          dtype=ragged_tensor.RaggedTensorType(
+              dtype=dtypes.int64, ragged_rank=23))
 
   def testMismatchRaggedRank2(self):
-    elems = ragged.constant([[1, 2, 3], [4, 5], [6, 7]])
-    fn = lambda x: ragged.RaggedTensor.from_row_starts(x, [0])
+    elems = ragged_factory_ops.constant([[1, 2, 3], [4, 5], [6, 7]])
+    fn = lambda x: ragged_tensor.RaggedTensor.from_row_starts(x, [0])
     with self.assertRaisesWithLiteralMatch(
         ValueError, r'The declared ragged rank (10) mismatches the result (1)'):
-      _ = ragged.map_fn(
+      _ = ragged_map_ops.map_fn(
           fn,
           elems,
-          dtype=ragged.RaggedTensorType(dtype=dtypes.int64, ragged_rank=10))
+          dtype=ragged_tensor.RaggedTensorType(
+              dtype=dtypes.int64, ragged_rank=10))
 
   def testMapOnSparseTensor(self):
     s = sparse_tensor.SparseTensor(
@@ -277,8 +286,8 @@ class RaggedMapOpTest(ragged_test_util.RaggedTensorTestCase,
         values=[0, 5, 0, 4],
         dense_shape=[2, 2],
     )
-    t2 = ragged.RaggedTensor.from_sparse(s)
-    id_t2 = ragged.map_fn(
+    t2 = ragged_tensor.RaggedTensor.from_sparse(s)
+    id_t2 = ragged_map_ops.map_fn(
         lambda x: x, t2,
     )
     self.assertRaggedEqual(id_t2, [[0, 5], [0, 4]])

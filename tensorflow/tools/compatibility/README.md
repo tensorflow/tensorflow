@@ -7,7 +7,7 @@ Specifically: \
 
 ## Running the script from pip package
 
-First, install TensorFlow pip package. See
+First, install TensorFlow pip package*. See
 https://www.tensorflow.org/install/pip.
 
 Upgrade script can be run on a single Python file:
@@ -27,6 +27,8 @@ tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded
 tf_upgrade_v2 --intree coolcode --outtree coolcode-upgraded --copyotherfiles False
 ```
 
+*Note: `tf_upgrade_v2` is installed automatically as a script by the pip install 
+after TensorFlow 1.12.
 
 ## Report
 

@@ -190,7 +190,7 @@ string HloDataflowAnalysis::ToString() const {
   for (const HloComputation* computation : module_.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
-      if (ShapeUtil::IsTuple(instruction->shape())) {
+      if (instruction->shape().IsTuple()) {
         GetInstructionValueSet(instruction)
             .ForEachElement([this, &instruction, &out](
                                 const ShapeIndex& index,

@@ -42,9 +42,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export(v1=['keras.optimizers.Optimizer'])
 class Optimizer(object):
   """Abstract optimizer base class.
 
@@ -158,6 +159,7 @@ class Optimizer(object):
     return cls(**config)
 
 
+@keras_export(v1=['keras.optimizers.SGD'])
 class SGD(Optimizer):
   """Stochastic gradient descent optimizer.
 
@@ -222,6 +224,7 @@ class SGD(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export(v1=['keras.optimizers.RMSprop'])
 class RMSprop(Optimizer):
   """RMSProp optimizer.
 
@@ -288,6 +291,7 @@ class RMSprop(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export(v1=['keras.optimizers.Adagrad'])
 class Adagrad(Optimizer):
   """Adagrad optimizer.
 
@@ -354,6 +358,7 @@ class Adagrad(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export(v1=['keras.optimizers.Adadelta'])
 class Adadelta(Optimizer):
   """Adadelta optimizer.
 
@@ -437,6 +442,7 @@ class Adadelta(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export(v1=['keras.optimizers.Adam'])
 class Adam(Optimizer):
   """Adam optimizer.
 
@@ -533,6 +539,7 @@ class Adam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export(v1=['keras.optimizers.Adamax'])
 class Adamax(Optimizer):
   """Adamax optimizer from Adam paper's Section 7.
 
@@ -615,7 +622,7 @@ class Adamax(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.optimizers.Nadam')
+@keras_export(v1=['keras.optimizers.Nadam'])
 class Nadam(Optimizer):
   """Nesterov Adam optimizer.
 
@@ -654,9 +661,10 @@ class Nadam(Optimizer):
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
-    self.updates = [state_ops.assign_add(self.iterations, 1)]
+    self.updates = []
 
-    t = math_ops.cast(self.iterations, K.floatx()) + 1
+    with ops.control_dependencies([state_ops.assign_add(self.iterations, 1)]):
+      t = math_ops.cast(self.iterations, K.floatx())
 
     # Due to the recommendations in [2], i.e. warming momentum schedule
     momentum_cache_t = self.beta_1 * (
@@ -673,7 +681,7 @@ class Nadam(Optimizer):
     ms = [K.zeros(shape) for shape in shapes]
     vs = [K.zeros(shape) for shape in shapes]
 
-    self.weights = [self.iterations] + ms + vs
+    self.weights = [self.iterations, self.m_schedule] + ms + vs
 
     for p, g, m, v in zip(params, grads, ms, vs):
       # the following equations given in [1]
@@ -780,12 +788,12 @@ adamax = Adamax
 nadam = Nadam
 
 
-@tf_export('keras.optimizers.serialize')
+@keras_export('keras.optimizers.serialize')
 def serialize(optimizer):
   return serialize_keras_object(optimizer)
 
 
-@tf_export('keras.optimizers.deserialize')
+@keras_export('keras.optimizers.deserialize')
 def deserialize(config, custom_objects=None):
   """Inverse of the `serialize` function.
 
@@ -820,6 +828,7 @@ def deserialize(config, custom_objects=None):
         'sgd': SGD,
         'tfoptimizer': TFOptimizer
     }
+
   # Make deserialization case-insensitive for built-in optimizers.
   if config['class_name'].lower() in all_classes:
     config['class_name'] = config['class_name'].lower()
@@ -830,7 +839,7 @@ def deserialize(config, custom_objects=None):
       printable_module_name='optimizer')
 
 
-@tf_export('keras.optimizers.get')
+@keras_export('keras.optimizers.get')
 def get(identifier):
   """Retrieves a Keras Optimizer instance.
 

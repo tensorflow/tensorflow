@@ -32,8 +32,8 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   %p = f32[2,2] parameter(0)
-  %constant.f32.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
-  %constant.f32.2 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32.1 = f32[2,2] constant({{1, 2}, {3, 4}})
+  %constant.f32.2 = f32[2,2] constant({{1, 2}, {3, 4}})
   ROOT %tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32.1, %constant.f32.2)
 }
 )";
@@ -91,7 +91,7 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> ((f32[2,2]), (f32[2,2], f32[2,2])) {
   %p = f32[2,2] parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %tuple1 = (f32[2,2]) tuple(%constant.f32)
   %tuple2 = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   ROOT %tuple = ((f32[2,2]), (f32[2,2], f32[2,2])) tuple(%tuple1, %tuple2)
@@ -152,7 +152,7 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   %p = f32[2,2] parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %tuple.1 = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%tuple.1), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%tuple.1), index=0
@@ -174,7 +174,7 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   %p = f32[2,2] parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %tuple.1 = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%tuple.1), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%tuple.1), index=1
@@ -196,8 +196,8 @@ HloModule foobar
 
 ENTRY %entrycomp (p: f32[2,2]) -> (f32[2,2], f32[2,2]) {
   %p = f32[2,2] parameter(0)
-  %constant.f32.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
-  %constant.f32.2 = f32[2,2] constant(f32[2,2] {{2, 3}, {4, 5}})
+  %constant.f32.1 = f32[2,2] constant({{1, 2}, {3, 4}})
+  %constant.f32.2 = f32[2,2] constant({{2, 3}, {4, 5}})
   %tuple.1 = (f32[2,2], f32[2,2]) tuple(%constant.f32.1, %constant.f32.2)
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%tuple.1), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%tuple.1), index=1
@@ -226,7 +226,7 @@ HloModule foobar
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
   %x = (f32[2,2], f32[2,2]) parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%x), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%x), index=1
   %add.1 = f32[2,2] add(%get-tuple-element.1, %constant.f32)
@@ -235,7 +235,7 @@ HloModule foobar
 }
 
 ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{3, 4}, {5, 6}})
+  %constant.f32 = f32[2,2] constant({{3, 4}, {5, 6}})
   %init.tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   ROOT %while = (f32[2,2], f32[2,2]) while(%init.tuple), condition=%condition, body=%body
 }
@@ -263,7 +263,7 @@ HloModule foobar
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
   %x = (f32[2,2], f32[2,2]) parameter(0)
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  %constant.f32 = f32[2,2] constant({{1, 2}, {3, 4}})
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%x), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%x), index=1
   %add.1 = f32[2,2] add(%get-tuple-element.1, %constant.f32)
@@ -272,8 +272,8 @@ HloModule foobar
 }
 
 ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
-  %constant.f32.1 = f32[2,2] constant(f32[2,2] {{3, 4}, {5, 6}})
-  %constant.f32.2 = f32[2,2] constant(f32[2,2] {{3, 4}, {7, 8}})
+  %constant.f32.1 = f32[2,2] constant({{3, 4}, {5, 6}})
+  %constant.f32.2 = f32[2,2] constant({{3, 4}, {7, 8}})
   %init.tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32.1, %constant.f32.2)
   ROOT %while = (f32[2,2], f32[2,2]) while(%init.tuple), condition=%condition, body=%body
 }
@@ -301,8 +301,8 @@ HloModule foobar
 
 %body (x: (f32[2,2], f32[2,2])) -> (f32[2,2], f32[2,2]) {
   %x = (f32[2,2], f32[2,2]) parameter(0)
-  %constant.f32.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
-  %constant.f32.2 = f32[2,2] constant(f32[2,2] {{3, 4}, {1, 2}})
+  %constant.f32.1 = f32[2,2] constant({{1, 2}, {3, 4}})
+  %constant.f32.2 = f32[2,2] constant({{3, 4}, {1, 2}})
   %get-tuple-element.1 = f32[2,2] get-tuple-element(%x), index=0
   %get-tuple-element.2 = f32[2,2] get-tuple-element(%x), index=1
   %add.1 = f32[2,2] add(%get-tuple-element.1, %constant.f32.1)
@@ -311,7 +311,7 @@ HloModule foobar
 }
 
 ENTRY %WhileLoop () -> (f32[2,2], f32[2,2]) {
-  %constant.f32 = f32[2,2] constant(f32[2,2] {{3, 4}, {5, 6}})
+  %constant.f32 = f32[2,2] constant({{3, 4}, {5, 6}})
   %init.tuple = (f32[2,2], f32[2,2]) tuple(%constant.f32, %constant.f32)
   ROOT %while = (f32[2,2], f32[2,2]) while(%init.tuple), condition=%condition, body=%body
 }
@@ -361,38 +361,38 @@ HloModule foobar
 ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   %p = bf16[] parameter(0)
 
-  %cross-replica-sum.ar.1 = bf16[]
-      cross-replica-sum(%p),
+  %all-reduce.ar.1 = bf16[]
+      all-reduce(%p),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=0}
   %convert.1 = f32[]
-      convert(%cross-replica-sum.ar.1),
+      convert(%all-reduce.ar.1),
       sharding={maximal device=0}
-  %cross-replica-sum.1 = f32[]
-      cross-replica-sum(%convert.1),
+  %all-reduce.1 = f32[]
+      all-reduce(%convert.1),
       replica_groups={{0,1}},
       to_apply=%sum.f32,
       sharding={maximal device=0}
 
-  %cross-replica-sum.ar.2 = bf16[]
-      cross-replica-sum(%p),
+  %all-reduce.ar.2 = bf16[]
+      all-reduce(%p),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=1}
   %convert.2 = f32[]
-      convert(%cross-replica-sum.ar.2),
+      convert(%all-reduce.ar.2),
       sharding={maximal device=1}
-  %cross-replica-sum.2 = f32[]
-      cross-replica-sum(%convert.2),
+  %all-reduce.2 = f32[]
+      all-reduce(%convert.2),
       replica_groups={{0,1}},
       to_apply=%sum.f32,
       sharding={maximal device=1}
 
   ROOT %tuple = (f32[], f32[])
-      tuple(%cross-replica-sum.1, %cross-replica-sum.2),
+      tuple(%all-reduce.1, %all-reduce.2),
       sharding={{maximal device=0}, {maximal device=1}}
 }
 )";
@@ -406,8 +406,8 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::CrossReplicaSum(op::Convert(op::Parameter())),
-                        op::CrossReplicaSum(op::Convert(op::Parameter()))));
+              op::Tuple(op::AllReduce(op::Convert(op::Parameter())),
+                        op::AllReduce(op::Convert(op::Parameter()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -433,34 +433,34 @@ HloModule foobar
 ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
   %p = f32[2,1] parameter(0)
 
-  %cross-replica-sum.ar.1 = f32[2,1]
-      cross-replica-sum(%p),
+  %all-reduce.ar.1 = f32[2,1]
+      all-reduce(%p),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.1,
       sharding={maximal device=0}
-  %bitcast.1 = f32[2]{0} bitcast(f32[2,1]{1,0} %cross-replica-sum.ar.1)
-  %cross-replica-sum.1 = f32[2]
-      cross-replica-sum(%bitcast.1),
+  %bitcast.1 = f32[2]{0} bitcast(f32[2,1]{1,0} %all-reduce.ar.1)
+  %all-reduce.1 = f32[2]
+      all-reduce(%bitcast.1),
       replica_groups={{0,1}},
       to_apply=%sum.2,
       sharding={maximal device=0}
 
-  %cross-replica-sum.ar.2 = f32[2,1]
-      cross-replica-sum(%p),
+  %all-reduce.ar.2 = f32[2,1]
+      all-reduce(%p),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.1,
       sharding={maximal device=1}
-  %bitcast.2 = f32[2]{0} bitcast(f32[2,1]{1,0} %cross-replica-sum.ar.2)
-  %cross-replica-sum.2 = f32[2]
-      cross-replica-sum(%bitcast.2),
+  %bitcast.2 = f32[2]{0} bitcast(f32[2,1]{1,0} %all-reduce.ar.2)
+  %all-reduce.2 = f32[2]
+      all-reduce(%bitcast.2),
       replica_groups={{0,1}},
       to_apply=%sum.2,
       sharding={maximal device=1}
 
   ROOT %tuple = (f32[], f32[])
-      tuple(%cross-replica-sum.1, %cross-replica-sum.2),
+      tuple(%all-reduce.1, %all-reduce.2),
       sharding={{maximal device=0}, {maximal device=1}}
 }
 )";
@@ -474,8 +474,8 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::CrossReplicaSum(op::Bitcast(op::Parameter())),
-                        op::CrossReplicaSum(op::Bitcast(op::Parameter()))));
+              op::Tuple(op::AllReduce(op::Bitcast(op::Parameter())),
+                        op::AllReduce(op::Bitcast(op::Parameter()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -496,38 +496,38 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %p = f32[] parameter(0)
   %constant.f32 = f32[] constant(123)
 
-  %cross-replica-sum.ar.1 = f32[]
-      cross-replica-sum(%p),
+  %all-reduce.ar.1 = f32[]
+      all-reduce(%p),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.f32,
       sharding={maximal device=0}
   %multiply.1 = f32[]
-      multiply(%cross-replica-sum.ar.1, %constant.f32),
+      multiply(%all-reduce.ar.1, %constant.f32),
       sharding={maximal device=0}
-  %cross-replica-sum.1 = f32[]
-      cross-replica-sum(%multiply.1),
+  %all-reduce.1 = f32[]
+      all-reduce(%multiply.1),
       replica_groups={{0,1}},
       to_apply=%sum.f32,
       sharding={maximal device=0}
 
-  %cross-replica-sum.ar.2 = f32[]
-      cross-replica-sum(%p),
+  %all-reduce.ar.2 = f32[]
+      all-reduce(%p),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.f32,
       sharding={maximal device=1}
   %multiply.2 = f32[]
-      multiply(%cross-replica-sum.ar.2, %constant.f32),
+      multiply(%all-reduce.ar.2, %constant.f32),
       sharding={maximal device=1}
-  %cross-replica-sum.2 = f32[]
-      cross-replica-sum(%multiply.2),
+  %all-reduce.2 = f32[]
+      all-reduce(%multiply.2),
       replica_groups={{0,1}},
       to_apply=%sum.f32,
       sharding={maximal device=1}
 
   ROOT %tuple = (f32[], f32[])
-      tuple(%cross-replica-sum.1, %cross-replica-sum.2),
+      tuple(%all-reduce.1, %all-reduce.2),
       sharding={{maximal device=0}, {maximal device=1}}
 }
 )";
@@ -542,9 +542,8 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   EXPECT_TRUE(changed);
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      op::Tuple(
-          op::CrossReplicaSum(op::Multiply(op::Parameter(), op::Constant())),
-          op::CrossReplicaSum(op::Multiply(op::Parameter(), op::Constant()))));
+      op::Tuple(op::AllReduce(op::Multiply(op::Parameter(), op::Constant())),
+                op::AllReduce(op::Multiply(op::Parameter(), op::Constant()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -572,44 +571,44 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %constant.bf16 = bf16[] constant(1)
   %constant.f32 = f32[] constant(2)
 
-  %cross-replica-sum.ar.1 = bf16[]
-      cross-replica-sum(%constant.bf16),
+  %all-reduce.ar.1 = bf16[]
+      all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=0}
   %convert.1 = f32[]
-      convert(%cross-replica-sum.ar.1),
+      convert(%all-reduce.ar.1),
       sharding={maximal device=0}
   %add.1 = f32[]
       add(%constant.f32, %convert.1),
       sharding={maximal device=0}
-  %cross-replica-sum.1 = f32[]
-      cross-replica-sum(%add.1),
+  %all-reduce.1 = f32[]
+      all-reduce(%add.1),
       replica_groups={{0,1}},
       to_apply=%sum.f32,
       sharding={maximal device=0}
 
-  %cross-replica-sum.ar.2 = bf16[]
-      cross-replica-sum(%constant.bf16),
+  %all-reduce.ar.2 = bf16[]
+      all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=1}
   %convert.2 = f32[]
-      convert(%cross-replica-sum.ar.2),
+      convert(%all-reduce.ar.2),
       sharding={maximal device=1}
   %add.2 = f32[]
       add(%constant.f32, %convert.2),
       sharding={maximal device=1}
-  %cross-replica-sum.2 = f32[]
-      cross-replica-sum(%add.2),
+  %all-reduce.2 = f32[]
+      all-reduce(%add.2),
       replica_groups={{0,1}},
       to_apply=%sum.f32,
       sharding={maximal device=1}
 
   ROOT %tuple = (f32[], f32[])
-      tuple(%cross-replica-sum.1, %cross-replica-sum.2),
+      tuple(%all-reduce.1, %all-reduce.2),
       sharding={{maximal device=0}, {maximal device=1}}
 }
 )";
@@ -625,10 +624,10 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::Tuple(
-          op::CrossReplicaSum(op::Add(
-              op::Divide(op::Constant(), op::Constant()), op::Convert())),
-          op::CrossReplicaSum(op::Add(
-              op::Divide(op::Constant(), op::Constant()), op::Convert()))));
+          op::AllReduce(op::Add(op::Divide(op::Constant(), op::Constant()),
+                                op::Convert())),
+          op::AllReduce(op::Add(op::Divide(op::Constant(), op::Constant()),
+                                op::Convert()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -657,44 +656,44 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %constant.f32.1 = f32[] constant(2)
   %constant.f32.2 = f32[] constant(3)
 
-  %cross-replica-sum.ar.1 = bf16[]
-      cross-replica-sum(%constant.bf16),
+  %all-reduce.ar.1 = bf16[]
+      all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=0}
   %convert.1 = f32[]
-      convert(%cross-replica-sum.ar.1),
+      convert(%all-reduce.ar.1),
       sharding={maximal device=0}
   %add.1 = f32[]
       add(%constant.f32.1, %convert.1),
       sharding={maximal device=0}
-  %cross-replica-sum.1 = f32[]
-      cross-replica-sum(%add.1),
+  %all-reduce.1 = f32[]
+      all-reduce(%add.1),
       replica_groups={{0,1}},
       to_apply=%sum.f32,
       sharding={maximal device=0}
 
-  %cross-replica-sum.ar.2 = bf16[]
-      cross-replica-sum(%constant.bf16),
+  %all-reduce.ar.2 = bf16[]
+      all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
       all_reduce_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=1}
   %convert.2 = f32[]
-      convert(%cross-replica-sum.ar.2),
+      convert(%all-reduce.ar.2),
       sharding={maximal device=1}
   %add.2 = f32[]
       add(%constant.f32.2, %convert.2),
       sharding={maximal device=1}
-  %cross-replica-sum.2 = f32[]
-      cross-replica-sum(%add.2),
+  %all-reduce.2 = f32[]
+      all-reduce(%add.2),
       replica_groups={{0,1}},
       to_apply=%sum.f32,
       sharding={maximal device=1}
 
   ROOT %tuple = (f32[], f32[])
-      tuple(%cross-replica-sum.1, %cross-replica-sum.2),
+      tuple(%all-reduce.1, %all-reduce.2),
       sharding={{maximal device=0}, {maximal device=1}}
 }
 )";

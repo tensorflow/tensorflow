@@ -621,7 +621,7 @@ def _confusion_matrix_at_thresholds(labels,
 
 
 def _aggregate_variable(v, collections):
-  f = lambda distribution, value: distribution.read_var(value)
+  f = lambda distribution, value: distribution.extended.read_var(value)
   return _aggregate_across_replicas(collections, f, v)
 
 

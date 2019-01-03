@@ -280,7 +280,7 @@ string HloToIrBindings::ToString() const {
       StrAppend(&s, "    ", instr->ToString());
 
       const ShapeTree<llvm::Value*>& shape_tree = it->second;
-      if (!ShapeUtil::IsTuple(instr->shape())) {
+      if (!instr->shape().IsTuple()) {
         const llvm::Value* val = shape_tree.begin()->second;
         StrAppend(&s, " -> ", llvm_ir::DumpToString(*val), "\n");
         continue;

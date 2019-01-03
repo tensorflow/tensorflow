@@ -160,8 +160,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 def converted_call(f, owner, options, *args, **kwargs):
   """Compiles a function call inline. For internal use only."""
-  if options.verbose >= converter.Verbosity.VERBOSE:
-    logging.info('Converted call: {}; owner: {}'.format(f, owner))
+  logging.vlog(logging.DEBUG, 'Converted call: %s; owner: %s', f, owner)
 
   if owner is not None:
     if not isinstance(f, str):
@@ -184,12 +183,18 @@ def converted_call(f, owner, options, *args, **kwargs):
   # In particular, we may want to avoid renaming functions altogether.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
 
+    # TODO(mdan): This may be inconsistent in certain situations.
+    # If the function had already been annotated with @tf.function, it
+    # may be bound to the incorrect object. It's unclear if those situations
+    # are possible, but if they happen, we need to check if f is bound
+    # to a shim like WeakrefSelf and unpack it.
+
     # Args typically include `self`, as required by the conversion process.
     # When conversion is skipped, `self` is not necessary, because the
     # original bound method is being executed. This code removes it.
     if tf_inspect.ismethod(f) and args:
-      f_class = inspect_utils.getmethodclass(f)
-      if args[0] is f_class:
+      f_self = inspect_utils.getmethodself(f)
+      if args[0] is f_self:
         args = args[1:]
 
     return f(*args, **kwargs)
@@ -216,10 +221,10 @@ def converted_call(f, owner, options, *args, **kwargs):
     # Regular functions
     target_entity = f
     arg_map_target = f
-    f_class = inspect_utils.getmethodclass(f)
+    f_self = inspect_utils.getmethodself(f)
 
     # TODO(b/119246461): This may be more elegantly handled using __get__?
-    if f_class is not None:
+    if f_self is not None:
       # If this is a method call, it may or may not include self.
       #
       # Example when self is included:
@@ -234,11 +239,11 @@ def converted_call(f, owner, options, *args, **kwargs):
         # When the owner is not specified, use the result of
         # inspect_utils.getmethodclass.
         # TODO(b/119246461): Make sure an owner is always specified.
-        if not args or args[0] is not f_class:
-          effective_args = (f_class,) + args
+        if not args or args[0] is not f_self:
+          effective_args = (f_self,) + args
         else:
-          effective_args = (f_class,) + args[1:]
-      partial_types = (f_class,)
+          effective_args = (f_self,) + args[1:]
+      partial_types = (f_self,)
     else:
       effective_args = args
       partial_types = ()
@@ -280,11 +285,11 @@ def converted_call(f, owner, options, *args, **kwargs):
   converted_f = to_graph(
       target_entity,
       recursive=options.recursive,
-      verbose=options.verbose,
       arg_values=arg_values,
       arg_types=arg_types,
-      strip_decorators=options.strip_decorators,
-      optional_features=options.optional_features,
+      experimental_optional_features=options.optional_features,
+      experimental_strip_decorators=options.strip_decorators,
+      experimental_verbose=options.verbose,
       experimental_partial_types=partial_types)
 
   result = converted_f(*effective_args, **kwargs)
@@ -317,11 +322,11 @@ def _is_not_callable(obj):
 @tf_export('autograph.to_graph')
 def to_graph(entity,
              recursive=True,
-             verbose=converter.Verbosity.VERBOSE,
              arg_values=None,
              arg_types=None,
-             strip_decorators=None,
-             optional_features=converter.Feature.ALL,
+             experimental_optional_features=converter.Feature.ALL,
+             experimental_strip_decorators=None,
+             experimental_verbose=converter.Verbosity.BRIEF,
              experimental_partial_types=None):
   """Converts a Python entity into a TensorFlow graph.
 
@@ -369,21 +374,21 @@ def to_graph(entity,
     entity: Python callable or class to convert.
     recursive: Whether to recursively convert any functions that the
       converted function may call.
-    verbose: The level of printing verbosity to use, as a
-      `tf.autograph.experimental.Verbosity` value.
     arg_values: Optional dict of value hints for symbols including
       function arguments mapping string names to actual values. For example,
       `arg_values={'a': 1}` will map the variable `a` to the value `1`.
     arg_types: Optional dict of type hints for symbols including function
       arguments. Type hints allow specifying just the type of a variable, rather
       than a specific value.
-    strip_decorators: A tuple specifying decorators that should be
+    experimental_optional_features: `None`, a tuple of, or a single
+      `tf.autograph.experimental.Feature` value. Controls the use of
+      optional features in the conversion process.
+    experimental_strip_decorators: A tuple specifying decorators that should be
       excluded from the compiled output. By default, when converting a function
       before the decorators are applied, the compiled output will include those
       decorators.
-    optional_features: `None`, a tuple of, or a single
-      `tf.autograph.experimental.Feature` value. Controls the use of
-      optional features in the conversion process.
+    experimental_verbose: The level of printing verbosity to use, as a
+      `tf.autograph.experimental.Verbosity` value.
     experimental_partial_types: A `set` of `type` values, reserved for internal
       use.
 
@@ -393,16 +398,16 @@ def to_graph(entity,
   Raises:
     ValueError: If the entity could not be converted.
   """
-  if strip_decorators is None:
-    strip_decorators = ()
-  strip_decorators += (convert, do_not_convert, converted_call)
+  if experimental_strip_decorators is None:
+    experimental_strip_decorators = ()
+  experimental_strip_decorators += (convert, do_not_convert, converted_call)
 
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
           recursive=recursive,
-          verbose=verbose,
-          strip_decorators=strip_decorators,
-          optional_features=optional_features),
+          verbose=experimental_verbose,
+          strip_decorators=experimental_strip_decorators,
+          optional_features=experimental_optional_features),
       partial_types=experimental_partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
@@ -422,6 +427,9 @@ def to_graph(entity,
   # TODO(mdan): This might not work well if the call tree spans modules?
   for key, val in namespace.items():
     # Avoid overwriting entities that have been transformed.
+    if key not in compiled_module.__dict__:
+      compiled_module.__dict__[key] = val
+  for key, val in program_ctx.additional_symbols.items():
     if key not in compiled_module.__dict__:
       compiled_module.__dict__[key] = val
   compiled = getattr(compiled_module, name)
@@ -458,7 +466,7 @@ def to_code(entity,
             arg_values=None,
             arg_types=None,
             indentation='  ',
-            optional_features=converter.Feature.ALL,
+            experimental_optional_features=converter.Feature.ALL,
             experimental_partial_types=None):
   """Similar to `to_graph`, but returns Python source code as a string.
 
@@ -479,7 +487,7 @@ def to_code(entity,
       than a specific value.
     indentation: The string to use for indenting. Typically two or four spaces,
       or just the tab character.
-    optional_features: `None`, a tuple of, or a single
+    experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value. Controls the use of
       optional features in the conversion process.
     experimental_partial_types: A `set` of `type` values, reserved for internal
@@ -491,8 +499,9 @@ def to_code(entity,
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
           recursive=recursive,
+          verbose=converter.Verbosity.BRIEF,
           strip_decorators=(convert, do_not_convert, converted_call),
-          optional_features=optional_features),
+          optional_features=experimental_optional_features),
       partial_types=experimental_partial_types,
       autograph_module=tf_inspect.getmodule(to_graph),
       uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)

@@ -11,49 +11,29 @@ load(
     "gen_device_srcs",
     "process_srcs",
 )
-load("@org_tensorflow//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 
-process_srcs(
-    name = "process_srcs",
-    srcs = glob([
-        "**/*.cc",
-        "**/*.h",
+cc_library(
+    name = "src_hdrs",
+    hdrs = process_srcs([
+        "src/collectives/collectives.h",
+        "src/nccl.h.in",
     ]),
 )
 
 cc_library(
-    name = "src_hdrs",
-    hdrs = [
-        "src/collectives/collectives.h",
-        "src/nccl.h",
-    ],
-    data = [":process_srcs"],
-    strip_include_prefix = "src",
-)
-
-cc_library(
     name = "include_hdrs",
-    hdrs = glob(["src/include/*.h"]),
-    data = [":process_srcs"],
-    strip_include_prefix = "src/include",
+    hdrs = process_srcs(glob(["src/include/*.h"])),
+    strip_include_prefix = "include",
 )
 
-cc_library(
-    name = "device_hdrs",
-    hdrs = glob(["src/collectives/device/*.h"]),
-    strip_include_prefix = "src/collectives/device",
-)
-
-filegroup(
-    name = "device_srcs",
-    srcs = [
-        "src/collectives/device/all_gather.cu.cc",
-        "src/collectives/device/all_reduce.cu.cc",
-        "src/collectives/device/broadcast.cu.cc",
-        "src/collectives/device/reduce.cu.cc",
-        "src/collectives/device/reduce_scatter.cu.cc",
-    ],
-)
+device_srcs = process_srcs([
+    "src/collectives/device/all_gather.cu",
+    "src/collectives/device/all_reduce.cu",
+    "src/collectives/device/broadcast.cu",
+    "src/collectives/device/reduce.cu",
+    "src/collectives/device/reduce_scatter.cu",
+])
 
 # NCCL compiles the same source files with different NCCL_OP defines. RDC
 # compilation requires that each compiled module has a unique ID. Clang derives
@@ -62,67 +42,65 @@ filegroup(
 # problem because it generates IDs based on preprocessed content.
 gen_device_srcs(
     name = "sum",
-    srcs = [":device_srcs"],
+    srcs = device_srcs,
     NCCL_OP = 0,
 )
 
 gen_device_srcs(
     name = "prod",
-    srcs = [":device_srcs"],
+    srcs = device_srcs,
     NCCL_OP = 1,
 )
 
 gen_device_srcs(
     name = "min",
-    srcs = [":device_srcs"],
+    srcs = device_srcs,
     NCCL_OP = 2,
 )
 
 gen_device_srcs(
     name = "max",
-    srcs = [":device_srcs"],
+    srcs = device_srcs,
     NCCL_OP = 3,
 )
 
 cuda_rdc_library(
     name = "device",
     srcs = [
-        "src/collectives/device/functions.cu.cc",
         ":max",
         ":min",
         ":prod",
         ":sum",
-    ],
+    ] + process_srcs(glob([
+        "src/collectives/device/*.h",
+        "src/collectives/device/functions.cu",
+    ])),
     deps = [
-        ":device_hdrs",
         ":include_hdrs",
         ":src_hdrs",
     ],
 )
 
 # Primary NCCL target.
-tf_cuda_library(
+cc_library(
     name = "nccl",
-    srcs = glob(
-        include = ["src/**/*.cu.cc"],
+    srcs = process_srcs(glob(
+        include = ["src/**/*.cu"],
         # Exclude device-library code.
         exclude = ["src/collectives/device/**"],
-    ) + [
+    )) + [
         # Required for header inclusion checking (see
         # http://docs.bazel.build/versions/master/be/c-cpp.html#hdrs).
-        # Files in src/ which #include "nccl.h" load it from there rather than
-        # from the virtual includes directory.
-        "src/nccl.h",
+        "nccl.h",
+        "collectives/collectives.h",
     ],
-    hdrs = ["src/nccl.h"],
-    copts = ["-Wno-vla"],
+    hdrs = ["nccl.h"],
+    copts = cuda_default_copts() + ["-Wno-vla"],
     include_prefix = "third_party/nccl",
-    strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         ":device",
         ":include_hdrs",
-        ":src_hdrs",
         "@local_config_cuda//cuda:cudart_static",
     ],
 )

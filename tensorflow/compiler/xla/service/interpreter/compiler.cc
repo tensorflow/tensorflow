@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
+#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -46,6 +47,11 @@ Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout(),
       LayoutAssignment::InstructionCanChangeLayout);
+
+  ReducePrecisionInsertion::AddPasses(
+      &pipeline, hlo_module->config().debug_options(),
+      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
+
   return pipeline.Run(hlo_module).status();
 }
 
@@ -76,9 +82,12 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
   // need to compile anything
 
   // Create executable from only the Hlo module.
+  auto evaluator = absl::make_unique<HloEvaluator>();
+  evaluator->set_use_fast_path(
+      hlo_module->config().debug_options().xla_hlo_evaluator_use_fast_path());
   std::unique_ptr<Executable> executable =
-      absl::make_unique<InterpreterExecutable>(
-          std::move(hlo_module), absl::make_unique<HloEvaluator>());
+      absl::make_unique<InterpreterExecutable>(std::move(hlo_module),
+                                               std::move(evaluator));
 
   return std::move(executable);
 }

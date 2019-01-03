@@ -72,10 +72,6 @@ tf_module {
     name: "ServerDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
-  member {
-    name: "SessionRunHook"
-    mtype: "<type \'type\'>"
-  }
   member_method {
     name: "cosine_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "

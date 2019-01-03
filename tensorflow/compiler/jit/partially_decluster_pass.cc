@@ -120,6 +120,7 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
 
   NodeDef ndef = n->def();
   ndef.set_name(absl::StrCat(n->name(), "/declustered"));
+  MergeDebugInfo(NodeDebugInfo(n->def()), &ndef);
   RemoveFromXlaCluster(&ndef);
   Status s;
   Node* cloned_node = graph->AddNode(ndef, &s);

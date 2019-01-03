@@ -30,10 +30,12 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -207,54 +209,6 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(2, inputs.count(ds2))
     self.assertEqual(1, inputs.count(ds3))
 
-  def testOptionsDefault(self):
-    ds = dataset_ops.Dataset.range(0)
-    self.assertEqual(dataset_ops.Options(), ds.options())
-
-  def testOptionsOnce(self):
-    options = dataset_ops.Options()
-    ds = dataset_ops.Dataset.range(0).with_options(options).cache()
-    self.assertEqual(options, ds.options())
-
-  def testOptionsTwiceSame(self):
-    options = dataset_ops.Options()
-    options.experimental_autotune = True
-    ds = dataset_ops.Dataset.range(0).with_options(options).with_options(
-        options)
-    self.assertEqual(options, ds.options())
-
-  def testOptionsTwiceDifferent(self):
-    options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
-    options2 = dataset_ops.Options()
-    options2.experimental_deterministic = False
-    ds = dataset_ops.Dataset.range(0).with_options(options1).with_options(
-        options2)
-    self.assertTrue(ds.options().experimental_autotune)
-    # Explicitly check that flag is False since assertFalse allows None
-    self.assertIs(ds.options().experimental_deterministic, False)
-
-  def testOptionsTwiceDifferentError(self):
-    options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
-    options2 = dataset_ops.Options()
-    options2.experimental_autotune = False
-    with self.assertRaisesRegexp(ValueError,
-                                 "Cannot merge incompatible values"):
-      dataset_ops.Dataset.range(0).with_options(options1).with_options(options2)
-
-  def testOptionsMergeOptionsFromMultipleInputs(self):
-    options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
-    options2 = dataset_ops.Options()
-    options2.experimental_deterministic = True
-    ds = dataset_ops.Dataset.zip(
-        (dataset_ops.Dataset.range(0).with_options(options1),
-         dataset_ops.Dataset.range(0).with_options(options2)))
-    self.assertTrue(ds.options().experimental_autotune)
-    self.assertTrue(ds.options().experimental_deterministic)
-
-  # TODO(b/119882922): use-after-free bug in eager mode.
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
@@ -278,8 +232,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
-  def testSkipEagerDatasetStructure(self, tf_value_fn,
-                                    expected_element_structure):
+  def testDatasetStructure(self, tf_value_fn, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
     dataset_structure = structure.Structure.from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
@@ -312,6 +265,31 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(
           round_trip_dataset, [self.evaluate(tf_value_fn())],
           requires_initialization=True)
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerSameGraphErrorOneShot(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        dataset = dataset.batch(2)
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerSameGraphErrorOneShotSimple(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        _ = dataset.make_one_shot_iterator()
+        self.assertRegexpMatches(
+            str(mock_log.call_args), "Please ensure that all datasets in the "
+            "pipeline are created in the same graph as the iterator.")
+
+  @test_util.run_deprecated_v1
+  def testSkipEagerSameGraphErrorInitializable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        dataset = dataset.batch(2)
+
 
 if __name__ == "__main__":
   test.main()

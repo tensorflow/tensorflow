@@ -627,9 +627,18 @@ TEST(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     Graph *xla_graph = xla_fbody->graph;
     auto node_name_index = xla_graph->BuildNodeNameIndex();
 
-    // Check that we have XlaSendToHost to send cond predicate to host.
+    // Check that we have XlaSendToHost to send cond predicate to host, and
+    // there is a control edge to If node.
     Node *send_if_pred_node = node_name_index["send_oc_if_pred_if"];
     EXPECT_NE(send_if_pred_node, nullptr);
+    bool has_control_edge_to_if = false;
+    for (const Edge *e : send_if_pred_node->out_edges()) {
+      if (e->IsControlEdge() && e->dst()->name() == "if") {
+        has_control_edge_to_if = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(has_control_edge_to_if);
 
     // Check that the "If" node now has `send_if_pred_node` as attribute
     // _xla_token_input_nodes.

@@ -428,94 +428,45 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   int n_dim = GetTensorBatchDimIndex(num_dims, attrs.data_format);
   int c_dim = GetTensorFeatureDimIndex(num_dims, attrs.data_format);
 
-  int64 total_spatial_size = 1;
-  for (int i = 0; i < attrs.num_spatial_dims; ++i) {
-    total_spatial_size *= dims.input_size(i);
-  }
+  // The conversion logic below assumes that the data format is NHWC, so we also
+  // check that here.
+  bool use_batch_group_count =
+      filter_tensor_shape.dim_size(num_dims - 1) == 1 && attrs.depthwise &&
+      attrs.data_format == FORMAT_NHWC;
 
-  // We use this approach only for depthwise convolutions where feature counts
-  // are large but space dimensions are small.
-  bool should_perform_depthwise_conv =
-      (total_spatial_size < dims.in_depth) &&
-      filter_tensor_shape.dim_size(num_dims - 1) == 1 && attrs.depthwise;
+  std::vector<std::pair<int64, int64>> padding(attrs.num_spatial_dims);
+  std::vector<int64> rhs_dilation(attrs.num_spatial_dims);
+  std::vector<int64> window_strides(attrs.num_spatial_dims);
+  std::vector<int64> ones(attrs.num_spatial_dims, 1);
 
-  int64 num_spatial_dims =
-      attrs.num_spatial_dims + (should_perform_depthwise_conv ? 1 : 0);
+  // The activations (inputs) form the LHS of the convolution.
+  // Activations have shape: [batch, in_rows, in_cols, ..., in_depth]
+  // For the gradient computation, we flip the roles of the batch and
+  // feature dimensions.
+  // Each spatial entry has size in_depth * batch
 
-  std::vector<std::pair<int64, int64>> padding(num_spatial_dims);
-  std::vector<int64> rhs_dilation(num_spatial_dims);
-  std::vector<int64> window_strides(num_spatial_dims);
-  std::vector<int64> ones(num_spatial_dims, 1);
+  // Swap n_dim and c_dim in the activations.
+  dnums.set_input_batch_dimension(c_dim);
+  dnums.set_input_feature_dimension(n_dim);
 
-  if (should_perform_depthwise_conv) {
-    // This approach is similar to handling of grouped convolutions in
-    // the convolution_feature_group_converter.cc. Please refer to it for
-    // details.
+  // The gradients become the RHS of the convolution.
+  // The gradients have shape [batch, out_rows, out_cols, ..., out_depth]
+  // where the batch becomes the input feature for the convolution.
+  dnums.set_kernel_input_feature_dimension(n_dim);
+  dnums.set_kernel_output_feature_dimension(c_dim);
 
-    // Add spatial dimension to the activation, and reshape.
-    std::vector<int64> activations_reshape_sizes, gradients_reshape_sizes;
-
-    activations_reshape_sizes.push_back(dims.batch_size);
-    gradients_reshape_sizes.push_back(dims.batch_size);
-    for (int i = 0; i < attrs.num_spatial_dims; i++) {
-      activations_reshape_sizes.push_back(dims.input_size(i));
-      gradients_reshape_sizes.push_back(dims.output_size(i));
-    }
-    activations_reshape_sizes.push_back(dims.in_depth);
-    activations_reshape_sizes.push_back(1);
-    gradients_reshape_sizes.push_back(dims.out_depth);
-    gradients_reshape_sizes.push_back(1);
-
-    activations = xla::Reshape(activations, activations_reshape_sizes);
-    gradients = xla::Reshape(gradients, gradients_reshape_sizes);
-
-    int64 new_spatial_dim = activations_reshape_sizes.size() - 1;
-
-    // Set the newly added dimension to be the batch.
-    dnums.set_input_batch_dimension(new_spatial_dim);
-    dnums.set_input_feature_dimension(c_dim);
-
-    // The gradients become the RHS of the convolution.
-    // The gradients have shape [batch, out_rows, out_cols, ..., out_depth, 1]
-    // where the batch becomes a spatial dimension, and 1 becomes
-    // the input feature for the convolution.
-    dnums.set_kernel_input_feature_dimension(new_spatial_dim);
-    dnums.set_kernel_output_feature_dimension(c_dim);
-
-    // Treat original batch dimension as a spatial dimension.
-    dnums.add_input_spatial_dimensions(n_dim);
-    dnums.add_kernel_spatial_dimensions(n_dim);
+  // The dimension swap below is needed because filter shape is KH,KW,F,DM.
+  if (use_batch_group_count) {
+    dnums.set_output_batch_dimension(attrs.num_spatial_dims + 1);
+    dnums.set_output_feature_dimension(attrs.num_spatial_dims);
   } else {
-    // The activations (inputs) form the LHS of the convolution.
-    // Activations have shape: [batch, in_rows, in_cols, ..., in_depth]
-    // For the gradient computation, we flip the roles of the batch and
-    // feature dimensions.
-    // Each spatial entry has size in_depth * batch
-
-    // Swap n_dim and c_dim in the activations.
-    dnums.set_input_batch_dimension(c_dim);
-    dnums.set_input_feature_dimension(n_dim);
-
-    // The gradients become the RHS of the convolution.
-    // The gradients have shape [batch, out_rows, out_cols, ..., out_depth]
-    // where the batch becomes the input feature for the convolution.
-    dnums.set_kernel_input_feature_dimension(n_dim);
-    dnums.set_kernel_output_feature_dimension(c_dim);
+    dnums.set_output_batch_dimension(attrs.num_spatial_dims);
+    dnums.set_output_feature_dimension(attrs.num_spatial_dims + 1);
   }
-
-  dnums.set_output_batch_dimension(num_spatial_dims);
-  dnums.set_output_feature_dimension(num_spatial_dims + 1);
 
   // Tensorflow filter shape is [ H, W, ..., inC, outC ].
-  for (int i = 0; i < num_spatial_dims; ++i) {
+  for (int i = 0; i < attrs.num_spatial_dims; ++i) {
     dnums.add_output_spatial_dimensions(i);
-  }
-
-  if (should_perform_depthwise_conv) {
-    // Set the right parameters for the newly created spatial dimension.
-    padding[0] = {0, 0};
-    rhs_dilation[0] = 1;
-    window_strides[0] = 1;
   }
 
   for (int64 i = 0; i < attrs.num_spatial_dims; ++i) {
@@ -559,10 +510,9 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
     const int64 pad_before =
         attrs.padding == Padding::SAME ? std::max<int64>(pad_total / 2, 0) : 0;
 
-    int64 dim_being_operated = should_perform_depthwise_conv ? i + 1 : i;
-    padding[dim_being_operated] = {pad_before, pad_total - pad_before};
-    rhs_dilation[dim_being_operated] = dims.spatial_dims[i].stride;
-    window_strides[dim_being_operated] = attrs.dilations[dim];
+    padding[i] = {pad_before, pad_total - pad_before};
+    rhs_dilation[i] = dims.spatial_dims[i].stride;
+    window_strides[i] = attrs.dilations[dim];
   }
 
   // Besides padding the input, we will also expand output_rows to
@@ -573,19 +523,16 @@ xla::StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
   //
   // This is done by specifying the window dilation factors in the
   // convolution HLO below.
-  filter_backprop = xla::ConvGeneralDilated(
-      activations, gradients, window_strides, padding,
-      /*lhs_dilation=*/ones, rhs_dilation, dnums,
-      /*feature_group_count=*/
-      should_perform_depthwise_conv ? dims.in_depth : 1);
 
-  if (should_perform_depthwise_conv) {
-    filter_backprop = xla::Reshape(filter_backprop, filter_shape.dimensions());
-  } else {
-    if (attrs.depthwise) {
-      filter_backprop = ContractFilterForDepthwiseBackprop(
-          filter_shape, filter_backprop, activations.builder());
-    }
+  filter_backprop = xla::ConvGeneralDilated(
+      activations, gradients, window_strides, padding, /*lhs_dilation=*/ones,
+      rhs_dilation, dnums,
+      /*feature_group_count=*/1,
+      /*batch_group_count=*/use_batch_group_count ? dims.in_depth : 1);
+
+  if (!use_batch_group_count && attrs.depthwise) {
+    filter_backprop = ContractFilterForDepthwiseBackprop(
+        filter_shape, filter_backprop, activations.builder());
   }
 
   return filter_backprop;

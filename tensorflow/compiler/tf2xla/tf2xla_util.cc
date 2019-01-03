@@ -364,6 +364,7 @@ Status AddPlaceholdersForFeeds(
       GraphDef gd;
       *gd.mutable_versions() = graph_def->versions();
       *gd.add_node() = *existing;
+      MergeDebugInfo(NodeDebugInfo(*existing), gd.mutable_node(0));
       TF_RETURN_IF_ERROR(
           AddDefaultAttrsToGraphDef(&gd, *op_registry, 0 /*node_offset*/));
 
@@ -390,6 +391,7 @@ Status AddPlaceholdersForFeeds(
   // in this code.
   for (auto it = placeholder_info.begin(); it != placeholder_info.end(); ++it) {
     const PlaceholderInfo& info = it->second;
+    // TODO(shikharagarwal): Add original node information.
     NodeDef* d = graph_def->add_node();
     d->set_name(info.placeholder_name);
     d->set_op("PlaceholderV2");
@@ -608,7 +610,9 @@ Status RewriteAssociatedFunction(
   switch (associated_function.type()) {
     case AssociatedFunctionInfo::kFunctionCallNode: {
       // Change this node to call the new function.
-      NodeDefBuilder builder(node->name(), rewritten_function_name, fld);
+      NodeDebugInfo debug_info(*node);
+      NodeDefBuilder builder(node->name(), rewritten_function_name, fld,
+                             &debug_info);
       for (auto attr : node->attrs()) {
         builder.Attr(attr.first, attr.second);
       }

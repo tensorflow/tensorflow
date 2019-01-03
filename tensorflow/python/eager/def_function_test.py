@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import weakref
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -25,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
@@ -51,6 +53,13 @@ class _ModelWithOptimizer(training.Model):
     gradients = tape.gradient(loss, trainable_variables)
     self.optimizer.apply_gradients(zip(gradients, trainable_variables))
     return {'loss': loss}
+
+
+class _HasDecoratedMethod(object):
+
+  @def_function.function
+  def f(self, x):
+    return x * 3.
 
 
 class DefFunctionTest(test.TestCase):
@@ -257,6 +266,28 @@ class DefFunctionTest(test.TestCase):
               tensor_spec.TensorSpec([1], dtypes.float32)),
              (tensor_spec.TensorSpec([1, 3], dtypes.int32),
               tensor_spec.TensorSpec([1], dtypes.int32)))))
+
+  @test_util.assert_no_garbage_created
+  def testFunctionReferenceCycles(self):
+    fn = def_function.function(lambda x: 2. * x)
+    fn(constant_op.constant(4.0))
+    weak_fn = weakref.ref(fn)
+    del fn
+    # Tests that the weak reference we made to the function is now dead, which
+    # means the object has been deleted. This should be true as long as the
+    # function itself is not involved in a reference cycle.
+    self.assertIs(None, weak_fn())
+
+  @test_util.assert_no_garbage_created
+  def testMethodReferenceCycles(self):
+    has_decorated_method = _HasDecoratedMethod()
+    has_decorated_method.f(constant_op.constant(5.))
+    weak_fn = weakref.ref(has_decorated_method.f)
+    del has_decorated_method
+    # Tests that the weak reference we made to the function is now dead, which
+    # means the object has been deleted. This should be true as long as the
+    # function itself is not involved in a reference cycle.
+    self.assertIs(None, weak_fn())
 
 
 if __name__ == '__main__':

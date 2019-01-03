@@ -93,7 +93,6 @@ cc_library(
 xla_test(
     name = "constants_test",
     srcs = ["constants_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":constants",
         "//tensorflow/compiler/xla:test",
@@ -147,7 +146,6 @@ cc_library(
 xla_test(
     name = "math_test",
     srcs = ["math_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":math",
         "//tensorflow/compiler/xla:literal_util",
@@ -181,7 +179,6 @@ cc_library(
 xla_test(
     name = "matrix_test",
     srcs = ["matrix_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":matrix",
         ":slicing",
@@ -295,7 +292,6 @@ cc_library(
 xla_test(
     name = "slicing_test",
     srcs = ["slicing_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":slicing",
         "//tensorflow/compiler/xla:literal_util",
@@ -324,12 +320,42 @@ cc_library(
 xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
-    tags = ["enable_for_xla_interpreter"],
     deps = [
         ":sorting",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "quantize",
+    hdrs = ["quantize.h"],
+    deps = [
+        ":constants",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
+    name = "quantize_test",
+    srcs = ["quantize_test.cc"],
+    # TODO(b/122119490): re-enable TAP after fixing.
+    tags = [
+        "notap",
+    ],
+    deps = [
+        ":quantize",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -382,8 +408,13 @@ cc_library(
 xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
-    tags = ["noasan"],  # sometimes times out, http://b/78650012
+    tags = [
+        "enable_for_xla_interpreter",
+        "noasan",  # sometimes times out, http://b/78650012
+    ],
     deps = [
+        ":math",
+        ":matrix",
         ":triangular_solve",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",

@@ -487,6 +487,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  @deprecated(
+      None,
+      "Use Variable.read_value. Variables in 2.X are initialized "
+      "automatically both in eager and graph (inside tf.defun) contexts.")
   def initialized_value(self):
     """Returns the value of the initialized variable.
 
@@ -506,7 +510,10 @@ class Variable(six.with_metaclass(VariableMetaclass,
       A `Tensor` holding the value of this variable after its initializer
       has run.
     """
-    raise NotImplementedError
+    with ops.init_scope():
+      return control_flow_ops.cond(is_variable_initialized(self),
+                                   self.read_value,
+                                   lambda: self.initial_value)
 
   @property
   def initial_value(self):
@@ -860,6 +867,9 @@ class Variable(six.with_metaclass(VariableMetaclass,
     """
     raise NotImplementedError
 
+  @deprecated(
+      None,
+      "Prefer Variable.assign which has equivalent behavior in 2.X.")
   def load(self, value, session=None):
     """Load new value into this variable.
 
@@ -893,7 +903,15 @@ class Variable(six.with_metaclass(VariableMetaclass,
     Raises:
         ValueError: Session is not passed and no default session
     """
-    raise NotImplementedError
+    if context.executing_eagerly():
+      self.assign(value)
+    else:
+      session = session or ops.get_default_session()
+      if session is None:
+        raise ValueError(
+            "Either session argument should be provided or default session "
+            "should be established")
+      session.run(self.initializer, {self.initializer.inputs[1]: value})
 
   # Conversion to tensor.
   @staticmethod
@@ -932,7 +950,7 @@ class Variable(six.with_metaclass(VariableMetaclass,
 
     def _run_op(a, *args, **kwargs):
       # pylint: disable=protected-access
-      return tensor_oper(a._AsTensor(), *args, **kwargs)
+      return tensor_oper(a.value(), *args, **kwargs)
 
     functools.update_wrapper(_run_op, tensor_oper)
     setattr(cls, operator, _run_op)
@@ -964,6 +982,18 @@ class Variable(six.with_metaclass(VariableMetaclass,
     raise NotImplementedError
 
   @property
+  def _shared_name(self):
+    """The shared name of the variable.
+
+      Unlike name(), shared_name doesn't have ":0" suffix. It is user-specified
+      name with name scope prefix.
+
+    Returns:
+      variable name.
+    """
+    return self.name[:self.name.index(":")]
+
+  @property
   def initializer(self):
     """The initializer operation for this variable."""
     raise NotImplementedError
@@ -989,6 +1019,16 @@ class Variable(six.with_metaclass(VariableMetaclass,
     raise NotImplementedError
 
   @property
+  def distribute_strategy(self):
+    """The `tf.distribute.Strategy` that this variable was created under.
+
+    Returns:
+      A `tf.distribute.Strategy` or `None` if this variable was not created
+      inside the `scope()` of any strategy.
+    """
+    raise NotImplementedError
+
+  @property
   def shape(self):
     """The `TensorShape` of this variable.
 
@@ -998,8 +1038,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
     raise NotImplementedError
 
   def get_shape(self):
-    """Alias of Variable.shape."""
-    raise NotImplementedError
+    """Alias of `Variable.shape`."""
+    return self.shape
 
   def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.
@@ -1603,16 +1643,6 @@ class RefVariable(VariableV1):
     """Conversion function for Graph.as_graph_element()."""
     return self._variable
 
-  def _AsTensor(self):  # pylint: disable=invalid-name
-    """Converts this variable to a Tensor.
-
-    See `tf.Variable.value`.
-
-    Returns:
-      A `Tensor` containing the value of the variable.
-    """
-    return self._snapshot
-
   def value(self):
     """Returns the last snapshot of this variable.
 
@@ -1703,30 +1733,6 @@ class RefVariable(VariableV1):
       A numpy `ndarray` with a copy of the value of this variable.
     """
     return self._variable.eval(session=session)
-
-  def initialized_value(self):
-    """Returns the value of the initialized variable.
-
-    You should use this instead of the variable itself to initialize another
-    variable with a value that depends on the value of this variable.
-
-    ```python
-    # Initialize 'v' with a random tensor.
-    v = tf.Variable(tf.truncated_normal([10, 40]))
-    # Use `initialized_value` to guarantee that `v` has been
-    # initialized before its value is used to initialize `w`.
-    # The random values are picked only once.
-    w = tf.Variable(v.initialized_value() * 2.0)
-    ```
-
-    Returns:
-      A `Tensor` holding the value of this variable after its initializer
-      has run.
-    """
-    with ops.init_scope():
-      return control_flow_ops.cond(is_variable_initialized(self),
-                                   self.read_value,
-                                   lambda: self.initial_value)
 
   @property
   def initial_value(self):
@@ -2141,49 +2147,6 @@ class RefVariable(VariableV1):
     """
     return state_ops.count_up_to(self._variable, limit=limit)
 
-  def load(self, value, session=None):
-    """Load new value into this variable.
-
-    Writes new value to variable's memory. Doesn't add ops to the graph.
-
-    This convenience method requires a session where the graph
-    containing this variable has been launched. If no session is
-    passed, the default session is used.  See `tf.Session` for more
-    information on launching a graph and on sessions.
-
-    ```python
-    v = tf.Variable([1, 2])
-    init = tf.global_variables_initializer()
-
-    with tf.Session() as sess:
-        sess.run(init)
-        # Usage passing the session explicitly.
-        v.load([2, 3], sess)
-        print(v.eval(sess)) # prints [2 3]
-        # Usage with the default session.  The 'with' block
-        # above makes 'sess' the default session.
-        v.load([3, 4], sess)
-        print(v.eval()) # prints [3 4]
-    ```
-
-    Args:
-        value: New variable value
-        session: The session to use to evaluate this variable. If
-          none, the default session is used.
-
-    Raises:
-        ValueError: Session is not passed and no default session
-    """
-    if context.executing_eagerly():
-      self.assign(value)
-    else:
-      session = session or ops.get_default_session()
-      if session is None:
-        raise ValueError(
-            "Either session argument should be provided or default session "
-            "should be established")
-      session.run(self._initializer_op, {self._initializer_op.inputs[1]: value})
-
   # Conversion to tensor.
   @staticmethod
   def _TensorConversionFunction(v, dtype=None, name=None, as_ref=False):  # pylint: disable=invalid-name
@@ -2341,18 +2304,6 @@ class RefVariable(VariableV1):
     return self._variable.name
 
   @property
-  def _shared_name(self):
-    """The shared name of the variable.
-
-      Unlike name(), shared_name doesn't have ":0" suffix. It is user-specified
-      name with name scope prefix.
-
-    Returns:
-      variable name.
-    """
-    return self.name[:-2]
-
-  @property
   def initializer(self):
     """The initializer operation for this variable."""
     return self._initializer_op
@@ -2378,6 +2329,11 @@ class RefVariable(VariableV1):
     return self._variable.graph
 
   @property
+  def distribute_strategy(self):
+    """The `tf.distribute.Strategy` that this variable was created under."""
+    return None   # Ref variables are never created inside a strategy.
+
+  @property
   def shape(self):
     """The `TensorShape` of this variable.
 
@@ -2385,10 +2341,6 @@ class RefVariable(VariableV1):
       A `TensorShape`.
     """
     return self._variable.get_shape()
-
-  def get_shape(self):
-    """Alias of Variable.shape."""
-    return self.shape
 
   def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.
@@ -2638,6 +2590,12 @@ class PartitionedVariable(object):
   @property
   def shape(self):
     return self.get_shape()
+
+  @property
+  def distribute_strategy(self):
+    """The `tf.distribute.Strategy` that this variable was created under."""
+    # NOTE(yuefengz): Today, no partitioned variables in a distribute strategy.
+    return None
 
   def get_shape(self):
     return self._shape

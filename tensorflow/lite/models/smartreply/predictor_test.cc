@@ -22,9 +22,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
-//#include "tensorflow/lite/models/test_utils.h"
-#include "tensorflow/lite/string_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace custom {
@@ -53,12 +53,14 @@ MATCHER_P(IncludeAnyResponesIn, expected_response, "contains the response") {
 
 class PredictorTest : public ::testing::Test {
  protected:
-  PredictorTest() {
+  PredictorTest() {}
+  ~PredictorTest() override {}
+
+  void SetUp() override {
     model_ = tflite::FlatBufferModel::BuildFromFile(
         absl::StrCat(TestDataPath(), "/", kModelName).c_str());
-    CHECK(model_);
+    ASSERT_NE(model_.get(), nullptr);
   }
-  ~PredictorTest() override {}
 
   std::unique_ptr<::tflite::FlatBufferModel> model_;
 };
@@ -151,3 +153,9 @@ TEST_F(PredictorTest, BatchTest) {
 }  // namespace smartreply
 }  // namespace custom
 }  // namespace tflite
+
+int main(int argc, char **argv) {
+  ::tflite::LogToStderr();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

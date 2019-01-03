@@ -27,10 +27,10 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.optimizers.Adagrad')
+@keras_export('keras.optimizers.Adagrad', v1=[])
 class Adagrad(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adagrad algorithm.
 
@@ -70,7 +70,11 @@ class Adagrad(optimizer_v2.OptimizerV2):
         Starting value for the accumulators, must be positive.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adagrad".
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     Raises:
       ValueError: If the `initial_accumulator_value` or `epsilon` is invalid.

@@ -226,7 +226,8 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g, 1.0)
 
   def testGradient(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     def sq(x):
       return matmul(x, x, transpose_a=True)
@@ -696,7 +697,8 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(g2, 2.0)
 
   def testGradientWithKeywordArguments(self):
-    matmul = def_function.function(math_ops.matmul)
+    # TODO(b/121134877): Remove the autograph override.
+    matmul = def_function.function(math_ops.matmul, autograph=False)
 
     def sq(x):
       return matmul(a=x, b=x, transpose_a=True)

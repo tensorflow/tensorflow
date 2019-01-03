@@ -24,6 +24,7 @@ import threading
 
 import numpy as np
 
+from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
 import unittest
 
@@ -145,6 +146,17 @@ class ComputationsWithConstantsTest(LocalComputationTest):
     c = self._NewComputation()
     c.Pow(c.Constant(NumpyArrayF64([1.5, 2.5, 3.0])), c.ConstantF64Scalar(2.))
     self._ExecuteAndCompareClose(c, expected=[2.25, 6.25, 9.])
+
+  def testIota(self):
+    c = self._NewComputation()
+    c.Iota(np.float32, 10)
+    self._ExecuteAndCompareExact(c, expected=np.arange(10, dtype=np.float32))
+
+  def testBroadcastedIota(self):
+    c = self._NewComputation()
+    c.BroadcastedIota(np.int64, (2, 3), 1)
+    expected = np.array([[0, 1, 2], [0, 1, 2]], dtype=np.int64)
+    self._ExecuteAndCompareExact(c, expected=expected)
 
   def testBooleanAnd(self):
     c = self._NewComputation()
@@ -270,6 +282,20 @@ class ComputationsWithConstantsTest(LocalComputationTest):
             c.Constant(NumpyArrayF64([2.2, 3.3, 4.4, 5.5]))),
         c.Constant(NumpyArrayF64([100, -100, 200, -200])))
     self._ExecuteAndCompareClose(c, expected=[104.4, -93.4, 208.8, -189])
+
+  def testCustomCall(self):
+    c = self._NewComputation()
+    for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
+      xla_client.register_cpu_custom_call_target(name, fn)
+    c.CustomCall(
+        b"test_subtract_f32",
+        operands=(c.ConstantF32Scalar(1.25), c.ConstantF32Scalar(0.5)),
+        shape_with_layout=xla_client.Shape.array_shape(np.float32, (), ()),
+        operand_shapes_with_layout=(
+            xla_client.Shape.array_shape(np.float32, (), ()),
+            xla_client.Shape.array_shape(np.float32, (), ()),
+        ))
+    self._ExecuteAndCompareClose(c, expected=0.75)
 
 
 class ParametersTest(LocalComputationTest):

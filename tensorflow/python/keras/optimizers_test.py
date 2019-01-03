@@ -65,6 +65,15 @@ def _test_optimizer(optimizer, target=0.75):
   optim = keras.optimizers.deserialize(config)
   new_config = keras.optimizers.serialize(optim)
   new_config['class_name'] = new_config['class_name'].lower()
+  new_config['config'].pop('name', None)
+  if 'amsgrad' not in config['config']:
+    new_config['config'].pop('amsgrad', None)
+  if 'decay' in new_config['config'] and 'schedule_decay' in config['config']:
+    new_config['config']['schedule_decay'] = new_config['config'].pop('decay')
+  if 'momentum' not in config['config']:
+    new_config['config'].pop('momentum', None)
+  if 'centered' not in config['config']:
+    new_config['config'].pop('centered', None)
   assert config == new_config
 
   # Test constraints.
@@ -91,26 +100,22 @@ def _test_optimizer(optimizer, target=0.75):
 
 class KerasOptimizersTest(test.TestCase):
 
-  @test_util.run_v1_only('b/120545219')
   def test_sgd(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            nesterov=True))
 
-  @test_util.run_v1_only('b/120545219')
   def test_rmsprop(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.RMSprop())
       _test_optimizer(keras.optimizers.RMSprop(decay=1e-3))
 
-  @test_util.run_v1_only('b/120545219')
   def test_adagrad(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Adagrad())
       _test_optimizer(keras.optimizers.Adagrad(decay=1e-3))
 
-  @test_util.run_v1_only('b/120545219')
   def test_adadelta(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Adadelta(), target=0.6)
@@ -119,32 +124,29 @@ class KerasOptimizersTest(test.TestCase):
       # the accuracy.
       _test_optimizer(keras.optimizers.Adadelta(decay=1e-3), target=0.4)
 
-  @test_util.run_v1_only('b/120545219')
   def test_adam(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Adam())
-      _test_optimizer(keras.optimizers.Adam(decay=1e-3))
+      # Accuracy seems dependent on the seed initialization.
+      # TODO(b/121051441): fix test flakiness.
+      _test_optimizer(keras.optimizers.Adam(decay=1e-3), target=0.73)
       _test_optimizer(keras.optimizers.Adam(amsgrad=True))
 
-  @test_util.run_v1_only('b/120545219')
   def test_adamax(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Adamax())
       _test_optimizer(keras.optimizers.Adamax(decay=1e-3))
 
-  @test_util.run_v1_only('b/120545219')
   def test_nadam(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.Nadam())
 
-  @test_util.run_v1_only('b/120545219')
   def test_clipnorm(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,
                                            momentum=0.9,
                                            clipnorm=0.5))
 
-  @test_util.run_v1_only('b/120545219')
   def test_clipvalue(self):
     with self.cached_session():
       _test_optimizer(keras.optimizers.SGD(lr=0.01,

@@ -68,11 +68,12 @@ class KernelAndDevice {
         collective_executor_(std::move(collective_executor)) {}
 
   // TODO(ashankar): Handle list-valued inputs.
-  Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
-             NodeExecStats* stats, StepStats* step_stats,
-             GraphCollector* graph_collector);
+  Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+             std::vector<Tensor>* outputs, NodeExecStats* stats,
+             StepStats* step_stats, GraphCollector* graph_collector);
 
-  Status Run(ScopedStepContainer* step_container, std::vector<Tensor>* inputs,
+  Status Run(ScopedStepContainer* step_container,
+             const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
              StepStats* step_stats, GraphCollector* graph_collector);
 

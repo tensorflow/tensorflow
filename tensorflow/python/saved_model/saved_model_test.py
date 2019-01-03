@@ -1084,7 +1084,7 @@ class SavedModelTest(SavedModelTestBase):
       # CheckpointedOp is a key-value table that can be saved across sessions.
       # The table register itself in SAVEABLE_OBJECTS collection.
       v1 = saver_test_utils.CheckpointedOp(name="v1")
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       v1.insert("k1", 3.0).run()
       # Once the table is restored, we can access it through this reference.
       ops.add_to_collection("table_ref", v1.table_ref)

@@ -129,7 +129,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
   TF_RETURN_IF_ERROR(XLATypeToCpp(shape.element_type(), &type));
   std::vector<string> dim_vars;
   string dim_sizes, indices;
-  if (xla::ShapeUtil::Rank(shape) == 0 ||
+  if (shape.rank() == 0 ||
       (shape.dimensions_size() == 1 && shape.dimensions(0) == 1)) {
     dim_sizes = "[1]";
     indices = "[0]";

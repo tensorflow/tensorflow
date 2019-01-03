@@ -207,7 +207,7 @@ class ShapeUtil {
 
   // Returns the number of bytes used to store the primitive_type.
   //
-  // Precondition: ShapeUtil::IsArray(shape)
+  // Precondition: shape.IsArray()
   static int64 ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
 
   // Returns the number of bytes required to store the tuple member pointers for
@@ -241,10 +241,6 @@ class ShapeUtil {
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static string HumanString(const ProgramShape& program_shape);
 
-  // Parses a ShapeUtil::HumanString-format shape string back into a shape
-  // object.
-  static StatusOr<Shape> ParseShapeString(absl::string_view s);
-
   // Returns whether the LHS and RHS shapes have the same dimensions; note: does
   // not check element type.
   // Precondition: IsArray(lhs) && IsArray(rhs)
@@ -266,7 +262,7 @@ class ShapeUtil {
   }
 
   // Returns the higher-precision element type if a and b are both floating
-  // point types; otherwise, checks that that they have the same element type
+  // point types; otherwise, checks that they have the same element type
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
@@ -294,7 +290,7 @@ class ShapeUtil {
   // being F32. Tuple elements are compared recursively for compatibility.
   static bool CompatibleIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
-  // Returns whether the lhs and rhs shapes are identical protobufs.
+  // Returns whether the lhs and rhs shapes are identical.
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
@@ -302,6 +298,7 @@ class ShapeUtil {
 
   // Returns the rank (number of dimensions) of the given shape.
   // Precondition: !IsTuple(shape)
+  ABSL_DEPRECATED("Use `Shape::rank` instead.")
   static int64 Rank(const Shape& shape);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
@@ -376,10 +373,23 @@ class ShapeUtil {
                          absl::Span<const int64> dimensions);
 
   // Constructs a new shape with the given element type and sequence of
+  // potentially dynamic dimensions. The argument 'dynamic_dimensions' indicates
+  // with a true value that the respective dimension is dynamic. If the
+  // dimension is dynamic then the respective value in 'dimension' is an upper
+  // bound on the dimension size. 'dimensions' and 'dynamic_dimensions' must be
+  // the same size.
+  static Shape MakeShape(PrimitiveType element_type,
+                         absl::Span<const int64> dimensions,
+                         const std::vector<bool>& dynamic_dimensions);
+
+  // Constructs a new shape with the given element type and sequence of
   // dimensions. Method checks if the element type is valid and the shape's
   // size fits in std::numeric_limits<int64>::max().
   static StatusOr<Shape> MakeValidatedShape(PrimitiveType element_type,
                                             absl::Span<const int64> dimensions);
+  static StatusOr<Shape> MakeValidatedShape(
+      PrimitiveType element_type, absl::Span<const int64> dimensions,
+      const std::vector<bool>& dynamic_dimensions);
 
   // Creates a Shape with element type corresponding to T and the given
   // dimensions
@@ -448,24 +458,28 @@ class ShapeUtil {
   static bool ElementIsSigned(const Shape& shape);
 
   // Returns whether the shape is a tuple.
+  ABSL_DEPRECATED("Use Shape::IsTuple instead.")
   static bool IsTuple(const Shape& shape) {
     return shape.element_type() == TUPLE;
   }
 
   // Returns whether the shape is an opaque value (i.e. an 'existential' typed
   // value that is passed to CustomCall operations).
+  ABSL_DEPRECATED("Use Shape::IsOpaque instead.")
   static bool IsOpaque(const Shape& shape) {
     return shape.element_type() == OPAQUE;
   }
 
   // Returns whether the shape is an token value used for ordering
   // side-effecting operations.
+  ABSL_DEPRECATED("Use Shape::IsToken instead.")
   static bool IsToken(const Shape& shape) {
     return shape.element_type() == TOKEN;
   }
 
   // Returns whether the shape is an array.  Note that scalars are considered
   // arrays.
+  ABSL_DEPRECATED("Use Shape::IsArray instead.")
   static bool IsArray(const Shape& shape);
 
   // Returns whether the given primitive type corresponds to an array shape.
@@ -550,6 +564,9 @@ class ShapeUtil {
   // Returns true if `shape` (which must be an array) with degenerate dimensions
   // (dimensions with bound 1).
   static bool HasDegenerateDimensions(const Shape& shape);
+
+  // Drops any degenerate dimensions (i.e. dimensions of size 1)
+  static Shape DropDegenerateDimensions(const Shape& shape);
 
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[permutation[i]] = argument.dimensions[i].

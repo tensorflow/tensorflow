@@ -17,6 +17,7 @@ load(
 )
 
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
+_TF_TENSORRT_CONFIG_REPO = "TF_TENSORRT_CONFIG_REPO"
 _TF_TENSORRT_VERSION = "TF_TENSORRT_VERSION"
 
 _TF_TENSORRT_LIBS = ["nvinfer"]
@@ -154,6 +155,15 @@ def _create_dummy_repository(repository_ctx):
 
 def _tensorrt_configure_impl(repository_ctx):
   """Implementation of the tensorrt_configure repository rule."""
+  if _TF_TENSORRT_CONFIG_REPO in repository_ctx.os.environ:
+    # Forward to the pre-configured remote repository.
+    repository_ctx.template("BUILD", Label("//third_party/tensorrt:remote.BUILD.tpl"), {
+        "%{target}": repository_ctx.os.environ[_TF_TENSORRT_CONFIG_REPO],
+    })
+    # Set up config file.
+    _tpl(repository_ctx, "build_defs.bzl", {"%{tensorrt_is_configured}": "True"})
+    return
+
   if _TENSORRT_INSTALL_PATH not in repository_ctx.os.environ:
     _create_dummy_repository(repository_ctx)
     return

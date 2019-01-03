@@ -90,7 +90,8 @@ def disable_v2_tensorshape():
   TensorShape = TensorShapeV1
 
 
-@tf_export(v1=["dimension_value"])
+@tf_export("compat.dimension_value",
+           v1=["dimension_value", "compat.dimension_value"])
 def dimension_value(dimension):
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 
@@ -122,7 +123,8 @@ def dimension_value(dimension):
   return dimension
 
 
-@tf_export(v1=["dimension_at_index"])
+@tf_export("compat.dimension_at_index",
+           v1=["dimension_at_index", "compat.dimension_at_index"])
 def dimension_at_index(shape, index):
   """Compatibility utility required to allow for both V1 and V2 behavior in TF.
 

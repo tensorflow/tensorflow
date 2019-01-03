@@ -13,7 +13,9 @@ load(
     "auto_configure_fail",
     "compute_capabilities",
     "cuda_toolkit_path",
+    "enable_cuda",
     "find_cuda_define",
+    "get_cpu_value",
     "matches_version",
 )
 
@@ -22,7 +24,7 @@ _NCCL_HDR_PATH = "NCCL_HDR_PATH"
 _NCCL_INSTALL_PATH = "NCCL_INSTALL_PATH"
 _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_NCCL_VERSION = "TF_NCCL_VERSION"
-_TF_NCCL_CONFIG_REPO = "TF_NCCL_CONFIG_REPO"
+_TF_NEED_CUDA = "TF_NEED_CUDA"
 
 _DEFINE_NCCL_MAJOR = "#define NCCL_MAJOR"
 _DEFINE_NCCL_MINOR = "#define NCCL_MINOR"
@@ -116,26 +118,23 @@ def _check_nccl_version(repository_ctx, nccl_install_path, nccl_hdr_path, nccl_v
     header_version = "%s.%s.%s" % (major_version, minor_version, patch_version)
     if not matches_version(nccl_version, header_version):
         auto_configure_fail(
-            ("NCCL library version detected from %s/nccl.h (%s) does not match " +
-             "TF_NCCL_VERSION (%s). To fix this rerun configure again.") %
+            ("NCCL library version detected from %s/nccl.h (%s) does not " +
+             "match TF_NCCL_VERSION (%s). To fix this rerun configure again.") %
             (header_dir, header_version, nccl_version),
         )
 
 def _nccl_configure_impl(repository_ctx):
     """Implementation of the nccl_configure repository rule."""
-    if _TF_NCCL_VERSION not in repository_ctx.os.environ:
+    if not enable_cuda(repository_ctx) or \
+       get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD"):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
         return
 
-    if _TF_NCCL_CONFIG_REPO in repository_ctx.os.environ:
-        # Forward to the pre-configured remote repository.
-        repository_ctx.template("BUILD", _label("remote.BUILD.tpl"), {
-            "%{target}": repository_ctx.os.environ[_TF_NCCL_CONFIG_REPO],
-        })
-        return
+    nccl_version = ""
+    if _TF_NCCL_VERSION in repository_ctx.os.environ:
+        nccl_version = repository_ctx.os.environ[_TF_NCCL_VERSION].strip()
 
-    nccl_version = repository_ctx.os.environ[_TF_NCCL_VERSION].strip()
     if nccl_version == "":
         # Alias to open source build from @nccl_archive.
         repository_ctx.file("BUILD", _NCCL_ARCHIVE_BUILD_CONTENT)
@@ -179,7 +178,7 @@ nccl_configure = repository_rule(
         _NCCL_INSTALL_PATH,
         _TF_NCCL_VERSION,
         _TF_CUDA_COMPUTE_CAPABILITIES,
-        _TF_NCCL_CONFIG_REPO,
+        _TF_NEED_CUDA,
     ],
 )
 """Detects and configures the NCCL configuration.

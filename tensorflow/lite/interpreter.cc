@@ -167,6 +167,15 @@ void Interpreter::SetAllowFp16PrecisionForFp32(bool allow) {
   }
 }
 
+// TODO(b/121264966): Subgraphs added after cancellation is set will not get the
+// cancellation function added to their context.
+void Interpreter::SetCancellationFunction(void* data,
+                                          bool (*check_cancelled_func)(void*)) {
+  for (auto& subgraph : subgraphs_) {
+    subgraph->SetCancellationFunction(data, check_cancelled_func);
+  }
+}
+
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return primary_subgraph().ModifyGraphWithDelegate(delegate);
 }

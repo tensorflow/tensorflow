@@ -25,7 +25,6 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.kernel_tests import test_base
@@ -168,9 +167,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     # here because of a bug with chaining _OptimizeDatasets when there are
     # nested dataset functions
     options = dataset_ops.Options()
-    opt_options = optimization_options.OptimizationOptions()
-    opt_options.map_and_batch_fusion = True
-    options.experimental_optimization = opt_options
+    options.experimental_optimization.map_and_batch_fusion = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
@@ -214,18 +211,15 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         "v", initializer=0, use_resource=False)
     assign_op = variable.assign_add(1)
 
-    unoptimized_dataset = dataset_fn(variable)
-
-    options = dataset_ops.Options()
-    opt_options = optimization_options.OptimizationOptions()
-    opt_options.noop_elimination = True
-    opt_options.map_and_batch_fusion = True
-    options.experimental_optimization = opt_options
-    optimized_dataset = unoptimized_dataset.with_options(options)
-
     # Check that warning is logged.
     warnings.simplefilter("always")
     with warnings.catch_warnings(record=True) as w:
+      unoptimized_dataset = dataset_fn(variable)
+
+      options = dataset_ops.Options()
+      options.experimental_optimization.noop_elimination = True
+      options.experimental_optimization.map_and_batch_fusion = True
+      optimized_dataset = unoptimized_dataset.with_options(options)
       optimized_it = optimized_dataset.make_initializable_iterator()
 
     self.assertGreaterEqual(len(w), 1)
@@ -233,7 +227,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
                 "tf.Variable. The following optimizations will be disabled: %s."
                 " To enable optimizations, use resource variables instead by "
                 "calling `tf.enable_resource_variables()` at the start of the "
-                "program." % (", ".join(opt_options._static_optimizations())))
+                "program." % (", ".join(options._static_optimizations())))
     self.assertTrue(any([expected in str(warning) for warning in w]))
 
     # Check that outputs are the same in the optimized and unoptimized cases,
@@ -271,10 +265,8 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     only explicitly enabled optimizations will be applied.
     """
     options = dataset_ops.Options()
-    opt_options = optimization_options.OptimizationOptions()
-    opt_options.hoist_random_uniform = True
-    opt_options.apply_default_optimizations = False
-    options.experimental_optimization = opt_options
+    options.experimental_optimization.hoist_random_uniform = True
+    options.experimental_optimization.apply_default_optimizations = False
     expected_optimizations = ["hoist_random_uniform"]
     self.assertEqual(options._static_optimizations(), expected_optimizations)
 

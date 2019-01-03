@@ -330,6 +330,38 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
   return new_def;
 }
 
+Status ValidateOutsideCompilationCallNode(Node* call_node) {
+  // DT_INT64 as input/output for outside compilation is not supported yet:
+  // b/120809951.
+  for (const Edge* e : call_node->in_edges()) {
+    if (e->IsControlEdge()) {
+      continue;
+    }
+    DataType dtype = e->src()->output_type(e->src_output());
+    if (dtype == DT_INT64) {
+      return errors::Unimplemented(
+          "int64 input for outside compilation is not supported yet: "
+          "b/120809951. Please cast output of node ",
+          e->src()->DebugString(),
+          " to int32 before feeding it into outside compilation.");
+    }
+  }
+  for (const Edge* e : call_node->out_edges()) {
+    if (e->IsControlEdge()) {
+      continue;
+    }
+    DataType dtype = e->dst()->input_type(e->dst_input());
+    if (dtype == DT_INT64) {
+      return errors::Unimplemented(
+          "int64 output for outside compilation is not supported yet: "
+          "b/120809951. Please cast input of node ",
+          e->dst()->DebugString(),
+          " to int32 before returning it from outside compilation.");
+    }
+  }
+  return Status::OK();
+}
+
 // Replace outside compilation function call node with XlaHostCompute node.
 // If the function call node has no input/output edges, we will just remove it
 // and not create a XlaHostCompute node.
@@ -634,17 +666,14 @@ Status ExpandHostGraphIntoMainGraph(Graph* main_graph,
   return s;
 }
 
-// Rewrites shape inference graph for outside compilation.
-// 1. If the outside compilation is a "top-level" one (not in a function of any
-//    If/While/etc.), this shape inference graph might have host computation to
-//    outside compilation placeholder nodes, which will cause shape inference to
-//    fail. However, those nodes are not in `host_graph` any more (because we
-//    have executed `PostprocessForEncapsultion`). In this case, we clear the
-//    graph, and copy SendFromHost with all its predecessors from `host_graph`.
-//    This case is detected by whether the SendFromHost node exists in
-//    `host_graph` as well.
-// 2. Remove control edges, and prune nodes that are not useful for shape
-//    inference.
+// Rewrites shape inference graph for outside compilation:
+// 1) If XlaSendFromHost also exists in `host_graph`, copy nodes from
+//    `host_graph`. Because we might still have outside compilation to outside
+//    compilation placeholder nodes in shape inference graph, which will prevent
+//    us from inferring XlaSendFromHost shape. But in `host_graph`, we already
+//    removed those placeholder nodes.
+// 2) Remove control edges.
+// 3) Prune nodes that are not useful for shape inference.
 Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
                                   Graph* host_graph,
                                   FunctionLibraryDefinition* fld) {
@@ -744,6 +773,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
       g->RemoveEdge(e);
     }
   }
+
   // Nodes that are not reverse reachable from SendFromHost are not useful for
   // shape inference. Prune them.
   PruneForReverseReachability(g,
@@ -1257,6 +1287,11 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
     n->AddAttr(kXlaTokenInputNodesAttrName,
                std::vector<string>{send_pred_node->name()});
 
+    // Add a control edge from `send_pred_node` to If node, so XlaCompiler will
+    // visit If node after `send_pred_node`, thus the token output for
+    // `send_pred_node` has been generated.
+    g->AddControlEdge(send_pred_node, n);
+
     // Build host side graph for the "If" node.
     string oc_host_graph_name = absl::StrCat("oc_if_host_graph_", n->name());
     TF_RETURN_IF_ERROR(BuildHostGraphForIfNode(
@@ -1514,6 +1549,7 @@ Status ExtractOutsideCompilationForFunction(
     }
   }
   for (Node* n : outside_compilation_nodes) {
+    TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
     TF_RETURN_IF_ERROR(ReplaceOrRemoveOutsideCompilationCallNode(
         graph_out.get(), n, host_compute_core));
   }
@@ -1580,14 +1616,6 @@ Status ExtractOutsideCompilation(
         ExpandHostGraphIntoMainGraph(g, fld, host_graph_func_name, n));
     TF_RETURN_IF_ERROR(fld->RemoveFunction(host_graph_func_name));
   }
-
-  if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile("extract_outside_compilation_expanded", *g,
-                                fld);
-  }
-
-  TF_RETURN_IF_ERROR(PostprocessForEncapsulation(
-      g, xla_cluster_attr_name, outside_compilation_attr_name, clusters));
 
   for (auto shape_inference_graph_name : shape_inference_graphs) {
     TF_RETURN_IF_ERROR(

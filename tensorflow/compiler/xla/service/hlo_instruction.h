@@ -426,7 +426,7 @@ class HloInstruction {
   // and window describes how the filter is applied to lhs.
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      int64 feature_group_count, const Window& window,
+      int64 feature_group_count, int64 batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 
@@ -462,9 +462,7 @@ class HloInstruction {
   // `all_reduce_id`: for Allreduce nodes from different modules, if they have
   // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
-  //
-  // TODO(b/117564385): Rename this to AllReduce.
-  static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
+  static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
@@ -561,12 +559,21 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices, absl::Span<const int64> slice_sizes);
+  // Same as above, but expects a span of scalar start indices.
+  static std::unique_ptr<HloInstruction> CreateDynamicSlice(
+      const Shape& shape, HloInstruction* operand,
+      absl::Span<HloInstruction* const> start_indices,
+      absl::Span<const int64> slice_sizes);
 
   // Creates a dynamic update slice instruction, which updates a slice
   // of 'operand' with 'update' and 'start_indices'.
   static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
       const Shape& shape, HloInstruction* operand, HloInstruction* update,
       HloInstruction* start_indices);
+  // Same as above, but expects a span of scalar start indices.
+  static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
+      const Shape& shape, HloInstruction* operand, HloInstruction* update,
+      absl::Span<HloInstruction* const> start_indices);
 
   // Creates a concatenate instruction, where the operands are concatenated on
   // the provided dimension.
@@ -909,6 +916,14 @@ class HloInstruction {
   // information on opcode, shape, operands, and typically a root instruction.
   // This function returns the same hash value for equivalent HLO instructions,
   // with respect to HloInstruction::Identical() method.
+  //
+  // Uses hash_operand function to compute hash values of its operands.
+  // At the very top level, hash_operand should be non-recursive to prevent
+  // non-termination.
+  uint64 Hash(
+      const std::function<uint64(const HloInstruction*)>& hash_operand) const;
+
+  // Calls the above method with non-recursive hash_operand function.
   uint64 Hash() const;
 
   // Returns whether the instruction has a constant operand.
@@ -922,11 +937,16 @@ class HloInstruction {
   // operands of it which could be created due to this replacement.
   Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
-  // Replaces the specified operand with new_operand.
+  // Replaces the specified operand with new_operand. The old and new operands
+  // must have compatible shapes ignoring floating-point precision.
   //
   // This function does NOT remove duplicated operands even if this instruction
   // is a fusion, so that the existing operand numbers do not change.
-  Status ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
+  Status ReplaceOperandWith(int64 operand_num, HloInstruction* new_operand);
+
+  // Same as ReplaceOperandWith(), but new_operand can have a different shape.
+  Status ReplaceOperandWithDifferentShape(int64 operand_num,
+                                          HloInstruction* new_operand);
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
@@ -935,9 +955,15 @@ class HloInstruction {
   // If this instruction is the root of its computation, sets the computation's
   // root to new_producer.
   //
+  // The new producer must have a compatible shape ignoring floating-point
+  // precision.
+  //
   // If a user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
+
+  // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
+  Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
 
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
@@ -1451,9 +1477,9 @@ class HloInstruction {
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
 
-  // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
-  string cross_replica_sum_barrier() const;
-  void set_cross_replica_sum_barrier(const string& barrier);
+  // Delegates to HloAllReduceInstruction::all_reduce_barrier.
+  string all_reduce_barrier() const;
+  void set_all_reduce_barrier(const string& barrier);
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;
@@ -1486,6 +1512,11 @@ class HloInstruction {
   int64 feature_group_count() const;
 
   void set_feature_group_count(int64 feature_group_count);
+
+  // The number of batch groups. Must be a divisor of the input batch dimension
+  int64 batch_group_count() const;
+
+  void set_batch_group_count(int64 batch_group_count);
 
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;

@@ -229,7 +229,7 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
       shaped_buffer, device_ref.backend(), device_ref.device_ordinal(),
       &output_tuple));
   if (config_proto.return_exploded_tuple() &&
-      xla::ShapeUtil::IsTuple(output_tuple->on_device_shape())) {
+      output_tuple->on_device_shape().IsTuple()) {
     int64 tuple_element_count =
         xla::ShapeUtil::TupleElementCount(output_tuple->on_device_shape());
     Tensor* output_tensor;

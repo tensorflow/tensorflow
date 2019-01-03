@@ -35,7 +35,9 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import compat
+from tensorflow.python.util import memory
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.lazy_loader import LazyLoader
 
@@ -108,38 +110,20 @@ class FuncGraph(ops.Graph):
 
     graph = self.outer_graph
 
-    # pylint: disable=protected-access
-    # TODO(b/112906995, nareshmodi): distribution strategy depends on inheriting
-    # this stack from the default graph even in eager mode. Maybe it should be
-    # part of the eager context? This would also allow us to remove a
-    # get_default_graph() call from the function cache lookup.
-    self._distribution_strategy_stack = list(graph._distribution_strategy_stack)
-    # We ignore device placements from any outer scopes while tracing the
-    # function when possible, to avoid hard-coding them in the function
-    # graph. "Default" placements come from the PartitionedCallOp's placement,
-    # so that the same trace of the Python function may be placed on several
-    # different devices and saved functions may be placed on new devices when
-    # restored.
     if context.executing_eagerly():
       self.seed = context.global_seed()
       device_type = context.context().device_spec.device_type
       self._xla_compile = (device_type == "TPU" or device_type == "XLA_GPU"
                            or device_type == "XLA_CPU")
-      if self._distribution_strategy_stack or self._xla_compile:
-        self._add_device_to_stack(context.context().device_name)
     else:
       self.seed = graph.seed
       self._xla_compile = getattr(graph, "_xla_compile", False)
       # TODO(allenl): Figure out if we can remove colocation stack
       # specialization (currently used in cond_v2), here and in the cache key.
-      self._colocation_stack = graph._colocation_stack.copy()
-      if (self._distribution_strategy_stack
-          or self._xla_compile
-          or device_stack_has_callable(graph._device_function_stack)):
-        # Hard-code devices from device functions in the function body
-        self._device_function_stack = graph._device_function_stack.copy()
+      self._colocation_stack = graph._colocation_stack.copy()  # pylint: disable=protected-access
+
     if not self._read_only_collections:
-      self._collections = graph._collections
+      self._collections = graph._collections  # pylint: disable=protected-access
     else:
       for collection_name in graph.get_all_collection_keys():
         if collection_name not in WHITELIST_COLLECTIONS:
@@ -149,11 +133,55 @@ class FuncGraph(ops.Graph):
         self._collections[collection_name] = graph.get_collection_ref(
             collection_name)
 
-    self._variable_creator_stack = graph._variable_creator_stack
-    # Inherit the graph key, since this is used for matching variables in
-    # optimizers.
-    self._graph_key = graph._graph_key
-    # pylint: enable=protected-access
+  def as_default(self):
+    outer_cm = super(FuncGraph, self).as_default()
+
+    @tf_contextlib.contextmanager
+    def inner_cm():
+      """Context manager for copying distribute.Strategy scope information."""
+      graph = ops.get_default_graph()
+      # pylint: disable=protected-access
+      # TODO(b/112906995, nareshmodi): distribution strategy depends on
+      # inheriting this stack from the default graph even in eager mode. Maybe
+      # it should be part of the eager context? This would also allow us to
+      # remove a get_default_graph() call from the function cache lookup.
+      old_strategy_stack = self._distribution_strategy_stack
+      self._distribution_strategy_stack = list(
+          graph._distribution_strategy_stack)
+      # We ignore device placements from any outer scopes while tracing the
+      # function when possible, to avoid hard-coding them in the function
+      # graph. "Default" placements come from the PartitionedCallOp's placement,
+      # so that the same trace of the Python function may be placed on several
+      # different devices and saved functions may be placed on new devices when
+      # restored.
+      old_device_stack = self._device_function_stack
+      if context.executing_eagerly():
+        if self._distribution_strategy_stack or self._xla_compile:
+          self._add_device_to_stack(context.context().device_name)
+      else:
+        if (self._distribution_strategy_stack
+            or self._xla_compile
+            or device_stack_has_callable(graph._device_function_stack)):
+          # Hard-code devices from device functions in the function body
+          self._device_function_stack = graph._device_function_stack.copy()
+
+      old_creator_stack = self._variable_creator_stack
+      self._variable_creator_stack = graph._variable_creator_stack
+      # Inherit the graph key, since this is used for matching variables in
+      # optimizers.
+      old_graph_key = self._graph_key
+      self._graph_key = graph._graph_key
+      # pylint: enable=protected-access
+
+      with outer_cm as g:
+        try:
+          yield g
+        finally:
+          self._distribution_strategy_stack = old_strategy_stack
+          self._device_function_stack = old_device_stack
+          self._variable_creator_stack = old_creator_stack
+          self._graph_key = old_graph_key
+    return inner_cm()
 
   @property
   def output_types(self):
@@ -404,6 +432,12 @@ def func_graph_from_py_func(name,
         _, original_func = tf_decorator.unwrap(python_func)
 
         def wrapper(*args, **kwargs):
+          # Note: functions annotated with @tf.function should always be
+          # converted even though they would meet autograph's whitelisting
+          # criteria.
+          # If this assumption is ever broken, converted_call will need to
+          # handle the possibility of original_func still being a shim, e.g.
+          # bound to WeakrefSelf.
           return autograph.converted_call(
               original_func, None,
               autograph.ConversionOptions(
@@ -411,6 +445,7 @@ def func_graph_from_py_func(name,
                   recursive=True,
                   strip_decorators=(def_function.function,),
                   optional_features=(),
+                  force_conversion=True,
               ), *args, **kwargs)
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
@@ -652,3 +687,22 @@ def _get_defun_inputs_from_kwargs(kwargs):
     names = []
     flat_args = []
   return _get_defun_inputs(flat_args, names, structure=kwargs)
+
+
+def dismantle_func_graph(func_graph):
+  """Removes reference cycles in `func_graph` FuncGraph.
+
+  Helpful for making sure the garbage collector doesn't need to run when
+  the FuncGraph goes out of scope, e.g. in tests using defun with
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True).
+
+  Args:
+    func_graph: A `FuncGraph` object to destroy. `func_graph` is unusable
+      after this function.
+  """
+  # TODO(b/115366440): Delete this method when a custom OrderedDict is added.
+  # Clearing captures using clear() leaves some cycles around.
+  while func_graph.captures:
+    func_graph.captures.popitem()
+  memory.dismantle_ordered_dict(func_graph.captures)
+  ops.dismantle_graph(func_graph)

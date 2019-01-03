@@ -31,8 +31,7 @@ StatusOr<bool> ZeroSizedHloElimination::Run(HloModule* module) {
   bool changed = false;
   for (HloComputation* comp : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
-      if (instruction->HasSideEffect() ||
-          !ShapeUtil::IsArray(instruction->shape()) ||
+      if (instruction->HasSideEffect() || !instruction->shape().IsArray() ||
           instruction->opcode() == HloOpcode::kConstant) {
         continue;
       }

@@ -25,6 +25,7 @@ INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/../../../../../ \
 -I$(MAKEFILE_DIR)/../../../../../../ \
+-I$(MAKEFILE_DIR)/../../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
@@ -108,8 +109,13 @@ $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
+  # For normal manually-created TensorFlow ASM source files.
+$(OBJDIR)%.o: %.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+
 # The target that's compiled if there's no command-line arguments.
-all: $(MICROLITE_LIB_PATH) $(ALL_BINARIES)
+all: $(MICROLITE_LIB_PATH) $(MICRO_SPEECH_TEST_BINARY) $(PREPROCESSOR_TEST_BINARY)
 
 microlite: $(MICROLITE_LIB_PATH)
 
@@ -130,6 +136,14 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
+
+# snease: Add %.bin rule here since BINDIR is now defined
+# These are microcontroller-specific rules for converting the ELF output
+# of the linker into a binary image that can be loaded directly.
+OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+$(BINDIR)%.bin: $(BINDIR)%
+	@mkdir -p $(dir $@)
+	$(OBJCOPY) $< $@ -O binary
 
 test: test_micro_speech $(MICROLITE_TEST_TARGETS)
 

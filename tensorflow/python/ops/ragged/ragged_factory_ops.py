@@ -80,9 +80,9 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None, name=None):
 def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None):
   """Constructs a RaggedTensorValue from a nested Python list.
 
-  > Warning: This function returns a `RaggedTensorValue`, not a `RaggedTensor`.
-  > If you wish to construct a constant `RaggedTensor`, use
-  > [`ragged.constant(...)`](constant.md) instead.
+  Warning: This function returns a `RaggedTensorValue`, not a `RaggedTensor`.
+  If you wish to construct a constant `RaggedTensor`, use
+  [`ragged.constant(...)`](constant.md) instead.
 
   Example:
 

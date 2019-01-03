@@ -20,11 +20,14 @@ from __future__ import print_function
 
 import os
 
+from absl.testing import parameterized
 import numpy as np
 
 
-from tensorflow.python.client import session as session_lib
 from tensorflow.python import keras
+from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
@@ -264,6 +267,129 @@ class ModelSaveTest(keras_parameterized.TestCase):
     self.assertAllClose(
         {model.output_names[0]: model.predict_on_batch(inputs)},
         _import_and_infer(save_dir, {model.input_names[0]: np.ones((8, 5))}))
+
+
+class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      # pylint: disable=g-long-lambda
+      ('Batch', lambda: dataset_ops.Dataset.range(5).batch(2), ValueError),
+      ('Cache', lambda: dataset_ops.Dataset.range(5).cache()),
+      ('Concatenate', lambda: dataset_ops.Dataset.range(5).concatenate(
+          dataset_ops.Dataset.range(5))),
+      ('FlatMap', lambda: dataset_ops.Dataset.range(5).flat_map(
+          lambda _: dataset_ops.Dataset.from_tensors(0)), ValueError),
+      ('Filter', lambda: dataset_ops.Dataset.range(5).filter(lambda _: True)),
+      ('FixedLengthRecordDatasetV2',
+       lambda: readers.FixedLengthRecordDatasetV2([], 42)),
+      ('FromTensors', lambda: dataset_ops.Dataset.from_tensors(0)),
+      ('FromTensorSlices',
+       lambda: dataset_ops.Dataset.from_tensor_slices([0, 0, 0])),
+      ('Interleave', lambda: dataset_ops.Dataset.range(5).interleave(
+          lambda _: dataset_ops.Dataset.from_tensors(0), cycle_length=1),
+       ValueError),
+      ('ParallelInterleave', lambda: dataset_ops.Dataset.range(5).interleave(
+          lambda _: dataset_ops.Dataset.from_tensors(0),
+          cycle_length=1,
+          num_parallel_calls=1), ValueError),
+      ('Map', lambda: dataset_ops.Dataset.range(5).map(lambda x: x)),
+      ('Options',
+       lambda: dataset_ops.Dataset.range(5).with_options(dataset_ops.Options())
+      ),
+      ('PaddedBatch', lambda: dataset_ops.Dataset.range(5).padded_batch(2, []),
+       ValueError),
+      ('ParallelMap', lambda: dataset_ops.Dataset.range(5).map(
+          lambda x: x, num_parallel_calls=1)),
+      ('Prefetch', lambda: dataset_ops.Dataset.range(5).prefetch(1)),
+      ('Range', lambda: dataset_ops.Dataset.range(0)),
+      ('Repeat', lambda: dataset_ops.Dataset.range(0).repeat(0)),
+      ('Shuffle', lambda: dataset_ops.Dataset.range(5).shuffle(1)),
+      ('Skip', lambda: dataset_ops.Dataset.range(5).skip(2)),
+      ('Take', lambda: dataset_ops.Dataset.range(5).take(2)),
+      ('TextLineDataset', lambda: readers.TextLineDatasetV2([])),
+      ('TFRecordDataset', lambda: readers.TFRecordDatasetV2([])),
+      ('Window', lambda: dataset_ops.Dataset.range(5).window(2), ValueError),
+      ('Zip', lambda: dataset_ops.Dataset.zip(dataset_ops.Dataset.range(5))),
+      # pylint: enable=g-long-lambda
+  )
+  def test_assert_not_batched(self, dataset_fn, expected_error=None):
+    if expected_error is None:
+      training_utils.assert_not_batched(dataset_fn())
+    else:
+      with self.assertRaises(expected_error):
+        training_utils.assert_not_batched(dataset_fn())
+
+  @parameterized.named_parameters(
+      # pylint: disable=g-long-lambda
+      ('Batch', lambda: dataset_ops.Dataset.range(5).batch(2)),
+      ('Cache', lambda: dataset_ops.Dataset.range(5).cache()),
+      ('Concatenate', lambda: dataset_ops.Dataset.range(5).concatenate(
+          dataset_ops.Dataset.range(5))),
+      ('FlatMap', lambda: dataset_ops.Dataset.range(5).flat_map(
+          lambda _: dataset_ops.Dataset.from_tensors(0)), ValueError),
+      ('Filter', lambda: dataset_ops.Dataset.range(5).filter(lambda _: True)),
+      ('FixedLengthRecordDatasetV2',
+       lambda: readers.FixedLengthRecordDatasetV2([], 42)),
+      ('FromTensors', lambda: dataset_ops.Dataset.from_tensors(0)),
+      ('FromTensorSlices',
+       lambda: dataset_ops.Dataset.from_tensor_slices([0, 0, 0])),
+      ('Interleave', lambda: dataset_ops.Dataset.range(5).interleave(
+          lambda _: dataset_ops.Dataset.from_tensors(0), cycle_length=1),
+       ValueError),
+      ('Map', lambda: dataset_ops.Dataset.range(5).map(lambda x: x)),
+      ('Options',
+       lambda: dataset_ops.Dataset.range(5).with_options(dataset_ops.Options())
+      ),
+      ('PaddedBatch', lambda: dataset_ops.Dataset.range(5).padded_batch(2, [])),
+      ('ParallelInterleave', lambda: dataset_ops.Dataset.range(5).interleave(
+          lambda _: dataset_ops.Dataset.from_tensors(0),
+          cycle_length=1,
+          num_parallel_calls=1), ValueError),
+      ('ParallelMap', lambda: dataset_ops.Dataset.range(5).map(
+          lambda x: x, num_parallel_calls=1)),
+      ('Prefetch', lambda: dataset_ops.Dataset.range(5).prefetch(1)),
+      ('Range', lambda: dataset_ops.Dataset.range(0)),
+      ('Repeat', lambda: dataset_ops.Dataset.range(0).repeat(0)),
+      ('Shuffle', lambda: dataset_ops.Dataset.range(5).shuffle(1), ValueError),
+      ('Skip', lambda: dataset_ops.Dataset.range(5).skip(2)),
+      ('Take', lambda: dataset_ops.Dataset.range(5).take(2)),
+      ('TextLineDataset', lambda: readers.TextLineDatasetV2([])),
+      ('TFRecordDataset', lambda: readers.TFRecordDatasetV2([])),
+      ('Window', lambda: dataset_ops.Dataset.range(5).window(2)),
+      ('Zip', lambda: dataset_ops.Dataset.zip(dataset_ops.Dataset.range(5))),
+      # pylint: enable=g-long-lambda
+  )
+  def test_assert_not_shuffled(self, dataset_fn, expected_error=None):
+    if expected_error is None:
+      training_utils.assert_not_shuffled(dataset_fn())
+    else:
+      with self.assertRaises(expected_error):
+        training_utils.assert_not_shuffled(dataset_fn())
+
+
+class StandardizeWeightsTest(keras_parameterized.TestCase):
+
+  def test_sample_weights(self):
+    y = np.array([0, 1, 0, 0, 2])
+    sample_weights = np.array([0.5, 1., 1., 0., 2.])
+    weights = training_utils.standardize_weights(y, sample_weights)
+    self.assertAllClose(weights, sample_weights)
+
+  def test_class_weights(self):
+    y = np.array([0, 1, 0, 0, 2])
+    class_weights = {0: 0.5, 1: 1., 2: 1.5}
+    weights = training_utils.standardize_weights(y, class_weight=class_weights)
+    self.assertAllClose(weights, np.array([0.5, 1., 0.5, 0.5, 1.5]))
+
+  def test_sample_weights_and_class_weights(self):
+    y = np.array([0, 1, 0, 0, 2])
+    sample_weights = np.array([0.5, 1., 1., 0., 2.])
+    class_weights = {0: 0.5, 1: 1., 2: 1.5}
+    weights = training_utils.standardize_weights(y, sample_weights,
+                                                 class_weights)
+    expected = sample_weights * np.array([0.5, 1., 0.5, 0.5, 1.5])
+    self.assertAllClose(weights, expected)
+
 
 if __name__ == '__main__':
   test.main()

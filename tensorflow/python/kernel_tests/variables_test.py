@@ -43,6 +43,11 @@ from tensorflow.python.util import compat
 
 class VariablesTestCase(test.TestCase):
 
+  @test_util.run_deprecated_v1
+  def testDistributeStrategy(self):
+    v = variables.VariableV1(0.0)
+    self.assertIsNone(v.distribute_strategy)
+
   @test_util.run_v1_only("b/120545219")
   def testInitialization(self):
     with self.cached_session():
@@ -66,7 +71,7 @@ class VariablesTestCase(test.TestCase):
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         self.evaluate(var1)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertAllClose(0.0, self.evaluate(var0))
       self.assertAllClose(1.1, self.evaluate(var1))
@@ -96,11 +101,11 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual([3, 6], depdep.get_shape())
       self.assertEqual([3, 6], depdep.shape)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
-      self.assertAllClose(rnd.eval(), self.evaluate(dep))
-      self.assertAllClose(rnd.eval() + self.evaluate(dep) + 2.0,
-                          self.evaluate(depdep))
+      self.assertAllClose(self.evaluate(rnd), self.evaluate(dep))
+      self.assertAllClose(
+          self.evaluate(rnd) + self.evaluate(dep) + 2.0, self.evaluate(depdep))
 
   def testIterable(self):
     with self.assertRaisesRegexp(TypeError, "not iterable"):
@@ -117,7 +122,7 @@ class VariablesTestCase(test.TestCase):
       plus_one = var.assign_add(1.0)
       minus_one = var.assign_sub(2.0)
       four = var.assign(4.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(0.0, self.evaluate(var))
 
       self.assertAllClose(1.0, self.evaluate(plus_one))
@@ -136,7 +141,7 @@ class VariablesTestCase(test.TestCase):
       plus_one = var.assign_add(1.0)
       minus_one = var.assign_sub(2.0)
       four = var.assign(4.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(0.0, self.evaluate(var))
 
       self.evaluate(plus_one)
@@ -166,7 +171,7 @@ class VariablesTestCase(test.TestCase):
       var = variables.Variable(zero)
       count_up_to = var.count_up_to(3)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertEqual(0, self.evaluate(var))
 
       self.assertEqual(0, self.evaluate(count_up_to))
@@ -264,10 +269,10 @@ class VariablesTestCase(test.TestCase):
     with self.cached_session():
       var_x = variables.Variable(2.0)
       var_y = variables.Variable(3.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(2.0, self.evaluate(var_x))
       self.assertAllClose(3.0, self.evaluate(var_y))
-      self.assertAllClose(5.0, math_ops.add(var_x, var_y).eval())
+      self.assertAllClose(5.0, self.evaluate(math_ops.add(var_x, var_y)))
 
   @test_util.run_deprecated_v1
   def testZeroSizeVarSameAsConst(self):
@@ -277,9 +282,9 @@ class VariablesTestCase(test.TestCase):
       variable_mul = math_ops.matmul(zero_size_const, zero_size_var)
       const_mul = math_ops.matmul(
           zero_size_const, zero_size_const, transpose_b=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variable_output = self.evaluate(variable_mul)
-      self.assertAllClose(const_mul.eval(), variable_output)
+      self.assertAllClose(self.evaluate(const_mul), variable_output)
       self.assertAllClose([[0., 0.], [0., 0.]], variable_output)
 
   @test_util.run_deprecated_v1
@@ -372,7 +377,7 @@ class VariablesTestCase(test.TestCase):
       matmul = var_m.__matmul__([[10.0], [20.0]])
       rmatmul = var_m.__rmatmul__([[10.0], [20.0]])
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose([2.0], self.evaluate(add))
       self.assertAllClose([3.0], self.evaluate(radd))
       self.assertAllClose([1.0], self.evaluate(sub))
@@ -409,7 +414,7 @@ class VariablesTestCase(test.TestCase):
   def testSession(self):
     with self.cached_session() as sess:
       var = variables.Variable([1, 12])
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose([1, 12], self.evaluate(var))
 
   @test_util.run_v1_only("b/120545219")
@@ -431,7 +436,7 @@ class VariablesTestCase(test.TestCase):
       v1 = variables.Variable(initializer, dtype=dtypes.float32)
       self.assertEqual(shape, v1.get_shape())
       self.assertEqual(shape, v1.shape)
-      self.assertAllClose(value, v1.initial_value.eval())
+      self.assertAllClose(value, self.evaluate(v1.initial_value))
       with self.assertRaises(errors_impl.FailedPreconditionError):
         self.evaluate(v1)
 
@@ -439,11 +444,11 @@ class VariablesTestCase(test.TestCase):
           math_ops.negative(v1.initialized_value()), dtype=dtypes.float32)
       self.assertEqual(v1.get_shape(), v2.get_shape())
       self.assertEqual(v1.shape, v2.shape)
-      self.assertAllClose(np.negative(value), v2.initial_value.eval())
+      self.assertAllClose(np.negative(value), self.evaluate(v2.initial_value))
 
       with self.assertRaises(errors_impl.FailedPreconditionError):
         self.evaluate(v2)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(np.negative(value), self.evaluate(v2))
 
   def testConstraintArg(self):
@@ -465,10 +470,10 @@ class VariablesTestCase(test.TestCase):
       a = variables.Variable([1, 2, 3], dtype=dtypes.float32)
       b = variables.Variable(a.initialized_value() + 2)
       c = variables.Variable(b.initialized_value() + 2)
-      variables.global_variables_initializer().run()
-      self.assertAllEqual(a.eval(), [1, 2, 3])
-      self.assertAllEqual(b.eval(), [3, 4, 5])
-      self.assertAllEqual(c.eval(), [5, 6, 7])
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual(self.evaluate(a), [1, 2, 3])
+      self.assertAllEqual(self.evaluate(b), [3, 4, 5])
+      self.assertAllEqual(self.evaluate(c), [5, 6, 7])
 
   @test_util.run_deprecated_v1
   def testInitializerFunctionDevicePlacement(self):
@@ -503,7 +508,7 @@ class VariablesTestCase(test.TestCase):
       # initialized_value should not rerun the initializer_op if the variable
       # has already been initialized elsewhere.
       self.evaluate(v.assign(1.0))
-      self.assertEqual(1.0, v.initialized_value().eval())
+      self.assertEqual(1.0, self.evaluate(v.initialized_value()))
 
     v_def.ClearField("initial_value_name")
     with ops.Graph().as_default(), self.cached_session() as sess:
@@ -537,7 +542,7 @@ class VariablesTestCase(test.TestCase):
   def testLoad(self):
     with self.cached_session():
       var = variables.Variable(np.zeros((5, 5), np.float32))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       var.load(np.ones((5, 5), np.float32))
 
       self.assertAllClose(np.ones((5, 5), np.float32), self.evaluate(var))
@@ -573,7 +578,7 @@ class IsInitializedTest(test.TestCase):
       _ = v, w
       uninited = variables.report_uninitialized_variables()
       self.assertAllEqual(np.array([b"v", b"w"]), self.evaluate(uninited))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertEqual(0, self.evaluate(uninited).size)
 
   @test_util.run_v1_only("b/120545219")
@@ -601,20 +606,20 @@ class IsInitializedTest(test.TestCase):
       b = variables.Variable(array_ops.ones([2, 2]))
       objective = math_ops.reduce_sum(b + math_ops.matmul(
           a, a, transpose_a=True))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       do_opt = gradient_descent.GradientDescentOptimizer(0.1).minimize(
           objective)
       self.evaluate([do_opt])
       self.assertAllClose([[0.9, 0.9], [0.9, 0.9]], self.evaluate(b))
 
 
+@test_util.run_v1_only("b/120545219")
 class ObsoleteIsInitializedTest(test.TestCase):
 
   def testNoVars(self):
     with ops.Graph().as_default():
       self.assertEqual(None, variables.assert_variables_initialized())
 
-  @test_util.run_v1_only("b/120545219")
   def testVariables(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.VariableV1([1, 2])
@@ -623,10 +628,9 @@ class ObsoleteIsInitializedTest(test.TestCase):
       inited = variables.assert_variables_initialized()
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         self.evaluate(inited)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.evaluate(inited)
 
-  @test_util.run_v1_only("b/120545219")
   def testVariableList(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.VariableV1([1, 2])
@@ -766,36 +770,36 @@ class PartitionedVariableTest(test.TestCase):
       assign_list = pv_1.assign([c_0, c_1])
       assign_part_value = pv_1.assign_add(assign_ones)
       assign_part_var = pv_1.assign_sub(pv_0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
-      self.assertEqual([1.0], plus_delta[0].eval())
+      self.assertEqual([1.0], self.evaluate(plus_delta[0]))
       self.assertEqual([1.0], self.evaluate(v0))
-      self.assertEqual([3.0], plus_delta[1].eval())
+      self.assertEqual([3.0], self.evaluate(plus_delta[1]))
       self.assertEqual([3.0], self.evaluate(v1))
 
-      self.assertEqual([-2.0], minus_delta[0].eval())
+      self.assertEqual([-2.0], self.evaluate(minus_delta[0]))
       self.assertEqual([-2.0], self.evaluate(v0))
-      self.assertEqual([-1.0], minus_delta[1].eval())
+      self.assertEqual([-1.0], self.evaluate(minus_delta[1]))
       self.assertEqual([-1.0], self.evaluate(v1))
 
-      self.assertEqual([1.0], assign_ones[0].eval())
+      self.assertEqual([1.0], self.evaluate(assign_ones[0]))
       self.assertEqual([1.0], self.evaluate(v0))
-      self.assertEqual([1.0], assign_ones[1].eval())
+      self.assertEqual([1.0], self.evaluate(assign_ones[1]))
       self.assertEqual([1.0], self.evaluate(v1))
 
-      self.assertEqual([2.0], assign_list[0].eval())
+      self.assertEqual([2.0], self.evaluate(assign_list[0]))
       self.assertEqual([2.0], self.evaluate(v2))
-      self.assertEqual([3.0], assign_list[1].eval())
+      self.assertEqual([3.0], self.evaluate(assign_list[1]))
       self.assertEqual([3.0], self.evaluate(v3))
 
-      self.assertEqual([3.0], assign_part_value[0].eval())
+      self.assertEqual([3.0], self.evaluate(assign_part_value[0]))
       self.assertEqual([3.0], self.evaluate(v2))
-      self.assertEqual([4.0], assign_part_value[1].eval())
+      self.assertEqual([4.0], self.evaluate(assign_part_value[1]))
       self.assertEqual([4.0], self.evaluate(v3))
 
-      self.assertEqual([2.0], assign_part_var[0].eval())
+      self.assertEqual([2.0], self.evaluate(assign_part_var[0]))
       self.assertEqual([2.0], self.evaluate(v2))
-      self.assertEqual([3.0], assign_part_var[1].eval())
+      self.assertEqual([3.0], self.evaluate(assign_part_var[1]))
       self.assertEqual([3.0], self.evaluate(v3))
 
 

@@ -113,10 +113,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CuDNNGRU"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "Dense"
     mtype: "<type \'type\'>"
   }

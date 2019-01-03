@@ -116,12 +116,11 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("3", 14, 3, 3, 0),
   )
   def testWindowDatasetInvalid(self, count, size, shift, stride):
-    dataset = dataset_ops.Dataset.range(10).map(lambda x: x).repeat(
-        count).window(
-            size=size, shift=shift,
-            stride=stride).flat_map(lambda x: x.batch(batch_size=size))
-    self.assertDatasetProduces(
-        dataset, expected_error=(errors.InvalidArgumentError, ""))
+    with self.assertRaises(errors.InvalidArgumentError):
+      ds = dataset_ops.Dataset.range(10).map(lambda x: x).repeat(count).window(
+          size=size, shift=shift,
+          stride=stride).flat_map(lambda x: x.batch(batch_size=size))
+      self.evaluate(ds._variant_tensor)
 
   def testWindowSparse(self):
 

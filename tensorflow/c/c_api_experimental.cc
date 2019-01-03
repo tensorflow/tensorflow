@@ -66,7 +66,8 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
 }
 
 TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
-                           unsigned char gpu_memory_allow_growth) {
+                           unsigned char gpu_memory_allow_growth,
+                           unsigned int num_cpu_devices) {
   tensorflow::ConfigProto config;
   auto* optimizer_options =
       config.mutable_graph_options()->mutable_optimizer_options();
@@ -86,6 +87,8 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
 
   auto* gpu_options = config.mutable_gpu_options();
   gpu_options->set_allow_growth(gpu_memory_allow_growth);
+
+  (*config.mutable_device_count())["CPU"] = num_cpu_devices;
 
   // TODO(b/113217601): This is needed for EagerContext::runner_ to use a
   // threadpool, so that we avoid the possibility of running the runner_ in the
@@ -8535,8 +8538,9 @@ TFE_Context* TFE_CreateContextFromSession(TF_Session* session,
 
   // Reduce GPU memory allocation, and set appropriate config options for TFE
   // context.
-  auto* config =
-      TF_CreateConfig(/*xla*/ false, /* gpu_memory_allow_growth */ true);
+  auto* config = TF_CreateConfig(
+      /*xla*/ false, /* gpu_memory_allow_growth */ true, /* num_cpu_devices */
+      10);
   TFE_ContextOptionsSetConfig(opts, config->data, config->length, status);
   if (!status->status.ok()) {
     CHECK(!config);
@@ -8885,4 +8889,55 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType dtype_arg,
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
   return new TFE_TensorHandle(tensor, nullptr, nullptr);
+}
+
+namespace {
+tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
+                                       TFE_Context* ctx) {
+  // We don't use the TF_RETURN_IF_ERROR macro directly since that destroys the
+  // server object (which currently CHECK-fails) and we miss the error, instead,
+  // we log the error, and then return to allow the user to see the error
+  // message.
+#define LOG_AND_RETURN_IF_ERROR(...)                    \
+  do {                                                  \
+    const ::tensorflow::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {              \
+      LOG(ERROR) << _status.error_message();            \
+      return _status;                                   \
+    }                                                   \
+  } while (0);
+
+  std::unique_ptr<tensorflow::ServerInterface> server;
+  LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &server));
+
+  tensorflow::GrpcServer* grpc_server =
+      dynamic_cast<tensorflow::GrpcServer*>(server.get());
+  if (grpc_server == nullptr) {
+    LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
+        "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+  }
+
+  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+
+  LOG_AND_RETURN_IF_ERROR(ctx->context.StoreCollectiveOpsServer(
+      std::move(server), grpc_server->worker_env()->device_mgr,
+      grpc_server->worker_env()->collective_executor_mgr));
+
+  return tensorflow::Status::OK();
+#undef LOG_AND_RETURN_IF_ERROR
+}
+}  // namespace
+
+// Set server_def on the context, possibly updating it.
+TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status) {
+  tensorflow::ServerDef server_def;
+  if (!server_def.ParseFromArray(proto, proto_len)) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Invalid tensorflow.ServerDef protocol buffer");
+    return;
+  }
+  status->status = EnableCollectiveOps(server_def, ctx);
 }

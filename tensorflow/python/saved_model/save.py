@@ -53,26 +53,92 @@ from tensorflow.python.util.tf_export import tf_export
 DEFAULT_SIGNATURE_ATTR = "_default_save_signature"
 
 
-def _find_function_to_export(root):
+class _SaveableView(object):
+  """Provides a stable view over a checkpointable root.
+
+  This class helps creating a single stable view over an object to save. The
+  saving code should access properties and functions via this class and not via
+  the original object as there are cases where an object construct their
+  checkpointable attributes and functions dynamically per call and will yield
+  different objects if invoked more than once.
+  """
+
+  def __init__(self, root):
+    checkpointable_objects, node_ids, slot_variables = util.find_objects(root)
+    self.nodes = checkpointable_objects
+    self.node_ids = node_ids
+    self.slot_variables = slot_variables
+    self.polymorphic_functions = util.ObjectIdentityDictionary()
+
+    # Also add polymorphic functions as nodes.
+    for obj in self.nodes:
+      self.polymorphic_functions[obj] = self._list_polymorphic_functions(obj)
+      for function in self.polymorphic_functions[obj].values():
+        if function not in self.node_ids:
+          self.node_ids[function] = len(self.nodes)
+          self.nodes.append(function)
+        # Force listing the concrete functions for the side effects:
+        #  - populate the cache for polymorphic functions that have an
+        #  input_signature and have not been called.
+        #  - force side effects of creation of concrete functions, e.g. create
+        #  variables on first run.
+        function_serialization.list_all_concrete_functions(function)
+
+  @property
+  def root(self):
+    return self.nodes[0]
+
+  def fill_object_graph_proto(self, proto):
+    """Populate the nodes, children and slot_variables of a SavedObjectGraph."""
+    for node_id, node in enumerate(self.nodes):
+      assert self.node_ids[node] == node_id
+      object_proto = proto.nodes.add()
+      object_proto.slot_variables.extend(self.slot_variables.get(node, ()))
+      if isinstance(node, def_function.PolymorphicFunction):
+        continue
+      for child in node._checkpoint_dependencies:  # pylint: disable=protected-access
+        child_proto = object_proto.children.add()
+        child_proto.node_id = self.node_ids[child.ref]
+        child_proto.local_name = child.name
+      for local_name, ref_function in self.polymorphic_functions[node].items():
+        child_proto = object_proto.children.add()
+        child_proto.node_id = self.node_ids[ref_function]
+        child_proto.local_name = local_name
+
+  def _list_polymorphic_functions(self, checkpointable_object):
+    """Return a dict of polymorphic functions of a checkpointable."""
+    polymorphic_functions = dict()
+    for attribute_name in dir(checkpointable_object):
+      try:
+        attribute_value = getattr(checkpointable_object, attribute_name, None)
+      except Exception:  # pylint: disable=broad-except
+        # We really don't want to throw an exception just because some object's
+        # attribute accessor is broken.
+        attribute_value = None
+      if isinstance(attribute_value, def_function.PolymorphicFunction):
+        polymorphic_functions[attribute_name] = attribute_value
+    return polymorphic_functions
+
+
+def _find_function_to_export(saveable_view):
   """Iterate over `root`'s attributes, finding traced functions."""
   exported_function = None
   previous_attribute_name = None
-  for attribute_name in dir(root):
-    attribute_value = getattr(root, attribute_name, None)
-    if isinstance(attribute_value, def_function.PolymorphicFunction):
-      if exported_function is not None:
-        raise ValueError(
-            ("Exporting an object with no "
-             "tf.saved_model.save(..., signatures=...) "
-             "argument specified, and with more than one "
-             "@tf.function-decorated method attached to it: {}. The signature "
-             "keys for these functions are ambiguous. Specify signature "
-             "functions explicitly.").format(
-                 [previous_attribute_name, attribute_name]))
-      exported_function = attribute_value
-      previous_attribute_name = attribute_name
+  functions = saveable_view.polymorphic_functions[saveable_view.root]
+  for name, value in sorted(functions.items()):
+    if exported_function is not None:
+      raise ValueError(
+          ("Exporting an object with no "
+           "tf.saved_model.save(..., signatures=...) "
+           "argument specified, and with more than one "
+           "@tf.function-decorated method attached to it: {}. The signature "
+           "keys for these functions are ambiguous. Specify signature "
+           "functions explicitly.").format(
+               [previous_attribute_name, name]))
+    exported_function = value
+    previous_attribute_name = name
   if exported_function is None:
-    exported_function = getattr(root, DEFAULT_SIGNATURE_ATTR, None)
+    exported_function = functions.get(DEFAULT_SIGNATURE_ATTR, None)
   if exported_function is None:
     raise ValueError(
         ("Exporting an object with no tf.saved_model.save(..., signatures=...) "
@@ -410,7 +476,7 @@ def _map_resources(accessible_objects):
   """
   # TODO(allenl): Handle MirroredVariables and other types of variables which
   # may need special casing.
-  object_map = {}
+  object_map = util.ObjectIdentityDictionary()
   resource_map = {}
   asset_info = _AssetInfo(
       asset_defs=[],
@@ -430,13 +496,13 @@ def _map_resources(accessible_objects):
   return object_map, resource_map, asset_info
 
 
-def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
+def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
                          object_saver):
   """Generates a MetaGraph which calls `signature_functions`.
 
   Args:
     meta_graph_def: The MetaGraphDef proto to fill.
-    obj: The checkpointable object being exported.
+    saveable_view: The _SaveableView being exported.
     signature_functions: A dictionary mapping signature keys to concrete
       functions containing signatures to add to the MetaGraph.
     object_saver: A CheckpointableSaver to add to the MetaGraph.
@@ -444,10 +510,9 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
   Returns:
     An _AssetInfo, which contains information to help creating the SavedModel.
   """
-  signatures = {}
   # List objects from the eager context to make sure Optimizers give us the
   # right Graph-dependent variables.
-  accessible_objects = util.list_objects(obj)
+  accessible_objects = saveable_view.nodes
   resource_initializer_functions = _trace_resource_initializers(
       accessible_objects)
   exported_graph = ops.Graph()
@@ -481,8 +546,20 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
   # variables, but want any operations associated with the save/restore to be in
   # the exported graph (thus the `to_graph` argument).
   saver = object_saver.freeze(object_map=object_map, to_graph=exported_graph)
+
+  # We must instantiate and list all concrete functions of polymorphic functions
+  # while in eager mode so they end up added to the graph and can later be used
+  # by the object based saved model.
+  concrete_functions = []
+  for obj in accessible_objects:
+    for function in saveable_view.polymorphic_functions[obj].values():
+      concrete_functions.extend(
+          function_serialization.list_all_concrete_functions(function))
+
   with exported_graph.as_default():
     signatures = _generate_signatures(signature_functions, resource_map)
+    for _, concrete_function in concrete_functions:
+      concrete_function.add_to_graph()
     saver_def = saver.to_proto()
     meta_graph_def.saver_def.CopyFrom(saver_def)
   graph_def = exported_graph.as_graph_def(add_shapes=True)
@@ -499,21 +576,23 @@ def _fill_meta_graph_def(meta_graph_def, obj, signature_functions,
   return asset_info
 
 
-def _write_object_graph(root, export_dir, asset_file_def_index):
+def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
   """Save a SavedObjectGraph proto for `root`."""
   # SavedObjectGraph is similar to the CheckpointableObjectGraph proto in the
   # checkpoint. It will eventually go into the SavedModel.
   proto = saved_object_graph_pb2.SavedObjectGraph()
+  saveable_view.fill_object_graph_proto(proto)
 
-  checkpointable_objects, node_ids, slot_variables = util.find_objects(root)
-  util.fill_object_graph_proto(checkpointable_objects, node_ids, slot_variables,
-                               proto)
+  node_ids = util.ObjectIdentityDictionary()
+  for i, obj in enumerate(saveable_view.nodes):
+    node_ids[obj] = i
+    if resource_variable_ops.is_resource_variable(obj):
+      node_ids[obj.handle] = i
+    elif isinstance(obj, tracking.TrackableAsset):
+      node_ids[obj.asset_path.handle] = i
 
-  for obj, obj_proto in zip(checkpointable_objects, proto.nodes):
-    _write_object_proto(obj, obj_proto, asset_file_def_index)
-
-  function_serialization.add_polymorphic_functions_to_object_graph_proto(
-      checkpointable_objects, proto)
+  for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
+    _write_object_proto(obj, obj_proto, asset_file_def_index, node_ids)
 
   extra_asset_dir = os.path.join(
       compat.as_bytes(export_dir),
@@ -524,17 +603,23 @@ def _write_object_graph(root, export_dir, asset_file_def_index):
   file_io.write_string_to_file(object_graph_filename, proto.SerializeToString())
 
 
-def _write_object_proto(obj, proto, asset_file_def_index):
+def _write_object_proto(obj, proto, asset_file_def_index, node_ids):
   """Saves an object into SavedObject proto."""
   if isinstance(obj, tracking.TrackableAsset):
     proto.asset.SetInParent()
     proto.asset.asset_file_def_index = asset_file_def_index[obj]
+  elif resource_variable_ops.is_resource_variable(obj):
+    proto.variable.SetInParent()
+    proto.variable.dtype = obj.dtype.as_datatype_enum
+    proto.variable.shape.CopyFrom(obj.shape.as_proto())
+  elif isinstance(obj, def_function.PolymorphicFunction):
+    proto.function.CopyFrom(
+        function_serialization.serialize_polymorphic_function(obj, node_ids))
   else:
     proto.user_object.SetInParent()
 
 
-@tf_export("saved_model.save",
-           v1=["saved_model.save", "saved_model.experimental.save"])
+@tf_export("saved_model.save", v1=["saved_model.experimental.save"])
 def save(obj, export_dir, signatures=None):
   # pylint: disable=line-too-long
   """Exports the Checkpointable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
@@ -681,25 +766,49 @@ def save(obj, export_dir, signatures=None):
 
   Raises:
     ValueError: If `obj` is not checkpointable.
+
+  @compatibility(eager)
+  Not supported when graph building. From TensorFlow 1.x,
+  `tf.enable_eager_execution()` must run first. May not be called from within a
+  function body.
+  @end_compatibility
   """
+  if not context.executing_eagerly():
+    with ops.init_scope():
+      if context.executing_eagerly():
+        raise AssertionError(
+            "tf.saved_model.save is not supported inside a traced "
+            "@tf.function. Move the call to the outer eagerly-executed "
+            "context.")
+      else:
+        raise AssertionError(
+            "tf.saved_model.save is not supported when graph building. "
+            "tf.enable_eager_execution() must run first when calling it from "
+            "TensorFlow 1.x.")
   # pylint: enable=line-too-long
   if not isinstance(obj, base.CheckpointableBase):
     raise ValueError(
         "Expected a Checkpointable object for export, got {}.".format(obj))
-  if signatures is None:
-    # Note that we run this before saving the checkpoint, since looping over
-    # attributes may have the side effect of creating variables in some cases.
-    signatures = _find_function_to_export(obj)
 
+  # Use _SaveableView to provide a stable listing of properties and functions.
+  # Note we run this twice since, while constructing the view the first time
+  # there can be side effects of creating variables.
+  _ = _SaveableView(obj)
+  saveable_view = _SaveableView(obj)
+
+  if signatures is None:
+    signatures = _find_function_to_export(saveable_view)
   signatures = _canonicalize_signatures(signatures)
+
   # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
   # compatible (no sessions) and share it with this export API rather than
   # making a SavedModel proto and writing it directly.
   saved_model = saved_model_pb2.SavedModel()
   meta_graph_def = saved_model.meta_graphs.add()
+  # TODO(andresp): Should this be using saveable_view?
   object_saver = util.CheckpointableSaver(obj)
   asset_info = _fill_meta_graph_def(
-      meta_graph_def, obj, signatures, object_saver)
+      meta_graph_def, saveable_view, signatures, object_saver)
   saved_model.saved_model_schema_version = (
       constants.SAVED_MODEL_SCHEMA_VERSION)
   # So far we've just been generating protocol buffers with no I/O. Now we write
@@ -713,4 +822,4 @@ def save(obj, export_dir, signatures=None):
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
   file_io.write_string_to_file(path, saved_model.SerializeToString())
-  _write_object_graph(obj, export_dir, asset_info.asset_index)
+  _write_object_graph(saveable_view, export_dir, asset_info.asset_index)

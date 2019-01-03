@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdlib>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -417,6 +419,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->cell_clip = bidi_lstm_params->cell_clip();
         params->proj_clip = bidi_lstm_params->proj_clip();
         params->merge_outputs = bidi_lstm_params->merge_outputs();
+        params->time_major = bidi_lstm_params->time_major();
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -646,6 +649,18 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             mirror_pad_params->mode() == tflite::MirrorPadMode_REFLECT
                 ? TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect
                 : TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingSymmetric;
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_UNIQUE: {
+      TfLiteUniqueParams* params = allocator->AllocatePOD<TfLiteUniqueParams>();
+      auto* unique_params = op->builtin_options_as_UniqueOptions();
+      if (unique_params != nullptr) {
+        params->index_out_type =
+            unique_params->idx_out_type() == tflite::TensorType_INT64
+                ? TfLiteType::kTfLiteInt64
+                : TfLiteType::kTfLiteInt32;
       }
       *builtin_data = reinterpret_cast<void*>(params);
       break;

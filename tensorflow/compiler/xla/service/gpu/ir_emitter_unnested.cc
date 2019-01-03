@@ -292,13 +292,12 @@ llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo, int64 launch_size,
 
   auto shape_in_range = [&](const Shape& s) {
     bool in_range = true;
-    ShapeUtil::ForEachSubshape(
-        s, [&](const Shape& sub_shape, const ShapeIndex& /*index*/) {
-          if (ShapeUtil::IsArray(sub_shape) &&
-              !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
-            in_range = false;
-          }
-        });
+    ShapeUtil::ForEachSubshape(s, [&](const Shape& sub_shape,
+                                      const ShapeIndex& /*index*/) {
+      if (sub_shape.IsArray() && !IsInt32(ShapeUtil::ElementsIn(sub_shape))) {
+        in_range = false;
+      }
+    });
 
     return in_range;
   };
@@ -542,8 +541,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         // HandleFusion specializes reduction from a multi-dimensional array to
         // a 1D array. The specialized version requires a initializer thunk that
         // initializes the output array to the initial value of the reduce.
-        if (root->opcode() == HloOpcode::kReduce &&
-            ShapeUtil::IsTuple(root->shape())) {
+        if (root->opcode() == HloOpcode::kReduce && root->shape().IsTuple()) {
           // TODO(b/112040122): Support variadic reduce.
           return Unimplemented("Variadic reduce is not supported on GPU");
         }
@@ -634,7 +632,7 @@ Status IrEmitterUnnested::EmitExtraOutputsForReduce(
 
 Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
   // TODO(b/112040122): Support multi-output reduce.
-  if (!ShapeUtil::IsArray(reduce->shape())) {
+  if (!reduce->shape().IsArray()) {
     return Unimplemented("Multi-output reduce is not supported on GPU");
   }
   if (IsReductionToVector(*reduce)) {
@@ -698,8 +696,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   const auto* source = select_and_scatter->operand(1);
   const Window& window = select_and_scatter->window();
   PrimitiveType operand_element_type = operand->shape().element_type();
-  const int64 rank = ShapeUtil::Rank(operand->shape());
-  CHECK_EQ(rank, ShapeUtil::Rank(source->shape()));
+  const int64 rank = operand->shape().rank();
+  CHECK_EQ(rank, source->shape().rank());
   CHECK_EQ(rank, window.dimensions_size());
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> initializer_thunk,
@@ -1015,7 +1013,7 @@ Status IrEmitterUnnested::EmitScatter(
     int64 raw_window_multidim_idx = 0;
     std::vector<llvm::Value*> input_window_multidim;
     std::vector<int64> input_window_bounds;
-    for (int64 i = 0, e = ShapeUtil::Rank(operand->shape()); i != e; ++i) {
+    for (int64 i = 0, e = operand->shape().rank(); i != e; ++i) {
       if (absl::c_binary_search(dim_numbers.inserted_window_dims(), i)) {
         input_window_bounds.push_back(1);  // Trivial dimension.
         input_window_multidim.push_back(index.GetConstantWithIndexType(0));
@@ -1027,12 +1025,11 @@ Status IrEmitterUnnested::EmitScatter(
         ++raw_window_multidim_idx;
       }
     }
-    DCHECK_EQ(input_window_multidim.size(), ShapeUtil::Rank(operand->shape()));
+    DCHECK_EQ(input_window_multidim.size(), operand->shape().rank());
 
     // Insert a 1 dimension at the end if index_vector_dim requests one.
     Shape scatter_indices_shape = scatter_indices->shape();
-    if (dim_numbers.index_vector_dim() ==
-        ShapeUtil::Rank(scatter_indices_shape)) {
+    if (dim_numbers.index_vector_dim() == scatter_indices_shape.rank()) {
       scatter_indices_shape.add_dimensions(1);
       scatter_indices_shape.mutable_layout()->add_minor_to_major(
           dim_numbers.index_vector_dim());
@@ -1295,11 +1292,11 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   return IrEmitter::HandleTupleSelect(tuple_select);
 }
 
-Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
+Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
   if (hlo_module_config_.replica_count() != 1) {
     // TODO(b/33011107): Support nontrivial cross replica sum on GPU.
     return Unimplemented(
-        "CrossReplicaSum with >1 replica is not implemented on GPU.");
+        "AllReduce with >1 replica is not implemented on GPU.");
   }
 
   // CRS with one operand and one replica is simply the identity function.
@@ -1310,8 +1307,8 @@ Status IrEmitterUnnested::HandleCrossReplicaSum(HloInstruction* crs) {
   // HloModuleConfig::num_replicas changes between when the module is compiled
   // and when it's run.
   if (crs->operand_count() == 1) {
-    CHECK(ShapeUtil::IsArray(crs->operand(0)->shape()))
-        << "Operands to cross-replica-sum must be arrays: " << crs->ToString();
+    CHECK(crs->operand(0)->shape().IsArray())
+        << "Operands to all-reduce must be arrays: " << crs->ToString();
     AddThunkToThunkSequence(absl::make_unique<DeviceToDeviceCopyThunk>(
         /*source_address=*/GetAllocationSlice(*crs->operand(0)),
         /*destination_buffer=*/GetAllocationSlice(*crs),
@@ -3191,7 +3188,7 @@ Status AreFusedReductionOutputsConsistent(
 // dimensions from minor to major.
 DimensionVector GetDimensionsToKeepMinorToMajor(
     const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
-  DimensionVector input_dims(ShapeUtil::Rank(input_shape), 0);
+  DimensionVector input_dims(input_shape.rank(), 0);
   absl::c_iota(input_dims, 0);
   DimensionVector input_dims_to_keep;
   for (int input_dim : input_dims) {
@@ -3231,7 +3228,7 @@ std::tuple<int64, int64, int64> GetReductionToVectorDimensions(
   if (input_dims_to_keep_minor_to_major.empty()) {
     return std::make_tuple(num_reduced_major, num_kept, num_reduced_minor);
   }
-  DimensionVector input_dims(ShapeUtil::Rank(input_shape), 0);
+  DimensionVector input_dims(input_shape.rank(), 0);
   absl::c_iota(input_dims, 0);
   absl::Span<const int64> minor_to_major =
       LayoutUtil::MinorToMajor(input_shape);

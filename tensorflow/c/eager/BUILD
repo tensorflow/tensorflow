@@ -148,6 +148,62 @@ tf_cuda_cc_test(
     ],
 )
 
+tf_cuda_library(
+    name = "c_api_experimental",
+    srcs = [
+        "c_api_experimental.cc",
+    ],
+    hdrs = ["c_api_experimental.h"],
+    copts = tf_copts() + tfe_xla_copts(),
+    visibility = ["//visibility:public"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            ":c_api",
+            ":c_api_internal",
+            "//tensorflow/c:c_api",
+            "//tensorflow/c:c_api_internal",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core/common_runtime/eager:attr_builder",
+            "//tensorflow/core/common_runtime/eager:context",
+            "//tensorflow/core/common_runtime/eager:eager_executor",
+            "//tensorflow/core/common_runtime/eager:execute",
+            "//tensorflow/core/common_runtime/eager:kernel_and_device",
+            "//tensorflow/core/common_runtime/eager:tensor_handle",
+            "//tensorflow/core/common_runtime/eager:copy_to_device_node",
+            "//tensorflow/core:core_cpu_internal",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
+        ],
+    }) + select({
+        "//tensorflow:with_xla_support": [
+            "//tensorflow/compiler/tf2xla:xla_compiler",
+            "//tensorflow/compiler/jit",
+            "//tensorflow/compiler/jit:xla_device",
+        ],
+        "//conditions:default": [],
+    }) + [
+        "@com_google_absl//absl/memory",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
+        "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime:remote_device",
+        "//tensorflow/core/distributed_runtime:server_lib",
+        "//tensorflow/core/distributed_runtime:worker_env",
+        "//tensorflow/core:gpu_runtime",
+    ],
+)
+
 cc_library(
     name = "tape",
     hdrs = ["tape.h"],

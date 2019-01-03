@@ -57,6 +57,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 
 TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
+TF_CALL_bfloat16(DEFINE_TYPE);
 TF_CALL_double(DEFINE_TYPE);
 TF_CALL_uint8(DEFINE_TYPE);
 TF_CALL_int32(DEFINE_TYPE);
@@ -78,6 +79,7 @@ typedef Eigen::SyclDevice SYCLDevice;
 
 TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
+TF_CALL_bfloat16(DEFINE_TYPE);
 TF_CALL_double(DEFINE_TYPE);
 TF_CALL_uint8(DEFINE_TYPE);
 TF_CALL_int32(DEFINE_TYPE);
