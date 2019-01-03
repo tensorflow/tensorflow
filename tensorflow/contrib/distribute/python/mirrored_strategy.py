@@ -48,7 +48,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   distributed environment.
 
   There are several important concepts for distributed TensorFlow, e.g.
-  `client`, `job`, 'task', `cluster`, `in-graph replication` and
+  `client`, `job`, `task`, `cluster`, `in-graph replication` and
   'synchronous training' and they have already been defined in the
   [TensorFlow's documentation](https://www.tensorflow.org/deploy/distributed).
   The distribution strategy inherits these concepts as well and in addition to
