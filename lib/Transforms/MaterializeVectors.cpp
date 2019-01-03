@@ -554,12 +554,15 @@ static bool instantiateMaterialization(Instruction *inst,
   FuncBuilder b(inst);
   auto *opInst = cast<OperationInst>(inst);
   if (auto write = opInst->dyn_cast<VectorTransferWriteOp>()) {
-    instantiate(&b, write, state->hwVectorType, state->hwVectorInstance,
-                state->substitutionsMap);
-    return false;
+    auto *clone = instantiate(&b, write, state->hwVectorType,
+                              state->hwVectorInstance, state->substitutionsMap);
+    return clone == nullptr;
   } else if (auto read = opInst->dyn_cast<VectorTransferReadOp>()) {
     auto *clone = instantiate(&b, read, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
+    if (!clone) {
+      return true;
+    }
     state->substitutionsMap->insert(
         std::make_pair(read->getResult(), clone->getResult(0)));
     return false;
