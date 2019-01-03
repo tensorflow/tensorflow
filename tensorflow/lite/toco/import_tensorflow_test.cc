@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace toco {
 
@@ -564,3 +565,9 @@ TEST(ImportTest, UnsupportedOpWithMultipleOutputs) {
 
 }  // namespace
 }  // namespace toco
+
+int main(int argc, char** argv) {
+  ::tflite::LogToStderr();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}
