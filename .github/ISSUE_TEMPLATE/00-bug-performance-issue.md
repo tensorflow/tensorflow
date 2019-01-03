@@ -20,7 +20,7 @@ about: Use this template for reporting a bug or a performance issue.
 
 
 You can collect some of this information using our environment capture [script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh)
-You can also obtain the TensorFlow version with
+You can also obtain the Tensorflow version with
 python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"
 
 **Describe the current behavior**
