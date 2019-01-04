@@ -107,11 +107,10 @@ HloComputation* HloModule::AddEntryComputation(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  auto it =
-      std::find_if(computations_.begin(), computations_.end(),
-                   [&to_remove](const std::unique_ptr<HloComputation>& comp) {
-                     return comp.get() == to_remove;
-                   });
+  auto it = absl::c_find_if(
+      computations_, [&to_remove](const std::unique_ptr<HloComputation>& comp) {
+        return comp.get() == to_remove;
+      });
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
   return Status::OK();
@@ -304,11 +303,10 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   auto module = absl::make_unique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
-  std::sort(computations.begin(), computations.end(),
-            [&](const std::unique_ptr<HloComputation>& a,
-                const std::unique_ptr<HloComputation>& b) {
-              return to_proto_id[a.get()] < to_proto_id[b.get()];
-            });
+  absl::c_sort(computations, [&](const std::unique_ptr<HloComputation>& a,
+                                 const std::unique_ptr<HloComputation>& b) {
+    return to_proto_id[a.get()] < to_proto_id[b.get()];
+  });
 
   // Add sorted computations to the module.
   for (auto& computation : computations) {

@@ -2216,8 +2216,7 @@ Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse) {
   auto dim_is_one = [&](int64 i) -> bool {
     return reverse->shape().dimensions(i) == 1;
   };
-  if (std::all_of(reverse->dimensions().begin(), reverse->dimensions().end(),
-                  dim_is_one)) {
+  if (absl::c_all_of(reverse->dimensions(), dim_is_one)) {
     return ReplaceInstruction(reverse, reverse->mutable_operand(0));
   }
   return Status::OK();
@@ -2492,9 +2491,9 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
     // Create a new reduce with the combined reduction dimensions of both
     // reduces.
     std::vector<int64> arg_dims = arg->dimensions();
-    std::sort(arg_dims.begin(), arg_dims.end());
+    absl::c_sort(arg_dims);
     std::vector<int64> reduce_dims = reduce->dimensions();
-    std::sort(reduce_dims.begin(), reduce_dims.end());
+    absl::c_sort(reduce_dims);
     // Transform reduce_dims to the same rank as the operand of the operand.
     for (int64 arg_dim : arg_dims) {
       for (int64& dim : reduce_dims) {

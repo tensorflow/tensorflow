@@ -107,13 +107,12 @@ string HloSharding::ToString() const {
 
 bool HloSharding::UsesDevice(int64 device) const {
   if (IsTuple()) {
-    return std::any_of(
-        tuple_elements_.begin(), tuple_elements_.end(),
-        [&](const HloSharding& s) { return s.UsesDevice(device); });
+    return absl::c_any_of(tuple_elements_, [&](const HloSharding& s) {
+      return s.UsesDevice(device);
+    });
   }
   const auto& devices = tile_assignment_;
-  return replicated_ ||
-         std::find(devices.begin(), devices.end(), device) != devices.end();
+  return replicated_ || absl::c_linear_search(devices, device);
 }
 
 std::map<int64, int64> HloSharding::UsedDevices(int64* count) const {

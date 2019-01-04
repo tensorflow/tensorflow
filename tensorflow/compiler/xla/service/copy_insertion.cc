@@ -539,10 +539,9 @@ class CopyRemover {
         }
 
         std::vector<const HloValue*> values = buffer.values();
-        std::sort(values.begin(), values.end(),
-                  [this](const HloValue* a, const HloValue* b) {
-                    return ordering_.IsDefinedBefore(*a, *b);
-                  });
+        absl::c_sort(values, [this](const HloValue* a, const HloValue* b) {
+          return ordering_.IsDefinedBefore(*a, *b);
+        });
 
         // Create a list containing all of the values in the buffer.
         AddValueList(values, &value_to_node);
@@ -842,12 +841,11 @@ class CopyRemover {
       copy_value_node->next->prev = operand_node;
 
       // Patch up uses. Remove use of copy from operand_node uses.
-      auto it =
-          std::find_if(operand_node->uses.begin(), operand_node->uses.end(),
-                       [copy_value_node](const HloUse* use) {
-                         return use->instruction ==
-                                copy_value_node->value->defining_instruction();
-                       });
+      auto it = absl::c_find_if(
+          operand_node->uses, [copy_value_node](const HloUse* use) {
+            return use->instruction ==
+                   copy_value_node->value->defining_instruction();
+          });
       CHECK(it != operand_node->uses.end());
       operand_node->uses.erase(it);
 

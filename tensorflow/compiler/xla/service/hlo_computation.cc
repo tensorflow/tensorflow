@@ -531,11 +531,10 @@ HloComputation::CreateFromProto(
   HloInstruction* root = instruction_map.at(proto.root_id());
 
   // Sort the instructions in the proto id's order.
-  std::sort(instructions.begin(), instructions.end(),
-            [&](const std::unique_ptr<HloInstruction>& a,
-                const std::unique_ptr<HloInstruction>& b) {
-              return to_proto_id[a.get()] < to_proto_id[b.get()];
-            });
+  absl::c_sort(instructions, [&](const std::unique_ptr<HloInstruction>& a,
+                                 const std::unique_ptr<HloInstruction>& b) {
+    return to_proto_id[a.get()] < to_proto_id[b.get()];
+  });
 
   TF_RETURN_IF_ERROR([&]() -> Status {
     std::vector<bool> parameters_seen(parameter_count);
@@ -800,8 +799,7 @@ Status HloComputation::AcceptOrdered(
     absl::Span<HloInstruction* const> order) const {
   VLOG(3) << "Accepting visitor with order.";
   for (HloInstruction* root : CollectUnreachableRoots()) {
-    TF_RET_CHECK(std::find(order.begin(), order.end(), root) != order.end())
-        << root->ToString();
+    TF_RET_CHECK(absl::c_linear_search(order, root)) << root->ToString();
   }
   TF_RET_CHECK(order.size() == instruction_count());
   absl::flat_hash_set<const HloInstruction*> visited;

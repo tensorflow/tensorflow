@@ -561,8 +561,8 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
   }
 
   // Show the subcomputation if we're showing any of its members.
-  return std::any_of(
-      subcomp->instructions().begin(), subcomp->instructions().end(),
+  return absl::c_any_of(
+      subcomp->instructions(),
       [&](const HloInstruction* instr) { return filter_.Show(instr); });
 }
 
@@ -735,15 +735,14 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   const int kMinUsersToOmit = 3;
   return instr->opcode() == HloOpcode::kParameter && instr->shape().IsTuple() &&
          !instr->IsFused() &&
-         std::count_if(instr->users().begin(), instr->users().end(),
-                       [&](const HloInstruction* user) {
-                         return filter_.Show(user);
-                       }) > kMinUsersToOmit &&
-         std::all_of(instr->users().begin(), instr->users().end(),
-                     [&](const HloInstruction* user) {
-                       return !filter_.Show(user) ||
-                              user->opcode() == HloOpcode::kGetTupleElement;
-                     });
+         absl::c_count_if(instr->users(),
+                          [&](const HloInstruction* user) {
+                            return filter_.Show(user);
+                          }) > kMinUsersToOmit &&
+         absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
+           return !filter_.Show(user) ||
+                  user->opcode() == HloOpcode::kGetTupleElement;
+         });
 }
 
 string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
@@ -900,12 +899,11 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   // the same color as a parameter.  Unless the merged-in parameter is a
   // parameter to a fusion node that is bound to a constant -- these aren't
   // "real" parameters from the user's perspective.
-  if (std::any_of(instr->operands().begin(), instr->operands().end(),
-                  [&](const HloInstruction* operand) {
-                    return operand->opcode() == HloOpcode::kParameter &&
-                           ShouldMergeIntoUsers(operand) &&
-                           TryGetFusionParameterConstant(operand) == nullptr;
-                  })) {
+  if (absl::c_any_of(instr->operands(), [&](const HloInstruction* operand) {
+        return operand->opcode() == HloOpcode::kParameter &&
+               ShouldMergeIntoUsers(operand) &&
+               TryGetFusionParameterConstant(operand) == nullptr;
+      })) {
     return parameter_color;
   }
 
@@ -1355,12 +1353,11 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
     NodeFilterResult& filter_result = kv.second;
     const auto& operands = instr->operands();
 
-    if (std::any_of(operands.begin(), operands.end(), is_displayed) &&
-        !std::all_of(operands.begin(), operands.end(), is_displayed)) {
+    if (absl::c_any_of(operands, is_displayed) &&
+        !absl::c_all_of(operands, is_displayed)) {
       // Mark nodes with some operands omitted appropriately.
       filter_result = kSomeOperandsOmitted;
-    } else if (!operands.empty() &&
-               std::none_of(operands.begin(), operands.end(), is_displayed)) {
+    } else if (!operands.empty() && absl::c_none_of(operands, is_displayed)) {
       // Mark nodes with *all* operands omitted appropriately.
       filter_result = kOmitNodeOperands;
     }
@@ -1368,8 +1365,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
     // Promote nodes with type kSomeUsersOmitted to kNormalNode if all of their
     // users made it into the graph.
     if (filter_result == kSomeUsersOmitted &&
-        std::all_of(instr->users().begin(), instr->users().end(),
-                    is_displayed)) {
+        absl::c_all_of(instr->users(), is_displayed)) {
       filter_result = kNormalNode;
     }
   }

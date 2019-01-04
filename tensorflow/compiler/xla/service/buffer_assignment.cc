@@ -86,10 +86,9 @@ std::vector<int64> ColorInterferenceGraph(
   // first, but it would be good to investigate other ordering heuristics too.
   std::vector<int64> nodes(node_count);
   std::iota(nodes.begin(), nodes.end(), 0);
-  std::sort(nodes.begin(), nodes.end(),
-            [&interference_map](const int64 i, const int64 j) {
-              return interference_map[i].size() > interference_map[j].size();
-            });
+  absl::c_sort(nodes, [&interference_map](const int64 i, const int64 j) {
+    return interference_map[i].size() > interference_map[j].size();
+  });
 
   const int64 kColorUnassigned = -1;
   std::vector<int64> assigned_colors(node_count, kColorUnassigned);
@@ -272,11 +271,12 @@ BufferAllocationProto BufferAllocation::ToProto() const {
     proto_assigned->set_offset(buffer_offset_size.second.offset);
     proto_assigned->set_size(buffer_offset_size.second.size);
   }
-  std::sort(proto.mutable_assigned()->begin(), proto.mutable_assigned()->end(),
-            [](const BufferAllocationProto::Assigned& assign1,
-               const BufferAllocationProto::Assigned& assign2) {
-              return assign1.logical_buffer_id() < assign2.logical_buffer_id();
-            });
+  absl::c_sort(*proto.mutable_assigned(),
+               [](const BufferAllocationProto::Assigned& assign1,
+                  const BufferAllocationProto::Assigned& assign2) {
+                 return assign1.logical_buffer_id() <
+                        assign2.logical_buffer_id();
+               });
   return proto;
 }
 
@@ -308,10 +308,10 @@ string BufferAllocation::ToString() const {
   for (const auto& buffer_offset_size : assigned_buffers_) {
     sorted_buffers.push_back(buffer_offset_size.first);
   }
-  std::sort(sorted_buffers.begin(), sorted_buffers.end(),
-            [](const LogicalBuffer* a, const LogicalBuffer* b) {
-              return a->id() < b->id();
-            });
+  absl::c_sort(sorted_buffers,
+               [](const LogicalBuffer* a, const LogicalBuffer* b) {
+                 return a->id() < b->id();
+               });
   for (const LogicalBuffer* buffer : sorted_buffers) {
     const OffsetSize& offset_size = FindOrDie(assigned_buffers_, buffer);
     StrAppend(&output, absl::StrFormat(
@@ -479,10 +479,9 @@ bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
   // didn't return the empty set) for both HLOs, and the two resulting sets of
   // slices are disjoint.
   return !slices_a.empty() && !slices_b.empty() &&
-         std::none_of(slices_a.begin(), slices_a.end(),
-                      [&](const BufferAllocation::Slice& slice) {
-                        return slices_b.count(slice) > 0;
-                      });
+         absl::c_none_of(slices_a, [&](const BufferAllocation::Slice& slice) {
+           return slices_b.contains(slice);
+         });
 }
 
 StatusOr<BufferAllocation::Slice>
@@ -952,28 +951,28 @@ Status BufferAssigner::AssignBuffersForComputation(
   // operands (assuming operands are the same/larger size) enabling the
   // important reuse case where an elementwise instruction reuses one of its
   // operand's buffer. This improves locality.
-  std::sort(sorted_buffers.begin(), sorted_buffers.end(),
-            [has_sequential_order, &liveness, &post_order_position, assignment](
-                const LogicalBuffer* a, const LogicalBuffer* b) {
-              // Primary sort is by decreasing buffer size.
-              const int64 a_size = assignment->buffer_size_(*a);
-              const int64 b_size = assignment->buffer_size_(*b);
-              if (a_size != b_size) {
-                return a_size > b_size;  // use ">" for decreasing size.
-              }
-              // Otherwise live out buffers come before others, if the
-              // instructions are sequentially ordered.
-              if (has_sequential_order) {
-                const bool a_live_out = liveness.MaybeLiveOut(*a);
-                const bool b_live_out = liveness.MaybeLiveOut(*b);
-                if (a_live_out != b_live_out) {
-                  return a_live_out;
-                }
-              }
-              // Final tiebreaker is in instruction post order.
-              return post_order_position.at(a->instruction()) <
-                     post_order_position.at(b->instruction());
-            });
+  absl::c_sort(sorted_buffers,
+               [has_sequential_order, &liveness, &post_order_position,
+                assignment](const LogicalBuffer* a, const LogicalBuffer* b) {
+                 // Primary sort is by decreasing buffer size.
+                 const int64 a_size = assignment->buffer_size_(*a);
+                 const int64 b_size = assignment->buffer_size_(*b);
+                 if (a_size != b_size) {
+                   return a_size > b_size;  // use ">" for decreasing size.
+                 }
+                 // Otherwise live out buffers come before others, if the
+                 // instructions are sequentially ordered.
+                 if (has_sequential_order) {
+                   const bool a_live_out = liveness.MaybeLiveOut(*a);
+                   const bool b_live_out = liveness.MaybeLiveOut(*b);
+                   if (a_live_out != b_live_out) {
+                     return a_live_out;
+                   }
+                 }
+                 // Final tiebreaker is in instruction post order.
+                 return post_order_position.at(a->instruction()) <
+                        post_order_position.at(b->instruction());
+               });
 
   // BufferAllocations are necessarily created in decreasing size order. Keep
   // indices of previously created BufferAllocations in allocation_indices.
@@ -1305,10 +1304,10 @@ std::vector<const LogicalBuffer*> ComputePeakMemoryLogicalBuffers(
                              live_buffers.end());
 
   // Stabily sort the live buffers.
-  std::sort(live_buffers_vector.begin(), live_buffers_vector.end(),
-            [](const LogicalBuffer* a, const LogicalBuffer* b) {
-              return a->id() < b->id();
-            });
+  absl::c_sort(live_buffers_vector,
+               [](const LogicalBuffer* a, const LogicalBuffer* b) {
+                 return a->id() < b->id();
+               });
   return live_buffers_vector;
 }
 

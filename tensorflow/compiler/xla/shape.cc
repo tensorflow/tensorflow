@@ -87,8 +87,7 @@ bool Shape::is_static() const {
       }
     }
   }
-  return !std::any_of(dynamic_dimensions_.begin(), dynamic_dimensions_.end(),
-                      [](bool b) { return b; });
+  return !absl::c_any_of(dynamic_dimensions_, [](bool b) { return b; });
 }
 
 void Shape::DeleteDimension(int64 dim_to_delete) {

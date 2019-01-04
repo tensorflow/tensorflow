@@ -1248,8 +1248,7 @@ StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
         // Extract a slice from the keys and values literals that correspond to
         // exactly the row in dimension 'sort_dim'.
         std::vector<int64> limit_indices(indices.begin(), indices.end());
-        std::for_each(limit_indices.begin(), limit_indices.end(),
-                      [](int64& index) { ++index; });
+        absl::c_for_each(limit_indices, [](int64& index) { ++index; });
         limit_indices[sort_dim] = sort_dim_elements;
         TF_ASSIGN_OR_RETURN(auto keys_to_sort,
                             keys_literal.Slice(indices, limit_indices)
