@@ -3813,6 +3813,7 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/time",
     ],
 )
 
