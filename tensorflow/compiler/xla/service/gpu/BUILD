@@ -3,6 +3,11 @@
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -22,12 +27,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
 )
 
 xla_proto_library(
@@ -700,6 +699,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_group_converter",
+        "//tensorflow/compiler/xla/service:dynamic_index_splitter",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
         "//tensorflow/compiler/xla/service:hlo",

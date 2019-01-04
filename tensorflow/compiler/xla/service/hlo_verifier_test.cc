@@ -450,8 +450,9 @@ TEST_F(HloVerifierTestLayoutSensitive, SliceWithLayoutChangeNotAllowed) {
    HloModule SliceWithLayoutChange
     ENTRY SliceWithLayoutChange {
       par0 = f32[4,5]{0,1} parameter(0)
-      par1 = s32[2] parameter(1)
-      ROOT dslice0 = f32[3,4]{1,0} dynamic-slice(par0, par1),
+      par1 = s32[] parameter(1)
+      par2 = s32[] parameter(2)
+      ROOT dslice0 = f32[3,4]{1,0} dynamic-slice(par0, par1, par2),
         dynamic_slice_sizes={3,4}
     }
   )";

@@ -504,38 +504,23 @@ Status ShapeVerifier::HandleSlice(HloInstruction* slice) {
 }
 
 Status ShapeVerifier::HandleDynamicSlice(HloInstruction* dynamic_slice) {
-  const DebugOptions& debug_options =
-      dynamic_slice->GetModule()->config().debug_options();
-  const bool allow_scalar_indices =
-      debug_options.xla_allow_scalar_index_dynamic_ops();
-  if (!allow_scalar_indices) {
-    TF_RETURN_IF_ERROR(CheckOperandCount(dynamic_slice, 2));
-  }
   return CheckShape(
       dynamic_slice,
       ShapeInference::InferDynamicSliceShape(
           dynamic_slice->operand(0)->shape(),
           Cast<HloDynamicSliceInstruction>(dynamic_slice)->index_shapes(),
-          dynamic_slice->dynamic_slice_sizes(), allow_scalar_indices));
+          dynamic_slice->dynamic_slice_sizes()));
 }
 
 Status ShapeVerifier::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
-  const DebugOptions& debug_options =
-      dynamic_update_slice->GetModule()->config().debug_options();
-  const bool allow_scalar_indices =
-      debug_options.xla_allow_scalar_index_dynamic_ops();
-  if (!allow_scalar_indices) {
-    TF_RETURN_IF_ERROR(CheckOperandCount(dynamic_update_slice, 3));
-  }
   return CheckShape(
       dynamic_update_slice,
       ShapeInference::InferDynamicUpdateSliceShape(
           dynamic_update_slice->operand(0)->shape(),
           dynamic_update_slice->operand(1)->shape(),
           Cast<HloDynamicUpdateSliceInstruction>(dynamic_update_slice)
-              ->index_shapes(),
-          allow_scalar_indices));
+              ->index_shapes()));
 }
 
 Status ShapeVerifier::HandleTuple(HloInstruction* tuple) {
