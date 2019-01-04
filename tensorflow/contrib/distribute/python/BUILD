@@ -670,11 +670,12 @@ py_library(
 
 cuda_py_test(
     name = "keras_correctness_test",
+    size = "medium",
     srcs = ["keras_correctness_test.py"],
     additional_deps = [
         ":keras_correctness_test_lib",
     ],
-    shard_count = 16,
+    shard_count = 20,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
