@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
-#include "tensorflow/stream_executor/platform/default/dso_loader.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
