@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -228,6 +229,22 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
       shaped_buffer, device_ref.backend(), device_ref.device_ordinal(),
       &output_tuple));
+
+  // The ScopedShapedBuffer returned by the executable Run() API, in case of
+  // input/output buffer aliasing, might have holes in it, which need to be
+  // filled using the proper input tuples buffers which are the source of
+  // aliasing.
+  const xla::HloInputOutputAliasConfig& input_output_alias =
+      executable->executable()->module().input_output_alias_config();
+  auto alias_function = [&](const xla::ShapeIndex& output_index,
+                            int64 param_number,
+                            const xla::ShapeIndex& param_index) -> Status {
+    TF_RET_CHECK(param_number < input_tuples.size());
+    return output_tuple->AliasBufferFrom(*input_tuples[param_number],
+                                         param_index, output_index);
+  };
+  TF_RETURN_IF_ERROR(input_output_alias.ForEachAliasWithStatus(alias_function));
+
   if (config_proto.return_exploded_tuple() &&
       output_tuple->on_device_shape().IsTuple()) {
     int64 tuple_element_count =
