@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import nest
 
@@ -121,7 +122,7 @@ def make_variable(name,
       variable_dtype = None
     else:
       # Instantiate initializer if provided initializer is a type object.
-      if isinstance(initializer, type(init_ops.Initializer)):
+      if isinstance(initializer, (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
         initializer = initializer(dtype=dtype)
       if isinstance(initializer, init_ops.Initializer):
         init_val = lambda: initializer(  # pylint: disable=g-long-lambda
