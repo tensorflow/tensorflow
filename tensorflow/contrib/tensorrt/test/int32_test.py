@@ -41,13 +41,14 @@ class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
     input_name = 'input'
     output_name = 'output'
     input_dims = [100, 4]
+    dtype = dtypes.int32
     g = ops.Graph()
     with g.as_default():
       x = array_ops.placeholder(
-          dtype=dtypes.int32, shape=input_dims, name=input_name)
-      b = self._ConstOp((4, 10), dtypes.int32)
+          dtype=dtype, shape=input_dims, name=input_name)
+      b = self._ConstOp((4, 10), dtype)
       x = math_ops.matmul(x, b)
-      b = self._ConstOp((10,), dtypes.int32)
+      b = self._ConstOp((10,), dtype)
       x = nn.bias_add(x, b)
       x = array_ops.identity(x, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(

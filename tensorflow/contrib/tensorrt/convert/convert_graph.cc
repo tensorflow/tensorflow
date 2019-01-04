@@ -371,6 +371,8 @@ tensorflow::Status GetEngineInfo(
       }
     } else {
       if (node->has_assigned_device_name()) {
+        // It appears that nodes will not have assigned devices at this point in
+        // execution.
         segment_devices.insert(node->assigned_device_name());
       } else {
         VLOG(2) << "Node " << node->name()
