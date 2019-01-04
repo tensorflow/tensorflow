@@ -196,3 +196,36 @@ func @const_fold_propagate() -> memref<?x?xf32> {
   return %Av : memref<?x?xf32>
  }
 
+
+// CHECK-LABEL: func @simplify_affine_apply
+func @simplify_affine_apply(%arg0: memref<index>, %arg1: index, %arg2: index) {
+  // Only uses d1, not d0.
+  %0 = affine_apply (d0, d1) -> (d1 - 1) (%arg1, %arg2)
+  store %0, %arg0[] : memref<index>
+  // CHECK: [[X:%[0-9]+]] = affine_apply {{#map.*}}(%arg2)
+  // CHECK-NEXT: store [[X]], %arg0
+
+  // TODO: Constant fold one index into affine_apply
+  %c42 = constant 42 : index
+  %2 = affine_apply (d0, d1) -> (d0 - d1) (%arg1, %c42)
+  store %2, %arg0[] : memref<index>
+  // CHECK: [[X:%[0-9]+]] = affine_apply {{#map.*}}(%arg1, %c42)
+  // CHECK-NEXT: store [[X]], %arg0
+
+  // TODO: Replace multiple uses of the same ssa value with a canonical one.
+  %3 = affine_apply (d0, d1) -> (d0 + d1) (%arg1, %arg1)
+  store %3, %arg0[] : memref<index>
+  // CHECK: [[X:%[0-9]+]] = affine_apply {{#map.*}}(%arg1, %arg1)
+  // CHECK-NEXT: store [[X]], %arg0
+
+  // TODO: Compose affine maps.
+  %x0 = affine_apply (d0) -> (d0 - 1) (%arg1)
+  %x1 = affine_apply (d0) -> (d0+2) (%x0)
+  store %x1, %arg0[] : memref<index>
+
+  // CHECK: [[X:%[0-9]+]] = affine_apply {{#map.*}}(%arg1)
+  // CHECK-NEXT: [[Y:%[0-9]+]] = affine_apply {{#map.*}}([[X]])
+  // CHECK-NEXT: store [[Y]], %arg0
+
+  return
+}

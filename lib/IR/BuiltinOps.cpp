@@ -20,10 +20,12 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
@@ -163,6 +165,92 @@ bool AffineApplyOp::constantFold(ArrayRef<Attribute> operandConstants,
     return true;
   // Return false on success.
   return false;
+}
+
+namespace {
+/// SimplifyAffineApply operations.
+///
+struct SimplifyAffineApply : public RewritePattern {
+  SimplifyAffineApply(MLIRContext *context)
+      : RewritePattern(AffineApplyOp::getOperationName(), 1, context) {}
+
+  PatternMatchResult match(OperationInst *op) const override;
+  void rewrite(OperationInst *op, std::unique_ptr<PatternState> state,
+               PatternRewriter &rewriter) const override;
+};
+} // end anonymous namespace.
+
+namespace {
+/// FIXME: this is massive overkill for simple obviously always matching
+/// canonicalizations.  Fix the pattern rewriter to make this easy.
+struct SimplifyAffineApplyState : public PatternState {
+  AffineMap map;
+  SmallVector<Value *, 8> operands;
+
+  SimplifyAffineApplyState(AffineMap map,
+                           const SmallVector<Value *, 8> &operands)
+      : map(map), operands(operands) {}
+};
+
+} // end anonymous namespace.
+
+PatternMatchResult SimplifyAffineApply::match(OperationInst *op) const {
+  auto apply = op->cast<AffineApplyOp>();
+  auto map = apply->getAffineMap();
+
+  // Check to see what dims are used.
+  llvm::SmallBitVector usedDims(map.getNumDims());
+  llvm::SmallBitVector usedSyms(map.getNumSymbols());
+  map.walkExprs([&](AffineExpr expr) {
+    if (auto dimExpr = expr.dyn_cast<AffineDimExpr>())
+      usedDims[dimExpr.getPosition()] = true;
+    else if (auto symExpr = expr.dyn_cast<AffineSymbolExpr>())
+      usedSyms[symExpr.getPosition()] = true;
+  });
+
+  // If any dims or syms are unused, remove them.
+  if (!usedDims.all() || !usedSyms.all()) {
+    FuncBuilder builder(op);
+
+    SmallVector<Value *, 8> resultOperands;
+    resultOperands.reserve(apply->getNumOperands());
+
+    SmallVector<AffineExpr, 8> dimRemapping(map.getNumDims());
+    unsigned nextDim = 0;
+    for (unsigned i = 0, e = map.getNumDims(); i != e; ++i) {
+      if (usedDims[i]) {
+        dimRemapping[i] = builder.getAffineDimExpr(nextDim++);
+        resultOperands.push_back(apply->getOperand(i));
+      }
+    }
+    SmallVector<AffineExpr, 8> symRemapping(map.getNumSymbols());
+    unsigned nextSym = 0;
+    for (unsigned i = 0, e = map.getNumSymbols(); i != e; ++i) {
+      if (usedSyms[i]) {
+        symRemapping[i] = builder.getAffineSymbolExpr(nextSym++);
+        resultOperands.push_back(apply->getOperand(i + map.getNumDims()));
+      }
+    }
+
+    auto newMap =
+        map.replaceDimsAndSymbols(dimRemapping, symRemapping, nextDim, nextSym);
+    return matchSuccess(
+        std::make_unique<SimplifyAffineApplyState>(newMap, resultOperands));
+  }
+  return matchFailure();
+}
+
+void SimplifyAffineApply::rewrite(OperationInst *op,
+                                  std::unique_ptr<PatternState> state,
+                                  PatternRewriter &rewriter) const {
+  auto *applyState = static_cast<SimplifyAffineApplyState *>(state.get());
+  rewriter.replaceOpWithNewOp<AffineApplyOp>(op, applyState->map,
+                                             applyState->operands);
+}
+
+void AffineApplyOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.push_back(std::make_unique<SimplifyAffineApply>(context));
 }
 
 //===----------------------------------------------------------------------===//

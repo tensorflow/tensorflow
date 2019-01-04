@@ -79,6 +79,9 @@ public:
                     SmallVectorImpl<Attribute> &results,
                     MLIRContext *context) const;
 
+  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context);
+
 private:
   friend class OperationInst;
   explicit AffineApplyOp(const OperationInst *state) : Op(state) {}

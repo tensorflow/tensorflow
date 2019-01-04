@@ -166,3 +166,38 @@ bool AffineMap::constantFold(ArrayRef<Attribute> operandConstants,
          "constant folding produced the wrong number of results");
   return false;
 }
+
+/// Walk all of the AffineExpr's in this mapping.  The results are visited
+/// first, and then the range sizes (if present).  Each node in an expression
+/// tree is visited in postorder.
+void AffineMap::walkExprs(std::function<void(AffineExpr)> callback) const {
+  for (auto expr : getResults())
+    expr.walk(callback);
+
+  for (auto expr : getRangeSizes())
+    expr.walk(callback);
+}
+
+/// This method substitutes any uses of dimensions and symbols (e.g.
+/// dim#0 with dimReplacements[0]) in subexpressions and returns the modified
+/// expression mapping.  Because this can be used to eliminate dims and
+/// symbols, the client needs to specify the number of dims and symbols in
+/// the result.  The returned map always has the same number of results.
+AffineMap AffineMap::replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
+                                           ArrayRef<AffineExpr> symReplacements,
+                                           unsigned numResultDims,
+                                           unsigned numResultSyms) {
+  SmallVector<AffineExpr, 8> results;
+  results.reserve(getNumResults());
+  for (auto expr : getResults())
+    results.push_back(
+        expr.replaceDimsAndSymbols(dimReplacements, symReplacements));
+
+  SmallVector<AffineExpr, 8> resultRanges;
+  resultRanges.reserve(getRangeSizes().size());
+  for (auto expr : getRangeSizes())
+    resultRanges.push_back(
+        expr.replaceDimsAndSymbols(dimReplacements, symReplacements));
+
+  return get(numResultDims, numResultSyms, results, resultRanges);
+}

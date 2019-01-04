@@ -935,15 +935,6 @@ static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
                                 Optional<Location> location) {
   auto *context = elementType.getContext();
 
-  // Check that memref is formed from allowed types.
-  if (!elementType.isa<IntegerType>() && !elementType.isa<FloatType>() &&
-      !elementType.isa<VectorType>() && !elementType.isa<IntegerType>()) {
-    if (location.hasValue())
-      context->emitDiagnostic(*location, "invalid memref element type",
-                              MLIRContext::DiagnosticKind::Error);
-    return nullptr;
-  }
-
   // Check that the structure of the composition is valid, i.e. that each
   // subsequent affine map has as many inputs as the previous map has results.
   // Take the dimensionality of the MemRef for the first map.
@@ -1679,6 +1670,11 @@ AffineExpr AffineBinaryOpExprStorage::get(AffineExprKind kind, AffineExpr lhs,
   assert(inserted && "the expression shouldn't already exist in the map");
   (void)inserted;
   return result;
+}
+
+AffineExpr mlir::getAffineBinaryExpr(AffineExprKind kind, AffineExpr lhs,
+                                     AffineExpr rhs) {
+  return AffineBinaryOpExprStorage::get(kind, lhs, rhs);
 }
 
 AffineExpr mlir::getAffineDimExpr(unsigned position, MLIRContext *context) {

@@ -118,6 +118,14 @@ public:
   /// Return true if the affine expression involves AffineDimExpr `position`.
   bool isFunctionOfDim(unsigned position) const;
 
+  /// Walk all of the AffineExpr's in this expression in postorder.
+  void walk(std::function<void(AffineExpr)> callback) const;
+
+  /// This method substitutes any uses of dimensions and symbols (e.g.
+  /// dim#0 with dimReplacements[0]) and returns the modified expression tree.
+  AffineExpr replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
+                                   ArrayRef<AffineExpr> symReplacements) const;
+
   AffineExpr operator+(int64_t v) const;
   AffineExpr operator+(AffineExpr other) const;
   AffineExpr operator-() const;
@@ -191,6 +199,8 @@ inline AffineExpr operator-(int64_t val, AffineExpr expr) {
 AffineExpr getAffineDimExpr(unsigned position, MLIRContext *context);
 AffineExpr getAffineSymbolExpr(unsigned position, MLIRContext *context);
 AffineExpr getAffineConstantExpr(int64_t constant, MLIRContext *context);
+AffineExpr getAffineBinaryExpr(AffineExprKind kind, AffineExpr lhs,
+                               AffineExpr rhs);
 
 /// This auxiliary free function allows conveniently capturing the LHS, RHS and
 /// AffineExprBinaryOp in an AffineBinaryOpExpr.

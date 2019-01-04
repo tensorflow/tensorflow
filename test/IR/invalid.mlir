@@ -21,7 +21,8 @@ func @indexvector(vector<4 x index>) -> () // expected-error {{vector elements m
 
 // -----
 
-func @indexmemref(memref<? x index>) -> () // expected-error {{invalid memref element type}}
+// Everything is valid in a memref.
+func @indexmemref(memref<? x index>) -> ()
 
 // -----
 

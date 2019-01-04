@@ -96,6 +96,21 @@ public:
 
   ArrayRef<AffineExpr> getRangeSizes() const;
 
+  /// Walk all of the AffineExpr's in this mapping.  The results are visited
+  /// first, and then the range sizes (if present).  Each node in an expression
+  /// tree is visited in postorder.
+  void walkExprs(std::function<void(AffineExpr)> callback) const;
+
+  /// This method substitutes any uses of dimensions and symbols (e.g.
+  /// dim#0 with dimReplacements[0]) in subexpressions and returns the modified
+  /// expression mapping.  Because this can be used to eliminate dims and
+  /// symbols, the client needs to specify the number of dims and symbols in
+  /// the result.  The returned map always has the same number of results.
+  AffineMap replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
+                                  ArrayRef<AffineExpr> symReplacements,
+                                  unsigned numResultDims,
+                                  unsigned numResultSyms);
+
   /// Folds the results of the application of an affine map on the provided
   /// operands to a constant if possible. Returns false if the folding happens,
   /// true otherwise.

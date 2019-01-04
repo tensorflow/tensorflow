@@ -17,6 +17,7 @@
 
 #include "mlir/IR/AffineExpr.h"
 #include "AffineExprDetail.h"
+#include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/STLExtras.h"
 
@@ -29,6 +30,58 @@ MLIRContext *AffineExpr::getContext() const {
 
 AffineExprKind AffineExpr::getKind() const {
   return expr->contextAndKind.getInt();
+}
+
+/// Walk all of the AffineExprs in this subgraph in postorder.
+void AffineExpr::walk(std::function<void(AffineExpr)> callback) const {
+  struct AffineExprWalker : public AffineExprVisitor<AffineExprWalker> {
+    std::function<void(AffineExpr)> callback;
+
+    AffineExprWalker(std::function<void(AffineExpr)> callback)
+        : callback(callback) {}
+
+    void visitAffineBinaryOpExpr(AffineBinaryOpExpr expr) { callback(expr); }
+    void visitConstantExpr(AffineConstantExpr expr) { callback(expr); }
+    void visitDimExpr(AffineDimExpr expr) { callback(expr); }
+    void visitSymbolExpr(AffineSymbolExpr expr) { callback(expr); }
+  };
+
+  AffineExprWalker(callback).walkPostOrder(*this);
+}
+
+/// This method substitutes any uses of dimensions and symbols (e.g.
+/// dim#0 with dimReplacements[0]) and returns the modified expression tree.
+AffineExpr
+AffineExpr::replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
+                                  ArrayRef<AffineExpr> symReplacements) const {
+  switch (getKind()) {
+  case AffineExprKind::Constant:
+    return *this;
+  case AffineExprKind::DimId: {
+    unsigned dimId = cast<AffineDimExpr>().getPosition();
+    if (dimId >= dimReplacements.size())
+      return *this;
+    return dimReplacements[dimId];
+  }
+  case AffineExprKind::SymbolId: {
+    unsigned symId = cast<AffineSymbolExpr>().getPosition();
+    if (symId >= symReplacements.size())
+      return *this;
+    return symReplacements[symId];
+  }
+  case AffineExprKind::Add:
+  case AffineExprKind::Mul:
+  case AffineExprKind::FloorDiv:
+  case AffineExprKind::CeilDiv:
+  case AffineExprKind::Mod:
+    auto binOp = cast<AffineBinaryOpExpr>();
+    auto lhs = binOp.getLHS(), rhs = binOp.getRHS();
+    auto newLHS = lhs.replaceDimsAndSymbols(dimReplacements, symReplacements);
+    auto newRHS = rhs.replaceDimsAndSymbols(dimReplacements, symReplacements);
+    if (newLHS == lhs && newRHS == rhs)
+      return *this;
+    return getAffineBinaryExpr(getKind(), newLHS, newRHS);
+  }
 }
 
 /// Returns true if this expression is made out of only symbols and
