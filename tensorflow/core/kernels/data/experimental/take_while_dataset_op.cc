@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -30,6 +31,10 @@ namespace {
 
 class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
  public:
+  using LoopIteratorPredicate =
+      std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
+                           std::vector<Tensor>, bool*)>;
+
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
@@ -41,8 +46,45 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
                                                  &captured_func));
 
-    // TODO (squadrick): check short-circuit
-    *output = new Dataset(ctx, input, func_, std::move(captured_func));
+    std::vector<int> indices;
+    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
+    OP_REQUIRES(
+        ctx, indices.size() <= 1,
+        errors::InvalidArgument("`predicate` has more than one return value."));
+
+    LoopIteratorPredicate loop_pred;
+    if (indices.empty()) {
+      loop_pred = [](IteratorContext* ctx,
+                     InstantiatedCapturedFunction* inst_captured_func,
+                     const std::vector<Tensor>& args, bool* end_of_sequence) {
+        std::vector<Tensor> result;
+        TF_RETURN_IF_ERROR(
+            inst_captured_func->RunWithBorrowedArgs(ctx, args, &result));
+
+        if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
+            result[0].NumElements() != 1) {
+          return errors::InvalidArgument(
+              "`predicate` must returns a scalar bool tensor.");
+        }
+        *end_of_sequence = !result[0].scalar<bool>()();
+        return Status::OK();
+      };
+    } else {
+      loop_pred = [indices](IteratorContext* ctx,
+                            InstantiatedCapturedFunction* inst_captured_func,
+                            const std::vector<Tensor>& args,
+                            bool* end_of_sequence) {
+        const Tensor& predicate = args[indices[0]];
+        if (predicate.dtype() != DT_BOOL || predicate.NumElements() != 1) {
+          return errors::InvalidArgument(
+              "`predicate` must returns a scalar bool tensor.");
+        }
+        *end_of_sequence = !predicate.scalar<bool>()();
+        return Status::OK();
+      };
+    }
+    *output = new Dataset(ctx, input, func_, std::move(captured_func),
+                          std::move(loop_pred));
   }
 
  private:
@@ -50,11 +92,13 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
             const NameAttrList& func,
-            std::unique_ptr<CapturedFunction> captured_func)
+            std::unique_ptr<CapturedFunction> captured_func,
+            LoopIteratorPredicate loop_pred)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           func_(func),
-          captured_func_(std::move(captured_func)) {
+          captured_func_(std::move(captured_func)),
+          loop_pred_(std::move(loop_pred)) {
       input_->Ref();
     }
 
@@ -62,8 +106,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::TakeWhile")}));
+      return std::unique_ptr<IteratorBase>(new Iterator(
+          {this, strings::StrCat(prefix, "::TakeWhile")}, loop_pred_));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -122,8 +166,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
    private:
     class Iterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params) {}
+      explicit Iterator(const Params& params, LoopIteratorPredicate loop_pred)
+          : DatasetIterator<Dataset>(params), loop_pred_(loop_pred) {}
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
@@ -149,22 +193,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
           return Status::OK();
         }
-
-        std::vector<Tensor> bool_output;
-
-        Status s = instantiated_captured_func_->RunWithBorrowedArgs(
-            ctx, *out_tensors, &bool_output);
-
-        if (s.ok()) {
-          if (bool_output.size() != 1 || bool_output[0].dtype() != DT_BOOL ||
-              bool_output[0].NumElements() != 1) {
-            return errors::InvalidArgument(
-                "`predicate` must returns a scalar bool tensor.");
-          }
-          *end_of_sequence = !bool_output[0].scalar<bool>()();
-          return Status::OK();
-        }
-        return s;  // propagate error to caller
+        return loop_pred_(ctx, instantiated_captured_func_.get(), *out_tensors,
+                          end_of_sequence);
       }
 
      protected:
@@ -198,11 +228,13 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+      const LoopIteratorPredicate loop_pred_;
     };
 
     const DatasetBase* const input_;
     const NameAttrList func_;
     const std::unique_ptr<CapturedFunction> captured_func_;
+    const LoopIteratorPredicate loop_pred_;
   };
 
   NameAttrList func_;
