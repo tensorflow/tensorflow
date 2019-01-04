@@ -18,76 +18,70 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class TakeWhileTest(test_base.DatasetTestBase):
+class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
+  @parameterized.parameters(
+      (14, 2),
+      (15, 2),
+      (100, 3))
+  def testTakeWhileDataset(self, num_elements, window_size):
+    def _predicate_func(elem):
+      return array_ops.shape(elem)[0] > (window_size - 1)
 
-  def testTakeWhileDataset(self):
-    def do_test(num_elements, window_size):
-      def predicate_func(elem):
-        return array_ops.shape(elem)[0] > (window_size - 1)
+    take_while = take_while_ops.take_while(_predicate_func)
 
-      flatten_func = lambda x: dataset_ops.Dataset.from_tensor_slices(x)
-      take_while = take_while_ops.take_while(predicate_func)
+    dataset = dataset_ops.Dataset.range(num_elements).batch(window_size)
+    dataset = dataset.apply(take_while).flat_map(
+        lambda x: dataset_ops.Dataset.from_tensor_slices(x))
 
-      dataset = dataset_ops.Dataset.range(num_elements).batch(window_size)
-      dataset = dataset.apply(take_while).flat_map(flatten_func)
-      
-      self.assertDatasetProduces(dataset, 
-              np.arange(int(num_elements / window_size) * window_size))
+    expected_num_elements = int(num_elements / window_size) * window_size
+    self.assertDatasetProduces(dataset, np.arange(expected_num_elements))
 
-    do_test(14, 2)
-    do_test(15, 2)
-    do_test(100, 3)
+  @parameterized.parameters(
+      (10, 2, False),
+      (16, 7, False),
+      (100, 99, False),
+      (100, 101, True),
+      (0, 1, True))
+  def testTakeWhileDatasetRange(self, num_elements, upper_bound, out_of_bounds):
+    dataset = dataset_ops.Dataset.range(num_elements).apply(
+        take_while_ops.take_while(lambda x: x < upper_bound))
 
-  def testTakeWhileDatasetRange(self):
-    def get_dataset(num_elemets, upper_bound):
-      return dataset_ops.Dataset.range(num_elemets).apply(
-              take_while_ops.take_while(lambda x: x < upper_bound))
-        
-    def do_test(num_elemets, upper_bound):  
-      self.assertDatasetProduces(get_dataset(num_elemets, upper_bound), 
-              np.arange(upper_bound))
-    
-    def out_of_bounds(num_elemets, upper_bound):
+    if out_of_bounds:
       with self.assertRaises(errors.OutOfRangeError):
-        self.assertDatasetProduces(get_dataset(num_elemets, upper_bound), 
-                np.arange(upper_bound))
+        self.assertDatasetProduces(dataset, np.arange(upper_bound))
 
-    do_test(10, 2)
-    do_test(16, 7)
-    do_test(100, 99)
-    out_of_bounds(100, 101)
-    out_of_bounds(0, 1)
+    else:
+      self.assertDatasetProduces(dataset, np.arange(upper_bound))
 
   def testTakeWhileDatasetString(self):
-    def stringNotEquals(string):
-        return lambda x: math_ops.not_equal(x, constant_op.constant(string))
+    def not_equal(string):
+      return lambda x: math_ops.not_equal(x, constant_op.constant(string))
 
     string = ["this", "is", "the", "test", "for", "strings"]
     dataset = dataset_ops.Dataset.from_tensor_slices(string).apply(
-            take_while_ops.take_while(stringNotEquals("test")))
-    
+        take_while_ops.take_while(not_equal("test")))
+
     next_element = self.getNext(dataset)
     self.assertEqual(b"this", self.evaluate(next_element()))
     self.assertEqual(b"is", self.evaluate(next_element()))
     self.assertEqual(b"the", self.evaluate(next_element()))
 
     with self.assertRaises(errors.OutOfRangeError):
-        self.assertEqual(b"test", self.evaluate(next_element()))
+      self.assertEqual(b"test", self.evaluate(next_element()))
 
 
 if __name__ == "__main__":

@@ -40,7 +40,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
                                                  &captured_func));
-    
+
     // TODO (squadrick): check short-circuit
     *output = new Dataset(ctx, input, func_, std::move(captured_func));
   }
@@ -49,7 +49,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            const NameAttrList& func, 
+            const NameAttrList& func,
             std::unique_ptr<CapturedFunction> captured_func)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
@@ -74,7 +74,9 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() const override { return "TakeWhileDatasetOp::Dataset"; }
+    string DebugString() const override {
+      return "TakeWhileDatasetOp::Dataset";
+    }
 
     int64 Cardinality() const override { return kUnknownCardinality; }
 
@@ -109,11 +111,11 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
       b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
 
       TF_RETURN_IF_ERROR(b->AddDataset(
-            this, {std::make_pair(0, input_node)},
-            {std::make_pair(1, other_arguments)},
-            {std::make_pair("predicate", f_attr),
-             std::make_pair("Targuments", other_arguments_types_attr)},
-             output));
+          this, {std::make_pair(0, input_node)},
+          {std::make_pair(1, other_arguments)},
+          {std::make_pair("predicate", f_attr),
+           std::make_pair("Targuments", other_arguments_types_attr)},
+          output));
       return Status::OK();
     }
 
@@ -135,7 +137,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         {
           tf_shared_lock l(mu_);
-          if(!input_impl_) {
+          if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
@@ -154,17 +156,15 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
             ctx, *out_tensors, &bool_output);
 
         if (s.ok()) {
-          if(bool_output.size() != 1 || bool_output[0].dtype() != DT_BOOL ||
-             bool_output[0].NumElements() != 1) {
+          if (bool_output.size() != 1 || bool_output[0].dtype() != DT_BOOL ||
+              bool_output[0].NumElements() != 1) {
             return errors::InvalidArgument(
                 "`predicate` must returns a scalar bool tensor.");
           }
-          if (!bool_output[0].scalar<bool>()()) {
-            *end_of_sequence = true;
-            return Status::OK();
-          }
+          *end_of_sequence = !bool_output[0].scalar<bool>()();
+          return Status::OK();
         }
-        return s; // propagate error to caller
+        return s;  // propagate error to caller
       }
 
      protected:
