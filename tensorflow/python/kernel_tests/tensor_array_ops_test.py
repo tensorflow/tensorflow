@@ -1359,7 +1359,6 @@ class TensorArrayTest(test.TestCase):
   def testSkipEagerTensorArrayEvalEmptyWithDefault(self):
     self._testTensorArrayEvalEmptyWithDefault()
 
-  @test_util.disable_control_flow_v2("b/117943286")
   @test_util.run_v1_only("b/117943489")
   def testSkipEagerTensorArrayScatterReadAndGradients(self):
     with self.session(use_gpu=True) as session:
@@ -1387,8 +1386,8 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual([10.0, -10.0], read_vals[1])
       self.assertAllEqual([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
 
-  @test_util.disable_control_flow_v2("b/117943286")
-  @test_util.run_v1_only("b/117943286")
+  @test_util.disable_control_flow_v2("b/118890905")
+  @test_util.run_v1_only("b/118890905")
   def testTensorArrayWriteGatherAndGradients(self):
     with self.session(use_gpu=True) as session:
       ta = tensor_array_ops.TensorArray(

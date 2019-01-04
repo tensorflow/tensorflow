@@ -521,14 +521,31 @@ class TensorListScatter : public OpKernel {
                     "Specified a list with shape ", element_shape.DebugString(),
                     " from a tensor with shape ", output_shape.DebugString()));
     output_list.element_shape = element_shape;
-    output_list.tensors.reserve(indices.NumElements());
+
+    OP_REQUIRES(c, indices.NumElements() == input_tensor.shape().dim_size(0),
+                errors::InvalidArgument(
+                    "Invalid number of rows in input tensor. Expected: ",
+                    indices.NumElements(),
+                    " Actual: ", input_tensor.shape().dim_size(0)));
+
+    // Validate indices and resize output_list.tensors to fit the highest index.
+    {
+      size_t list_size = 0;
+      for (int index = 0; index < indices.NumElements(); ++index) {
+        const int i = indices.flat<int32>()(index);
+        OP_REQUIRES(c, i >= 0,
+                    errors::InvalidArgument(
+                        "Indices in TensorListScatter must all be positive."));
+        if (i >= list_size) {
+          list_size = i + 1;
+        }
+      }
+      output_list.tensors.resize(list_size, Tensor(DT_INVALID));
+    }
+
     for (int index = 0; index < indices.NumElements(); ++index) {
       const int i = indices.flat<int32>()(index);
-      OP_REQUIRES(c, i < input_tensor.shape().dim_size(0),
-                  errors::InvalidArgument(
-                      "Trying to scatter index ", i, " from tensor with ",
-                      input_tensor.shape().dim_size(0), " rows."));
-      Tensor tmp = input_tensor.Slice(i, i + 1);
+      Tensor tmp = input_tensor.Slice(index, index + 1);
       TensorShape tmp_shape = tmp.shape();
       tmp_shape.RemoveDim(0);
       OP_REQUIRES(c, tmp.CopyFrom(tmp, tmp_shape),
@@ -541,7 +558,7 @@ class TensorListScatter : public OpKernel {
       // many small ondes.
       aligned.flat<T>().device(c->eigen_device<Device>()) =
           tmp.unaligned_flat<T>();
-      output_list.tensors.push_back(aligned);
+      std::swap(output_list.tensors[i], aligned);
     }
     output_tensor->scalar<Variant>()() = std::move(output_list);
   }
