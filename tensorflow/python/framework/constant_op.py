@@ -277,6 +277,10 @@ def _constant_impl(
                     (num_t, shape, shape.num_elements()))
   g = ops.get_default_graph()
   tensor_value = attr_value_pb2.AttrValue()
+  if tensor_util.is_tensor(value):
+    raise ValueError(
+        ("Cannot create a tf.constant from symbolic Tensor %s. Did you mean "
+         "tf.convert_to_tensor?") % (value,))
   tensor_value.tensor.CopyFrom(
       tensor_util.make_tensor_proto(
           value, dtype=dtype, shape=shape, verify_shape=verify_shape,

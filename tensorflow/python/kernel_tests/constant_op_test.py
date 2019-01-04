@@ -24,6 +24,7 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_pb2
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
@@ -629,6 +630,16 @@ class OnesTest(test.TestCase):
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
         self.assertAllEqual(z.eval(), np.ones([2, 3]))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testIteratedConstantSensibleException(self):
+
+    @def_function.function
+    def constant_on_constant(x):
+      return constant_op.constant(x)
+
+    with self.assertRaisesRegexp(ValueError, "convert_to_tensor"):
+      constant_on_constant(constant_op.constant(2))
 
 
 class OnesLikeTest(test.TestCase):
