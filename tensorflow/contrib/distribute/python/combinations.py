@@ -321,11 +321,12 @@ class NamedDistribution(object):
     return self._required_tpu
 
 
-def _get_tpu_strategy_creator(steps_per_run):
+def _get_tpu_strategy_creator(steps_per_run, **kwargs):
   def _create_tpu_strategy():
     resolver = cluster_resolver.TPUClusterResolver("")
     tpu_lib.initialize_tpu_system(resolver)
-    strategy = tpu_lib.TPUStrategy(resolver, steps_per_run=steps_per_run)
+    strategy = tpu_lib.TPUStrategy(resolver,
+                                   steps_per_run=steps_per_run, **kwargs)
     return strategy
   return _create_tpu_strategy
 
@@ -344,7 +345,15 @@ tpu_strategy = NamedDistribution(
 tpu_strategy_one_step = NamedDistribution(
     "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1),
     required_tpu=True)
-
+# TODO(b/122327153): Remove below two NamedDistributions.
+tpu_strategy_loop_on_device = NamedDistribution(
+    "TPULoopOnDevice", _get_tpu_strategy_creator(
+        steps_per_run=2, _disable_training_loop_on_host=True),
+    required_tpu=True)
+tpu_strategy_one_step_loop_on_device = NamedDistribution(
+    "TPUOneStepLoopOnDevice", _get_tpu_strategy_creator(
+        steps_per_run=1, _disable_training_loop_on_host=True),
+    required_tpu=True)
 mirrored_strategy_with_one_cpu = NamedDistribution(
     "Mirrored1CPU",
     lambda: mirrored_lib.MirroredStrategy(["/cpu:0"]))
