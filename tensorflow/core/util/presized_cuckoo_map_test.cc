@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/presized_cuckoo_map.h"
 #include <array>
+
+#include "absl/time/clock.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/presized_cuckoo_map.h"
 
 namespace tensorflow {
 namespace {
@@ -48,6 +50,51 @@ TEST(PresizedCuckooMapTest, Basic) {
   int out;
   EXPECT_TRUE(pscm.Find(1, &out));
   EXPECT_EQ(out, 2);
+}
+
+TEST(PresizedCuckooMapTest, Prefetch) {
+  {
+    PresizedCuckooMap<int64> pscm(2);
+    EXPECT_TRUE(pscm.InsertUnique(1, 2));
+    // Works for both present and absent keys.
+    pscm.PrefetchKey(1);
+    pscm.PrefetchKey(2);
+  }
+
+  // Do not run in debug mode, when prefetch is not implemented, or when
+  // sanitizers are enabled.
+#if defined(NDEBUG) && defined(__GNUC__) && !defined(ADDRESS_SANITIZER) && \
+    !defined(MEMORY_SANITIZER) && !defined(THREAD_SANITIZER) &&            \
+    !defined(UNDEFINED_BEHAVIOR_SANITIZER)
+  const auto now = [] { return absl::Now(); };
+
+  // Make size enough to not fit in L2 cache (16.7 Mb)
+  static constexpr int size = 1 << 22;
+  PresizedCuckooMap<int64> pscm(size);
+  for (int i = 0; i < size; ++i) {
+    pscm.InsertUnique(i, i);
+  }
+
+  absl::Duration no_prefetch, prefetch;
+  int64 out;
+  for (int iter = 0; iter < 10; ++iter) {
+    auto time = now();
+    for (int i = 0; i < size; ++i) {
+      testing::DoNotOptimize(pscm.Find(i, &out));
+    }
+    no_prefetch += now() - time;
+
+    time = now();
+    for (int i = 0; i < size; ++i) {
+      pscm.PrefetchKey(i + 20);
+      testing::DoNotOptimize(pscm.Find(i, &out));
+    }
+    prefetch += now() - time;
+  }
+
+  // no_prefetch is at least 30% slower.
+  EXPECT_GE(1.0 * no_prefetch / prefetch, 1.3);
+#endif
 }
 
 TEST(PresizedCuckooMapTest, TooManyItems) {
