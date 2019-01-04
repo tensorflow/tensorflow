@@ -26,11 +26,13 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.gan.python.estimator.python import gan_estimator
 from tensorflow.contrib.gan.python.estimator.python import head
+from tensorflow.contrib.gan.python.estimator.python import latent_gan_estimator
 from tensorflow.contrib.gan.python.estimator.python import stargan_estimator
 from tensorflow.contrib.gan.python.estimator.python import tpu_gan_estimator
 
 from tensorflow.contrib.gan.python.estimator.python.gan_estimator import *
 from tensorflow.contrib.gan.python.estimator.python.head import *
+from tensorflow.contrib.gan.python.estimator.python.latent_gan_estimator import *
 from tensorflow.contrib.gan.python.estimator.python.stargan_estimator import *
 from tensorflow.contrib.gan.python.estimator.python.tpu_gan_estimator import *
 # pylint: enable=unused-import,wildcard-import
@@ -41,7 +43,8 @@ _allowed_symbols = ([
     'gan_estimator',
     'stargan_estimator',
     'tpu_gan_estimator',
+    'latent_gan_estimator',
     'head',
 ] + gan_estimator.__all__ + stargan_estimator.__all__ + head.__all__ +
-                    tpu_gan_estimator.__all__)
+                    tpu_gan_estimator.__all__ + latent_gan_estimator.__all__)
 remove_undocumented(__name__, _allowed_symbols)

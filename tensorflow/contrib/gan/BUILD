@@ -107,6 +107,7 @@ py_library(
     deps = [
         ":gan_estimator",
         ":head",
+        ":latent_gan_estimator",
         ":stargan_estimator",
         ":tpu_gan_estimator",
         "//tensorflow/python:util",
@@ -640,6 +641,41 @@ py_test(
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "latent_gan_estimator",
+    srcs = [
+        "python/estimator/python/latent_gan_estimator.py",
+        "python/estimator/python/latent_gan_estimator_impl.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":train",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training_util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:estimator_py",
+    ],
+)
+
+py_test(
+    name = "latent_gan_estimator_test",
+    srcs = [
+        "python/estimator/python/latent_gan_estimator_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":latent_gan_estimator",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/estimator:run_config",
+        "//tensorflow/python/ops/losses",
     ],
 )
 
