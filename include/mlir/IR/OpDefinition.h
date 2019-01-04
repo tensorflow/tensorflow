@@ -898,34 +898,6 @@ bool parseBinaryOp(OpAsmParser *parser, OperationState *result);
 void printBinaryOp(const OperationInst *op, OpAsmPrinter *p);
 } // namespace impl
 
-/// This template is used for operations that are simple binary ops that have
-/// two input operands, one result, and whose operands and results all have
-/// the same type.
-///
-/// From this structure, subclasses get a standard builder, parser and printer.
-///
-template <typename ConcreteType, template <typename T> class... Traits>
-class BinaryOp
-    : public Op<ConcreteType, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
-                OpTrait::SameOperandsAndResultType, Traits...> {
-public:
-  static void build(Builder *builder, OperationState *result, Value *lhs,
-                    Value *rhs) {
-    impl::buildBinaryOp(builder, result, lhs, rhs);
-  }
-  static bool parse(OpAsmParser *parser, OperationState *result) {
-    return impl::parseBinaryOp(parser, result);
-  }
-  void print(OpAsmPrinter *p) const {
-    return impl::printBinaryOp(this->getInstruction(), p);
-  }
-
-protected:
-  explicit BinaryOp(const OperationInst *state)
-      : Op<ConcreteType, OpTrait::NOperands<2>::Impl, OpTrait::OneResult,
-           OpTrait::SameOperandsAndResultType, Traits...>(state) {}
-};
-
 // These functions are out-of-line implementations of the methods in CastOp,
 // which avoids them being template instantiated/duplicated.
 namespace impl {

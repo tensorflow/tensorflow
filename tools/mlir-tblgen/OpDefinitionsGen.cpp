@@ -113,6 +113,9 @@ public:
   // Emit method declaration for the getCanonicalizationPatterns() interface.
   void emitCanonicalizationPatterns();
 
+  // Emit the constant folder method for the operation.
+  void emitConstantFolder();
+
   // Emit the parser for the operation.
   void emitParser();
 
@@ -171,6 +174,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   emitter.emitVerifier();
   emitter.emitAttrGetters();
   emitter.emitCanonicalizationPatterns();
+  emitter.emitConstantFolder();
 
   os << "private:\n  friend class ::mlir::OperationInst;\n";
   os << "  explicit " << emitter.op.cppClassName()
@@ -319,6 +323,19 @@ void OpEmitter::emitCanonicalizationPatterns() {
     return;
   os << "  static void getCanonicalizationPatterns("
      << "OwningRewritePatternList &results, MLIRContext* context);\n";
+}
+
+void OpEmitter::emitConstantFolder() {
+  if (!def.getValueAsBit("hasConstantFolder"))
+    return;
+  if (def.getValueAsListOfDefs("returnTypes").size() == 1) {
+    os << "  Attribute constantFold(ArrayRef<Attribute> operands,\n"
+          "                         MLIRContext *context) const;\n";
+  } else {
+    os << "  bool constantFold(ArrayRef<Attribute> operands,\n"
+       << "                    SmallVectorImpl<Attribute> &results,\n"
+       << "                    MLIRContext *context) const;\n";
+  }
 }
 
 void OpEmitter::emitParser() {

@@ -37,10 +37,12 @@ using namespace mlir;
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*namePrefix=*/"", context) {
-  addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, CmpIOp,
-                DeallocOp, DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp,
-                LoadOp, MemRefCastOp, MulFOp, MulIOp, SelectOp, StoreOp, SubFOp,
-                SubIOp, TensorCastOp>();
+  addOperations<AllocOp, CallOp, CallIndirectOp, CmpIOp, DeallocOp, DimOp,
+                DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp, MemRefCastOp,
+                SelectOp, StoreOp, TensorCastOp,
+#define GET_OP_LIST
+#include "mlir/StandardOps/standard_ops.inc"
+                >();
 }
 
 //===----------------------------------------------------------------------===//
@@ -77,13 +79,6 @@ struct MemRefCastFolder : public RewritePattern {
 //===----------------------------------------------------------------------===//
 // AddFOp
 //===----------------------------------------------------------------------===//
-
-void AddFOp::build(Builder *builder, OperationState *result, Value *lhs,
-                   Value *rhs) {
-  assert(lhs->getType() == rhs->getType());
-  result->addOperands({lhs, rhs});
-  result->types.push_back(lhs->getType());
-}
 
 Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
                                MLIRContext *context) const {

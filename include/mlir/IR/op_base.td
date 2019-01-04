@@ -208,6 +208,9 @@ class Op<string mnemonic, list<OpProperty> props = []> {
   // and C++ implementations.
   bit hasCanonicalizationPatterns = 0b0;
 
+  // Whether this op has a constant folder.
+  bit hasConstantFolder = 0b0;
+
   // Op properties.
   list<OpProperty> properties = props;
 }

@@ -37,53 +37,8 @@ public:
   StandardOpsDialect(MLIRContext *context);
 };
 
-/// The "addf" operation takes two operands and returns one result, each of
-/// these is required to be of the same type.  This type may be a floating point
-/// scalar type, a vector whose element type is a floating point type, or a
-/// floating point tensor. For example:
-///
-///   %2 = addf %0, %1 : f32
-///
-class AddFOp
-    : public BinaryOp<AddFOp, OpTrait::ResultsAreFloatLike,
-                      OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
-public:
-  static void build(Builder *builder, OperationState *result, Value *lhs,
-                    Value *rhs);
-
-  static StringRef getOperationName() { return "addf"; }
-
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
-
-private:
-  friend class OperationInst;
-  explicit AddFOp(const OperationInst *state) : BinaryOp(state) {}
-};
-
-/// The "addi" operation takes two operands and returns one result, each of
-/// these is required to be of the same type.  This type may be an integer
-/// scalar type, a vector whose element type is an integer type, or a
-/// integer tensor. For example:
-///
-///   %2 = addi %0, %1 : i32
-///
-class AddIOp
-    : public BinaryOp<AddIOp, OpTrait::ResultsAreIntegerLike,
-                      OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
-public:
-  static StringRef getOperationName() { return "addi"; }
-
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
-
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
-
-private:
-  friend class OperationInst;
-  explicit AddIOp(const OperationInst *state) : BinaryOp(state) {}
-};
+#define GET_OP_CLASSES
+#include "mlir/StandardOps/standard_ops.inc"
 
 /// The "alloc" operation allocates a region of memory, as specified by its
 /// memref type. For example:
@@ -650,51 +605,6 @@ private:
   explicit MemRefCastOp(const OperationInst *state) : CastOp(state) {}
 };
 
-/// The "mulf" operation takes two operands and returns one result, each of
-/// these is required to be of the same type.  This type may be a floating point
-/// scalar type, a vector whose element type is a floating point type, or a
-/// floating point tensor. For example:
-///
-///   %2 = mulf %0, %1 : f32
-///
-class MulFOp
-    : public BinaryOp<MulFOp, OpTrait::ResultsAreFloatLike,
-                      OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
-public:
-  static StringRef getOperationName() { return "mulf"; }
-
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
-
-private:
-  friend class OperationInst;
-  explicit MulFOp(const OperationInst *state) : BinaryOp(state) {}
-};
-
-/// The "muli" operation takes two operands and returns one result, each of
-/// these is required to be of the same type.  This type may be an integer
-/// scalar type, a vector whose element type is an integer type, or an
-/// integer tensor. For example:
-///
-///   %2 = muli %0, %1 : i32
-///
-class MulIOp
-    : public BinaryOp<MulIOp, OpTrait::ResultsAreIntegerLike,
-                      OpTrait::IsCommutative, OpTrait::HasNoSideEffect> {
-public:
-  static StringRef getOperationName() { return "muli"; }
-
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
-
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
-
-private:
-  friend class OperationInst;
-  explicit MulIOp(const OperationInst *state) : BinaryOp(state) {}
-};
-
 /// The "select" operation chooses one value based on a binary condition
 /// supplied as its first operand. If the value of the first operand is 1, the
 /// second operand is chosen, otherwise the third operand is chosen. The second
@@ -782,49 +692,6 @@ public:
 private:
   friend class OperationInst;
   explicit StoreOp(const OperationInst *state) : Op(state) {}
-};
-
-/// The "subf" operation takes two operands and returns one result, each of
-/// these is required to be of the same type.  This type may be a floating point
-/// scalar type, a vector whose element type is a floating point type, or a
-/// floating point tensor. For example:
-///
-///   %2 = subf %0, %1 : f32
-///
-class SubFOp : public BinaryOp<SubFOp, OpTrait::ResultsAreFloatLike,
-                               OpTrait::HasNoSideEffect> {
-public:
-  static StringRef getOperationName() { return "subf"; }
-
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
-
-private:
-  friend class OperationInst;
-  explicit SubFOp(const OperationInst *state) : BinaryOp(state) {}
-};
-
-/// The "subi" operation takes two operands and returns one result, each of
-/// these is required to be of the same type.  This type may be an integer
-/// scalar type, a vector whose element type is an integer type, or a
-/// integer tensor. For example:
-///
-///   %2 = subi %0, %1 : i32
-///
-class SubIOp : public BinaryOp<SubIOp, OpTrait::ResultsAreIntegerLike,
-                               OpTrait::HasNoSideEffect> {
-public:
-  static StringRef getOperationName() { return "subi"; }
-
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
-
-  static void getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                          MLIRContext *context);
-
-private:
-  friend class OperationInst;
-  explicit SubIOp(const OperationInst *state) : BinaryOp(state) {}
 };
 
 /// The "tensor_cast" operation converts a tensor from one type to an equivalent
