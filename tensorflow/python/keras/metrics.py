@@ -1685,6 +1685,37 @@ class Logcosh(MeanMetricWrapper):
     return super(Logcosh, cls).from_config(config)
 
 
+class Poisson(MeanMetricWrapper):
+  """Computes the poisson metric between `y_true` and `y_pred`.
+
+  metric = y_pred - y_true * log(y_pred)
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.Poisson()
+  m.update_state([1, 9, 2], [4, 8, 12])
+  print('Final result: ', m.result().numpy())  # Final result: -4.63
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.Poisson()])
+  ```
+  """
+
+  def __init__(self, name='poisson', dtype=None):
+    super(Poisson, self).__init__(poisson, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(Poisson, cls).from_config(config)
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
