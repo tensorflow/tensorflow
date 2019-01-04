@@ -1351,10 +1351,6 @@ class _UnreadVariable(ResourceVariable):
       return gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
 
-  def set_shape(self, shape):
-    self._shape = shape
-    self._cached_shape_as_list = None
-
   @property
   def op(self):
     """The op for this variable."""
@@ -1442,10 +1438,6 @@ class _MixedPrecisionVariable(ResourceVariable):
         return math_ops.cast(res, self._read_dtype)
       else:
         return res
-
-  def set_shape(self, shape):
-    self._shape = shape
-    self._cached_shape_as_list = None
 
   @property
   def op(self):
