@@ -243,7 +243,7 @@ class ChannelLayoutConstraints {
 
   // Returns true if channel_id has a layout constraint.
   bool IsChannelConstrained(int64 channel_id) const {
-    return constraints_.count(channel_id) > 0;
+    return constraints_.contains(channel_id);
   }
 
   // Given `shape`, apply the layout for `channel_id`. `channel_id` must already
@@ -276,7 +276,7 @@ class ChannelLayoutConstraints {
   }
 
  private:
-  std::unordered_map<int64, Layout> constraints_;
+  absl::flat_hash_map<int64, Layout> constraints_;
 };
 
 // HLO pass which assigns layouts to all instructions in the HLO module while

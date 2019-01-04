@@ -186,9 +186,10 @@ class BufferAllocation {
              end > other.offset_;
     }
 
-    struct Hasher {
-      size_t operator()(Slice s) const;
-    };
+    template <typename H>
+    friend H AbslHashValue(H h, const Slice& s) {
+      return H::combine(std::move(h), s.index(), s.offset(), s.size());
+    }
 
     string ToString() const;
 

@@ -741,6 +741,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_evaluator",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],

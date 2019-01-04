@@ -24,9 +24,9 @@ limitations under the License.
 #include <queue>
 #include <string>
 #include <tuple>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -380,7 +380,7 @@ class HloDotDumper {
   // Each HloInstruction dumped gets a monotically-increasing node ID.  This
   // must start at 1, because that's where graphviz's accounting starts.
   int64 next_node_id_ = 1;
-  std::unordered_map<const HloInstruction*, int64> node_ids_;
+  absl::flat_hash_map<const HloInstruction*, int64> node_ids_;
 
   // The "root" tag doesn't have an associated HloInstruction pointer, so we
   // need to store it outside the map.
@@ -397,7 +397,7 @@ class HloDotDumper {
 
   // Each HloComputation that's emitted gets a monotonically-increasing ID.
   int64 next_cluster_id_ = 1;
-  std::unordered_map<const HloComputation*, int64> cluster_ids_;
+  absl::flat_hash_map<const HloComputation*, int64> cluster_ids_;
 
   // Edges to print from Footer().  Edges come at the end because graphviz is
   // unhappy if an edge from a subcomputation to a node in the outer computation
@@ -407,7 +407,7 @@ class HloDotDumper {
 
   // When coloring by sharding information, we track the sharding string
   // representation to color association, by round-robin the color schemes.
-  std::unordered_map<HloSharding, ColorScheme, HloSharding::Hasher>
+  absl::flat_hash_map<HloSharding, ColorScheme, HloSharding::Hasher>
       sharding_colors_;
   int64 next_shard_color_ = 0;
 };
@@ -1286,7 +1286,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
                                       int64 radius) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
-  std::unordered_map<const HloInstruction*, NodeFilterResult> nodes;
+  absl::flat_hash_map<const HloInstruction*, NodeFilterResult> nodes;
   std::deque<std::pair<const HloInstruction*, /*depth*/ int64>> worklist;
   worklist.push_back({root, 0});
   while (!worklist.empty()) {
@@ -1307,7 +1307,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
     // are not interesting to the graph at hand.
     if (instr == root || instr->opcode() != HloOpcode::kTuple) {
       for (const HloInstruction* operand : instr->operands()) {
-        if (!nodes.count(operand)) {
+        if (!nodes.contains(operand)) {
           worklist.push_back({operand, depth + 1});
         }
       }
@@ -1335,7 +1335,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
       continue;
     }
     for (const HloInstruction* user : instr->users()) {
-      if (!nodes.count(user)) {
+      if (!nodes.contains(user)) {
         worklist.push_back({user, depth + 1});
       }
     }
@@ -1344,7 +1344,7 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
   auto is_displayed = [&](const HloInstruction* instr) {
     // Constants are displayed inline with their users; they're never omitted.
     // Nodes in subcomputations are always shown.
-    return nodes.count(instr) > 0 || instr->opcode() == HloOpcode::kConstant ||
+    return nodes.contains(instr) || instr->opcode() == HloOpcode::kConstant ||
            instr->parent() != root->parent();
   };
 

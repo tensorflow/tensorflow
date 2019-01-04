@@ -107,7 +107,7 @@ bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
           return false;
         }
       }
-      if (!visited.count(user)) {
+      if (!visited.contains(user)) {
         stack.push_back(user);
       }
     }

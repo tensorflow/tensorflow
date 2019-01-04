@@ -138,8 +138,8 @@ Status GatherComputationsByAllocationType(
     worklist.pop_front();
     const HloComputation* computation = worklist_front.first;
     bool is_thread_local = worklist_front.second;
-    bool in_thread_local_set = thread_local_set.count(computation) > 0;
-    bool in_global_set = global_set.count(computation) > 0;
+    bool in_thread_local_set = thread_local_set.contains(computation);
+    bool in_global_set = global_set.contains(computation);
 
     // If the computation has already been added to the respective set, then
     // nothing to do.
@@ -207,9 +207,9 @@ Status GatherComputationsByAllocationType(
 
   // Add the computations to the vectors in post order.
   for (auto* computation : module->MakeComputationPostOrder()) {
-    if (thread_local_set.count(computation) > 0) {
+    if (thread_local_set.contains(computation)) {
       thread_local_computations->push_back(computation);
-    } else if (global_set.count(computation) > 0) {
+    } else if (global_set.contains(computation)) {
       global_computations->push_back(computation);
     }
     // If the computation is not reachable from the entry computation, then it
@@ -217,13 +217,6 @@ Status GatherComputationsByAllocationType(
     // assigning buffers for these.
   }
   return Status::OK();
-}
-
-size_t BufferAllocation::Slice::Hasher::operator()(Slice s) const {
-  uint64 h = std::hash<int64>()(s.index());
-  h = tensorflow::Hash64Combine(h, std::hash<int64>()(s.offset()));
-  h = tensorflow::Hash64Combine(h, std::hash<int64>()(s.size()));
-  return h;
 }
 
 string BufferAllocation::Slice::ToString() const {
@@ -240,7 +233,7 @@ BufferAllocation::Slice BufferAllocation::GetSlice(
 void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
                                      int64 size) {
   VLOG(4) << "Trying to add " << buffer << " to allocation #" << index();
-  CHECK(assigned_buffers_.count(&buffer) == 0)
+  CHECK(!assigned_buffers_.contains(&buffer))
       << "LogicalBuffer " << buffer << " already assigned to allocation "
       << index_;
   CHECK_LE(offset, size_) << "LogicalBuffer " << buffer
@@ -346,7 +339,7 @@ const PointsToSet& BufferAssignment::GetPointsToSet(
 
 bool BufferAssignment::HasAllocation(const LogicalBuffer& buffer) const {
   TF_CHECK_OK(points_to_analysis().VerifyBuffer(buffer));
-  return allocation_index_for_buffer_.count(&buffer) > 0;
+  return allocation_index_for_buffer_.contains(&buffer);
 }
 
 const BufferAllocation& BufferAssignment::GetAssignedAllocation(
@@ -401,7 +394,7 @@ bool BufferAssignment::HasAllocationAt(const HloInstruction* instruction,
                                        const ShapeIndex& index) const {
   for (const LogicalBuffer* buffer :
        GetPointsToSet(instruction).element(index)) {
-    if (allocation_index_for_buffer_.count(buffer) > 0) {
+    if (allocation_index_for_buffer_.contains(buffer)) {
       return true;
     }
   }
@@ -459,8 +452,7 @@ bool BufferAssignment::SharesSliceAtIndex(
 
 bool BufferAssignment::HaveDisjointSlices(const HloInstruction* hlo_a,
                                           const HloInstruction* hlo_b) const {
-  using SliceSet =
-      flat_hash_set<BufferAllocation::Slice, BufferAllocation::Slice::Hasher>;
+  using SliceSet = flat_hash_set<BufferAllocation::Slice>;
   // Gets the slices all of instr's subshapes.  If any subshape doesn't have an
   // assigned slice, returns the empty set.
   auto collect_slices = [&](const HloInstruction* instr) -> SliceSet {
@@ -519,7 +511,7 @@ BufferAllocation* BufferAssignment::NewAllocation(const LogicalBuffer& buffer,
 void BufferAssignment::AddAssignment(BufferAllocation* allocation,
                                      const LogicalBuffer& buffer, int64 offset,
                                      int64 size) {
-  CHECK_EQ(0, allocation_index_for_buffer_.count(&buffer))
+  CHECK(!allocation_index_for_buffer_.contains(&buffer))
       << "LogicalBuffer " << buffer << " already has an allocation.";
   CHECK(allocation->is_reusable() || allocation->assigned_buffers().empty())
       << "Non-reusable allocation already assigned a buffer: "
@@ -988,7 +980,7 @@ Status BufferAssigner::AssignBuffersForComputation(
   std::vector<BufferAllocation::Index> allocation_indices;
   for (const LogicalBuffer* buffer : sorted_buffers) {
     VLOG(3) << "Assigning allocation to: " << *buffer;
-    if (colocated_buffers.count(buffer) > 0) {
+    if (colocated_buffers.contains(buffer)) {
       // Colocated buffers are currently assigned in an earlier pass.
       VLOG(3) << "Skipping colocated buffer: " << *buffer;
       continue;
@@ -1056,7 +1048,7 @@ Status BufferAssigner::AssignBuffersForComputation(
              assignment->GetAllSlices(operand, /*index=*/{})) {
           BufferAllocation* allocation =
               assignment->GetMutableAllocation(operand_slice.index());
-          if (colocated_allocations.count(allocation->index()) == 0) {
+          if (!colocated_allocations.contains(allocation->index())) {
             // TODO(b/32491382) Colocated buffers are currently assigned in an
             // earlier pass, and so can break the "increasing allocation size"
             // invariant in this function (causing this CHECK to fail). However,
@@ -1087,7 +1079,7 @@ Status BufferAssigner::AssignBuffersForComputation(
         // Instructions are iterated in increasing buffer size, so any
         // previously create allocation must be large enough to hold this
         // instruction's output (with the exception of colocated buffers).
-        if (colocated_allocations.count(allocation->index()) == 0) {
+        if (!colocated_allocations.contains(allocation->index())) {
           // TODO(b/32491382) Colocated buffers are currently assigned in an
           // earlier pass, and so can break the "increasing allocation size"
           // invariant in this function (causing this CHECK to fail). However,
@@ -1376,7 +1368,7 @@ void BufferAssigner::AddSetToColocatedBufferSets(
   std::vector<size_t> overlap_set_indices;
   for (size_t index = 0; index < colocated_buffer_sets->size(); ++index) {
     for (const LogicalBuffer* buffer : colocated_set) {
-      if ((*colocated_buffer_sets)[index].count(buffer) > 0) {
+      if ((*colocated_buffer_sets)[index].contains(buffer)) {
         VLOG(5) << "Found overlap with existing set on buffer "
                 << buffer->ToString() << "\n"
                 << ColocatedBufferSetsToString((*colocated_buffer_sets)[index],

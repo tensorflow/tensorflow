@@ -207,14 +207,14 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   TF_RET_CHECK(instruction->user_count() == 0);
   TF_RET_CHECK(IsRemovable(instruction))
       << "Cannot remove instruction: " << instruction->ToString();
-  std::unordered_set<HloInstruction*> removed;
+  absl::flat_hash_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
   worklist.push(instruction);
   while (!worklist.empty()) {
     HloInstruction* item = worklist.front();
     worklist.pop();
 
-    if (removed.count(item) != 0 || item->user_count() != 0 ||
+    if (removed.contains(item) || item->user_count() != 0 ||
         item == root_instruction() || !IsRemovable(item) ||
         (item->HasSideEffect() && item != instruction)) {
       continue;
@@ -694,13 +694,14 @@ bool HloComputation::operator==(const HloComputation& other) const {
   if (this == &other) {
     return true;
   }
-  std::set<std::pair<const HloInstruction*, const HloInstruction*>> visited;
+  absl::flat_hash_set<std::pair<const HloInstruction*, const HloInstruction*>>
+      visited;
   std::function<bool(const HloInstruction*, const HloInstruction*)> eq =
       [&visited, &eq](const HloInstruction* a, const HloInstruction* b) {
         // If <a,b> are visited but not identical, the recursion should have
         // been aborted. So, if <a,b> are visited at this point, they must be
         // identical.
-        if (visited.count(std::make_pair(a, b)) > 0) {
+        if (visited.contains(std::make_pair(a, b))) {
           return true;
         }
         visited.emplace(a, b);
@@ -803,13 +804,13 @@ Status HloComputation::AcceptOrdered(
         << root->ToString();
   }
   TF_RET_CHECK(order.size() == instruction_count());
-  std::unordered_set<const HloInstruction*> visited;
+  absl::flat_hash_set<const HloInstruction*> visited;
   for (const HloInstruction* instruction : order) {
     VLOG(3) << "Visiting ordered: " << instruction->ToString();
-    TF_RET_CHECK(instruction_iterators_.count(instruction) == 1)
+    TF_RET_CHECK(instruction_iterators_.contains(instruction))
         << "Instruction " << instruction->name() << " is not in computation "
         << name();
-    TF_RET_CHECK(visited.count(instruction) == 0)
+    TF_RET_CHECK(!visited.contains(instruction))
         << "Instruction " << instruction->name()
         << " appears more than once in order";
     HloInstruction* mutable_instruction =

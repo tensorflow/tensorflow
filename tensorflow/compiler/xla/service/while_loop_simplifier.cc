@@ -127,7 +127,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // through to the while body's root, count that element as "used", since
   // removing that element would be observable.
   for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
-    if (used_tuple_indices.count(i)) {
+    if (used_tuple_indices.contains(i)) {
       continue;
     }
 
