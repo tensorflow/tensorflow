@@ -82,7 +82,7 @@ tf_module {
   }
   member_method {
     name: "extract_glimpse"
-    argspec: "args=[\'input\', \'size\', \'offsets\', \'centered\', \'normalized\', \'uniform_noise\', \'name\', \'noise\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'True\', \'None\', \'\'], "
+    argspec: "args=[\'input\', \'size\', \'offsets\', \'centered\', \'normalized\', \'uniform_noise\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'True\', \'True\', \'None\'], "
   }
   member_method {
     name: "extract_image_patches"
