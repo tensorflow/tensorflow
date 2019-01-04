@@ -96,14 +96,21 @@ xla::LiteralProto FloatMatrix(
   return array.ToProto();
 }
 
+xla::Literal ReadOutputLiteral(const std::vector<Tensor>& outputs, size_t idx) {
+  xla::LiteralProto response;
+  CHECK(response.ParseFromString(outputs[idx].scalar<string>()()));
+  return xla::Literal::CreateFromProto(response).ValueOrDie();
+}
+
 bool CompareLiteralProtos(const xla::LiteralProto& a,
                           const xla::LiteralProto& b) {
   auto l_a = xla::Literal::CreateFromProto(a).ValueOrDie();
   auto l_b = xla::Literal::CreateFromProto(b).ValueOrDie();
   bool equal = l_a == l_b;
   if (!equal) {
-    LOG(INFO) << "LiteralProtos don't match: " << a.DebugString()
-              << " != " << b.DebugString();
+    LOG(INFO) << "LiteralProtos don't match:\n"
+              << a.DebugString() << "\n!=\n"
+              << b.DebugString();
   }
   return equal;
 }
@@ -113,8 +120,19 @@ bool CompareLiteralToLiteralProto(const xla::Literal& a,
   auto l_b = xla::Literal::CreateFromProto(b).ValueOrDie();
   bool equal = a == l_b;
   if (!equal) {
-    LOG(INFO) << "Literal and LiteralProto don't match "
-              << a.ToProto().DebugString() << " != " << b.DebugString();
+    LOG(INFO) << "Literal and LiteralProto don't match:\n"
+              << a.ToProto().DebugString() << "\n!=\n"
+              << b.DebugString();
+  }
+  return equal;
+}
+
+bool CompareLiterals(const xla::Literal& a, const xla::Literal& b) {
+  bool equal = a == b;
+  if (!equal) {
+    LOG(INFO) << "Literals don't match:\n"
+              << a.ToProto().DebugString() << "\n!=\n"
+              << b.ToProto().DebugString();
   }
   return equal;
 }
@@ -937,6 +955,107 @@ TEST(RawApiTest, LeakCompilationReference) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   TF_EXPECT_OK(session.Run({c_handle.handle}, &outputs));
+}
+
+TEST(RawApiTest, CompileAndExecuteWithReusedBuffers) {
+  xla::Shape element_shape = xla::ShapeUtil::MakeShape(xla::F32, {2});
+  xla::Shape shape =
+      xla::ShapeUtil::MakeTupleShape({element_shape, element_shape});
+  xla::Shape return_shape = xla::ShapeUtil::MakeTupleShape(
+      {element_shape, element_shape, element_shape, element_shape});
+  xla::XlaBuilder builder("ReuseBuffer");
+  auto param = xla::Parameter(&builder, 0, shape, "param");
+  auto p0 = xla::GetTupleElement(param, 0);
+  auto p1 = xla::GetTupleElement(param, 1);
+  auto add = xla::Add(p0, p1);
+  auto sub = xla::Sub(p0, p1);
+  xla::Tuple(&builder, {add, sub, p0, p1});
+
+  // Flip the tuple literals in the input handle.
+  builder.SetUpAlias({1}, 0, {0});
+  builder.SetUpAlias({0}, 0, {1});
+
+  auto computation = builder.Build().ValueOrDie();
+
+  auto literal0 = xla::LiteralUtil::CreateR1<float>({1.0f, 2.0f});
+  auto literal1 = xla::LiteralUtil::CreateR1<float>({5.0f, 9.0f});
+  auto literal = xla::LiteralUtil::MakeTuple({&literal0, &literal1});
+
+  xrt::XLAAllocation param_alloc;
+  *param_alloc.mutable_value() = literal.ToProto();
+
+  xrt::XLAComputation c;
+  auto config = c.mutable_config();
+  auto shapes = config->mutable_program_shape();
+  *shapes->add_parameters() = shape.ToProto();
+  *shapes->mutable_result() = return_shape.ToProto();
+  StoreComputationSnapshot(computation, c.mutable_hlo_snapshot());
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(false);
+  e.set_release_compilation_handle(true);
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  ClientSession session(root);
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto c_data =
+      ops::Const(root.WithDevice("/device:CPU:0"), c.SerializeAsString());
+  auto c_handle = ops::XRTCompile(root, c_data);
+  auto param_value = ops::Const(root.WithDevice("/device:CPU:0"),
+                                param_alloc.SerializeAsString());
+  auto param_handle = ops::XRTAllocate(root, param_value);
+  TF_ASSERT_OK(root.status());
+
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({param_handle}, &outputs));
+
+  int64 alloc_handle = outputs[0].scalar<int64>()();
+
+  // Note that we release the result handle immediately, but since we aliased
+  // the output buffers onto the input allocation ones (held in alloc_handle),
+  // we can fetch the result from there.
+  auto result =
+      ops::XRTExecute(root, c_handle.handle, e_config, {Input(alloc_handle)});
+  auto read_back = ops::XRTReadLiteral(root, result);
+  auto release = ops::XRTReleaseAllocationHandle(
+      root.WithControlDependencies(read_back), result);
+  TF_ASSERT_OK(root.status());
+
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {read_back},
+                           {release}, &outputs));
+
+  xla::Literal exec_literal = ReadOutputLiteral(outputs, 0);
+  auto exec_literal_parts = exec_literal.DecomposeTuple();
+  ASSERT_EQ(exec_literal_parts.size(), 4);
+
+  EXPECT_TRUE(CompareLiterals(exec_literal_parts[2], literal0));
+  EXPECT_TRUE(CompareLiterals(exec_literal_parts[3], literal1));
+
+  // Now we read back the original input handle values, which at this point
+  // should contain the result of the XLA computation.
+  auto read_handle = ops::XRTReadLiteral(root, Input(alloc_handle));
+  TF_ASSERT_OK(root.status());
+  auto release_handle = ops::XRTReleaseAllocationHandle(
+      root.WithControlDependencies(read_handle), Input(alloc_handle));
+  TF_ASSERT_OK(root.status());
+
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {read_handle},
+                           {release_handle}, &outputs));
+
+  xla::Literal return_literal = ReadOutputLiteral(outputs, 0);
+
+  auto expected_literal0 = xla::LiteralUtil::CreateR1<float>({6.0f, 11.0f});
+  auto expected_literal1 = xla::LiteralUtil::CreateR1<float>({-4.0f, -7.0f});
+  // The first element of the computation returned tuple would be the add
+  // (expected_literal0), but since we flipped the buffers, the sub
+  // (expected_literal1) should come first.
+  auto expected_literal =
+      xla::LiteralUtil::MakeTuple({&expected_literal1, &expected_literal0});
+
+  EXPECT_TRUE(CompareLiterals(return_literal, expected_literal));
 }
 
 TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
