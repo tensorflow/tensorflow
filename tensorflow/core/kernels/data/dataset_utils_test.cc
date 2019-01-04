@@ -75,10 +75,17 @@ TEST(DatasetUtilsTest, VariantTensorData_Writer_Reader) {
   EXPECT_EQ(error::NOT_FOUND,
             reader.ReadTensor("Non_Existing_Key", &val_tensor).code());
 
-  // Test the invalid parameter for the constructor of VariantTensorDataReader.
-  data.metadata_ = "Invalid Metadata";
-  VariantTensorDataReader reader2(&data);
+  // Test the invalid metadata for VariantTensorDataReader.
+  VariantTensorData data_invalid_meta(data);
+  data_invalid_meta.metadata_ = "Invalid Metadata";
+  VariantTensorDataReader reader2(&data_invalid_meta);
   EXPECT_EQ(error::INTERNAL, reader2.status().code());
+
+  // Test the unmatched number of keys and tensors for VariantTensorDataReader.
+  VariantTensorData data_unmatched_entries(data);
+  data_unmatched_entries.tensors_.push_back(Tensor(DT_INT64, {1}));
+  VariantTensorDataReader reader3(&data_unmatched_entries);
+  EXPECT_EQ(error::INVALID_ARGUMENT, reader3.status().code());
 }
 
 }  // namespace
