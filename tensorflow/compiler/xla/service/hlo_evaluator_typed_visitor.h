@@ -1410,22 +1410,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto operand = dynamic_slice->operand(0);
     auto start_indices = dynamic_slice->operand(1);
     auto result_shape = dynamic_slice->shape();
-    // TODO(b/118437727): Remove all of this nonsense.
-    // We may get an instruction without a parent module. In this case, assume
-    // scalar indices are not allowed.
-    bool allow_scalar_index = false;
-    if (dynamic_slice->GetModule() != nullptr) {
-      allow_scalar_index = dynamic_slice->GetModule()
-                               ->config()
-                               .debug_options()
-                               .xla_allow_scalar_index_dynamic_ops();
-    }
     TF_ASSIGN_OR_RETURN(
         auto inferred_return_shape,
         ShapeInference::InferDynamicSliceShape(
             operand->shape(),
             Cast<HloDynamicSliceInstruction>(dynamic_slice)->index_shapes(),
-            dynamic_slice->dynamic_slice_sizes(), allow_scalar_index));
+            dynamic_slice->dynamic_slice_sizes()));
     TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
@@ -1483,20 +1473,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto update = dynamic_update_slice->operand(1);
     auto start_indices = dynamic_update_slice->operand(2);
     auto result_shape = dynamic_update_slice->shape();
-    bool allow_scalar_index = false;
-    if (dynamic_update_slice->GetModule() != nullptr) {
-      allow_scalar_index = dynamic_update_slice->GetModule()
-                               ->config()
-                               .debug_options()
-                               .xla_allow_scalar_index_dynamic_ops();
-    }
     TF_ASSIGN_OR_RETURN(
         auto inferred_return_shape,
         ShapeInference::InferDynamicUpdateSliceShape(
             operand->shape(), update->shape(),
             Cast<HloDynamicUpdateSliceInstruction>(dynamic_update_slice)
-                ->index_shapes(),
-            allow_scalar_index));
+                ->index_shapes()));
     TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "

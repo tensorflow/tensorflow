@@ -1380,6 +1380,9 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   // => output dimensions: DS ({M x N}, {0, start}, {M, 1}) => {M x 1}.
 
   bool lhs_is_dynamic_slice = lhs->opcode() == HloOpcode::kDynamicSlice;
+  HloDynamicSliceInstruction* dynamic_slice =
+      lhs_is_dynamic_slice ? Cast<HloDynamicSliceInstruction>(lhs)
+                           : Cast<HloDynamicSliceInstruction>(rhs);
 
   // ctA:
   HloInstruction* left_operand =
@@ -1397,8 +1400,6 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
       HloInstruction::CreateDot(memoized_shape, left_operand, right_operand,
                                 dnums, dot->precision_config()));
   // Get pair {start, 0} or {0, start}.
-  HloInstruction* original_start_indices =
-      lhs_is_dynamic_slice ? lhs->mutable_operand(1) : rhs->mutable_operand(1);
   // Position of start:
   int index_of_non_zero_start = lhs_is_dynamic_slice
                                     ? 1 - lhs_contracting_dimension
@@ -1407,23 +1408,19 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   int index_of_zero_start = 1 - index_of_non_zero_start;
 
   // Slice out start and 0 components and reorder if necessary.
-  auto indices_type = original_start_indices->shape().element_type();
+  auto indices_type = dynamic_slice->operand(1)->shape().element_type();
   Shape s_shape = ShapeUtil::MakeShape(indices_type, {1});
   Shape d_shape = ShapeUtil::MakeShape(indices_type, {2});
   HloInstruction* non_zero_start =
-      computation_->AddInstruction(HloInstruction::CreateSlice(
-          s_shape, original_start_indices, {index_of_non_zero_start},
-          {index_of_non_zero_start + 1}, {1}));
+      dynamic_slice->mutable_operand(1 + index_of_non_zero_start);
   HloInstruction* zero_start =
-      computation_->AddInstruction(HloInstruction::CreateSlice(
-          s_shape, original_start_indices, {index_of_zero_start},
-          {index_of_zero_start + 1}, {1}));
-  HloInstruction* new_start_indices =
-      lhs_is_dynamic_slice
-          ? computation_->AddInstruction(HloInstruction::CreateConcatenate(
-                d_shape, {non_zero_start, zero_start}, 0))
-          : computation_->AddInstruction(HloInstruction::CreateConcatenate(
-                d_shape, {zero_start, non_zero_start}, 0));
+      dynamic_slice->mutable_operand(1 + index_of_zero_start);
+  std::vector<HloInstruction*> new_start_indices;
+  if (lhs_is_dynamic_slice) {
+    new_start_indices = {non_zero_start, zero_start};
+  } else {
+    new_start_indices = {zero_start, non_zero_start};
+  }
 
   // Build DynamicSlice(ctA x ctB).
   const int new_slice_m = lhs_is_dynamic_slice ? 1 : m;

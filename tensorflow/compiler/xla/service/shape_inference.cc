@@ -2099,14 +2099,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     }
 
     const Shape& start_indices_shape = start_index_shapes[0];
-    TF_RETURN_IF_ERROR(
-        ExpectArray(start_indices_shape, "start indices of dynamic slice"));
-
     VLOG(2) << StrFormat(
         "slicing shape %s at dynamic start_indices %s with slice_sizes={%s}",
         ShapeUtil::HumanString(operand_shape),
         ShapeUtil::HumanString(start_indices_shape),
         StrJoin(slice_sizes, ", "));
+
+    TF_RETURN_IF_ERROR(
+        ExpectArray(start_indices_shape, "start indices of dynamic slice"));
 
     if (start_indices_shape.rank() != 1) {
       return InvalidArgument(
@@ -2151,7 +2151,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
             "Dynamic slice start indices must be of integral type.");
       }
       for (const Shape& index_shape : start_index_shapes) {
-        if (!ShapeUtil::Equal(first_index_shape, index_shape)) {
+        if (!ShapeUtil::Compatible(first_index_shape, index_shape)) {
           return InvalidArgument(
               "Dynamic slice start indices must all have the same shape, got "
               "mismatching indices with shapes %s and %s.",
@@ -2258,7 +2258,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
             "Dynamic update slice start indices must be of integral type.");
       }
       for (const Shape& index_shape : start_index_shapes) {
-        if (!ShapeUtil::Equal(first_index_shape, index_shape)) {
+        if (!ShapeUtil::Compatible(first_index_shape, index_shape)) {
           return InvalidArgument(
               "Dynamic update slice start indices must all have the same "
               "shape, got mismatching indices with shapes %s and %s.",
