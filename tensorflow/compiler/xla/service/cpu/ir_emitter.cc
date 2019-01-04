@@ -1709,10 +1709,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
       vectorization_factor_in_bytes /
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type());
 
-  bool is_reduction_over_minor_dimension =
-      std::find(dimensions.begin(), dimensions.end(),
-                LayoutUtil::Minor(arg->shape().layout(), 0)) !=
-      dimensions.end();
+  bool is_reduction_over_minor_dimension = absl::c_linear_search(
+      dimensions, LayoutUtil::Minor(arg->shape().layout(), 0));
 
   unsigned element_alignment = tensorflow::MathUtil::GCD<unsigned>(
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
@@ -2401,8 +2399,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   int64 concat_dim = concatenate->dimensions(0);
   const Layout& output_layout = output_shape.layout();
   auto output_min2maj = LayoutUtil::MinorToMajor(output_layout);
-  auto concat_dim_layout_itr =
-      std::find(output_min2maj.begin(), output_min2maj.end(), concat_dim);
+  auto concat_dim_layout_itr = absl::c_find(output_min2maj, concat_dim);
 
   std::vector<int64> inner_dims(output_min2maj.begin(), concat_dim_layout_itr);
   std::vector<int64> outer_dims(std::next(concat_dim_layout_itr),
@@ -2956,8 +2953,7 @@ Status IrEmitter::ElementTypesSameAndSupported(
 
   TF_RET_CHECK(!operands.empty());
   PrimitiveType primitive_type = operands[0]->shape().element_type();
-  if (std::find(supported_types.begin(), supported_types.end(),
-                primitive_type) == supported_types.end()) {
+  if (!absl::c_linear_search(supported_types, primitive_type)) {
     return Unimplemented("unsupported operand type %s in op %s",
                          PrimitiveType_Name(primitive_type),
                          HloOpcodeString(instruction.opcode()));

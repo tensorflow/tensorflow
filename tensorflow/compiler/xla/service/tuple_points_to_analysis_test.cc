@@ -721,9 +721,8 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // to fusion 'operand'.
   HloInstruction* GetFusionParameterForOperand(HloInstruction* fusion,
                                                HloInstruction* operand) {
-    auto it = std::find_if(
-        fusion->fused_instructions().begin(),
-        fusion->fused_instructions().end(), [=](const HloInstruction* fused) {
+    auto it = absl::c_find_if(
+        fusion->fused_instructions(), [&](const HloInstruction* fused) {
           return fused->opcode() == HloOpcode::kParameter &&
                  fusion->operand(fused->parameter_number()) == operand;
         });

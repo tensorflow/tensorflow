@@ -290,8 +290,8 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
   if (shape.IsTuple()) {
     // Tuple shape: all subshapes must have a layout.
-    return std::all_of(shape.tuple_shapes().begin(), shape.tuple_shapes().end(),
-                       [](const Shape& s) { return HasLayout(s); });
+    return absl::c_all_of(shape.tuple_shapes(),
+                          [](const Shape& s) { return HasLayout(s); });
   } else if (!shape.IsArray()) {
     // Opaque, token types etc. ignore layout.
     return true;
@@ -424,7 +424,7 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
     positions_in_layout.push_back(
         PositionInContainer(layout.minor_to_major(), dim));
   }
-  std::sort(positions_in_layout.begin(), positions_in_layout.end());
+  absl::c_sort(positions_in_layout);
   for (size_t i = 1; i < positions_in_layout.size(); ++i) {
     if (1 != positions_in_layout[i] - positions_in_layout[i - 1]) {
       return false;
