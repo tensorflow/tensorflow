@@ -48,9 +48,9 @@ def validate_not_in_strategy_scope():
   if distribution_strategy_context.has_distribution_strategy():
     if distribution_strategy_context.in_cross_replica_context():
       raise RuntimeError(
-          'Fit/Eval/Predict should not be run inside the distribution strategy '
-          'scope. Only model creation and compilation should be in '
-          'distribution strategy scope.')
+          'Fit/Eval/Predict should not be run inside the tf.distribute.Strategy'
+          ' scope. Only model creation and compilation should be in '
+          'tf.distribute.Strategy scope.')
 
 
 def set_weights(distribution_strategy, dist_model, weights):
