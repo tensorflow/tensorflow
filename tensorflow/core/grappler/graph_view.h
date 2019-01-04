@@ -172,9 +172,8 @@ class GraphViewInternal {
     if (fanin.index() < -1) {
       return false;
     }
-    string fanin_string = TensorIdToString(fanin);
-    for (int i = 0; i < node.input_size(); ++i) {
-      if (node.input(i) == fanin_string) {
+    for (const string& input : node.input()) {
+      if (ParseTensorName(input) == fanin) {
         return true;
       }
     }
