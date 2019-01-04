@@ -631,6 +631,7 @@ cc_library(
     deps = [
         ":runtime_matvec",
         "//tensorflow/core:framework_lite",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//third_party/eigen3",
     ],
 )
