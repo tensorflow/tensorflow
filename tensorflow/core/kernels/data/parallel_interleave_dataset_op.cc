@@ -209,7 +209,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
                 false /* low_latency_hint */)) {
         std::vector<string> components =
             str_util::Split(params.prefix, "::", str_util::SkipEmpty());
-        prefix_end_ = components.back();
+        key_prefix_ = components.back();
       }
 
       ~ParallelInterleaveIterator() override {
@@ -430,8 +430,9 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         const auto& stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator) {
           stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::active_parallel_calls"),
-              static_cast<float>(num_calls_));
+              strings::StrCat(key_prefix_, "::thread_utilization"),
+              static_cast<float>(num_calls_) /
+                  static_cast<float>(num_parallel_calls_->value));
         }
         cond_var_->notify_all();
       }
@@ -515,14 +516,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           }
           const auto& stats_aggregator = ctx->stats_aggregator();
           if (stats_aggregator) {
-            // TODO(shivaniagrawal): add `parallel_calls_utilization` in the
-            // monitoring code or as histogram at fixed time intervals.
             stats_aggregator->AddScalar(
-                strings::StrCat(prefix_end_, "::active_parallel_calls"),
-                static_cast<float>(num_calls_));
-            stats_aggregator->AddScalar(
-                strings::StrCat(prefix_end_, "::num_parallel_calls"),
-                static_cast<float>(num_parallel_calls_->value));
+                strings::StrCat(key_prefix_, "::thread_utilization"),
+                static_cast<float>(num_calls_) /
+                    static_cast<float>(num_parallel_calls_->value));
           }
           cond_var_->notify_all();
         }
@@ -693,7 +690,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
       // Identifies whether background activity should be cancelled.
       bool cancelled_ GUARDED_BY(*mu_) = false;
-      string prefix_end_;
+      string key_prefix_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
