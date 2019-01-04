@@ -6805,11 +6805,10 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/db:sqlite",
-    ] + if_not_v2([
         "//tensorflow/contrib/tensorboard/db:schema",
         "//tensorflow/contrib/tensorboard/db:summary_db_writer",
         "//tensorflow/contrib/tensorboard/db:summary_file_writer",
-    ]),
+    ],
 )
 
 tf_kernel_library(
