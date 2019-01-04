@@ -88,10 +88,18 @@ class OpNode {
   const tensorflow::NodeDef& nodedef() const { return nodedef_; }
 
   const std::vector<int>& inputs() const { return inputs_; }
-  std::vector<int>* mutable_inputs() { return &inputs_; }
+  void InitializeInputs(const TfLiteIntArray* inputs) {
+    for (int index : TfLiteIntArrayView(inputs)) {
+      inputs_.push_back(index);
+    }
+  }
 
   const std::vector<int>& outputs() const { return outputs_; }
-  std::vector<int>* mutable_outputs() { return &outputs_; }
+  void InitializeOutputs(const TfLiteIntArray* outputs) {
+    for (int index : TfLiteIntArrayView(outputs)) {
+      outputs_.push_back(index);
+    }
+  }
 
   tensorflow::Status InitializeNodeDef(const void* custom_initial_data,
                                        int custom_initial_data_size) {
@@ -123,6 +131,66 @@ class OpNode {
     return tensorflow::Status::OK();
   }
 
+  // Build thew new EagerOperation. In case of error, the returned 'op' is
+  // guaranteed to be 'nullptr'.
+  tensorflow::Status BuildEagerOp(
+      tensorflow::EagerContext* eager_context,
+      std::unique_ptr<tensorflow::EagerOperation>* op) {
+    op->reset();
+
+    const tensorflow::AttrTypeMap* attr_types;
+    bool is_function = false;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        tensorflow::AttrTypeMapForOp(name_.c_str(), &attr_types, &is_function),
+        " (while processing attributes of '", name_, "')");
+    if (is_function) {
+      return tensorflow::errors::NotFound(
+          "Operation '", name_,
+          "' is not registered.  (while processing attributes of '", name_,
+          "')");
+    }
+
+    op->reset(new tensorflow::EagerOperation(eager_context, name_.c_str(),
+                                             /*is_function=*/false,
+                                             attr_types));
+    for (const auto& attr : nodedef_.attr()) {
+      (*op)->MutableAttrs()->Set(attr.first, attr.second);
+    }
+
+    return tensorflow::Status::OK();
+  }
+
+  tensorflow::Status BuildEagerInputs(BufferMap* buffer_map,
+                                      tensorflow::EagerOperation* op) {
+    for (int input_index : inputs_) {
+      if (!buffer_map->HasTensor(input_index)) {
+        return tensorflow::errors::Internal(
+            "Cannot read from invalid tensor index ", input_index);
+      }
+      auto* handle = new tensorflow::TensorHandle(
+          buffer_map->GetTensor(input_index), nullptr, nullptr, nullptr);
+      op->AddInput(handle);
+      handle->Unref();
+
+      if (buffer_map->IsForwardable(input_index)) {
+        // Take it out of the map, so Eager/TF can reuse the buffer for an
+        // output tensor of the op.
+        buffer_map->RemoveTensor(input_index);
+      }
+    }
+    return tensorflow::Status::OK();
+  }
+
+  tensorflow::Status PersistEagerOutputs(BufferMap* buffer_map,
+                                         OpOutputs* retvals) {
+    for (int i = 0; i < outputs_.size(); ++i) {
+      const tensorflow::Tensor* tensor = nullptr;
+      TF_RETURN_IF_ERROR(retvals->GetHandle(i)->Tensor(&tensor));
+      buffer_map->SetFromTensorFlow(outputs_[i], *tensor);
+    }
+    return tensorflow::Status::OK();
+  }
+
  private:
   // The name of the TensorFlow op to execute.
   string name_;
@@ -139,60 +207,23 @@ class OpNode {
 // Executes the TensorFlow op given by 'op_name', with the attributes specified
 // in 'nodedef'. Inputs and outputs are given as indices into the 'buffer_map'.
 tensorflow::Status ExecuteFlexOp(tensorflow::EagerContext* eager_context,
-                                 BufferMap* buffer_map, const string& op_name,
-                                 const tensorflow::NodeDef& nodedef,
-                                 const std::vector<int>& inputs,
-                                 const std::vector<int>& outputs) {
-  const tensorflow::AttrTypeMap* attr_types;
-  bool is_function = false;
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tensorflow::AttrTypeMapForOp(op_name.c_str(), &attr_types, &is_function),
-      " (while processing attributes of '", op_name, "')");
-  if (is_function) {
-    return tensorflow::errors::NotFound(
-        "Operation '", op_name,
-        "' is not registered.  (while processing attributes of '", op_name,
-        "')");
-  }
-  tensorflow::EagerOperation op(eager_context, op_name.c_str(),
-                                /*is_function=*/false, attr_types);
-  for (const auto& attr : nodedef.attr()) {
-    op.MutableAttrs()->Set(attr.first, attr.second);
-  }
+                                 BufferMap* buffer_map, OpNode* node_data) {
+  std::unique_ptr<tensorflow::EagerOperation> op;
+  TF_RETURN_IF_ERROR(node_data->BuildEagerOp(eager_context, &op));
+  TF_RETURN_IF_ERROR(node_data->BuildEagerInputs(buffer_map, op.get()));
 
-  for (int input_index : inputs) {
-    if (!buffer_map->HasTensor(input_index)) {
-      return tensorflow::errors::Internal(
-          "Cannot read from invalid tensor index ", input_index);
-    }
-    auto* handle = new tensorflow::TensorHandle(
-        buffer_map->GetTensor(input_index), nullptr, nullptr, nullptr);
-    op.AddInput(handle);
-    handle->Unref();
-
-    if (buffer_map->IsForwardable(input_index)) {
-      // Take it out of the map, so Eager/TF can reuse the buffer for an output
-      // tensor of the op.
-      buffer_map->RemoveTensor(input_index);
-    }
-  }
-
-  int num_retvals = outputs.size();
+  int num_retvals = node_data->outputs().size();
   OpOutputs retvals(num_retvals);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      EagerExecute(&op, retvals.GetVector(), &num_retvals),
-      " (while executing '", op_name, "' via Eager)");
+      EagerExecute(op.get(), retvals.GetVector(), &num_retvals),
+      " (while executing '", node_data->name(), "' via Eager)");
 
-  if (num_retvals != outputs.size()) {
+  if (num_retvals != node_data->outputs().size()) {
     return tensorflow::errors::Internal(
         "Unexpected number of outputs from EagerExecute");
   }
 
-  for (int i = 0; i < num_retvals; ++i) {
-    const tensorflow::Tensor* tensor = nullptr;
-    TF_RETURN_IF_ERROR(retvals.GetHandle(i)->Tensor(&tensor));
-    buffer_map->SetFromTensorFlow(outputs[i], *tensor);
-  }
+  TF_RETURN_IF_ERROR(node_data->PersistEagerOutputs(buffer_map, &retvals));
 
   return tensorflow::Status::OK();
 }
@@ -247,12 +278,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
                                          node->custom_initial_data_size);
     if (!status.ok()) break;
 
-    for (auto input_index : TfLiteIntArrayView(node->inputs)) {
-      node_data.mutable_inputs()->push_back(input_index);
-    }
-    for (auto output_index : TfLiteIntArrayView(node->outputs)) {
-      node_data.mutable_outputs()->push_back(output_index);
-    }
+    node_data.InitializeInputs(node->inputs);
+    node_data.InitializeOutputs(node->outputs);
   }
 
   if (ConvertStatus(context, status) != kTfLiteOk) {
@@ -325,7 +352,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
   BufferMap* buffer_map = op_data->buffer_map;
   tensorflow::EagerContext* eager_context = op_data->eager_context;
 
@@ -344,14 +371,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Execute the TensorFlow Ops sequentially.
-  for (const auto& node_data : op_data->nodes) {
+  for (OpNode& node_data : op_data->nodes) {
     SCOPED_TAGGED_OPERATOR_PROFILE(
         reinterpret_cast<profiling::Profiler*>(context->profiler),
-        node_data->name().c_str(), node_data->index());
+        node_data.name().c_str(), node_data.index());
 
-    auto status = ExecuteFlexOp(eager_context, buffer_map, node_data.name(),
-                                node_data.nodedef(), node_data.inputs(),
-                                node_data.outputs());
+    auto status = ExecuteFlexOp(eager_context, buffer_map, &node_data);
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));
   }
 
