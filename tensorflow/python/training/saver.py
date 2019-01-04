@@ -257,7 +257,7 @@ class BaseSaverBuilder(object):
     # safely removed.)
     _SHARDED_SUFFIX = control_flow_ops.cond(use_temp_location,
                                             lambda: "_temp_%s/part" % uuid.uuid4().hex,
-                                            lambda: "/part")
+                                            lambda: ".part")
 
     tmp_checkpoint_prefix = string_ops.string_join(
         [checkpoint_prefix, _SHARDED_SUFFIX])
@@ -834,7 +834,8 @@ class Saver(object):
     self._write_version = write_version
     self._pad_step_number = pad_step_number
     self._filename = filename
-    self._use_temp_location = array_ops.placeholder(dtypes.bool)
+    if not context.executing_eagerly():
+      self._use_temp_location = array_ops.placeholder(dtypes.bool)
     self._last_checkpoints = []
     self._checkpoints_to_be_deleted = []
     if context.executing_eagerly():
@@ -879,6 +880,10 @@ class Saver(object):
           return
         else:
           raise ValueError("No variables to save")
+      if context.executing_eagerly():
+        use_temp_location = gfile.NeedsTempLocation(checkpoint_path)
+      else:
+        use_temp_location = self._use_temp_location
       self._is_empty = False
       self.saver_def = self._builder._build_internal(  # pylint: disable=protected-access
           self._var_list,
@@ -890,7 +895,7 @@ class Saver(object):
           restore_sequentially=self._restore_sequentially,
           filename=checkpoint_path,
           build_save=build_save, build_restore=build_restore,
-          use_temp_location=self._use_temp_location)
+          use_temp_location=use_temp_location)
     elif self.saver_def and self._name:
       # Since self._name is used as a name_scope by builder(), we are
       # overloading the use of this field to represent the "import_scope" as

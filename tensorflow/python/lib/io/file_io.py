@@ -564,10 +564,6 @@ def needs_temp_location_v2(path):
   status = c_api_util.ScopedTFStatus()
   return pywrap_tensorflow.NeedsTempLocation(compat.as_bytes(path), status)
 
-@tf_export("gfile.NeedsTempLocation")
-def needs_temp_location(path):
-  status = c_api_util.ScopedTFStatus()
-  return pywrap_tensorflow.NeedsTempLocation(compat.as_bytes(path), status)
 
 def atomic_write_string_to_file(filename, contents, overwrite=True):
   """Writes to `filename` atomically.
