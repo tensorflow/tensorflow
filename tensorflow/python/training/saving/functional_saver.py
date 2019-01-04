@@ -107,25 +107,32 @@ class Saver(object):
       A scalar string Tensor containing `file_prefix` with control dependencies
       on the restore ops.
     """
-    restore_specs = []
-    tensor_structure = []
-    for saveable in self._saveable_objects:
-      saveable_tensor_structure = []
-      tensor_structure.append(saveable_tensor_structure)
-      for spec in saveable.specs:
-        saveable_tensor_structure.append(spec.name)
-        restore_specs.append((spec.name, spec.slice_spec, spec.dtype))
-    tensor_names, tensor_slices, tensor_dtypes = zip(*restore_specs)
-    with ops.device("cpu:0"):
-      restored_tensors = io_ops.restore_v2(
-          file_prefix, tensor_names, tensor_slices, tensor_dtypes)
-    structured_restored_tensors = nest.pack_sequence_as(
-        tensor_structure, restored_tensors)
-    restore_ops = []
-    for saveable, restored_tensors in zip(self._saveable_objects,
-                                          structured_restored_tensors):
-      restore_ops.append(saveable.restore(restored_tensors,
-                                          restored_shapes=None))
+    restore_ops = restore_from_saveable_objects(
+        file_prefix, self._saveable_objects)
     with ops.device("cpu:0"):
       with ops.control_dependencies(restore_ops):
         return array_ops.identity(file_prefix)
+
+
+def restore_from_saveable_objects(file_prefix, saveable_objects):
+  """Reads from a checkpoint and returns restore ops for `saveable_objects`s."""
+  restore_specs = []
+  tensor_structure = []
+  for saveable in saveable_objects:
+    saveable_tensor_structure = []
+    tensor_structure.append(saveable_tensor_structure)
+    for spec in saveable.specs:
+      saveable_tensor_structure.append(spec.name)
+      restore_specs.append((spec.name, spec.slice_spec, spec.dtype))
+  tensor_names, tensor_slices, tensor_dtypes = zip(*restore_specs)
+  with ops.device("cpu:0"):
+    restored_tensors = io_ops.restore_v2(
+        file_prefix, tensor_names, tensor_slices, tensor_dtypes)
+  structured_restored_tensors = nest.pack_sequence_as(
+      tensor_structure, restored_tensors)
+  restore_ops = []
+  for saveable, restored_tensors in zip(saveable_objects,
+                                        structured_restored_tensors):
+    restore_ops.append(saveable.restore(restored_tensors,
+                                        restored_shapes=None))
+  return restore_ops
