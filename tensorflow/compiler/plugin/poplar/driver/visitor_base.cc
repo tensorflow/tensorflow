@@ -300,6 +300,11 @@ Status BaseVisitor::HandleCall(HloInstruction* inst) {
       return xla::FailedPrecondition("Unrecognized special call op %s: %s",
                                      inst->name().c_str(), name.c_str());
     }
+  } else if (IsRepeatCall(comp)) {
+    TF_ASSIGN_OR_RETURN(
+        poplar::program::Program prog,
+        CreateRepeatOp(resources_, inst, GetOutputShape(inst), tensor_map));
+    sequence.add(prog);
   } else {
     poplar::program::Program prog;
     TF_ASSIGN_OR_RETURN(

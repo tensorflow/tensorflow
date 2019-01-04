@@ -328,11 +328,12 @@ StatusOr<bool> ForwardAllocation::Run(HloModule* module) {
   }
 
   for (const auto& computation : module->computations()) {
-    if (!IsPopOpsCall(computation)) {
-      TF_ASSIGN_OR_RETURN(bool found_targets_in_computation,
-                          Run(computation, ops_with_layout));
-      found_targets |= found_targets_in_computation;
+    if (IsPopOpsCall(computation) || IsRepeatCall(computation)) {
+      continue;
     }
+    TF_ASSIGN_OR_RETURN(bool found_targets_in_computation,
+                        Run(computation, ops_with_layout));
+    found_targets |= found_targets_in_computation;
   }
 
   return found_targets;

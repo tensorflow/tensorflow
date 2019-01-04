@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 
 #include <stdlib.h>
@@ -186,14 +187,52 @@ HloInstruction* GetFinalValue(HloInstruction* init_value_inst,
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(value)));
 }
 
-bool HoistOutCounters(HloInstruction* while_inst,
-                      const int64 number_of_iterations) {
-  bool changed = false;
+HloInstruction* ConvertToRepeat(HloInstruction* while_inst,
+                                const int64 number_of_iterations) {
+  // We represent repeat as a Call with name "__repeat" with 2 operands:
+  // * Operand 0: Is a constant which represents the number of repeats
+  // * Operand 1: Is the input tuple which was passed to the while loop.
+  // The computation to apply is as follows (its stands for input_tuple_shape):
+  // repeat (s32[], its) {
+  //   input_tuple = (its) parameter(1)
+  //   ROOT call = (its) call((its) input_tuple), to_apply=repeat_body
+  // }
+  // We therefore clone the repeat computation.
+  HloComputation* parent_computation = while_inst->parent();
+  HloModule* module = parent_computation->parent();
+  HloComputation* repeat_body =
+      module->AddEmbeddedComputation(while_inst->while_body()->Clone());
+  HloInstruction* repeat_count =
+      parent_computation->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR0((int32)number_of_iterations)));
+  HloInstruction* repeat_body_root = repeat_body->root_instruction();
 
-  HloComputation* while_body = while_inst->while_body();
-  HloInstruction* while_body_root = while_body->root_instruction();
+  // Note that we can also clone the input tuple iff it's a kTuple and then we
+  // can hoist out constants to that input tuple.
   HloInstruction* input_tuple = while_inst->mutable_operand(0);
+  bool can_hoist_input_tuple = input_tuple->opcode() == HloOpcode::kTuple;
+  input_tuple = can_hoist_input_tuple
+                    ? parent_computation->AddInstruction(input_tuple->Clone())
+                    : input_tuple;
 
+  // Build the body.
+  auto builder_repeat = HloComputation::Builder("__repeat");
+  {
+    Shape repeat_shape = ShapeUtil::MakeTupleShape(
+        {repeat_count->shape(), input_tuple->shape()});
+    // Unused repeat count.
+    builder_repeat.AddInstruction(HloInstruction::CreateParameter(
+        0, repeat_count->shape(), "repeat_count"));
+    auto repeat_input_tuple =
+        builder_repeat.AddInstruction(HloInstruction::CreateParameter(
+            1, input_tuple->shape(), "input_tuple"));
+    builder_repeat.AddInstruction(HloInstruction::CreateCall(
+        input_tuple->shape(), {repeat_input_tuple}, repeat_body));
+  }
+  HloComputation* repeat_comp =
+      module->AddEmbeddedComputation(builder_repeat.Build());
+
+  // Also hoist out all the constants.
   // A map of scalar values which we know the value of after the loop has
   // completed.
   absl::flat_hash_map<int64, HloInstruction*> gte_to_final_value;
@@ -203,7 +242,7 @@ bool HoistOutCounters(HloInstruction* while_inst,
   // determine their values given the number of iterations. A value can be
   // determined if:
   // * The input to the tuple is a constant
-  // * The value is accessed form the input tuple at index x, modified by 1 (add
+  // * The value is accessed from the input tuple at index x, modified by 1 (add
   // or subtract), stored in the output tuple at index x.
   for (int64 tuple_index = 0; tuple_index < input_tuple->operand_count();
        tuple_index++) {
@@ -216,7 +255,8 @@ bool HoistOutCounters(HloInstruction* while_inst,
     // Find corresponding GTE in the body
     HloInstruction* gte = nullptr;
     int64 matching_GTEs = 0;
-    for (HloInstruction* inst : while_body->parameter_instruction(0)->users()) {
+    for (HloInstruction* inst :
+         repeat_body->parameter_instruction(0)->users()) {
       const bool is_GTE_from_param_0 =
           WhileLoopUtil::IsGTEFromParamIndex(inst, 0);
       if (!is_GTE_from_param_0) continue;
@@ -233,7 +273,7 @@ bool HoistOutCounters(HloInstruction* while_inst,
     // Find a matching increment which is then used in a tuple index
     // tuple_index.
     auto matching_increments =
-        WhileLoopUtil::FindMatchingLoopDeltasInsideBody(gte, while_body);
+        WhileLoopUtil::FindMatchingLoopDeltasInsideBody(gte, repeat_body);
 
     // Check that there is only one.
     if (matching_increments.size() != 1) {
@@ -263,10 +303,10 @@ bool HoistOutCounters(HloInstruction* while_inst,
     // matching index in the return tuple then we can make this tuple index
     // dead.
     if (gte->user_count() == 1 && increment->user_count() == 1 &&
-        while_body_root->operand(tuple_index) == increment) {
+        repeat_body_root->operand(tuple_index) == increment) {
       // Check that it only appears once in the return tuple.
       const auto used_count =
-          absl::c_count(while_body_root->operands(), increment);
+          absl::c_count(repeat_body_root->operands(), increment);
 
       if (used_count == 1) {
         dead_gtes.insert(tuple_index);
@@ -284,60 +324,72 @@ bool HoistOutCounters(HloInstruction* while_inst,
     for (auto user : while_inst->users()) {
       if (user->opcode() == HloOpcode::kGetTupleElement &&
           user->tuple_index() == tuple_index) {
-        user->ReplaceAllUsesWith(final_value);
-        changed = true;
+        HloInstruction* constant =
+            parent_computation->AddInstruction(final_value->Clone());
+
+        if (user->has_sharding()) {
+          constant->set_sharding(user->sharding());
+        }
+
+        user->ReplaceAllUsesWith(constant);
       }
     }
   }
 
   // Tidy up dead tuple elements.
   if (dead_gtes.size()) {
-    HloModule* module = while_body->parent();
-    HloComputation* parent_computation = while_inst->parent();
-    // We clone the body of the while loop as other instructions can use this
-    // computation.
-    while_body = module->AddEmbeddedComputation(while_body->Clone());
-    while_inst->set_while_body(while_body);
-    while_body_root = while_body->root_instruction();
-
-    // We clone the input tuple instruction.
-    input_tuple = parent_computation->AddInstruction(input_tuple->Clone());
-    while_inst->ReplaceOperandWith(0, input_tuple);
-
     // For each dead GTE, we replace the input tuple with a constant and also
     // remove the increment in the while body.
     for (int64 tuple_index : dead_gtes) {
       // Replace the root tuple operand.
-      for (auto* user : while_body->parameter_instruction(0)->users()) {
+      for (auto* user : repeat_body->parameter_instruction(0)->users()) {
         if (user->opcode() == HloOpcode::kGetTupleElement &&
             user->tuple_index() == tuple_index) {
-          while_body_root->ReplaceOperandWith(tuple_index, user);
+          repeat_body_root->ReplaceOperandWith(tuple_index, user);
           break;
         }
       }
-      // Replace the input tuple operand.
-      input_tuple->ReplaceOperandWith(tuple_index,
-                                      gte_to_final_value.at(tuple_index));
+
+      if (can_hoist_input_tuple) {
+        // Replace the input tuple operand.
+        HloInstruction* old_inst = input_tuple->mutable_operand(tuple_index);
+        HloInstruction* constant = parent_computation->AddInstruction(
+            gte_to_final_value.at(tuple_index)->Clone());
+
+        if (old_inst->has_sharding()) {
+          constant->set_sharding(old_inst->sharding());
+        }
+        input_tuple->ReplaceOperandWith(tuple_index, constant);
+      }
     }
   }
-  return changed;
+
+  HloInstruction* repeat_call =
+      parent_computation->AddInstruction(HloInstruction::CreateCall(
+          input_tuple->shape(), {repeat_count, input_tuple}, repeat_comp));
+
+  // Copy sharding info from the while_inst to the repeat call.
+  if (while_inst->has_sharding()) {
+    repeat_call->set_sharding(while_inst->sharding());
+    for (HloInstruction* inst : repeat_comp->MakeInstructionPostOrder()) {
+      inst->set_sharding(while_inst->sharding());
+    }
+  }
+
+  return repeat_call;
 }
 
 }  // namespace
 
-WhileLoopToRepeatSimplify::WhileLoopToRepeatSimplify(
-    CompilerAnnotations& annotations)
-    : while_loop_num_iterations(annotations.while_loop_num_iterations) {}
+WhileLoopToRepeatSimplify::WhileLoopToRepeatSimplify() {}
 
 StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
-  // Get all the while instructions which have not been simplified to a repeat
-  // yet.
+  // Get all the while instructions.
   bool changed = false;
   std::vector<HloInstruction*> while_insts;
   for (auto* comp : module->computations()) {
     for (auto* inst : comp->instructions()) {
-      if (inst->opcode() == HloOpcode::kWhile &&
-          while_loop_num_iterations.count(inst) == 0) {
+      if (inst->opcode() == HloOpcode::kWhile) {
         while_insts.push_back(inst);
       }
     }
@@ -345,7 +397,7 @@ StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
 
   for (auto* while_inst : while_insts) {
     // For each while loop, try and simplify the logic to convert the loop into
-    // a repeat
+    // a repeat.
     auto statusor = ConvertWhileToRepeat(while_inst);
     int64 count = 0;
     bool simplified = false;
@@ -363,10 +415,13 @@ StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
     }
 
     if (simplified) {
+      HloInstruction* repeat_call = ConvertToRepeat(while_inst, count);
+      HloComputation* parent_computation = repeat_call->parent();
+      while_inst->ReplaceAllUsesWith(repeat_call);
+      parent_computation->RemoveInstructionAndUnusedOperands(while_inst);
+      changed = true;
       VLOG(1) << "Simplified while loop " << while_inst->name()
               << " with a repeat of count " << count;
-      while_loop_num_iterations[while_inst] = count;
-      changed |= HoistOutCounters(while_inst, count);
     }
   }
 

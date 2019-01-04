@@ -371,20 +371,16 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
 
   poplar::program::Sequence main_seq;
 
-  int64 repeat_count;
-  auto it = res.annotations.while_loop_num_iterations.find(inst);
-  if (it != res.annotations.while_loop_num_iterations.end()) {
-    repeat_count = it->second;
-  } else {
-    return xla::FailedPrecondition("Cannot obtain the repeat count.");
-  }
+  CHECK_EQ(inst->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSIGN_OR_RETURN(int64 repeat_count, LiteralScalarToNativeType<int64>(
+                                              inst->operand(0)->literal()));
 
   ArgVectors inputs;
-  inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 0, main_seq));
+  inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 1, main_seq));
 
   ComputationMap::iterator body;
   TF_ASSIGN_OR_RETURN(
-      body, GetOrCompileSubComputation(res, inputs, inst->while_body()));
+      body, GetOrCompileSubComputation(res, inputs, GetRepeatBody(inst)));
 
   unsigned int param_count = inputs[0].size();
 

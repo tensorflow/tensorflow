@@ -321,7 +321,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       pass.AddPass<FuseWideConst>(resources.annotations);
       pass.AddPass<HloDCE>();
       pass.AddPass<WhileLoopConditionSimplify>();
-      pass.AddPass<WhileLoopToRepeatSimplify>(resources.annotations);
+      pass.AddPass<WhileLoopToRepeatSimplify>();
     }
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<HloDCE>();

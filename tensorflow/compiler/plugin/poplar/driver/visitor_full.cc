@@ -266,15 +266,9 @@ Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
 
 Status FullVisitor::HandleWhile(HloInstruction* inst) {
   poplar::program::Program prog;
-  if (resources_.annotations.while_loop_num_iterations.count(inst)) {
-    VLOG(1) << "Processing " << inst->name() << " as a repeat";
-    TF_ASSIGN_OR_RETURN(prog, CreateRepeatOp(resources_, inst,
-                                             GetOutputShape(inst), tensor_map));
-  } else {
-    VLOG(1) << "Processing " << inst->name();
-    TF_ASSIGN_OR_RETURN(prog, CreateWhileOp(resources_, inst,
-                                            GetOutputShape(inst), tensor_map));
-  }
+  VLOG(1) << "Processing " << inst->name();
+  TF_ASSIGN_OR_RETURN(
+      prog, CreateWhileOp(resources_, inst, GetOutputShape(inst), tensor_map));
   sequence.add(prog);
   return Status::OK();
 }

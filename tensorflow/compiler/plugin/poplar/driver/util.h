@@ -44,6 +44,11 @@ StatusOr<std::vector<NativeT>> WideConstToNativeType(
 
 bool IsPopOpsCall(const xla::HloComputation*, const std::string& postfix = "");
 bool IsPopOpsCall(const xla::HloInstruction*, const std::string& postfix = "");
+bool IsRepeatCall(const xla::HloComputation*);
+bool IsRepeatCall(const xla::HloInstruction*);
+// This functions assumes that IsRepeatCall(inst) is true
+xla::HloComputation* GetRepeatBody(xla::HloInstruction* inst);
+const xla::HloComputation* GetRepeatBody(const xla::HloInstruction* inst);
 
 // This function returns true if the environment variable has been set. Using
 // synthetic data means that *no data* will be copied to/from the device.

@@ -130,6 +130,23 @@ bool IsPopOpsCall(const xla::HloInstruction* inst, const std::string& postfix) {
          IsPopOpsCall(inst->to_apply(), postfix);
 }
 
+bool IsRepeatCall(const xla::HloComputation* comp) {
+  return tensorflow::str_util::StartsWith(comp->name(), "__repeat");
+}
+
+bool IsRepeatCall(const xla::HloInstruction* inst) {
+  return inst->opcode() == xla::HloOpcode::kCall &&
+         IsRepeatCall(inst->to_apply());
+}
+
+xla::HloComputation* GetRepeatBody(xla::HloInstruction* inst) {
+  return inst->to_apply()->root_instruction()->to_apply();
+}
+
+const xla::HloComputation* GetRepeatBody(const xla::HloInstruction* inst) {
+  return inst->to_apply()->root_instruction()->to_apply();
+}
+
 bool UseSyntheticData() {
   if (const char* env_c = std::getenv("TF_POPLAR_USE_SYNTHETIC_DATA")) {
     std::string env(env_c);

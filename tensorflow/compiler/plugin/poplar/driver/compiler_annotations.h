@@ -45,11 +45,6 @@ struct CompilerAnnotations {
   InplaceUtil::InplaceInstructions inplace_instructions;
 
   std::map<const HloComputation*, const HloInstruction*> fusion_map;
-
-  // A map from a while instruction to the repeat count. If the while
-  // instruction is not present in this map then it can't be executed as a
-  // repeat.
-  std::map<const HloInstruction*, int64> while_loop_num_iterations;
 };
 
 }  // namespace poplarplugin

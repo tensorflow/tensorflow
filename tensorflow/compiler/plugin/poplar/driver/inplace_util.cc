@@ -179,6 +179,9 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
         } else {
           return absl::make_unique<NotInplaceHloInstructionDescription>();
         }
+      } else if (IsRepeatCall(inst)) {
+        // TODO T4848
+        return absl::make_unique<NotInplaceHloInstructionDescription>();
       } else {
         // TODO T4848
         return absl::make_unique<NotInplaceHloInstructionDescription>();

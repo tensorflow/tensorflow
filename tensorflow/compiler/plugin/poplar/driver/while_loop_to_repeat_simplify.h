@@ -29,7 +29,7 @@ namespace poplarplugin {
  * inserted into the map along with the number of iterations */
 class WhileLoopToRepeatSimplify : public HloModulePass {
  public:
-  WhileLoopToRepeatSimplify(struct CompilerAnnotations& annotations);
+  WhileLoopToRepeatSimplify();
   ~WhileLoopToRepeatSimplify() override = default;
 
   absl::string_view name() const override {
@@ -37,9 +37,6 @@ class WhileLoopToRepeatSimplify : public HloModulePass {
   }
 
   StatusOr<bool> Run(HloModule* module) override;
-
- private:
-  std::map<const HloInstruction*, int64>& while_loop_num_iterations;
 };
 
 }  // namespace poplarplugin

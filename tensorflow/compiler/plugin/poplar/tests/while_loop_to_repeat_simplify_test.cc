@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_to_repeat_simplify.h"
-#include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -57,20 +56,23 @@ condition {
 ENTRY entry {
   const_0 = s32[] constant(0)
   const_1 = s32[] constant(10)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(annotations.while_loop_num_iterations[root], 10);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 10);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Ge) {
@@ -96,20 +98,23 @@ condition {
 ENTRY entry {
   const_0 = s32[] constant(999)
   const_1 = s32[] constant(0)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(annotations.while_loop_num_iterations[root], 1000);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 1000);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Gt) {
@@ -135,20 +140,23 @@ condition {
 ENTRY entry {
   const_0 = s32[] constant(1000)
   const_1 = s32[] constant(0)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(annotations.while_loop_num_iterations[root], 1000);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 1000);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Le) {
@@ -174,20 +182,23 @@ condition {
 ENTRY entry {
   const_0 = s32[] constant(100)
   const_1 = s32[] constant(999)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
   auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(annotations.while_loop_num_iterations[root], 900);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 900);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_NonConstInit) {
@@ -213,20 +224,16 @@ condition {
 ENTRY entry {
   const_0 = s32[] parameter(0)
   const_1 = s32[] constant(999)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
-
-  // Get the trip count
-  auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(annotations.while_loop_num_iterations[root], 0);
+  EXPECT_FALSE(changed);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_NonConstDelta) {
@@ -251,20 +258,16 @@ condition {
 ENTRY entry {
   const_0 = s32[] constant(0)
   const_1 = s32[] parameter(0)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
-
-  // Get the trip count
-  auto* root = module.get()->entry_computation()->root_instruction();
-  EXPECT_EQ(annotations.while_loop_num_iterations[root], 0);
+  EXPECT_FALSE(changed);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalF32IncrementBy2) {
@@ -290,21 +293,24 @@ condition {
 ENTRY entry {
   const_0 = f32[] constant(0)
   const_1 = f32[] constant(10)
-  while_init = (f32[],f32[]) tuple(const_0, const_1)
-  ROOT while = (f32[],f32[]) while(while_init), condition=condition, body=body
+  repeat_init = (f32[],f32[]) tuple(const_0, const_1)
+  ROOT while = (f32[],f32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
-  EXPECT_EQ(annotations.while_loop_num_iterations
-                [module.get()->entry_computation()->root_instruction()],
-            5);
+  auto* root = module.get()->entry_computation()->root_instruction();
+  ;
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 5);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalHoistTheConstant) {
@@ -330,26 +336,30 @@ condition {
 ENTRY entry {
   const_0 = s32[] constant(0)
   const_1 = s32[] constant(10)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
-  EXPECT_EQ(annotations.while_loop_num_iterations
-                [module.get()->entry_computation()->root_instruction()],
-            10);
-  // Check the constant got hoisted out.
-  HloInstruction* while_inst = module->entry_computation()->root_instruction();
-  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
-  const HloInstruction* while_init = while_inst->operand(0);
-  const HloInstruction* counter = while_init->operand(0);
+  auto* root = module.get()->entry_computation()->root_instruction();
+  ;
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 10);
+
+  // Check the constant got hoisted out to input tuple.
+  HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsRepeatCall(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  const HloInstruction* counter = repeat_init->operand(0);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   int64 loop_counter =
       LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
@@ -381,26 +391,30 @@ condition {
 ENTRY entry {
   const_0 = s32[] constant(10)
   const_1 = s32[] constant(10)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
-  EXPECT_EQ(annotations.while_loop_num_iterations
-                [module.get()->entry_computation()->root_instruction()],
-            0);
+  auto* root = module.get()->entry_computation()->root_instruction();
+  ;
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 0);
+
   // Check the constant got hoisted out.
-  HloInstruction* while_inst = module->entry_computation()->root_instruction();
-  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
-  const HloInstruction* while_init = while_inst->operand(0);
-  const HloInstruction* counter = while_init->operand(0);
+  HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsRepeatCall(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  const HloInstruction* counter = repeat_init->operand(0);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   int64 loop_counter =
       LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
@@ -432,26 +446,30 @@ condition {
 ENTRY entry {
   const_0 = u32[] constant(20)
   const_1 = u32[] constant(10)
-  while_init = (u32[],u32[]) tuple(const_0, const_1)
-  ROOT while = (u32[],u32[]) while(while_init), condition=condition, body=body
+  repeat_init = (u32[],u32[]) tuple(const_0, const_1)
+  ROOT while = (u32[],u32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
-  EXPECT_EQ(annotations.while_loop_num_iterations
-                [module.get()->entry_computation()->root_instruction()],
-            10);
+  auto* root = module.get()->entry_computation()->root_instruction();
+  ;
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 10);
+
   // Check the constant got hoisted out.
-  HloInstruction* while_inst = module->entry_computation()->root_instruction();
-  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
-  const HloInstruction* while_init = while_inst->operand(0);
-  const HloInstruction* counter = while_init->operand(0);
+  HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsRepeatCall(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  const HloInstruction* counter = repeat_init->operand(0);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   int64 loop_counter =
       LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
@@ -485,27 +503,31 @@ ENTRY entry {
   const_0 = s32[] constant(0)
   const_1 = s32[] constant(10)
   const_2 = s32[] constant(10)
-  while_init = (s32[],s32[],s32[]) tuple(const_0, const_1, const_2)
-  ROOT while = (s32[],s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[],s32[]) tuple(const_0, const_1, const_2)
+  ROOT while = (s32[],s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
-  EXPECT_EQ(annotations.while_loop_num_iterations
-                [module.get()->entry_computation()->root_instruction()],
-            10);
+  auto* root = module.get()->entry_computation()->root_instruction();
+  ;
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 10);
+
   // Check the constant got hoisted out.
-  HloInstruction* while_inst = module->entry_computation()->root_instruction();
-  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
-  const HloInstruction* while_init = while_inst->operand(0);
-  const HloInstruction* counter = while_init->operand(0);
-  const HloInstruction* unused_counter = while_init->operand(2);
+  HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsRepeatCall(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  const HloInstruction* counter = repeat_init->operand(0);
+  const HloInstruction* unused_counter = repeat_init->operand(2);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(unused_counter->opcode(), HloOpcode::kConstant);
   int64 loop_counter =
@@ -546,27 +568,31 @@ ENTRY entry {
   const_0 = s32[] constant(0)
   const_1 = s32[] constant(10)
   const_2 = u8[] constant(5)
-  while_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
-  ROOT while = (s32[],s32[],u8[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
+  ROOT while = (s32[],s32[],u8[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
-  EXPECT_EQ(annotations.while_loop_num_iterations
-                [module.get()->entry_computation()->root_instruction()],
-            10);
+  auto* root = module.get()->entry_computation()->root_instruction();
+  ;
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 10);
+
   // Check the constant got hoisted out.
-  HloInstruction* while_inst = module->entry_computation()->root_instruction();
-  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
-  const HloInstruction* while_init = while_inst->operand(0);
-  const HloInstruction* counter = while_init->operand(0);
-  const HloInstruction* unused_counter = while_init->operand(2);
+  HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsRepeatCall(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  const HloInstruction* counter = repeat_init->operand(0);
+  const HloInstruction* unused_counter = repeat_init->operand(2);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   EXPECT_EQ(unused_counter->opcode(), HloOpcode::kConstant);
   int64 loop_counter =
@@ -621,17 +647,17 @@ ENTRY entry {
   const_0 = s32[] constant(0)
   const_1 = s32[] constant(10)
   const_2 = u8[] constant(5)
-  while_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
-  while = (s32[],s32[],u8[]) while(while_init), condition=condition1, body=body1
+  repeat_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
+  while = (s32[],s32[],u8[]) while(repeat_init), condition=condition1, body=body1
   ROOT gte = u8[] get-tuple-element((s32[],s32[],u8[]) while), index=2
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Expect that the loop got simplified to just a return constant
   HloInstruction* root = module.get()->entry_computation()->root_instruction();
@@ -683,20 +709,20 @@ ENTRY entry {
   const_0 = s32[] constant(0)
   const_1 = s32[] constant(10)
   const_2 = u8[] constant(5)
-  while_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
-  while = (s32[],s32[],u8[]) while(while_init), condition=condition1, body=body1
+  repeat_init = (s32[],s32[],u8[]) tuple(const_0, const_1, const_2)
+  while = (s32[],s32[],u8[]) while(repeat_init), condition=condition1, body=body1
   gte = u8[] get-tuple-element((s32[],s32[],u8[]) while), index=2
-  while_init1 = (u8[]) tuple(gte)
-  while1 = (u8[]) while(while_init1), condition=condition2, body=body2
+  repeat_init1 = (u8[]) tuple(gte)
+  while1 = (u8[]) while(repeat_init1), condition=condition2, body=body2
   ROOT gte1 = u8[] get-tuple-element((u8[]) while1), index=0
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Expect that the loop got simplified to just a return constant
   HloInstruction* root = module.get()->entry_computation()->root_instruction();
@@ -728,26 +754,30 @@ condition {
 ENTRY entry {
   const_0 = s32[] constant(0)
   const_1 = s32[] constant(10)
-  while_init = (s32[],s32[]) tuple(const_0, const_1)
-  ROOT while = (s32[],s32[]) while(while_init), condition=condition, body=body
+  repeat_init = (s32[],s32[]) tuple(const_0, const_1)
+  ROOT while = (s32[],s32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
   // Get the trip count
-  EXPECT_EQ(annotations.while_loop_num_iterations
-                [module.get()->entry_computation()->root_instruction()],
-            10);
+  auto* root = module.get()->entry_computation()->root_instruction();
+  ;
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 10);
+
   // Check the constant got hoisted out.
-  HloInstruction* while_inst = module->entry_computation()->root_instruction();
-  EXPECT_EQ(while_inst->opcode(), HloOpcode::kWhile);
-  const HloInstruction* while_init = while_inst->operand(0);
-  const HloInstruction* counter = while_init->operand(0);
+  HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(IsRepeatCall(repeat_inst));
+  const HloInstruction* repeat_init = repeat_inst->operand(1);
+  const HloInstruction* counter = repeat_init->operand(0);
   EXPECT_EQ(counter->opcode(), HloOpcode::kConstant);
   int64 loop_start =
       LiteralScalarToNativeType<int64>(counter->literal()).ValueOrDie();
@@ -781,29 +811,31 @@ condition {
 ENTRY entry {
   const_0 = f32[] constant(0)
   const_1 = f32[] constant(10)
-  while_init = (f32[],f32[]) tuple(const_0, const_1)
-  ROOT while = (f32[],f32[]) while(while_init), condition=condition, body=body
+  repeat_init = (f32[],f32[]) tuple(const_0, const_1)
+  ROOT while = (f32[],f32[]) while(repeat_init), condition=condition, body=body
 }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(hlo_string));
-  CompilerAnnotations annotations(module.get());
-  WhileLoopToRepeatSimplify wltrs(annotations);
+  WhileLoopToRepeatSimplify wltrs;
   TF_ASSERT_OK_AND_ASSIGN(bool changed, wltrs.Run(module.get()));
 
   // We didn't get the trip count due to the bound being too low
-  EXPECT_EQ(annotations.while_loop_num_iterations.count(
-                module.get()->entry_computation()->root_instruction()),
-            0);
+  EXPECT_FALSE(changed);
 
   // Re run with increased trip count
   putenv("TF_POPLAR_MAX_WHILE_LOOP_TRIP_COUNT=10");
   TF_ASSERT_OK_AND_ASSIGN(changed, wltrs.Run(module.get()));
+  EXPECT_TRUE(changed);
 
-  EXPECT_EQ(annotations.while_loop_num_iterations
-                [module.get()->entry_computation()->root_instruction()],
-            10);
+  // Get the trip count
+  auto* root = module.get()->entry_computation()->root_instruction();
+  ;
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConstant);
+  TF_ASSERT_OK_AND_ASSIGN(auto trip_count, LiteralScalarToNativeType<int64>(
+                                               root->operand(0)->literal()));
+  EXPECT_EQ(trip_count, 10);
 }
 
 }  // namespace
