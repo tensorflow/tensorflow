@@ -200,10 +200,16 @@ def _TensorListResizeGrad(op, dlist):
 
 @ops.RegisterGradient("TensorListGather")
 def _TensorListGatherGrad(op, dtensor):
-  _, indices = op.inputs
-  return gen_list_ops.tensor_list_scatter(
-      tensor=dtensor, indices=indices,
-      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32)), None
+  input_list, indices = op.inputs
+  dlist = gen_list_ops.tensor_list_scatter(
+      tensor=dtensor,
+      indices=indices,
+      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32))
+  # TensorListScatter returns a list with size `max(indices) + 1`
+  # so we manually resize it to match the size of the input list.
+  input_list_size = gen_list_ops.tensor_list_length(input_list)
+  dlist = gen_list_ops.tensor_list_resize(dlist, input_list_size)
+  return dlist, None
 
 
 @ops.RegisterGradient("TensorListScatter")
