@@ -2378,6 +2378,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   };
 
   {
+    // Input is weights, should fail.
+    Reset();
     NodeDef node_def = get_strided_slice_nodedef();
     AddTestWeights<int32>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
@@ -2614,6 +2616,240 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     TF_EXPECT_OK(GetTensorOrWeights("my_strided_slice", &output));
     std::vector<float> output_data(ok_params[i].expected_output.size());
     BuildAndRun<float>({{"input", {1, 2, 3, 4, 5, 6}}}, "my_strided_slice",
+                       &output_data);
+    EXPECT_THAT(output_data, ElementsAreArray(ok_params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertConv2D) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_conv2d", "Conv2D", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Two inputs are expected for Conv2D, at my_conv2d");
+  }
+
+  // Get nodedef for Conv2D layer.
+  auto get_conv2d_nodedef =
+      [](std::vector<int> strides = {1, 1, 1, 1}, string padding = "SAME",
+         string data_format = "NCHW",
+         std::vector<int> dilations = {1, 1, 1, 1}) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
+    ops::Conv2D::Attrs attrs =
+        ops::Conv2D::Attrs().DataFormat(data_format).Dilations(dilations);
+    auto conv2d = ops::Conv2D(s.WithOpName("my_conv2d"), input, filter, strides,
+                              padding, attrs);
+    return conv2d.operation.node()->def();
+  };
+
+  {
+    // Input is weights, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Conv2D is only implemented for tensors, not weights, at my_conv2d");
+  }
+  {
+    // Filter is tensor, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("weights", {3, 3, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Kernel for Conv2D must be constant weights, at my_conv2d");
+  }
+  {
+    // Filter is not 4D, should fail.
+    Reset();
+    NodeDef node_def = get_conv2d_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Conv2D expects kernel of dimension 4, at my_conv2d");
+  }
+  {
+    // Dilations is not 4D, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NCHW", {1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Convolution dilations field must specify 4 dimensions, at my_conv2d");
+  }
+  {
+    // Dilation value is not 1 for channel, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NCHW", {1, 2, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Dilation rate must be 1 for batch and channel "
+                               "dimensions, at my_conv2d");
+  }
+  {
+    // Dilation value is not 1 for channel (NHWC), should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1, 1}, "SAME", "NHWC", {1, 1, 1, 2});
+    AddTestTensor("input", {2, 3, 1});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Dilation rate must be 1 for batch and channel "
+                               "dimensions, at my_conv2d");
+  }
+  {
+    // Strides is not 4D, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 1, 1}, "SAME", "NCHW", {1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Convolution strides field must specify 4 dimensions, at my_conv2d");
+  }
+  {
+    // Stride value is not 1 for channel, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef({1, 2, 1, 1}, "SAME", "NCHW", {1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Stride must be 1 for batch and channel dimensions, at my_conv2d");
+  }
+
+  struct TestParams {
+    TestParams(const std::vector<int>& input_dims,
+               const std::vector<float>& input,
+               const std::vector<int>& filter_dims,
+               const std::vector<float>& filter,
+               const std::vector<int>& strides, const string& padding,
+               const string& data_format, const std::vector<int>& dilations,
+               const std::vector<int>& expected_output_dims,
+               const std::vector<float>& expected_output)
+        : input_dims(input_dims),
+          input(input),
+          filter_dims(filter_dims),
+          filter(filter),
+          strides(strides),
+          padding(padding),
+          data_format(data_format),
+          dilations(dilations),
+          expected_output_dims(expected_output_dims),
+          expected_output(expected_output) {}
+
+    std::vector<int> input_dims;
+    std::vector<float> input;
+    std::vector<int> filter_dims;
+    std::vector<float> filter;
+    std::vector<int> strides;
+    string padding;
+    string data_format;
+    std::vector<int> dilations;
+    std::vector<int> expected_output_dims;
+    std::vector<float> expected_output;
+  };
+
+  // Ok.
+  const int kConv2DOKCases = 6;
+  TestParams ok_params[kConv2DOKCases] = {
+      // Basic
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 2},
+                 /*expected_output=*/{1, 1, 0, 1}},
+      // SAME padding (Asymmetric)
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 3},
+                 /*expected_output=*/{1, 1, -2, 0, 1, -4}},
+      // SAME padding (Symmetric)
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 3, 1, 1},
+                 /*filter=*/{-1, 0, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 3},
+                 /*expected_output=*/{1, 2, -1, 3, 1, -3}},
+      // NHWC
+      TestParams{/*input_dims=*/{2, 3, 1},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NHWC",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{2, 2, 1},
+                 /*expected_output=*/{1, 1, 0, 1}},
+      // Dilated
+      TestParams{/*input_dims=*/{1, 2, 3},
+                 /*input=*/{0, 1, 2, 3, 3, 4},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 2},
+                 /*expected_output_dims=*/{1, 2, 1},
+                 /*expected_output=*/{2, 1}},
+      // Strided
+      TestParams{/*input_dims=*/{1, 2, 4},
+                 /*input=*/{0, 1, 2, 2, 3, 4, 4, 7},
+                 /*filter_dims=*/{1, 2, 1, 1},
+                 /*filter=*/{-1, 1},
+                 /*strides=*/{1, 1, 1, 2},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCHW",
+                 /*dilations=*/{1, 1, 1, 1},
+                 /*expected_output_dims=*/{1, 2, 2},
+                 /*expected_output=*/{1, 0, 1, 3}},
+  };
+
+  for (int i = 0; i < kConv2DOKCases; i++) {
+    Reset();
+    NodeDef node_def =
+        get_conv2d_nodedef(ok_params[i].strides, ok_params[i].padding,
+                           ok_params[i].data_format, ok_params[i].dilations);
+    AddTestTensor("input", ok_params[i].input_dims);
+    AddTestWeights<float>("weights", ok_params[i].filter_dims,
+                          ok_params[i].filter);
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_conv2d", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+    std::vector<float> output_data(ok_params[i].expected_output.size());
+    BuildAndRun<float>({{"input", ok_params[i].input}}, "my_conv2d",
                        &output_data);
     EXPECT_THAT(output_data, ElementsAreArray(ok_params[i].expected_output));
   }
