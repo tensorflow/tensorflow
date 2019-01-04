@@ -210,9 +210,9 @@ class ExtractGlimpseTest(test.TestCase):
       # [ 0.  0.  0.]
       # [ 0.  0.  0.]
       # [ 0.  0.  0.]
-      result1 = image_ops.extract_glimpse(img, [3, 3], [[-2, 2]],
-                                          centered=False, normalized=False,
-                                          uniform_noise=False, noise="zero")
+      result1 = image_ops.extract_glimpse_v2(img, [3, 3], [[-2, 2]],
+                                             centered=False, normalized=False,
+                                             noise="zero")
       self.assertAllEqual(np.asarray([[0, 0, 0],
                                       [0, 0, 0],
                                       [0, 0, 0]]),
@@ -226,9 +226,9 @@ class ExtractGlimpseTest(test.TestCase):
       # [  0.  15.  16.  17.  18.  19.   0.]
       # [  0.  20.  21.  22.  23.  24.   0.]
       # [  0.   0.   0.   0.   0.   0.   0.]]
-      result2 = image_ops.extract_glimpse(img, [7, 7], [[0, 0]],
-                                          normalized=False,
-                                          uniform_noise=False, noise="zero")
+      result2 = image_ops.extract_glimpse_v2(img, [7, 7], [[0, 0]],
+                                             normalized=False,
+                                             noise="zero")
       self.assertAllEqual(np.asarray([[0, 0, 0, 0, 0, 0, 0],
                                       [0, 0, 1, 2, 3, 4, 0],
                                       [0, 5, 6, 7, 8, 9, 0],
