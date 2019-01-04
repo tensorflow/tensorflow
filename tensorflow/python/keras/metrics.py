@@ -1654,6 +1654,37 @@ class RootMeanSquaredError(Mean):
     return math_ops.sqrt(math_ops.div_no_nan(self.total, self.count))
 
 
+class Logcosh(MeanMetricWrapper):
+  """Computes the logarithm of the hyperbolic cosine of the prediction error.
+
+  logcosh = log((exp(x) + exp(-x))/2) where x is the error `y_pred` - `y_true`.
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.Logcosh()
+  m.update_state([0., 1., 1.], [1., 0., 1.])
+  print('Final result: ', m.result().numpy())  # Final result: 0.289
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.Logcosh()])
+  ```
+  """
+
+  def __init__(self, name='logcosh', dtype=None):
+    super(Logcosh, self).__init__(logcosh, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(Logcosh, cls).from_config(config)
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:

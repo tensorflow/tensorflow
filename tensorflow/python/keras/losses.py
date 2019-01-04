@@ -540,6 +540,33 @@ class LogLoss(Loss):
     return logloss(y_true, y_pred, epsilon=self.epsilon)
 
 
+class Logcosh(Loss):
+  """Computes the logarithm of the hyperbolic cosine of the prediction error.
+
+  logcosh = log((exp(x) + exp(-x))/2) where x is the error `y_pred` - `y_true`.
+
+  Usage:
+
+  ```python
+  l = tf.losses.Logcosh()
+  loss = l([0., 1., 1.], [1., 0., 1.])
+  print('Loss: ', loss.numpy())  # Loss: 0.289
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.Logcosh())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return logcosh(y_true, y_pred)
+
+
 @keras_export('keras.metrics.mean_squared_error',
               'keras.metrics.mse',
               'keras.metrics.MSE',

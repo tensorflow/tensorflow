@@ -1094,5 +1094,86 @@ class LogLossTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class LogcoshTest(test.TestCase):
+
+  def setup(self):
+    y_pred = np.asarray([1, 9, 2, -5, -2, 6]).reshape((2, 3))
+    y_true = np.asarray([4, 8, 12, 8, 1, 3]).reshape((2, 3))
+
+    self.batch_size = 6
+    error = y_pred - y_true
+    self.expected_losses = np.log((np.exp(error) + np.exp(-error)) / 2)
+
+    self.y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    self.y_true = constant_op.constant(y_true)
+
+  def test_config(self):
+    logcosh_obj = keras.losses.Logcosh(
+        reduction=losses_impl.ReductionV2.SUM, name='logcosh_loss')
+    self.assertEqual(logcosh_obj.name, 'logcosh_loss')
+    self.assertEqual(logcosh_obj.reduction, losses_impl.ReductionV2.SUM)
+
+  def test_unweighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+
+    loss = logcosh_obj(self.y_true, self.y_pred)
+    expected_loss = np.sum(self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_scalar_weighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+    sample_weight = 2.3
+
+    loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    expected_loss = sample_weight * np.sum(
+        self.expected_losses) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+    # Verify we get the same output when the same input is given
+    loss_2 = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), self.evaluate(loss_2), 3)
+
+  def test_sample_weighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+
+    expected_loss = np.multiply(
+        self.expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
+    expected_loss = np.sum(expected_loss) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_timestep_weighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+    y_true = np.asarray([1, 9, 2, -5, -2, 6]).reshape(2, 3, 1)
+    y_pred = np.asarray([4, 8, 12, 8, 1, 3]).reshape(2, 3, 1)
+    error = y_pred - y_true
+    expected_losses = np.log((np.exp(error) + np.exp(-error)) / 2)
+    sample_weight = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3, 1))
+
+    y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    y_true = constant_op.constant(y_true)
+    loss = logcosh_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant(sample_weight, shape=(2, 3)))
+    expected_loss = np.sum(expected_losses * sample_weight) / self.batch_size
+    self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
+
+  def test_zero_weighted(self):
+    self.setup()
+    logcosh_obj = keras.losses.Logcosh()
+    sample_weight = 0
+    loss = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    self.assertAlmostEqual(self.evaluate(loss), 0., 3)
+
+
 if __name__ == '__main__':
   test.main()
