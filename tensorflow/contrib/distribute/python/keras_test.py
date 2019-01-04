@@ -1196,7 +1196,7 @@ class TestDistributionStrategyValidation(test.TestCase,
   def test_loop_in_scope(self, distribution):
     with self.cached_session():
       with self.assertRaisesRegexp(
-          RuntimeError, 'should not be run inside the distribution strategy'):
+          RuntimeError, 'should not be run inside the tf.distribute.Strategy'):
         with distribution.scope():
           x = keras.layers.Input(shape=(3,), name='input')
           y = keras.layers.Dense(4, name='dense')(x)
