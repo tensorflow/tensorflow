@@ -1382,8 +1382,8 @@ class MeanAbsoluteError(MeanMetricWrapper):
 
   Usage:
   ```python
-  mae = tf.metrics.MeanAbsoluteError()
-  mae.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  m = tf.metrics.MeanAbsoluteError()
+  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 0.75
   ```
 
@@ -1391,7 +1391,7 @@ class MeanAbsoluteError(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.MeanAbsoluteError())
+  model.compile('sgd', metrics=[tf.keras.metrics.MeanAbsoluteError()])
   ```
   """
 
@@ -1416,8 +1416,8 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
   Usage:
 
   ```python
-  mape = tf.keras.losses.MeanAbsolutePercentageError()
-  mape.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  m = tf.keras.metrics.MeanAbsolutePercentageError()
+  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 5e+08
   ```
 
@@ -1425,7 +1425,7 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.MeanAbsolutePercentageError())
+  model.compile('sgd', metrics=[tf.keras.metrics.MeanAbsolutePercentageError()])
   ```
   """
 
@@ -1450,8 +1450,8 @@ class MeanSquaredError(MeanMetricWrapper):
   Usage:
 
   ```python
-  mape = tf.keras.losses.MeanSquaredError()
-  mape.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  m = tf.keras.metrics.MeanSquaredError()
+  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 0.75
   ```
 
@@ -1459,7 +1459,7 @@ class MeanSquaredError(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.MeanSquaredError())
+  model.compile('sgd', metrics=[tf.keras.metrics.MeanSquaredError()])
   ```
   """
 
@@ -1484,8 +1484,8 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
   Usage:
 
   ```python
-  msle = tf.keras.losses.MeanSquaredLogarithmicError()
-  msle.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
+  m = tf.keras.metrics.MeanSquaredLogarithmicError()
+  m.update_state([0., 0., 1., 1.], [1., 1., 1., 0.])
   print('Final result: ', m.result().numpy())  # Final result: 0.36034
   ```
 
@@ -1493,7 +1493,7 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.MeanSquaredLogarithmicError())
+  model.compile('sgd', metrics=[tf.keras.metrics.MeanSquaredLogarithmicError()])
   ```
   """
 
@@ -1518,8 +1518,8 @@ class Hinge(MeanMetricWrapper):
   Usage:
 
   ```python
-  h = tf.keras.metrics.Hinge()
-  h.update_state([0., 1., 1.], [1., 0., 1.])
+  m = tf.keras.metrics.Hinge()
+  m.update_state([0., 1., 1.], [1., 0., 1.])
   print('Final result: ', m.result().numpy())  # Final result: 0.66
   ```
 
@@ -1527,7 +1527,7 @@ class Hinge(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.metrics.Hinge())
+  model.compile('sgd', metrics=[tf.keras.metrics.Hinge()])
   ```
   """
 
@@ -1551,8 +1551,8 @@ class SquaredHinge(MeanMetricWrapper):
   Usage:
 
   ```python
-  h = tf.keras.metrics.SquaredHinge()
-  h.update_state([0., 1., 1.], [1., 0., 1.])
+  m = tf.keras.metrics.SquaredHinge()
+  m.update_state([0., 1., 1.], [1., 0., 1.])
   print('Final result: ', m.result().numpy())  # Final result: 0.66
   ```
 
@@ -1560,7 +1560,7 @@ class SquaredHinge(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.metrics.SquaredHinge())
+  model.compile('sgd', metrics=[tf.keras.metrics.SquaredHinge()])
   ```
   """
 
@@ -1584,8 +1584,8 @@ class CategoricalHinge(MeanMetricWrapper):
   Usage:
 
   ```python
-  h = tf.keras.metrics.CategoricalHinge()
-  h.update_state([0., 1., 1.], [1., 0., 1.])
+  m = tf.keras.metrics.CategoricalHinge()
+  m.update_state([0., 1., 1.], [1., 0., 1.])
   print('Final result: ', m.result().numpy())  # Final result: 1.0
   ```
 
@@ -1593,7 +1593,7 @@ class CategoricalHinge(MeanMetricWrapper):
 
   ```python
   model = keras.models.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.metrics.CategoricalHinge())
+  model.compile('sgd', metrics=[tf.keras.metrics.CategoricalHinge()])
   ```
   """
 
