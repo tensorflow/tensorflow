@@ -123,8 +123,12 @@ def make_variable(name,
       # Instantiate initializer if provided initializer is a type object.
       if isinstance(initializer, type(init_ops.Initializer)):
         initializer = initializer(dtype=dtype)
-      init_val = lambda: initializer(  # pylint: disable=g-long-lambda
-          shape, dtype=dtype, partition_info=partition_info)
+      if isinstance(initializer, init_ops.Initializer):
+        init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+            shape, dtype=dtype, partition_info=partition_info)
+      else:
+        init_val = lambda: initializer(  # pylint: disable=g-long-lambda
+            shape, dtype=dtype)
       variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
