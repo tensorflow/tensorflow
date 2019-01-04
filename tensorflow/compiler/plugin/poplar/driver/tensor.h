@@ -109,33 +109,33 @@ std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
  */
 ArgVector FindTupleInInstructionInput(TensorMap& map, CompilerResources& res,
                                       const HloInstruction* inst, int64 input,
-                                      int64 n, poplar::program::Sequence& seq);
+                                      int64 n, poplar::program::Sequence& seq,
+                                      const bool expand_constants = true);
 
 /* This returns the single poplar tensor which is the non-tuple input to the
  * input to the instruction
  */
-StatusOr<poplar::Tensor> FindInstructionInput(TensorMap& map,
-                                              CompilerResources& res,
-                                              const HloInstruction* inst,
-                                              int64 input,
-                                              poplar::program::Sequence& seq);
+StatusOr<poplar::Tensor> FindInstructionInput(
+    TensorMap& map, CompilerResources& res, const HloInstruction* inst,
+    int64 input, poplar::program::Sequence& seq,
+    const bool expand_constants = true);
 
 /* This returns a vector of all poplar tensors which are part of the tuple
  * or non-tuple on the input to the instruction
  */
 ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
                                 const HloInstruction* inst, int64 input,
-                                poplar::program::Sequence& seq);
+                                poplar::program::Sequence& seq,
+                                const bool expand_constants = true);
 
 /* Sometimes an inplace op cannot be performed because the input/output tensor
  * is not parallel writable or because further analysis has shown that the op
  * can no longer be in place. If that's the case, this function will add an
  * extra tensor copy and use that tensor as the input/output tensor.
  */
-StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
-                                             CompilerResources& res,
-                                             const HloInstruction* inst,
-                                             poplar::program::Sequence& seq);
+StatusOr<ArgVectors> GetInplaceOutputTensors(
+    TensorMap& map, CompilerResources& res, const HloInstruction* inst,
+    poplar::program::Sequence& seq, const bool expand_constants = true);
 
 /* This returns a vector of poplar tensors which are all of the outputs from
  * the given instruction

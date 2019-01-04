@@ -86,6 +86,19 @@ GetWhileAndRepeatAliasingCopies(poplar::Graph& graph,
   }
   return std::make_pair(body_seq, while_loop_state);
 }
+
+ArgVectors GetCallInputs(CompilerResources& res, const HloInstruction* inst,
+                         TensorMap& tensor_map, poplar::program::Sequence& seq,
+                         const bool expand_constants = true) {
+  ArgVectors args;
+  for (int64 i = 0; i < inst->operand_count(); i++) {
+    ArgVector t =
+        FindInstructionInputs(tensor_map, res, inst, i, seq, expand_constants);
+    args.push_back(t);
+  }
+  return args;
+}
+
 }  // namespace
 
 static StatusOr<ComputationMap::iterator> GetOrCompileSubComputation(
@@ -182,13 +195,8 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
   HloComputation* comp = inst->to_apply();
   poplar::program::Sequence seq;
 
-  ArgVectors args;
-  for (int64 i = 0; i < op_count; i++) {
-    ArgVector t = FindInstructionInputs(tensor_map, res, inst, i, seq);
-    args.push_back(t);
-  }
-
   if (StartsWith(comp->name(), "__inline")) {
+    ArgVectors args = GetCallInputs(res, inst, tensor_map, seq);
     InlineCallVisitor inline_visitor(res, args);
     TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 
@@ -200,6 +208,7 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
           AddOutputTensor(tensor_map, inst, i, inline_visitor.outputs()[i]));
     }
   } else if (StartsWith(comp->name(), "__arithmetic")) {
+    ArgVectors args = GetCallInputs(res, inst, tensor_map, seq, false);
     ArithmeticExprVisitor arithmetic_visitor(res, args);
     TF_RETURN_IF_ERROR(comp->Accept(&arithmetic_visitor));
 
@@ -210,6 +219,7 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
                                   arithmetic_visitor.outputs()[i]));
     }
   } else {
+    ArgVectors args = GetCallInputs(res, inst, tensor_map, seq);
     ComputationMap::iterator subcomp_visitor;
     TF_ASSIGN_OR_RETURN(subcomp_visitor,
                         GetOrCompileSubComputation(res, args, comp));
