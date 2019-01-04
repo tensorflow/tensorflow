@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -44,11 +45,24 @@ bool MatchesArCrsPattern(HloInstruction* instruction) {
     if (instruction->user_count() != 1) {
       return false;
     }
-    auto opcode = instruction->opcode();
-    return opcode == HloOpcode::kBitcast || opcode == HloOpcode::kTranspose ||
-           opcode == HloOpcode::kReshape || opcode == HloOpcode::kConvert ||
-           opcode == HloOpcode::kAdd || opcode == HloOpcode::kSubtract ||
-           opcode == HloOpcode::kMultiply;
+    switch (instruction->opcode()) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kTranspose:
+      case HloOpcode::kReshape:
+        return true;
+      case HloOpcode::kConvert:
+        // Can be moved across if both input and output is either float or
+        // integer (e.g. S32<->U32 or F32<->BF16)
+        return ShapeUtil::ElementIsFloating(instruction->shape()) ==
+               ShapeUtil::ElementIsFloating(instruction->operand(0)->shape());
+      case HloOpcode::kAdd:
+      case HloOpcode::kSubtract:
+      case HloOpcode::kMultiply:
+        // Only supported for floating point operands.
+        return ShapeUtil::ElementIsFloating(instruction->shape());
+      default:
+        return false;
+    }
   };
 
   auto computation_is_addition = [](HloComputation* c) {
