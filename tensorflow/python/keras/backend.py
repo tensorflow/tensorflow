@@ -2254,7 +2254,7 @@ def batch_normalization(x, mean, var, beta, gamma, axis=-1, epsilon=1e-3):
   """Applies batch normalization on x given mean, var, beta and gamma.
 
   I.e. returns:
-  `output = (x - mean) / (sqrt(var) + epsilon) * gamma + beta`
+  `output = (x - mean) / sqrt(var + epsilon) * gamma + beta`
 
   Arguments:
       x: Input tensor or variable.
