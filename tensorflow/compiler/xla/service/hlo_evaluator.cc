@@ -1097,7 +1097,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
       fusion->fused_instructions_computation()->Clone(
           /*suffix=*/"clone_with_layout", &context);
   for (auto* instruction : cloned_fused_computation->instructions()) {
-    LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+    if (!LayoutUtil::HasLayout(instruction->shape())) {
+      LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+    }
   }
   auto readded_computation =
       empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
