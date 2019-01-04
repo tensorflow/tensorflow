@@ -122,8 +122,17 @@ def make_variable(name,
       variable_dtype = None
     else:
       # Instantiate initializer if provided initializer is a type object.
-      if isinstance(initializer, (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+      if isinstance(initializer, (type(init_ops.Initializer),
+                                  type(init_ops_v2.Initializer))):
         initializer = initializer(dtype=dtype)
+
+      # In case initializer is an instance of init_ops.Initializer,
+      # then the signature is:
+      #   def _initializer(shape, dtype=dtypes.float32, partition_info=None):
+      #
+      # Otherwise, the initializer is an instance of init_ops_v2.Initializer,
+      # and the signature is:
+      #   def _initializer(shape, dtype=dtypes.float32):
       if isinstance(initializer, init_ops.Initializer):
         init_val = lambda: initializer(  # pylint: disable=g-long-lambda
             shape, dtype=dtype, partition_info=partition_info)
