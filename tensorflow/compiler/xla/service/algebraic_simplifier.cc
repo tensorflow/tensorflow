@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -2539,7 +2540,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
     }
     if (can_move_reshape_into_reduce) {
       changed_ = true;
-      std::unordered_set<int64> dimensions_not_to_reduce;
+      absl::flat_hash_set<int64> dimensions_not_to_reduce;
       for (auto dim_pair : unmodified_dims) {
         if (arg_dim_in_output[dim_pair.second]) {
           dimensions_not_to_reduce.insert(dim_pair.first);
@@ -2547,7 +2548,7 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
       }
       std::vector<int64> new_reduce_dimensions;
       for (int64 i = 0; i < arg->operand(0)->shape().rank(); ++i) {
-        if (dimensions_not_to_reduce.count(i) == 0) {
+        if (!dimensions_not_to_reduce.contains(i)) {
           new_reduce_dimensions.push_back(i);
         }
       }

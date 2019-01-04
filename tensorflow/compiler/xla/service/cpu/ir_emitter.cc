@@ -24,11 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+// IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
-// IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -70,6 +68,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
@@ -1399,7 +1399,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
 
   int64 delta = 0;
   for (int64 i = 0; i < operand_shape.dimensions_size(); i++) {
-    if (reduced_dims.count(i)) {
+    if (reduced_dims.contains(i)) {
       delta++;
     } else {
       InsertOrDie(&unreduced_dim_map, i, i - delta);
@@ -1412,7 +1412,7 @@ static bool ReductionPreservesLayout(const HloInstruction& reduce) {
   for (int64 operand_dim_idx = 0;
        operand_dim_idx < operand_shape.dimensions_size(); operand_dim_idx++) {
     int64 operand_dim = operand_shape.layout().minor_to_major(operand_dim_idx);
-    if (!reduced_dims.count(operand_dim)) {
+    if (!reduced_dims.contains(operand_dim)) {
       if (FindOrDie(unreduced_dim_map, operand_dim) !=
           result_shape.layout().minor_to_major(result_dim_idx++)) {
         return false;
@@ -1990,7 +1990,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   // The memcpy will copy elements that are logically this shape (allowed to be
   // scalar).
   const Shape logical_element_shape = ShapeUtil::FilterDimensions(
-      [&inner_dims](int64 dim) -> bool { return inner_dims.count(dim); },
+      [&inner_dims](int64 dim) { return inner_dims.contains(dim); },
       operand->shape());
 
   const int64 primitive_elements_per_logical_element =

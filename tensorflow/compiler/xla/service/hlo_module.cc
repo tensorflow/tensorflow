@@ -392,15 +392,12 @@ namespace {
 // Returns whether `hlo` is used outside the given subcomputation.
 // `instructions_in_subcomputation` is the instruction set of the given
 // subcomputation.
-bool IsUsedOutsideSubcomputation(
-    const HloInstruction& hlo,
-    const std::unordered_set<HloInstruction*>& instructions_in_subcomputation) {
-  for (HloInstruction* user : hlo.users()) {
-    if (!instructions_in_subcomputation.count(user)) {
-      return true;
-    }
-  }
-  return false;
+bool IsUsedOutsideSubcomputation(const HloInstruction& hlo,
+                                 const absl::flat_hash_set<HloInstruction*>&
+                                     instructions_in_subcomputation) {
+  return absl::c_any_of(hlo.users(), [&](HloInstruction* user) {
+    return !instructions_in_subcomputation.contains(user);
+  });
 }
 }  // anonymous namespace
 
@@ -411,9 +408,9 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
 
   // A map from original instructions to their counterparts in the new outlined
   // function.
-  std::unordered_map<HloInstruction*, HloInstruction*> outlined_instructions;
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> outlined_instructions;
   // A set that contains all instructions to be outlined.
-  std::unordered_set<HloInstruction*> instruction_set_to_outline(
+  absl::flat_hash_set<HloInstruction*> instruction_set_to_outline(
       instructions_to_outline.begin(), instructions_to_outline.end());
   std::vector<HloInstruction*> arguments;
   std::vector<HloInstruction*> outputs;
@@ -502,7 +499,7 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
   // module).
-  std::set<HloComputation*> nonroot_computations;
+  absl::flat_hash_set<HloComputation*> nonroot_computations;
   for (auto& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
@@ -515,19 +512,19 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // Keep track of computations which have already been added to the post
   // order. This prevents duplication as an embedded computation may be called
   // from two different root computations.
-  std::set<HloComputation*> added_computations;
+  absl::flat_hash_set<HloComputation*> added_computations;
   std::vector<HloComputation*> post_order;
   for (auto& computation : computations_) {
-    if (nonroot_computations.count(computation.get()) == 0) {
+    if (!nonroot_computations.contains(computation.get())) {
       for (HloComputation* embedded_computation :
            computation->MakeEmbeddedComputationsList()) {
-        if (added_computations.count(embedded_computation) == 0) {
+        if (!added_computations.contains(embedded_computation)) {
           post_order.push_back(embedded_computation);
           added_computations.insert(embedded_computation);
         }
       }
       // Root computations should only be encountered once.
-      CHECK_EQ(0, added_computations.count(computation.get()));
+      CHECK(!added_computations.contains(computation.get()));
       post_order.push_back(computation.get());
       added_computations.insert(computation.get());
     }

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -309,7 +310,7 @@ class BufferAssignmentTest : public HloTestBase {
 static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
                             const std::vector<const HloInstruction*>& b,
                             const BufferAssignment& assignment) {
-  std::set<BufferAllocation::Slice> a_slices;
+  absl::flat_hash_set<BufferAllocation::Slice> a_slices;
   for (const HloInstruction* instruction : a) {
     if (assignment.HasTopLevelAllocation(instruction)) {
       a_slices.insert(
@@ -319,8 +320,8 @@ static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
 
   for (const HloInstruction* instruction : b) {
     if (assignment.HasTopLevelAllocation(instruction)) {
-      if (a_slices.count(assignment.GetUniqueTopLevelSlice(instruction)
-                             .ConsumeValueOrDie())) {
+      if (a_slices.contains(assignment.GetUniqueTopLevelSlice(instruction)
+                                .ConsumeValueOrDie())) {
         return false;
       }
     }

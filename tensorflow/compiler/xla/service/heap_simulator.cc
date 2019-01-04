@@ -199,7 +199,7 @@ Status HeapSimulator::RunComputation(
 
       // If the buffer has no users and isn't an entry parameter or output, it
       // must be a dead value.
-      if (live_buffers.count(buffer) == 0) {
+      if (!live_buffers.contains(buffer)) {
         dead_buffers_to_free.push_back(buffer);
       }
     }
@@ -253,7 +253,7 @@ Status HeapSimulator::RunComputation(
       bool shared = false;
       if (options_.may_reuse_operand_buffers) {
         for (const BufferValue* operand_buffer : operand_buffers_to_free) {
-          if (reused_buffers.count(operand_buffer) != 0) {
+          if (reused_buffers.contains(operand_buffer)) {
             continue;
           }
           if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
@@ -374,15 +374,15 @@ bool HeapSimulator::IgnoreBuffer(const BufferValue* buffer) const {
     return true;
   }
   return options_.buffers_to_assign != nullptr &&
-         options_.buffers_to_assign->count(buffer) == 0;
+         !options_.buffers_to_assign->contains(buffer);
 }
 
 // Alloc always calls the underlying heap algorithm.
 void HeapSimulator::Alloc(const BufferValue* buffer,
                           const HloInstruction* instruction) {
-  CHECK(allocated_buffers_.count(buffer) == 0)
+  CHECK(!allocated_buffers_.contains(buffer))
       << "Alloc called on allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "Alloc called on freed buffer: " << *buffer;
 
   allocated_buffers_.insert(buffer);
@@ -411,9 +411,9 @@ void HeapSimulator::Free(const BufferValue* buffer,
     buffer = group->canonical;
   }
 
-  CHECK(allocated_buffers_.count(buffer) > 0)
+  CHECK(allocated_buffers_.contains(buffer))
       << "Free called on non-allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "Free called on freed buffer: " << *buffer;
 
   freed_buffers_.insert(buffer);
@@ -433,11 +433,11 @@ void HeapSimulator::ShareBuffer(const BufferValue* buffer,
                                 const HloInstruction* instruction) {
   CHECK_LE(size_fn_(*buffer), size_fn_(*shared))
       << "ShareBuffer oversized buffer" << *buffer << " shared: " << *shared;
-  CHECK(allocated_buffers_.count(buffer) == 0)
+  CHECK(!allocated_buffers_.contains(buffer))
       << "ShareBuffer called on allocated buffer: " << *buffer;
-  CHECK(freed_buffers_.count(buffer) == 0)
+  CHECK(!freed_buffers_.contains(buffer))
       << "ShareBuffer called on freed buffer: " << *buffer;
-  CHECK(freed_buffers_.count(shared) == 0)
+  CHECK(!freed_buffers_.contains(shared))
       << "ShareBuffer called on freed shared buffer: " << *shared;
 
   const BufferValue* canonical = nullptr;
@@ -452,7 +452,7 @@ void HeapSimulator::ShareBuffer(const BufferValue* buffer,
   } else {
     // The 'shared' buffer doesn't have a group; it must be the canonical.  Add
     // both 'buffer' and 'shared' to a new group.
-    CHECK(allocated_buffers_.count(shared) > 0)
+    CHECK(allocated_buffers_.contains(shared))
         << "ShareBuffer called on non-allocated shared buffer: " << *shared;
     auto group = std::make_shared<SharedGroup>();
     canonical = shared;
