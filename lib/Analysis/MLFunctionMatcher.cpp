@@ -79,7 +79,14 @@ MLFunctionMatches::iterator MLFunctionMatches::begin() {
 MLFunctionMatches::iterator MLFunctionMatches::end() {
   return storage ? storage->matches.end() : nullptr;
 }
-
+MLFunctionMatches::EntryType &MLFunctionMatches::front() {
+  assert(storage && "null storage");
+  return *storage->matches.begin();
+}
+MLFunctionMatches::EntryType &MLFunctionMatches::back() {
+  assert(storage && "null storage");
+  return *(storage->matches.begin() + size() - 1);
+}
 /// Return the combination of multiple MLFunctionMatches as a new object.
 static MLFunctionMatches combine(ArrayRef<MLFunctionMatches> matches) {
   MLFunctionMatches res;

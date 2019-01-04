@@ -23,6 +23,7 @@
 #include "mlir/Analysis/MLFunctionMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass.h"
@@ -66,6 +67,12 @@ static llvm::cl::opt<bool> clTestComposeMaps(
         "Specify to enable testing the composition of AffineMap where each "
         "AffineMap in the composition is specified as the affine_map attribute "
         "in a constant op."));
+static llvm::cl::opt<bool> clTestNormalizeMaps(
+    "normalize-maps",
+    llvm::cl::desc(
+        "Specify to enable testing the normalization of AffineAffineApplyOp "
+        "where each AffineAffineApplyOp in the composition is a single output "
+        "instruction."));
 
 namespace {
 
@@ -80,6 +87,7 @@ struct VectorizerTestPass : public FunctionPass {
   void testBackwardSlicing(Function *f);
   void testSlicing(Function *f);
   void testComposeMaps(Function *f);
+  void testNormalizeMaps(Function *f);
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext MLContext;
@@ -219,6 +227,47 @@ void VectorizerTestPass::testComposeMaps(Function *f) {
   res.print(outs() << "\nComposed map: ");
 }
 
+bool affineApplyOp(const Instruction &inst) {
+  const auto &opInst = cast<OperationInst>(inst);
+  return opInst.isa<AffineApplyOp>();
+}
+
+bool singleResultAffineApplyOpWithoutUses(const Instruction &inst) {
+  const auto &opInst = cast<OperationInst>(inst);
+  auto app = opInst.dyn_cast<AffineApplyOp>();
+  return app && (app->getNumResults() == 1) &&
+         app->getResult(0)->getUses().end() ==
+             app->getResult(0)->getUses().begin();
+}
+
+void VectorizerTestPass::testNormalizeMaps(Function *f) {
+  using matcher::Op;
+
+  // Save matched AffineApplyOp that all need to be erased in the end.
+  auto pattern = Op(affineApplyOp);
+  auto toErase = pattern.match(f);
+  std::reverse(toErase.begin(), toErase.end());
+  {
+    // Compose maps.
+    auto pattern = Op(singleResultAffineApplyOpWithoutUses);
+    for (auto m : pattern.match(f)) {
+      auto app = cast<OperationInst>(m.first)->cast<AffineApplyOp>();
+      FuncBuilder b(m.first);
+
+      using ValueTy = decltype(*(app->getOperands().begin()));
+      SmallVector<Value *, 8> operands =
+          functional::map([](ValueTy v) { return static_cast<Value *>(v); },
+                          app->getOperands().begin(), app->getOperands().end());
+      makeNormalizedAffineApply(&b, app->getLoc(), app->getAffineMap(),
+                                operands);
+    }
+  }
+  // We should now be able to erase everything in reverse order in this test.
+  for (auto m : toErase) {
+    m.first->erase();
+  }
+}
+
 PassResult VectorizerTestPass::runOnFunction(Function *f) {
   // Only support single block functions at this point.
   if (f->getBlocks().size() != 1)
@@ -238,6 +287,9 @@ PassResult VectorizerTestPass::runOnFunction(Function *f) {
   }
   if (clTestComposeMaps) {
     testComposeMaps(f);
+  }
+  if (clTestNormalizeMaps) {
+    testNormalizeMaps(f);
   }
   return PassResult::Success;
 }

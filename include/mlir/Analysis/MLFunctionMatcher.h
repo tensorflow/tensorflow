@@ -63,6 +63,8 @@ struct MLFunctionMatches {
 
   iterator begin();
   iterator end();
+  EntryType &front();
+  EntryType &back();
   unsigned size() { return end() - begin(); }
   unsigned empty() { return size() == 0; }
 

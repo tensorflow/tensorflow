@@ -24,7 +24,7 @@
 #define MLIR_IR_AFFINE_EXPR_H
 
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Casting.h"
 #include <type_traits>
 
@@ -201,22 +201,6 @@ AffineExpr getAffineSymbolExpr(unsigned position, MLIRContext *context);
 AffineExpr getAffineConstantExpr(int64_t constant, MLIRContext *context);
 AffineExpr getAffineBinaryExpr(AffineExprKind kind, AffineExpr lhs,
                                AffineExpr rhs);
-
-/// This auxiliary free function allows conveniently capturing the LHS, RHS and
-/// AffineExprBinaryOp in an AffineBinaryOpExpr.
-/// In particular it is used to elegantly write compositions as such:
-/// ```c++
-/// AffineMap g = /* Some affine map */;
-/// if (auto binExpr = e.template dyn_cast<AffineBinaryOpExpr>()) {
-///   AffineExpr lhs, rhs;
-///   AffineExprBinaryOp binOp;
-///   std::tie(lhs, rhs, binOp) = matchBinaryOpExpr(binExpr);
-///   return binOp(compose(lhs, g), compose(rhs, g));
-/// }
-/// ```
-using AffineExprBinaryOp = std::function<AffineExpr(AffineExpr, AffineExpr)>;
-std::tuple<AffineExpr, AffineExpr, AffineExprBinaryOp>
-matchBinaryOpExpr(AffineBinaryOpExpr e);
 
 raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr);
 

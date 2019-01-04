@@ -367,10 +367,9 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// `exprs.size()`.
 static AffineExpr substExprs(AffineExpr e, llvm::ArrayRef<AffineExpr> exprs) {
   if (auto binExpr = e.dyn_cast<AffineBinaryOpExpr>()) {
-    AffineExpr lhs, rhs;
-    AffineExprBinaryOp binOp;
-    std::tie(lhs, rhs, binOp) = matchBinaryOpExpr(binExpr);
-    return binOp(substExprs(lhs, exprs), substExprs(rhs, exprs));
+    return getAffineBinaryExpr(binExpr.getKind(),
+                               substExprs(binExpr.getLHS(), exprs),
+                               substExprs(binExpr.getRHS(), exprs));
   }
   if (auto dim = e.dyn_cast<AffineDimExpr>()) {
     assert(dim.getPosition() < exprs.size() &&
