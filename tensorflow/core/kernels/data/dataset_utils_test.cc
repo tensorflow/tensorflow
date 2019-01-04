@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -42,10 +42,8 @@ TEST(DatasetUtilsTest, ComputeMoveVector) {
   }
 }
 
-TEST(DatasetUtilsTest, VariantTensorData_Writer_Reader) {
+TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {
   VariantTensorData data;
-
-  // Basic test cases.
   VariantTensorDataWriter writer(&data);
   TF_ASSERT_OK(writer.WriteScalar("Int64", 24));
   TF_ASSERT_OK(writer.WriteScalar("", "Empty_Key"));
@@ -66,26 +64,35 @@ TEST(DatasetUtilsTest, VariantTensorData_Writer_Reader) {
   TF_ASSERT_OK(reader.ReadTensor("Tensor", &val_tensor));
   EXPECT_EQ(input_tensor.NumElements(), val_tensor.NumElements());
   EXPECT_EQ(input_tensor.flat<float>()(0), val_tensor.flat<float>()(0));
+}
 
-  // Test the non-existing key for VariantTensorDataReader.
+TEST(DatasetUtilsTest, VariantTensorDataNonExistentKey) {
+  VariantTensorData data;
+  VariantTensorDataReader reader(&data);
+  TF_ASSERT_OK(reader.status());
+  int64 val_int64;
+  string val_string;
+  Tensor val_tensor;
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar("Non_Existing_Key", &val_int64).code());
+            reader.ReadScalar("NonExistentKey", &val_int64).code());
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadScalar("Non_Existing_Key", &val_string).code());
+            reader.ReadScalar("NonExistentKey", &val_string).code());
   EXPECT_EQ(error::NOT_FOUND,
-            reader.ReadTensor("Non_Existing_Key", &val_tensor).code());
+            reader.ReadTensor("NonExistentKey", &val_tensor).code());
+}
 
-  // Test the invalid metadata for VariantTensorDataReader.
-  VariantTensorData data_invalid_meta(data);
-  data_invalid_meta.metadata_ = "Invalid Metadata";
-  VariantTensorDataReader reader2(&data_invalid_meta);
-  EXPECT_EQ(error::INTERNAL, reader2.status().code());
+TEST(DatasetUtilsTest, VariantTensorDataInvalidMetadata) {
+  VariantTensorData data;
+  data.metadata_ = "Invalid Metadata";
+  VariantTensorDataReader reader(&data);
+  EXPECT_EQ(error::INTERNAL, reader.status().code());
+}
 
-  // Test the unmatched number of keys and tensors for VariantTensorDataReader.
-  VariantTensorData data_unmatched_entries(data);
-  data_unmatched_entries.tensors_.push_back(Tensor(DT_INT64, {1}));
-  VariantTensorDataReader reader3(&data_unmatched_entries);
-  EXPECT_EQ(error::INVALID_ARGUMENT, reader3.status().code());
+TEST(DatasetUtilsTest, VariantTensorDataUnmatchedKeys) {
+  VariantTensorData data;
+  data.tensors_.push_back(Tensor(DT_INT64, {1}));
+  VariantTensorDataReader reader(&data);
+  EXPECT_EQ(error::INVALID_ARGUMENT, reader.status().code());
 }
 
 }  // namespace
