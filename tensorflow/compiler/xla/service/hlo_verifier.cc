@@ -387,6 +387,14 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
   TF_RETURN_IF_ERROR(CheckOperandCount(bitcast, 1));
+  // Bitcasts are not allowed to change the element type.
+  if (bitcast->operand(0)->shape().element_type() !=
+      bitcast->shape().element_type()) {
+    return InternalError(
+        "Bitcast can not change the element type from %s to %s",
+        PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
+        PrimitiveType_Name(bitcast->shape().element_type()));
+  }
   return Status::OK();
 }
 
