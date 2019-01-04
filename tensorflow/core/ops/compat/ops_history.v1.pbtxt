@@ -76626,6 +76626,34 @@ op {
   }
 }
 op {
+  name: "TensorListConcat"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "tensor"
+    type_attr: "element_dtype"
+  }
+  output_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+}
+op {
   name: "TensorListConcatLists"
   input_arg {
     name: "input_a"
