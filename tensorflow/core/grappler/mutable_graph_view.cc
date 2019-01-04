@@ -39,7 +39,102 @@ bool IsTensorIdPortValid(const TensorId& tensor_id) {
   return tensor_id.index() >= Graph::kControlSlot;
 }
 
+// Determines if node is an Identity where it's first regular input is a Switch
+// node.
+bool IsIdentityConsumingSwitch(const MutableGraphView& graph,
+                               const NodeDef& node) {
+  if ((IsIdentity(node) || IsIdentityNSingleInput(node)) &&
+      node.input_size() > 0) {
+    TensorId tensor_id = ParseTensorName(node.input(0));
+    if (tensor_id.index() == Graph::kControlSlot) return false;
+    NodeDef* input_node = graph.GetNode(tensor_id.node());
+    return IsSwitch(*input_node);
+  }
+  return false;
+}
+
+// Determines if node input can be deduped by regular inputs when used as a
+// control dependency. Specifically, if a node is an Identity that leads to a
+// Switch node, when used as a control dependency, that control dependency
+// should not be deduped even though the same node is used as a regular input.
+bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
+                                     const NodeDef& control_node) {
+  return !IsIdentityConsumingSwitch(graph, control_node);
+}
+
+// Determines if node input can be deduped by regular inputs when used as a
+// control dependency. Specifically, if a node is an Identity that leads to a
+// Switch node, when used as a control dependency, that control dependency
+// should not be deduped even though the same node is used as a regular input.
+bool CanDedupControlWithRegularInput(const MutableGraphView& graph,
+                                     absl::string_view control_node_name) {
+  NodeDef* control_node = graph.GetNode(control_node_name);
+  return CanDedupControlWithRegularInput(graph, *control_node);
+}
+
 }  // namespace
+
+void MutableGraphView::AddAndDedupFanouts(NodeDef* node) {
+  absl::flat_hash_set<absl::string_view> fanins;
+  absl::flat_hash_set<absl::string_view> controlling_fanins;
+  int pos = 0;
+  const int last_idx = node->input_size() - 1;
+  int last_pos = last_idx;
+  while (pos <= last_pos) {
+    TensorId tensor_id = ParseTensorName(node->input(pos));
+    absl::string_view input_node_name = tensor_id.node();
+    bool is_control_input = IsControlInput(tensor_id);
+    bool can_dedup_control_with_regular_input =
+        CanDedupControlWithRegularInput(*this, input_node_name);
+    bool can_dedup_control =
+        is_control_input && (can_dedup_control_with_regular_input ||
+                             (!can_dedup_control_with_regular_input &&
+                              controlling_fanins.contains(input_node_name)));
+    if (!gtl::InsertIfNotPresent(&fanins, input_node_name) &&
+        can_dedup_control) {
+      node->mutable_input()->SwapElements(pos, last_pos--);
+    } else {
+      OutputPort output(nodes()[input_node_name], tensor_id.index());
+
+      if (is_control_input) {
+        fanouts()[output].emplace(node, Graph::kControlSlot);
+      } else {
+        max_regular_output_port()[output.node] =
+            std::max(max_regular_output_port()[output.node], output.port_id);
+        fanouts()[output].emplace(node, pos);
+      }
+      ++pos;
+    }
+    if (is_control_input) {
+      controlling_fanins.insert(input_node_name);
+    }
+  }
+
+  if (last_pos < last_idx) {
+    node->mutable_input()->DeleteSubrange(last_pos + 1, last_idx - last_pos);
+  }
+}
+
+void MutableGraphView::UpdateMaxRegularOutputPortForRemovedFanin(
+    const OutputPort& fanin,
+    const absl::flat_hash_set<InputPort>& fanin_fanouts) {
+  int max_port = max_regular_output_port()[fanin.node];
+  if (!fanin_fanouts.empty() || max_port != fanin.port_id) {
+    return;
+  }
+  bool updated_max_port = false;
+  for (int i = fanin.port_id - 1; i >= 0; --i) {
+    OutputPort fanin_port(fanin.node, i);
+    if (!fanouts()[fanin_port].empty()) {
+      max_regular_output_port()[fanin.node] = i;
+      updated_max_port = true;
+      break;
+    }
+  }
+  if (!updated_max_port) {
+    max_regular_output_port().erase(fanin.node);
+  }
+}
 
 const absl::flat_hash_set<MutableGraphView::InputPort>&
 MutableGraphView::GetFanout(const GraphView::OutputPort& port) const {
@@ -65,16 +160,16 @@ NodeDef* MutableGraphView::AddNode(NodeDef&& node) {
 
   AddUniqueNodeOrDie(node_in_graph);
 
-  AddFanouts(node_in_graph);
+  AddAndDedupFanouts(node_in_graph);
   return node_in_graph;
 }
 
-void MutableGraphView::UpdateFanouts(absl::string_view from_node,
+bool MutableGraphView::UpdateFanouts(absl::string_view from_node,
                                      absl::string_view to_node) {
   NodeDef* from_node_ptr = GetNode(from_node);
   NodeDef* to_node_ptr = GetNode(to_node);
   if (from_node_ptr && to_node_ptr) {
-    UpdateFanouts(from_node_ptr, to_node_ptr);
+    return UpdateFanoutsInternal(from_node_ptr, to_node_ptr);
   } else if (!from_node_ptr) {
     LOG(WARNING) << absl::Substitute(
         "Can't update fanouts from '$0' to '$1', from node was not found.",
@@ -84,9 +179,11 @@ void MutableGraphView::UpdateFanouts(absl::string_view from_node,
         "Can't update fanouts from '$0' to '$1', to node was not found.",
         from_node, to_node);
   }
+  return false;
 }
 
-void MutableGraphView::UpdateFanouts(NodeDef* from_node, NodeDef* to_node) {
+bool MutableGraphView::UpdateFanoutsInternal(NodeDef* from_node,
+                                             NodeDef* to_node) {
   VLOG(2) << absl::Substitute("Update fanouts from '$0' to '$1'.",
                               from_node->name(), to_node->name());
 
@@ -112,6 +209,7 @@ void MutableGraphView::UpdateFanouts(NodeDef* from_node, NodeDef* to_node) {
   // input to some other node.
   int keep_max_regular_output_port = -1;
 
+  bool modified = false;
   for (const Edge& edge : regular_edges) {
     const OutputPort output_port = edge.src;
     const InputPort input_port = edge.dst;
@@ -120,7 +218,7 @@ void MutableGraphView::UpdateFanouts(NodeDef* from_node, NodeDef* to_node) {
     // AddAndUpdateFanoutsWithoutSelfLoops test for an example).
     if (input_port.node == to_node) {
       keep_max_regular_output_port =
-          std::max(keep_max_regular_output_port, input_port.port_id);
+          std::max(keep_max_regular_output_port, output_port.port_id);
       continue;
     }
 
@@ -135,6 +233,11 @@ void MutableGraphView::UpdateFanouts(NodeDef* from_node, NodeDef* to_node) {
     remove_edge(output_port, input_port);
     // Add an edge between the `to_node` and new fanout node.
     add_edge(OutputPort(to_node, output_port.port_id), input_port);
+    // Dedup control dependency.
+    if (CanDedupControlWithRegularInput(*this, *to_node)) {
+      RemoveControllingFaninInternal(input_port.node, to_node);
+    }
+    modified = true;
   }
 
   // For the control fanouts we do not know the input index in a NodeDef,
@@ -142,7 +245,6 @@ void MutableGraphView::UpdateFanouts(NodeDef* from_node, NodeDef* to_node) {
 
   auto control_fanouts =
       GetFanout(GraphView::OutputPort(from_node, Graph::kControlSlot));
-  if (control_fanouts.empty()) return;
 
   const string from_control_input = absl::StrCat("^", from_node->name());
   const string to_control_input = absl::StrCat("^", to_node->name());
@@ -151,20 +253,9 @@ void MutableGraphView::UpdateFanouts(NodeDef* from_node, NodeDef* to_node) {
     // Node can't be control dependency of itself.
     if (control_port.node == to_node) continue;
 
-    // Find and update input corresponding to control dependency.
     NodeDef* node = control_port.node;
-    for (int i = node->input_size() - 1; i >= 0; --i) {
-      const string& input = node->input(i);
-      if (!IsControlInput(input)) break;  // we reached regular inputs
-      if (input == from_control_input) {
-        node->set_input(i, to_control_input);
-      }
-    }
-
-    // Remove old edge between the `from_node` and the fanout node.
-    remove_edge(OutputPort(from_node, Graph::kControlSlot), control_port);
-    // Add an edge between the `to_node` and new fanout node.
-    add_edge(OutputPort(to_node, Graph::kControlSlot), control_port);
+    modified |= RemoveControllingFaninInternal(node, from_node);
+    modified |= AddFaninInternal(node, {to_node, Graph::kControlSlot});
   }
 
   // Because we update all regular fanouts of `from_node`, we can just copy
@@ -177,21 +268,33 @@ void MutableGraphView::UpdateFanouts(NodeDef* from_node, NodeDef* to_node) {
   } else {
     max_regular_output_port().erase(from_node);
   }
+
+  return modified;
 }
 
 bool MutableGraphView::AddFaninInternal(NodeDef* node,
                                         const OutputPort& fanin) {
   int num_non_controlling_fanins =
       NumFanins(*node, /*include_controlling_nodes=*/false);
+  bool input_is_control = fanin.port_id == Graph::kControlSlot;
+  bool can_dedup_control_with_regular_input =
+      CanDedupControlWithRegularInput(*this, *fanin.node);
+  // Don't add duplicate control dependencies.
+  if (input_is_control) {
+    const int start =
+        can_dedup_control_with_regular_input ? 0 : num_non_controlling_fanins;
+    for (int i = start; i < node->input_size(); ++i) {
+      if (ParseTensorName(node->input(i)).node() == fanin.node->name()) {
+        return false;
+      }
+    }
+  }
+
   InputPort input;
   input.node = node;
-  input.port_id = fanin.port_id == Graph::kControlSlot
-                      ? Graph::kControlSlot
-                      : num_non_controlling_fanins;
+  input.port_id =
+      input_is_control ? Graph::kControlSlot : num_non_controlling_fanins;
 
-  if (!gtl::InsertIfNotPresent(&fanouts()[fanin], input)) {
-    return false;
-  }
   node->add_input(TensorIdToString({fanin.node->name(), fanin.port_id}));
   if (fanin.port_id > Graph::kControlSlot) {
     int node_input_size = node->input_size() - 1;
@@ -202,6 +305,17 @@ bool MutableGraphView::AddFaninInternal(NodeDef* node,
                                           num_non_controlling_fanins);
     }
   }
+
+  fanouts()[fanin].insert(input);
+  if (max_regular_output_port()[fanin.node] < fanin.port_id) {
+    max_regular_output_port()[fanin.node] = fanin.port_id;
+  }
+
+  // Dedup control dependencies.
+  if (!input_is_control && can_dedup_control_with_regular_input) {
+    RemoveControllingFaninInternal(node, fanin.node);
+  }
+
   return true;
 }
 
@@ -244,16 +358,18 @@ bool MutableGraphView::RemoveFanins(NodeDef* node,
       input.port_id =
           tensor_id.index() == Graph::kControlSlot ? Graph::kControlSlot : i;
 
+      auto& fanouts_set = fanouts()[fanin];
       if (remove_fanin) {
-        fanouts()[fanin].erase(input);
+        fanouts_set.erase(input);
       } else {
         // Shift inputs to be retained.
         if (tensor_id.index() > Graph::kControlSlot) {
-          fanouts()[fanin].erase(input);
-          fanouts()[fanin].insert(InputPort(node, i));
+          fanouts_set.erase(input);
+          fanouts_set.insert(InputPort(node, i));
         }
         mutable_inputs->SwapElements(i, curr_pos++);
       }
+      UpdateMaxRegularOutputPortForRemovedFanin(fanin, fanouts_set);
 
       modified = true;
     } else {
@@ -314,15 +430,12 @@ bool MutableGraphView::UpdateFanin(absl::string_view node_name,
     return false;
   }
 
-  bool is_from_fanin_control = from_fanin.index() == Graph::kControlSlot;
-  bool is_to_fanin_control = to_fanin.index() == Graph::kControlSlot;
   // When replacing a non control dependency fanin with a control dependency, or
   // vice versa, remove and add, so ports can be updated properly in fanout(s).
-  if (is_from_fanin_control || is_to_fanin_control) {
+  if (from_fanin.index() == Graph::kControlSlot ||
+      to_fanin.index() == Graph::kControlSlot) {
     bool modified = RemoveFanins(node, {from_fanin});
-    if (!HasFanin(*node, to_fanin)) {
-      modified |= AddFaninInternal(node, to_fanin);
-    }
+    modified |= AddFaninInternal(node, to_fanin);
     return modified;
   }
 
@@ -336,79 +449,47 @@ bool MutableGraphView::UpdateFanin(absl::string_view node_name,
   string to_fanin_string = TensorIdToString(to_fanin);
   int num_inputs = node->input_size();
   bool modified = false;
+  absl::flat_hash_set<InputPort>* from_fanin_port_fanouts = nullptr;
+  absl::flat_hash_set<InputPort>* to_fanin_port_fanouts = nullptr;
   for (int i = 0; i < num_inputs; ++i) {
     if (ParseTensorName(node->input(i)) == from_fanin) {
-      OutputPort from_fanin_port(from_fanin_node, from_fanin.index());
       InputPort old_input;
       old_input.node = node;
       old_input.port_id =
           from_fanin.index() == Graph::kControlSlot ? Graph::kControlSlot : i;
-      fanouts()[from_fanin_port].erase(old_input);
+      if (from_fanin_port_fanouts == nullptr) {
+        OutputPort from_fanin_port(from_fanin_node, from_fanin.index());
+        from_fanin_port_fanouts = &fanouts()[from_fanin_port];
+      }
+      from_fanin_port_fanouts->erase(old_input);
 
-      OutputPort to_fanin_port(to_fanin_node, to_fanin.index());
       InputPort new_input;
       new_input.node = node;
       new_input.port_id =
           to_fanin.index() == Graph::kControlSlot ? Graph::kControlSlot : i;
-      fanouts()[to_fanin_port].insert(new_input);
+      if (to_fanin_port_fanouts == nullptr) {
+        OutputPort to_fanin_port(to_fanin_node, to_fanin.index());
+        to_fanin_port_fanouts = &fanouts()[to_fanin_port];
+      }
+      to_fanin_port_fanouts->insert(new_input);
 
       node->set_input(i, to_fanin_string);
       modified = true;
     }
   }
 
-  return modified;
-}
-
-bool MutableGraphView::DedupControllingFanins(NodeDef* node) {
-  absl::flat_hash_set<absl::string_view> fanins;
-  absl::flat_hash_set<string> removed_fanins;
-  int pos = 0;
-  const int last_idx = node->input_size() - 1;
-  int last_pos = last_idx;
-  while (pos <= last_pos) {
-    const string& input = node->input(pos);
-    TensorId tensor_id = ParseTensorName(input);
-    if (!gtl::InsertIfNotPresent(&fanins, tensor_id.node()) &&
-        IsControlInput(tensor_id)) {
-      node->mutable_input()->SwapElements(pos, last_pos--);
-      removed_fanins.insert(input);
-    } else {
-      ++pos;
+  // Dedup control dependencies and update max regular output ports.
+  if (modified) {
+    UpdateMaxRegularOutputPortForRemovedFanin(
+        {from_fanin_node, from_fanin.index()}, *from_fanin_port_fanouts);
+    if (max_regular_output_port()[to_fanin_node] < to_fanin.index()) {
+      max_regular_output_port()[to_fanin_node] = to_fanin.index();
+    }
+    if (CanDedupControlWithRegularInput(*this, *to_fanin_node)) {
+      RemoveControllingFaninInternal(node, to_fanin_node);
     }
   }
 
-  if (last_pos < last_idx) {
-    absl::flat_hash_set<string> retained_fanins(
-        node->input().begin(), node->input().begin() + last_pos + 1);
-    for (const auto& removed : removed_fanins) {
-      if (!retained_fanins.contains(removed)) {
-        OutputPort fanin(nodes()[ParseTensorName(removed).node()],
-                         Graph::kControlSlot);
-        fanouts()[fanin].erase({node, Graph::kControlSlot});
-      }
-    }
-    node->mutable_input()->DeleteSubrange(last_pos + 1, last_idx - last_pos);
-    return true;
-  }
-
-  return false;
-}
-
-bool MutableGraphView::DedupControllingFanins(absl::string_view node_name) {
-  NodeDef* node = GetNode(node_name);
-  if (node == nullptr) {
-    return false;
-  }
-  return DedupControllingFanins(node);
-}
-
-bool MutableGraphView::DedupControllingFanins() {
-  const int num_nodes = graph()->node_size();
-  bool modified = false;
-  for (int i = 0; i < num_nodes; ++i) {
-    modified |= DedupControllingFanins(graph()->mutable_node(i));
-  }
   return modified;
 }
 
@@ -463,6 +544,24 @@ bool MutableGraphView::AddControllingFanin(absl::string_view node_name,
   }
 }
 
+bool MutableGraphView::RemoveControllingFaninInternal(NodeDef* node,
+                                                      NodeDef* fanin_node) {
+  for (int i = node->input_size() - 1; i >= 0; --i) {
+    TensorId tensor_id = ParseTensorName(node->input(i));
+    if (tensor_id.index() > Graph::kControlSlot) {
+      break;
+    }
+    if (tensor_id.node() == fanin_node->name()) {
+      fanouts()[{fanin_node, Graph::kControlSlot}].erase(
+          {node, Graph::kControlSlot});
+      node->mutable_input()->SwapElements(i, node->input_size() - 1);
+      node->mutable_input()->RemoveLast();
+      return true;
+    }
+  }
+  return false;
+}
+
 void MutableGraphView::DeleteNodes(const std::set<string>& nodes_to_delete) {
   for (const string& node_name_to_delete : nodes_to_delete)
     RemoveFaninsInternal(nodes().at(node_name_to_delete),
@@ -488,7 +587,9 @@ void MutableGraphView::RemoveFaninsInternal(NodeDef* deleted_node,
     else
       input.port_id = i;
 
-    fanouts()[fanin].erase(input);
+    auto& fanouts_set = fanouts()[fanin];
+    fanouts_set.erase(input);
+    UpdateMaxRegularOutputPortForRemovedFanin(fanin, fanouts_set);
   }
 }
 
