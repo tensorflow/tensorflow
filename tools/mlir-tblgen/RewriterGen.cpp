@@ -39,7 +39,7 @@ namespace {
 
 // Wrapper around dag argument.
 struct DagArg {
-  DagArg(Init *init) : init(init){};
+  DagArg(Init *init) : init(init) {}
   bool isAttr();
 
   Init *init;
@@ -59,7 +59,7 @@ public:
   static void emit(StringRef rewriteName, Record *p, raw_ostream &os);
 
 private:
-  Pattern(Record *pattern, raw_ostream &os) : pattern(pattern), os(os){};
+  Pattern(Record *pattern, raw_ostream &os) : pattern(pattern), os(os) {}
 
   // Emit the rewrite pattern named `rewriteName`.
   void emit(StringRef rewriteName);

@@ -38,7 +38,7 @@ namespace mlir {
 class Operator {
 public:
   explicit Operator(const llvm::Record &def);
-  explicit Operator(const llvm::Record *def) : Operator(*def){};
+  explicit Operator(const llvm::Record *def) : Operator(*def) {}
 
   // Returns the operation name.
   StringRef getOperationName() const;

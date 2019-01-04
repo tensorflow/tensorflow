@@ -39,7 +39,7 @@ public:
   /// GenInfo constructor should not be invoked directly, instead use
   /// GenRegistration or registerGen.
   GenInfo(StringRef arg, StringRef description, GenFunction generator)
-      : arg(arg), description(description), generator(generator){};
+      : arg(arg), description(description), generator(generator) {}
 
   /// Invokes the generator and returns whether the generator failed.
   bool invoke(const llvm::RecordKeeper &recordKeeper, raw_ostream &os) const {

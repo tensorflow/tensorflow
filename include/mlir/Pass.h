@@ -104,7 +104,7 @@ public:
   PassInfo(StringRef arg, StringRef description, const void *passID,
            PassAllocatorFunction allocator)
       : arg(arg), description(description), allocator(allocator),
-        passID(passID){};
+        passID(passID) {}
 
   /// Returns an allocated instance of this pass.
   Pass *createPass() const {
