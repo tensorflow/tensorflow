@@ -11,7 +11,7 @@ def _remote_config_workspace():
     container_pull(
         name = "cuda9.0-cudnn7-ubuntu14.04",
         registry = "gcr.io",
-        repository = "asci-toolchain/nosla-cuda9.0-cudnn7-ubuntu14.04",
+        repository = "tensorflow-testing/nosla-cuda9.0-cudnn7-ubuntu14.04",
         digest = container_digests["cuda9.0-cudnn7-ubuntu14.04"],
     )
 

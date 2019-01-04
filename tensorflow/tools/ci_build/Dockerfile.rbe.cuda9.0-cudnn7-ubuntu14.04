@@ -1,7 +1,7 @@
 # To push a new version, run:
 # $ docker build -f Dockerfile.rbe.cuda9.0-cudnn7-ubuntu14.04 \
-#       --tag "gcr.io/asci-toolchain/nosla-cuda9.0-cudnn7-ubuntu14.04" .
-# $ docker push gcr.io/asci-toolchain/nosla-cuda9.0-cudnn7-ubuntu14.04
+#       --tag "gcr.io/tensorflow-testing/nosla-cuda9.0-cudnn7-ubuntu14.04" .
+# $ docker push gcr.io/tensorflow-testing/nosla-cuda9.0-cudnn7-ubuntu14.04
 #
 # TODO(klimek): Include clang in this image so we can also target clang
 # builds.
