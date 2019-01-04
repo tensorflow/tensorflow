@@ -700,6 +700,14 @@ func @elementsattr_floattype1() -> () {
 
 // -----
 
+func @elementsattr_floattype1() -> () {
+^bb0:
+  // expected-error@+1 {{floating point value not valid for specified type}}
+  "foo"(){bar: splat<tensor<i32>, 4.0>} : () -> ()
+}
+
+// -----
+
 func @elementsattr_floattype2() -> () {
 ^bb0:
   // expected-error@+1 {{integer value not valid for specified type}}

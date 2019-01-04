@@ -1021,6 +1021,8 @@ Attribute Parser::parseAttribute(Type type) {
     case Token::integer:
     case Token::minus: {
       auto scalar = parseAttribute(type.getElementType());
+      if (!scalar)
+        return nullptr;
       if (parseToken(Token::greater, "expected '>'"))
         return nullptr;
       return builder.getSplatElementsAttr(type, scalar);
