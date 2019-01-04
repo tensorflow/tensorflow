@@ -3191,7 +3191,7 @@ def where(condition, x=None, y=None, name=None):
 
   Returns:
     A `Tensor` with the same type and shape as `x`, `y` if they are non-None.
-    A `Tensor` with shape `(num_true, dim_size(condition))`.
+    Otherwise, a `Tensor` with shape `(num_true, rank(condition))`.
 
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None.
