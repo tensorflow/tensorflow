@@ -382,19 +382,10 @@ ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
       if (i != j)
         cst->projectOut(j);
     }
-    // TODO(andydavis) Check for case with two equalities where we have
-    // set on IV to a constant. Set a constant IV map for these cases.
-    if (cst->getNumEqualities() != 1) {
-      srcIvMaps[i] = AffineMap::Null();
-      continue;
-    }
     SmallVector<unsigned, 2> nonZeroDimIds;
     SmallVector<unsigned, 2> nonZeroSymbolIds;
-    srcIvMaps[i] = cst->toAffineMapFromEq(0, 0, srcAccess->opInst->getContext(),
+    srcIvMaps[i] = cst->toAffineMapFromEq(0, srcAccess->opInst->getContext(),
                                           &nonZeroDimIds, &nonZeroSymbolIds);
-    if (srcIvMaps[i] == AffineMap::Null()) {
-      continue;
-    }
     // Add operands for all non-zero dst dims and symbols.
     // TODO(andydavis) Add local variable support.
     for (auto dimId : nonZeroDimIds) {

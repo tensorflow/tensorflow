@@ -596,3 +596,34 @@ func @fuse_slice_at_depth1() {
 // DEPTH1-NEXT:  return
   return
 }
+
+// -----
+
+// CHECK-DAG: #map0 = (d0, d1) -> (d0 * 4 + d1)
+// CHECK-DAG: #map1 = (d0) -> (d0 floordiv 4, d0 mod 4)
+
+// Reshape from a 64 x f32 to 16 x 4 x f32.
+// CHECK-LABEL: func @fuse_reshape_64_16_4
+func @fuse_reshape_64_16_4(%in : memref<64xf32>) {
+  %out = alloc() : memref<16x4xf32>
+
+  for %i0 = 0 to 64 {
+    %v = load %in[%i0] : memref<64xf32>
+    %idx = affine_apply (d0) -> (d0 floordiv 4, d0 mod 4) (%i0)
+    store %v, %out[%idx#0, %idx#1] : memref<16x4xf32>
+  }
+
+  for %i1 = 0 to 16 {
+    for %i2 = 0 to 4 {
+      %w = load %out[%i1, %i2] : memref<16x4xf32>
+      "foo"(%w) : (f32) -> ()
+    }
+  }
+  return
+  // CHECK:      for %i0 =
+  // CHECK-NEXT:   for %i1 =
+  // CHECK-NOT:    for
+  // CHECK:        }
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+}

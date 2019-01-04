@@ -382,17 +382,15 @@ public:
   AffineExpr toAffineExpr(unsigned idx, MLIRContext *context);
 
   // Returns an AffineMap that expresses the identifier at pos as a function of
-  // other dimensional and symbolic identifiers using the 'idx^th' equality
-  // constraint.
+  // other dimensional and symbolic identifiers.
   // If 'nonZeroDimIds' and 'nonZeroSymbolIds' are non-null, they are populated
   // with the positions of the non-zero equality constraint coefficients which
   // were used to build the returned AffineMap.
-  // Returns AffineMap::Null on error (i.e. if coefficient is zero or does
-  // not divide other coefficients in the equality constraint).
+  // Returns AffineMap::Null if such an expression can't be constructed.
   // TODO(andydavis) Remove 'nonZeroDimIds' and 'nonZeroSymbolIds' from this
   // API when we can manage the mapping of Values and ids in the constraint
   // system.
-  AffineMap toAffineMapFromEq(unsigned idx, unsigned pos, MLIRContext *context,
+  AffineMap toAffineMapFromEq(unsigned pos, MLIRContext *context,
                               SmallVectorImpl<unsigned> *nonZeroDimIds,
                               SmallVectorImpl<unsigned> *nonZeroSymbolIds);
 

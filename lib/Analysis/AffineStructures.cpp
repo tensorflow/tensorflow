@@ -783,15 +783,15 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
 // Returns false otherwise.
 static bool
 findConstraintWithNonZeroAt(const FlatAffineConstraints &constraints,
-                            unsigned colIdx, bool isEq, unsigned &rowIdx) {
+                            unsigned colIdx, bool isEq, unsigned *rowIdx) {
   auto at = [&](unsigned rowIdx) -> int64_t {
     return isEq ? constraints.atEq(rowIdx, colIdx)
                 : constraints.atIneq(rowIdx, colIdx);
   };
   unsigned e =
       isEq ? constraints.getNumEqualities() : constraints.getNumInequalities();
-  for (rowIdx = 0; rowIdx < e; ++rowIdx) {
-    if (at(rowIdx) != 0) {
+  for (*rowIdx = 0; *rowIdx < e; ++(*rowIdx)) {
+    if (at(*rowIdx) != 0) {
       return true;
     }
   }
@@ -1104,10 +1104,10 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
     // Find a row which has a non-zero coefficient in column 'j'.
     unsigned pivotRow;
     if (!findConstraintWithNonZeroAt(*this, pivotCol, /*isEq=*/true,
-                                     pivotRow)) {
+                                     &pivotRow)) {
       // No pivot row in equalities with non-zero at 'pivotCol'.
       if (!findConstraintWithNonZeroAt(*this, pivotCol, /*isEq=*/false,
-                                       pivotRow)) {
+                                       &pivotRow)) {
         // If inequalities are also non-zero in 'pivotCol', it can be
         // eliminated.
         continue;
@@ -1137,26 +1137,20 @@ unsigned FlatAffineConstraints::gaussianEliminateIds(unsigned posStart,
   return posLimit - posStart;
 }
 
-// Returns an AffineMap which represents 'pos' in equality constraint 'idx',
-// as a function of dim and symbols identifers in all other positions.
-// TODO(andydavis) Add local variable support to this function.
 AffineMap FlatAffineConstraints::toAffineMapFromEq(
-    unsigned idx, unsigned pos, MLIRContext *context,
+    unsigned pos, MLIRContext *context,
     SmallVectorImpl<unsigned> *nonZeroDimIds,
     SmallVectorImpl<unsigned> *nonZeroSymbolIds) {
-  assert(getNumLocalIds() == 0 && "local ids not supported");
-  assert(idx < getNumEqualities() && "invalid equality position");
 
-  int64_t v = atEq(idx, pos);
-  // Return if coefficient at (idx, pos) is zero or does not divide constant.
-  if (v == 0 || (atEq(idx, getNumIds()) % v != 0))
+  // For now just project out local IDs, and return null if we can't
+  // find an equality. TODO(bondhugula): infer as a function of other
+  // dims/symbols involving mod/div.
+  projectOut(getNumIds() - getNumLocalIds(), getNumLocalIds());
+
+  unsigned idx;
+  if (!findConstraintWithNonZeroAt(*this, pos, /*isEq=*/true, &idx))
     return AffineMap::Null();
-  // Check that coefficient at 'pos' divides all other coefficients in row
-  // 'idx'.
-  for (unsigned j = 0, e = getNumIds(); j < e; ++j) {
-    if (j != pos && (atEq(idx, j) % v != 0))
-      return AffineMap::Null();
-  }
+
   // Build AffineExpr solving for identifier 'pos' in terms of all others.
   auto expr = getAffineConstantExpr(0, context);
   unsigned mapNumDims = 0;
@@ -1167,23 +1161,25 @@ AffineMap FlatAffineConstraints::toAffineMapFromEq(
     int64_t c = atEq(idx, j);
     if (c == 0)
       continue;
-    // Divide 'c' by 'v' from 'pos' for which we are solving.
-    c /= v;
     if (j < numDims) {
-      expr = expr + getAffineDimExpr(mapNumDims++, context) * c;
+      expr = expr - getAffineDimExpr(mapNumDims++, context) * c;
       nonZeroDimIds->push_back(j);
     } else {
       expr =
-          expr + getAffineSymbolExpr(mapNumDims + mapNumSymbols++, context) * c;
+          expr - getAffineSymbolExpr(mapNumDims + mapNumSymbols++, context) * c;
       nonZeroSymbolIds->push_back(j);
     }
-    expr = expr * (-1);
   }
   // Add constant term to AffineExpr.
-  int64_t c = atEq(idx, getNumIds());
-  if (c > 0) {
-    expr = expr + (c / v) * (-1);
-  }
+  expr = expr - atEq(idx, getNumIds());
+  int64_t v = atEq(idx, pos);
+  assert(v != 0 && "expected non-zero here");
+  if (v > 0)
+    expr = expr.floorDiv(v);
+  else
+    // v < 0.
+    expr = (-expr).floorDiv(-v);
+
   return AffineMap::get(mapNumDims, mapNumSymbols, {expr}, {});
 }
 
