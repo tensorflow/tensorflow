@@ -581,6 +581,33 @@ class Logcosh(Loss):
     return logcosh(y_true, y_pred)
 
 
+class KullbackLeiblerDivergence(Loss):
+  """Computes kullback leibler divergence loss between `y_true` and `y_pred`.
+
+  loss = y_true * log(y_true / y_pred)
+
+  Usage:
+
+  ```python
+  k = tf.losses.KullbackLeiblerDivergence()
+  loss = k([.4, .9, .2], [.5, .8, .12])
+  print('Loss: ', loss.numpy())  # Loss: -0.043
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss=tf.losses.KullbackLeiblerDivergence())
+  ```
+  """
+
+  def call(self, y_true, y_pred):
+    y_pred = ops.convert_to_tensor(y_pred)
+    y_true = math_ops.cast(y_true, y_pred.dtype)
+    return kullback_leibler_divergence(y_true, y_pred)
+
+
 @keras_export('keras.metrics.mean_squared_error',
               'keras.metrics.mse',
               'keras.metrics.MSE',
