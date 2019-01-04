@@ -30,7 +30,7 @@ system based on Apache Ignite.
 
 ## Features
 
-Ignite Dataset provides features that that you can use in a wide range of cases. The most important and interesting features are described below.
+Ignite Dataset provides features that you can use in a wide range of cases. The most important and interesting features are described below.
 
 ### Distributed In-Memory Datasource
 [Apache Ignite](https://ignite.apache.org/) is a distributed in-memory database, caching, and processing platform that provides fast data access. It allows you to avoid limitations of hard drive and store and operate with as much data as you need in distributed cluster. You can utilize
