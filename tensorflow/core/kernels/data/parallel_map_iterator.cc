@@ -60,7 +60,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
         preserve_cardinality_(params.preserve_cardinality) {
     std::vector<string> components =
         str_util::Split(base_params.prefix, "::", str_util::SkipEmpty());
-    prefix_end_ = components.back();
+    key_prefix_ = components.back();
   }
 
   ~ParallelMapIterator() override {
@@ -207,8 +207,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
     const auto& stats_aggregator = ctx->stats_aggregator();
     if (stats_aggregator) {
       stats_aggregator->AddScalar(
-          strings::StrCat(prefix_end_, "::active_parallel_calls"),
-          static_cast<float>(num_calls_));
+          strings::StrCat(key_prefix_, "::thread_utilization"),
+          static_cast<float>(num_calls_) /
+              static_cast<float>(num_parallel_calls_->value));
     }
     RecordBufferEnqueue(ctx.get(), result->return_values);
     result->notification.Notify();
@@ -300,14 +301,10 @@ class ParallelMapIterator : public DatasetBaseIterator {
         }
         const auto& stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator) {
-          // TODO(shivaniagrawal): add `parallel_calls_utilization` in the
-          // monitoring code or as histogram at fixed time intervals.
           stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::active_parallel_calls"),
-              static_cast<float>(num_calls_));
-          stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::num_parallel_calls"),
-              static_cast<float>(num_parallel_calls_->value));
+              strings::StrCat(key_prefix_, "::thread_utilization"),
+              static_cast<float>(num_calls_) /
+                  static_cast<float>(num_parallel_calls_->value));
         }
         cond_var_->notify_all();
       }
@@ -403,7 +400,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
       GUARDED_BY(*mu_);
   std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
   bool cancelled_ GUARDED_BY(*mu_) = false;
-  string prefix_end_;
+  string key_prefix_;
 };
 
 }  // namespace
