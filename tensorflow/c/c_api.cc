@@ -2458,9 +2458,19 @@ void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
 
     // Update g->name_map with the name_map from the scope, which will contain
     // the new gradient ops.
+
+    // Uses y as the pivot for control edges.
+    Node* pivot = &y->oper->node;
+
     for (int i = first_new_node_id; i < g->graph.num_node_ids(); ++i) {
       Node* n = g->graph.FindNodeId(i);
       if (n == nullptr) continue;
+
+      // Add a control edge from each newly created constant node to the pivot
+      // to ensure that the nodes are in the same frame as pivot.
+      if (n->IsConstant()) {
+        g->graph.AddControlEdge(pivot, n);
+      }
 
       // Adding the gradients to the graph can alter the prefix to prevent
       // name collisions only if this prefix has not been provided explicitly
