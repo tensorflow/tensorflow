@@ -501,6 +501,7 @@ cuda_py_tests(
         "test/quantization_test.py",
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
+        "test/topk_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],

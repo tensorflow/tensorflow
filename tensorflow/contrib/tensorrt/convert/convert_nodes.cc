@@ -1728,8 +1728,9 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
   TFAttrs attrs(node_def);
   nvinfer1::DataType dtype = attrs.get<nvinfer1::DataType>("T");
   if (dtype == nvinfer1::DataType::kINT32) {
-    return errors::Unimplemented(
-        "Binary op ", node_def.op(), " does not support INT32, at ", node_def.name());
+    return errors::Unimplemented("Binary op ", node_def.op(),
+                                 " does not support INT32, at ",
+                                 node_def.name());
   }
   if (params->validation_only) return Status::OK();
 
@@ -3605,6 +3606,9 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
 
   nvinfer1::ITensor* output_value_tensor = layer->getOutput(0);
   nvinfer1::ITensor* output_indices_tensor = layer->getOutput(1);
+  // Tensor type for network output is not inferred. Indices should be INT32
+  // (default is float).
+  output_indices_tensor->setType(nvinfer1::DataType::kINT32);
   params->outputs->push_back(TRT_TensorOrWeights(output_value_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_indices_tensor));
   return tensorflow::Status::OK();
