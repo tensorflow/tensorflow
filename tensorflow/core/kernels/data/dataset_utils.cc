@@ -169,9 +169,9 @@ void VariantTensorDataReader::PreProcess() {
   }
   size_t num_entries = proto.keys_size();
   if (num_entries != data_->tensors_size()) {
-    status_ = errors::InvalidArgument("Unmatched number of keys and tensors: ",
-                                      num_entries, " vs. ",
-                                      data_->tensors_size());
+    status_ = errors::InvalidArgument(
+        "Unmatched number of keys and tensors: ", num_entries, " vs. ",
+        data_->tensors_size());
     return;
   }
   for (size_t i = 0; i < num_entries; i++) {
