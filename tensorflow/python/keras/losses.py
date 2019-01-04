@@ -503,7 +503,7 @@ class CategoricalHinge(Loss):
 class LogLoss(Loss):
   """Computes the log loss between `y_true` and `y_pred`.
 
-  logloss = -y log(p) - (1-y) log(1-p)
+  logloss = - y_true * log(y_pred) - (1 - y_true) * log(1 - y_pred)
 
   Usage:
 
