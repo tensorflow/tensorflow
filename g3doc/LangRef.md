@@ -658,6 +658,9 @@ tensor<? x ? x 13 x ? x f32>
 
 // Full static shape.
 tensor<17 x 4 x 13 x 4 x f32>
+
+// Tensor with rank zero. Represents a scalar.
+tensor<f32>
 ```
 
 ### Memref Type {#memref-type}
