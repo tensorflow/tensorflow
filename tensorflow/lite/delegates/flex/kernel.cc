@@ -74,17 +74,66 @@ class OpOutputs {
 
 // A single node within the larger 'op'. Note that this kernel executes many
 // TensorFlow ops within a single TF Lite op.
-struct OpNode {
+class OpNode {
+ public:
+  OpNode() {}
+  ~OpNode() {}
+
+  const string& name() const { return name_; }
+  void set_name(const string& name) { name_ = name; }
+
+  int index() const { return index_; }
+  void set_index(int index) { index_ = index; }
+
+  const tensorflow::NodeDef& nodedef() const { return nodedef_; }
+
+  const std::vector<int>& inputs() const { return inputs_; }
+  std::vector<int>* mutable_inputs() { return &inputs_; }
+
+  const std::vector<int>& outputs() const { return outputs_; }
+  std::vector<int>* mutable_outputs() { return &outputs_; }
+
+  tensorflow::Status InitializeNodeDef(const void* custom_initial_data,
+                                       int custom_initial_data_size) {
+    if (!custom_initial_data) {
+      return tensorflow::errors::Internal(
+          "Cannot convert empty data into a valid NodeDef");
+    }
+    // The flexbuffer contains a vector where the first elements is the
+    // op name and the second is a serialized NodeDef.
+    const flexbuffers::Vector& v =
+        flexbuffers::GetRoot(
+            reinterpret_cast<const uint8_t*>(custom_initial_data),
+            custom_initial_data_size)
+            .AsVector();
+
+    name_ = v[0].AsString().str();
+    if (!nodedef_.ParseFromString(v[1].AsString().str())) {
+      nodedef_.Clear();
+      return tensorflow::errors::Internal(
+          "Failed to parse data into a valid NodeDef");
+    }
+
+    // Fill NodeDef with defaults if it's a valid op.
+    const tensorflow::OpRegistrationData* op_reg_data;
+    TF_RETURN_IF_ERROR(
+        tensorflow::OpRegistry::Global()->LookUp(nodedef_.op(), &op_reg_data));
+    AddDefaultsToNodeDef(op_reg_data->op_def, &nodedef_);
+
+    return tensorflow::Status::OK();
+  }
+
+ private:
   // The name of the TensorFlow op to execute.
-  string name;
+  string name_;
   // Index of this node into TF Lite's operator list.
-  int index;
+  int index_;
   // The corresponding NodeDef, containing the attributes for the op.
-  tensorflow::NodeDef nodedef;
+  tensorflow::NodeDef nodedef_;
   // List of inputs, as TF Lite tensor indices.
-  std::vector<int> inputs;
+  std::vector<int> inputs_;
   // List of outputs, as TF Lite tensor indices.
-  std::vector<int> outputs;
+  std::vector<int> outputs_;
 };
 
 // Executes the TensorFlow op given by 'op_name', with the attributes specified
@@ -148,37 +197,6 @@ tensorflow::Status ExecuteFlexOp(tensorflow::EagerContext* eager_context,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status InitializeNodeDef(const void* custom_initial_data,
-                                     int custom_initial_data_size,
-                                     OpNode* node_data) {
-  if (!custom_initial_data) {
-    return tensorflow::errors::Internal(
-        "Cannot convert empty data into a valid NodeDef");
-  }
-  // The flexbuffer contains a vector where the first elements is the
-  // op name and the second is a serialized NodeDef.
-  const flexbuffers::Vector& v =
-      flexbuffers::GetRoot(
-          reinterpret_cast<const uint8_t*>(custom_initial_data),
-          custom_initial_data_size)
-          .AsVector();
-
-  node_data->name = v[0].AsString().str();
-  if (!node_data->nodedef.ParseFromString(v[1].AsString().str())) {
-    node_data->nodedef.Clear();
-    return tensorflow::errors::Internal(
-        "Failed to parse data into a valid NodeDef");
-  }
-
-  // Fill NodeDef with defaults if it's a valid op.
-  const tensorflow::OpRegistrationData* op_reg_data;
-  TF_RETURN_IF_ERROR(tensorflow::OpRegistry::Global()->LookUp(
-      node_data->nodedef.op(), &op_reg_data));
-  AddDefaultsToNodeDef(op_reg_data->op_def, &node_data->nodedef);
-
-  return tensorflow::Status::OK();
-}
-
 // The larger 'op', which contains all the nodes in a supported subgraph.
 struct OpData {
   tensorflow::EagerContext* eager_context;
@@ -222,18 +240,18 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     op_data->nodes.push_back(OpNode());
     OpNode& node_data = op_data->nodes.back();
 
-    node_data.index = node_index;
-    node_data.name = "";
+    node_data.set_index(node_index);
+    node_data.set_name("");
 
-    status = InitializeNodeDef(node->custom_initial_data,
-                               node->custom_initial_data_size, &node_data);
+    status = node_data.InitializeNodeDef(node->custom_initial_data,
+                                         node->custom_initial_data_size);
     if (!status.ok()) break;
 
     for (auto input_index : TfLiteIntArrayView(node->inputs)) {
-      node_data.inputs.push_back(input_index);
+      node_data.mutable_inputs()->push_back(input_index);
     }
     for (auto output_index : TfLiteIntArrayView(node->outputs)) {
-      node_data.outputs.push_back(output_index);
+      node_data.mutable_outputs()->push_back(output_index);
     }
   }
 
@@ -283,13 +301,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   for (const auto& node_data : op_data->nodes) {
-    if (node_data.nodedef.op().empty()) {
+    if (node_data.nodedef().op().empty()) {
       context->ReportError(context, "Invalid NodeDef in Flex op '%s'",
-                           node_data.name.c_str());
+                           node_data.name().c_str());
       return kTfLiteError;
     }
 
-    for (int tensor_index : node_data.inputs) {
+    for (int tensor_index : node_data.inputs()) {
       ++tensor_ref_count[tensor_index];
     }
   }
@@ -329,11 +347,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (const auto& node_data : op_data->nodes) {
     SCOPED_TAGGED_OPERATOR_PROFILE(
         reinterpret_cast<profiling::Profiler*>(context->profiler),
-        node_data->name.c_str(), node_data->index);
+        node_data->name().c_str(), node_data->index());
 
-    auto status =
-        ExecuteFlexOp(eager_context, buffer_map, node_data.name,
-                      node_data.nodedef, node_data.inputs, node_data.outputs);
+    auto status = ExecuteFlexOp(eager_context, buffer_map, node_data.name(),
+                                node_data.nodedef(), node_data.inputs(),
+                                node_data.outputs());
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));
   }
 
