@@ -20,14 +20,41 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 using namespace mlir::detail;
 
+/// Integer Type.
+
+/// Verify the construction of an integer type.
+bool IntegerType::verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                               MLIRContext *context,
+                                               unsigned width) {
+  if (width > IntegerType::kMaxWidth) {
+    if (loc)
+      context->emitError(*loc, "integer bitwidth is limited to " +
+                                   Twine(IntegerType::kMaxWidth) + " bits");
+    return true;
+  }
+  return false;
+}
+
+IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
+  return Base::get(context, StandardTypes::Integer, width);
+}
+
+IntegerType IntegerType::getChecked(unsigned width, MLIRContext *context,
+                                    Location location) {
+  return Base::getChecked(location, context, StandardTypes::Integer, width);
+}
+
 unsigned IntegerType::getWidth() const {
   return static_cast<ImplType *>(type)->width;
 }
+
+/// Float Type.
 
 unsigned FloatType::getWidth() const {
   switch (getKind()) {
@@ -70,6 +97,8 @@ unsigned Type::getIntOrFloatBitWidth() const {
   auto floatType = cast<FloatType>();
   return floatType.getWidth();
 }
+
+/// VectorOrTensorType
 
 Type VectorOrTensorType::getElementType() const {
   return static_cast<ImplType *>(type)->elementType;
@@ -154,8 +183,80 @@ bool VectorOrTensorType::hasStaticShape() const {
   return !std::any_of(dims.begin(), dims.end(), [](int i) { return i < 0; });
 }
 
+/// VectorType
+
+VectorType VectorType::get(ArrayRef<int> shape, Type elementType) {
+  return Base::get(elementType.getContext(), StandardTypes::Vector, shape,
+                   elementType);
+}
+
+VectorType VectorType::getChecked(ArrayRef<int> shape, Type elementType,
+                                  Location location) {
+  return Base::getChecked(location, elementType.getContext(),
+                          StandardTypes::Vector, shape, elementType);
+}
+
+bool VectorType::verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                              MLIRContext *context,
+                                              ArrayRef<int> shape,
+                                              Type elementType) {
+  if (shape.empty()) {
+    if (loc)
+      context->emitError(*loc, "vector types must have at least one dimension");
+    return true;
+  }
+
+  if (!isValidElementType(elementType)) {
+    if (loc)
+      context->emitError(*loc, "vector elements must be int or float type");
+    return true;
+  }
+
+  if (any_of(shape, [](int i) { return i < 0; })) {
+    if (loc)
+      context->emitError(*loc, "vector types must have static shape");
+    return true;
+  }
+  return false;
+}
+
 ArrayRef<int> VectorType::getShape() const {
   return static_cast<ImplType *>(type)->getShape();
+}
+
+/// TensorType
+
+// Check if "elementType" can be an element type of a tensor. Emit errors if
+// location is not nullptr.  Returns true if check failed.
+static inline bool checkTensorElementType(Optional<Location> location,
+                                          MLIRContext *context,
+                                          Type elementType) {
+  if (!TensorType::isValidElementType(elementType)) {
+    if (location)
+      context->emitError(*location, "invalid tensor element type");
+    return true;
+  }
+  return false;
+}
+
+/// RankedTensorType
+
+RankedTensorType RankedTensorType::get(ArrayRef<int> shape, Type elementType) {
+  return Base::get(elementType.getContext(), StandardTypes::RankedTensor, shape,
+                   elementType);
+}
+
+RankedTensorType RankedTensorType::getChecked(ArrayRef<int> shape,
+                                              Type elementType,
+                                              Location location) {
+  return Base::getChecked(location, elementType.getContext(),
+                          StandardTypes::RankedTensor, shape, elementType);
+}
+
+bool RankedTensorType::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, ArrayRef<int> shape,
+    Type elementType) {
+  return checkTensorElementType(loc, context, elementType);
 }
 
 ArrayRef<int> RankedTensorType::getShape() const {
@@ -164,6 +265,72 @@ ArrayRef<int> RankedTensorType::getShape() const {
 
 ArrayRef<int> MemRefType::getShape() const {
   return static_cast<ImplType *>(type)->getShape();
+}
+
+/// UnrankedTensorType
+
+UnrankedTensorType UnrankedTensorType::get(Type elementType) {
+  return Base::get(elementType.getContext(), StandardTypes::UnrankedTensor,
+                   elementType);
+}
+
+UnrankedTensorType UnrankedTensorType::getChecked(Type elementType,
+                                                  Location location) {
+  return Base::getChecked(location, elementType.getContext(),
+                          StandardTypes::UnrankedTensor, elementType);
+}
+
+bool UnrankedTensorType::verifyConstructionInvariants(
+    llvm::Optional<Location> loc, MLIRContext *context, Type elementType) {
+  return checkTensorElementType(loc, context, elementType);
+}
+
+/// MemRefType
+
+/// Get or create a new MemRefType defined by the arguments.  If the resulting
+/// type would be ill-formed, return nullptr.  If the location is provided,
+/// emit detailed error messages.  To emit errors when the location is unknown,
+/// pass in an instance of UnknownLoc.
+MemRefType MemRefType::getImpl(ArrayRef<int> shape, Type elementType,
+                               ArrayRef<AffineMap> affineMapComposition,
+                               unsigned memorySpace,
+                               Optional<Location> location) {
+  auto *context = elementType.getContext();
+
+  // Check that the structure of the composition is valid, i.e. that each
+  // subsequent affine map has as many inputs as the previous map has results.
+  // Take the dimensionality of the MemRef for the first map.
+  auto dim = shape.size();
+  unsigned i = 0;
+  for (const auto &affineMap : affineMapComposition) {
+    if (affineMap.getNumDims() != dim) {
+      if (location)
+        context->emitDiagnostic(
+            *location,
+            "memref affine map dimension mismatch between " +
+                (i == 0 ? Twine("memref rank") : "affine map " + Twine(i)) +
+                " and affine map" + Twine(i + 1) + ": " + Twine(dim) +
+                " != " + Twine(affineMap.getNumDims()),
+            MLIRContext::DiagnosticKind::Error);
+      return nullptr;
+    }
+
+    dim = affineMap.getNumResults();
+    ++i;
+  }
+
+  // Drop the unbounded identity maps from the composition.
+  // This may lead to the composition becoming empty, which is interpreted as an
+  // implicit identity.
+  llvm::SmallVector<AffineMap, 2> cleanedAffineMapComposition;
+  for (const auto &map : affineMapComposition) {
+    if (map.isIdentity() && !map.isBounded())
+      continue;
+    cleanedAffineMapComposition.push_back(map);
+  }
+
+  return Base::get(context, StandardTypes::MemRef, shape, elementType,
+                   cleanedAffineMapComposition, memorySpace);
 }
 
 Type MemRefType::getElementType() const {

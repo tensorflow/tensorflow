@@ -34,6 +34,11 @@ void Type::setSubclassData(unsigned val) { type->setSubclassData(val); }
 
 /// Function Type.
 
+FunctionType FunctionType::get(ArrayRef<Type> inputs, ArrayRef<Type> results,
+                               MLIRContext *context) {
+  return Base::get(context, Type::Kind::Function, inputs, results);
+}
+
 ArrayRef<Type> FunctionType::getInputs() const {
   return static_cast<ImplType *>(type)->getInputs();
 }

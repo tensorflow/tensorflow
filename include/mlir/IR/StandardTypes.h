@@ -71,10 +71,10 @@ inline bool Type::isF32() const { return getKind() == StandardTypes::F32; }
 inline bool Type::isF64() const { return getKind() == StandardTypes::F64; }
 
 /// Integer types can have arbitrary bitwidth up to a large fixed limit.
-class IntegerType : public Type {
+class IntegerType
+    : public Type::TypeBase<IntegerType, Type, detail::IntegerTypeStorage> {
 public:
-  using ImplType = detail::IntegerTypeStorage;
-  using Type::Type;
+  using Base::Base;
 
   /// Get or create a new IntegerType of the given width within the context.
   /// Assume the width is within the allowed range and assert on failures.
@@ -86,6 +86,11 @@ public:
   /// outside the allowed range, emit errors and return a null type.
   static IntegerType getChecked(unsigned width, MLIRContext *context,
                                 Location location);
+
+  /// Verify the construction of an integer type.
+  static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                           MLIRContext *context,
+                                           unsigned width);
 
   /// Return the bitwidth of this integer type.
   unsigned getWidth() const;
@@ -123,11 +128,14 @@ inline bool Type::isIntOrFloat() const {
   return isa<IntegerType>() || isa<FloatType>();
 }
 
-class FloatType : public Type {
+class FloatType : public Type::TypeBase<FloatType, Type> {
 public:
-  using Type::Type;
+  using Base::Base;
 
-  static FloatType get(StandardTypes::Kind kind, MLIRContext *context);
+  static FloatType get(StandardTypes::Kind kind, MLIRContext *context) {
+    assert(kindof(kind) && "Not a FP kind.");
+    return Base::get(context, kind);
+  }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) {
@@ -212,10 +220,10 @@ public:
 
 /// Vector types represent multi-dimensional SIMD vectors, and have a fixed
 /// known constant shape with one or more dimension.
-class VectorType : public VectorOrTensorType {
+class VectorType : public Type::TypeBase<VectorType, VectorOrTensorType,
+                                         detail::VectorTypeStorage> {
 public:
-  using ImplType = detail::VectorTypeStorage;
-  using VectorOrTensorType::VectorOrTensorType;
+  using Base::Base;
 
   /// Get or create a new VectorType of the provided shape and element type.
   /// Assumes the arguments define a well-formed VectorType.
@@ -227,6 +235,12 @@ public:
   /// nullptr-wrapping type.
   static VectorType getChecked(ArrayRef<int> shape, Type elementType,
                                Location location);
+
+  /// Verify the construction of a vector type.
+  static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                           MLIRContext *context,
+                                           ArrayRef<int> shape,
+                                           Type elementType);
 
   /// Returns true of the given type can be used as an element of a vector type.
   /// In particular, vectors can consist of integer or float primitives.
@@ -254,7 +268,7 @@ public:
     // types. Dialects are expected to verify that tensor types have a valid
     // element type within that dialect.
     return type.isIntOrFloat() || type.isa<VectorType>() ||
-           (type.getKind() >= Type::Kind::LAST_STANDARD_TYPE);
+           (type.getKind() > Type::Kind::LAST_STANDARD_TYPE);
   }
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
@@ -267,10 +281,11 @@ public:
 /// Ranked tensor types represent multi-dimensional arrays that have a shape
 /// with a fixed number of dimensions. Each shape element can be a positive
 /// integer or unknown (represented -1).
-class RankedTensorType : public TensorType {
+class RankedTensorType
+    : public Type::TypeBase<RankedTensorType, TensorType,
+                            detail::RankedTensorTypeStorage> {
 public:
-  using ImplType = detail::RankedTensorTypeStorage;
-  using TensorType::TensorType;
+  using Base::Base;
 
   /// Get or create a new RankedTensorType of the provided shape and element
   /// type. Assumes the arguments define a well-formed type.
@@ -282,6 +297,12 @@ public:
   /// and return a nullptr-wrapping type.
   static RankedTensorType getChecked(ArrayRef<int> shape, Type elementType,
                                      Location location);
+
+  /// Verify the construction of a ranked tensor type.
+  static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                           MLIRContext *context,
+                                           ArrayRef<int> shape,
+                                           Type elementType);
 
   ArrayRef<int> getShape() const;
 
@@ -295,10 +316,11 @@ public:
 
 /// Unranked tensor types represent multi-dimensional arrays that have an
 /// unknown shape.
-class UnrankedTensorType : public TensorType {
+class UnrankedTensorType
+    : public Type::TypeBase<UnrankedTensorType, TensorType,
+                            detail::UnrankedTensorTypeStorage> {
 public:
-  using ImplType = detail::UnrankedTensorTypeStorage;
-  using TensorType::TensorType;
+  using Base::Base;
 
   /// Get or create a new UnrankedTensorType of the provided shape and element
   /// type. Assumes the arguments define a well-formed type.
@@ -309,6 +331,11 @@ public:
   /// UnrankedTensorType defined by the arguments would be ill-formed, emit
   /// errors and return a nullptr-wrapping type.
   static UnrankedTensorType getChecked(Type elementType, Location location);
+
+  /// Verify the construction of a unranked tensor type.
+  static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                           MLIRContext *context,
+                                           Type elementType);
 
   ArrayRef<int> getShape() const { return ArrayRef<int>(); }
 
@@ -324,10 +351,10 @@ public:
 /// number of dimensions. Each shape element can be a positive integer or
 /// unknown (represented by any negative integer). MemRef types also have an
 /// affine map composition, represented as an array AffineMap pointers.
-class MemRefType : public Type {
+class MemRefType
+    : public Type::TypeBase<MemRefType, Type, detail::MemRefTypeStorage> {
 public:
-  using ImplType = detail::MemRefTypeStorage;
-  using Type::Type;
+  using Base::Base;
 
   /// Get or create a new MemRefType based on shape, element type, affine
   /// map composition, and memory space.  Assumes the arguments define a
@@ -335,7 +362,12 @@ public:
   /// construction failures.
   static MemRefType get(ArrayRef<int> shape, Type elementType,
                         ArrayRef<AffineMap> affineMapComposition,
-                        unsigned memorySpace);
+                        unsigned memorySpace) {
+    auto result = getImpl(shape, elementType, affineMapComposition, memorySpace,
+                          /*location=*/llvm::None);
+    assert(result && "Failed to construct instance of MemRefType.");
+    return result;
+  }
 
   /// Get or create a new MemRefType based on shape, element type, affine
   /// map composition, and memory space declared at the given location.
@@ -345,7 +377,10 @@ public:
   /// the error stream) and returns nullptr.
   static MemRefType getChecked(ArrayRef<int> shape, Type elementType,
                                ArrayRef<AffineMap> affineMapComposition,
-                               unsigned memorySpace, Location location);
+                               unsigned memorySpace, Location location) {
+    return getImpl(shape, elementType, affineMapComposition, memorySpace,
+                   location);
+  }
 
   unsigned getRank() const { return getShape().size(); }
 
@@ -374,7 +409,10 @@ public:
   static char typeID;
 
 private:
-  static MemRefType getSafe(ArrayRef<int> shape, Type elementType,
+  /// Get or create a new MemRefType defined by the arguments.  If the resulting
+  /// type would be ill-formed, return nullptr.  If the location is provided,
+  /// emit detailed error messages.
+  static MemRefType getImpl(ArrayRef<int> shape, Type elementType,
                             ArrayRef<AffineMap> affineMapComposition,
                             unsigned memorySpace, Optional<Location> location);
 };

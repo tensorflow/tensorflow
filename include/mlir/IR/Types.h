@@ -18,6 +18,7 @@
 #ifndef MLIR_IR_TYPES_H
 #define MLIR_IR_TYPES_H
 
+#include "mlir/IR/Location.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -27,7 +28,6 @@ namespace mlir {
 class FloatType;
 class IndexType;
 class IntegerType;
-class Location;
 class MLIRContext;
 
 namespace detail {
@@ -58,14 +58,21 @@ struct TypeStorage;
 ///        current type. Used for isa/dyn_cast casting functionality.
 ///
 ///  * Optional:
-///    - static using ImplType = ...;
-///      * The type alias for the derived storage type. If one is not provided,
-///        this defaults to `detail::DefaultTypeStorage’.
+///    - static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
+///                                               MLIRContext *context,
+///                                               Args... args)
+///      * This method is invoked when calling the 'TypeBase::get/getChecked'
+///        methods to ensure that the arguments passed in are valid to construct
+///        a type instance with.
+///      * This method is expected to return true if a type cannot be
+///        constructed with 'args'.
+///      * 'args' must correspond with the arguments passed into the
+///        'TypeBase::get' call after the type kind.
 ///
 ///
 /// Type storage objects inherit from TypeStorage and contain the following:
-///    - The type kind (for LLVM-style RTTI);
-///    - The abstract descriptor of the type;
+///    - The type kind (for LLVM-style RTTI).
+///    - The dialect that defined the type.
 ///    - Any parameters of the type.
 /// For non-parametric types, a convenience DefaultTypeStorage is provided.
 /// Parametric storage types must derive TypeStorage and respect the following:
@@ -104,6 +111,62 @@ public:
 #define DEFINE_TYPE_KIND_RANGE(Dialect)                                        \
   FIRST_##Dialect##_TYPE, LAST_##Dialect##_TYPE = FIRST_##Dialect##_TYPE + 0xff,
 #include "DialectTypeRegistry.def"
+  };
+
+  /// Utility class for implementing types. Clients are not expected to interact
+  /// with this class directly. The template arguments to this class are defined
+  /// as follows:
+  ///   - ConcreteType
+  ///     * The top level derived class type.
+  ///
+  ///   - BaseType
+  ///     * The base type class that this utility should derive from, e.g Type,
+  ///       TensorType, TensorOrVectorType.
+  ///
+  ///   - StorageType
+  ///     * The type storage object containing the necessary instance
+  ///       information for the ConcreteType.
+  template <typename ConcreteType, typename BaseType,
+            typename StorageType = detail::DefaultTypeStorage>
+  class TypeBase : public BaseType {
+  public:
+    using BaseType::BaseType;
+
+    /// Utility declarations for the concrete type class.
+    using Base = TypeBase<ConcreteType, BaseType, StorageType>;
+    using ImplType = StorageType;
+
+  protected:
+    /// Get or create a new ConcreteType instance within the context. This
+    /// function is guaranteed to return a non null type and will assert if the
+    /// arguments provided are invalid.
+    template <typename... Args>
+    static ConcreteType get(MLIRContext *context, unsigned kind, Args... args) {
+      // Ensure that the invariants are correct for type construction.
+      assert(!ConcreteType::verifyConstructionInvariants(llvm::None, context,
+                                                         args...));
+      return detail::TypeUniquer(context).get<ConcreteType>(kind, args...);
+    }
+
+    /// Get or create a new ConcreteType instance within the context, defined at
+    /// the given, potentially unknown, location. If the arguments provided are
+    /// invalid then emit errors and return a null type.
+    template <typename... Args>
+    static ConcreteType getChecked(Location loc, MLIRContext *context,
+                                   unsigned kind, Args... args) {
+      // If the construction invariants fail then we return a null type.
+      if (ConcreteType::verifyConstructionInvariants(loc, context, args...))
+        return ConcreteType();
+      return detail::TypeUniquer(context).get<ConcreteType>(kind, args...);
+    }
+
+    /// Default implementation that just returns false for success.
+    template <typename... Args>
+    static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                             MLIRContext *context,
+                                             Args... args) {
+      return false;
+    }
   };
 
   using ImplType = detail::TypeStorage;
@@ -195,10 +258,10 @@ inline raw_ostream &operator<<(raw_ostream &os, Type type) {
 }
 
 /// Function types map from a list of inputs to a list of results.
-class FunctionType : public Type {
+class FunctionType
+    : public Type::TypeBase<FunctionType, Type, detail::FunctionTypeStorage> {
 public:
-  using ImplType = detail::FunctionTypeStorage;
-  using Type::Type;
+  using Base::Base;
 
   static FunctionType get(ArrayRef<Type> inputs, ArrayRef<Type> results,
                           MLIRContext *context);
@@ -228,12 +291,14 @@ inline bool Type::isIndex() const { return getKind() == Kind::Index; }
 
 /// Index is special integer-like type with unknown platform-dependent bit width
 /// used in subscripts and loop induction variables.
-class IndexType : public Type {
+class IndexType : public Type::TypeBase<IndexType, Type> {
 public:
-  using Type::Type;
+  using Base::Base;
 
   /// Crete an IndexType instance, unique in the given context.
-  static IndexType get(MLIRContext *context);
+  static IndexType get(MLIRContext *context) {
+    return Base::get(context, Kind::Index);
+  }
 
   /// Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) { return kind == Kind::Index; }
