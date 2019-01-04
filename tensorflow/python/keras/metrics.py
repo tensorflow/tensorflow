@@ -1716,6 +1716,38 @@ class Poisson(MeanMetricWrapper):
     return super(Poisson, cls).from_config(config)
 
 
+class KullbackLeiblerDivergence(MeanMetricWrapper):
+  """Computes kullback leibler divergence metric between `y_true` and `y_pred`.
+
+  metric = y_true * log(y_true / y_pred)
+
+  Usage:
+
+  ```python
+  m = tf.keras.metrics.KullbackLeiblerDivergence()
+  m.update_state([.4, .9, .2], [.5, .8, .12])
+  print('Final result: ', m.result().numpy())  # Final result: -0.043
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', metrics=[tf.keras.metrics.KullbackLeiblerDivergence()])
+  ```
+  """
+
+  def __init__(self, name='kullback_leibler_divergence', dtype=None):
+    super(KullbackLeiblerDivergence, self).__init__(
+        kullback_leibler_divergence, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(KullbackLeiblerDivergence, cls).from_config(config)
+
+
 def accuracy(y_true, y_pred):
   y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
