@@ -62,41 +62,24 @@ def all_strategy_combinations_with_graph_mode():
   return combinations.combine(distribution=all_strategies, mode=['graph'])
 
 
-def tpu_strategies_with_host_training_loop_disabled():
-  strategies = [s for s in all_strategies if not s.required_tpu]
-  strategies.append(combinations.tpu_strategy_loop_on_device)
-  strategies.append(combinations.tpu_strategy_one_step_loop_on_device)
-  return strategies
-
-
 def strategy_and_input_combinations():
   def cnn_model_with_batch_norm(**kwargs):
     return _create_cnn_model(with_batch_norm=True, **kwargs)
 
-  combinations_without_embedding_model = combinations.times(
-      combinations.combine(
-          distribution=tpu_strategies_with_host_training_loop_disabled()),
-      combinations.combine(mode=['graph', 'eager'],
-                           use_numpy=[True, False],
-                           use_validation_data=[True, False]),
-      combinations.combine(model_with_data=
-                           [ModelWithData('lstm',
-                                          _create_lstm_model,
-                                          _lstm_training_data)]))
-
-  combinations_with_embedding_model = combinations.times(
-      combinations.combine(distribution=all_strategies),
-      combinations.combine(mode=['graph', 'eager'],
-                           use_numpy=[True, False],
-                           use_validation_data=[True, False]),
-      combinations.combine(model_with_data=[
-          ModelWithData('dnn', _create_dnn_model, _dnn_training_data),
-          ModelWithData('cnn', _create_cnn_model, _cnn_training_data),
-          ModelWithData('cnn_batch_norm', cnn_model_with_batch_norm,
-                        _cnn_training_data, with_batch_norm=True),]))
-
-  return (combinations_with_embedding_model +
-          combinations_without_embedding_model)
+  return (
+      combinations.times(
+          combinations.combine(distribution=all_strategies),
+          combinations.combine(mode=['graph', 'eager'],
+                               use_numpy=[True, False],
+                               use_validation_data=[True, False]),
+          combinations.combine(model_with_data=[
+              ModelWithData('dnn', _create_dnn_model, _dnn_training_data),
+              ModelWithData('cnn', _create_cnn_model, _cnn_training_data),
+              ModelWithData('cnn_batch_norm',
+                            cnn_model_with_batch_norm,
+                            _cnn_training_data,
+                            with_batch_norm=True),
+          ])))
 
 
 class MaybeDistributionScope(object):
@@ -208,59 +191,6 @@ def _create_cnn_model(initial_weights=None, distribution=None,
   return model
 
 
-def _lstm_training_data(count=_GLOBAL_BATCH_SIZE * _EVAL_STEPS,
-                        min_words=10,
-                        max_words=20,
-                        max_word_id=99,
-                        num_classes=2):
-  distribution = []
-  for _ in range(num_classes):
-    dist = np.abs(np.random.randn(max_word_id))
-    dist /= np.sum(dist)
-    distribution.append(dist)
-
-  features = []
-  labels = []
-  for _ in range(count):
-    label = np.random.randint(0, num_classes, size=1)[0]
-    num_words = np.random.randint(min_words, max_words, size=1)[0]
-    word_ids = np.random.choice(
-        max_word_id, size=num_words, replace=True, p=distribution[label])
-    word_ids = word_ids
-    labels.append(label)
-    features.append(word_ids)
-
-  features = keras.preprocessing.sequence.pad_sequences(
-      features, maxlen=max_words)
-  x_train = np.asarray(features, dtype=np.float32)
-  y_train = np.asarray(labels, dtype=np.int32).reshape((count, 1))
-  x_predict = x_train
-  return x_train, y_train, x_predict
-
-
-def _create_lstm_model(max_words=20,
-                       initial_weights=None,
-                       distribution=None):
-  with MaybeDistributionScope(distribution):
-    word_ids = keras.layers.Input(
-        shape=(max_words,), dtype=np.int32, name='words')
-    word_embed = keras.layers.Embedding(input_dim=100, output_dim=10)(word_ids)
-    lstm_embed = keras.layers.LSTM(
-        units=8, return_sequences=False)(word_embed)
-
-    preds = keras.layers.Dense(2, activation='softmax')(lstm_embed)
-    model = keras.Model(inputs=[word_ids], outputs=[preds])
-
-    if initial_weights:
-      model.set_weights(initial_weights)
-
-    model.compile(
-        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.1),
-        loss='sparse_categorical_crossentropy',
-        metrics=['sparse_categorical_accuracy'])
-  return model
-
-
 def batch_wrapper(dataset, batch_size, distribution, repeat=None):
   if repeat:
     dataset = dataset.repeat(repeat)
@@ -313,7 +243,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
     }
   else:
     if len(x_train) < _GLOBAL_BATCH_SIZE * _EVAL_STEPS:
-      # Currently, we cannot detect the size of a dataset. So, the eval steps is
+      # Currently, we cannot detech the size of a dataset. So, the eval steps is
       # hard coded.
       raise ValueError('x_train must have at least '
                        '_GLOBAL_BATCH_SIZE * _EVAL_STEPS samples')
