@@ -562,7 +562,8 @@ Status ExtractForwardInput(OpKernelContext* context,
                            const CudnnModelTypes& model_types,
                            const Tensor** input, const Tensor** input_h,
                            const Tensor** input_c, const Tensor** params,
-                           CudnnRnnModelShapes* model_shapes) {
+                           CudnnRnnModelShapes* model_shapes,
+                           bool time_major) {
   TF_RETURN_IF_ERROR(context->input("input", input));
   TF_RETURN_IF_ERROR(context->input("input_h", input_h));
   if (model_types.HasInputC()) {
@@ -573,8 +574,13 @@ Status ExtractForwardInput(OpKernelContext* context,
   if ((*input)->dims() != 3) {
     return errors::InvalidArgument("RNN input must be a 3-D vector.");
   }
-  model_shapes->max_seq_length = (*input)->dim_size(0);
-  model_shapes->batch_size = (*input)->dim_size(1);
+  if (time_major) {
+    model_shapes->max_seq_length = (*input)->dim_size(0);
+    model_shapes->batch_size = (*input)->dim_size(1);
+  } else {
+    model_shapes->max_seq_length = (*input)->dim_size(1);
+    model_shapes->batch_size = (*input)->dim_size(0);
+  }
   model_shapes->input_size = (*input)->dim_size(2);
   model_shapes->input_shape = (*input)->shape();
   model_shapes->dir_count =
@@ -585,12 +591,23 @@ Status ExtractForwardInput(OpKernelContext* context,
   if ((*input_h)->dims() != 3) {
     return errors::InvalidArgument("RNN input_h must be a 3-D vector.");
   }
-  model_shapes->num_layers = (*input_h)->dim_size(0) / model_shapes->dir_count;
+  if (time_major) {
+    model_shapes->num_layers = (*input_h)->dim_size(0) / model_shapes->dir_count;
+  } else {
+    model_shapes->num_layers = (*input_h)->dim_size(1) / model_shapes->dir_count;
+  }
   model_shapes->num_units = (*input_h)->dim_size(2);
 
-  model_shapes->hidden_state_shape =
-      TensorShape({model_shapes->dir_count * model_shapes->num_layers,
-                   model_shapes->batch_size, model_shapes->num_units});
+  if (time_major) {
+    model_shapes->hidden_state_shape =
+        TensorShape({model_shapes->dir_count * model_shapes->num_layers,
+                     model_shapes->batch_size, model_shapes->num_units});
+  } else {
+    model_shapes->hidden_state_shape =
+        TensorShape({model_shapes->batch_size,
+                     model_shapes->dir_count * model_shapes->num_layers,
+                     model_shapes->num_units});
+  }
   if ((*input_h)->shape() != model_shapes->hidden_state_shape) {
     return errors::InvalidArgument(
         "Invalid input_h shape: ", (*input_h)->shape().DebugString(), " ",
@@ -604,9 +621,15 @@ Status ExtractForwardInput(OpKernelContext* context,
           (*input_c)->shape().DebugString());
     }
   }
-  model_shapes->output_shape =
-      TensorShape({model_shapes->max_seq_length, model_shapes->batch_size,
-                   model_shapes->dir_count * model_shapes->num_units});
+  if (time_major) {
+    model_shapes->output_shape =
+        TensorShape({model_shapes->max_seq_length, model_shapes->batch_size,
+                     model_shapes->dir_count * model_shapes->num_units});
+  } else {
+    model_shapes->output_shape =
+        TensorShape({model_shapes->batch_size, model_shapes->max_seq_length,
+                     model_shapes->dir_count * model_shapes->num_units});
+  }
   return Status::OK();
 }
 
@@ -617,10 +640,11 @@ Status ExtractForwardInput(OpKernelContext* context,
                            const Tensor** input, const Tensor** input_h,
                            const Tensor** input_c, const Tensor** params,
                            CudnnRnnModelShapes* model_shapes,
-                           const Tensor** sequence_lengths) {
+                           const Tensor** sequence_lengths,
+                           bool time_major) {
   TF_RETURN_IF_ERROR(context->input("sequence_lengths", sequence_lengths));
   return ExtractForwardInput(context, model_types, input, input_h, input_c,
-                             params, model_shapes);
+                             params, model_shapes, time_major);
 }
 
 template <typename T>
@@ -629,7 +653,8 @@ Status CreateForwardAndBackwardIODescriptors(
     std::unique_ptr<RnnSequenceTensorDescriptor>* input_desc,
     std::unique_ptr<RnnStateTensorDescriptor>* state_desc,
     std::unique_ptr<RnnSequenceTensorDescriptor>* output_desc,
-    const absl::Span<const int>& seq_lengths) {
+    const absl::Span<const int>& seq_lengths,
+    bool time_major) {
   StreamExecutor* executor = context->op_device_context()->stream()->parent();
   se::dnn::DataType data_type = ToDataType<T>::value;
 
@@ -639,11 +664,19 @@ Status CreateForwardAndBackwardIODescriptors(
 
   DCHECK_EQ(input_shape.dims(), 3);
   if (seq_lengths.data() != nullptr) {
-    auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
-        input_shape.dim_size(0), input_shape.dim_size(1),
-        input_shape.dim_size(2), seq_lengths, data_type);
-    TF_RETURN_IF_ERROR(input_desc_s.status());
-    *input_desc = input_desc_s.ConsumeValueOrDie();
+    if (time_major) {
+      auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
+          input_shape.dim_size(0), input_shape.dim_size(1),
+          input_shape.dim_size(2), seq_lengths, time_major, data_type);
+      TF_RETURN_IF_ERROR(input_desc_s.status());
+      *input_desc = input_desc_s.ConsumeValueOrDie();
+    } else {
+      auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
+          input_shape.dim_size(1), input_shape.dim_size(0),
+          input_shape.dim_size(2), seq_lengths, time_major, data_type);
+      TF_RETURN_IF_ERROR(input_desc_s.status());
+      *input_desc = input_desc_s.ConsumeValueOrDie();
+    }
   } else {
     auto input_desc_s = executor->createRnnSequenceTensorDescriptor(
         input_shape.dim_size(0), input_shape.dim_size(1),
@@ -653,19 +686,35 @@ Status CreateForwardAndBackwardIODescriptors(
   }
 
   DCHECK_EQ(hidden_state_shape.dims(), 3);
-  auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
-      hidden_state_shape.dim_size(0), hidden_state_shape.dim_size(1),
-      hidden_state_shape.dim_size(2), data_type);
-  TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
-  *state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+  if (time_major) {
+    auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
+        hidden_state_shape.dim_size(0), hidden_state_shape.dim_size(1),
+        hidden_state_shape.dim_size(2), data_type);
+    TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
+    *state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+  } else {
+    auto hidden_state_desc_s = executor->createRnnStateTensorDescriptor(
+        hidden_state_shape.dim_size(1), hidden_state_shape.dim_size(0),
+        hidden_state_shape.dim_size(2), data_type);
+    TF_RETURN_IF_ERROR(hidden_state_desc_s.status());
+    *state_desc = hidden_state_desc_s.ConsumeValueOrDie();
+  }
 
   DCHECK_EQ(output_shape.dims(), 3);
   if (seq_lengths.data() != nullptr) {
-    auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
-        output_shape.dim_size(0), output_shape.dim_size(1),
-        output_shape.dim_size(2), seq_lengths, data_type);
-    TF_RETURN_IF_ERROR(output_desc_s.status());
-    *output_desc = output_desc_s.ConsumeValueOrDie();
+    if (time_major) {
+      auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
+          output_shape.dim_size(0), output_shape.dim_size(1),
+          output_shape.dim_size(2), seq_lengths, time_major, data_type);
+      TF_RETURN_IF_ERROR(output_desc_s.status());
+      *output_desc = output_desc_s.ConsumeValueOrDie();
+    } else {
+      auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
+          output_shape.dim_size(1), output_shape.dim_size(0),
+          output_shape.dim_size(2), seq_lengths, time_major, data_type);
+      TF_RETURN_IF_ERROR(output_desc_s.status());
+      *output_desc = output_desc_s.ConsumeValueOrDie();
+    }
   } else {
     auto output_desc_s = executor->createRnnSequenceTensorDescriptor(
         output_shape.dim_size(0), output_shape.dim_size(1),
@@ -688,6 +737,7 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
                  /* forward outputs, outputs of the function */
                  Tensor* output, Tensor* output_h, Tensor* output_c,
                  const Tensor* sequence_lengths,
+                 bool time_major,
                  ScratchAllocator* reserve_space_allocator,
                  ScratchAllocator* workspace_allocator,
                  ProfileResult* output_profile_result) {
@@ -702,7 +752,7 @@ Status DoForward(OpKernelContext* context, const RnnDescriptor& rnn_desc,
   }
   TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptors<T>(
       context, model_shapes, &input_desc, &state_desc, &output_desc,
-      seq_lengths));
+      seq_lengths, time_major));
 
   auto input_data = AsDeviceMemory<T>(input);
   auto input_h_data = AsDeviceMemory<T>(input_h);
@@ -750,7 +800,7 @@ Status DoBackward(
     const Tensor* output_c_backprop, const Tensor* reserve_space,
     /* backprop outputs, output of the function */
     Tensor* input_backprop, Tensor* input_h_backprop, Tensor* input_c_backprop,
-    Tensor* params_backprop, const Tensor* sequence_lengths,
+    Tensor* params_backprop, const Tensor* sequence_lengths, bool time_major,
     ScratchAllocator* workspace_allocator,
     ProfileResult* output_profile_result) {
   std::unique_ptr<RnnSequenceTensorDescriptor> input_desc;
@@ -764,7 +814,7 @@ Status DoBackward(
   }
   TF_RETURN_IF_ERROR(CreateForwardAndBackwardIODescriptors<T>(
       context, model_shapes, &input_desc, &state_desc, &output_desc,
-      seq_lengths));
+      seq_lengths, time_major));
 
   auto input_data = AsDeviceMemory<T>(input);
   auto input_h_data = AsDeviceMemory<T>(input_h);
@@ -1216,13 +1266,14 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig algo_config;
-    ComputeAndReturnAlgorithm(context, &algo_config, false);
+    ComputeAndReturnAlgorithm(context, &algo_config, false, true);
   }
 
  protected:
   virtual void ComputeAndReturnAlgorithm(OpKernelContext* context,
                                          AlgorithmConfig* output_algo_config,
-                                         bool var_seq_lengths) {
+                                         bool var_seq_lengths,
+                                         bool time_major) {
     CHECK_NE(output_algo_config, nullptr);
 
     const Tensor* input = nullptr;
@@ -1235,11 +1286,12 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       OP_REQUIRES_OK(
           context, ExtractForwardInput(context, model_types(), &input, &input_h,
                                        &input_c, &params, &model_shapes,
-                                       &sequence_lengths));
+                                       &sequence_lengths, time_major));
     } else {
       OP_REQUIRES_OK(
           context, ExtractForwardInput(context, model_types(), &input, &input_h,
-                                       &input_c, &params, &model_shapes));
+                                       &input_c, &params, &model_shapes,
+                                       time_major));
     }
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
@@ -1282,13 +1334,13 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
         launch_status = DoForward<T>(
             context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
             input_c, params, is_training_, output, output_h, output_c,
-            sequence_lengths, &reserve_space_allocator, &workspace_allocator,
-            /*output_profile_result=*/nullptr);
+            sequence_lengths, time_major, &reserve_space_allocator,
+            &workspace_allocator, /*output_profile_result=*/nullptr);
       } else {
         launch_status = DoForward<T>(
             context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
             input_c, params, is_training_, output, output_h, output_c, nullptr,
-            &reserve_space_allocator, &workspace_allocator,
+            true, &reserve_space_allocator, &workspace_allocator,
             /*output_profile_result=*/nullptr);
       }
     }
@@ -1372,7 +1424,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig best_algo_config;
     CudnnRNNForwardOp<GPUDevice, T>::ComputeAndReturnAlgorithm(
-        context, &best_algo_config, false);
+        context, &best_algo_config, false, true);
     if (!context->status().ok()) {
       return;
     }
@@ -1493,7 +1545,8 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       status = DoForward<T>(
           context, *rnn_desc, model_types(), model_shapes, input, input_h,
           input_c, params, is_training(), output, output_h, output_c, nullptr,
-          &reserve_space_allocator, &workspace_allocator, &fwd_profile_result);
+          true, &reserve_space_allocator, &workspace_allocator,
+          &fwd_profile_result);
       if (!status.ok()) {
         continue;
       }
@@ -1506,7 +1559,7 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
             input_c, params, output, output_h, output_c, &output_backprop,
             &output_h_backprop, &output_c_backprop, &reserve_space,
             &input_backprop, &input_h_backprop, &input_c_backprop,
-            &params_backprop, nullptr, &workspace_allocator,
+            &params_backprop, nullptr, true, &workspace_allocator,
             &bak_profile_result);
         if (!status.ok()) {
           continue;
@@ -1561,15 +1614,19 @@ class CudnnRNNForwardOpV3<GPUDevice, T>
   using CudnnRNNKernelCommon::dropout;
   using CudnnRNNKernelCommon::HasInputC;
   using CudnnRNNKernelCommon::model_types;
-
+  bool time_major_;
+ protected:
+  bool time_major() { return time_major_; }
  public:
   explicit CudnnRNNForwardOpV3(OpKernelConstruction* context)
-      : CudnnRNNForwardOp<GPUDevice, T>(context) {}
+      : CudnnRNNForwardOp<GPUDevice, T>(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("time_major", &time_major_));
+  }
 
   void Compute(OpKernelContext* context) override {
     AlgorithmConfig best_algo_config;
     CudnnRNNForwardOp<GPUDevice, T>::ComputeAndReturnAlgorithm(
-        context, &best_algo_config, true);
+        context, &best_algo_config, true, time_major());
     if (!context->status().ok()) {
       return;
     }
@@ -1604,11 +1661,12 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       : CudnnRNNKernelCommon(context) {}
 
   void Compute(OpKernelContext* context) override {
-    ComputeImpl(context, false);
+    ComputeImpl(context, false, true);
   }
 
  protected:
-  virtual void ComputeImpl(OpKernelContext* context, bool var_seq_lengths) {
+  virtual void ComputeImpl(OpKernelContext* context, bool var_seq_lengths,
+                           bool time_major) {
     const Tensor* input = nullptr;
     const Tensor* input_h = nullptr;
     const Tensor* input_c = nullptr;
@@ -1619,11 +1677,12 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       OP_REQUIRES_OK(
           context, ExtractForwardInput(context, model_types(), &input, &input_h,
                                        &input_c, &params, &model_shapes,
-                                       &sequence_lengths));
+                                       &sequence_lengths, time_major));
     } else {
       OP_REQUIRES_OK(
           context, ExtractForwardInput(context, model_types(), &input, &input_h,
-                                       &input_c, &params, &model_shapes));
+                                       &input_c, &params, &model_shapes,
+                                       time_major));
     }
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
@@ -1671,7 +1730,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
             input_c, params, output, output_h, output_c, output_backprop,
             output_h_backprop, output_c_backprop, reserve_space, input_backprop,
             input_h_backprop, input_c_backprop, params_backprop,
-            sequence_lengths, &workspace_allocator,
+            sequence_lengths, time_major, &workspace_allocator,
             /*output_profile_result=*/nullptr);
       } else {
         launch_status = DoBackward<T>(
@@ -1679,7 +1738,8 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
             input_c, params, output, output_h, output_c, output_backprop,
             output_h_backprop, output_c_backprop, reserve_space, input_backprop,
             input_h_backprop, input_c_backprop, params_backprop, nullptr,
-            &workspace_allocator, /*output_profile_result=*/nullptr);
+            true, &workspace_allocator,
+            /*output_profile_result=*/nullptr);
       }
     }
     OP_REQUIRES_OK(context, launch_status);
@@ -1827,12 +1887,18 @@ TF_CALL_double(REGISTER_GPU);
 template <typename T>
 class CudnnRNNBackwardOpV3<GPUDevice, T>
     : public CudnnRNNBackwardOp<GPUDevice, T> {
+ private:
+  bool time_major_;
+ protected:
+  bool time_major() { return time_major_; }
  public:
   explicit CudnnRNNBackwardOpV3(OpKernelConstruction* context)
-      : CudnnRNNBackwardOp<GPUDevice, T>(context) {}
+      : CudnnRNNBackwardOp<GPUDevice, T>(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("time_major", &time_major_));
+  }
 
   void Compute(OpKernelContext* context) override {
-    CudnnRNNBackwardOp<GPUDevice, T>::ComputeImpl(context, true);
+    CudnnRNNBackwardOp<GPUDevice, T>::ComputeImpl(context, true, time_major());
   }
 };
 

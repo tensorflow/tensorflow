@@ -378,20 +378,33 @@ class _CudnnRNN(base_layer.Layer):
            inputs,
            initial_state=None,
            sequence_lengths=None,
+           time_major=True,
            training=True):
     """Runs the forward step for the RNN model.
 
     Args:
-      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]`.
+      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]` if
+        'time_major == True' (default) or `[batch_size, time_len, input_size]`
+        if 'time_major == False'.
       initial_state: a tuple of tensor(s) of shape
-        `[num_layers * num_dirs, batch_size, num_units]`. If not provided, use
+        `[num_layers * num_dirs, batch_size, num_units]` if
+        'time_major == True' (default) or `[batch_size, num_layers * num_dirs,
+        num_units]` if 'time_major == False'. If not provided, use
         zero initial states. The tuple size is 2 for LSTM and 1 for other RNNs.
       sequence_lengths: an int32 array representing the variable sequence
         lengths in a batch. The size of the array has to equal the
         batch_size. If not provided, the same sequence length will be assumed.
+      time_major: The shape format of the 'inputs' and 'outputs' Tensors. If
+        true, these Tensors must be shaped ['max_time', 'batch_size', 'depth'].
+        If false, these Tensors must be shaped ['batch_size', 'max_time',
+        'depth']. By default this function accepts input and emits output in
+        time-major form. This param is only effective when 'sequence_lengths'
+        is used.
       training: whether this operation will be used in training or inference.
     Returns:
-      output: a tensor of shape `[time_len, batch_size, num_dirs * num_units]`.
+      output: a tensor of shape `[time_len, batch_size, num_dirs * num_units]`
+        if 'time_major == True' (default) or `[batch_size, time_len,
+        num_dirs * num_units]` if 'time_major == False'.
         It is a `concat([fwd_output, bak_output], axis=2)`.
       output_states: a tuple of tensor(s) of the same shape and structure as
         `initial_state`.
@@ -418,7 +431,8 @@ class _CudnnRNN(base_layer.Layer):
       # For model that doesn't take input_c, replace with a dummy tensor.
       c = array_ops.constant([], dtype=dtype)
     outputs, (output_h, output_c) = self._forward(inputs, h, c, self.kernel,
-                                                  sequence_lengths, training)
+                                                  sequence_lengths, time_major,
+                                                  training)
     if self._rnn_mode == CUDNN_LSTM:
       return outputs, (output_h, output_c)
     else:
@@ -482,7 +496,8 @@ class _CudnnRNN(base_layer.Layer):
           dropout=self._dropout,
           direction=self._direction)
 
-  def _forward(self, inputs, h, c, opaque_params, sequence_lengths, training):
+  def _forward(self, inputs, h, c, opaque_params, sequence_lengths, time_major,
+               training):
     output, output_h, output_c = cudnn_rnn_ops._cudnn_rnn(  # pylint:disable=protected-access
         inputs,
         h,
@@ -491,6 +506,7 @@ class _CudnnRNN(base_layer.Layer):
         training,
         self._rnn_mode,
         sequence_lengths=sequence_lengths,
+        time_major=time_major,
         input_mode=self._input_mode,
         direction=self._direction,
         dropout=self._dropout,
