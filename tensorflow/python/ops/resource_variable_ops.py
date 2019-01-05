@@ -403,10 +403,12 @@ class ResourceVariable(variables.VariableV1):
         handle_name = ops._name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name
+          unique_id = shared_name
         else:
           # When in eager mode use a uid for the shared_name, to prevent
           # accidental sharing.
-          shared_name = "%s_%d" % (handle_name, ops.uid())
+          unique_id = "%s_%d" % (handle_name, ops.uid())
+          shared_name = context.shared_name()
         # Use attr_scope and device(None) to simulate the behavior of
         # colocate_with when the variable we want to colocate with doesn't
         # yet exist.
@@ -434,7 +436,7 @@ class ResourceVariable(variables.VariableV1):
               "variable inside a loop or conditional, use a lambda as the "
               "initializer." % name)
         # pylint: enable=protected-access
-        self._unique_id = shared_name
+        self._unique_id = unique_id
         self._initial_value = initial_value if self._in_graph_mode else None
         self._handle_name = handle_name + ":0"
         self._dtype = initial_value.dtype.base_dtype
