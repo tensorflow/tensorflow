@@ -11,7 +11,7 @@ import tensorflow.contrib.slim as slim
 
 ## Why TF-Slim?
 
-TF-Slim is a library that makes building, training and evaluation neural
+TF-Slim is a library that makes defining, training and evaluating neural
 networks simple:
 
 * Allows the user to define models much more compactly by eliminating
@@ -78,7 +78,7 @@ provides convenience wrappers for variable creation and manipulation.
 ## Defining Models
 
 Models can be succinctly defined using TF-Slim by combining its variables,
-layers and scopes. Each of these elements are defined below.
+layers and scopes. Each of these elements is defined below.
 
 ### Variables
 
@@ -164,7 +164,7 @@ While the set of TensorFlow operations is quite extensive, developers of
 neural networks typically think of models in terms of higher level concepts
 like "layers", "losses", "metrics", and "networks". A layer,
 such as a Convolutional Layer, a Fully Connected Layer or a BatchNorm Layer
-are more abstract than a single TensorFlow operation and typically involve
+is more abstract than a single TensorFlow operation and typically involve
 several operations. Furthermore, a layer usually (but not always) has
 variables (tunable parameters) associated with it, unlike more primitive
 operations. For example, a Convolutional Layer in a neural network
@@ -455,7 +455,7 @@ loss = slim.losses.softmax_cross_entropy(predictions, labels)
 ```
 
 In this example, we start by creating the model (using TF-Slim's VGG
-implementation), and add the standard classification loss. Now, lets turn
+implementation), and add the standard classification loss. Now, let's turn
 to the case where we have a multi-task model that produces multiple outputs:
 
 
@@ -555,7 +555,7 @@ that we'll save a model checkpoint every 10 minutes.
 
 ### Working Example: Training the VGG16 Model
 
-To illustrate this, lets
+To illustrate this, let's
 examine the following sample of training the VGG network:
 
 ```python
@@ -738,7 +738,7 @@ slim.learning.train(train_op, log_dir, init_fn=init_fn)
 
 Once we've trained a model (or even while the model is busy training) we'd like
 to see how well the model performs in practice. This is accomplished by picking
-a set of evaluation metrics, which will grade the models performance, and the
+a set of evaluation metrics, which will grade the model's performance, and the
 evaluation code which actually loads the data, performs inference, compares the
 results to the ground truth and records the evaluation scores. This step may be
 performed once or repeated periodically.
