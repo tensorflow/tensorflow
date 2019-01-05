@@ -360,7 +360,7 @@ void OpEmitter::emitVerifier() {
   auto valueInit = def.getValueInit("verifier");
   CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
   bool hasCustomVerify = codeInit && !codeInit->getValue().empty();
-  if (!hasCustomVerify && op.getNumAttributes() == 0)
+  if (!hasCustomVerify && op.getNumArgs() == 0)
     return;
 
   os << "  bool verify() const {\n";
@@ -382,6 +382,20 @@ void OpEmitter::emitVerifier() {
        << ">()) return emitOpError(\"requires "
        << attr.record->getValueAsString("returnType").trim() << " attribute '"
        << name << "'\");\n";
+  }
+
+  // TODO: Handle variadic.
+  int opIndex = 0;
+  for (const auto &operand : op.getOperands()) {
+    // TODO: Commonality between matchers could be extracted to have a more
+    // concise code.
+    if (operand.hasMatcher()) {
+      auto pred =
+          "if (!(" + operand.createTypeMatcherTemplate() + ")) return false;\n";
+      os.indent(4) << formatv(pred, "this->getInstruction()->getOperand(" +
+                                        Twine(opIndex) + ")->getType()");
+    }
+    ++opIndex;
   }
 
   if (hasCustomVerify)

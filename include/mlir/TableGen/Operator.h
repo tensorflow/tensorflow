@@ -28,6 +28,7 @@
 #include "llvm/ADT/StringRef.h"
 
 namespace llvm {
+class CodeInit;
 class DefInit;
 class Record;
 class StringInit;
@@ -69,6 +70,10 @@ public:
 
   // Operations operand accessors.
   struct Operand {
+    bool hasMatcher() const;
+    // Return the matcher template for the operand type.
+    std::string createTypeMatcherTemplate() const;
+
     llvm::StringInit *name;
     llvm::DefInit *defInit;
   };
@@ -85,6 +90,7 @@ public:
   using Argument = llvm::PointerUnion<Attribute *, Operand *>;
   Argument getArg(int index);
   StringRef getArgName(int index) const;
+  int getNumArgs() const { return operands.size() + attributes.size(); }
 
 private:
   // Populates the operands and attributes.

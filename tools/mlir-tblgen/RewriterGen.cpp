@@ -21,6 +21,7 @@
 
 #include "mlir/TableGen/GenInfo.h"
 #include "mlir/TableGen/Operator.h"
+#include "mlir/TableGen/Predicate.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
@@ -130,7 +131,8 @@ void Pattern::collectBoundArguments(DagInit *tree) {
 }
 
 // Helper function to match patterns.
-static void matchOp(DagInit *tree, int depth, raw_ostream &os) {
+static void matchOp(Record *pattern, DagInit *tree, int depth,
+                    raw_ostream &os) {
   Operator op(cast<DefInit>(tree->getOperator())->getDef());
   int indent = 4 + 2 * depth;
   // Skip the operand matching at depth 0 as the pattern rewriter already does.
@@ -141,6 +143,11 @@ static void matchOp(DagInit *tree, int depth, raw_ostream &os) {
         "if (!op{0}->isa<{1}>()) return matchFailure();\n", depth,
         op.qualifiedCppClassName());
   }
+  if (tree->getNumArgs() != op.getNumArgs())
+    PrintFatalError(pattern->getLoc(),
+                    Twine("mismatch in number of arguments to op '") +
+                        op.getOperationName() +
+                        "' in pattern and op's definition");
   for (int i = 0, e = tree->getNumArgs(); i != e; ++i) {
     auto arg = tree->getArg(i);
     if (auto argTree = dyn_cast<DagInit>(arg)) {
@@ -148,10 +155,40 @@ static void matchOp(DagInit *tree, int depth, raw_ostream &os) {
       os.indent(indent + 2) << formatv(
           "auto op{0} = op{1}->getOperand({2})->getDefiningInst();\n",
           depth + 1, depth, i);
-      matchOp(argTree, depth + 1, os);
+      matchOp(pattern, argTree, depth + 1, os);
       os.indent(indent) << "}\n";
       continue;
     }
+
+    // Verify arguments.
+    if (auto defInit = dyn_cast<DefInit>(arg)) {
+      auto opArg = op.getArg(i);
+      // Verify operands.
+      if (auto *operand = opArg.dyn_cast<Operator::Operand *>()) {
+        // Skip verification where not needed due to definition of op.
+        if (operand->defInit == defInit)
+          goto SkipOperandVerification;
+
+        if (!defInit->getDef()->isSubClassOf("Type"))
+          PrintFatalError(pattern->getLoc(),
+                          "type argument required for operand");
+
+        // TODO(jpienaar): Factor out type class and move these there.
+        auto predicate = defInit->getDef()->getValue("predicate")->getValue();
+        auto predCnf = cast<DefInit>(predicate);
+        auto conjunctiveList =
+            predCnf->getDef()->getValueAsListInit("conditions");
+        PredCNF pred(conjunctiveList);
+        os.indent(indent)
+            << "if (!("
+            << formatv(pred.createTypeMatcherTemplate().c_str(),
+                       formatv("op{0}->getOperand({1})->getType()", depth, i))
+            << ")) return matchFailure();\n";
+      }
+    }
+  SkipOperandVerification:
+    // TODO(jpienaar): Verify attributes.
+
     auto name = tree->getArgNameStr(i);
     if (name.empty())
       continue;
@@ -168,7 +205,7 @@ void Pattern::emitMatcher(DagInit *tree) {
     if (op0->getNumResults() != 1) return matchFailure();
     auto state = std::make_unique<MatchedState>();)"
      << "\n";
-  matchOp(tree, 0, os);
+  matchOp(pattern, tree, 0, os);
   os.indent(4) << "return matchSuccess(std::move(state));\n  }\n";
 }
 

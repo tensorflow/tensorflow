@@ -27,16 +27,38 @@
 // Types.
 //===----------------------------------------------------------------------===//
 
+// Singular predicate condition.
+class PredAtom<code PredCall, bit Negated = 0> {
+  // The function to invoke to compute the predicate.
+  code predCall = PredCall;
+
+  // Whether the predicate result should be negated.
+  bit negated = 0;
+}
+
+// Predicate atoms in conjunctive normal form. The inner list consists
+// of PredAtoms, one of which in the list must hold, while all the outer
+// most conditions must hold. Conceptually
+//   all_of(outer_conditions, any_of(inner_conditions)).
+class PredCNF<list<list<PredAtom>> Conditions> {
+  list<list<PredAtom>> conditions = Conditions;
+}
+
 // Base class for all types.
 class Type {
   // The builder call to invoke (if specified) to construct the Type.
+  // Format: this will be affixed to the builder.
   code builderCall = ?;
+  // The predicates that this type satisfies.
+  // Format: {0} will be expanded to the type.
+  PredCNF predicate = ?;
 }
 
 // Integer types.
 class I<int width> : Type {
   int bitwidth = width;
   let builderCall = "getIntegerType(" # bitwidth # ")";
+  let predicate = PredCNF<[[PredAtom<"{0}.isInteger(" # bitWidth # ")">]]>;
 }
 def I1  : I<1>;
 def I32 : I<32>;
@@ -45,24 +67,65 @@ def I32 : I<32>;
 class F<int width> : Type {
   int bitwidth = width;
 }
+def IsF32TypePred : PredAtom<"{0}.isF32()">;
 def F32 : F<32> {
   let builderCall = "getF32Type()";
+  let predicate = PredCNF<[[IsF32TypePred]]>;
 }
+
+// A container type is a type that has another embedded within it.
+class ContainerType<Type ElementType,
+                    list<list<PredAtom>> ContainerPred> : Type {
+  // The type of elements in the container.
+  Type elementType = ElementType;
+
+  // Call to retrieve.
+  code getElementTypeCall = ?;
+
+  let predicate = PredCNF<
+    !foldl(
+      // Initialize with the predicate of the container.
+      ContainerPred,
+      elementType.predicate.conditions, a, b,
+      // Add constraints of the element type.
+      !listconcat(a, [!foldl([]<PredAtom>, b, c, d,
+        !listconcat(c, [PredAtom<
+          !subst("{0}", !cast<string>(getElementTypeCall),
+                        !cast<string>(d.predCall))>]
+        ))]
+      )
+    )
+  >;
+}
+
+def IsVectorTypePred : PredAtom<"{0}.isa<VectorType>()">;
 
 // Vector types.
-class Vector<Type t, list<int> dims> : Type {
-  Type elementType = t;
+class Vector<Type t, list<int> dims> : ContainerType<t, [[IsVectorTypePred]]> {
   list<int> dimensions = dims;
+  let getElementTypeCall = "{0}.cast<VectorType>().getElementType()";
+  // TODO: match dims in predicate.
 }
 
+def IsTensorTypePred : PredAtom<"{0}.isa<TensorType>()">;
+
 // Tensor type.
+class TypedTensor<Type t> : ContainerType<t, [[IsTensorTypePred]]> {
+  let getElementTypeCall = "{0}.cast<TensorType>().getElementType()";
+}
+
 // This represents a generic tensor without constraints on elemental type,
 // rank, size.
-def Tensor : Type;
+def Tensor : Type {
+  let predicate = PredCNF<[[IsTensorTypePred]]>;
+}
+
+def F32Tensor : TypedTensor<F32>;
 
 // String type.
 def String : Type;
 
+// Type corresponding to derived attribute.
 def DerivedAttrBody : Type;
 
 //===----------------------------------------------------------------------===//
