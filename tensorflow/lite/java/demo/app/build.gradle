@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 26
-    buildToolsVersion "26.0.1"
+    buildToolsVersion '28.0.3'
     defaultConfig {
         applicationId "android.example.com.tflitecamerademo"
         // Required by Camera2 API.
@@ -10,11 +10,6 @@ android {
         targetSdkVersion 26
         versionCode 1
         versionName "1.0"
-
-        // Remove this block.
-        jackOptions {
-            enabled true
-        }
     }
     lintOptions {
         abortOnError false
@@ -51,15 +46,16 @@ allprojects {
 
 
 dependencies {
-    compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile 'com.android.support:appcompat-v7:25.2.0'
-    compile 'com.android.support.constraint:constraint-layout:1.0.2'
-    compile 'com.android.support:design:25.2.0'
-    compile 'com.android.support:support-annotations:25.3.1'
-    compile 'com.android.support:support-v13:25.2.0'
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.android.support:appcompat-v7:26.1.0'
+    implementation 'com.android.support.constraint:constraint-layout:1.1.3'
+    implementation 'com.android.support:design:26.1.0'
+    implementation 'com.android.support:support-annotations:26.1.0'
+    implementation 'com.android.support:support-v13:26.1.0'
 
     // Build off of nightly TensorFlow Lite
-    compile 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    // This is necessary right now because GpuDelegate is not released yet (see commit 034565a)
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
     // Use local TensorFlow library
     // compile 'org.tensorflow:tensorflow-lite-local:0.0.0'
 }
