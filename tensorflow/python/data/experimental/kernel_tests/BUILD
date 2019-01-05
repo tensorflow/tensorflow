@@ -650,13 +650,13 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
