@@ -133,8 +133,7 @@ Status AllocateScopedShapedBuffer(
 XRTBufferAllocation::XRTBufferAllocation(const se::DeviceMemoryBase& allocation,
                                          int device_ordinal,
                                          xla::DeviceMemoryAllocator* allocator)
-    : size_(allocation.size()),
-      allocation_(allocation),
+    : allocation_(allocation),
       device_ordinal_(device_ordinal),
       allocator_(allocator) {
   if (VLOG_IS_ON(2)) {
@@ -224,19 +223,8 @@ Status XRTTupleAllocation::ToLiteral(xla::Backend* backend, int device_ordinal,
                                      xla::Literal* literal) {
   auto transfer_manager = backend->transfer_manager();
   TF_ASSIGN_OR_RETURN(auto stream, backend->BorrowStream(device_ordinal));
-
-  // Validate the allocation buffers as if nulls gets to
-  // TransferLiteralFromDevice() a CHECK is issued.
-  xla::ShapedBuffer shaped_buffer = ToShapedBuffer();
-  for (auto& index_buffer : shaped_buffer.buffers()) {
-    if (index_buffer.second.is_null()) {
-      return errors::InvalidArgument("Literal buffer at index ",
-                                     index_buffer.first.ToString(),
-                                     " has been released");
-    }
-  }
   TF_ASSIGN_OR_RETURN(*literal, transfer_manager->TransferLiteralFromDevice(
-                                    stream.get(), shaped_buffer));
+                                    stream.get(), ToShapedBuffer()));
   return Status::OK();
 }
 
@@ -517,34 +505,11 @@ xla::ShapedBuffer XRTTupleAllocation::ToShapedBuffer() {
   return shaped_buffer;
 }
 
-Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
-                                           const xla::ShapeIndex& source_index,
-                                           const xla::ShapeIndex& dest_index) {
-  XRTBufferAllocation* source_buffer = source.buffers_.element(source_index);
-  XRTBufferAllocation* dest_buffer = buffers_.element(dest_index);
-  // We allow the destination size being zero, because there are cases where we
-  // are coming in later filling in null/uninitialized device buffers.
-  // In all other cases, the size of the new buffer must match.
-  if (source_buffer->size() != dest_buffer->size() &&
-      dest_buffer->size() != 0) {
-    return errors::InvalidArgument(
-        "Source buffer at index ", source_index.ToString(),
-        " does not match the size of destination buffer at index ",
-        dest_index.ToString(), ": ", source_buffer->size(), " vs ",
-        dest_buffer->size());
-  }
-  *buffers_.mutable_element(dest_index) = source_buffer;
-  source_buffer->Ref();
-  dest_buffer->Unref();
-  return Status::OK();
-}
-
 xla::ShapeTree<xla::MaybeOwningDeviceMemory>
-XRTTupleAllocation::ToDeviceMemoryTree(
-    const std::function<bool(const xla::ShapeIndex&)>& release_checker) {
+XRTTupleAllocation::ToDeviceMemoryTree(bool release) {
   xla::ShapeTree<xla::MaybeOwningDeviceMemory> shaped_tree(on_device_shape());
   for (const auto& buffer : buffers_) {
-    if (!release_checker(buffer.first)) {
+    if (!release) {
       *shaped_tree.mutable_element(buffer.first) = buffer.second->allocation();
     } else {
       *shaped_tree.mutable_element(buffer.first) = xla::OwningDeviceMemory(

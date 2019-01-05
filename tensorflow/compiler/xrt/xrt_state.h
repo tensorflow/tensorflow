@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_XRT_STATE_H_
 #define TENSORFLOW_COMPILER_XRT_XRT_STATE_H_
 
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -59,14 +58,7 @@ class XRTBufferAllocation : public core::RefCounted {
   // freed when the reference count drops to zero.
   void DiscardAllocation();
 
-  // Returns the expected size of the allocation. Since DiscardAllocation() will
-  // set allocation_ to {null,0}, and since later we might want to replace the
-  // discarded buffer with a new one, we need to be able to verify the size
-  // compatibility.
-  uint64 size() const { return size_; }
-
  private:
-  uint64 size_ = 0;
   se::DeviceMemoryBase allocation_;
   int device_ordinal_;
   xla::DeviceMemoryAllocator* allocator_;
@@ -176,18 +168,9 @@ class XRTTupleAllocation : public ResourceBase {
   // the same shape as on_host_shape.
   xla::ShapedBuffer ToShapedBuffer();
 
-  // Aliases the source buffer at source_index into the current tuple allocation
-  // dest_index.
-  Status AliasBufferFrom(const XRTTupleAllocation& source,
-                         const xla::ShapeIndex& source_index,
-                         const xla::ShapeIndex& dest_index);
-
-  // Returns the device memory tree of this allocation. If the release_checker
-  // function returns true for a given index, the ownership of the device memory
-  // at that index is transferred to the result. Every attempt to read the value
-  // at that index will fail.
-  xla::ShapeTree<xla::MaybeOwningDeviceMemory> ToDeviceMemoryTree(
-      const std::function<bool(const xla::ShapeIndex&)>& release_checker);
+  // Returns the device memory tree of this allocation. If 'release' is set, the
+  // ownership of the device memory is transferred to the result.
+  xla::ShapeTree<xla::MaybeOwningDeviceMemory> ToDeviceMemoryTree(bool release);
 
   string DebugString() override { return "XLA allocation handle"; }
 

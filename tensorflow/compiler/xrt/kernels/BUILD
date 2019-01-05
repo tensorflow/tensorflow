@@ -55,7 +55,6 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xrt:xrt_proto",
         "//tensorflow/compiler/xrt:xrt_utils",
         "//tensorflow/core:core_cpu_internal",
