@@ -575,7 +575,7 @@ class Adamax(Optimizer):
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
-    self.updates = [state_ops.assign_add(self.iterations, 1)]
+    self.updates = []
 
     lr = self.lr
     if self.initial_decay > 0:
@@ -583,7 +583,8 @@ class Adamax(Optimizer):
           1. / (1. + self.decay * math_ops.cast(self.iterations,
                                                 K.dtype(self.decay))))
 
-    t = math_ops.cast(self.iterations, K.floatx()) + 1
+    with ops.control_dependencies([state_ops.assign_add(self.iterations, 1)]):
+      t = math_ops.cast(self.iterations, K.floatx())
     lr_t = lr / (1. - math_ops.pow(self.beta_1, t))
 
     shapes = [K.int_shape(p) for p in params]
