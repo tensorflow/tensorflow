@@ -404,6 +404,7 @@ SingleResultAffineNormalizer::SingleResultAffineNormalizer(
           assert(!pred->getDefiningInst() ||
                  !pred->getDefiningInst()->isa<AffineApplyOp>() &&
                      "AffineApplyOp chain of length > 1");
+          (void)pred;
         }
         exprs.push_back(renumber(app));
       } else if (auto constant = inst->dyn_cast<ConstantOp>()) {
