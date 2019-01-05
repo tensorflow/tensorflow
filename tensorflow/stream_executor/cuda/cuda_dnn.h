@@ -63,6 +63,7 @@ class CudnnSupport : public dnn::DnnSupport {
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int>& seq_lengths,
+                                    bool time_major,
                                     dnn::DataType data_type) override;
 
   port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
