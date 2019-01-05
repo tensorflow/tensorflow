@@ -29,6 +29,7 @@ load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/keras_applications_archive:workspace.bzl", keras_applications = "repo")
+load("//third_party/pasta:workspace.bzl", pasta = "repo")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -41,6 +42,7 @@ def initialize_third_party():
     kissfft()
     jpeg()
     nasm()
+    pasta()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
