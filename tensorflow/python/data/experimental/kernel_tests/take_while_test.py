@@ -83,19 +83,24 @@ class TakeWhileTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.assertEqual(b"test", self.evaluate(next_element()))
 
-  def testTakewhileDatasetShortCircuit(self):
+  @parameterized.parameters(
+      (5, 3),
+      (10, 0),
+      (100, 5),
+      (8, 7))
+  def testTakewhileDatasetShortCircuit(self, size, index):
     def _predicate_func(data_elem):
       return data_elem
 
-    boolean_array = [True, True, True, True, False]
+    boolean_array = [True]*size
+    boolean_array[index] = False
     dataset = dataset_ops.Dataset.from_tensor_slices(boolean_array).apply(
         take_while_ops.take_while(_predicate_func))
 
     next_element = self.getNext(dataset)
-    self.assertEqual(True, self.evaluate(next_element()))
-    self.assertEqual(True, self.evaluate(next_element()))
-    self.assertEqual(True, self.evaluate(next_element()))
-    self.assertEqual(True, self.evaluate(next_element()))
+
+    for _ in range(index):
+      self.assertTrue(self.evaluate(next_element()))
 
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())

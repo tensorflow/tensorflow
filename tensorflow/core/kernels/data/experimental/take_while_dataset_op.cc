@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -33,7 +34,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
  public:
   using LoopIteratorPredicate =
       std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
-                           std::vector<Tensor>, bool*)>;
+                           std::vector<Tensor>&, bool*)>;
 
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
@@ -106,8 +107,9 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::TakeWhile")}, loop_pred_));
+      return MakeUnique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::TakeWhile")},
+          loop_pred_);
     }
 
     const DataTypeVector& output_dtypes() const override {
