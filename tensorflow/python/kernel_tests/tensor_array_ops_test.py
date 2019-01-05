@@ -1005,7 +1005,6 @@ class TensorArrayTest(test.TestCase):
     self._testWhileLoopWritePackGradients(
         dynamic_size=True, dtype=dtypes.float32)
 
-  @test_util.disable_control_flow_v2("b/119323158")
   def testGradSerialTwoLoops(self):
     with self.session(use_gpu=True):
       def loop(x):
