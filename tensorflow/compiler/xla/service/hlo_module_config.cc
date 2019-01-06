@@ -38,11 +38,15 @@ void HloModuleConfig::SetDefaultComputationLayout(
   entry_computation_layout_ = ComputationLayout(program_shape);
 }
 
+void HloModuleConfig::set_input_mapping(
+    const std::vector<int32>& input_mapping) {
+  absl::c_copy(input_mapping, std::back_inserter(input_mapping_));
+}
+
 void HloModuleConfig::set_resource_update_to_input_index(
     const std::vector<int32>& resource_update_to_input_index) {
-  std::copy(resource_update_to_input_index.begin(),
-            resource_update_to_input_index.end(),
-            std::back_inserter(resource_update_to_input_index_));
+    absl::c_copy(resource_update_to_input_index,
+                 std::back_inserter(resource_update_to_input_index_));
 }
 
 string HloModuleConfig::compilation_cache_key() const {
@@ -63,8 +67,15 @@ string HloModuleConfig::compilation_cache_key() const {
   if (replica_count() != 1) {
     StrAppend(&key, "::replica_count=", replica_count());
   }
+  if (argument_count() != 0) {
+    StrAppend(&key, "::argument_count=", argument_count());
+  }
   if (resource_input_count() != 0) {
     StrAppend(&key, "::resource_input_count=", resource_input_count());
+  }
+  if (input_mapping_.size()) {
+    StrAppend(&key, "::input_mapping=",
+              absl::StrJoin(input_mapping(), ","));
   }
   if (resource_update_to_input_index().size()) {
     StrAppend(&key, "::resource_update_to_input_index=",

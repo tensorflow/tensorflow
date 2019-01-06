@@ -96,12 +96,16 @@ ExecutionOptions CreateExecutionOptions(
     const ExecutableBuildOptions& build_options,
     const ProgramShape* program_shape) {
   ExecutionOptions execution_options = CreateDefaultExecutionOptions();
+  execution_options.set_argument_count(
+      build_options.argument_count());
   execution_options.set_resource_input_count(
       build_options.resource_input_count());
-  for (const int input_index : build_options.resource_update_to_input_index()) {
-    execution_options.add_resource_update_to_input_index(input_index);
+  for (const int i : build_options.input_mapping()) {
+    execution_options.add_input_mapping(i);
   }
-
+  for (const int i : build_options.resource_update_to_input_index()) {
+    execution_options.add_resource_update_to_input_index(i);
+  }
   if (build_options.hlo_profile().has_value()) {
     execution_options.mutable_debug_options()->set_xla_hlo_profile(
         *build_options.hlo_profile());

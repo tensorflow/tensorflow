@@ -100,7 +100,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -467,7 +469,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(2);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -843,7 +847,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(2);
   config.set_resource_input_count(0);
+  config.set_input_mapping({0, 1});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -955,7 +961,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
-  config.set_resource_input_count(2);
+  config.set_argument_count(3);
+  config.set_resource_input_count(3);
+  config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1031,8 +1039,10 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(4);
   config.set_resource_input_count(2);
-  config.set_resource_update_to_input_index({0});
+  config.set_input_mapping({0, 1, 2});
+  config.set_resource_update_to_input_index({});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
@@ -1113,7 +1123,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1181,7 +1193,9 @@ HloModule top
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(2);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1248,7 +1262,9 @@ HloModule top
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1312,7 +1328,9 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(6);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4, 5});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1385,7 +1403,9 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(6);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4, 5});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1501,7 +1521,9 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(4);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1602,7 +1624,9 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(6);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4, 5});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1696,7 +1720,9 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(6);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4, 5});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1761,7 +1787,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
   config.set_resource_input_count(3);
+  config.set_input_mapping({0, 1, 2, 3});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1845,6 +1873,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
 
   auto config = GetModuleConfigForTest();
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());

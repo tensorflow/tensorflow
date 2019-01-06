@@ -98,10 +98,10 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   auto builder = HloComputation::Builder(TestName());
   auto in1 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, image_shape, "input1"));
-  auto in2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+  auto res = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, image_shape, "res"));
   auto add = builder.AddInstruction(
-      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+      HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, res, in1));
   builder.AddInstruction(HloInstruction::CreateTuple({add}));
 
   OpMetadata metadata1;
@@ -112,7 +112,9 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   auto computation = builder.Build();
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(2);
   config.set_resource_input_count(1);
+  config.set_input_mapping({0, 1});
   config.set_resource_update_to_input_index({1});
   auto hlo_module = CreateNewModuleWithConfig(config);
   hlo_module->AddEntryComputation(std::move(computation));
@@ -269,6 +271,69 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   EXPECT_EQ(2, output_infos.size());
   EXPECT_TRUE(output_infos[0].IsStreaming());
   EXPECT_TRUE(output_infos[1].IsStreaming());
+}
+
+TEST_F(GraphCompileIoMapTest, ResourceInit) {
+  Shape image_shape = ShapeUtil::MakeShape(F32, {2});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto i1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, image_shape, "input1"));
+  auto i2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, image_shape, "input2"));
+  auto i3 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, image_shape, "input3"));
+  builder.AddInstruction(HloInstruction::CreateTuple({i1, i1, i2, i3}));
+
+  auto computation = builder.Build();
+
+  /* 3 inputs, 4 resources, all resources uninitialized, 2 set from one of the
+   * inputs
+   */
+  auto config = GetModuleConfigForTest();
+  config.set_argument_count(7);
+  config.set_resource_input_count(4);
+  config.set_input_mapping({0, 1, 2});
+  config.set_resource_update_to_input_index({3, 4, 5, 6});
+  auto hlo_module = CreateNewModuleWithConfig(config);
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  auto* platform =
+      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
+  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
+  tensorflow::IPUOptions opts;
+  auto* p = static_cast<PoplarPlatform*>(platform);
+  EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
+
+  PoplarCompiler compiler;
+
+  hlo_module =
+      compiler.RunHloPasses(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
+
+  std::unique_ptr<Executable> executable =
+      compiler.RunBackend(std::move(hlo_module), stream_executor, nullptr)
+          .ConsumeValueOrDie();
+
+  PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
+  const auto& input_output_aliasing_map = GetInputOutputAliasingMap(e);
+  const auto& input_infos = input_output_aliasing_map.GetEntryInputInfos();
+  const auto& output_infos = input_output_aliasing_map.GetEntryOutputInfos();
+
+  EXPECT_EQ(3, input_infos.size());
+  EXPECT_TRUE(input_infos[0].IsStreaming());
+  EXPECT_TRUE(input_infos[1].IsStreaming());
+  EXPECT_TRUE(input_infos[2].IsStreaming());
+  EXPECT_EQ(4, output_infos.size());
+  EXPECT_FALSE(output_infos[0].IsStreaming());
+  EXPECT_FALSE(output_infos[1].IsStreaming());
+  EXPECT_FALSE(output_infos[2].IsStreaming());
+  EXPECT_FALSE(output_infos[3].IsStreaming());
+  EXPECT_FALSE(output_infos[0].IsResourceModified());
+  EXPECT_FALSE(output_infos[1].IsResourceModified());
+  EXPECT_FALSE(output_infos[2].IsResourceModified());
+  EXPECT_FALSE(output_infos[3].IsResourceModified());
 }
 
 }  // namespace

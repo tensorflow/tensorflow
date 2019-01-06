@@ -239,11 +239,17 @@ message ExecutionOptions {
   // If not provided, the default device will be chosen.
   repeated DeviceHandle device_handles = 5;
 
-  // The number of inputs which are resource variable inputs
-  uint32 resource_input_count = 6;
+  // The number of arguments to the original TF operation
+  uint32 argument_count = 6;
+
+  // The number of arguments to the TF operation which are resource variables
+  uint32 resource_input_count = 7;
+
+  // A map from the XLA computation inputs to the original TF operation inputs
+  repeated int32 input_mapping = 8;
 
   // The number of outputs which are updates for resource variables
-  repeated int32 resource_update_to_input_index = 7;
+  repeated int32 resource_update_to_input_index = 9;
 }
 
 message GetDeviceHandlesRequest {
