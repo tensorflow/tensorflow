@@ -523,6 +523,14 @@ bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
                builder.CreateAdd(valueMapping[op->getOperand(0)],
                                  valueMapping[op->getOperand(1)]),
            false;
+  if (auto op = inst.dyn_cast<DivISOp>())
+    return valueMapping[op->getResult()] = builder.CreateSDiv(
+               valueMapping[op->lhs()], valueMapping[op->rhs()]),
+           false;
+  if (auto op = inst.dyn_cast<DivIUOp>())
+    return valueMapping[op->getResult()] = builder.CreateUDiv(
+               valueMapping[op->lhs()], valueMapping[op->rhs()]),
+           false;
   if (auto op = inst.dyn_cast<SubIOp>())
     return valueMapping[op->getResult()] =
                builder.CreateSub(valueMapping[op->getOperand(0)],
@@ -532,6 +540,14 @@ bool ModuleLowerer::convertInstruction(const OperationInst &inst) {
     return valueMapping[op->getResult()] =
                builder.CreateMul(valueMapping[op->getOperand(0)],
                                  valueMapping[op->getOperand(1)]),
+           false;
+  if (auto op = inst.dyn_cast<RemISOp>())
+    return valueMapping[op->getResult()] = builder.CreateSRem(
+               valueMapping[op->lhs()], valueMapping[op->rhs()]),
+           false;
+  if (auto op = inst.dyn_cast<RemIUOp>())
+    return valueMapping[op->getResult()] = builder.CreateURem(
+               valueMapping[op->lhs()], valueMapping[op->rhs()]),
            false;
   if (auto op = inst.dyn_cast<CmpIOp>())
     return valueMapping[op->getResult()] =

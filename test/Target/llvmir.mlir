@@ -598,14 +598,23 @@ func @multireturn_caller() {
   return
 }
 
-// CHECK-LABEL: define <4 x float> @vector_ops(<4 x float>) {
-// CHECK-NEXT:    %2 = fadd <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
-// CHECK-NEXT:    ret <4 x float> %2
-// CHECK-NEXT:  }
-func @vector_ops(vector<4xf32>) -> vector<4xf32> {
-^bb0(%arg0: vector<4xf32>):
+// CHECK-LABEL: define <4 x float> @vector_ops(<4 x float>, <4 x i1>, <4 x i64>) {
+func @vector_ops(vector<4xf32>, vector<4xi1>, vector<4xi64>) -> vector<4xf32> {
+^bb0(%arg0: vector<4xf32>, %arg1: vector<4xi1>, %arg2: vector<4xi64>):
   %0 = constant splat<vector<4xf32>, 42.> : vector<4xf32>
+// CHECK-NEXT: %4 = fadd <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
   %1 = addf %arg0, %0 : vector<4xf32>
+// CHECK-NEXT: %5 = select <4 x i1> %1, <4 x float> %4, <4 x float> %0
+  %2 = select %arg1, %1, %arg0 : vector<4xf32>
+// CHECK-NEXT: %6 = sdiv <4 x i64> %2, %2
+  %3 = divis %arg2, %arg2 : vector<4xi64>
+// CHECK-NEXT: %7 = udiv <4 x i64> %2, %2
+  %4 = diviu %arg2, %arg2 : vector<4xi64>
+// CHECK-NEXT: %8 = srem <4 x i64> %2, %2
+  %5 = remis %arg2, %arg2 : vector<4xi64>
+// CHECK-NEXT: %9 = urem <4 x i64> %2, %2
+  %6 = remiu %arg2, %arg2 : vector<4xi64>
+// CHECK-NEXT:    ret <4 x float> %4
   return %1 : vector<4xf32>
 }
 
@@ -618,7 +627,16 @@ func @ops(f32, f32, i32, i32) -> (f32, i32) {
   %1 = subi %arg2, %arg3: i32
 // CHECK-NEXT: %7 = icmp slt i32 %2, %6
   %2 = cmpi "slt", %arg2, %1 : i32
-// CHECK-NEXT: select i1 %7, i32 %2, i32 %6
+// CHECK-NEXT: %8 = select i1 %7, i32 %2, i32 %6
   %3 = select %2, %arg2, %1 : i32
+// CHECK-NEXT: %9 = sdiv i32 %2, %3
+  %4 = divis %arg2, %arg3 : i32
+// CHECK-NEXT: %10 = udiv i32 %2, %3
+  %5 = diviu %arg2, %arg3 : i32
+// CHECK-NEXT: %11 = srem i32 %2, %3
+  %6 = remis %arg2, %arg3 : i32
+// CHECK-NEXT: %12 = urem i32 %2, %3
+  %7 = remiu %arg2, %arg3 : i32
+
   return %0, %3 : f32, i32
 }
