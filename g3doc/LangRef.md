@@ -1781,7 +1781,72 @@ Examples:
 MLIR does not allow direct references to functions in SSA operands because we
 anticipate the desire to multithread the compiler, and disallowing SSA values to
 directly reference a function simplifies this
-[[rationale](Rationale.md#multithreading-the-compiler)].
+([rationale](Rationale.md#multithreading-the-compiler)).
+
+#### 'divis' operation {#'divis'-operation}
+
+Signed integer division. Rounds towards zero. Treats the leading bit as sign,
+i.e. `6 / -2 = -3`.
+
+Note: the semantics of division by zero or signed division overflow (minimum
+value divided by -1) is TBD; do NOT assume any specific behavior.
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `divis` ssa-use, ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar signed integer division.
+%a = divis %b, %c : i64
+
+// SIMD vector element-wise division.
+%f = divis %g, %h : vector<4xi32>
+
+// Tensor element-wise integer division.
+%x = divis %y, %z : tensor<4x?xi8>
+```
+
+The `divis` operation takes two operands and returns one result, each of these
+is required to be the same type. This type may be an integer scalar type, a
+vector whose element type is integer, or a tensor of integers. It has no
+standard attributes.
+
+#### 'diviu' operation {#'diviu'-operation}
+
+Unsigned integer division. Rounds towards zero. Treats the leading bit as the
+most significant, i.e. for `i16` given two's complement representation, `6 /
+-2 = 6 / (2^16 - 2) = 0`.
+
+Note: the semantics of division by zero is TBD; do NOT assume any specific
+behavior.
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `diviu` ssa-use, ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar unsigned integer division.
+%a = diviu %b, %c : i64
+
+// SIMD vector element-wise division.
+%f = diviu %g, %h : vector<4xi32>
+
+// Tensor element-wise integer division.
+%x = diviu %y, %z : tensor<4x?xi8>
+```
+
+The `diviu` operation takes two operands and returns one result, each of these
+is required to be the same type. This type may be an integer scalar type, a
+vector whose element type is integer, or a tensor of integers. It has no
+standard attributes.
 
 #### 'memref_cast' operation
 
@@ -1831,6 +1896,70 @@ It has no standard attributes.
 TODO: In the distant future, this will accept
 optional attributes for fast math, contraction, rounding mode, and other
 controls.
+
+#### 'remis' operation {#'remis'-operation}
+
+Signed integer division remainder. Treats the leading bit as sign, i.e. `6 %
+-2 = 0`.
+
+Note: the semantics of division by zero is TBD; do NOT assume any specific
+behavior.
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `remis` ssa-use, ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar signed integer division remainder.
+%a = remis %b, %c : i64
+
+// SIMD vector element-wise division remainder.
+%f = remis %g, %h : vector<4xi32>
+
+// Tensor element-wise integer division remainder.
+%x = remis %y, %z : tensor<4x?xi8>
+```
+
+The `remis` operation takes two operands and returns one result, each of these
+is required to be the same type. This type may be an integer scalar type, a
+vector whose element type is integer, or a tensor of integers. It has no
+standard attributes.
+
+#### 'remiu' operation {#'remiu'-operation}
+
+Unsigned integer division remainder. Treats the leading bit as the most
+significant, i.e. for `i16`, `6 % -2 = 6 % (2^16 - 2) = 6`.
+
+Note: the semantics of division by zero is TBD; do NOT assume any specific
+behavior.
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `remiu` ssa-use, ssa-use `:` type
+```
+
+Examples:
+
+```mlir {.mlir}
+// Scalar unsigned integer division remainder.
+%a = remiu %b, %c : i64
+
+// SIMD vector element-wise division remainder.
+%f = remiu %g, %h : vector<4xi32>
+
+// Tensor element-wise integer division remainder.
+%x = remiu %y, %z : tensor<4x?xi8>
+```
+
+The `remiu` operation takes two operands and returns one result, each of these
+is required to be the same type. This type may be an integer scalar type, a
+vector whose element type is integer, or a tensor of integers. It has no
+standard attributes.
 
 #### 'select' operation {#'select'-operation}
 

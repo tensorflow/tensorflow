@@ -128,6 +128,77 @@ func @simple_mulf() -> f32 {
   return %2 : f32
 }
 
+// CHECK-LABEL: func @simple_divis
+func @simple_divis() -> (i32, i32) {
+  %0 = constant 6 : i32
+  %1 = constant 2 : i32
+
+  // CHECK-NEXT: %c3_i32 = constant 3 : i32
+  %2 = divis %0, %1 : i32
+
+  %3 = constant -2 : i32
+
+  // CHECK-NEXT: %c-3_i32 = constant -3 : i32
+  %4 = divis %0, %3 : i32
+
+  // CHECK-NEXT: return %c3_i32, %c-3_i32 : i32, i32
+  return %2, %4 : i32, i32
+}
+
+// CHECK-LABEL: func @simple_diviu
+func @simple_diviu() -> (i32, i32) {
+  %0 = constant 6 : i32
+  %1 = constant 2 : i32
+
+  // CHECK-NEXT: %c3_i32 = constant 3 : i32
+  %2 = diviu %0, %1 : i32
+
+  %3 = constant -2 : i32
+
+  // Unsigned division interprets -2 as 2^32-2, so the result is 0.
+  // CHECK-NEXT: %c0_i32 = constant 0 : i32
+  %4 = diviu %0, %3 : i32
+
+  // CHECK-NEXT: return %c3_i32, %c0_i32 : i32, i32
+  return %2, %4 : i32, i32
+}
+
+// CHECK-LABEL: func @simple_remis
+func @simple_remis(%a : i32) -> (i32, i32, i32) {
+  %0 = constant 5 : i32
+  %1 = constant 2 : i32
+  %2 = constant 1 : i32
+  %3 = constant -2 : i32
+
+  // CHECK-NEXT: %c1_i32 = constant 1 : i32
+  %4 = remis %0, %1 : i32
+  // CHECK-NEXT: %c1_i32_0 = constant 1 : i32
+  %5 = remis %0, %3 : i32
+  // CHECK-NEXT: %c0_i32 = constant 0 : i32
+  %6 = remis %a, %2 : i32
+
+  // CHECK-NEXT: return %c1_i32, %c1_i32_0, %c0_i32 : i32, i32, i32
+  return %4, %5, %6 : i32, i32, i32
+}
+
+// CHECK-LABEL: func @simple_remiu
+func @simple_remiu(%a : i32) -> (i32, i32, i32) {
+  %0 = constant 5 : i32
+  %1 = constant 2 : i32
+  %2 = constant 1 : i32
+  %3 = constant -2 : i32
+
+  // CHECK-NEXT: %c1_i32 = constant 1 : i32
+  %4 = remiu %0, %1 : i32
+  // CHECK-NEXT: %c5_i32 = constant 5 : i32
+  %5 = remiu %0, %3 : i32
+  // CHECK-NEXT: %c0_i32 = constant 0 : i32
+  %6 = remiu %a, %2 : i32
+
+  // CHECK-NEXT: return %c1_i32, %c5_i32, %c0_i32 : i32, i32, i32
+  return %4, %5, %6 : i32, i32, i32
+}
+
 // CHECK-LABEL: func @muli(%arg0: i32)
 func @muli(i32) -> (i32, i32) {
 ^bb0(%a : i32):

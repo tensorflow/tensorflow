@@ -141,6 +141,66 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %{{[0-9]+}} = select %{{[0-9]+}}, %cst_4, %cst_4 : tensor<42xi32>
   %25 = "select"(%19, %tci32, %tci32) : (tensor<42 x i1>, tensor<42 x i32>, tensor<42 x i32>) -> tensor<42 x i32>
 
+  // CHECK: %{{[0-9]+}} = divis %arg2, %arg2 : i32
+  %26 = divis %i, %i : i32
+
+  // CHECK: %{{[0-9]+}} = divis %arg3, %arg3 : index
+  %27 = divis %idx, %idx : index
+
+  // CHECK: %{{[0-9]+}} = divis %cst_5, %cst_5 : vector<42xi32>
+  %28 = divis %vci32, %vci32 : vector<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = divis %cst_4, %cst_4 : tensor<42xi32>
+  %29 = divis %tci32, %tci32 : tensor<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = divis %arg2, %arg2 : i32
+  %30 = "divis"(%i, %i) : (i32, i32) -> i32
+
+  // CHECK: %{{[0-9]+}} = diviu %arg2, %arg2 : i32
+  %31 = diviu %i, %i : i32
+
+  // CHECK: %{{[0-9]+}} = diviu %arg3, %arg3 : index
+  %32 = diviu %idx, %idx : index
+
+  // CHECK: %{{[0-9]+}} = diviu %cst_5, %cst_5 : vector<42xi32>
+  %33 = diviu %vci32, %vci32 : vector<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = diviu %cst_4, %cst_4 : tensor<42xi32>
+  %34 = diviu %tci32, %tci32 : tensor<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = diviu %arg2, %arg2 : i32
+  %35 = "diviu"(%i, %i) : (i32, i32) -> i32
+
+  // CHECK: %{{[0-9]+}} = remis %arg2, %arg2 : i32
+  %36 = remis %i, %i : i32
+
+  // CHECK: %{{[0-9]+}} = remis %arg3, %arg3 : index
+  %37 = remis %idx, %idx : index
+
+  // CHECK: %{{[0-9]+}} = remis %cst_5, %cst_5 : vector<42xi32>
+  %38 = remis %vci32, %vci32 : vector<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = remis %cst_4, %cst_4 : tensor<42xi32>
+  %39 = remis %tci32, %tci32 : tensor<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = remis %arg2, %arg2 : i32
+  %40 = "remis"(%i, %i) : (i32, i32) -> i32
+
+  // CHECK: %{{[0-9]+}} = remiu %arg2, %arg2 : i32
+  %41 = remiu %i, %i : i32
+
+  // CHECK: %{{[0-9]+}} = remiu %arg3, %arg3 : index
+  %42 = remiu %idx, %idx : index
+
+  // CHECK: %{{[0-9]+}} = remiu %cst_5, %cst_5 : vector<42xi32>
+  %43 = remiu %vci32, %vci32 : vector<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = remiu %cst_4, %cst_4 : tensor<42xi32>
+  %44 = remiu %tci32, %tci32 : tensor<42 x i32>
+
+  // CHECK: %{{[0-9]+}} = remiu %arg2, %arg2 : i32
+  %45 = "remiu"(%i, %i) : (i32, i32) -> i32
+
   return
 }
 

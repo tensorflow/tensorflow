@@ -678,6 +678,53 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// DivISOp
+//===----------------------------------------------------------------------===//
+
+Attribute DivISOp::constantFold(ArrayRef<Attribute> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "binary operation takes two operands");
+  (void)context;
+
+  auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
+  auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
+  if (!lhs || !rhs)
+    return {};
+
+  // Don't fold if it requires division by zero.
+  if (rhs.getValue().isNullValue()) {
+    return {};
+  }
+
+  // Don't fold if it would overflow.
+  bool overflow;
+  auto result = lhs.getValue().sdiv_ov(rhs.getValue(), overflow);
+  return overflow ? IntegerAttr{} : IntegerAttr::get(lhs.getType(), result);
+}
+
+//===----------------------------------------------------------------------===//
+// DivIUOp
+//===----------------------------------------------------------------------===//
+
+Attribute DivIUOp::constantFold(ArrayRef<Attribute> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "binary operation takes two operands");
+  (void)context;
+
+  auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
+  auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
+  if (!lhs || !rhs)
+    return {};
+
+  // Don't fold if it requires division by zero.
+  if (rhs.getValue().isNullValue()) {
+    return {};
+  }
+
+  return IntegerAttr::get(lhs.getType(), lhs.getValue().udiv(rhs.getValue()));
+}
+
 // ---------------------------------------------------------------------------
 // DmaStartOp
 // ---------------------------------------------------------------------------
@@ -1117,6 +1164,64 @@ struct SimplifyMulX1 : public RewritePattern {
 void MulIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
   results.push_back(std::make_unique<SimplifyMulX1>(context));
+}
+
+//===----------------------------------------------------------------------===//
+// RemISOp
+//===----------------------------------------------------------------------===//
+
+Attribute RemISOp::constantFold(ArrayRef<Attribute> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "remis takes two operands");
+
+  auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
+  if (!rhs)
+    return {};
+
+  // x % 1 = 0
+  if (rhs.getValue().isOneValue())
+    return IntegerAttr::get(rhs.getType(),
+                            APInt(rhs.getValue().getBitWidth(), 0));
+
+  // Don't fold if it requires division by zero.
+  if (rhs.getValue().isNullValue()) {
+    return {};
+  }
+
+  auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
+  if (!lhs)
+    return {};
+
+  return IntegerAttr::get(lhs.getType(), lhs.getValue().srem(rhs.getValue()));
+}
+
+//===----------------------------------------------------------------------===//
+// RemIUOp
+//===----------------------------------------------------------------------===//
+
+Attribute RemIUOp::constantFold(ArrayRef<Attribute> operands,
+                                MLIRContext *context) const {
+  assert(operands.size() == 2 && "remiu takes two operands");
+
+  auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
+  if (!rhs)
+    return {};
+
+  // x % 1 = 0
+  if (rhs.getValue().isOneValue())
+    return IntegerAttr::get(rhs.getType(),
+                            APInt(rhs.getValue().getBitWidth(), 0));
+
+  // Don't fold if it requires division by zero.
+  if (rhs.getValue().isNullValue()) {
+    return {};
+  }
+
+  auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
+  if (!lhs)
+    return {};
+
+  return IntegerAttr::get(lhs.getType(), lhs.getValue().urem(rhs.getValue()));
 }
 
 //===----------------------------------------------------------------------===//

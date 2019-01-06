@@ -94,6 +94,16 @@ def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
   let hasConstantFolder = 0b1;
 }
 
+def DivISOp : IntArithmeticOp<"divis"> {
+  let summary = "signed integer division operation";
+  let hasConstantFolder = 0b1;
+}
+
+def DivIUOp : IntArithmeticOp<"diviu"> {
+  let summary = "unsigned integer division operation";
+  let hasConstantFolder = 0b1;
+}
+
 def MulFOp : FloatArithmeticOp<"mulf"> {
   let summary = "foating point multiplication operation";
   let hasConstantFolder = 0b1;
@@ -102,6 +112,16 @@ def MulFOp : FloatArithmeticOp<"mulf"> {
 def MulIOp : IntArithmeticOp<"muli", [Commutative]> {
   let summary = "integer multiplication operation";
   let hasCanonicalizationPatterns = 0b1;
+  let hasConstantFolder = 0b1;
+}
+
+def RemISOp : IntArithmeticOp<"remis"> {
+  let summary = "signed integer division remainder operation";
+  let hasConstantFolder = 0b1;
+}
+
+def RemIUOp : IntArithmeticOp<"remiu"> {
+  let summary = "unsigned integer division remainder operation";
   let hasConstantFolder = 0b1;
 }
 
