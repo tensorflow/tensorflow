@@ -1207,5 +1207,18 @@ class RaggedTensorTest(ragged_test_util.RaggedTensorTestCase,
       res2 = session.partial_run(handle, r2, feed_dict={c: c_val})
       self.assertAllEqual(res2, [15, 7])
 
+  # Test case for GitHub issue 24679.
+  def testEagerForLoop(self):
+    if not context.executing_eagerly():
+      return
+
+    values = [[1., 2.], [3., 4., 5.], [6.]]
+    r = ragged_factory_ops.constant(values)
+    i = 0
+    for elem in r:
+      value = values[i]
+      i += 1
+      self.assertAllEqual(elem, value)
+
 if __name__ == '__main__':
   googletest.main()
