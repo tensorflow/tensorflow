@@ -24,7 +24,7 @@
 #define MLIR_IR_AFFINE_EXPR_H
 
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Support/Casting.h"
 #include <type_traits>
 

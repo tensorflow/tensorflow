@@ -19,7 +19,6 @@
 #include "AffineExprDetail.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/Support/STLExtras.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 
 using namespace mlir;
