@@ -3801,8 +3801,7 @@ tf_py_test(
     name = "compat_test",
     size = "small",
     srcs = ["util/compat_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":client_testlib",
         ":array_ops",
         ":util",
