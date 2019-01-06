@@ -227,3 +227,29 @@ func @dim(%x : tensor<8x4xf32>) -> index {
   return %0 : index
 }
 
+// CHECK-LABEL: func @cmpi
+func @cmpi() -> (i1, i1, i1, i1, i1, i1, i1, i1, i1, i1) {
+  %c42 = constant 42 : i32
+  %cm1 = constant -1 : i32
+// CHECK-NEXT: %false = constant 0 : i1
+  %0 = cmpi "eq", %c42, %cm1 : i32
+// CHECK-NEXT: %true = constant 1 : i1
+  %1 = cmpi "ne", %c42, %cm1 : i32
+// CHECK-NEXT: %false_0 = constant 0 : i1
+  %2 = cmpi "slt", %c42, %cm1 : i32
+// CHECK-NEXT: %false_1 = constant 0 : i1
+  %3 = cmpi "sle", %c42, %cm1 : i32
+// CHECK-NEXT: %true_2 = constant 1 : i1
+  %4 = cmpi "sgt", %c42, %cm1 : i32
+// CHECK-NEXT: %true_3 = constant 1 : i1
+  %5 = cmpi "sge", %c42, %cm1 : i32
+// CHECK-NEXT: %true_4 = constant 1 : i1
+  %6 = cmpi "ult", %c42, %cm1 : i32
+// CHECK-NEXT: %true_5 = constant 1 : i1
+  %7 = cmpi "ule", %c42, %cm1 : i32
+// CHECK-NEXT: %false_6 = constant 0 : i1
+  %8 = cmpi "ugt", %c42, %cm1 : i32
+// CHECK-NEXT: %false_7 = constant 0 : i1
+  %9 = cmpi "uge", %c42, %cm1 : i32
+  return %0, %1, %2, %3, %4, %5, %6, %7, %8, %9 : i1, i1, i1, i1, i1, i1, i1, i1, i1, i1
+}

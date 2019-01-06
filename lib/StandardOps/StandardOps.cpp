@@ -571,6 +571,50 @@ bool CmpIOp::verify() const {
   return false;
 }
 
+// Compute `lhs` `pred` `rhs`, where `pred` is one of the known integer
+// comparison predicates.
+static bool applyCmpPredicate(CmpIPredicate predicate, const APInt &lhs,
+                              const APInt &rhs) {
+  switch (predicate) {
+  case CmpIPredicate::EQ:
+    return lhs.eq(rhs);
+  case CmpIPredicate::NE:
+    return lhs.ne(rhs);
+  case CmpIPredicate::SLT:
+    return lhs.slt(rhs);
+  case CmpIPredicate::SLE:
+    return lhs.sle(rhs);
+  case CmpIPredicate::SGT:
+    return lhs.sgt(rhs);
+  case CmpIPredicate::SGE:
+    return lhs.sge(rhs);
+  case CmpIPredicate::ULT:
+    return lhs.ult(rhs);
+  case CmpIPredicate::ULE:
+    return lhs.ule(rhs);
+  case CmpIPredicate::UGT:
+    return lhs.ugt(rhs);
+  case CmpIPredicate::UGE:
+    return lhs.uge(rhs);
+  default:
+    llvm_unreachable("unknown comparison predicate");
+  }
+}
+
+// Constant folding hook for comparisons.
+Attribute CmpIOp::constantFold(ArrayRef<Attribute> operands,
+                               MLIRContext *context) const {
+  assert(operands.size() == 2 && "cmpi takes two arguments");
+
+  auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
+  auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
+  if (!lhs || !rhs)
+    return {};
+
+  auto val = applyCmpPredicate(getPredicate(), lhs.getValue(), rhs.getValue());
+  return IntegerAttr::get(IntegerType::get(1, context), APInt(1, val));
+}
+
 //===----------------------------------------------------------------------===//
 // DeallocOp
 //===----------------------------------------------------------------------===//
