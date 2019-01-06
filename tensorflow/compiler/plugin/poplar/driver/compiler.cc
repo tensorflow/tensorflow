@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_early.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/fuse_wide_const.h"
+#include "tensorflow/compiler/plugin/poplar/driver/hlo_computation_name_uniquify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
 #include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
@@ -286,6 +287,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   {
     HloPassPipeline pipeline("IPU");
+    pipeline.AddPass<HloComputationNameUniquify>();
     pipeline.AddPass<GatherExpander>();
     pipeline.AddPass<ScatterExpander>();
     pipeline.AddPass<DotDecomposer>();

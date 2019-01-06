@@ -63,6 +63,7 @@ cc_library(
         "driver/fuse_ops_early.cc",
         "driver/fuse_ops_late.cc",
         "driver/fuse_wide_const.cc",
+        "driver/hlo_computation_name_uniquify.cc",
         "driver/hlo_hash.cc",
         "driver/hlo_matcher.cc",
         "driver/inplace_finder.cc",
@@ -93,6 +94,7 @@ cc_library(
         "driver/fuse_ops_early.h",
         "driver/fuse_ops_late.h",
         "driver/fuse_wide_const.h",
+        "driver/hlo_computation_name_uniquify.h",
         "driver/hlo_hash.h",
         "driver/hlo_matcher.h",
         "driver/inplace_finder.h",
@@ -522,6 +524,17 @@ tf_cc_test(
 tf_cc_test(
     name = "scheduler_test",
     srcs = ["tests/scheduler_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_computation_name_uniquify_test",
+    srcs = ["tests/hlo_computation_name_uniquify_test.cc"],
     size = "small",
     deps = [
         ":optimizers",
@@ -1038,6 +1051,7 @@ test_suite(
         "wide_const_expansion_test",
         "fused_batch_norm_test",
         "find_all_users_test",
+        "hlo_computation_name_uniquify_test",
     ],
 )
 
