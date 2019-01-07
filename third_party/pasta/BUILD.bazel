@@ -1,5 +1,6 @@
 # Description:
 #   AST-based python refactoring.
+load("@//third_party/pasta:build_defs.bzl", "copy_srcs")
 
 licenses(["notice"])  # Apache2
 
@@ -7,7 +8,7 @@ exports_files(["LICENSE"])
 
 py_library(
     name = "pasta",
-    srcs = [
+    srcs = copy_srcs([
         "__init__.py",
         "augment/__init__.py",
         "augment/errors.py",
@@ -23,7 +24,7 @@ py_library(
         "base/scope.py",
         "base/test_utils.py",
         "base/token_generator.py",
-    ],
+    ]),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
 )
