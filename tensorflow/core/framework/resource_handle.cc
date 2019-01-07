@@ -19,9 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char ResourceHandle::ANONYMOUS_NAME[] =
-    "cd2c89b7-88b7-44c8-ad83-06c2a9158347";
-
 ResourceHandle::ResourceHandle() {}
 
 ResourceHandle::ResourceHandle(const ResourceHandleProto& proto) {
