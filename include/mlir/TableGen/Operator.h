@@ -55,6 +55,10 @@ public:
 
   // Operations attribute accessors.
   struct Attribute {
+    std::string getName() const;
+    StringRef getReturnType() const;
+    StringRef getStorageType() const;
+
     llvm::StringInit *name;
     llvm::Record *record;
     bool isDerived;

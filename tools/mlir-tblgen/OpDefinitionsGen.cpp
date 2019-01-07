@@ -34,6 +34,9 @@ using namespace mlir;
 
 static const char *const generatedArgName = "_arg";
 
+// Helper macro that returns indented os.
+#define OUT(X) os.indent((X))
+
 // TODO(jpienaar): The builder body should probably be separate from the header.
 
 // Variation of method in FormatVariadic.h which takes a StringRef as input
@@ -164,8 +167,8 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   os << "> {\npublic:\n";
 
   // Build operation name.
-  os << "  static StringRef getOperationName() { return \""
-     << emitter.op.getOperationName() << "\"; };\n";
+  OUT(2) << "static StringRef getOperationName() { return \""
+         << emitter.op.getOperationName() << "\"; };\n";
 
   emitter.emitNamedOperands();
   emitter.emitBuilder();
@@ -176,8 +179,8 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
   emitter.emitCanonicalizationPatterns();
   emitter.emitConstantFolder();
 
-  os << "private:\n  friend class ::mlir::OperationInst;\n";
-  os << "  explicit " << emitter.op.cppClassName()
+  os << "private:\n  friend class ::mlir::OperationInst;\n"
+     << "  explicit " << emitter.op.cppClassName()
      << "(const OperationInst* state) : Op(state) {}\n};\n";
   emitter.mapOverClassNamespaces(
       [&os](StringRef ns) { os << "} // end namespace " << ns << "\n"; });
@@ -190,22 +193,20 @@ void OpEmitter::emitAttrGetters() {
 
     // Emit the derived attribute body.
     if (attr.isDerived) {
-      os << "  " << def->getValueAsString("returnType").trim() << ' ' << name
-         << "() const {" << def->getValueAsString("body") << " }\n";
+      OUT(2) << attr.getReturnType() << ' ' << name << "() const {"
+             << def->getValueAsString("body") << " }\n";
       continue;
     }
 
     // Emit normal emitter.
-    os << "  " << def->getValueAsString("returnType").trim() << ' ' << name
-       << "() const {\n";
+    OUT(2) << attr.getReturnType() << ' ' << name << "() const {\n";
 
     // Return the queried attribute with the correct return type.
-    std::string attrVal =
-        formatv("this->getAttrOfType<{0}>(\"{1}\")",
-                def->getValueAsString("storageType").trim(), name);
-    os << "    return "
-       << formatv(def->getValueAsString("convertFromStorage"), attrVal)
-       << ";\n  }\n";
+    std::string attrVal = formatv("this->getAttrOfType<{0}>(\"{1}\")",
+                                  attr.getStorageType(), name);
+    OUT(4) << "return "
+           << formatv(def->getValueAsString("convertFromStorage"), attrVal)
+           << ";\n  }\n";
   }
 }
 
@@ -243,7 +244,7 @@ void OpEmitter::emitBuilder() {
   // 1. Stand-alone parameters
 
   std::vector<Record *> returnTypes = def.getValueAsListOfDefs("returnTypes");
-  os << "  static void build(Builder* builder, OperationState* result";
+  OUT(2) << "static void build(Builder* builder, OperationState* result";
 
   // Emit parameters for all return types
   for (unsigned i = 0, e = returnTypes.size(); i != e; ++i)
@@ -267,7 +268,7 @@ void OpEmitter::emitBuilder() {
 
   // Push all result types to the result
   if (!returnTypes.empty()) {
-    os << "    result->addTypes({returnType0";
+    OUT(4) << "result->addTypes({returnType0";
     for (unsigned i = 1, e = returnTypes.size(); i != e; ++i)
       os << ", returnType" << i;
     os << "});\n\n";
@@ -275,7 +276,7 @@ void OpEmitter::emitBuilder() {
 
   // Push all operands to the result
   if (op.getNumOperands() > 0) {
-    os << "    result->addOperands({" << getArgumentName(op, 0);
+    OUT(4) << "result->addOperands({" << getArgumentName(op, 0);
     for (int i = 1, e = op.getNumOperands(); i != e; ++i)
       os << ", " << getArgumentName(op, i);
     os << "});\n";
@@ -284,45 +285,45 @@ void OpEmitter::emitBuilder() {
   // Push all attributes to the result
   for (const auto &attr : op.getAttributes())
     if (!attr.isDerived)
-      os.indent(4) << formatv("result->addAttribute(\"{0}\", {0});\n",
-                              getAttributeName(attr));
-  os << "  }\n";
+      OUT(4) << formatv("result->addAttribute(\"{0}\", {0});\n",
+                        getAttributeName(attr));
+  OUT(2) << "}\n";
 
   // 2. Aggregated parameters
 
   // Signature
-  os << "  static void build(Builder* builder, OperationState* result, "
-     << "ArrayRef<Type> resultTypes, ArrayRef<Value*> args, "
-        "ArrayRef<NamedAttribute> attributes) {\n";
+  OUT(2) << "static void build(Builder* builder, OperationState* result, "
+         << "ArrayRef<Type> resultTypes, ArrayRef<Value*> args, "
+            "ArrayRef<NamedAttribute> attributes) {\n";
 
   // Result types
-  os << "    assert(resultTypes.size() == " << returnTypes.size()
-     << "u && \"mismatched number of return types\");\n"
-     << "    result->addTypes(resultTypes);\n";
+  OUT(4) << "assert(resultTypes.size() == " << returnTypes.size()
+         << "u && \"mismatched number of return types\");\n"
+         << "    result->addTypes(resultTypes);\n";
 
   // Operands
-  os << "    assert(args.size() == " << op.getNumOperands()
-     << "u && \"mismatched number of parameters\");\n"
-     << "    result->addOperands(args);\n\n";
+  OUT(4) << "assert(args.size() == " << op.getNumOperands()
+         << "u && \"mismatched number of parameters\");\n"
+         << "    result->addOperands(args);\n\n";
 
   // Attributes
   if (op.getNumAttributes() > 0) {
-    os << "    assert(!attributes.size() && \"no attributes expected\");\n"
-       << "  }\n";
+    OUT(4) << "assert(!attributes.size() && \"no attributes expected\");\n"
+           << "  }\n";
   } else {
-    os << "    assert(attributes.size() >= " << op.getNumAttributes()
-       << "u && \"not enough attributes\");\n"
-       << "    for (const auto& pair : attributes)\n"
-       << "      result->addAttribute(pair.first, pair.second);\n"
-       << "  }\n";
+    OUT(4) << "assert(attributes.size() >= " << op.getNumAttributes()
+           << "u && \"not enough attributes\");\n"
+           << "    for (const auto& pair : attributes)\n"
+           << "      result->addAttribute(pair.first, pair.second);\n"
+           << "  }\n";
   }
 }
 
 void OpEmitter::emitCanonicalizationPatterns() {
   if (!def.getValueAsBit("hasCanonicalizationPatterns"))
     return;
-  os << "  static void getCanonicalizationPatterns("
-     << "OwningRewritePatternList &results, MLIRContext* context);\n";
+  OUT(2) << "static void getCanonicalizationPatterns("
+         << "OwningRewritePatternList &results, MLIRContext* context);\n";
 }
 
 void OpEmitter::emitConstantFolder() {
@@ -363,7 +364,7 @@ void OpEmitter::emitVerifier() {
   if (!hasCustomVerify && op.getNumArgs() == 0)
     return;
 
-  os << "  bool verify() const {\n";
+  OUT(2) << "bool verify() const {\n";
   // Verify the attributes have the correct type.
   for (const auto &attr : op.getAttributes()) {
     if (attr.isDerived)
@@ -371,17 +372,15 @@ void OpEmitter::emitVerifier() {
 
     auto name = getAttributeName(attr);
     if (!hasStringAttribute(*attr.record, "storageType")) {
-      os << "    if (!this->getAttr(\"" << name
-         << "\")) return emitOpError(\"requires attribute '" << name
-         << "'\");\n";
+      OUT(4) << "if (!this->getAttr(\"" << name
+             << "\")) return emitOpError(\"requires attribute '" << name
+             << "'\");\n";
       continue;
     }
 
-    os << "    if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
-       << attr.record->getValueAsString("storageType").trim()
-       << ">()) return emitOpError(\"requires "
-       << attr.record->getValueAsString("returnType").trim() << " attribute '"
-       << name << "'\");\n";
+    OUT(4) << "if (!this->getAttr(\"" << name << "\").dyn_cast_or_null<"
+           << attr.getStorageType() << ">()) return emitOpError(\"requires "
+           << attr.getReturnType() << " attribute '" << name << "'\");\n";
   }
 
   // TODO: Handle variadic.
@@ -392,17 +391,17 @@ void OpEmitter::emitVerifier() {
     if (operand.hasMatcher()) {
       auto pred =
           "if (!(" + operand.createTypeMatcherTemplate() + ")) return false;\n";
-      os.indent(4) << formatv(pred, "this->getInstruction()->getOperand(" +
-                                        Twine(opIndex) + ")->getType()");
+      OUT(4) << formatv(pred, "this->getInstruction()->getOperand(" +
+                                  Twine(opIndex) + ")->getType()");
     }
     ++opIndex;
   }
 
   if (hasCustomVerify)
-    os << "    " << codeInit->getValue() << "\n";
+    OUT(4) << codeInit->getValue() << "\n";
   else
-    os << "    return false;\n";
-  os << "  }\n";
+    OUT(4) << "return false;\n";
+  OUT(2) << "}\n";
 }
 
 void OpEmitter::emitTraits() {

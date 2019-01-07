@@ -150,6 +150,8 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
                         "' in pattern and op's definition");
   for (int i = 0, e = tree->getNumArgs(); i != e; ++i) {
     auto arg = tree->getArg(i);
+    auto opArg = op.getArg(i);
+
     if (auto argTree = dyn_cast<DagInit>(arg)) {
       os.indent(indent) << "{\n";
       os.indent(indent + 2) << formatv(
@@ -162,12 +164,11 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
 
     // Verify arguments.
     if (auto defInit = dyn_cast<DefInit>(arg)) {
-      auto opArg = op.getArg(i);
       // Verify operands.
       if (auto *operand = opArg.dyn_cast<Operator::Operand *>()) {
         // Skip verification where not needed due to definition of op.
         if (operand->defInit == defInit)
-          goto SkipOperandVerification;
+          goto StateCapture;
 
         if (!defInit->getDef()->isSubClassOf("Type"))
           PrintFatalError(pattern->getLoc(),
@@ -185,15 +186,24 @@ static void matchOp(Record *pattern, DagInit *tree, int depth,
                        formatv("op{0}->getOperand({1})->getType()", depth, i))
             << ")) return matchFailure();\n";
       }
-    }
-  SkipOperandVerification:
-    // TODO(jpienaar): Verify attributes.
 
+      // TODO(jpienaar): Verify attributes.
+      if (auto *attr = opArg.dyn_cast<Operator::Attribute *>()) {
+      }
+    }
+
+  StateCapture:
     auto name = tree->getArgNameStr(i);
     if (name.empty())
       continue;
-    os.indent(indent) << "state->" << name << " = op" << depth
-                      << "->getOperand(" << i << ");\n";
+    if (opArg.is<Operator::Operand *>())
+      os.indent(indent) << "state->" << name << " = op" << depth
+                        << "->getOperand(" << i << ");\n";
+    if (auto attr = opArg.dyn_cast<Operator::Attribute *>()) {
+      os.indent(indent) << "state->" << name << " = op" << depth
+                        << "->getAttrOfType<" << attr->getStorageType()
+                        << ">(\"" << attr->getName() << "\");\n";
+    }
   }
 }
 
@@ -291,13 +301,18 @@ void Pattern::emit(StringRef rewriteName) {
     (os << ",\n").indent(6);
 
     // The argument in the result DAG pattern.
-    auto name = resultOp.getArgName(i);
+    auto name = resultTree->getArgNameStr(i);
+    auto opName = resultOp.getArgName(i);
     auto defInit = dyn_cast<DefInit>(resultTree->getArg(i));
     auto *value = defInit ? defInit->getDef()->getValue("value") : nullptr;
-    if (!value)
-      PrintFatalError(pattern->getLoc(),
-                      Twine("attribute '") + name +
-                          "' needs to be constant initialized");
+    if (!value) {
+      if (boundArguments.find(name) == boundArguments.end())
+        PrintFatalError(pattern->getLoc(),
+                        Twine("referencing unbound variable '") + name + "'");
+      os << "/*" << opName << "=*/"
+         << "s." << name;
+      continue;
+    }
 
     // TODO(jpienaar): Refactor out into map to avoid recomputing these.
     auto argument = resultOp.getArg(i);

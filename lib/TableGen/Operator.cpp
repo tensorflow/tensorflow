@@ -141,6 +141,23 @@ void Operator::populateOperandsAndAttributes() {
   }
 }
 
+std::string mlir::Operator::Attribute::getName() const {
+  std::string ret = name->getAsUnquotedString();
+  // TODO(jpienaar): Revise this post dialect prefixing attribute discussion.
+  auto split = StringRef(ret).split("__");
+  if (split.second.empty())
+    return ret;
+  return llvm::join_items("$", split.first, split.second);
+}
+
+StringRef mlir::Operator::Attribute::getReturnType() const {
+  return record->getValueAsString("returnType").trim();
+}
+
+StringRef mlir::Operator::Attribute::getStorageType() const {
+  return record->getValueAsString("storageType").trim();
+}
+
 bool mlir::Operator::Operand::hasMatcher() const {
   llvm::Init *matcher = defInit->getDef()->getValue("predicate")->getValue();
   return !isa<llvm::UnsetInit>(matcher);
