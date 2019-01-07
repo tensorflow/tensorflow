@@ -236,6 +236,7 @@ cc_library(
     ],
     hdrs = ["hlo_evaluator.h"],
     deps = [
+        ":dynamic_dimension_inference",
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_query",
@@ -697,6 +698,7 @@ cc_library(
         ":compiler",
         ":computation_layout",
         ":device_memory_allocator",
+        ":dynamic_dimension_inference",
         ":executable",
         ":execution_tracker",
         ":hlo",
