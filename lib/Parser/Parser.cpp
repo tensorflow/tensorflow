@@ -2205,9 +2205,10 @@ ParseResult FunctionParser::finalizeFunction(SMLoc loc) {
 FunctionParser::~FunctionParser() {
   for (auto &fwd : forwardReferencePlaceholders) {
     // Drop all uses of undefined forward declared reference and destroy
-    // defining instruction.
-    for (auto &use : fwd.first->getUses())
-      use.drop();
+    // defining instruction.  Dropping invalidates iterators so get the new
+    // iterator every time.
+    while (!fwd.first->use_empty())
+      fwd.first->use_begin()->drop();
     fwd.first->getDefiningInst()->destroy();
   }
 }
