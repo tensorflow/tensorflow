@@ -361,6 +361,31 @@ Status HloEvaluator::HandleBitcast(HloInstruction* bitcast) {
   return Status::OK();
 }
 
+Status HloEvaluator::HandleGetDimensionSize(
+    HloInstruction* get_dimension_size) {
+  HloInstruction* operand = get_dimension_size->mutable_operand(0);
+  int64 dim = get_dimension_size->dimension();
+  if (dynamic_dimension_inference_ == nullptr) {
+    return InvalidArgument(
+        "Evaluator cannot evaluate get_dimension_size without "
+        "set_dynamic_dimension_inference.");
+  }
+  HloInstruction* dynamic_size =
+      dynamic_dimension_inference_->GetDynamicSize(operand, {}, dim);
+  if (dynamic_size != nullptr) {
+    evaluated_[get_dimension_size] =
+        GetEvaluatedLiteralFor(dynamic_size).Clone();
+    return Status::OK();
+  }
+
+  const Shape& shape = get_dimension_size->operand(0)->shape();
+  Literal output(ShapeUtil::MakeShape(U32, {}));
+  output.PopulateWithValue(
+      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+  evaluated_[get_dimension_size] = std::move(output);
+  return Status::OK();
+}
+
 Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
   CHECK_LT(parameter->parameter_number(), arg_literals_.size());
   const Literal* input_literal = arg_literals_[parameter->parameter_number()];
@@ -1080,6 +1105,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   }
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
                        .ConsumeValueOrDie();
 
@@ -1113,6 +1140,8 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   }
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result =
       embedded_evaluator.Evaluate(*readded_computation, arg_literals)
           .ConsumeValueOrDie();
@@ -1132,6 +1161,8 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   auto* false_computation = conditional->false_computation();
 
   HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   Literal result;
   if (pred.Get<bool>({})) {
     result =
@@ -1186,7 +1217,10 @@ Status HloEvaluator::HandleWhile(HloInstruction* while_hlo) {
   bool keep_going = true;
   int64 iteration_count = 0;
   HloEvaluator cond_evaluator(max_loop_iterations_);
+  cond_evaluator.set_dynamic_dimension_inference(dynamic_dimension_inference_);
   HloEvaluator loop_body_evaluator(max_loop_iterations_);
+  loop_body_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
   while (keep_going) {
     if (max_loop_iterations_ >= 0 && iteration_count++ > max_loop_iterations_) {
       return InvalidArgument("Loop %s exceeded loop iteration limit (%d).",
