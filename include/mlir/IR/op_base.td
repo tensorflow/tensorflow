@@ -24,7 +24,7 @@
 #define OP_BASE
 
 //===----------------------------------------------------------------------===//
-// Types.
+// Predicates.
 //===----------------------------------------------------------------------===//
 
 // Singular predicate condition.
@@ -43,6 +43,18 @@ class PredAtom<code PredCall, bit Negated = 0> {
 class PredCNF<list<list<PredAtom>> Conditions> {
   list<list<PredAtom>> conditions = Conditions;
 }
+
+def IsVectorTypePred : PredAtom<"{0}.isa<VectorType>()">;
+
+def IsTensorTypePred : PredAtom<"{0}.isa<TensorType>()">;
+
+// For a TensorType, verify that it is a statically shaped tensor.
+def IsStaticShapeTensorTypePred :
+  PredAtom<"{0}.cast<TensorType>().hasStaticShape()">;
+
+//===----------------------------------------------------------------------===//
+// Types.
+//===----------------------------------------------------------------------===//
 
 // Base class for all types.
 class Type {
@@ -67,15 +79,14 @@ def I32 : I<32>;
 class F<int width> : Type {
   int bitwidth = width;
 }
-def IsF32TypePred : PredAtom<"{0}.isF32()">;
 def F32 : F<32> {
   let builderCall = "getF32Type()";
-  let predicate = PredCNF<[[IsF32TypePred]]>;
+  let predicate = PredCNF<[[PredAtom<"{0}.isF32()">]]>;
 }
 
 // A container type is a type that has another embedded within it.
 class ContainerType<Type ElementType,
-                    list<list<PredAtom>> ContainerPred> : Type {
+                    PredCNF ContainerPred> : Type {
   // The type of elements in the container.
   Type elementType = ElementType;
 
@@ -85,9 +96,9 @@ class ContainerType<Type ElementType,
   let predicate = PredCNF<
     !foldl(
       // Initialize with the predicate of the container.
-      ContainerPred,
-      elementType.predicate.conditions, a, b,
+      ContainerPred.conditions,
       // Add constraints of the element type.
+      elementType.predicate.conditions, a, b,
       !listconcat(a, [!foldl([]<PredAtom>, b, c, d,
         !listconcat(c, [PredAtom<
           !subst("{0}", !cast<string>(getElementTypeCall),
@@ -98,26 +109,35 @@ class ContainerType<Type ElementType,
   >;
 }
 
-def IsVectorTypePred : PredAtom<"{0}.isa<VectorType>()">;
-
 // Vector types.
-class Vector<Type t, list<int> dims> : ContainerType<t, [[IsVectorTypePred]]> {
+class Vector<Type t, list<int> dims> :
+    ContainerType<t, PredCNF<[[IsVectorTypePred]]>> {
   list<int> dimensions = dims;
   let getElementTypeCall = "{0}.cast<VectorType>().getElementType()";
   // TODO: match dims in predicate.
 }
 
-def IsTensorTypePred : PredAtom<"{0}.isa<TensorType>()">;
-
 // Tensor type.
-class TypedTensor<Type t> : ContainerType<t, [[IsTensorTypePred]]> {
-  let getElementTypeCall = "{0}.cast<TensorType>().getElementType()";
-}
 
 // This represents a generic tensor without constraints on elemental type,
-// rank, size.
+// rank, size. As there is no constraint on elemental type, derive from Type
+// directly instead of ContainerType.
 def Tensor : Type {
   let predicate = PredCNF<[[IsTensorTypePred]]>;
+}
+
+// A tensor with static shape but no other constraints. Note: as
+// Tensor is a def this doesn't derive from it, but reuses the predicate
+// that must hold for it to be a tensor.
+def StaticShapeTensor : Type {
+  let predicate = PredCNF<
+    !listconcat(Tensor.predicate.conditions, [[IsStaticShapeTensorTypePred]])
+  >;
+}
+
+// For typed tensors.
+class TypedTensor<Type t> : ContainerType<t, Tensor.predicate> {
+  let getElementTypeCall = "{0}.cast<TensorType>().getElementType()";
 }
 
 def F32Tensor : TypedTensor<F32>;
