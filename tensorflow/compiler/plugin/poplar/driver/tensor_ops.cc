@@ -152,7 +152,12 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
   std::vector<std::size_t> slice_sizes;
   poplar::Tensor slice_indices;
   for (unsigned d = 0; d < inst->shape().dimensions_size(); d++) {
-    auto t = indices.index({d}).reshape({1});
+    poplar::Tensor t;
+    if (indices.rank() == 0) {
+      t = indices.reshape({1});
+    } else {
+      t = indices.index({d}).reshape({1});
+    }
     bool same_shape = inst->shape().dimensions(d) == update.shape()[d];
     unsigned int index;
     bool zero_index = t.getConstantValue(&index) && (index == 0);
@@ -200,13 +205,21 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
     indices = indices.reinterpret(poplar::UNSIGNED_INT);
   }
 
+  auto& inst_slice_sizes = inst->dynamic_slice_sizes();
   std::vector<std::size_t> slice_dims;
   std::vector<std::size_t> slice_sizes;
   poplar::Tensor slice_indices;
   for (unsigned d = 0; d < inst->shape().dimensions_size(); d++) {
-    auto t = indices.index({d}).reshape({1});
-    bool same_shape = inst->shape().dimensions(d) == input.shape()[d];
+    poplar::Tensor t;
+    if (indices.rank() == 0) {
+      t = indices.reshape({1});
+    } else {
+      t = indices.index({d}).reshape({1});
+    }
+
+    bool same_shape = inst_slice_sizes[d] == input.shape()[d];
     unsigned int index;
+
     bool zero_index = t.getConstantValue(&index) && (index == 0);
 
     if (!(same_shape && zero_index)) {
@@ -216,7 +229,7 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
         slice_indices = poplar::concat(slice_indices, t, 0);
       }
       slice_dims.push_back(d);
-      slice_sizes.push_back(inst->shape().dimensions(d));
+      slice_sizes.push_back(inst_slice_sizes[d]);
     }
   }
 
