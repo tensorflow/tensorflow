@@ -2,7 +2,6 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(default_visibility = [
-    "//learning/brain/contrib/tfgan:__subpackages__",
     "//tensorflow:__subpackages__",
 ])
 
