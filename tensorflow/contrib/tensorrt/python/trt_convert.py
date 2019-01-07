@@ -45,15 +45,33 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 
-if _six.PY2:
-  _to_bytes = lambda s: s.encode("utf-8", errors="surrogateescape") \
-    if isinstance(s, unicode) else s
-  _to_string = lambda s: s.decode("utf-8") if isinstance(s, str) else s
-else:
-  _to_bytes = lambda s: s.encode("utf-8", errors="surrogateescape") \
-    if isinstance(s, str) else s
-  _to_string = lambda s: s.decode("utf-8") if isinstance(s, bytes) else s
+def _to_bytes(s):
+    """Returns encoded of s if s is a sequence of chars otherwise returns s.
+    """
+    if _six.PY2:
+        if isinstance(s, unicode):
+            return s.encode("utf-8", errors="surrogateescape")
+        else:
+            return s
+    else:
+        if isinstance(s, str):
+            return s.encode("utf-8", errors="surrogateescape")
+        else:
+            return s
 
+def _to_string(s):
+    """Returns decoded of s if s is a sequence of bytes otherwise returns s.
+    """
+    if _six.PY2:
+        if isinstance(s, str):
+            return s.decode("utf-8")
+        else:
+            return s
+    else:
+        if isinstance(s, bytes):
+            return s.decode("utf-8")
+        else:
+            return s
 
 class TrtPrecisionMode(object):
   FP32 = "FP32"
