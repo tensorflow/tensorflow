@@ -102,15 +102,16 @@ TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  TfLiteStatus status = primary_subgraph().Invoke();
+  TF_LITE_ENSURE_STATUS(primary_subgraph().Invoke());
 
   if (!allow_buffer_handle_output_) {
     for (int tensor_index : outputs()) {
-      primary_subgraph().EnsureTensorDataIsReadable(tensor_index);
+      TF_LITE_ENSURE_STATUS(
+          primary_subgraph().EnsureTensorDataIsReadable(tensor_index));
     }
   }
 
-  return status;
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
