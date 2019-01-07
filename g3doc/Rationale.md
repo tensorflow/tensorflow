@@ -392,6 +392,99 @@ to re-examine the representation for quantized arithmetic when we have that
 experience. When we do, we should chat with benoitjacob@ and
 [read the paper](https://arxiv.org/abs/1712.05877).
 
+### Dialect type extensions {#dialect-type-extensions}
+
+This section describes the design decisions that shaped the dialect extensible
+type system present in MLIR.
+
+#### Reserving dialect type kinds {#reserving-type-kinds}
+
+Dialects that wish to define type extensions must reserve a range of type kinds
+within a '.def' file within the core IR library. This means that every dialect
+wishing to define custom types must modify this file, but it guarantees that all
+type casting checkings are performed in O(1) time.
+
+#### Interactions between dialects {#type-interactions-between-dialects}
+
+There are two different interactions between dialects that are important to
+understand. When types of a dialect are:
+
+*   In operations of other dialects
+
+    -   For standard/builtin operations, only standard/builtin types are
+        allowed. This restriction allows for operations to clearly understand
+        the invariants that they are working under.
+    -   Outside of standard/builtin operations, dialects are expected to verify
+        the allowable operation types per operation.
+
+*   In types of other dialects
+
+    -   For standard/builtin types, these types are allowed to contain types
+        from other dialects. This simplifies the type system and removes the
+        need for dialects to redefine all of the standard aggregate types, e.g.
+        tensor, as well as the memref type. Dialects are expected to verify that
+        a specific type is valid within a standard type, e.g. if a type can be
+        an element of a tensor.
+    -   For dialect types, the dialect is expected to verify any type
+        invariants, e.g. if the standard tensor type can contain a specific type
+        of that dialect.
+
+#### Separating builtin and standard types {#separating-builtin-and-standard-types}
+
+Following the separation between the built-in and standard dialect, it makes
+sense to separate built-in types and standard dialect types. Built-in types are
+required for the validity of the IR itself, e.g. the function type (which
+appears in function signatures and long-hand forms of operations). Integer,
+float, vector, memref and tensor types, while important, are not necessary for
+IR validity.
+
+#### Unregistered types {#unregistered-types}
+
+MLIR supports unregistered operations in verbose notation. MLIR also supports a
+similar concept for types. When parsing, if the dialect for dialect type has not
+been registered the type is modeled as an 'UnknownType'. This allows for types
+to be round-tripped without needing to link in the dialect library that defined
+them. No additional information about unknown types, outside of
+parsing/printing, will be available.
+
+#### Dialect type syntax
+
+Dialect extended types are represented as string literals wrapped inside of the
+dialect namespace. This means that the parser delegates to the dialect for
+parsing specific type instances. This differs from the representation of dialect
+defined operations, of which have a identifier name that the parser uses to
+identify and parse them.
+
+This representation was chosen for several reasons:
+
+##### Dialects must provide custom type parsers {#dialect-type-custom-parser}
+
+Dialect type parsing cannot plug into the existing parser infrastructure as
+operations do with the OpAsmParser/Printer. Operations have a defined syntax
+structure that is the same across all dialects. Types, on the other hand, may
+have many different, and sometimes conflicting, parsing constraints that would
+be difficult/unmaintainable to provide within a single interface.
+
+This also has the added benefit of encouraging dialects to reuse existing
+external type parsers. For example, an LLVM dialect may provide an MLIR LLVM
+type that is simply a wrapper around LLVM types. The LLVM dialect would then use
+the existing LLVM type parsing infrastructure.
+
+Example:
+
+```mlir {.mlir}
+%s = "foo"() : () -> !llvm<"i32*">
+```
+
+##### Types do not always have canonical names
+
+Unlike operations, types generally do not have a formal canonical name. For
+example, function types have no defined keyword and integer types are defined by
+a regular expression to support arbitrary bitwidth. Dialects with existing type
+systems, e.g. LLVM, are likely to provide wrappers around their existing type
+systems. For these wrapper types there is no simple canonical name, it's logical
+to think of these types as existing within the namespace of the dialect.
+
 ## Examples {#examples}
 
 This section describes a few very simple examples that help understand how MLIR

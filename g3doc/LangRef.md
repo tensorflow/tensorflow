@@ -496,20 +496,23 @@ if #set42(%i, %j)[%M, %N] {
 
 Each SSA value in MLIR has a type defined by the type system below. There are a
 number of primitive types (like integers) and also aggregate types for tensors
-and memory buffers. MLIR does not include complex numbers, tuples, structures,
-arrays, or dictionaries.
+and memory buffers. MLIR standard types do not include complex numbers, tuples,
+structures, arrays, or dictionaries.
 
-TODO: Revisit this in light of dialect extensible type systems.
+MLIR has an open type system (there is no fixed list of types), and types may
+have application-specific semantics. For example, MLIR supports a set of
+[standard types](#standard-types) as well as
+[dialect-specific types](#dialect-specific-types).
 
 ``` {.ebnf}
 type ::= integer-type
        | index-type
        | float-type
-       | other-type
        | vector-type
        | tensor-type
        | memref-type
        | function-type
+       | dialect-type
 
 // MLIR doesn't have a tuple type but functions can return multiple values.
 type-list ::= type-list-parens | type
@@ -524,7 +527,50 @@ ssa-use-and-type ::= ssa-use `:` type
 ssa-use-and-type-list ::= ssa-use-and-type (`,` ssa-use-and-type)*
 ```
 
-### Integer Type {#integer-type}
+### Builtin Types {#builtin-types}
+
+Builtin types consist of only the types needed for the validity of the IR.
+
+#### Function Type {#function-type}
+
+Syntax:
+
+``` {.ebnf}
+function-type ::= type-list-parens `->` type-list
+```
+
+MLIR supports first-class functions: the
+[`constant` operation](#'constant'-operation) produces the address of a function
+as an SSA value. This SSA value may be passed to and returned from functions,
+merged across control flow boundaries with [block arguments](#blocks), and
+called with the [`call_indirect` instruction](#'call_indirect'-operation).
+
+Function types are also used to indicate the arguments and results of
+[operations](#operations).
+
+#### Index Type {#index-type}
+
+Syntax:
+
+``` {.ebnf}
+// Target word-sized integer.
+index-type ::= `index`
+```
+
+The `index` type is a signless integer whose size is equal to the natural
+machine word of the target ([rationale](Rationale.md#signless-types)) and is
+used by the affine constructs in MLIR. Unlike fixed-size integers. It cannot be
+used as an element of vector, tensor or memref type
+([rationale](Rationale.md#index-type-disallowed-in-aggregate-types)).
+
+**Rationale:** integers of platform-specific bit widths are practical to express
+sizes, dimensionalities and subscripts.
+
+TODO (Index type should not be a builtin).
+
+### Standard Types {#standard-types}
+
+#### Integer Type {#integer-type}
 
 Syntax:
 
@@ -544,25 +590,7 @@ bit one).
 TODO: Need to decide on a representation for quantized integers
 ([initial thoughts](Rationale.md#quantized-integer-operations)).
 
-### Index Type {#index-type}
-
-The `index` type is a signless integer whose size is equal to the natural
-machine word of the target ([rationale](Rationale.md#signless-types)) and is
-used by the affine constructs in MLIR. Unlike fixed-size integers. It cannot be
-used as an element of vector, tensor or memref type
-([rationale](Rationale.md#index-type-disallowed-in-aggregate-types)).
-
-Syntax:
-
-``` {.ebnf}
-// Target word-sized integer.
-index-type ::= `index`
-```
-
-**Rationale:** integers of platform-specific bit widths are practical to express
-sizes, dimensionalities and subscripts.
-
-### Floating Point Types {#floating-point-types}
+#### Floating Point Types {#floating-point-types}
 
 Syntax:
 
@@ -574,36 +602,9 @@ float-type ::= `f16` | `bf16` | `f32` | `f64`
 MLIR supports float types of certain widths that are widely used as indicated
 above.
 
-### Other Types {#other-types}
+#### Vector Type {#vector-type}
 
-In addition to the primary integer and floating point types, and derived types,
-MLIR supports some special purpose types:
-
-``` {.ebnf}
-// TensorFlow specific types (TODO: the rest ref data types)
-other-type ::= `tf_control` | `tf_resource` | `tf_variant` | `tf_string`
-               `tf_complex64` | `tf_complex128` | `tf_f32ref`
-```
-
-`tf_control` is used in TensorFlow graphs to represent
-[control dependence edges](https://docs.google.com/document/d/1Iey7MfrAlBWd0nrHNdnVKvIKRoo8XHsWG5g5pi1iDV4/edit?ts=5b5a0a9f#heading=h.1dv5wuya469j).
-
-### Function Type {#function-type}
-
-``` {.ebnf}
-function-type ::= type-list-parens `->` type-list
-```
-
-MLIR supports first-class functions: the
-[`constant` operation](#'constant'-operation) produces the address of a function
-as an SSA value. This SSA value may be passed to and returned from functions,
-merged across control flow boundaries with [block arguments](#blocks), and
-called with the [`call_indirect` instruction](#'call_indirect'-operation).
-
-Function types are also used to indicate the arguments and results of
-[operations](#operations).
-
-### Vector Type {#vector-type}
+Syntax:
 
 ``` {.ebnf}
 vector-type ::= `vector` `<` const-dimension-list vector-element-type `>`
@@ -617,7 +618,7 @@ instruction sets like AVX. While the most common use is for 1D vectors (e.g.
 vector<16 x f32>) we also support multidimensional registers on targets that
 support them (like TPUs).
 
-### Tensor Type {#tensor-type}
+#### Tensor Type {#tensor-type}
 
 Syntax:
 
@@ -663,7 +664,7 @@ tensor<17 x 4 x 13 x 4 x f32>
 tensor<f32>
 ```
 
-### Memref Type {#memref-type}
+#### Memref Type {#memref-type}
 
 Syntax:
 
@@ -730,12 +731,12 @@ Symbol capture example:
 %A = <strong>alloc</strong> (%n)[%o] : <16x?xf32, #imapA>
 ```
 
-#### Index Space {#index-space}
+##### Index Space {#index-space}
 
 A memref dimension list defines an index space within which the memref can be
 indexed to access data.
 
-#### Index {#index}
+##### Index {#index}
 
 Data is accessed through a memref type using a multidimensional index into the
 multidimensional index space defined by the memref's dimension list.
@@ -751,7 +752,7 @@ Examples
 %v = load %A[%i, %j] : memref<16x32xf32, #imapA, hbm>
 ```
 
-#### Index Map {#index-map}
+##### Index Map {#index-map}
 
 An index map is a one-to-one [semi-affine map](#semi-affine-maps) that
 transforms a multidimensional index from one index space to another. For
@@ -783,7 +784,7 @@ Index map examples:
                                          size (M, N)
 ```
 
-#### Layout Map {#layout-map}
+##### Layout Map {#layout-map}
 
 A layout map is a [semi-affine map](#semi-affine-maps) which encodes logical to
 physical index space mapping, by mapping input dimensions to their ordering from
@@ -800,7 +801,7 @@ Layout map examples:
 #layout_map_col_major = (i, j), [M, N] -> (j, i) size (M, N)
 ```
 
-#### Affine Map Composition {#affine-map-composition}
+##### Affine Map Composition {#affine-map-composition}
 
 A memref specifies a semi-affine map composition as part of its type. A
 semi-affine map composition is a composition of semi-affine maps beginning with
@@ -2094,3 +2095,36 @@ Example:
 
 These operations only work when targeting LLVM as a backend (e.g. for CPUs and
 GPUs), and are required to align with the LLVM definition of these intrinsics.
+
+### Dialect specific types {#dialect-specific-types}
+
+Similarly to operations, dialects may define custom extensions to the type
+system. These extensions fit within the same type system as described in the
+[type system overview](#type-system).
+
+``` {.ebnf}
+dialect-type ::= '!' dialect-namespace '<' '"' type-specific-data '"' '>'
+```
+
+Example:
+
+```mlir {.mlir}
+// LLVM type that wraps around llvm IR types.
+!llvm<"i32*">
+
+// Tensor flow string type.
+!tf<"string">
+```
+
+### TensorFlow types {#tensorflow-types}
+
+The TensorFlow dialect in MLIR defines several extended types:
+
+``` {.ebnf}
+// TensorFlow specific types (TODO: the rest ref data types)
+type-specific-data ::= `control` | `resource` | `variant` | `string`
+               `complex64` | `complex128` | `f32ref`
+```
+
+`control` is used in TensorFlow graphs to represent
+[control dependence edges](https://docs.google.com/document/d/1Iey7MfrAlBWd0nrHNdnVKvIKRoo8XHsWG5g5pi1iDV4/edit?ts=5b5a0a9f#heading=h.1dv5wuya469j).
