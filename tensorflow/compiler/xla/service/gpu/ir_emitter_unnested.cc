@@ -2810,7 +2810,8 @@ void IrEmitterUnnested::EmitBlock(const TileGenerator& emit_one_tile,
 // unnested_hlo: The unnested hlo instruction for which the kernel is generated.
 //   Currently, these hlo instructions are supported: kLoop fusion, kCopy.
 // tiled_param_ids: The IDs for the parameters that are 0-2-1 transpose of
-//   other tensors with the same dimensions and need to be tiled and tranposed.
+//   other tensors with the same dimensions and are safe to be tranposed via
+//   the shared memory tranpose implementation.
 // mapping_scheme: The tiling scheme to use.
 // kernel_generator: Contains function objects for code generation, such as
 //   element generator, block prologue and epilogue generators.
@@ -2989,7 +2990,10 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
 
 // Emits a kernel for the given hlo instruction using a tiled 0-2-1 transpose
 // algorithm to improve the memory access patterns for the input parameters
-// with a shape that is a 0-2-1 transpose of the output tensor shape.
+// with a shape that is a 0-2-1 transpose of the output tensor shape. The caller
+// is responsible for making sure that it is safe to apply the shared memory
+// tranpose on the input parameters.
+//
 //
 // For the purpose of tiling, the output tensors have a logical shape of three
 // components 0-2-1 while the relevant input parameters have a logical shape
@@ -3040,26 +3044,99 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
 }
 
 namespace {
-// Returns true to indicate it is safe to use the tile based shared memory
-// transpose implementation to implement the kernel for the instruction.
+// A recursive function to inspect the users of a parameter to determine
+// whether it's safe for a parameter to participate in a shared-memory
+// transpose.
 //
-// An instruction is not safe for such an implementation if it can change the
-// element order of a tensor without changing the dimension of the tensor, and
-// the instruction has a corresponding elemental_ir_emitter.
-bool IsInstructionSafeForTileBasedTranspose(const HloInstruction* hlo) {
-  auto is_safe_for_tile_based_transpose = [&](const HloInstruction* instr) {
-    HloOpcode opcode = instr->opcode();
-    CHECK_NE(opcode, HloOpcode::kFusion);
-    return (opcode != HloOpcode::kReverse && opcode != HloOpcode::kGather);
-  };
-
-  if (hlo->opcode() == HloOpcode::kFusion) {
-    return absl::c_all_of(hlo->fused_instructions_computation()->instructions(),
-                          is_safe_for_tile_based_transpose);
+// Consider a fusion parameter P for which we might want to use a shmem
+// transpose.  If we do, we use a GPU thread block to preload a tile of P with
+// indices [z, y..y+31, x..x+31] to compute an output tile with the same indices
+// cooperatively, where z, y, x are the indices for the normalized input/output
+// tensor (see the document for FindTranspose021 for the definition of
+// normalized tensor for 0-2-1 transpose). This shmem transpose implementation
+// requires that the computation of the output tile only read elements within
+// the preload tile. If this is not true, we can't use a shmem transpose for P.
+//
+// If the computation of output element [z, y, x] only requires the element of
+// P with the same indices, the shmem tranpose implementation can be applied
+// to P safely. This is a sufficient but not necessary condition. We check all
+// the transitive users of P to see if we can find a user that may cause an
+// exception to the situation. If such a user is not found, we conclude that P
+// is safe for shmem transpose.
+//
+// This is trivially true for elementwise operations and some "data-movement"
+// ops like kTuple. However, it's not true for operations that can change the
+// dimensions of the inputs (e.g. pad, slice) and bitcast operation.
+// For example:
+//
+// fused_computation {
+//   param_0 = f32[64,64]{1,0} parameter(0)
+//   ROOT bitcast = f32[64,64]{0,1} bitcast(param_0)
+// }
+// The output element at logical address [0, 63] depends on the input element
+// at logical address [63, 0], which would not be within the shared-memory
+// block.
+//
+// TODO(bixia): In order to extend this for kInput fusion, that is reduction
+// with tranpose, we only need to end the use-chain checking with the input of
+// a reduce operations. In this case, the above description on "output" apply
+// to the result of such a use-chain, which provides the input to the reduce
+// operation.
+bool IsInstructionSafeForShmemTranspose(const HloInstruction* hlo) {
+  if (hlo->IsElementwise()) {
+    return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
+      return IsInstructionSafeForShmemTranspose(user);
+    });
   }
 
-  return is_safe_for_tile_based_transpose(hlo);
+  switch (hlo->opcode()) {
+    // Non-elementwise instructions that don't cause the shmem transpose
+    // to be unsafe, including the instructions that don't currently fuse.
+    case HloOpcode::kGetDimensionSize:
+      // The result of the operation doesn't rely on the content of the
+      // tensor. As such, there is no need to further inspect its users.
+      return true;
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kMap:
+    case HloOpcode::kParameter:
+    case HloOpcode::kTuple:
+    case HloOpcode::kTupleSelect:
+      return absl::c_all_of(hlo->users(), [&](const HloInstruction* user) {
+        return IsInstructionSafeForShmemTranspose(user);
+      });
+
+    default:
+      return false;
+  }
 }
+
+// Given a group of input parameters that are 0-2-1 tranpose of the outputs of
+// a fusion kernel, returns the input parameters that are safe for the shared
+// memory tranpose implementation.
+//
+// When a tile based shared memory transpose is used to implement an input with
+// 0-2-1 transpose, we preload a tile of the input elements
+// [z, y..y+31, x..x+31] to compute the output tile elements of the same
+// indices. Preloading the input tile this way is only safe when the computation
+// of the output tile elements do not need any input element outside the
+// preloaded tile. We inspect all the transitive users of the input parameter
+// up to the fusion root instruction to see if we can find any instruction
+// that can make preloading the input tile unsafe.
+std::vector<int64> FilterInputsForShmemTranspose(const HloInstruction* fusion,
+                                                 std::vector<int64> input_ids) {
+  std::vector<int64> filtered_input_ids;
+  for (int64 i = 0; i < input_ids.size(); ++i) {
+    const HloInstruction* input = fusion->fused_parameter(input_ids[i]);
+    if (IsInstructionSafeForShmemTranspose(input)) {
+      filtered_input_ids.push_back(input_ids[i]);
+    } else {
+      VLOG(10) << "Input not safe for shmem transpose " << input->ToString()
+               << "\n";
+    }
+  }
+  return filtered_input_ids;
+}
+
 }  // namespace
 
 bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
@@ -3106,8 +3183,11 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
     return false;
   }
 
-  if (!IsInstructionSafeForTileBasedTranspose(hlo)) {
-    return false;
+  if (opcode == HloOpcode::kFusion) {
+    params_012 = FilterInputsForShmemTranspose(hlo, params_012);
+    if (params_012.empty()) {
+      return false;
+    }
   }
 
   // Each of our shared memory tiles has 32*33 elements (so ~4kb, if the
