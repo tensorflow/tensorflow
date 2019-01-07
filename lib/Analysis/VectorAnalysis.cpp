@@ -344,15 +344,17 @@ DimOrSymbol SingleResultAffineNormalizer::renumberOneIndex(Value *v) {
 AffineExpr SingleResultAffineNormalizer::renumber(
     const SingleResultAffineNormalizer &other) {
   SmallVector<AffineExpr, 8> dimRemapping, symRemapping;
-  for (auto kvp : other.dimValueToPosition) {
-    if (dimRemapping.size() <= kvp.second)
-      dimRemapping.resize(kvp.second + 1);
-    dimRemapping[kvp.second] = renumberOneIndex<AffineDimExpr>(kvp.first);
+  for (auto *v : other.reorderedDims) {
+    auto kvp = other.dimValueToPosition.find(v);
+    if (dimRemapping.size() <= kvp->second)
+      dimRemapping.resize(kvp->second + 1);
+    dimRemapping[kvp->second] = renumberOneIndex<AffineDimExpr>(kvp->first);
   }
-  for (auto kvp : other.symValueToPosition) {
-    if (symRemapping.size() <= kvp.second)
-      symRemapping.resize(kvp.second + 1);
-    symRemapping[kvp.second] = renumberOneIndex<AffineSymbolExpr>(kvp.first);
+  for (auto *v : other.reorderedSymbols) {
+    auto kvp = other.symValueToPosition.find(v);
+    if (symRemapping.size() <= kvp->second)
+      symRemapping.resize(kvp->second + 1);
+    symRemapping[kvp->second] = renumberOneIndex<AffineSymbolExpr>(kvp->first);
   }
   return other.expr.replaceDimsAndSymbols(dimRemapping, symRemapping);
 }

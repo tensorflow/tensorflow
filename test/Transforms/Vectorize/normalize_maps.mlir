@@ -34,9 +34,9 @@ func @simple() {
   }
   // CHECK:      for %i1 = 0 to 7
   // CHECK-NEXT:   for %i2 = 0 to 42
-  // CHECK-NEXT:     {{.*}} affine_apply #[[D0PLUSD1]](%i2, %i1)
-  // CHECK-NEXT:     {{.*}} affine_apply #[[D0MINUSD1]](%i2, %i1)
-  // CHECK-NEXT:     {{.*}} affine_apply #[[MINSD0PLUSD1]](%i2, %i1)
+  // CHECK-NEXT:     {{.*}} affine_apply #[[D0PLUSD1]](%i1, %i2)
+  // CHECK-NEXT:     {{.*}} affine_apply #[[MINSD0PLUSD1]](%i1, %i2)
+  // CHECK-NEXT:     {{.*}} affine_apply #[[D0MINUSD1]](%i1, %i2)
 
   for %i3 = 0 to 16 {
     for %i4 = 0 to 47 step 2 {
