@@ -80,7 +80,7 @@ AffineExpr::replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
     auto newRHS = rhs.replaceDimsAndSymbols(dimReplacements, symReplacements);
     if (newLHS == lhs && newRHS == rhs)
       return *this;
-    return getAffineBinaryExpr(getKind(), newLHS, newRHS);
+    return getAffineBinaryOpExpr(getKind(), newLHS, newRHS);
   }
 }
 

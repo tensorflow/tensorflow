@@ -199,8 +199,8 @@ inline AffineExpr operator-(int64_t val, AffineExpr expr) {
 AffineExpr getAffineDimExpr(unsigned position, MLIRContext *context);
 AffineExpr getAffineSymbolExpr(unsigned position, MLIRContext *context);
 AffineExpr getAffineConstantExpr(int64_t constant, MLIRContext *context);
-AffineExpr getAffineBinaryExpr(AffineExprKind kind, AffineExpr lhs,
-                               AffineExpr rhs);
+AffineExpr getAffineBinaryOpExpr(AffineExprKind kind, AffineExpr lhs,
+                                 AffineExpr rhs);
 
 raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr);
 

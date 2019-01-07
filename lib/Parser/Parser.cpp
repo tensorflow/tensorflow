@@ -1287,9 +1287,9 @@ private:
   AffineExpr parseIntegerExpr();
   AffineExpr parseBareIdExpr();
 
-  AffineExpr getBinaryAffineOpExpr(AffineHighPrecOp op, AffineExpr lhs,
+  AffineExpr getAffineBinaryOpExpr(AffineHighPrecOp op, AffineExpr lhs,
                                    AffineExpr rhs, SMLoc opLoc);
-  AffineExpr getBinaryAffineOpExpr(AffineLowPrecOp op, AffineExpr lhs,
+  AffineExpr getAffineBinaryOpExpr(AffineLowPrecOp op, AffineExpr lhs,
                                    AffineExpr rhs);
   AffineExpr parseAffineOperandExpr(AffineExpr lhs);
   AffineExpr parseAffineLowPrecOpExpr(AffineExpr llhs, AffineLowPrecOp llhsOp);
@@ -1305,7 +1305,7 @@ private:
 /// Create an affine binary high precedence op expression (mul's, div's, mod).
 /// opLoc is the location of the op token to be used to report errors
 /// for non-conforming expressions.
-AffineExpr AffineParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
+AffineExpr AffineParser::getAffineBinaryOpExpr(AffineHighPrecOp op,
                                                AffineExpr lhs, AffineExpr rhs,
                                                SMLoc opLoc) {
   // TODO: make the error location info accurate.
@@ -1345,7 +1345,7 @@ AffineExpr AffineParser::getBinaryAffineOpExpr(AffineHighPrecOp op,
 }
 
 /// Create an affine binary low precedence op expression (add, sub).
-AffineExpr AffineParser::getBinaryAffineOpExpr(AffineLowPrecOp op,
+AffineExpr AffineParser::getAffineBinaryOpExpr(AffineLowPrecOp op,
                                                AffineExpr lhs, AffineExpr rhs) {
   switch (op) {
   case AffineLowPrecOp::Add:
@@ -1414,7 +1414,7 @@ AffineExpr AffineParser::parseAffineHighPrecOpExpr(AffineExpr llhs,
   auto opLoc = getToken().getLoc();
   if (AffineHighPrecOp op = consumeIfHighPrecOp()) {
     if (llhs) {
-      AffineExpr expr = getBinaryAffineOpExpr(llhsOp, llhs, lhs, opLoc);
+      AffineExpr expr = getAffineBinaryOpExpr(llhsOp, llhs, lhs, opLoc);
       if (!expr)
         return nullptr;
       return parseAffineHighPrecOpExpr(expr, op, opLoc);
@@ -1425,7 +1425,7 @@ AffineExpr AffineParser::parseAffineHighPrecOpExpr(AffineExpr llhs,
 
   // This is the last operand in this expression.
   if (llhs)
-    return getBinaryAffineOpExpr(llhsOp, llhs, lhs, llhsOpLoc);
+    return getAffineBinaryOpExpr(llhsOp, llhs, lhs, llhsOpLoc);
 
   // No llhs, 'lhs' itself is the expression.
   return lhs;
@@ -1565,7 +1565,7 @@ AffineExpr AffineParser::parseAffineLowPrecOpExpr(AffineExpr llhs,
   // Found an LHS. Deal with the ops.
   if (AffineLowPrecOp lOp = consumeIfLowPrecOp()) {
     if (llhs) {
-      AffineExpr sum = getBinaryAffineOpExpr(llhsOp, llhs, lhs);
+      AffineExpr sum = getAffineBinaryOpExpr(llhsOp, llhs, lhs);
       return parseAffineLowPrecOpExpr(sum, lOp);
     }
     // No LLHS, get RHS and form the expression.
@@ -1582,7 +1582,7 @@ AffineExpr AffineParser::parseAffineLowPrecOpExpr(AffineExpr llhs,
     // If llhs is null, the product forms the first operand of the yet to be
     // found expression. If non-null, the op to associate with llhs is llhsOp.
     AffineExpr expr =
-        llhs ? getBinaryAffineOpExpr(llhsOp, llhs, highRes) : highRes;
+        llhs ? getAffineBinaryOpExpr(llhsOp, llhs, highRes) : highRes;
 
     // Recurse for subsequent low prec op's after the affine high prec op
     // expression.
@@ -1592,7 +1592,7 @@ AffineExpr AffineParser::parseAffineLowPrecOpExpr(AffineExpr llhs,
   }
   // Last operand in the expression list.
   if (llhs)
-    return getBinaryAffineOpExpr(llhsOp, llhs, lhs);
+    return getAffineBinaryOpExpr(llhsOp, llhs, lhs);
   // No llhs, 'lhs' itself is the expression.
   return lhs;
 }

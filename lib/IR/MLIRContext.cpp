@@ -1445,8 +1445,8 @@ AffineExpr AffineBinaryOpExprStorage::get(AffineExprKind kind, AffineExpr lhs,
   return result;
 }
 
-AffineExpr mlir::getAffineBinaryExpr(AffineExprKind kind, AffineExpr lhs,
-                                     AffineExpr rhs) {
+AffineExpr mlir::getAffineBinaryOpExpr(AffineExprKind kind, AffineExpr lhs,
+                                       AffineExpr rhs) {
   return AffineBinaryOpExprStorage::get(kind, lhs, rhs);
 }
 
