@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,24 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/summary/schema.h"
 
-#include "tensorflow/core/platform/setround.h"
+#include <memory>
 
-#include <cfenv>  // NOLINT
+#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-namespace port {
+namespace {
 
-ScopedSetRound::ScopedSetRound(const int mode) {
-  original_mode_ = std::fegetround();
-  if (original_mode_ < 0) {
-    // Failed to get current mode, assume ROUND TO NEAREST.
-    original_mode_ = FE_TONEAREST;
-  }
-  std::fesetround(mode);
+TEST(SchemaTest, SmokeTestTensorboardSchema) {
+  Sqlite* db;
+  TF_ASSERT_OK(Sqlite::Open(":memory:", SQLITE_OPEN_READWRITE, &db));
+  core::ScopedUnref unref_db(db);
+  TF_ASSERT_OK(SetupTensorboardSqliteDb(db));
 }
 
-ScopedSetRound::~ScopedSetRound() { std::fesetround(original_mode_); }
-
-}  // namespace port
+}  // namespace
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/setround.h"
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
 
-#include <cfenv>  // NOLINT
+#include "tensorflow/core/kernels/depthwise_conv_op.h"
+#include "tensorflow/core/kernels/depthwise_conv_op_gpu.h"
 
 namespace tensorflow {
-namespace port {
+using Eigen::GpuDevice;
 
-ScopedSetRound::ScopedSetRound(const int mode) {
-  original_mode_ = std::fegetround();
-  if (original_mode_ < 0) {
-    // Failed to get current mode, assume ROUND TO NEAREST.
-    original_mode_ = FE_TONEAREST;
-  }
-  std::fesetround(mode);
-}
-
-ScopedSetRound::~ScopedSetRound() { std::fesetround(original_mode_); }
-
-}  // namespace port
+template struct LaunchDepthwiseConvOp<GpuDevice, float>;
+template struct LaunchDepthwiseConvBackpropInputOp<GpuDevice, float>;
+template struct LaunchDepthwiseConvBackpropFilterOp<GpuDevice, float>;
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA

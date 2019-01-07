@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,24 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_SUMMARY_SCHEMA_H_
+#define TENSORFLOW_CORE_SUMMARY_SCHEMA_H_
 
-#include "tensorflow/core/platform/setround.h"
-
-#include <cfenv>  // NOLINT
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/db/sqlite.h"
 
 namespace tensorflow {
-namespace port {
 
-ScopedSetRound::ScopedSetRound(const int mode) {
-  original_mode_ = std::fegetround();
-  if (original_mode_ < 0) {
-    // Failed to get current mode, assume ROUND TO NEAREST.
-    original_mode_ = FE_TONEAREST;
-  }
-  std::fesetround(mode);
-}
+constexpr uint32 kTensorboardSqliteApplicationId = 0xfeedabee;
 
-ScopedSetRound::~ScopedSetRound() { std::fesetround(original_mode_); }
+/// \brief Creates TensorBoard SQLite tables and indexes.
+///
+/// If they are already created, this has no effect. If schema
+/// migrations are necessary, they will be performed with logging.
+Status SetupTensorboardSqliteDb(Sqlite* db);
 
-}  // namespace port
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_SUMMARY_SCHEMA_H_

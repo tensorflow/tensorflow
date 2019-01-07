@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,22 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_TENSORBOARD_DB_SCHEMA_H_
-#define TENSORFLOW_CONTRIB_TENSORBOARD_DB_SCHEMA_H_
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/db/sqlite.h"
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+
+#include "tensorflow/core/kernels/depthwise_conv_op.h"
+#include "tensorflow/core/kernels/depthwise_conv_op_gpu.h"
 
 namespace tensorflow {
+using Eigen::GpuDevice;
 
-constexpr uint32 kTensorboardSqliteApplicationId = 0xfeedabee;
-
-/// \brief Creates TensorBoard SQLite tables and indexes.
-///
-/// If they are already created, this has no effect. If schema
-/// migrations are necessary, they will be performed with logging.
-Status SetupTensorboardSqliteDb(Sqlite* db);
-
+template struct LaunchDepthwiseConvOp<GpuDevice, double>;
+template struct LaunchDepthwiseConvBackpropInputOp<GpuDevice, double>;
+template struct LaunchDepthwiseConvBackpropFilterOp<GpuDevice, double>;
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_TENSORBOARD_DB_SCHEMA_H_
+#endif  // GOOGLE_CUDA

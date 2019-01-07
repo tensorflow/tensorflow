@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,22 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/tensorboard/db/schema.h"
 
-#include <memory>
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
 
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/kernels/depthwise_conv_op.h"
+#include "tensorflow/core/kernels/depthwise_conv_op_gpu.h"
 
 namespace tensorflow {
-namespace {
+using Eigen::GpuDevice;
 
-TEST(SchemaTest, SmokeTestTensorboardSchema) {
-  Sqlite* db;
-  TF_ASSERT_OK(Sqlite::Open(":memory:", SQLITE_OPEN_READWRITE, &db));
-  core::ScopedUnref unref_db(db);
-  TF_ASSERT_OK(SetupTensorboardSqliteDb(db));
-}
-
-}  // namespace
+template struct LaunchDepthwiseConvOp<GpuDevice, Eigen::half>;
+template struct LaunchDepthwiseConvBackpropInputOp<GpuDevice, Eigen::half>;
+template struct LaunchDepthwiseConvBackpropFilterOp<GpuDevice, Eigen::half>;
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA

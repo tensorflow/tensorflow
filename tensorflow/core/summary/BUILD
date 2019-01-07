@@ -1,5 +1,5 @@
 # Description:
-#   TensorBoard database code.
+#   C++ implementation code for the summary writing APIs.
 
 package(default_visibility = ["//tensorflow:internal"])
 
