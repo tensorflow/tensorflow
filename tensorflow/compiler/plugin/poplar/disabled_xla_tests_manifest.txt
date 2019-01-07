@@ -272,3 +272,5 @@ DotOperationTest_F16F32F64CF64.GeneralMatMulR3LhsR2Rhs POPLAR // Need to support
 DotOperationTest_F16F32F64CF64.GeneralMatMulR2LhsR3Rhs POPLAR
 
 IotaR3PredTest POPLAR // iota PRED support
+
+ArrayElementwiseOpTest.ClampF32 POPLAR // NaN propagation
