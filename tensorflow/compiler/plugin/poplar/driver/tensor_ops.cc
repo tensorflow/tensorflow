@@ -6,8 +6,10 @@
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -143,21 +145,30 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
   TF_ASSIGN_OR_RETURN(indices,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
 
-  auto type = indices.elementType();
-  if (type == poplar::INT) {
-    indices = indices.reinterpret(poplar::UNSIGNED_INT);
-  }
+  auto* dynamic_inst = Cast<HloDynamicUpdateSliceInstruction>(inst);
+  auto first_index = dynamic_inst->first_index_operand_number();
+
+  bool multiple_indices = (indices.rank() == 0);
 
   std::vector<std::size_t> slice_dims;
   std::vector<std::size_t> slice_sizes;
   poplar::Tensor slice_indices;
   for (unsigned d = 0; d < inst->shape().dimensions_size(); d++) {
     poplar::Tensor t;
-    if (indices.rank() == 0) {
-      t = indices.reshape({1});
+    if (multiple_indices) {
+      TF_ASSIGN_OR_RETURN(t,
+                          FindInstructionInput(tensor_map, res, inst,
+                                               first_index + d, seq));
+      t = t.reshape({1});
     } else {
       t = indices.index({d}).reshape({1});
     }
+
+    auto type = indices.elementType();
+    if (type == poplar::INT) {
+      t = t.reinterpret(poplar::UNSIGNED_INT);
+    }
+
     bool same_shape = inst->shape().dimensions(d) == update.shape()[d];
     unsigned int index;
     bool zero_index = t.getConstantValue(&index) && (index == 0);
@@ -200,10 +211,10 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
   TF_ASSIGN_OR_RETURN(indices,
                       FindInstructionInput(tensor_map, res, inst, 1, seq));
 
-  auto type = indices.elementType();
-  if (type == poplar::INT) {
-    indices = indices.reinterpret(poplar::UNSIGNED_INT);
-  }
+  auto first_index =
+      Cast<HloDynamicSliceInstruction>(inst)->first_index_operand_number();
+
+  bool multiple_indices = (indices.rank() == 0);
 
   auto& inst_slice_sizes = inst->dynamic_slice_sizes();
   std::vector<std::size_t> slice_dims;
@@ -211,10 +222,18 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
   poplar::Tensor slice_indices;
   for (unsigned d = 0; d < inst->shape().dimensions_size(); d++) {
     poplar::Tensor t;
-    if (indices.rank() == 0) {
-      t = indices.reshape({1});
+    if (multiple_indices) {
+      TF_ASSIGN_OR_RETURN(t,
+                          FindInstructionInput(tensor_map, res, inst,
+                                               first_index + d, seq));
+      t = t.reshape({1});
     } else {
       t = indices.index({d}).reshape({1});
+    }
+
+    auto type = t.elementType();
+    if (type == poplar::INT) {
+      t = t.reinterpret(poplar::UNSIGNED_INT);
     }
 
     bool same_shape = inst_slice_sizes[d] == input.shape()[d];
