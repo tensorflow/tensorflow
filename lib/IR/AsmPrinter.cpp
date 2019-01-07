@@ -488,10 +488,16 @@ void ModulePrinter::printType(Type type) {
   switch (type.getKind()) {
   default: {
     auto &dialect = type.getDialect();
-    os << "!" << dialect.getNamespace() << "<\"";
+    os << '!' << dialect.getNamespace() << "<\"";
     assert(dialect.typePrintHook && "Expected dialect type printing hook.");
     dialect.typePrintHook(type, os);
     os << "\">";
+    return;
+  }
+  case Type::Kind::Unknown: {
+    auto unknownTy = type.cast<UnknownType>();
+    os << '!' << unknownTy.getDialectNamespace() << "<\""
+       << unknownTy.getTypeData() << "\">";
     return;
   }
   case Type::Kind::Index:

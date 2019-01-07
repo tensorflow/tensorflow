@@ -705,4 +705,15 @@ func @loops_with_blockids() {
   return
 }
 
+// CHECK-LABEL: func @unknown_dialect_type() -> !bar<""> {
+func @unknown_dialect_type() -> !bar<""> {
+  // Unregistered dialect 'bar'.
+  // CHECK: "foo"() : () -> !bar<"">
+  %0 = "foo"() : () -> !bar<"">
+
+  // CHECK: "foo"() : () -> !bar<"baz">
+  %1 = "foo"() : () -> !bar<"baz">
+
+  return %0 : !bar<"">
+}
 

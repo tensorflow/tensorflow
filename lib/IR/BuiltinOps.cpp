@@ -36,8 +36,8 @@ using namespace mlir;
 BuiltinDialect::BuiltinDialect(MLIRContext *context)
     : Dialect(/*namePrefix=*/"", context) {
   addOperations<AffineApplyOp, BranchOp, CondBranchOp, ConstantOp, ReturnOp>();
-  addTypes<IndexType, FloatType, IntegerType, FunctionType, VectorType,
-           RankedTensorType, UnrankedTensorType, MemRefType>();
+  addTypes<FunctionType, IndexType, UnknownType, FloatType, IntegerType,
+           VectorType, RankedTensorType, UnrankedTensorType, MemRefType>();
 }
 
 void mlir::printDimAndSymbolList(OperationInst::const_operand_iterator begin,

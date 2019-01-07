@@ -445,16 +445,15 @@ Type Parser::parseDialectType() {
   StringRef dialectName = getTokenSpelling().drop_front();
   consumeToken(Token::exclamation_identifier);
 
+  // Check for a registered dialect with this name.
   auto *dialect = state.context->getRegisteredDialect(dialectName);
-  if (!dialect)
-    return (emitError("no registered dialect with namespace: " + dialectName),
-            nullptr);
-
-  // Make sure that the dialect provides a parsing hook.
-  if (!dialect->typeParseHook)
-    return (emitError("dialect '" + dialect->getNamespace() +
-                      "' provides no type parsing hook"),
-            nullptr);
+  if (dialect) {
+    // Make sure that the dialect provides a parsing hook.
+    if (!dialect->typeParseHook)
+      return (emitError("dialect '" + dialect->getNamespace() +
+                        "' provides no type parsing hook"),
+              nullptr);
+  }
 
   // Consume the '<'.
   if (parseToken(Token::less, "expected '<' in dialect type"))
@@ -469,9 +468,18 @@ Type Parser::parseDialectType() {
   auto loc = getEncodedSourceLocation(getToken().getLoc());
   consumeToken(Token::string);
 
-  Type result = dialect->typeParseHook(typeData, loc, state.context);
-  if (!result)
-    return nullptr;
+  Type result;
+
+  // If we found a registered dialect, then ask it to parse the type.
+  if (dialect) {
+    result = dialect->typeParseHook(typeData, loc, state.context);
+    if (!result)
+      return nullptr;
+  } else {
+    // Otherwise, form a new unknown type.
+    result = UnknownType::get(Identifier::get(dialectName, state.context),
+                              typeData, state.context);
+  }
 
   // Consume the '>'.
   if (parseToken(Token::greater, "expected '>' in dialect type"))

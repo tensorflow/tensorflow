@@ -33,6 +33,7 @@ class MLIRContext;
 namespace detail {
 struct FunctionTypeStorage;
 struct TypeStorage;
+struct UnknownTypeStorage;
 } // namespace detail
 
 /// Instances of the Type class are immutable and uniqued.  They wrap a pointer
@@ -101,6 +102,7 @@ public:
   enum Kind {
     // Builtin types.
     Function,
+    Unknown,
 
     // TODO(riverriddle) Index shouldn't really be a builtin.
     // Target pointer sized integer, used (e.g.) in affine mappings.
@@ -302,6 +304,30 @@ public:
 
   /// Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) { return kind == Kind::Index; }
+
+  /// Unique identifier for this type class.
+  static char typeID;
+};
+
+/// Unknown types represent types of non-registered dialects. These are types
+/// represented in their raw string form, and can only usefully be tested for
+/// type equality.
+class UnknownType
+    : public Type::TypeBase<UnknownType, Type, detail::UnknownTypeStorage> {
+public:
+  using Base::Base;
+
+  /// Get or create a new UnknownType with the provided dialect and string data.
+  static UnknownType get(Identifier dialect, StringRef typeData,
+                         MLIRContext *context);
+
+  /// Returns the dialect namespace of the unknown type.
+  Identifier getDialectNamespace() const;
+
+  /// Returns the raw type data of the unknown type.
+  StringRef getTypeData() const;
+
+  static bool kindof(unsigned kind) { return kind == Kind::Unknown; }
 
   /// Unique identifier for this type class.
   static char typeID;

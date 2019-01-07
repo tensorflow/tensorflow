@@ -22,6 +22,7 @@
 #define TYPEDETAIL_H_
 
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
@@ -31,6 +32,32 @@ namespace mlir {
 class MLIRContext;
 
 namespace detail {
+
+/// Unknown Type Storage and Uniquing.
+struct UnknownTypeStorage : public TypeStorage {
+  UnknownTypeStorage(Identifier dialectNamespace, StringRef typeData)
+      : dialectNamespace(dialectNamespace), typeData(typeData) {}
+
+  /// The hash key used for uniquing.
+  using KeyTy = std::pair<Identifier, StringRef>;
+
+  /// Convert to the key type.
+  KeyTy getKey() const { return std::make_pair(dialectNamespace, typeData); }
+
+  static UnknownTypeStorage *construct(TypeStorageAllocator &allocator,
+                                       Identifier dialectName,
+                                       StringRef tyData) {
+    auto *instance = allocator.allocate<UnknownTypeStorage>();
+    tyData = allocator.copyInto(tyData);
+    return new (instance) UnknownTypeStorage(dialectName, tyData);
+  }
+
+  // The unknown dialect namespace.
+  Identifier dialectNamespace;
+
+  // The parser type data for this unknown type.
+  StringRef typeData;
+};
 
 /// Integer Type Storage and Uniquing.
 struct IntegerTypeStorage : public TypeStorage {

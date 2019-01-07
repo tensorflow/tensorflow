@@ -114,6 +114,13 @@ public:
     return ArrayRef<T>(result, elements.size());
   }
 
+  /// Copy the provided string into memory managed by our bump pointer
+  /// allocator.
+  StringRef copyInto(StringRef str) {
+    auto result = copyInto(ArrayRef<char>(str.data(), str.size()));
+    return StringRef(result.data(), str.size());
+  }
+
   // Allocate an instance of the provided type.
   template <typename T> T *allocate() { return getAllocator().Allocate<T>(); }
 

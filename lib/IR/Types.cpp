@@ -51,6 +51,24 @@ ArrayRef<Type> FunctionType::getResults() const {
   return static_cast<ImplType *>(type)->getResults();
 }
 
+/// UnknownType
+
+UnknownType UnknownType::get(Identifier dialect, StringRef typeData,
+                             MLIRContext *context) {
+  return Base::get(context, Type::Kind::Unknown, dialect, typeData);
+}
+
+/// Returns the dialect namespace of the unknown type.
+Identifier UnknownType::getDialectNamespace() const {
+  return static_cast<ImplType *>(type)->dialectNamespace;
+}
+
+/// Returns the raw type data of the unknown type.
+StringRef UnknownType::getTypeData() const {
+  return static_cast<ImplType *>(type)->typeData;
+}
+
 // Define type identifiers.
 char FunctionType::typeID = 0;
 char IndexType::typeID = 0;
+char UnknownType::typeID = 0;

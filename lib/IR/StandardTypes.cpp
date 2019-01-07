@@ -1,4 +1,4 @@
-//===- Types.cpp - MLIR Type Classes --------------------------------------===//
+//===- StandardTypes.cpp - MLIR Standard Type Classes ---------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

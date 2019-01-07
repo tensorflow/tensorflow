@@ -786,3 +786,27 @@ func @f(%m : memref<?x?xf32>) {
   }
   return
 }
+
+// -----
+
+func @dialect_type_empty_namespace(!<"">) -> () { // expected-error {{invalid dialect type namespace}}
+  return
+}
+
+// -----
+
+func @dialect_type_no_string_type_data(!foo<>) -> () { // expected-error {{expected string literal type data in dialect type}}
+  return
+}
+
+// -----
+
+func @dialect_type_missing_less(!foo"">) -> () { // expected-error {{expected '<' in dialect type}}
+  return
+}
+
+// -----
+
+func @dialect_type_missing_greater(!foo<"") -> () { // expected-error {{expected '>' in dialect type}}
+  return
+}
