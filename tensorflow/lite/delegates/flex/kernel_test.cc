@@ -25,6 +25,7 @@ namespace {
 
 using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
 
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteDelegate* delegate,
                             const std::vector<int>& supported_nodes) {
@@ -340,14 +341,10 @@ TEST_F(MultipleSubgraphsTest, ForwardabilityIsLocal) {
   auto input = {3.0f, 4.0f, 5.0f};
   PrepareInterpreter(GetPrepareFunction<__LINE__>(), input);
 
-  ASSERT_FALSE(Invoke());
-  ASSERT_THAT(error_reporter().error_messages(),
-              ContainsRegex("Cannot read from invalid tensor index 10"));
-
-  // TODO(b/122457581): expected result for this test:
-  // ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
-  //               return (4 * in + 4) * (in + 1);
-  //             })));
+  ASSERT_TRUE(Invoke());
+  ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
+                return (4 * in + 4) * (in + 1);
+              })));
 }
 
 // Subgraphs should not remove input tensors from the buffer_map, since
@@ -379,14 +376,10 @@ TEST_F(MultipleSubgraphsTest, DoNotRemoveInputTensors) {
   auto input = {3.0f, 4.0f, 5.0f};
   PrepareInterpreter(GetPrepareFunction<__LINE__>(), input);
 
-  ASSERT_FALSE(Invoke());
-  ASSERT_THAT(error_reporter().error_messages(),
-              ContainsRegex("Tensor '10' not found"));
-
-  // TODO(b/122457581): expected result for this test:
-  // ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
-  //               return (4 * in + 4) * (in + 1);
-  //             })));
+  ASSERT_TRUE(Invoke());
+  ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
+                return (4 * in + 4) * (in + 1);
+              })));
 }
 
 // A tensor is deemed forwardable but it happens to be the input to
@@ -417,14 +410,10 @@ TEST_F(MultipleSubgraphsTest, DoNotForwardInputTensors) {
   auto input = {3.0f, 4.0f, 5.0f};
   PrepareInterpreter(GetPrepareFunction<__LINE__>(), input);
 
-  ASSERT_FALSE(Invoke());
-  ASSERT_THAT(error_reporter().error_messages(),
-              ContainsRegex("Tensor '10' not found"));
-
-  // TODO(b/122457581): expected result for this test:
-  // ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
-  //               return (5 * in + 5) * (in + 1);
-  //             })));
+  ASSERT_TRUE(Invoke());
+  ASSERT_THAT(GetValues(12), ElementsAreArray(Apply(input, [](float in) {
+                return (5 * in + 5) * (in + 1);
+              })));
 }
 
 }  // namespace

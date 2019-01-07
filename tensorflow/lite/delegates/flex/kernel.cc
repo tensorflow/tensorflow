@@ -350,7 +350,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         buffer_map->SetFromTfLite(tensor_index, tensor);
       }
     }
-    ++tensor_ref_count[tensor_index];
+
+    // Input tensors should never be forwarded so we increment their ref counts
+    // twice: once for this graph and another for the possibility of them being
+    // used by another subgraph, or being an output of the full graph.
+    tensor_ref_count[tensor_index] += 2;
   }
 
   // All output tensors are allocated by TensorFlow/Eager, so we
@@ -372,6 +376,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
+  buffer_map->ClearForwardable();
   for (const auto& x : tensor_ref_count) {
     if (x.second == 1) {
       // This tensor is referenced once by a single op. We can allow the TF
@@ -429,10 +434,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // We don't need to keep track of internal TF tensors any longer, so take
-  // them out of the buffer_map, but make sure we keep all the one we might
+  // them out of the buffer_map, but make sure we keep all the ones we might
   // need for other subgraphs, or as final output of inference.
   const auto& outputs = op_data->subgraph_outputs;
   std::set<int> keep(outputs.begin(), outputs.end());
+  const auto& inputs = op_data->subgraph_inputs;
+  keep.insert(inputs.begin(), inputs.end());
   buffer_map->RemoveTensorsNotInSet(keep);
 
   return kTfLiteOk;
