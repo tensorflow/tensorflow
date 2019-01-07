@@ -493,7 +493,7 @@ class ASTCodeUpgrader(object):
             process_errors)
 
   def process_tree(self, root_directory, output_root_directory,
-                   copy_other_files):
+                   copy_other_files, in_place):
     """Processes upgrades on an entire tree of python files in place.
 
     Note that only Python files. If you have custom code in other languages,
@@ -503,10 +503,19 @@ class ASTCodeUpgrader(object):
       root_directory: Directory to walk and process.
       output_root_directory: Directory to use as base.
       copy_other_files: Copy files that are not touched by this converter.
+      in_place: Allow the conversion of an entire directory in place.
 
     Returns:
       A tuple of files processed, the report string ofr all files, and errors
     """
+
+    if output_root_directory == root_directory:
+      if in_place:
+        return self.process_tree_inplace(root_directory)
+      else:
+        print("In order to copy a directory in place the `--inplace` input "
+              "arg must be set to `True`.")
+        sys.exit(1)
 
     # make sure output directory doesn't exist
     if output_root_directory and os.path.exists(output_root_directory):
@@ -563,4 +572,27 @@ class ASTCodeUpgrader(object):
       if not os.path.isdir(output_directory):
         os.makedirs(output_directory)
       shutil.copy(input_path, output_path)
+    return file_count, report, tree_errors
+
+  def process_tree_inplace(self, root_directory):
+    """Process a directory of python files in place."""
+    files_to_process = []
+    for dir_name, _, file_list in os.walk(root_directory):
+      py_files = [os.path.join(dir_name,
+                               f) for f in file_list if f.endswith(".py")]
+      files_to_process += py_files
+
+    file_count = 0
+    tree_errors = []
+    report = ""
+    report += ("=" * 80) + "\n"
+    report += "Input tree: %r\n" % root_directory
+    report += ("=" * 80) + "\n"
+
+    for path in files_to_process:
+      file_count += 1
+      _, l_report, l_errors = self.process_file(path, path)
+      tree_errors += l_errors
+      report += l_report
+
     return file_count, report, tree_errors
