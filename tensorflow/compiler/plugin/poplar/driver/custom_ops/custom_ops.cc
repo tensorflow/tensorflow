@@ -46,6 +46,7 @@ typedef const absl::flat_hash_map<std::string, CustomPoplibOpInfo>& (
 absl::flat_hash_map<std::string, GetOpInfoMapFn> poplibs_info_map = {
     {"poplin", GetPoplinOpInfoMap},
     {"popnn", GetPopnnOpInfoMap},
+    {"popops", GetPopopsOpInfoMap},
     {"poprand", GetPoprandOpInfoMap},
 };
 

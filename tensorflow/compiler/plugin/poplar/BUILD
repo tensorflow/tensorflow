@@ -165,6 +165,7 @@ cc_library(
         "driver/custom_ops/custom_ops.cc",
         "driver/custom_ops/poplin_ops.cc",
         "driver/custom_ops/popnn_ops.cc",
+        "driver/custom_ops/popops_ops.cc",
         "driver/custom_ops/poprand_ops.cc",
     ],
     hdrs = [
@@ -235,6 +236,7 @@ cc_library(
         "kernels/ipu_kernels.cc",
         "kernels/ipu_kernels_common.cc",
         "kernels/popnn_kernels.cc",
+        "kernels/popops_kernels.cc",
     ],
     hdrs = [
         "kernels/ipu_kernels_common.h",
@@ -1005,6 +1007,22 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "popops_custom_ops_test",
+    size = "medium",
+    srcs = ["tests/popops_custom_ops_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -1052,6 +1070,7 @@ test_suite(
         "fused_batch_norm_test",
         "find_all_users_test",
         "hlo_computation_name_uniquify_test",
+        "popops_custom_ops_test",
     ],
 )
 
