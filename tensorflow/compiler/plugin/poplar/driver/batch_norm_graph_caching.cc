@@ -38,34 +38,39 @@ namespace {
 BatchNormInferenceCacheKey GetBatchNormInferenceCacheKey(
     const poplar::Tensor& operand_shuffled, const poplar::Tensor& scale,
     const poplar::Tensor& offset, const poplar::Tensor& mean,
-    const poplar::Tensor& variance, const double epsilon) {
+    const poplar::Tensor& variance, const double epsilon,
+    const uint64 device_id) {
   return std::make_tuple(
       graph_caching_util::GetPoplarTensorSignature(operand_shuffled),
       graph_caching_util::GetPoplarTensorSignature(scale),
       graph_caching_util::GetPoplarTensorSignature(offset),
       graph_caching_util::GetPoplarTensorSignature(mean),
-      graph_caching_util::GetPoplarTensorSignature(variance), epsilon);
+      graph_caching_util::GetPoplarTensorSignature(variance), epsilon,
+      device_id);
 }
 
 BatchNormTrainingCacheKey GetBatchNormTrainingCacheKey(
     const poplar::Tensor& operand_shuffled, const poplar::Tensor& scale,
-    const poplar::Tensor& offset, const double epsilon) {
+    const poplar::Tensor& offset, const double epsilon,
+    const uint64 device_id) {
   return std::make_tuple(
       graph_caching_util::GetPoplarTensorSignature(operand_shuffled),
       graph_caching_util::GetPoplarTensorSignature(scale),
-      graph_caching_util::GetPoplarTensorSignature(offset), epsilon);
+      graph_caching_util::GetPoplarTensorSignature(offset), epsilon, device_id);
 }
 
 BatchNormGradCacheKey GetBatchNormGradCacheKey(
     const poplar::Tensor& operand_shuffled, const poplar::Tensor& scale,
     const poplar::Tensor& mean, const poplar::Tensor& variance,
-    const poplar::Tensor& grad_output, const double epsilon) {
+    const poplar::Tensor& grad_output, const double epsilon,
+    const uint64 device_id) {
   return std::make_tuple(
       graph_caching_util::GetPoplarTensorSignature(operand_shuffled),
       graph_caching_util::GetPoplarTensorSignature(scale),
       graph_caching_util::GetPoplarTensorSignature(mean),
       graph_caching_util::GetPoplarTensorSignature(variance),
-      graph_caching_util::GetPoplarTensorSignature(grad_output), epsilon);
+      graph_caching_util::GetPoplarTensorSignature(grad_output), epsilon,
+      device_id);
 }
 
 poplar::Tensor convertVarianceToInvStdDev(poplar::Graph& graph,
@@ -121,10 +126,10 @@ poplar::Tensor DoCachedBatchNormInference(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& operand,
     const poplar::Tensor& scale, const poplar::Tensor& offset,
     const poplar::Tensor& mean, const poplar::Tensor& variance,
-    const double epsilon, poplar::program::Sequence& prog,
-    const std::string& debug_prefix) {
+    const double epsilon, const uint64 device_id,
+    poplar::program::Sequence& prog, const std::string& debug_prefix) {
   auto key = GetBatchNormInferenceCacheKey(operand, scale, offset, mean,
-                                           variance, epsilon);
+                                           variance, epsilon, device_id);
   std::vector<poplar::Tensor> args = {operand, scale, offset, mean, variance};
   auto it = res.bn_inf_graph_cache.find(key);
   if (it != res.bn_inf_graph_cache.end() &&
@@ -135,9 +140,10 @@ poplar::Tensor DoCachedBatchNormInference(
 
   using namespace poputil::graphfn;
   auto f = TensorFunction(
-      graph, {input(operand, "operand"), input(scale, "scale"),
-              input(offset, "offset"), input(mean, "mean"),
-              input(variance, "variance")},
+      graph,
+      {input(operand, "operand"), input(scale, "scale"),
+       input(offset, "offset"), input(mean, "mean"),
+       input(variance, "variance")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd = convertVarianceToInvStdDev(
             graph, args[4], epsilon, seq, debug_prefix);
@@ -153,9 +159,11 @@ DoCachedBatchNormTraining(poplar::Graph& graph, CompilerResources& res,
                           const poplar::Tensor& operand,
                           const poplar::Tensor& scale,
                           const poplar::Tensor& offset, const double epsilon,
+                          const uint64 device_id,
                           poplar::program::Sequence& prog,
                           const std::string& debug_prefix) {
-  auto key = GetBatchNormTrainingCacheKey(operand, scale, offset, epsilon);
+  auto key =
+      GetBatchNormTrainingCacheKey(operand, scale, offset, epsilon, device_id);
   poplar::Tensor output, mean, variance;
   std::vector<poplar::Tensor> args = {operand, scale, offset,
                                       output,  mean,  variance};
@@ -169,9 +177,10 @@ DoCachedBatchNormTraining(poplar::Graph& graph, CompilerResources& res,
 
   using namespace poputil::graphfn;
   auto f = VoidFunction(
-      graph, {input(operand, "operand"), input(scale, "scale"),
-              input(offset, "offset"), created("output"), created("mean"),
-              created("variance")},
+      graph,
+      {input(operand, "operand"), input(scale, "scale"),
+       input(offset, "offset"), created("output"), created("mean"),
+       created("variance")},
       [&](std::vector<poplar::Tensor>& args, poplar::program::Sequence& seq) {
         poplar::Tensor inv_sd;
         std::tie(args[4], inv_sd) = popnn::bn::batchNormEstimates(
@@ -194,10 +203,10 @@ DoCachedBatchNormGrad(poplar::Graph& graph, CompilerResources& res,
                       const poplar::Tensor& scale, const poplar::Tensor& mean,
                       const poplar::Tensor& variance,
                       const poplar::Tensor& grad_output, const double epsilon,
-                      poplar::program::Sequence& prog,
+                      const uint64 device_id, poplar::program::Sequence& prog,
                       const std::string& debug_prefix) {
   auto key = GetBatchNormGradCacheKey(operand, scale, mean, variance,
-                                      grad_output, epsilon);
+                                      grad_output, epsilon, device_id);
   poplar::Tensor operand_grad, scale_grad, offset_grad;
   std::vector<poplar::Tensor> args = {operand,    scale,       mean,
                                       variance,   grad_output, operand_grad,

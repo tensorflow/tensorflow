@@ -92,8 +92,8 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
   auto name = GetDebugName(inst);
 
   auto out = batch_norm_graph_caching::DoCachedBatchNormInference(
-      graph, res, operand_view, scale, offset, mean, variance, epsilon, seq,
-      name);
+      graph, res, operand_view, scale, offset, mean, variance, epsilon,
+      GetShardingDeviceId(inst), seq, name);
 
   out = ShuffleBatchNormOutputToTensorflow(out, dimension, non_broadcast_dims);
 
@@ -145,7 +145,8 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
 
   std::tie(out, mean, variance) =
       batch_norm_graph_caching::DoCachedBatchNormTraining(
-          graph, res, operand_view, scale, offset, epsilon, seq, name);
+          graph, res, operand_view, scale, offset, epsilon,
+          GetShardingDeviceId(inst), seq, name);
 
   out = ShuffleBatchNormOutputToTensorflow(out, dimension, non_broadcast_dims);
 
@@ -211,7 +212,7 @@ StatusOr<poplar::program::Program> CreateBatchNormGrad(
   std::tie(operand_grad, scale_grad, offset_grad) =
       batch_norm_graph_caching::DoCachedBatchNormGrad(
           graph, res, operand_view, scale, mean, variance, grad_output_view,
-          epsilon, seq, name);
+          epsilon, GetShardingDeviceId(inst), seq, name);
 
   operand_grad = ShuffleBatchNormOutputToTensorflow(operand_grad, dimension,
                                                     non_broadcast_dims);

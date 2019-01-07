@@ -41,14 +41,15 @@ namespace conv_graph_caching {
 // * poplin ConvParams for the given convolution
 // * Enum for the type of convolution
 // * bool indicating whether to do weightsTransposeChansFlipXY
+// * sharding device ID
 using ConvolutionCacheKey =
     std::tuple<PoplarTensorSignature, PoplarTensorSignature, poplin::ConvParams,
-               ConvClassificationType, bool>;
+               ConvClassificationType, bool, uint64>;
 using ConvolutionGraphCache =
     std::map<ConvolutionCacheKey, poputil::graphfn::TensorFunction>;
 
 using BwdWeightCacheKey =
-    std::pair<PoplarTensorSignature, PoplarTensorSignature>;
+    std::tuple<PoplarTensorSignature, PoplarTensorSignature, uint64>;
 using BwdWeightGraphCache =
     std::map<BwdWeightCacheKey, poputil::graphfn::VoidFunction>;
 
@@ -56,7 +57,8 @@ poplar::Tensor DoCachedConvolution(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& in,
     const poplar::Tensor& weights, const poplin::ConvParams& params,
     const ConvClassificationType& conv_type, bool transpose_and_flip_weights,
-    poplar::program::Sequence& prog, const std::string& debug_prefix);
+    const uint64 device_id, poplar::program::Sequence& prog,
+    const std::string& debug_prefix);
 
 // The weight update convolution key is:
 // * Shape of the input tensor
@@ -65,17 +67,19 @@ poplar::Tensor DoCachedConvolution(
 // * poplin ConvParams for the given convolution
 // * Enum for the type of convolution
 // * Learning rate constant
+// * sharding device ID
 using WeightUpdateConvolutionCacheKey =
     std::tuple<PoplarTensorSignature, PoplarTensorSignature, poplin::ConvParams,
-               ConvClassificationType, double>;
+               ConvClassificationType, double, uint64>;
 using WeightUpdateConvolutionGraphCache =
     std::map<WeightUpdateConvolutionCacheKey, poputil::graphfn::VoidFunction>;
 
 Status DoCachedConvolutionWithScaledAdd(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& weights,
     const poplar::Tensor& in, const poplar::Tensor& deltas,
-    const poplin::ConvParams& params, poplar::program::Sequence& prog,
-    const HloInstruction* root, const HloInstruction* conv);
+    const poplin::ConvParams& params, const uint64 device_id,
+    poplar::program::Sequence& prog, const HloInstruction* root,
+    const HloInstruction* conv);
 }  // namespace conv_graph_caching
 
 }  // namespace poplarplugin

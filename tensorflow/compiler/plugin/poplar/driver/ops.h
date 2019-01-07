@@ -21,6 +21,7 @@
 #include <poplar/exceptions.hpp>
 #include <poputil/exceptions.hpp>
 #include "absl/container/inlined_vector.h"
+#include "absl/types/optional.h"
 
 namespace poplar {
 class Graph;
@@ -58,6 +59,8 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                       const Literal& literal);
 
 poplar::Graph& GetGraph(CompilerResources&, const HloInstruction*);
+
+uint64 GetShardingDeviceId(const HloInstruction* inst);
 
 // Convert a poplar/poplibs exception to a Tensorflow error Status
 Status PoplarExceptionToTensorflowStatus(const std::string& prefix,

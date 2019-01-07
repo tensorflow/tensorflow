@@ -52,9 +52,11 @@ typedef StatusOr<poplar::program::Program> (*CustomPoplibOpCreator)(
 using CustomPoplibOpInfo =
     std::pair<CustomPoplibOpAllocator, CustomPoplibOpCreator>;
 // Call map functions
-const absl::flat_hash_map<std::string, CustomPoplibOpInfo>& GetPopnnOpInfoMap();
 const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
 GetPoplinOpInfoMap();
+const absl::flat_hash_map<std::string, CustomPoplibOpInfo>& GetPopnnOpInfoMap();
+const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
+GetPopopsOpInfoMap();
 const absl::flat_hash_map<std::string, CustomPoplibOpInfo>&
 GetPoprandOpInfoMap();
 
@@ -74,6 +76,14 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 
+// Popops Ops
+StatusOr<poplar::Tensor> AllocateUnaryOp(
+    poplar::Graph&, CompilerResources&, const std::string&,
+    const HloInstruction*, const int64,
+    const IPUCustomKernelsUtil::AttributeMap&);
+StatusOr<poplar::program::Program> CreateUnaryOp(
+    poplar::Graph&, CompilerResources&, const HloInstruction*,
+    const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 }  // namespace poplarplugin
 }  // namespace xla
 

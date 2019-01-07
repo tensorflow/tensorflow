@@ -8,9 +8,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.summary.summary import tensor_summary
@@ -42,6 +44,27 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
   with session_lib.Session(
       config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
     yield sess
+
+
+@contextlib.contextmanager
+def ipu_shard(index):
+
+  ipus = []
+  if hasattr(index, '__iter__'):
+    ipus = index
+  else:
+    ipus = [index]
+
+  proto = xla_data_pb2.OpSharding(
+    type=xla_data_pb2.OpSharding.MAXIMAL, tile_assignment_devices=ipus)
+
+  attr_value = attr_value_pb2.AttrValue(s=proto.SerializeToString())
+  attrs = {"_XlaSharding": attr_value}
+
+  # pylint: disable=protected-access
+  with ops.get_default_graph()._attr_scope(attrs):
+    yield
+  # pylint: enable=protected-access
 
 def get_total_memory_from_report(report):
   lines = report.split('\n')
