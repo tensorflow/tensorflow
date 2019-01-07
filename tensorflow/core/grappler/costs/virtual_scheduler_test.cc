@@ -31,7 +31,9 @@ namespace grappler {
 class TestVirtualScheduler : public VirtualScheduler {
  public:
   TestVirtualScheduler(const bool use_static_shapes, Cluster* cluster)
-      : VirtualScheduler(use_static_shapes, cluster, &ready_node_manager_) {}
+      : VirtualScheduler(use_static_shapes, cluster, &ready_node_manager_) {
+    enable_mem_usage_tracking();
+  }
 
   FRIEND_TEST(VirtualSchedulerTest, MemoryUsage);
   FRIEND_TEST(VirtualSchedulerTest, ControlDependency);

@@ -52,7 +52,7 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
           computation->root_instruction() != instruction) {
         continue;
       }
-      // Skip Constant, Parameter, Tuple, AfterAll operation.
+      // Skip Constant, Parameter, Tuple, AfterAll, Rng operations.
       // Tuple constants are not directly supported by any backends, hence
       // folding Tuple is not useful and would in fact be expanded back into
       // kTuple by Algebraic Simplifier.
@@ -62,7 +62,8 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
       if (instruction->opcode() == HloOpcode::kParameter ||
           instruction->opcode() == HloOpcode::kConstant ||
           instruction->opcode() == HloOpcode::kTuple ||
-          instruction->opcode() == HloOpcode::kAfterAll) {
+          instruction->opcode() == HloOpcode::kAfterAll ||
+          instruction->opcode() == HloOpcode::kRng) {
         continue;
       }
 

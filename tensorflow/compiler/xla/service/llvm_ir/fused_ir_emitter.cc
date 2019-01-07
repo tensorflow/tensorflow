@@ -35,7 +35,7 @@ using llvm_ir::IrArray;
 Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
   indexed_generators_[hlo] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    if (generated_value_cache_[hlo].count(index.multidim()) > 0) {
+    if (generated_value_cache_[hlo].contains(index.multidim())) {
       llvm::Value* generated_value =
           generated_value_cache_[hlo][index.multidim()];
       llvm::BasicBlock* generated_value_bb = nullptr;

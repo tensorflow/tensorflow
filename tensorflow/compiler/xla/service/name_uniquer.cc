@@ -34,7 +34,7 @@ bool IsAllowed(char character) {
 }  // namespace
 
 NameUniquer::NameUniquer(const string& separator) {
-  CHECK(std::all_of(separator.begin(), separator.end(), IsAllowed))
+  CHECK(absl::c_all_of(separator, IsAllowed))
       << "separator should comprises allowed characters only";
   separator_ = separator;
 }

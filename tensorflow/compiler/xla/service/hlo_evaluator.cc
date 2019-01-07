@@ -138,6 +138,11 @@ StatusOr<Literal> Compare<complex64>(const Shape& shape, HloOpcode opcode,
 
 }  // namespace
 
+// Note that unsupported types by the typed visitor does not necessarily imply
+// the non-typed HloEvaluator (parent evaluator) would not support them either
+// in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
+// type-agnostic evaluator will be able to accept Tuple primitive type, whereas
+// HloEvaluatorTypedVisitor cannot.
 HloEvaluator::HloEvaluator(int64 max_loop_iterations)
     : max_loop_iterations_(max_loop_iterations) {
   typed_visitors_[PRED] =
@@ -228,6 +233,14 @@ StatusOr<Literal> HloEvaluator::Evaluate(
   for (const auto& literal_ptr : arg_literals) {
     arg_literals_.push_back(&*literal_ptr);
   }
+  if (computation.parent()->config().seed()) {
+    seed_ = computation.parent()->config().seed();
+  } else {
+    std::random_device rd;
+    seed_ = rd();
+  }
+
+  engine_ = std::minstd_rand0(seed_);
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
   return GetEvaluatedLiteralFor(computation.root_instruction()).Clone();
@@ -1084,7 +1097,9 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
       fusion->fused_instructions_computation()->Clone(
           /*suffix=*/"clone_with_layout", &context);
   for (auto* instruction : cloned_fused_computation->instructions()) {
-    LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+    if (!LayoutUtil::HasLayout(instruction->shape())) {
+      LayoutUtil::SetToDefaultLayout(instruction->mutable_shape());
+    }
   }
   auto readded_computation =
       empty_hlo_module.AddEntryComputation(std::move(cloned_fused_computation));
@@ -1233,8 +1248,7 @@ StatusOr<Literal> EvaluateSortInternal(HloInstruction* sort,
         // Extract a slice from the keys and values literals that correspond to
         // exactly the row in dimension 'sort_dim'.
         std::vector<int64> limit_indices(indices.begin(), indices.end());
-        std::for_each(limit_indices.begin(), limit_indices.end(),
-                      [](int64& index) { ++index; });
+        absl::c_for_each(limit_indices, [](int64& index) { ++index; });
         limit_indices[sort_dim] = sort_dim_elements;
         TF_ASSIGN_OR_RETURN(auto keys_to_sort,
                             keys_literal.Slice(indices, limit_indices)

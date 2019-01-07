@@ -42,7 +42,7 @@ NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
                             StringPiece function_name) {
   return test::function::NDef(
       name, "ExperimentalMapAndBatchDataset",
-      {string(input_node_name), "", string(batch_size_node_name),
+      {string(input_node_name), string(batch_size_node_name),
        string(num_parallel_calls_node_name), string(drop_remainder_node_name)},
       {{"f", FunctionDefHelper::FunctionRef(string(function_name))},
        {"Targuments", {}},
@@ -68,7 +68,7 @@ NodeDef MakeParallelInterleaveNode(StringPiece name,
                                    StringPiece function_name, bool sloppy) {
   return test::function::NDef(
       name, "ParallelInterleaveDatasetV2",
-      {string(input_node_name), "", string(cycle_length_node_name),
+      {string(input_node_name), string(cycle_length_node_name),
        string(block_length_node_name), string(num_parallel_calls_node_name)},
       {
           {"f", FunctionDefHelper::FunctionRef(string(function_name))},

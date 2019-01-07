@@ -27,7 +27,6 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -105,10 +104,6 @@ class PForTest(test.TestCase):
     flags.FLAGS.op_conversion_fallback_to_while_loop = False
 
   def test_parallel_iterations(self):
-    # TODO(b/121334512): Remove this check once this passes in Eager mode.
-    if context.executing_eagerly():
-      return
-
     for parallel_iterations in [2, 3, 8, 10]:
       x = random_ops.random_uniform([8, 3])
 

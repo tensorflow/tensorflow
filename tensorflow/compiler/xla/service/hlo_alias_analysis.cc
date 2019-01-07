@@ -117,7 +117,7 @@ class BufferValueMap {
     for (const auto& pair : buffers_) {
       buffer_numbers.push_back(pair.first);
     }
-    std::sort(buffer_numbers.begin(), buffer_numbers.end());
+    absl::c_sort(buffer_numbers);
     return buffer_numbers;
   }
 
@@ -319,7 +319,7 @@ class BufferValueMap {
     ComputeWhileAliasedBuffers(value, &aliased_buffers);
     ComputeConditionalAliasedBuffers(value, &aliased_buffers);
     // Uniquify aliased buffers.
-    std::sort(aliased_buffers.begin(), aliased_buffers.end());
+    absl::c_sort(aliased_buffers);
     aliased_buffers.erase(
         std::unique(aliased_buffers.begin(), aliased_buffers.end()),
         aliased_buffers.end());
@@ -367,7 +367,7 @@ std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
   }
 
   // Sort and uniquify vector before returning.
-  std::sort(buffers.begin(), buffers.end(), HloBuffer::IdLessThan);
+  absl::c_sort(buffers, HloBuffer::IdLessThan);
   buffers.erase(std::unique(buffers.begin(), buffers.end()), buffers.end());
 
   return buffers;
@@ -430,8 +430,7 @@ Status HloAliasAnalysis::Verify() const {
   for (const auto& pair : value_to_buffer_) {
     const HloValue* value = pair.first;
     const HloBuffer& buffer = *pair.second;
-    TF_RET_CHECK(std::find(buffer.values().begin(), buffer.values().end(),
-                           value) != buffer.values().end());
+    TF_RET_CHECK(absl::c_linear_search(buffer.values(), value));
   }
 
   for (HloBuffer::Id id = 0; id < buffers_.size(); ++id) {
@@ -515,7 +514,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     auto& value_set = buffer_map.GetValuesInBuffer(buffer_number);
     std::vector<const HloValue*> sorted_values(value_set.begin(),
                                                value_set.end());
-    std::sort(sorted_values.begin(), sorted_values.end(), HloValue::IdLessThan);
+    absl::c_sort(sorted_values, HloValue::IdLessThan);
     alias_analysis->buffers_.emplace_back(next_id++, sorted_values);
     for (const HloValue* value : sorted_values) {
       alias_analysis->value_to_buffer_[value] =
@@ -547,16 +546,15 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
     // tie-break using value ID. The tie-break is necessary because we need a
     // strict weak order for std::sort.
     std::vector<const HloValue*> values = buffer.values();
-    std::sort(values.begin(), values.end(),
-              [&ordering](const HloValue* a, const HloValue* b) {
-                if (ordering.IsDefinedBefore(*a, *b)) {
-                  return true;
-                } else if (ordering.IsDefinedBefore(*b, *a)) {
-                  return false;
-                } else {
-                  return a->id() < b->id();
-                }
-              });
+    absl::c_sort(values, [&ordering](const HloValue* a, const HloValue* b) {
+      if (ordering.IsDefinedBefore(*a, *b)) {
+        return true;
+      } else if (ordering.IsDefinedBefore(*b, *a)) {
+        return false;
+      } else {
+        return a->id() < b->id();
+      }
+    });
 
     // Walk through the ordered vector of values. First verify that the values
     // are totally ordered with respect to 'ordering', then check that no

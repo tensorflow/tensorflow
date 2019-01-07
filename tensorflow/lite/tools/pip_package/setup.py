@@ -136,7 +136,7 @@ setup(
     long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/lite/',
     author='Google Inc.',
-    author_email='opensource@google.com',
+    author_email='packages@tensorflow.org',
     license='Apache 2.0',
     include_package_data=True,
     keywords='tflite tensorflow tensor machine learning',

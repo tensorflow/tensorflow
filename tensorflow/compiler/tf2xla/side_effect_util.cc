@@ -26,6 +26,45 @@ const char kXlaTokenArgNodeName[] = "_xla_token_arg_node";
 
 const char kXlaHasHostTransferAttrName[] = "_xla_has_host_transfer";
 
+Status SetDeviceOrdinalAttributeForNode(Node* node, int device_ordinal) {
+  if (!HasNodeAttr(node->def(), kXlaHasHostTransferAttrName)) {
+    return errors::InvalidArgument("Node ", node->DebugString(),
+                                   " does not have attribute ",
+                                   kXlaHasHostTransferAttrName);
+  }
+
+  if (node->type_string() == "_XlaRecvAtHost" ||
+      node->type_string() == "_XlaSendFromHost") {
+    node->ClearAttr("device_ordinal");
+    node->AddAttr("device_ordinal", device_ordinal);
+  } else if (node->type_string() == "If") {
+    AttrValue device_ordinal_value;
+    device_ordinal_value.set_i(device_ordinal);
+    for (const string& attr_name :
+         std::vector<string>{"then_branch", "else_branch"}) {
+      NameAttrList branch_func;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), attr_name, &branch_func));
+      (*branch_func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+      node->ClearAttr(attr_name);
+      node->AddAttr(attr_name, branch_func);
+    }
+  } else if (node->type_string() == "While") {
+    AttrValue device_ordinal_value;
+    device_ordinal_value.set_i(device_ordinal);
+    for (const string& attr_name : std::vector<string>{"cond", "body"}) {
+      NameAttrList branch_func;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), attr_name, &branch_func));
+      (*branch_func.mutable_attr())["device_ordinal"] = device_ordinal_value;
+      node->ClearAttr(attr_name);
+      node->AddAttr(attr_name, branch_func);
+    }
+  } else {
+    return errors::Internal("Unknown node type to set 'device_ordinal': ",
+                            node->DebugString());
+  }
+  return Status::OK();
+}
+
 std::set<std::string> CalculateTokenInputsForOutputToken(const Graph& g) {
   std::set<std::string> results;
   Node* first_side_effecting_node_on_path = nullptr;

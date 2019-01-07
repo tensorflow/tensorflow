@@ -343,13 +343,13 @@ def run_main(_):
             "floats. Used for quantized input tensors. (default None)"))
   parser.add_argument(
       "--default_ranges_min",
-      type=int,
+      type=float,
       help=("Default value for min bound of min/max range values used for all "
             "arrays without a specified range, Intended for experimenting with "
             "quantization via \"dummy quantization\". (default None)"))
   parser.add_argument(
       "--default_ranges_max",
-      type=int,
+      type=float,
       help=("Default value for max bound of min/max range values used for all "
             "arrays without a specified range, Intended for experimenting with "
             "quantization via \"dummy quantization\". (default None)"))

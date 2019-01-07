@@ -650,6 +650,13 @@ class Stream {
                           DeviceMemory<Eigen::half> *output_data,
                           ScratchAllocator *workspace_allocator = nullptr);
 
+  Stream &ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                          const dnn::BatchDescriptor &input_dimensions,
+                          const DeviceMemory<int8> &input_data,
+                          const dnn::BatchDescriptor &output_dimensions,
+                          DeviceMemory<int8> *output_data,
+                          ScratchAllocator *workspace_allocator = nullptr);
+
   Stream &ThenPoolBackward(const dnn::PoolingDescriptor &pooling_dimensions,
                            const dnn::BatchDescriptor &input_dimensions,
                            const DeviceMemory<double> &input_data,

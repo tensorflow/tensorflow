@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -29,13 +31,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-
-// Returns a copy of FunctionLibraryDefinition with subset of functions that are
-// reachable from the nodes of the graph.
-FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
-    const FunctionLibraryDefinition& flib, const GraphDef& graph);
-FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
-    const FunctionLibraryDefinition& flib, const FunctionDef& func);
 
 // Depending on the function instantiation attributes, input argument to the
 // function might be a single tensor, list of tensors of the same type, or a
@@ -81,12 +76,12 @@ class GrapplerFunctionConnectivity {
   void RegisterFunctionBodyOutputs(const string& node_name,
                                    tensorflow::NameRangeMap&& outputs);
 
-  // Expand input encoded in FunctionDef format (name[:output][:position]) into
+  // Expands input encoded in FunctionDef format (name[:output][:position]) into
   // multiple inputs in GraphDef format (name[:position]).
   Status ExpandFunctionDefInput(const string& func_def_input,
                                 std::vector<string>* graph_def_inputs) const;
 
-  // Update Node inputs from FunctionDef to GraphDef format.
+  // Updates Node inputs from FunctionDef to GraphDef format.
   Status ExpandNodeInputs(NodeDef* function_body_node) const;
 
   // When expanding inputs in function def format, single input might be
@@ -96,29 +91,31 @@ class GrapplerFunctionConnectivity {
   // instantiation attributes and length of input args (and node def outputs) is
   // known.
 
-  // Map from GraphDef input format to FunctionDef input format using registered
-  // input arg expansion and function body outputs.
+  // Converts input name from GraphDef format (name[:position]) to the
+  // FunctionDef input format (name[:output][:position]) using registered input
+  // arg expansion and function body outputs.
   Status AsFunctionDefInput(const string& graph_def_input,
                             string* func_def_input) const;
 
-  // Update Node inputs from GraphDef to FunctionDef format.
+  // Updates Node inputs from GraphDef to FunctionDef format.
   Status AsFunctionDefNode(NodeDef* function_body_node) const;
 
  private:
   // Mapping from input name to input arg expansion.
-  std::unordered_map<string, InputArgExpansion> input_arg_expansions_;
+  absl::flat_hash_map<string, InputArgExpansion> input_arg_expansions_;
   // Mapping from function body node name to output names range map.
-  std::unordered_map<string, tensorflow::NameRangeMap> function_body_outputs_;
+  absl::flat_hash_map<string, tensorflow::NameRangeMap> function_body_outputs_;
 
+  // For each placeholder added to the function instantiation graph, we keep a
+  // mapping back to the function input argument name and index.
   struct InputArgPlaceholder {
-    string input_name;   // Name of the function input argument.
-    int input_position;  // Index of a tensor in the function input argument
-                         // expansion, it can be greater than `0` if input
-                         // argument is a list of tensors (aka list(type)).
+    string input_name;  // Name of the function input argument.
+    int input_index;    // Index of a tensor in the function input argument
+                        // expansion, it can be greater than `0` if input
+                        // argument is a list of tensors (aka list(type)).
   };
-
   // Mapping from input arg placeholder to the function input tensor.
-  std::unordered_map<string, InputArgPlaceholder> input_arg_placeholders_;
+  absl::flat_hash_map<string, InputArgPlaceholder> input_arg_placeholders_;
 };
 
 // Get Function type attributes using attributes of a node that instantiated
@@ -172,7 +169,8 @@ class GrapplerFunctionItem : public GrapplerItem {
   friend Status ReplaceInputWithConst(const NodeDef&, int,
                                       GrapplerFunctionItem*);
   friend Status RemoveUnusedOutputs(
-      const gtl::FlatSet<int>& active_outputs, GrapplerFunctionItem* item,
+      const absl::flat_hash_set<int>& active_outputs,
+      GrapplerFunctionItem* item,
       std::vector<std::pair<int, int>>* output_mapping);
 
   GrapplerFunctionItem(string func_name, string description,
@@ -191,7 +189,7 @@ class GrapplerFunctionItem : public GrapplerItem {
 
   std::set<string> input_arg_placeholders_;
 
-  bool is_stateful_;
+  bool is_stateful_ = false;
 };
 
 // Check if function input/output types are fully defined only at instantiation
@@ -210,14 +208,14 @@ bool IsParametrized(const FunctionDef& func);
 // caller node. Return error if type can't be resolved.
 Status InstantiationTypeParameters(
     const FunctionDef& func, const AttrSlice& func_instantiation_attr,
-    std::unordered_map<string, DataType>* type_parameters);
+    absl::flat_hash_map<string, DataType>* type_parameters);
 
 // Resolve function instantiation body parameters (values for the function body
 // attr placeholders) from the attributes of the caller node. Return error if
 // type can't be resolved.
 Status InstantiationBodyParameters(
     const FunctionDef& func, const AttrSlice& func_instantiation_attr,
-    std::unordered_map<string, AttrValue>* body_parameters);
+    absl::flat_hash_map<string, AttrValue>* body_parameters);
 
 // Register GrapplerFunctionItem input arg expansion and function body outputs
 // in the GrapplerFunctionConnectivity. Use function library definition to
@@ -227,7 +225,7 @@ Status RegisterGrapplerFunctionConnectivity(
     GrapplerFunctionConnectivity* connectivity);
 
 // Replace one of the function inputs with a constant.
-Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
+Status ReplaceInputWithConst(const NodeDef& input_const, int input_index,
                              GrapplerFunctionItem* item);
 
 // Remove function output arguments that do not have any active outputs (output
@@ -236,7 +234,7 @@ Status ReplaceInputWithConst(const NodeDef& input_const, int input_position,
 // potentially be connected to the same output argument (in case of tensor list
 // outputs). Add output mapping for all active outputs that changed it's output
 // position (std::pair<old position, new position>).
-Status RemoveUnusedOutputs(const gtl::FlatSet<int>& active_outputs,
+Status RemoveUnusedOutputs(const absl::flat_hash_set<int>& active_outputs,
                            GrapplerFunctionItem* item,
                            std::vector<std::pair<int, int>>* output_mapping);
 

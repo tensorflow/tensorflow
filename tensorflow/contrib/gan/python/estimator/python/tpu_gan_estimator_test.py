@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for TFGAN's TPU Estimator."""
+"""Tests for TF-GAN's TPU Estimator."""
 
 from __future__ import absolute_import
 from __future__ import division

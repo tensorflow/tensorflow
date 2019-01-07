@@ -1741,6 +1741,17 @@ class DnnSupport {
     return false;
   }
 
+  virtual bool DoPoolForward(Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
+                             const DeviceMemory<int8>& input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemory<int8>* output_data,
+                             ScratchAllocator* workspace_allocator) {
+    LOG(FATAL) << "DoPoolForward not implemented for int8.";
+    return false;
+  }
+
   // Performs differentiation of the pooling operation.
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,

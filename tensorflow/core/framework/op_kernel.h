@@ -606,6 +606,9 @@ class OpKernelContext {
     // The session state for this op.
     SessionState* session_state = nullptr;
 
+    // Unique session identifier. Can be empty.
+    string session_handle;
+
     // The tensor store for this op.
     TensorStore* tensor_store = nullptr;
 
@@ -1033,6 +1036,9 @@ class OpKernelContext {
 
   // An op kernel can access the session state it belongs to.
   SessionState* session_state() const { return params_->session_state; }
+
+  // Unique identifier of the session it belongs to. Can be empty.
+  string session_handle() const { return params_->session_handle; }
 
   // An op kernel can access the tensor store of the run it belongs to.
   TensorStore* tensor_store() const { return params_->tensor_store; }

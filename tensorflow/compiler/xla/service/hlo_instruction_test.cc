@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -55,13 +56,13 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
   }
 
   Status HandleParameter(HloInstruction* parameter) override {
-    EXPECT_EQ(0, count_.count(parameter));
+    EXPECT_FALSE(count_.contains(parameter));
     count_[parameter] = GetCountsForNode(parameter);
     return Status::OK();
   }
 
   Status HandleConstant(HloInstruction* constant) override {
-    EXPECT_EQ(0, count_.count(constant));
+    EXPECT_FALSE(count_.contains(constant));
     count_[constant] = GetCountsForNode(constant);
     return Status::OK();
   }
@@ -69,25 +70,25 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
   Status HandleAdd(HloInstruction* add) override {
     auto lhs = add->operand(0);
     auto rhs = add->operand(1);
-    EXPECT_EQ(0, count_.count(add));
-    EXPECT_GT(count_.count(lhs), 0);
-    EXPECT_GT(count_.count(rhs), 0);
+    EXPECT_FALSE(count_.contains(add));
+    EXPECT_TRUE(count_.contains(lhs));
+    EXPECT_TRUE(count_.contains(rhs));
     count_[add] = GetCountsForNode(add);
     return Status::OK();
   }
 
   Status HandleNegate(HloInstruction* negate) override {
     auto operand = negate->operand(0);
-    EXPECT_EQ(0, count_.count(negate));
-    EXPECT_GT(count_.count(operand), 0);
+    EXPECT_FALSE(count_.contains(negate));
+    EXPECT_TRUE(count_.contains(operand));
     count_[negate] = GetCountsForNode(negate);
     return Status::OK();
   }
 
   Status HandleMap(HloInstruction* map) override {
-    EXPECT_EQ(0, count_.count(map));
+    EXPECT_FALSE(count_.contains(map));
     for (HloInstruction* arg : map->operands()) {
-      EXPECT_GT(count_.count(arg), 0);
+      EXPECT_TRUE(count_.contains(arg));
     }
     count_[map] = GetCountsForNode(map);
     return Status::OK();
@@ -96,9 +97,9 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
   Status HandleReduce(HloInstruction* reduce) override {
     auto arg = reduce->operand(0);
     auto init_value = reduce->operand(1);
-    EXPECT_EQ(0, count_.count(reduce));
-    EXPECT_GT(count_.count(arg), 0);
-    EXPECT_GT(count_.count(init_value), 0);
+    EXPECT_FALSE(count_.contains(reduce));
+    EXPECT_TRUE(count_.contains(arg));
+    EXPECT_TRUE(count_.contains(init_value));
     count_[reduce] = GetCountsForNode(reduce);
     return Status::OK();
   }
@@ -128,7 +129,7 @@ class OpAndUserCollectingVisitor : public DfsHloVisitorWithDefault {
   }
 
   // Counters for HLOs. Maps HLO to a NumOpsAndUsers.
-  std::unordered_map<const HloInstruction*, NumOpsAndUsers> count_;
+  absl::flat_hash_map<const HloInstruction*, NumOpsAndUsers> count_;
 };
 
 TEST_F(HloInstructionTest, BasicProperties) {
@@ -137,7 +138,7 @@ TEST_F(HloInstructionTest, BasicProperties) {
   EXPECT_EQ(HloOpcode::kParameter, parameter->opcode());
   EXPECT_TRUE(ShapeUtil::IsScalarWithElementType(parameter->shape(), F32));
   EXPECT_FALSE(ShapeUtil::IsScalarWithElementType(parameter->shape(), S32));
-  EXPECT_EQ(0, parameter->operand_count());
+  EXPECT_FALSE(parameter->operand_count());
 }
 
 TEST_F(HloInstructionTest, UserWithTwoOperands) {
@@ -981,9 +982,9 @@ TEST_F(HloInstructionTest, FunctionVisitor) {
   module->AddEntryComputation(builder.Build());
 
   int visit_num = 0;
-  std::unordered_map<HloInstruction*, int> visit_order;
+  absl::flat_hash_map<HloInstruction*, int> visit_order;
   EXPECT_IS_OK(add->Accept([&visit_num, &visit_order](HloInstruction* inst) {
-    EXPECT_EQ(0, visit_order.count(inst));
+    EXPECT_FALSE(visit_order.contains(inst));
     visit_order[inst] = visit_num;
     visit_num++;
     return Status::OK();
