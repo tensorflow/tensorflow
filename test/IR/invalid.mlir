@@ -775,3 +775,14 @@ func @f(f32) {
   return
 }
 
+// -----
+
+func @f(%m : memref<?x?xf32>) {
+  for %i0 = 0 to 42 {
+    // expected-error@+1 {{operand #2 does not dominate this use}}
+    %x = load %m[%i0, %i1] : memref<?x?xf32>
+  }
+  for %i1 = 0 to 42 {
+  }
+  return
+}

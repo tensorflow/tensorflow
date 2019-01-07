@@ -516,11 +516,10 @@ public:
                          AffineMap ubMap, int64_t step);
 
   ~ForInst() {
-    // Explicitly erase instructions instead of relying of 'Block' destructor
-    // since child instructions need to be destroyed before the Value that this
-    // for inst represents is destroyed. Affine maps are immortal objects and
-    // don't need to be deleted.
-    getBody()->clear();
+    // There may be references to the induction variable of this loop within its
+    // body or, in case of ill-formed code during parsing, outside its body.
+    // Explicitly drop all uses of the induction variable before destroying it.
+    dropAllUses();
   }
 
   /// Resolve base class ambiguity.

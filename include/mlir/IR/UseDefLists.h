@@ -58,6 +58,9 @@ public:
   /// there are zero uses of 'this'.
   void replaceAllUsesWith(IRObjectWithUseList *newValue);
 
+  /// Drop all uses of this object from their respective owners.
+  void dropAllUses();
+
 protected:
   IRObjectWithUseList() {}
 

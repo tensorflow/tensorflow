@@ -54,6 +54,13 @@ void IRObjectWithUseList::replaceAllUsesWith(IRObjectWithUseList *newValue) {
   }
 }
 
+/// Drop all uses of this object from their respective owners.
+void IRObjectWithUseList::dropAllUses() {
+  while (!use_empty()) {
+    use_begin()->drop();
+  }
+}
+
 /// Return the context this operation is associated with.
 MLIRContext *IROperandOwner::getContext() const {
   switch (getKind()) {
