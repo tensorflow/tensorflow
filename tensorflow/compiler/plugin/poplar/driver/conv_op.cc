@@ -284,9 +284,9 @@ StatusOr<poplar::program::Program> CreateConv2D(CompilerResources& res,
 
   const auto conv_type = GetConvClassificationType(conv, res.annotations);
 
-  auto out = conv_graph_caching::DoCachedConvolution(graph, res, in, kernel,
-                                                     params, conv_type, false,
-                                                     prog, GetDebugName(conv));
+  auto out = conv_graph_caching::DoCachedConvolution(
+      graph, res, in, kernel, params, conv_type, false,
+      GetShardingDeviceId(inst), prog, GetDebugName(conv));
 
   out = ShuffleConvolutionOutputToTensorflow(conv, out);
 
@@ -324,9 +324,9 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
 
   auto conv_type = GetConvClassificationType(inst, res.annotations);
 
-  auto out = conv_graph_caching::DoCachedConvolution(graph, res, in, kernel,
-                                                     params, conv_type, true,
-                                                     prog, GetDebugName(conv));
+  auto out = conv_graph_caching::DoCachedConvolution(
+      graph, res, in, kernel, params, conv_type, true,
+      GetShardingDeviceId(inst), prog, GetDebugName(conv));
 
   out = ShuffleConvolutionOutputToTensorflow(conv, out);
 
@@ -371,8 +371,8 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
   auto conv_type = GetConvClassificationType(inst, res.annotations);
 
   poplar::Tensor out = conv_graph_caching::DoCachedConvolution(
-      graph, res, in, kernel, params, conv_type, false, prog,
-      GetDebugName(conv));
+      graph, res, in, kernel, params, conv_type, false,
+      GetShardingDeviceId(inst), prog, GetDebugName(conv));
 
   // Move 'G' parts of the B back to I
   out = out.reshapePartial(1, 2, {n_g, out.dim(1) / n_g});
@@ -416,7 +416,8 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 1, 2));
 
   TF_CHECK_OK(conv_graph_caching::DoCachedConvolutionWithScaledAdd(
-      graph, res, w, in, deltas, params, prog, root, conv));
+      graph, res, w, in, deltas, params, GetShardingDeviceId(inst), prog, root,
+      conv));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, w));
 

@@ -591,11 +591,22 @@ tf_cc_test(
     ],
 )
 
+py_library(
+    name = "test_utils_py",
+    srcs = ["tests/test_utils.py"],
+    deps = [
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tf2xla/python:xla",
+    ],
+    srcs_version = "PY2AND3"
+)
+
 py_test(
     name = "device_test",
     size = "small",
     srcs = ["tests/device_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
     ],
@@ -607,6 +618,7 @@ py_test(
     size = "medium",
     srcs = ["tests/ipu_model_device_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -622,6 +634,7 @@ py_test(
     size = "small",
     srcs = ["tests/simple_network_test.py"],
     deps = [
+        ":test_utils_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -638,6 +651,7 @@ py_test(
     size = "small",
     srcs = ["tests/matmul_test.py"],
     deps = [
+        ":test_utils_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -655,6 +669,7 @@ py_test(
     size = "large",
     srcs = ["tests/conv_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -669,6 +684,7 @@ py_test(
     size = "large",
     srcs = ["tests/conv3d_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -683,6 +699,7 @@ py_test(
     size = "large",
     srcs = ["tests/constant_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:constant_op",
@@ -695,6 +712,7 @@ py_test(
     size = "small",
     srcs = ["tests/variable_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -716,6 +734,7 @@ py_test(
     size = "small",
     srcs = ["tests/multi_run_test.py"],
     deps = [
+        ":test_utils_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -729,6 +748,7 @@ py_test(
     size = "small",
     srcs = ["tests/reduce_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
     ],
@@ -740,6 +760,7 @@ py_test(
     size = "small",
     srcs = ["tests/f16_test.py"],
     deps = [
+        ":test_utils_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -753,6 +774,7 @@ py_test(
     size = "small",
     srcs = ["tests/64_bit_test.py"],
     deps = [
+        ":test_utils_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -766,6 +788,7 @@ py_test(
     size = "small",
     srcs = ["tests/batch_norm_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -784,6 +807,7 @@ py_test(
     size = "medium",
     srcs = ["tests/fuse_ops_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -800,6 +824,7 @@ py_test(
     size = "small",
     srcs = ["tests/tensor_array_test.py"],
     deps = [
+        ":test_utils_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -817,6 +842,7 @@ py_test(
     size = "small",
     srcs = ["tests/monitored_session_test.py"],
     deps = [
+        ":test_utils_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
@@ -832,6 +858,7 @@ py_test(
     size = "medium",
     srcs = ["tests/estimator_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -854,6 +881,7 @@ py_test(
     size = "medium",
     srcs = ["tests/ipu_engine_cache_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -869,6 +897,7 @@ py_test(
     size = "medium",
     srcs = ["tests/casts_elimination_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -884,6 +913,7 @@ py_test(
     size = "medium",
     srcs = ["tests/update_op_dependencies_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -899,6 +929,7 @@ py_test(
     size = "medium",
     srcs = ["tests/batch_norm_graph_caching_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -915,6 +946,7 @@ py_test(
     size = "medium",
     srcs = ["tests/conv_graph_caching_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -931,6 +963,7 @@ py_test(
     size = "medium",
     srcs = ["tests/lstm_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",
@@ -948,6 +981,7 @@ py_test(
     size = "medium",
     srcs = ["tests/wide_const_expansion_test.py"],
     deps = [
+        ":test_utils_py",
         ":ipu_ops_py",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:array_ops",

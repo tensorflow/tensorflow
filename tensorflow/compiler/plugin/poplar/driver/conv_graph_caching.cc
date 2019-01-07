@@ -39,17 +39,19 @@ namespace conv_graph_caching {
 namespace {
 
 BwdWeightCacheKey GetBwdWeightCacheKey(const poplar::Tensor& weights,
-                                       const poplar::Tensor& bwd_weights) {
+                                       const poplar::Tensor& bwd_weights,
+                                       const uint64 device_id) {
   return {graph_caching_util::GetPoplarTensorSignature(weights),
-          graph_caching_util::GetPoplarTensorSignature(bwd_weights)};
+          graph_caching_util::GetPoplarTensorSignature(bwd_weights), device_id};
 }
 
 void CreateCachedBwdWeights(poplar::Graph& graph, CompilerResources& res,
                             const poplar::Tensor& weights,
                             const poplar::Tensor& bwd_weights,
+                            const uint64 device_id,
                             poplar::program::Sequence& prog,
                             const std::string& debug_prefix) {
-  auto key = GetBwdWeightCacheKey(weights, bwd_weights);
+  auto key = GetBwdWeightCacheKey(weights, bwd_weights, device_id);
   std::vector<poplar::Tensor> args = {weights, bwd_weights};
   auto it = res.bwd_weight_graph_cache.find(key);
   if (it != res.bwd_weight_graph_cache.end()) {
@@ -71,7 +73,7 @@ void CreateCachedBwdWeights(poplar::Graph& graph, CompilerResources& res,
 
 ConvolutionCacheKey GetConvolutionCacheKey(
     const poplin::ConvParams& params, const ConvClassificationType& conv_type,
-    bool transpose_and_flip_weights) {
+    bool transpose_and_flip_weights, const uint64 device_id) {
   // Create signature for the convolution input
   std::vector<std::size_t> in_shape = {params.getBatchSize(),
                                        params.getNumInputChans()};
@@ -88,12 +90,12 @@ ConvolutionCacheKey GetConvolutionCacheKey(
   PoplarTensorSignature weights_sig(params.dType, std::move(weights_shape));
   return std::make_tuple(in_sig, weights_sig,
                          poplin::canonicalizeParams(params), conv_type,
-                         transpose_and_flip_weights);
+                         transpose_and_flip_weights, device_id);
 }
 
 WeightUpdateConvolutionCacheKey GetWeightUpdateConvolutionCacheKey(
     const poplin::ConvParams& params, const ConvClassificationType& conv_type,
-    double learning_rate) {
+    double learning_rate, const uint64 device_id) {
   // Create signature for the convolution input
   std::vector<std::size_t> in_shape = {params.getBatchSize(),
                                        params.getNumInputChans()};
@@ -109,7 +111,7 @@ WeightUpdateConvolutionCacheKey GetWeightUpdateConvolutionCacheKey(
                     params.kernelShape.end());
   PoplarTensorSignature grad_sig(params.dType, std::move(grad_shape));
   return std::make_tuple(in_sig, grad_sig, poplin::canonicalizeParams(params),
-                         conv_type, learning_rate);
+                         conv_type, learning_rate, device_id);
 }
 }  // namespace
 
@@ -117,13 +119,14 @@ poplar::Tensor DoCachedConvolution(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& in,
     const poplar::Tensor& weights, const poplin::ConvParams& params,
     const ConvClassificationType& conv_type, bool transpose_and_flip_weights,
-    poplar::program::Sequence& prog, const std::string& debug_prefix) {
+    const uint64 device_id, poplar::program::Sequence& prog,
+    const std::string& debug_prefix) {
   // If this is a pass bwd convolution, try and see if we can turn it into a
   // weightsTransposeChansFlipXY and a fwd pass convolution - this allows us to
   // reause the graph for the convolution and save code space
   auto fwd_type = ConvClassificationType::FORWARD;
   auto fwd_key = conv_graph_caching::GetConvolutionCacheKey(
-      params, ConvClassificationType::FORWARD, false);
+      params, ConvClassificationType::FORWARD, false, device_id);
   auto it = res.conv_graph_cache.find(fwd_key);
 
   poplar::OptionFlags opts = res.default_conv_options;
@@ -136,7 +139,7 @@ poplar::Tensor DoCachedConvolution(
     opts.set("pass", ConvClassificationTypeToString(fwd_type));
     auto bwd_weights = poplin::createWeights(graph, params, "bwd_weights", opts,
                                              &res.convolution_cache);
-    CreateCachedBwdWeights(graph, res, weights, bwd_weights, prog,
+    CreateCachedBwdWeights(graph, res, weights, bwd_weights, device_id, prog,
                            debug_prefix);
     std::vector<poplar::Tensor> args = {in, bwd_weights};
     // Execute the convolution.
@@ -146,8 +149,9 @@ poplar::Tensor DoCachedConvolution(
     // Otherwise try and get a convolution, if one doesn't exist, then create it
     // and execute it
     std::vector<poplar::Tensor> args = {in, weights};
-    auto key = GetConvolutionCacheKey(poplin::canonicalizeParams(params),
-                                      conv_type, transpose_and_flip_weights);
+    auto key =
+        GetConvolutionCacheKey(poplin::canonicalizeParams(params), conv_type,
+                               transpose_and_flip_weights, device_id);
     auto it = res.conv_graph_cache.find(key);
     if (it != res.conv_graph_cache.end() &&
         !res.disable_graph_convolution_caching) {
@@ -172,8 +176,9 @@ poplar::Tensor DoCachedConvolution(
 Status DoCachedConvolutionWithScaledAdd(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& w,
     const poplar::Tensor& in, const poplar::Tensor& deltas,
-    const poplin::ConvParams& params, poplar::program::Sequence& prog,
-    const HloInstruction* root, const HloInstruction* conv) {
+    const poplin::ConvParams& params, const uint64 device_id,
+    poplar::program::Sequence& prog, const HloInstruction* root,
+    const HloInstruction* conv) {
   auto conv_type = GetConvClassificationType(conv, res.annotations);
 
   // Get the scalar multiplier
@@ -200,7 +205,8 @@ Status DoCachedConvolutionWithScaledAdd(
 
   std::vector<poplar::Tensor> args = {in, deltas, w};
 
-  auto key = GetWeightUpdateConvolutionCacheKey(params, conv_type, lr);
+  auto key =
+      GetWeightUpdateConvolutionCacheKey(params, conv_type, lr, device_id);
   auto it = res.wu_graph_cache.find(key);
   if (it != res.wu_graph_cache.end() &&
       !res.disable_graph_convolution_caching) {

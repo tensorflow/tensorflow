@@ -20,11 +20,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_BATCH_NORM_GRAPH_CACHING_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/graph_caching_util.h"
+#include "tensorflow/core/platform/default/integral_types.h"
 
 #include <poplar/Tensor.hpp>
 #include <poputil/GraphFunction.hpp>
 
 #include <map>
+
+using tensorflow::uint64;
 
 namespace xla {
 namespace poplarplugin {
@@ -39,17 +42,18 @@ namespace batch_norm_graph_caching {
 // * shape of mean
 // * shape of variance
 // * epsilon
+// * sharding device ID
 using BatchNormInferenceCacheKey =
     std::tuple<PoplarTensorSignature, PoplarTensorSignature,
                PoplarTensorSignature, PoplarTensorSignature,
-               PoplarTensorSignature, double>;
+               PoplarTensorSignature, double, uint64>;
 using BatchNormInferenceGraphCache =
     std::map<BatchNormInferenceCacheKey, poputil::graphfn::TensorFunction>;
 poplar::Tensor DoCachedBatchNormInference(
     poplar::Graph& graph, CompilerResources& res, const poplar::Tensor& operand,
     const poplar::Tensor& scale, const poplar::Tensor& offset,
     const poplar::Tensor& mean, const poplar::Tensor& variance,
-    const double epsilon, poplar::program::Sequence& prog,
+    const double epsilon, const uint64 device, poplar::program::Sequence& prog,
     const std::string& debug_prefix);
 
 // The batch norm training key is:
@@ -57,9 +61,10 @@ poplar::Tensor DoCachedBatchNormInference(
 // * shape of scale
 // * shape of offset
 // * epsilon
+// * sharding device ID
 using BatchNormTrainingCacheKey =
     std::tuple<PoplarTensorSignature, PoplarTensorSignature,
-               PoplarTensorSignature, double>;
+               PoplarTensorSignature, double, uint64>;
 using BatchNormTrainingGraphCache =
     std::map<BatchNormTrainingCacheKey, poputil::graphfn::VoidFunction>;
 std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor>
@@ -67,7 +72,7 @@ DoCachedBatchNormTraining(poplar::Graph& graph, CompilerResources& res,
                           const poplar::Tensor& operand,
                           const poplar::Tensor& scale,
                           const poplar::Tensor& offset, const double epsilon,
-                          poplar::program::Sequence& prog,
+                          const uint64 device, poplar::program::Sequence& prog,
                           const std::string& debug_prefix);
 // Cached BatchNormGrad
 
@@ -78,10 +83,11 @@ DoCachedBatchNormTraining(poplar::Graph& graph, CompilerResources& res,
 // * shape of variance
 // * shape of grad_output
 // * epsilon
+// * sharding device ID
 using BatchNormGradCacheKey =
     std::tuple<PoplarTensorSignature, PoplarTensorSignature,
                PoplarTensorSignature, PoplarTensorSignature,
-               PoplarTensorSignature, double>;
+               PoplarTensorSignature, double, uint64>;
 using BatchNormGradGraphCache =
     std::map<BatchNormGradCacheKey, poputil::graphfn::VoidFunction>;
 std::tuple<poplar::Tensor, poplar::Tensor, poplar::Tensor>
@@ -90,7 +96,7 @@ DoCachedBatchNormGrad(poplar::Graph& graph, CompilerResources& res,
                       const poplar::Tensor& scale, const poplar::Tensor& mean,
                       const poplar::Tensor& variance,
                       const poplar::Tensor& grad_output, const double epsilon,
-                      poplar::program::Sequence& prog,
+                      const uint64 device, poplar::program::Sequence& prog,
                       const std::string& debug_prefix);
 
 }  // namespace batch_norm_graph_caching
