@@ -60,6 +60,14 @@ Simple usage:
       type=bool,
       default=True)
   parser.add_argument(
+      "--inplace",
+      dest="in_place",
+      help=("If converting a whole tree of files, whether to "
+            "allow the conversion to be performed on the "
+            "files in the input tree."),
+      type=bool,
+      default=False)
+  parser.add_argument(
       "--reportfile",
       dest="report_filename",
       help=("The name of the file where the report log is "
@@ -86,7 +94,7 @@ Simple usage:
           "--outtree=<output directory> argument is required when converting a "
           "file tree.")
     files_processed, report_text, errors = upgrade.process_tree(
-        args.input_tree, args.output_tree, args.copy_other_files)
+        args.input_tree, args.output_tree, args.copy_other_files, args.in_place)
   else:
     parser.print_help()
   if report_text:
