@@ -335,6 +335,30 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_conv3dtranspose_dynamic_shape(self):
+    input_data = np.random.random((1, 3, 3, 3, 3)).astype(np.float32)
+    with self.session(use_gpu=True):
+      # Won't raise error here.
+      testing_utils.layer_test(
+          keras.layers.Conv3DTranspose,
+          kwargs={
+              'data_format': 'channels_last',
+              'filters': 3,
+              'kernel_size': 3
+          },
+          input_shape=(None, None, None, None, 3),
+          input_data=input_data)
+      if test.is_gpu_available(cuda_only=True):
+        testing_utils.layer_test(
+            keras.layers.Conv3DTranspose,
+            kwargs={
+                'data_format': 'channels_first',
+                'filters': 3,
+                'kernel_size': 3
+            },
+            input_shape=(None, 3, None, None, None),
+            input_data=input_data)
+
 
 @keras_parameterized.run_all_keras_modes
 class SeparableConv1DTest(keras_parameterized.TestCase):
@@ -555,6 +579,30 @@ class Conv3DTest(keras_parameterized.TestCase):
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
+
+  def test_conv3d_dynamic_shape(self):
+    input_data = np.random.random((1, 3, 3, 3, 3)).astype(np.float32)
+    with self.session(use_gpu=True):
+      # Won't raise error here.
+      testing_utils.layer_test(
+          keras.layers.Conv3D,
+          kwargs={
+              'data_format': 'channels_last',
+              'filters': 3,
+              'kernel_size': 3
+          },
+          input_shape=(None, None, None, None, 3),
+          input_data=input_data)
+      if test.is_gpu_available(cuda_only=True):
+        testing_utils.layer_test(
+            keras.layers.Conv3D,
+            kwargs={
+                'data_format': 'channels_first',
+                'filters': 3,
+                'kernel_size': 3
+            },
+            input_shape=(None, 3, None, None, None),
+            input_data=input_data)
 
 
 @keras_parameterized.run_all_keras_modes
