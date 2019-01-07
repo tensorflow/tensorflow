@@ -119,9 +119,7 @@ def make_variable(name,
       variable_dtype = None
     else:
       # Instantiate initializer if provided initializer is a type object.
-      if isinstance(initializer, type(init_ops.Initializer)):
-        initializer = initializer(dtype=dtype)
-      elif isinstance(initializer, type(init_ops_v2.Initializer)):
+      if isinstance(initializer, (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
         initializer = initializer()
       init_val = lambda: initializer(shape, dtype=dtype)
       variable_dtype = dtype.base_dtype
