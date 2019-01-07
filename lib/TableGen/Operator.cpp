@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// Operator wrapper to simplifying using Record corresponding to Operator.
+// Operator wrapper to simplify using TableGen Record defining a MLIR Op.
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,7 +36,7 @@ Operator::Operator(const llvm::Record &def) : def(def) {
   populateOperandsAndAttributes();
 }
 
-const SmallVectorImpl<StringRef> &Operator::getSplitDefName() {
+const SmallVectorImpl<StringRef> &Operator::getSplitDefName() const {
   return splittedDefName;
 }
 
@@ -44,8 +44,8 @@ StringRef Operator::getOperationName() const {
   return def.getValueAsString("opName");
 }
 
-StringRef Operator::cppClassName() { return getSplitDefName().back(); }
-std::string Operator::qualifiedCppClassName() {
+StringRef Operator::cppClassName() const { return getSplitDefName().back(); }
+std::string Operator::qualifiedCppClassName() const {
   return llvm::join(getSplitDefName(), "::");
 }
 
@@ -71,9 +71,9 @@ auto Operator::getOperands() -> llvm::iterator_range<operand_iterator> {
 }
 
 auto Operator::getArg(int index) -> Argument {
-  if (index < attrStart)
+  if (index < nativeAttrStart)
     return {&operands[index]};
-  return {&attributes[index - attrStart]};
+  return {&attributes[index - nativeAttrStart]};
 }
 
 void Operator::populateOperandsAndAttributes() {
@@ -82,7 +82,7 @@ void Operator::populateOperandsAndAttributes() {
   auto derivedAttrClass = recordKeeper.getClass("DerivedAttr");
   derivedAttrStart = -1;
 
-  // The argument ordering is operands, non-derived attributes, derived
+  // The argument ordering is operands, native attributes, derived
   // attributes.
   DagInit *argumentValues = def.getValueAsDag("arguments");
   unsigned i = 0;
@@ -100,8 +100,8 @@ void Operator::populateOperandsAndAttributes() {
     operands.push_back(Operand{givenName, argDefInit});
   }
 
-  // Handle attribute.
-  attrStart = i;
+  // Handle native attributes.
+  nativeAttrStart = i;
   for (unsigned e = argumentValues->getNumArgs(); i != e; ++i) {
     auto arg = argumentValues->getArg(i);
     auto givenName = argumentValues->getArgName(i);
@@ -119,7 +119,7 @@ void Operator::populateOperandsAndAttributes() {
     attributes.push_back({givenName, argDef, isDerived});
   }
 
-  // Derived attributes.
+  // Handle derived attributes.
   derivedAttrStart = i;
   for (const auto &val : def.getValues()) {
     if (auto *record = dyn_cast<llvm::RecordRecTy>(val.getType())) {
