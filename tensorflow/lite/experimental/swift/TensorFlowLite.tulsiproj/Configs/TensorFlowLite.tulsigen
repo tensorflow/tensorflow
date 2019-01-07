@@ -1,16 +1,16 @@
 {
   "sourceFilters" : [
-    "third_party/tensorflow/lite/experimental/c",
-    "third_party/tensorflow/lite/experimental/swift",
-    "third_party/tensorflow/lite/experimental/swift/Sources",
-    "third_party/tensorflow/lite/experimental/swift/TestApps/TensorFlowLiteApp/TensorFlowLiteApp",
-    "third_party/tensorflow/lite/experimental/swift/TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj",
-    "third_party/tensorflow/lite/experimental/swift/Tests",
+    "tensorflow/lite/experimental/c",
+    "tensorflow/lite/experimental/swift",
+    "tensorflow/lite/experimental/swift/Sources",
+    "tensorflow/lite/experimental/swift/TestApps/TensorFlowLiteApp/TensorFlowLiteApp",
+    "tensorflow/lite/experimental/swift/TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj",
+    "tensorflow/lite/experimental/swift/Tests",
   ],
   "buildTargets" : [
-    "//third_party/tensorflow/lite/experimental/swift:TensorFlowLite",
-    "//third_party/tensorflow/lite/experimental/swift:TensorFlowLiteApp",
-    "//third_party/tensorflow/lite/experimental/swift:TensorFlowLiteTests",
+    "//tensorflow/lite/experimental/swift:TensorFlowLite",
+    "//tensorflow/lite/experimental/swift:TensorFlowLiteApp",
+    "//tensorflow/lite/experimental/swift:TensorFlowLiteTests",
   ],
   "projectName" : "TensorFlowLite",
   "optionSet" : {
@@ -52,6 +52,6 @@
     }
   },
   "additionalFilePaths" : [
-    "third_party/tensorflow/lite/experimental/swift/BUILD"
+    "tensorflow/lite/experimental/swift/BUILD"
   ]
 }

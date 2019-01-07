@@ -8,7 +8,7 @@
   },
   "projectName" : "TensorFlowLite",
   "packages" : [
-    "third_party/tensorflow/lite/experimental/swift"
+    "tensorflow/lite/experimental/swift"
   ],
-  "workspaceRoot" : "../../../../../.."
+  "workspaceRoot" : "../../../../.."
 }
