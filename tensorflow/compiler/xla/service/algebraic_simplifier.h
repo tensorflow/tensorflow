@@ -86,7 +86,6 @@ class AlgebraicSimplifierOptions {
     return enable_window_reduce_to_reduce_replacement_;
   }
 
-
  private:
   ValidBitcastCallback valid_bitcast_callback_;
   bool is_layout_sensitive_{false};

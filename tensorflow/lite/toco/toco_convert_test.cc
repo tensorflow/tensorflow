@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_convert.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/testing/util.h"
 
 namespace toco {
 namespace {
@@ -171,3 +172,9 @@ TEST(TocoTest, TransientStringTensors) {
 
 }  // namespace
 }  // namespace toco
+
+int main(int argc, char** argv) {
+  ::tflite::LogToStderr();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

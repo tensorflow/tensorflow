@@ -127,10 +127,11 @@ REGISTER_OP("XRTReleaseAllocationHandle")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)
     .Doc(
         R"(
-Discards an allocation from device memory. The handle cannot be subsequently
+Discards one or more device memory handles. The handle(s) cannot be subsequently
 used.
 
-'handle' is the id returned from the Op that produced the on-device allocation.
+'handle' is the ID (or a vector of IDs) returned from the Op that produced the
+on-device allocation.
 )");
 
 REGISTER_OP("XRTReleaseAllAllocations")

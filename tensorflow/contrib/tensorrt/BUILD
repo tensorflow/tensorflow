@@ -491,6 +491,8 @@ cuda_py_tests(
         "test/binary_tensor_weight_broadcast_test.py",
         "test/concatenation_test.py",
         "test/const_broadcast_test.py",
+        "test/conv2d_test.py",
+        "test/identity_output_test.py",
         "test/manual_test.py",
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",

@@ -241,11 +241,22 @@ static std::vector<unsigned int> GetShuffleOutputDimensionsForPoplar(
   return shuffle_out;
 }
 
+static poplar::Type getReductionType(const popnn::PoolingType& pooling_type,
+                                     const poplar::Type& input_type) {
+  switch (pooling_type) {
+    case popnn::PoolingType::AVG:
+    case popnn::PoolingType::SUM:
+      return (input_type == poplar::HALF) ? poplar::FLOAT : input_type;
+    case popnn::PoolingType::MAX:
+      return input_type;
+  }
+}
+
 static popnn::pooling::PoolParams GetPoplibsPoolParams(
     const popnn::PoolingType& pooling_type, const Window& window,
     const std::vector<std::size_t>& input_shape,
     const std::set<unsigned int>& reduction_dims,
-    const poplar::Type& data_type) {
+    const poplar::Type& input_data_type) {
   // TODO assume here that batch dimension and the channel dimension order
   // doesn't actually matter - it's just the non field dimensions.
   const auto batch_size = input_shape.front();
@@ -265,6 +276,8 @@ static popnn::pooling::PoolParams GetPoplibsPoolParams(
     padding_lower.push_back((int)d.padding_low());
     padding_upper.push_back((int)d.padding_high());
   }
+
+  auto data_type = getReductionType(pooling_type, input_data_type);
 
   return {pooling_type, input_field_shape, kernel_shape,
           stride,       padding_lower,     padding_upper,

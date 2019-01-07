@@ -319,6 +319,7 @@ VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
       placer_(cluster) {
   graph_costs_.num_ops_total = 0;
   initialized_ = false;
+  track_mem_usage_snapshot_ = VLOG_IS_ON(1);
 }
 
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
@@ -331,6 +332,7 @@ VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
       placer_(cluster) {
   graph_costs_.num_ops_total = 0;
   initialized_ = false;
+  track_mem_usage_snapshot_ = VLOG_IS_ON(1);
 }
 
 Status VirtualScheduler::Init(const GrapplerItem* item) {
@@ -562,7 +564,7 @@ void VirtualScheduler::MaybeUpdateInputOutput(const NodeDef* node) {
       inputs.push_back(control_message);
       outputs.push_back(control_message);
     } else {
-      auto output_properties =
+      const auto& output_properties =
           graph_properties_->GetOutputProperties(NodeName(input_source_name));
       // Like with HasInputProperties, if a node does not have output
       // properties, it's likely it was pruned during the shape inference run.
@@ -778,13 +780,16 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   auto& op_cost = FindOrCreateZero(op_name, &op_to_cost_);
   op_cost = CombineCosts(op_cost, node_costs);
 
-  // Also keep track of op counts and costs per op (with their shapes).
-  OpContext op_context = GetCurrNode();
-  string node_description = GetOpDescription(op_context.op_info);
-  op_counts_[node_description] += 1;
-  op_costs_[node_description] =
-      std::make_pair(node_costs.execution_time.asMicroSeconds().count(),
-                     !node_costs.inaccurate);
+  if (VLOG_IS_ON(2)) {
+    // Also keep track of op counts and costs per op (with their shapes).
+    OpContext op_context = GetCurrNode();
+
+    string node_description = GetOpDescription(op_context.op_info);
+    op_counts_[node_description] += 1;
+    op_costs_[node_description] =
+        std::make_pair(node_costs.execution_time.asMicroSeconds().count(),
+                       !node_costs.inaccurate);
+  }
 
   // Update node and device states.
   auto& node_state = node_map_[node];
@@ -868,7 +873,10 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
     // check max memory usage.
     if (device.memory_usage > device.max_memory_usage) {
       device.max_memory_usage = device.memory_usage;
-      device.mem_usage_snapshot_at_peak = device.nodes_in_memory;
+
+      if (track_mem_usage_snapshot_) {
+        device.mem_usage_snapshot_at_peak = device.nodes_in_memory;
+      }
     }
   }
 

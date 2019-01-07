@@ -1,17 +1,21 @@
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",  # @unused
     "tf_cc_test",  # @unused
 )
 
+licenses(["notice"])  # Apache 2.0
+
+package(default_visibility = ["//tensorflow:internal"])
+
 py_library(
     name = "ast_edits",
     srcs = ["ast_edits.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "@pasta",
+        "@six_archive//:six",
+    ],
 )
 
 py_test(

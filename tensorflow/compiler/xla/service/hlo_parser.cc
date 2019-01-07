@@ -2746,7 +2746,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
   }
 
   auto is_unique = [](string str) -> bool {
-    std::sort(str.begin(), str.end());
+    absl::c_sort(str);
     return std::unique(str.begin(), str.end()) == str.end();
   };
 

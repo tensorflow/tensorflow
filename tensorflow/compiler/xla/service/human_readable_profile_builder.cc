@@ -128,9 +128,9 @@ string HumanReadableProfileBuilder::ToString() const {
 
   // Sort ops in decreasing order of cycles, and print them.
   std::vector<OpInfo> sorted_ops(op_infos_);
-  std::sort(
-      sorted_ops.begin(), sorted_ops.end(),
-      [](const OpInfo& a, const OpInfo& b) { return a.cycles > b.cycles; });
+  absl::c_sort(sorted_ops, [](const OpInfo& a, const OpInfo& b) {
+    return a.cycles > b.cycles;
+  });
   for (const auto& op : sorted_ops) {
     print_op(op);
   }

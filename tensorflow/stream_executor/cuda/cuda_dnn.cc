@@ -51,6 +51,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 // clang-format on
 
+#pragma clang diagnostic push
+
+// Make sure that Eigen::half forward declaration in dnn.h matches the
+// declaration in Eigen.
+#pragma clang diagnostic warning "-Wmismatched-tags"
+
 namespace stream_executor {
 namespace cuda {
 
@@ -4201,6 +4207,31 @@ bool CudnnSupport::DoPoolForward(
   return IsStatusOk(status, /*report_error=*/true);
 }
 
+bool CudnnSupport::DoPoolForward(
+    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions,
+    const DeviceMemory<int8>& input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceMemory<int8>* output_data, ScratchAllocator* workspace_allocator) {
+  // Alpha is the scaling factor for input.
+  float alpha = 1.0;
+  // Beta is the scaling factor for output.
+  float beta = 0.0;
+
+  CudnnTensorDescriptor src_desc(input_dimensions, CUDNN_DATA_INT8);
+  CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_INT8);
+  CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
+
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
+  auto status = [&] {
+    RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
+        cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
+        input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
+    return port::Status::OK();
+  }();
+  return IsStatusOk(status, /*report_error=*/true);
+}
+
 bool CudnnSupport::DoPoolBackward(
     Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
     const dnn::BatchDescriptor& input_dimensions,
@@ -4530,6 +4561,8 @@ void initialize_cudnn() {
 }
 
 }  // namespace stream_executor
+
+#pragma clang diagnostic pop
 
 REGISTER_MODULE_INITIALIZER(register_cudnn,
                             { stream_executor::initialize_cudnn(); });

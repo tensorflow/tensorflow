@@ -1756,8 +1756,8 @@ def make_initializable_iterator(dataset):
     RuntimeError: If eager execution is enabled.
   """
   try:
-    # Call the defined `make_one_shot_iterator()` if there is one, because some
-    # datasets (e.g. for prefetching) override its behavior.
+    # Call the defined `make_initializable_iterator()` if there is one, because
+    # some datasets (e.g. for prefetching) override its behavior.
     return dataset.make_initializable_iterator()
   except AttributeError:
     return DatasetV1Adapter(dataset).make_initializable_iterator()
