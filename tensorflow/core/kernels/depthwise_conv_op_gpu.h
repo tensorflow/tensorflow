@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_GPU_H_
+
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
@@ -38,7 +41,7 @@ using Eigen::GpuDevice;
 
 // Returns whether depthwise convolution forward or backward input pass can be
 // performed using the faster ('Small') variant of the kernel.
-EIGEN_DEVICE_FUNC bool CanLaunchDepthwiseConv2dGPUSmall(
+inline EIGEN_DEVICE_FUNC bool CanLaunchDepthwiseConv2dGPUSmall(
     const DepthwiseArgs& args) {
   return args.depth_multiplier == 1 && args.stride == 1 && args.in_rows <= 32 &&
          args.in_cols <= 32 && args.in_rows == args.out_rows &&
@@ -51,7 +54,7 @@ EIGEN_DEVICE_FUNC bool CanLaunchDepthwiseConv2dGPUSmall(
 
 // Returns whether depthwise convolution backward filter pass can be performed
 // using the faster ('Small') variant of the kernel.
-EIGEN_DEVICE_FUNC bool CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(
+inline EIGEN_DEVICE_FUNC bool CanLaunchDepthwiseConv2dBackpropFilterGPUSmall(
     const DepthwiseArgs& args, const int block_height) {
   return args.depth_multiplier == 1 && args.stride == 1 && args.in_rows <= 32 &&
          args.in_cols <= 32 && args.in_rows == args.out_rows &&
@@ -652,13 +655,12 @@ struct PseudoHalfType<Eigen::half> {
 };
 }  // namespace detail
 
-namespace {
 // Maps to float if T is __half, and to T otherwise.
 template <typename T>
 using PseudoHalfType = typename detail::PseudoHalfType<T>::Type;
 
 // Returns whether the context's GPU supports efficient fp16 math.
-bool HasFastHalfMath(OpKernelContext* ctx) {
+inline bool HasFastHalfMath(OpKernelContext* ctx) {
   int major, minor;
   ctx->op_device_context()
       ->stream()
@@ -669,7 +671,6 @@ bool HasFastHalfMath(OpKernelContext* ctx) {
   // GPUs before sm_53 don't support fp16 math, and sm_61's fp16 math is slow.
   return cuda_arch >= 530 && cuda_arch != 610;
 }
-}  // namespace
 
 template <typename T, DepthwiseConv2dDirection kDirection,
           int kKnownFilterWidth, int kKnownFilterHeight, int kBlockDepth,
@@ -807,10 +808,6 @@ void LaunchDepthwiseConvOp<GpuDevice, T>::operator()(OpKernelContext* ctx,
                             ctx, args, input, filter, output, data_format));
   }
 }
-
-template struct LaunchDepthwiseConvOp<GpuDevice, Eigen::half>;
-template struct LaunchDepthwiseConvOp<GpuDevice, float>;
-template struct LaunchDepthwiseConvOp<GpuDevice, double>;
 
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. input.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
@@ -1029,10 +1026,6 @@ void LaunchDepthwiseConvBackpropInputOp<GpuDevice, T>::operator()(
                  ctx, args, out_backprop, filter, in_backprop, data_format));
   }
 }
-
-template struct LaunchDepthwiseConvBackpropInputOp<GpuDevice, Eigen::half>;
-template struct LaunchDepthwiseConvBackpropInputOp<GpuDevice, float>;
-template struct LaunchDepthwiseConvBackpropInputOp<GpuDevice, double>;
 
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. filter.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
@@ -1803,9 +1796,7 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
                  ctx, args, out_backprop, input, filter_backprop, data_format));
   }
 }
-
-template struct LaunchDepthwiseConvBackpropFilterOp<GpuDevice, Eigen::half>;
-template struct LaunchDepthwiseConvBackpropFilterOp<GpuDevice, float>;
-template struct LaunchDepthwiseConvBackpropFilterOp<GpuDevice, double>;
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_GPU_H_
