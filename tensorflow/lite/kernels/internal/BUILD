@@ -545,6 +545,10 @@ cc_library(
     name = "test_util",
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":types",
         "//tensorflow/lite:string",
