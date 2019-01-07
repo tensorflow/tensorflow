@@ -114,11 +114,16 @@ class ContainerType<Type etype, PredCNF containerPred> : Type {
 }
 
 // Vector types.
-class Vector<Type t, list<int> dims> :
-    ContainerType<t, PredCNF<[[IsVectorTypePred]]>> {
+class Vector<Type t, list<int> dims> : ContainerType<t, PredCNF<[
+    [IsVectorTypePred],
+    // Match dims. Construct an ArrayRef with the elements of `dims` by folding
+    // over the list.
+    [PredAtom<"{0}.cast<VectorType>().getShape() == ArrayRef{{" #
+      !foldl("", dims, sum, element, sum #
+       !if(!empty(sum), "", ",") # !cast<string>(element)) # "}">]
+    ]>> {
   list<int> dimensions = dims;
   let getElementTypeCall = "{0}.cast<VectorType>().getElementType()";
-  // TODO: match dims in predicate.
 }
 
 // Tensor type.
