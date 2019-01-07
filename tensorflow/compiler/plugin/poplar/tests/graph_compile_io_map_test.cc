@@ -279,7 +279,7 @@ TEST_F(GraphCompileIoMapTest, ResourceInit) {
   config.set_resource_input_count(4);
   config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({3, 4, 5, 6});
-  auto hlo_module = CreateNewModuleWithConfig(config);
+  auto hlo_module = CreateNewVerifiedModuleWithConfig(config);
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto* platform =
