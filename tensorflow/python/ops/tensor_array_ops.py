@@ -588,10 +588,16 @@ class _GraphTensorArrayV2(object):
 
   def concat(self, name=None):
     """See TensorArray."""
-    value = list_ops.tensor_list_concat(
-        input_handle=self._flow, element_dtype=self._dtype, name=name)
     if self._element_shape and self._element_shape[0].dims is not None:
-      value.set_shape([None] + self._element_shape[0].dims[1:])
+      element_shape = [None] + self._element_shape[0].dims[1:]
+    else:
+      element_shape = None
+
+    value = list_ops.tensor_list_concat(
+        input_handle=self._flow,
+        element_dtype=self._dtype,
+        element_shape=element_shape,
+        name=name)
     return value
 
   @tf_should_use.should_use_result

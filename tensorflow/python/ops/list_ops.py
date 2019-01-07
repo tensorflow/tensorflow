@@ -71,11 +71,13 @@ def tensor_list_from_tensor(tensor, element_shape, name=None):
       name=name)
 
 
-def tensor_list_concat(input_handle, element_dtype, name=None):
+def tensor_list_concat(input_handle, element_dtype, element_shape=None,
+                       name=None):
   # Ignore the lengths output of TensorListConcat. It is only used during
   # gradient computation.
   return gen_list_ops.tensor_list_concat(
-      input_handle=input_handle, element_dtype=element_dtype, name=name)[0]
+      input_handle=input_handle, element_dtype=element_dtype,
+      element_shape=element_shape, name=name)[0]
 
 
 def tensor_list_split(tensor, element_shape, lengths, name=None):
@@ -198,10 +200,16 @@ def _TensorListResizeGrad(op, dlist):
 
 @ops.RegisterGradient("TensorListGather")
 def _TensorListGatherGrad(op, dtensor):
-  _, indices = op.inputs
-  return gen_list_ops.tensor_list_scatter(
-      tensor=dtensor, indices=indices,
-      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32)), None
+  input_list, indices = op.inputs
+  dlist = gen_list_ops.tensor_list_scatter(
+      tensor=dtensor,
+      indices=indices,
+      element_shape=ops.convert_to_tensor(-1, dtype=dtypes.int32))
+  # TensorListScatter returns a list with size `max(indices) + 1`
+  # so we manually resize it to match the size of the input list.
+  input_list_size = gen_list_ops.tensor_list_length(input_list)
+  dlist = gen_list_ops.tensor_list_resize(dlist, input_list_size)
+  return dlist, None
 
 
 @ops.RegisterGradient("TensorListScatter")

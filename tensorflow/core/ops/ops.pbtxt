@@ -36756,6 +36756,15 @@ op {
     name: "element_dtype"
     type: "type"
   }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
 }
 op {
   name: "TensorListConcatLists"

@@ -1410,22 +1410,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto operand = dynamic_slice->operand(0);
     auto start_indices = dynamic_slice->operand(1);
     auto result_shape = dynamic_slice->shape();
-    // TODO(b/118437727): Remove all of this nonsense.
-    // We may get an instruction without a parent module. In this case, assume
-    // scalar indices are not allowed.
-    bool allow_scalar_index = false;
-    if (dynamic_slice->GetModule() != nullptr) {
-      allow_scalar_index = dynamic_slice->GetModule()
-                               ->config()
-                               .debug_options()
-                               .xla_allow_scalar_index_dynamic_ops();
-    }
     TF_ASSIGN_OR_RETURN(
         auto inferred_return_shape,
         ShapeInference::InferDynamicSliceShape(
             operand->shape(),
             Cast<HloDynamicSliceInstruction>(dynamic_slice)->index_shapes(),
-            dynamic_slice->dynamic_slice_sizes(), allow_scalar_index));
+            dynamic_slice->dynamic_slice_sizes()));
     TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
@@ -1483,20 +1473,12 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto update = dynamic_update_slice->operand(1);
     auto start_indices = dynamic_update_slice->operand(2);
     auto result_shape = dynamic_update_slice->shape();
-    bool allow_scalar_index = false;
-    if (dynamic_update_slice->GetModule() != nullptr) {
-      allow_scalar_index = dynamic_update_slice->GetModule()
-                               ->config()
-                               .debug_options()
-                               .xla_allow_scalar_index_dynamic_ops();
-    }
     TF_ASSIGN_OR_RETURN(
         auto inferred_return_shape,
         ShapeInference::InferDynamicUpdateSliceShape(
             operand->shape(), update->shape(),
             Cast<HloDynamicUpdateSliceInstruction>(dynamic_update_slice)
-                ->index_shapes(),
-            allow_scalar_index));
+                ->index_shapes()));
     TF_RET_CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(result_shape)
         << " but is inferred to be: "
@@ -1673,8 +1655,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
           // Extract a slice from the literal that corresponds to exactly the
           // row in dimension 'sort_dim'.
           std::vector<int64> limit_indices(indices.begin(), indices.end());
-          std::for_each(limit_indices.begin(), limit_indices.end(),
-                        [](int64& index) { ++index; });
+          absl::c_for_each(limit_indices, [](int64& index) { ++index; });
           limit_indices[sort_dim] = sort_dim_elements;
           TF_ASSIGN_OR_RETURN(auto row_to_sort,
                               keys_literal.Slice(indices, limit_indices)
@@ -2653,7 +2634,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <typename NativeT, typename std::enable_if<std::is_same<
                                   double, NativeT>::value>::type* = nullptr>
   Status HandleReducePrecision(HloInstruction* reduce_precision) {
-    return InvalidArgument("Double not supported for reduce precision");
+    return InvalidArgument("Double is not supported for reduce precision");
   }
 
   template <
@@ -2717,6 +2698,103 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   }
   Status HandleIota(HloInstruction* iota) override {
     return HandleIota<ReturnT>(iota);
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                !(std::is_integral<NativeT>::value ||
+                  std::is_floating_point<NativeT>::value)>::type* = nullptr>
+  Status HandleRng(HloInstruction* random) {
+    return UnsupportedTypeError(random);
+  }
+  template <typename NativeT,
+            typename std::enable_if<
+                (std::is_floating_point<NativeT>::value)>::type* = nullptr>
+  Status HandleRng(HloInstruction* random) {
+    RandomDistribution distribution = random->random_distribution();
+    const auto result_shape = random->shape();
+    Literal result(result_shape);
+
+    switch (distribution) {
+      case RNG_UNIFORM: {
+        const Literal& low =
+            parent_->GetEvaluatedLiteralFor(random->operand(0));
+        const Literal& high =
+            parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+        std::uniform_real_distribution<NativeT> generator(
+            low.Get<NativeT>({}), high.Get<NativeT>({}));
+
+        TF_RETURN_IF_ERROR(
+            result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
+              return generator(parent_->engine_);
+            }));
+        break;
+      }
+      case RNG_NORMAL: {
+        const Literal& mean =
+            parent_->GetEvaluatedLiteralFor(random->operand(0));
+        const Literal& stddev =
+            parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+        std::normal_distribution<NativeT> generator(mean.Get<NativeT>({}),
+                                                    stddev.Get<NativeT>({}));
+
+        TF_RETURN_IF_ERROR(
+            result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
+              return generator(parent_->engine_);
+            }));
+        break;
+      }
+      default:
+        return UnimplementedStrCat("The distribution ",
+                                   RandomDistribution_Name(distribution),
+                                   " is not implemented.");
+    }
+    parent_->evaluated_[random] = std::move(result);
+    return Status::OK();
+  }
+  template <typename NativeT,
+            typename std::enable_if<(std::is_integral<NativeT>::value)>::type* =
+                nullptr>
+  Status HandleRng(HloInstruction* random) {
+    RandomDistribution distribution = random->random_distribution();
+    const auto result_shape = random->shape();
+    Literal result(result_shape);
+
+    switch (distribution) {
+      case RNG_UNIFORM: {
+        const Literal& low =
+            parent_->GetEvaluatedLiteralFor(random->operand(0));
+        const Literal& high =
+            parent_->GetEvaluatedLiteralFor(random->operand(1));
+
+        // Note std::uniform_int_distribution assumes interval is closed, i.e.,
+        // [low, high], but we want [low, high) instead. Hence high-1 is used as
+        // the upper range.
+        std::uniform_int_distribution<int64> generator(
+            low.Get<NativeT>({}), high.Get<NativeT>({}) - 1);
+
+        TF_RETURN_IF_ERROR(
+            result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
+              return static_cast<NativeT>(generator(parent_->engine_));
+            }));
+        break;
+      }
+      case RNG_NORMAL: {
+        return Unimplemented(
+            "Normal distribution is not supported for integral types.");
+      }
+      default:
+        return UnimplementedStrCat("The distribution ",
+                                   RandomDistribution_Name(distribution),
+                                   " is not implemented.");
+    }
+    parent_->evaluated_[random] = std::move(result);
+    return Status::OK();
+  }
+  Status HandleRng(HloInstruction* random) override {
+    return HandleRng<ReturnT>(random);
   }
 
  private:

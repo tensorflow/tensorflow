@@ -199,7 +199,7 @@ bool HloModuleGroupMetadata::IsChannelInstruction(
 }
 
 bool HloModuleGroupMetadata::IsCompanionInstruction(HloInstruction* hlo) const {
-  return companion_set_index_.count(hlo) > 0;
+  return companion_set_index_.contains(hlo);
 }
 
 bool HloModuleGroupMetadata::InstructionCommunicates(
@@ -510,7 +510,7 @@ Status HloModuleGroupMetadata::CheckCommunicatingInstruction(
   HloComputation* computation = instruction->parent();
   const HloModule* module = computation->parent();
   if (module->entry_computation() == computation ||
-      tracked_instructions_.count(computation) > 0) {
+      tracked_instructions_.contains(computation)) {
     return Status::OK();
   }
   return FailedPrecondition("channel is used in disallowed computation");

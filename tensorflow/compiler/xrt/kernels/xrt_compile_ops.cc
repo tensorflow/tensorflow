@@ -215,11 +215,6 @@ XRTReleaseCompilationRefOp::~XRTReleaseCompilationRefOp() = default;
 void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XRTReleaseCompilationRefOp::Compute";
 
-  const Tensor& key_tensor = ctx->input(0);
-  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(key_tensor.shape()),
-              errors::Internal("computation key should be a string scalar"));
-  int64 uid = key_tensor.scalar<int64>()();
-
   ResourceMgr* rm;
   OP_REQUIRES_OK(ctx, XRTGenericDeviceAccessor::GetResourceManager(ctx, &rm));
 
@@ -230,9 +225,13 @@ void XRTReleaseCompilationRefOp::Compute(OpKernelContext* ctx) {
                           kXRTCompilationCacheResourceName, &cache));
   core::ScopedUnref cache_unref(cache);
 
-  OP_REQUIRES_OK(ctx, cache->Release(uid));
-
-  VLOG(2) << "Released computation handle " << uid;
+  const Tensor& keys_tensor = ctx->input(0);
+  auto flat_keys = keys_tensor.flat<int64>();
+  for (int64 i = 0; i < flat_keys.size(); ++i) {
+    int64 key = flat_keys(i);
+    OP_REQUIRES_OK(ctx, cache->Release(key));
+    VLOG(2) << "Released computation handle " << key;
+  }
 }
 
 }  // namespace

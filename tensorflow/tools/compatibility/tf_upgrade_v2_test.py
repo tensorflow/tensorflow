@@ -239,8 +239,8 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     }
     function_warnings = (
         tf_upgrade_v2.TFAPIChangeSpec().function_warnings)
-    function_handles = (
-        tf_upgrade_v2.TFAPIChangeSpec().function_handle)
+    function_transformers = (
+        tf_upgrade_v2.TFAPIChangeSpec().function_transformers)
     keyword_renames = (
         tf_upgrade_v2.TFAPIChangeSpec().function_keyword_renames)
 
@@ -255,7 +255,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
 
         for name in names_v1:
           tf_name = "tf.%s" % name
-          if tf_name in function_warnings or tf_name in function_handles:
+          if tf_name in function_warnings or tf_name in function_transformers:
             continue  # These require manual change
           if tf_name in v1_name_exceptions:
             continue
@@ -362,15 +362,14 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
       text = "%s(a, b)\n" % decay
       _, report, errors, _ = self._upgrade(text)
-      self.assertEqual(errors, ["test.py:1: %s requires manual check." % decay])
+      self.assertIn("%s requires manual check" % decay, errors[0])
       self.assertIn("%s has been changed" % decay, report)
 
   def testPiecewiseDecay(self):
     text = "tf.train.piecewise_constant_decay(a, b)\n"
     _, report, errors, _ = self._upgrade(text)
-    self.assertEqual(
-        errors,
-        ["test.py:1: tf.train.piecewise_constant_decay requires manual check."])
+    self.assertIn("tf.train.piecewise_constant_decay requires manual check",
+                  errors[0])
     self.assertIn("tf.train.piecewise_constant_decay has been changed", report)
 
   def testMetrics(self):
@@ -414,7 +413,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       text = ns + "(a, b)"
       _, report, errors, new_text = self._upgrade(text)
       self.assertEqual("tf.compat.v1.metrics." + m + "(a, b)", new_text)
-      self.assertEqual(errors, ["test.py:1: %s requires manual check." % ns])
+      self.assertIn("test.py:1:0: %s requires manual check" % ns, errors[0])
       self.assertIn(
           "WARNING: tf.metrics have been converted to object oriented"
           " versions in TF 2.0 and after. The metric function calls have been "
@@ -445,7 +444,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       text = ns + "(a, b)"
       _, report, errors, new_text = self._upgrade(text)
       self.assertEqual("tf.compat.v1.losses." + l + "(a, b)", new_text)
-      self.assertEqual(errors, ["test.py:1: %s requires manual check." % ns])
+      self.assertIn("test.py:1:0: %s requires manual check" % ns, errors[0])
       self.assertIn(
           "WARNING: tf.losses have been converted to object oriented"
           " versions in TF 2.0 and after. The loss function calls have been "
@@ -463,7 +462,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       text = ns + "(a, b)"
       _, report, errors, new_text = self._upgrade(text)
       self.assertEqual(text, new_text)
-      self.assertEqual(errors, ["test.py:1: %s requires manual check." % ns])
+      self.assertIn("%s requires manual check" % ns, errors[0])
       self.assertIn("loss_reduction has been changed", report)
 
   def testDropout(self):
@@ -471,15 +470,40 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(
         new_text,
-        "tf.nn.dropout(x, 1 - keep_prob, name=\"foo\")\n",
+        "tf.nn.dropout(x, 1 - (keep_prob), name=\"foo\")\n",
+    )
+
+    text = "tf.nn.dropout(x, keep_prob=.4, name=\"foo\")\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.nn.dropout(x, rate=1 - (.4), name=\"foo\")\n",
+    )
+
+    text = (
+        "tf.nn.dropout(x,  # Stuff before\n"
+        "              keep_prob=.4,  # Stuff after\n"
+        "              name=\"foo\")\n"
+    )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(
+        new_text,
+        "tf.nn.dropout(x,  # Stuff before\n"
+        "              rate=1 - (.4),  # Stuff after\n"
+        "              name=\"foo\")\n",
     )
 
     text = "tf.nn.dropout(x)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, text)
+    self.assertIn("tf.nn.dropout called without arguments", errors[0])
+
+  def testDropoutExpr(self):
+    text = "tf.nn.dropout(x, 1 - func(3 + 4.), name=\"foo\")\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(
-        errors,
-        ["test.py:1: tf.nn.dropout requires manual check."]
+        new_text,
+        "tf.nn.dropout(x, 1 - (1 - func(3 + 4.)), name=\"foo\")\n",
     )
 
   def testCountNonZeroChanges(self):
@@ -543,9 +567,11 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
     text = "tf.gradients(a, colocate_gradients_with_ops=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
-    self.assertEqual(text, new_text)
-    self.assertEqual(errors, ["test.py:1: tf.gradients requires manual check."])
+    self.assertEqual("tf.gradients(a)\n", new_text)
+    self.assertIn("tf.gradients", errors[0])
+    self.assertIn("requires manual check", errors[0])
 
+  def testColocateGradientsWithOpsMinimize(self):
     text = "optimizer.minimize(a, foo=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(text, new_text)
@@ -553,10 +579,11 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
     text = "optimizer.minimize(a, colocate_gradients_with_ops=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
-    self.assertEqual(text, new_text)
-    self.assertEqual(errors,
-                     ["test.py:1: Optimizer.minimize requires manual check."])
+    self.assertEqual("optimizer.minimize(a)\n", new_text)
+    self.assertIn("requires manual check", errors[0])
+    self.assertIn("minimize", errors[0])
 
+  def testColocateGradientsWithOpsComputeGradients(self):
     text = "optimizer.compute_gradients(a, foo=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
     self.assertEqual(text, new_text)
@@ -564,10 +591,9 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
 
     text = "optimizer.compute_gradients(a, colocate_gradients_with_ops=False)\n"
     _, unused_report, errors, new_text = self._upgrade(text)
-    self.assertEqual(text, new_text)
-    self.assertEqual(errors,
-                     ["test.py:1: Optimizer.compute_gradients "
-                      "requires manual check."])
+    self.assertEqual("optimizer.compute_gradients(a)\n", new_text)
+    self.assertIn("requires manual check", errors[0])
+    self.assertIn("compute_gradients", errors[0])
 
   def testExportSavedModelRename(self):
     text = "self.est.export_savedmodel(path)"
@@ -673,7 +699,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, report, errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
     self.assertIn(
-        "tf.nn.softmax_cross_entropy_with_logits requires manual check.",
+        "tf.nn.softmax_cross_entropy_with_logits requires manual check",
         errors[0])
     self.assertIn(
         "tf.nn.softmax_cross_entropy_with_logits behavior has changed. ",
@@ -817,27 +843,24 @@ tf.print('abc')
 
   def testBatchGather(self):
     text = "tf.batch_gather(foo, bar)"
-    expected_text = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
+    expected_text1 = "tf.gather(params=foo, indices=bar, batch_dims=-1)"
+    expected_text2 = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(new_text, expected_text)
+    self.assertIn(new_text, [expected_text1, expected_text2])
 
     text = "tf.batch_gather(params=foo, indices=bar)"
-    expected_text = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
+    expected_text1 = "tf.gather(params=foo, indices=bar, batch_dims=-1)"
+    expected_text2 = "tf.gather(batch_dims=-1, params=foo, indices=bar)"
     _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(new_text, expected_text)
+    self.assertIn(new_text, [expected_text1, expected_text2])
 
-    text = "tf.batch_gather  (  foo, bar)"
-    expected_text = "tf.gather  (batch_dims=-1,   params=foo, indices=bar)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(new_text, expected_text)
-
-    text = "(tf.batch_gather\n(foo, bar))"
-    expected_text = "(tf.gather\n(params=foo, indices=bar))"
-    expected_errors = ["test.py:1: Unable to add keyword argument batch_dims=-1"
-                       " to tf.batch_gather; please add it manually."]
-    _, unused_report, errors, new_text = self._upgrade(text)
-    self.assertEqual(errors, expected_errors)
-    self.assertEqual(new_text, expected_text)
+  def testCast(self):
+    for dtype in ["int32", "int64", "float", "double",
+                  "complex64", "complex128", "bfloat16"]:
+      text = "tf.to_%s(x, name='test')" % dtype
+      expected_text = "tf.cast(x, name='test', dtype=tf.%s)" % dtype
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

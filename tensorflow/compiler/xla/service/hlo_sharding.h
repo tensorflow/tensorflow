@@ -101,8 +101,8 @@ class HloSharding {
     if (!IsTuple()) {
       return replicated_;
     }
-    return std::all_of(tuple_elements_.begin(), tuple_elements_.end(),
-                       [](const HloSharding& s) { return s.IsReplicated(); });
+    return absl::c_all_of(
+        tuple_elements_, [](const HloSharding& s) { return s.IsReplicated(); });
   }
 
   // Returns true if the tile size is the same as the input size.
@@ -110,8 +110,9 @@ class HloSharding {
     if (!IsTuple()) {
       return maximal_;
     }
-    return std::all_of(tuple_elements_.begin(), tuple_elements_.end(),
-                       [](const HloSharding& s) { return s.IsTileMaximal(); });
+    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+      return s.IsTileMaximal();
+    });
   }
 
   // Returns true if the sharding defines an operation on the given device.

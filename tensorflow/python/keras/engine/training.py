@@ -1991,7 +1991,7 @@ class Model(Network):
           ' without calling `model.compile` after ?', 1)
 
   def _make_train_function_helper(self, fn_name, outputs, metric_updates=None):
-    if not hasattr(self, fn_name):
+    if not self._is_compiled:
       raise RuntimeError('You must compile your model before using it.')
     self._check_trainable_weights_consistency()
     if getattr(self, fn_name) is None:
@@ -2040,7 +2040,7 @@ class Model(Network):
         '_fit_function', [self.total_loss] + metrics_tensors)
 
   def _make_test_function_helper(self, fn_name, outputs, metric_updates=None):
-    if not hasattr(self, fn_name):
+    if not self._is_compiled:
       raise RuntimeError('You must compile your model before using it.')
     if getattr(self, fn_name) is None:
       inputs = (self._feed_inputs +

@@ -41,7 +41,7 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training import adam
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
 
@@ -50,7 +50,7 @@ class _ModelWithOptimizer(util.Checkpoint):
 
   def __init__(self):
     self.dense = core.Dense(1)
-    self.optimizer = adam.AdamOptimizer(0.01)
+    self.optimizer = adam.Adam(0.01)
 
   @def_function.function(
       input_signature=(tensor_spec.TensorSpec([None, 2], dtypes.float32),
@@ -401,7 +401,7 @@ class _ModelWithOptimizerUsingDefun(util.Checkpoint):
 
   def __init__(self):
     self.dense = core.Dense(1)
-    self.optimizer = adam.AdamOptimizer(0.01)
+    self.optimizer = adam.Adam(0.01)
 
   # Using defun due to control flow v2 cycles, b/121159261. def_function uses
   # conds to gate variable initialization and so triggers cond reference cycles,

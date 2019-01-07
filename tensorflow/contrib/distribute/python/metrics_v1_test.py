@@ -122,7 +122,6 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
         batches_per_update = distribution.num_replicas_in_sync
 
       self.evaluate(iterator.initializer)
-      self.evaluate(distribution.initialize())
       self.evaluate(variables.local_variables_initializer())
 
       batches_consumed = 0
@@ -135,8 +134,6 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
                             msg="After update #" + str(i+1))
         if batches_consumed >= 4:  # Consume 4 input batches in total.
           break
-
-      self.evaluate(distribution.finalize())
 
   @combinations.generate(all_combinations() + tpu_combinations())
   def testMean(self, distribution):

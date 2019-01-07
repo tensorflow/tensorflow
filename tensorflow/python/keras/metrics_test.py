@@ -1467,6 +1467,142 @@ class SparseTopKCategoricalAccuracyTest(test.TestCase):
     self.assertEqual(0.5, self.evaluate(result))  # only 1 sample matches.
 
 
+@test_util.run_all_in_graph_and_eager_modes
+class LogcoshTest(test.TestCase):
+
+  def setup(self):
+    y_pred = np.asarray([1, 9, 2, -5, -2, 6]).reshape((2, 3))
+    y_true = np.asarray([4, 8, 12, 8, 1, 3]).reshape((2, 3))
+
+    self.batch_size = 6
+    error = y_pred - y_true
+    self.expected_results = np.log((np.exp(error) + np.exp(-error)) / 2)
+
+    self.y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    self.y_true = constant_op.constant(y_true)
+
+  def test_config(self):
+    logcosh_obj = metrics.Logcosh(name='logcosh', dtype=dtypes.int32)
+    self.assertEqual(logcosh_obj.name, 'logcosh')
+    self.assertEqual(logcosh_obj._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    self.setup()
+    logcosh_obj = metrics.Logcosh()
+    self.evaluate(variables.variables_initializer(logcosh_obj.variables))
+
+    update_op = logcosh_obj.update_state(self.y_true, self.y_pred)
+    self.evaluate(update_op)
+    result = logcosh_obj.result()
+    expected_result = np.sum(self.expected_results) / self.batch_size
+    self.assertAllClose(result, expected_result, atol=1e-3)
+
+  def test_weighted(self):
+    self.setup()
+    logcosh_obj = metrics.Logcosh()
+    self.evaluate(variables.variables_initializer(logcosh_obj.variables))
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    result = logcosh_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+
+    sample_weight = np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3))
+    expected_result = np.multiply(self.expected_results, sample_weight)
+    expected_result = np.sum(expected_result) / np.sum(sample_weight)
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class PoissonTest(test.TestCase):
+
+  def setup(self):
+    y_pred = np.asarray([1, 9, 2, 5, 2, 6]).reshape((2, 3))
+    y_true = np.asarray([4, 8, 12, 8, 1, 3]).reshape((2, 3))
+
+    self.batch_size = 6
+    self.expected_results = y_pred - np.multiply(y_true, np.log(y_pred))
+
+    self.y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    self.y_true = constant_op.constant(y_true)
+
+  def test_config(self):
+    poisson_obj = metrics.Poisson(name='poisson', dtype=dtypes.int32)
+    self.assertEqual(poisson_obj.name, 'poisson')
+    self.assertEqual(poisson_obj._dtype, dtypes.int32)
+
+    poisson_obj2 = metrics.Poisson.from_config(poisson_obj.get_config())
+    self.assertEqual(poisson_obj2.name, 'poisson')
+    self.assertEqual(poisson_obj2._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    self.setup()
+    poisson_obj = metrics.Poisson()
+    self.evaluate(variables.variables_initializer(poisson_obj.variables))
+
+    update_op = poisson_obj.update_state(self.y_true, self.y_pred)
+    self.evaluate(update_op)
+    result = poisson_obj.result()
+    expected_result = np.sum(self.expected_results) / self.batch_size
+    self.assertAllClose(result, expected_result, atol=1e-3)
+
+  def test_weighted(self):
+    self.setup()
+    poisson_obj = metrics.Poisson()
+    self.evaluate(variables.variables_initializer(poisson_obj.variables))
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+
+    result = poisson_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+    sample_weight = np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3))
+    expected_result = np.multiply(self.expected_results, sample_weight)
+    expected_result = np.sum(expected_result) / np.sum(sample_weight)
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class KullbackLeiblerDivergenceTest(test.TestCase):
+
+  def setup(self):
+    y_pred = np.asarray([.4, .9, .12, .36, .3, .4]).reshape((2, 3))
+    y_true = np.asarray([.5, .8, .12, .7, .43, .8]).reshape((2, 3))
+
+    self.batch_size = 2
+    self.expected_results = np.multiply(y_true, np.log(y_true / y_pred))
+
+    self.y_pred = constant_op.constant(y_pred, dtype=dtypes.float32)
+    self.y_true = constant_op.constant(y_true)
+
+  def test_config(self):
+    k_obj = metrics.KullbackLeiblerDivergence(name='kld', dtype=dtypes.int32)
+    self.assertEqual(k_obj.name, 'kld')
+    self.assertEqual(k_obj._dtype, dtypes.int32)
+
+    k_obj2 = metrics.KullbackLeiblerDivergence.from_config(k_obj.get_config())
+    self.assertEqual(k_obj2.name, 'kld')
+    self.assertEqual(k_obj2._dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    self.setup()
+    k_obj = metrics.KullbackLeiblerDivergence()
+    self.evaluate(variables.variables_initializer(k_obj.variables))
+
+    update_op = k_obj.update_state(self.y_true, self.y_pred)
+    self.evaluate(update_op)
+    result = k_obj.result()
+    expected_result = np.sum(self.expected_results) / self.batch_size
+    self.assertAllClose(result, expected_result, atol=1e-3)
+
+  def test_weighted(self):
+    self.setup()
+    k_obj = metrics.KullbackLeiblerDivergence()
+    self.evaluate(variables.variables_initializer(k_obj.variables))
+
+    sample_weight = constant_op.constant([1.2, 3.4], shape=(2, 1))
+    result = k_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
+
+    sample_weight = np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3))
+    expected_result = np.multiply(self.expected_results, sample_weight)
+    expected_result = np.sum(expected_result) / (1.2 + 3.4)
+    self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
+
+
 def _get_model(compile_metrics):
   model_layers = [
       layers.Dense(3, activation='relu', kernel_initializer='ones'),

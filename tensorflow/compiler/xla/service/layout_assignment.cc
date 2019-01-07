@@ -147,12 +147,9 @@ bool LayoutConstraints::OperandBufferForwarded(
   PointsToSet::BufferSet* output_buffers = GetBufferSet(instruction);
   PointsToSet::BufferSet* operand_buffers =
       GetBufferSet(instruction->operand(operand_no));
-  for (const LogicalBuffer* output_buffer : *output_buffers) {
-    if (operand_buffers->count(output_buffer) > 0) {
-      return true;
-    }
-  }
-  return false;
+  return absl::c_any_of(*output_buffers, [&](const LogicalBuffer* b) {
+    return operand_buffers->count(b) > 0;
+  });
 }
 
 Status LayoutConstraints::SetBufferLayout(const Layout& layout,
@@ -1236,6 +1233,23 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
       });
 }
 
+namespace {
+// A transpose or a reshape that only changes trivial dimensions have meaningful
+// layouts that are valuable to propagate in a depthfirst manner to avoid
+// unassigned layouts in the graph.
+bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
+  switch (hlo.opcode()) {
+    case HloOpcode::kReshape:
+      return std::get<0>(hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions());
+    case HloOpcode::kTranspose:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 Status LayoutAssignment::PropagateOperandConstraint(
     const OperandLayoutConstraint& operand_constraint,
     LayoutConstraints* constraints) {
@@ -1370,7 +1384,7 @@ Status LayoutAssignment::PropagateOperandConstraint(
             TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
                 *layout, *buffer,
                 /*mandatory=*/user->opcode() == HloOpcode::kReduce,
-                /*dfs=*/false));
+                /*dfs=*/InstructionShouldPropagateDepthFirst(*user)));
           }
         }
         return Status::OK();
@@ -1420,11 +1434,9 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
             ChooseOperandLayoutFromOutputLayout(buffer_constraint.layout(),
                                                 instruction, operand_no);
         if (operand_layout != nullptr) {
-          // Do not propagate operand constraints of transposes and reshapes, it
-          // tends to create really bad layouts.
           TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
               *operand_layout, instruction, operand_no, /*mandatory=*/false,
-              /*dfs=*/false));
+              /*dfs=*/InstructionShouldPropagateDepthFirst(*instruction)));
         }
       } else {
         VLOG(6) << "Operand already has a constraint "
@@ -2120,7 +2132,7 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kCopy &&
-          added_copies_.count(instruction) > 0) {
+          added_copies_.contains(instruction)) {
         VLOG(5) << "Removing added copy: " << instruction->ToString();
         TF_RETURN_IF_ERROR(
             instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));

@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:transfer_manager",
@@ -1422,10 +1423,6 @@ xla_test(
 xla_test(
     name = "prng_test",
     srcs = ["prng_test.cc"],
-    blacklisted_backends = [
-        # TODO(b/122047800) support RNGs on the interpreter backend.
-        "interpreter",
-    ],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

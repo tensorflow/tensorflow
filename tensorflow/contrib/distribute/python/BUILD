@@ -80,19 +80,10 @@ py_library(
     srcs = ["parameter_server_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":mirrored_strategy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
-        "//tensorflow/python/distribute:cross_device_ops",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:multi_worker_util",
-        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
     ],
 )
 

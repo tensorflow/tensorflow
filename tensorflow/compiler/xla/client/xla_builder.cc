@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -193,9 +195,9 @@ StatusOr<ProgramShape> XlaBuilder::GetProgramShape(XlaOp root) const {
 }
 
 void XlaBuilder::IsConstantVisitor(const int64 op_handle,
-                                   std::set<int64>* visited,
+                                   absl::flat_hash_set<int64>* visited,
                                    bool* is_constant) const {
-  if (visited->count(op_handle) != 0 || !*is_constant) {
+  if (visited->contains(op_handle) || !*is_constant) {
     return;
   }
 
@@ -2415,7 +2417,7 @@ StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
   TF_RETURN_IF_ERROR(LookUpInstruction(operand).status());
 
   bool is_constant = true;
-  std::set<int64> visited;
+  absl::flat_hash_set<int64> visited;
   IsConstantVisitor(operand.handle(), &visited, &is_constant);
   return is_constant;
 }
