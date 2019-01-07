@@ -63,6 +63,10 @@ class ExecutableBuildOptions {
       DeviceMemoryAllocator* allocator);
   DeviceMemoryAllocator* device_allocator() const;
 
+  // The number of arguments in the original operator
+  ExecutableBuildOptions& set_argument_count(int count);
+  int argument_count() const;
+
   // An indicator of the number of resource variable inputs
   ExecutableBuildOptions& set_resource_input_count(int count);
   int resource_input_count() const;
