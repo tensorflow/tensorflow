@@ -3695,7 +3695,15 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "depthwise_conv_op",
-    prefix = "depthwise_conv_op",
+    srcs = ["depthwise_conv_op.cc"],
+    hdrs = ["depthwise_conv_op.h"],
+    gpu_srcs = [
+        "depthwise_conv_op.h",
+        "depthwise_conv_op_gpu.h",
+        "depthwise_conv_op_gpu_double.cu.cc",
+        "depthwise_conv_op_gpu_float.cu.cc",
+        "depthwise_conv_op_gpu_half.cu.cc",
+    ],
     deps = [
         ":bounds_check",
         ":conv_ops",

@@ -95,6 +95,10 @@ class OptimizationPassRegistry {
   void Register(Grouping grouping, int phase,
                 std::unique_ptr<GraphOptimizationPass> pass);
 
+  const std::map<Grouping, GraphOptimizationPasses>& groups() {
+    return groups_;
+  }
+
   // Run all passes in grouping, ordered by phase, with the same
   // options.
   Status RunGrouping(Grouping grouping,
