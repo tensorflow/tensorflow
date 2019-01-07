@@ -2881,6 +2881,9 @@ const char* TF_ServerTarget(TF_Server* server) {
 #endif
 }
 
-void TF_DeleteServer(TF_Server* server) { delete server; }
-
+void TF_DeleteServer(TF_Server* server) {
+#ifndef __ANDROID__
+  delete server;
+#endif
+}
 }  // end extern "C"
