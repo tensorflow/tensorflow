@@ -270,8 +270,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                               module.get());
 
   resources.main_graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
-  resources.main_graph.addCodelets(GetPathToGraphProgFile("heap_sort.gp"));
-  resources.main_graph.addCodelets(GetPathToGraphProgFile("batch_norm.gp"));
   poplin::addCodelets(resources.main_graph);
   popnn::addCodelets(resources.main_graph);
   popops::addCodelets(resources.main_graph);
@@ -318,16 +316,21 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<WideConstFinder>();
     pipeline.AddPass<CommutativeInstructionReorderOperands>();
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
-    pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<WhileLoopConstantSinking>();
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
-    pipeline.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
-    pipeline.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
-    pipeline.AddPass<FuseWideConst>(resources.annotations);
+    {
+      auto& pass =
+          pipeline.AddPass<HloPassFix<HloPassPipeline>>("repeated-fusing");
+      pass.AddPass<HloCSE>(true);
+      pass.AddPass<HloDCE>();
+      pass.AddPass<WhileLoopConstantSinking>();
+      pass.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
+      pass.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
+      pass.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
+      pass.AddPass<FuseWideConst>(resources.annotations);
+      pass.AddPass<HloDCE>();
+      pass.AddPass<WhileLoopConditionSimplify>();
+      pass.AddPass<WhileLoopToRepeatSimplify>();
+    }
     pipeline.AddPass<HloSubcomputationUnification>();
-    pipeline.AddPass<HloDCE>();
-    pipeline.AddPass<WhileLoopConditionSimplify>();
-    pipeline.AddPass<WhileLoopToRepeatSimplify>(resources.annotations);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<InplaceFinder>(resources.annotations);
     pipeline.AddPass<ShardingPass>();

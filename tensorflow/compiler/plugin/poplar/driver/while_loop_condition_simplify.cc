@@ -87,14 +87,14 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
         const bool lhs_is_GTE_from_param =
             WhileLoopUtil::IsGTEFromParamIndex(inst->operand(0), 0);
         const bool rhs_is_integral_const =
-            WhileLoopUtil::IsIntegralConstant(inst->operand(1));
+            WhileLoopUtil::Is32BitsOrLessIntegerConstant(inst->operand(1));
         if (lhs_is_GTE_from_param && rhs_is_integral_const) {
           lt_instructions.insert(inst);
 
           // Test if the value is the smallest
           int64 val;
-          TF_ASSIGN_OR_RETURN(
-              val, LiteralScalarInt64toInt64(inst->operand(1)->literal()));
+          TF_ASSIGN_OR_RETURN(val, LiteralScalarToNativeType<int64>(
+                                       inst->operand(1)->literal()));
           if (val < smallest_constant_value) {
             smallest_lt = inst;
             smallest_constant_value = val;
@@ -135,13 +135,16 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
     return false;
   }
 
-  // Make sure that the initial value of tuple elements for GTE was a constant 0
+  // Make sure that the initial value of tuple elements for GTE was a constant
+  // integer 0
   for (auto it : while_condition_GTEs) {
     const HloInstruction* init_val = while_inst->operand(0)->operand(it.first);
-    bool is_zero;
-    TF_ASSIGN_OR_RETURN(is_zero,
-                        WhileLoopUtil::IsIntegralConstantOfValue(init_val, 0));
-    if (!is_zero) {
+    if (!WhileLoopUtil::Is32BitsOrLessIntegerConstant(init_val)) {
+      return false;
+    }
+    TF_ASSIGN_OR_RETURN(int64 initial_value,
+                        LiteralScalarToNativeType<int64>(init_val->literal()));
+    if (initial_value != 0) {
       return false;
     }
   }
@@ -152,6 +155,10 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
     const bool is_GTE_from_param_0 =
         WhileLoopUtil::IsGTEFromParamIndex(inst, 0);
     if (is_GTE_from_param_0) {
+      // Make sure the GTE is unique
+      if (while_body_GTEs.count(inst->tuple_index())) {
+        return false;
+      }
       while_body_GTEs[inst->tuple_index()] = inst;
     }
   }
@@ -170,16 +177,14 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
   // Check that all mapped GTE instructions are incremented by 1 and that the
   // resulting increment is *only* used in the output tuple of the while body in
   // the same index
-  std::map<HloInstruction*, HloInstruction*> GTE_to_increment;
   for (auto pair : cond_to_body) {
     HloInstruction* body_GTE = pair.second;
-    std::vector<HloInstruction*> matching_increments;
-    TF_ASSIGN_OR_RETURN(matching_increments,
-                        WhileLoopUtil::FindMatchingGTEIncrementsInsideBody(
-                            body_GTE, while_body, HloOpcode::kAdd));
-    if (matching_increments.size() == 1) {
-      GTE_to_increment[body_GTE] = matching_increments[0];
-    } else {
+    auto matching_increments =
+        WhileLoopUtil::FindMatchingLoopDeltasInsideBody(body_GTE, while_body);
+    // Check that there is one increment, and that the delta between iterations
+    // is 1 (not -1).
+    if (!(matching_increments.size() == 1 &&
+          matching_increments[0].second == 1)) {
       return false;
     }
   }
@@ -190,35 +195,6 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
   while_condition->set_root_instruction(smallest_lt);
   // Remove unused instructions from the old root
   TF_CHECK_OK(while_condition->RemoveInstructionAndUnusedOperands(old_root));
-
-  // Clean up the while body by replacing GTE results/increments with the
-  // corresponding values for smallest_lt
-  HloInstruction* gte_to_keep = cond_to_body[smallest_lt->mutable_operand(0)];
-  HloInstruction* increment_to_keep = GTE_to_increment[gte_to_keep];
-  std::vector<HloInstruction*> instructions_to_remove;
-  for (auto it : GTE_to_increment) {
-    HloInstruction* gte_to_delete = it.first;
-    HloInstruction* increment_to_delete = it.second;
-    if (gte_to_keep == gte_to_delete) continue;
-
-    TF_CHECK_OK(increment_to_delete->ReplaceAllUsesWith(increment_to_keep));
-    // Iterate over all uses of gte_to_delete and replace them with gte_to_keep,
-    // except for the increment instruction
-    for (HloInstruction* user : gte_to_delete->users()) {
-      if (user == increment_to_delete) continue;
-      for (int64 op_idx = 0; op_idx < user->operand_count(); op_idx++) {
-        if (user->operand(op_idx) == gte_to_delete) {
-          TF_CHECK_OK(user->ReplaceOperandWith(op_idx, gte_to_keep));
-        }
-      }
-    }
-    instructions_to_remove.push_back(increment_to_delete);
-  }
-  // Remove the increment instructions and all their dependents
-  for (HloInstruction* inst : instructions_to_remove) {
-    VLOG(1) << "Removing " << inst->ToString() << " from while loop";
-    TF_CHECK_OK(while_body->RemoveInstructionAndUnusedOperands(inst));
-  }
 
   return true;
 }

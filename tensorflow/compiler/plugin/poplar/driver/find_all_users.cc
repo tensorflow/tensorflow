@@ -79,7 +79,15 @@ void FindAllUsers::FindUsers(HloInstruction* tgt, const InstructionList& stack,
               if (IsPopOpsCall(user)) {
                 path.push_back(user);
                 paths.insert(path);
-                break;
+              } else if (IsRepeatCall(user)) {
+                if (op_index == 1) {
+                  HloComputation* comp = GetRepeatBody(user);
+                  HloInstruction* param = comp->parameter_instruction(0);
+
+                  InstructionList new_stack(stack);
+                  new_stack.push_back(user);
+                  FindUsers(param, new_stack, index);
+                }
               } else {
                 HloComputation* comp = user->to_apply();
                 HloInstruction* param = comp->parameter_instruction(op_index);

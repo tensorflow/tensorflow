@@ -81,9 +81,17 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
+  // The number of arguments to the original TF operation
+  void set_argument_count(int32 count) { argument_count_ = count; }
+  int32 argument_count() const { return argument_count_; }
+
   // The number of inputs which are resource variables
   void set_resource_input_count(int32 count) { resource_input_count_ = count; }
   int32 resource_input_count() const { return resource_input_count_; }
+
+  // Mapping of inputs from XLA computation to TF operation
+  void set_input_mapping(const std::vector<int32>& input_mapping);
+  const std::vector<int32>& input_mapping() const { return input_mapping_; }
 
   // The number of outputs which are updates of resource variables
   void set_resource_update_to_input_index(
@@ -127,7 +135,9 @@ class HloModuleConfig {
   // execution on the CPU backend.
   int64 intra_op_parallelism_threads_ = -1;
 
+  int32 argument_count_ = 0;
   int32 resource_input_count_ = 0;
+  std::vector<int32> input_mapping_ = std::vector<int32>{};
   std::vector<int32> resource_update_to_input_index_ = std::vector<int32>{};
 
   DebugOptions debug_options_;

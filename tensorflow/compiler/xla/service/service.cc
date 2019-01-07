@@ -299,7 +299,14 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   if (execution_options != nullptr) {
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
+    config->set_argument_count(execution_options->argument_count());
     config->set_resource_input_count(execution_options->resource_input_count());
+    const auto& proto_input_mapping =
+        execution_options->input_mapping();
+    std::vector<int> input_mapping(
+        proto_input_mapping.begin(),
+        proto_input_mapping.end());
+    config->set_input_mapping(input_mapping);
     const auto& proto_resource_update_to_input_index =
         execution_options->resource_update_to_input_index();
     std::vector<int> resource_update_to_input_index(

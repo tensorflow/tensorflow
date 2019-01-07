@@ -194,15 +194,18 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
   poplar::program::Sequence seq;
 
   poplar::Tensor in0;
-  TF_ASSIGN_OR_RETURN(in0, FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(
+      in0, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
 
   poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, res, inst, 1, seq));
+  TF_ASSIGN_OR_RETURN(
+      in1, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
 
   if (res.annotations.inplace_instructions.count(inst) &&
       (in0.shape() == in1.shape())) {
-    TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                        GetInplaceOutputTensors(tensor_map, res, inst, seq));
+    TF_ASSIGN_OR_RETURN(
+        ArgVectors inputs,
+        GetInplaceOutputTensors(tensor_map, res, inst, seq, false));
     CHECK_EQ(inputs.size(), 1);
     CHECK_EQ(inputs[0].size(), 1);
     poplar::Tensor in0 = inputs[0][0];
@@ -306,14 +309,16 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence seq;
-  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
-                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
+  TF_ASSIGN_OR_RETURN(
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, res, inst, seq, false));
   CHECK_EQ(inputs.size(), 1);
   CHECK_EQ(inputs[0].size(), 1);
   poplar::Tensor in0 = inputs[0][0];
 
   poplar::Tensor in1;
-  TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, res, inst, 1, seq));
+  TF_ASSIGN_OR_RETURN(
+      in1, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
 
   const auto* root_inst = inst->to_apply()->root_instruction();
   const auto* const_inst = root_inst->operand(1)->operand(1)->operand(0);
@@ -321,7 +326,8 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
 
   // Get the scalar multiplier
   double mul;
-  TF_ASSIGN_OR_RETURN(mul, LiteralScalarDoubleToDouble(const_inst->literal()));
+  TF_ASSIGN_OR_RETURN(mul,
+                      LiteralScalarToNativeType<double>(const_inst->literal()));
 
   // Call the inplace op
   switch (root_inst->opcode()) {
@@ -415,12 +421,16 @@ StatusOr<poplar::program::Program> CreateMatMulBiasAddOp(
 
   poplar::program::Sequence prog;
 
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
+  TF_ASSIGN_OR_RETURN(
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, res, inst, prog, false));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor in = inputs[0][0];
 
   poplar::Tensor bias;
-  TF_ASSIGN_OR_RETURN(bias,
-                      FindInstructionInput(tensor_map, res, inst, 1, prog));
+  TF_ASSIGN_OR_RETURN(
+      bias, FindInstructionInput(tensor_map, res, inst, 1, prog, false));
 
   poplin::addBias(graph, in, bias, prog, GetDebugName(inst));
 
@@ -436,11 +446,11 @@ StatusOr<poplar::program::Program> CreateSelectOp(
   poplar::program::Sequence seq;
 
   poplar::Tensor pred;
-  TF_ASSIGN_OR_RETURN(pred,
-                      FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(
+      pred, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
 
-  ArgVector in0 = FindInstructionInputs(tensor_map, res, inst, 1, seq);
-  ArgVector in1 = FindInstructionInputs(tensor_map, res, inst, 2, seq);
+  ArgVector in0 = FindInstructionInputs(tensor_map, res, inst, 1, seq, false);
+  ArgVector in1 = FindInstructionInputs(tensor_map, res, inst, 2, seq, false);
 
   if (in0.size() != in1.size()) {
     return xla::FailedPrecondition("Mismatching tuple sizes on %s",
@@ -500,19 +510,22 @@ StatusOr<poplar::program::Program> CreateClampOp(CompilerResources& res,
   poplar::program::Sequence seq;
 
   poplar::Tensor min;
-  TF_ASSIGN_OR_RETURN(min, FindInstructionInput(tensor_map, res, inst, 0, seq));
+  TF_ASSIGN_OR_RETURN(
+      min, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
   if (!PoplarShapeMatchesXLAShape(min, output_shape)) {
     TF_ASSIGN_OR_RETURN(min, BroadcastTensor(min, output_shape));
   }
 
   poplar::Tensor arg;
-  TF_ASSIGN_OR_RETURN(arg, FindInstructionInput(tensor_map, res, inst, 1, seq));
+  TF_ASSIGN_OR_RETURN(
+      arg, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
   if (!PoplarShapeMatchesXLAShape(arg, output_shape)) {
     TF_ASSIGN_OR_RETURN(arg, BroadcastTensor(arg, output_shape));
   }
 
   poplar::Tensor max;
-  TF_ASSIGN_OR_RETURN(max, FindInstructionInput(tensor_map, res, inst, 2, seq));
+  TF_ASSIGN_OR_RETURN(
+      max, FindInstructionInput(tensor_map, res, inst, 2, seq, false));
   if (!PoplarShapeMatchesXLAShape(max, output_shape)) {
     TF_ASSIGN_OR_RETURN(max, BroadcastTensor(max, output_shape));
   }

@@ -78,9 +78,9 @@ TensorVector GetAllTensorsInMap(const TensorMap& map,
   return outputs;
 }
 
-ArgVector GetExpandedTensors(
+ArgVector GetTensorsMaybeExpand(
     TensorMap& map, CompilerResources& res, const HloInstruction* inst,
-    poplar::program::Sequence& seq,
+    poplar::program::Sequence& seq, const bool expand_constants,
     absl::optional<int64> opt_tensors_start = absl::nullopt,
     absl::optional<int64> opt_tensors_end = absl::nullopt) {
   TensorVector tensor_vector = GetAllTensorsInMap(map, inst);
@@ -92,7 +92,7 @@ ArgVector GetExpandedTensors(
     const auto key = tensor_vector[i].first;
     poplar::Tensor tensor = tensor_vector[i].second;
     // Check if we need to expand the constant tensor.
-    if (tensor.containsConstant()) {
+    if (tensor.containsConstant() && expand_constants) {
       const auto& mapping = graph.getTileMapping(tensor);
       // We only expand the constant tensor if it's mapped to 1 tile and it is
       // not a tensor of scalar shape.
@@ -1057,7 +1057,8 @@ std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
 
 ArgVector FindTupleInInstructionInput(TensorMap& map, CompilerResources& res,
                                       const HloInstruction* inst, int64 input,
-                                      int64 n, poplar::program::Sequence& seq) {
+                                      int64 n, poplar::program::Sequence& seq,
+                                      const bool expand_constants) {
   const HloInstruction* operand = inst->operand(input);
   const Shape& shape = operand->shape();
   int64 start = 0;
@@ -1065,17 +1066,17 @@ ArgVector FindTupleInInstructionInput(TensorMap& map, CompilerResources& res,
     start += CountShapes(ShapeUtil::GetTupleElementShape(shape, i));
   }
   int64 end = start + CountShapes(ShapeUtil::GetTupleElementShape(shape, n));
-  ArgVector inputs = GetExpandedTensors(map, res, operand, seq, start, end);
+  ArgVector inputs = GetTensorsMaybeExpand(map, res, operand, seq,
+                                           expand_constants, start, end);
   return inputs;
 }
 
-StatusOr<poplar::Tensor> FindInstructionInput(TensorMap& map,
-                                              CompilerResources& res,
-                                              const HloInstruction* inst,
-                                              int64 input,
-                                              poplar::program::Sequence& seq) {
+StatusOr<poplar::Tensor> FindInstructionInput(
+    TensorMap& map, CompilerResources& res, const HloInstruction* inst,
+    int64 input, poplar::program::Sequence& seq, const bool expand_constants) {
   const HloInstruction* operand = inst->operand(input);
-  ArgVector inputs = GetExpandedTensors(map, res, operand, seq, 0, 1);
+  ArgVector inputs =
+      GetTensorsMaybeExpand(map, res, operand, seq, expand_constants, 0, 1);
 
   if (inputs.size() == 0) {
     return tensorflow::errors::Unknown(
@@ -1087,9 +1088,10 @@ StatusOr<poplar::Tensor> FindInstructionInput(TensorMap& map,
 
 ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
                                 const HloInstruction* inst, int64 input,
-                                poplar::program::Sequence& seq) {
+                                poplar::program::Sequence& seq,
+                                const bool expand_constants) {
   const HloInstruction* operand = inst->operand(input);
-  return GetExpandedTensors(map, res, operand, seq);
+  return GetTensorsMaybeExpand(map, res, operand, seq, expand_constants);
 }
 
 OutVector FindInstructionOutputs(const TensorMap& map,
@@ -1107,14 +1109,15 @@ OutVector FindInstructionOutputs(const TensorMap& map,
 OutVector FindExpandedInstructionOutputs(TensorMap& map, CompilerResources& res,
                                          const HloInstruction* inst,
                                          poplar::program::Sequence& seq) {
-  OutVector outputs = GetExpandedTensors(map, res, inst, seq);
+  OutVector outputs = GetTensorsMaybeExpand(map, res, inst, seq, true);
   return outputs;
 }
 
 StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
                                              CompilerResources& res,
                                              const HloInstruction* inst,
-                                             poplar::program::Sequence& seq) {
+                                             poplar::program::Sequence& seq,
+                                             const bool expand_constants) {
   // Check that the instruction description is for an inplace operation.
   auto inst_description = InplaceUtil::GetHloInstructionDescription(inst);
   if (!inst_description->IsInPlaceType(inst)) {
@@ -1136,12 +1139,12 @@ StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
     // This should *always* be true
     CHECK_EQ(inplace_indexes.size(), 1);
     CHECK_EQ(inplace_indexes[0], 0);
-    tensors[0] = FindTupleInInstructionInput(map, res, inst, 0,
-                                             inst->tuple_index(), seq);
+    tensors[0] = FindTupleInInstructionInput(
+        map, res, inst, 0, inst->tuple_index(), seq, expand_constants);
   } else {
     for (uint64 i = 0; i < inplace_indexes.size(); i++) {
-      tensors[i] =
-          FindInstructionInputs(map, res, inst, inplace_indexes[i], seq);
+      tensors[i] = FindInstructionInputs(map, res, inst, inplace_indexes[i],
+                                         seq, expand_constants);
     }
   }
 

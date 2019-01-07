@@ -155,7 +155,9 @@ Status XlaCompilationCache::BuildExecutable(
                                        : client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator);
+  build_options.set_argument_count(result.xla_input_shapes.size());
   build_options.set_resource_input_count(number_of_variables);
+  build_options.set_input_mapping(result.input_mapping);
   std::vector<int> resource_update_to_input_index;
   std::transform(
       result.resource_updates.begin(), result.resource_updates.end(),

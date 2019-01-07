@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/forward_allocation.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/while_loop_to_repeat_simplify.h"
 
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
@@ -97,7 +100,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -113,7 +118,7 @@ ENTRY c1 {
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -183,7 +188,7 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
 
   const HloInstruction* c_conv = conv;
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
   auto t = annotations.tensor_allocation_map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t.tgt, c_conv);
   EXPECT_EQ(t.input_index, 0ll);
@@ -288,7 +293,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   const HloInstruction* c_conv1 = conv1;
   const HloInstruction* c_conv2 = conv2;
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 6);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 6);
   auto t = annotations.tensor_allocation_map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t.tgt, c_conv1);
   EXPECT_EQ(t.input_index, 0ll);
@@ -405,7 +410,7 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   const HloInstruction* c_conv1 = conv1;
   const HloInstruction* c_conv2 = conv2;
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 6);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 6);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t.tgt, c_conv2);
@@ -464,7 +469,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(2);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -480,7 +487,7 @@ ENTRY c1 {
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -531,7 +538,7 @@ TEST_F(AllocationFinderTest, CanTraverseTuples) {
 
   const HloInstruction* dot = dot_inst;
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(in, 0));
   EXPECT_EQ(t.tgt, dot);
@@ -578,7 +585,7 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
 
   const HloInstruction* dot = dot_inst;
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(in, 0));
   EXPECT_EQ(t.tgt, dot);
@@ -678,7 +685,123 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
+
+  auto t = annotations.tensor_allocation_map.at(std::make_pair(in, 0));
+  EXPECT_EQ(t.tgt, dot_inst);
+  EXPECT_EQ(t.input_index, 0ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 4);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(w, 0));
+  EXPECT_EQ(t.tgt, dot_inst);
+  EXPECT_EQ(t.input_index, 1ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 4);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(body_param, 1));
+  EXPECT_EQ(t.tgt, dot_inst);
+  EXPECT_EQ(t.input_index, 0ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 2);
+
+  t = annotations.tensor_allocation_map.at(std::make_pair(body_param, 2));
+  EXPECT_EQ(t.tgt, dot_inst);
+  EXPECT_EQ(t.input_index, 1ll);
+  EXPECT_EQ(t.forward_path.size(), 0);
+  EXPECT_EQ(t.backward_path.size(), 2);
+}
+
+// Check it goes through repeat instructions
+TEST_F(AllocationFinderTest, FindRepeatTensorAllocations) {
+  auto hlo_module = CreateNewModule();
+
+  Shape counter_shape = ShapeUtil::MakeShape(S32, {});
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape weight_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({counter_shape, input_shape, weight_shape});
+
+  /* Create while condition */
+  HloComputation* comp_cond;
+  {
+    auto builder_cond = HloComputation::Builder(TestName());
+    auto tuple = builder_cond.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape, "cond_tuple"));
+    auto limit = builder_cond.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
+    auto c = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
+        ShapeUtil::MakeShape(S32, {}), tuple, 0));
+    builder_cond.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
+
+    comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
+  }
+
+  /* Create while body */
+  HloComputation* comp_body;
+  {
+    auto builder_body = HloComputation::Builder(TestName());
+    auto tuple = builder_body.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape, "body_tuple"));
+    auto c = builder_body.AddInstruction(
+        HloInstruction::CreateGetTupleElement(counter_shape, tuple, 0));
+    auto in = builder_body.AddInstruction(
+        HloInstruction::CreateGetTupleElement(input_shape, tuple, 1));
+    auto w = builder_body.AddInstruction(
+        HloInstruction::CreateGetTupleElement(weight_shape, tuple, 2));
+    auto one = builder_body.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+    auto new_c = builder_body.AddInstruction(
+        HloInstruction::CreateBinary(c->shape(), HloOpcode::kAdd, c, one));
+
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(1);
+    dot_dnums.add_rhs_contracting_dimensions(0);
+    auto new_in = builder_body.AddInstruction(HloInstruction::CreateDot(
+        input_shape, in, w, dot_dnums, DefaultPrecisionConfig(2)));
+
+    builder_body.AddInstruction(
+        HloInstruction::CreateTuple({new_c, new_in, w}));
+
+    comp_body = hlo_module->AddEmbeddedComputation(builder_body.Build());
+  }
+
+  /* Create main computation */
+  auto builder_main = HloComputation::Builder(TestName());
+  auto c = builder_main.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+  auto in = builder_main.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape, "in"));
+  auto w = builder_main.AddInstruction(
+      HloInstruction::CreateParameter(1, weight_shape, "weight"));
+
+  auto init =
+      builder_main.AddInstruction(HloInstruction::CreateTuple({c, in, w}));
+
+  builder_main.AddInstruction(
+      HloInstruction::CreateWhile(tuple_shape, comp_cond, comp_body, init));
+
+  hlo_module->AddEntryComputation(builder_main.Build());
+
+  // Simplify the while loop to a repeat (need to also run DCE)
+  WhileLoopToRepeatSimplify wltrs;
+  EXPECT_TRUE(wltrs.Run(hlo_module.get()).ValueOrDie());
+  HloDCE hdce;
+  EXPECT_TRUE(hdce.Run(hlo_module.get()).ValueOrDie());
+
+  CompilerAnnotations annotations(hlo_module.get());
+
+  AllocationFinder finder(annotations);
+  EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
+
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
+
+  // Get the dot and tuple instruction from the new repeat body.
+  const HloComputation* repeat_body =
+      GetRepeatBody(hlo_module->entry_computation()->root_instruction());
+  const HloInstruction* body_param = repeat_body->parameter_instruction(0);
+  const HloInstruction* dot_inst = repeat_body->root_instruction()->operand(1);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(in, 0));
   EXPECT_EQ(t.tgt, dot_inst);
@@ -724,7 +847,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(2);
   config.set_resource_input_count(0);
+  config.set_input_mapping({0, 1});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -741,7 +866,7 @@ ENTRY c1 {
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -804,7 +929,7 @@ TEST_F(AllocationFinderTest, FindDoesntTraceThroughInvalidCalls) {
   AllocationFinder finder(annotations);
   EXPECT_TRUE(finder.Run(hlo_module.get()).ValueOrDie());
 
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 1);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 1);
   auto t1 = annotations.tensor_allocation_map.at(std::make_pair(op1, 0));
   EXPECT_EQ(t1.tgt, conv);
   EXPECT_EQ(t1.input_index, 1ll);
@@ -836,7 +961,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
-  config.set_resource_input_count(2);
+  config.set_argument_count(3);
+  config.set_resource_input_count(3);
+  config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -855,7 +982,7 @@ ENTRY c1 {
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -869,7 +996,7 @@ ENTRY c1 {
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 3);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, call);
@@ -912,8 +1039,10 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(4);
   config.set_resource_input_count(2);
-  config.set_resource_update_to_input_index({0});
+  config.set_input_mapping({0, 1, 2});
+  config.set_resource_update_to_input_index({});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
   auto* module0 = module.ValueOrDie().get();
@@ -933,7 +1062,7 @@ ENTRY c1 {
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -947,7 +1076,7 @@ ENTRY c1 {
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added two new entries to the map for the 2 bias add ops
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, call);
@@ -994,7 +1123,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1014,7 +1145,7 @@ ENTRY c1 {
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1028,7 +1159,7 @@ ENTRY c1 {
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 3);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, call);
@@ -1062,7 +1193,9 @@ HloModule top
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(2);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1081,7 +1214,7 @@ HloModule top
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the dot parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, dot);
@@ -1095,7 +1228,7 @@ HloModule top
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 3);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, call);
@@ -1129,7 +1262,9 @@ HloModule top
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1149,7 +1284,7 @@ HloModule top
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the dot parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, dot);
@@ -1163,7 +1298,7 @@ HloModule top
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 3);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 3);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, call);
@@ -1193,7 +1328,9 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(6);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4, 5});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1213,7 +1350,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1227,7 +1364,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, bn);
@@ -1266,7 +1403,9 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(6);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4, 5});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1288,7 +1427,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1302,7 +1441,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, bn);
@@ -1382,7 +1521,9 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(4);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1414,7 +1555,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(conv_ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1436,7 +1577,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 6);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 6);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(bn_ip1, 0));
   EXPECT_EQ(t.tgt, bn_tr);
@@ -1483,7 +1624,9 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(6);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4, 5});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1506,7 +1649,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1527,7 +1670,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, bn);
@@ -1577,7 +1720,9 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(6);
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4, 5});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1596,7 +1741,7 @@ ENTRY %top (arg0.36.22: f32[1,4,4,2], arg1.36.23: f32[1,1,2,2], arg2.36.24: f32[
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1642,7 +1787,9 @@ ENTRY c1 {
 )";
 
   auto config = GetModuleConfigForTest();
+  config.set_argument_count(3);
   config.set_resource_input_count(3);
+  config.set_input_mapping({0, 1, 2, 3});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1664,7 +1811,7 @@ ENTRY c1 {
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1685,7 +1832,7 @@ ENTRY c1 {
   EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 4);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, call);
@@ -1726,6 +1873,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
 
   auto config = GetModuleConfigForTest();
   config.set_resource_input_count(2);
+  config.set_input_mapping({0, 1, 2, 3, 4});
   config.set_resource_update_to_input_index({0});
   auto module = ParseHloString(hlo, config);
   EXPECT_TRUE(module.ok());
@@ -1748,7 +1896,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   EXPECT_TRUE(finder.Run(module0).ValueOrDie());
 
   // Will have both of the convolution parameters
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 2);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 2);
 
   auto t = annotations.tensor_allocation_map.at(std::make_pair(ip0, 0));
   EXPECT_EQ(t.tgt, conv);
@@ -1769,7 +1917,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1: f32[1,1,2,2], arg2: f32[2], arg3: f3
   EXPECT_TRUE(num_succesful_runs == 1 || num_succesful_runs == 2);
 
   // We have added one new entry for the bias add
-  ASSERT_EQ(annotations.tensor_allocation_map.size(), 5);
+  EXPECT_EQ(annotations.tensor_allocation_map.size(), 5);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(ip2, 0));
   EXPECT_EQ(t.tgt, bn);

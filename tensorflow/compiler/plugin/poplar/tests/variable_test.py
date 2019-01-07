@@ -301,7 +301,6 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'Copy_<const>_to_wide_constant/OnTileCopy',
             'z1/Initializer/truncated_normal/TruncatedNormal/call',
             'z1/Initializer/truncated_normal/mul',
             'z1/Initializer/truncated_normal/add.*/AddTo']

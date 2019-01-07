@@ -124,5 +124,40 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       self.assertEqual(c, 3)
       self.assertAllClose(x, np.full([4], 256))
 
+  def testNestedWhileLoopsSimplified(self):
+    def my_net(x):
+      def cond(i, x):
+        return i < 3
+
+      def cond1(j, x):
+        return j < 2
+
+      def body1(j, x):
+        j = j + 1
+        x = x * 2
+        return (j, x)
+
+      def body(i, x):
+        i = i + 1
+        j = 0
+        _, x = control_flow_ops.while_loop(cond1, body1, (j, x), maximum_iterations=10)
+        return (i, x)
+
+      i = 0
+      a, b = control_flow_ops.while_loop(cond, body, (i, x), maximum_iterations=10)
+      return (a, b)
+
+    with ops.device('cpu'):
+      x = array_ops.placeholder(dtypes.int32, [4])
+
+    with ipu.ops.ipu_scope("/device:IPU:0"):
+      r = xla.compile(my_net, inputs=[x])
+
+    with session_lib.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      c, val = sess.run(r, {x: np.full([4], 2, dtype=np.int32)})
+      self.assertEqual(c, 3)
+      self.assertAllClose(val, np.full([4], 128))
+
 if __name__ == "__main__":
     googletest.main()

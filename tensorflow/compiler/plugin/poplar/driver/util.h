@@ -33,18 +33,22 @@ int64 CountShapes(const Shape& shape);
 
 std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape);
 
-StatusOr<std::vector<int64>> LiteralVectorToInt64Vector(
+template <typename NativeT>
+StatusOr<NativeT> LiteralScalarToNativeType(const xla::Literal& lit);
+template <typename NativeT>
+StatusOr<std::vector<NativeT>> LiteralVectorToNativeType(
     const xla::Literal& lit);
-
-StatusOr<std::vector<int64>> WideConstToInt64Vector(
-    const xla::HloInstruction* bcast, const xla::HloInstruction* constant);
-
-StatusOr<int32> LiteralScalarInt32toInt32(const xla::Literal& lit);
-StatusOr<int64> LiteralScalarInt64toInt64(const xla::Literal& lit);
-StatusOr<double> LiteralScalarDoubleToDouble(const xla::Literal& lit);
+template <typename NativeT>
+StatusOr<std::vector<NativeT>> WideConstToNativeType(
+    const xla::HloInstruction* wide_const);
 
 bool IsPopOpsCall(const xla::HloComputation*, const std::string& postfix = "");
 bool IsPopOpsCall(const xla::HloInstruction*, const std::string& postfix = "");
+bool IsRepeatCall(const xla::HloComputation*);
+bool IsRepeatCall(const xla::HloInstruction*);
+// This functions assumes that IsRepeatCall(inst) is true
+xla::HloComputation* GetRepeatBody(xla::HloInstruction* inst);
+const xla::HloComputation* GetRepeatBody(const xla::HloInstruction* inst);
 
 // This function returns true if the environment variable has been set. Using
 // synthetic data means that *no data* will be copied to/from the device.

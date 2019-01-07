@@ -67,6 +67,12 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_resource_input_count(int count);
   int resource_input_count() const;
 
+  // A map from the input of the computation to the original TF operation input
+  // index
+  ExecutableBuildOptions& set_input_mapping(
+      const std::vector<int>& input_mapping);
+  const std::vector<int>& input_mapping() const;
+
   // An indicator of the number of resource variables updated by this
   // executable.
   ExecutableBuildOptions& set_resource_update_to_input_index(
@@ -84,7 +90,9 @@ class ExecutableBuildOptions {
   absl::optional<DebugOptions> debug_options_;
   DeviceMemoryAllocator* device_allocator_ = nullptr;
 
+  int argument_count_ = 0;
   int resource_input_count_ = 0;
+  std::vector<int> input_mapping_ = std::vector<int>{};
   std::vector<int> resource_update_to_input_index_ = std::vector<int>{};
 };
 

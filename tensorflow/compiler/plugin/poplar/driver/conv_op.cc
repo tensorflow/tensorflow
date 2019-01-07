@@ -430,12 +430,15 @@ StatusOr<poplar::program::Program> CreateConvBiasAddOp(
 
   poplar::program::Sequence prog;
 
-  poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor in = inputs[0][0];
 
   poplar::Tensor bias;
-  TF_ASSIGN_OR_RETURN(bias,
-                      FindInstructionInput(tensor_map, res, inst, 1, prog));
+  TF_ASSIGN_OR_RETURN(
+      bias, FindInstructionInput(tensor_map, res, inst, 1, prog, false));
 
   const auto* conv_op = FindConvolutionOp(inst->operand(0), res.annotations);
 
@@ -458,9 +461,11 @@ StatusOr<poplar::program::Program> ConvBiasApply(CompilerResources& res,
   const HloInstruction* root = inst->to_apply()->root_instruction();
 
   // Find the biases
-  poplar::Tensor biases;
-  TF_ASSIGN_OR_RETURN(biases,
-                      FindInstructionInput(tensor_map, res, inst, 0, prog));
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor biases = inputs[0][0];
 
   // Find the deltas
   poplar::Tensor deltas;

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/find_all_users.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
@@ -492,6 +493,62 @@ body {
   ASSERT_EQ(users1.size(), 2);
   EXPECT_TRUE(users1.count(w_s0) == 1);
   EXPECT_TRUE(users1.count(s1) == 1);
+}
+
+// Into a Repeat instruction
+TEST_F(FindAddUsersTest, FindIntoRepeat) {
+  std::string hlo_string = R"(
+HloModule top
+
+body {
+  body_tuple.1 = (s32[], f16[4], f16[4]) parameter(0)
+  p.4 = s32[] get-tuple-element(body_tuple.1), index=0
+  p.5 = f16[4] get-tuple-element(body_tuple.1), index=1
+  p.6 = f16[4] get-tuple-element(body_tuple.1), index=2
+  s0 = f16[4] sine(p.5)
+  ROOT b_t0 = (s32[], f16[4], f16[4]) tuple(p.4, s0, p.6)
+}
+
+__repeat {
+  repeat_count = s32[] parameter(0)
+  input_tuple = (s32[], f16[4], f16[4]) parameter(1)
+  ROOT call = (s32[], f16[4], f16[4]) call((s32[], f16[4], f16[4]) input_tuple), to_apply=body
+}
+
+ENTRY in {
+  constant.4 = s32[] constant(10)
+  p0 = f16[4] parameter(0)
+  in = (s32[], f16[4], f16[4]) tuple(s32[] constant.4, f16[4] p0, f16[4] p0)
+  r0 = (s32[], f16[4], f16[4]) call(s32[] constant.4, (s32[], f16[4], f16[4]) in), to_apply=__repeat
+  e1 = f16[4] get-tuple-element(r0), index=1
+  e2 = f16[4] get-tuple-element(r0), index=2
+  s0 = f16[4] sine(e1)
+  s1 = f16[4] sine(e2)
+  ROOT tuple = (f16[4], f16[4]) tuple(s0, s1)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+
+  auto* module = module_or_status.ValueOrDie().get();
+  auto* comp = module->entry_computation();
+  auto* p0 = comp->GetInstructionWithName("p0");
+  auto* s0 = comp->GetInstructionWithName("s0");
+  auto* s1 = comp->GetInstructionWithName("s1");
+
+  auto* r_comp = GetRepeatBody(comp->GetInstructionWithName("r0"));
+  auto* r_s0 = r_comp->GetInstructionWithName("s0");
+
+  FindAllUsers finder;
+  finder.Find(p0);
+  auto users0 = finder.Users();
+  ASSERT_EQ(users0.size(), 2);
+  EXPECT_TRUE(users0.count(r_s0) == 1);
+  EXPECT_TRUE(users0.count(s1) == 1);
 }
 
 }  // namespace

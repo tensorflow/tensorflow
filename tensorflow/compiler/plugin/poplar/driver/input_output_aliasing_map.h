@@ -25,6 +25,12 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+/*
+ * The goal of this class is to categorize the inputs and outputs of the
+ * computation into Streamed or ResourceVariable.  Also, if one of the outputs
+ * is a resource variable, and it is updated by the computation (and therefore
+ * is also an input), then this is recorded too.
+ */
 class InputOutputAliasingMap {
  public:
   // A class which describes the aliasing information of an input
@@ -73,7 +79,7 @@ class InputOutputAliasingMap {
       // which means we want it to stay resident on the device between every
       // execution of the main sequence
       ResourceModified,
-      // ResourceOutputOnly is a variable usually created for an initlisation
+      // ResourceOutputOnly is a variable usually created for an initialisation
       // graph, indicating that this variable will be either ResourceModified or
       // ResourceNotModified for the next graph and should stay resident on the
       // device (however not supported in Poplar yet).
@@ -86,6 +92,7 @@ class InputOutputAliasingMap {
         : type_(type), input_index_(input_index) {}
 
     const bool IsStreaming() const;
+    const bool IsResource() const;
     const bool IsResourceModified() const;
     const uint64 GetInputIndex() const;
 
@@ -100,6 +107,8 @@ class InputOutputAliasingMap {
   const std::vector<OutputInfo>& GetEntryOutputInfos() const;
   const uint64& GetNumStreamingInputs();
   const uint64& GetNumStreamingOutputs();
+
+  std::string ToString() const;
 
  private:
   std::vector<InputInfo> entry_input_infos_;

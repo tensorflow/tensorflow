@@ -69,6 +69,16 @@ string ExecutableBuildOptions::ToString() const {
       device_ordinal_, result_layout, debug_options().xla_generate_hlo_graph());
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_argument_count(
+    int count) {
+  argument_count_ = count;
+  return *this;
+}
+
+int ExecutableBuildOptions::argument_count() const {
+  return argument_count_;
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_resource_input_count(
     int count) {
   resource_input_count_ = count;
@@ -77,6 +87,16 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_resource_input_count(
 
 int ExecutableBuildOptions::resource_input_count() const {
   return resource_input_count_;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_input_mapping(
+    const std::vector<int>& input_mapping) {
+  input_mapping_ = input_mapping;
+  return *this;
+}
+
+const std::vector<int>& ExecutableBuildOptions::input_mapping() const {
+  return input_mapping_;
 }
 
 ExecutableBuildOptions&
