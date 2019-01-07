@@ -123,6 +123,11 @@ const bool InputOutputAliasingMap::OutputInfo::IsStreaming() const {
   return type_ == InputOutputAliasingMap::OutputInfo::Type::StreamedVariable;
 }
 
+const bool InputOutputAliasingMap::OutputInfo::IsResource() const {
+  return type_ == InputOutputAliasingMap::OutputInfo::Type::ResourceModified ||
+         type_ == InputOutputAliasingMap::OutputInfo::Type::ResourceOutputOnly;
+}
+
 const bool InputOutputAliasingMap::OutputInfo::IsResourceModified() const {
   return type_ == InputOutputAliasingMap::OutputInfo::Type::ResourceModified;
 }

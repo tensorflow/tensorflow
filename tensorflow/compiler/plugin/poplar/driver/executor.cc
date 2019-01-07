@@ -772,8 +772,8 @@ se::DeviceMemoryBase PoplarExecutor::ConstantOutputAllocation::GetAllocation(
 }
 
 se::DeviceMemoryBase PoplarExecutor::RemapOutputAllocation::GetAllocation(
-    xla::DeviceMemoryAllocator*, const xla::Shape&, const int64 output_index,
-    int64& flat_tensor_index, const Args& args,
+    xla::DeviceMemoryAllocator* allocator, const xla::Shape&,
+    const int64 output_index, int64& flat_tensor_index, const Args& args,
     const InputOutputAliasingMap::OutputInfo&, const ArgsHandleMap& args_map,
     const int) const {
   const auto& remap_idx = remap_map_[output_index];
@@ -781,9 +781,37 @@ se::DeviceMemoryBase PoplarExecutor::RemapOutputAllocation::GetAllocation(
   if (it == args_map.end()) {
     LOG(FATAL) << "Could not remap an output to input tensor.";
   }
-  TensorControl* tc = it->second.tc;
-  tc->ref_count++;
-  return se::DeviceMemoryBase(tc);
+
+  bool make_a_copy = false;
+
+  auto input_infos = input_output_aliasing_map_.GetEntryInputInfos();
+  auto output_infos = input_output_aliasing_map_.GetEntryOutputInfos();
+  if (input_infos.size() > 0 && output_infos.size() > 0) {
+    int input_index = output_infos[output_index].GetInputIndex();
+    bool is_input_resource = input_infos[input_index].IsResource();
+    bool is_output_resource = output_infos[output_index].IsResource();
+    make_a_copy = is_input_resource != is_output_resource;
+  }
+
+  if (make_a_copy) {
+    TensorControl* orig = it->second.tc;
+    se::DeviceMemoryBase allocated =
+        allocator->Allocate(0, orig->size, false).ConsumeValueOrDie().Forget();
+    TensorControl* tc = reinterpret_cast<TensorControl*>(allocated.opaque());
+
+    if (orig->on_device) {
+      executor_->MoveDeviceToHost();
+    }
+
+    memcpy(tc->data, orig->data, orig->size);
+
+    return se::DeviceMemoryBase(tc, tc->size);
+  } else {
+    // Return a reference
+    TensorControl* tc = it->second.tc;
+    tc->ref_count++;
+    return se::DeviceMemoryBase(tc, tc->size);
+  }
 }
 
 se::DeviceMemoryBase PoplarExecutor::BufferOutputAllocation::GetAllocation(
@@ -875,8 +903,7 @@ se::DeviceMemoryBase PoplarExecutor::GetOutputBuffer(
       executable.GetInputOutputAliasingMap().GetEntryOutputInfos();
   CHECK_EQ(outputs_info.size(), shapes.size());
   for (unsigned int idx = 0; idx < shapes.size(); idx++) {
-    const auto& output_info =
-        input_output_aliasing_map.GetEntryOutputInfos()[idx];
+    const auto& output_info = outputs_info[idx];
     int64 start_flat_tensor_index = 0;
     se::DeviceMemoryBase out =
         HandleOutputBuffer(allocator, allocation_info, shapes[idx], idx,
@@ -1151,9 +1178,10 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
                             ConstantOutputAllocation(executable.LiteralValue()),
                             output_shape, args, input_output_aliasing_map);
       } else if (executable.IsRemapGraph()) {
-        retbuf = GetOutputBuffer(executable, allocator,
-                                 RemapOutputAllocation(executable.RemapMap()),
-                                 output_shape, args, input_output_aliasing_map);
+        RemapOutputAllocation remap(this, executable.RemapMap(),
+                                    input_output_aliasing_map);
+        retbuf = GetOutputBuffer(executable, allocator, remap, output_shape,
+                                 args, input_output_aliasing_map);
       } else {
         LOG(FATAL) << "Cannot construct a NULL graph.";
       }

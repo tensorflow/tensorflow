@@ -274,15 +274,15 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
 }
 
 TEST_F(GraphCompileIoMapTest, ResourceInit) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape shape = ShapeUtil::MakeShape(F32, {2});
 
   auto builder = HloComputation::Builder(TestName());
   auto i1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, image_shape, "input1"));
+      HloInstruction::CreateParameter(0, shape, "input1"));
   auto i2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, image_shape, "input2"));
+      HloInstruction::CreateParameter(1, shape, "input2"));
   auto i3 = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, image_shape, "input3"));
+      HloInstruction::CreateParameter(2, shape, "input3"));
   builder.AddInstruction(HloInstruction::CreateTuple({i1, i1, i2, i3}));
 
   auto computation = builder.Build();
@@ -301,6 +301,9 @@ TEST_F(GraphCompileIoMapTest, ResourceInit) {
   auto* platform =
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
+  se::Stream stream(stream_executor);
+  stream.Init();
 
   tensorflow::IPUOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
@@ -334,6 +337,66 @@ TEST_F(GraphCompileIoMapTest, ResourceInit) {
   EXPECT_FALSE(output_infos[1].IsResourceModified());
   EXPECT_FALSE(output_infos[2].IsResourceModified());
   EXPECT_FALSE(output_infos[3].IsResourceModified());
+
+  StreamExecutorMemoryAllocator allocator(platform, {stream_executor});
+
+  se::DeviceMemoryBase buf0 = allocator.Allocate(0, sizeof(float) * 2, false)
+                                  .ConsumeValueOrDie()
+                                  .Forget();
+  se::DeviceMemoryBase buf1 = allocator.Allocate(0, sizeof(float) * 2, false)
+                                  .ConsumeValueOrDie()
+                                  .Forget();
+  se::DeviceMemoryBase buf2 = allocator.Allocate(0, sizeof(float) * 2, false)
+                                  .ConsumeValueOrDie()
+                                  .Forget();
+
+  float b0[2] = {1.0, 2.0};
+  stream_executor->SynchronousMemcpyH2D(b0, sizeof(float) * 2, &buf0);
+
+  float b1[2] = {3.0, 4.0};
+  stream_executor->SynchronousMemcpyH2D(b1, sizeof(float) * 2, &buf1);
+
+  float b2[2] = {5.0, 6.0};
+  stream_executor->SynchronousMemcpyH2D(b2, sizeof(float) * 2, &buf2);
+
+  ShapedBuffer arg0(shape, shape, platform, 0);
+  arg0.set_buffer(buf0, {});
+  ShapedBuffer arg1(shape, shape, platform, 0);
+  arg1.set_buffer(buf1, {});
+  ShapedBuffer arg2(shape, shape, platform, 0);
+  arg2.set_buffer(buf2, {});
+
+  std::vector<const ShapedBuffer*> args = {&arg0, &arg1, &arg2};
+
+  ExecutableRunOptions ro;
+  ro.set_stream(&stream).set_allocator(&allocator).set_device_ordinal(0);
+
+  ServiceExecutableRunOptions sro(ro);
+
+  auto ret = e->ExecuteOnStream(&sro, args, NULL).ConsumeValueOrDie();
+
+  auto ret_buf0 = ret.buffer({0});
+  auto ret_buf1 = ret.buffer({1});
+  auto ret_buf2 = ret.buffer({2});
+  auto ret_buf3 = ret.buffer({3});
+  EXPECT_NE(ret_buf0.opaque(), buf0.opaque());
+  EXPECT_NE(ret_buf1.opaque(), buf0.opaque());
+  EXPECT_NE(ret_buf2.opaque(), buf1.opaque());
+  EXPECT_NE(ret_buf3.opaque(), buf2.opaque());
+
+  float ret_b[2];
+  stream_executor->SynchronousMemcpyD2H(ret_buf0, sizeof(float) * 2, ret_b);
+  EXPECT_EQ(ret_b[0], 1.0f);
+  EXPECT_EQ(ret_b[1], 2.0f);
+  stream_executor->SynchronousMemcpyD2H(ret_buf1, sizeof(float) * 2, ret_b);
+  EXPECT_EQ(ret_b[0], 1.0f);
+  EXPECT_EQ(ret_b[1], 2.0f);
+  stream_executor->SynchronousMemcpyD2H(ret_buf2, sizeof(float) * 2, ret_b);
+  EXPECT_EQ(ret_b[0], 3.0f);
+  EXPECT_EQ(ret_b[1], 4.0f);
+  stream_executor->SynchronousMemcpyD2H(ret_buf3, sizeof(float) * 2, ret_b);
+  EXPECT_EQ(ret_b[0], 5.0f);
+  EXPECT_EQ(ret_b[1], 6.0f);
 }
 
 }  // namespace

@@ -92,6 +92,7 @@ class InputOutputAliasingMap {
         : type_(type), input_index_(input_index) {}
 
     const bool IsStreaming() const;
+    const bool IsResource() const;
     const bool IsResourceModified() const;
     const uint64 GetInputIndex() const;
 
