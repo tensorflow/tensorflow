@@ -248,7 +248,7 @@ likelihood for compiler bugs. We expect there to be a very very large number of
 patterns that are defined over time, and we believe that these sorts of patterns
 will have a very large number of legality/validity constraints - many of which
 are difficult to reason about in a consistent way, may be target specific, and
-whose implementation may be particularly bugpone. As such, we aim to design the
+whose implementation may be particularly bug-prone. As such, we aim to design the
 API around pattern definition to be simple, resilient to programmer errors, and
 allow separation of concerns between the legality of the nodes generated from
 the idea of the pattern being defined.
