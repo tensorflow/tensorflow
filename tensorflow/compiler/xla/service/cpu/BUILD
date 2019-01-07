@@ -365,6 +365,21 @@ cc_library(
 )
 
 cc_library(
+    name = "tiled_dot_emitter",
+    srcs = ["tiled_dot_emitter.cc"],
+    hdrs = ["tiled_dot_emitter.h"],
+    deps = [
+        ":vector_support_library",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/llvm_ir:kernel_support_library",
+        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        "//tensorflow/core:lib",
+        "@llvm//:core",
+    ],
+)
+
+cc_library(
     name = "dot_op_emitter",
     srcs = ["dot_op_emitter.cc"],
     hdrs = ["dot_op_emitter.h"],
@@ -373,6 +388,7 @@ cc_library(
         ":cpu_runtime",
         ":ir_emission_utils",
         ":target_machine_features",
+        ":tiled_dot_emitter",
         ":vector_support_library",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
