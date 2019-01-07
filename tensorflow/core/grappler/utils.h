@@ -242,6 +242,9 @@ string AsControlDependency(const string& node);
 // Returns true if the node is assigned to run on CPU device.
 bool NodeIsOnCpu(const NodeDef* node);
 
+// Returns true if the node is assigned to run on GPU device.
+bool NodeIsOnGpu(const NodeDef* node);
+
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
 int NumOutputs(const NodeDef& node, GraphDef* graph);

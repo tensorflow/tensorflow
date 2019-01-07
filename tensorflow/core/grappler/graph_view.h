@@ -369,10 +369,12 @@ bool HasSingleFanoutNode(const GraphView& graph_view, const NodeDef* node,
 
 // Returns true if node has at least one fanout node at given output port.
 bool HasFanouts(const GraphView& graph_view, const NodeDef* node, int port = 0);
-
-bool NoControlFanin(const GraphView& graph_view, const NodeDef* node);
-bool NoControlFanout(const GraphView& graph_view, const NodeDef* node);
-bool NoControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node);
+// Returns true if the node has at least one input control dependency.
+bool HasControlFanin(const GraphView& graph_view, const NodeDef* node);
+// Returns true if the node has at least one output control dependency.
+bool HasControlFanout(const GraphView& graph_view, const NodeDef* node);
+// Returns true if the node has at least one input or output control dependency.
+bool HasControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow
