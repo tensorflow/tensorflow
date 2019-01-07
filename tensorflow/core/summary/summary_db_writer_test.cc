@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
+#include "tensorflow/core/summary/summary_db_writer.h"
 
-#include "tensorflow/contrib/tensorboard/db/schema.h"
+#include "tensorflow/core/summary/schema.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"

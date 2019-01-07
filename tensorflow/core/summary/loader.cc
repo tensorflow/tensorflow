@@ -15,8 +15,8 @@ limitations under the License.
 #include <iostream>
 #include <vector>
 
-#include "tensorflow/contrib/tensorboard/db/schema.h"
-#include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
+#include "tensorflow/core/summary/schema.h"
+#include "tensorflow/core/summary/summary_db_writer.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/platform/init_main.h"

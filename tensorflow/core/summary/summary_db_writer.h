@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CONTRIB_TENSORBOARD_DB_SUMMARY_DB_WRITER_H_
-#define TENSORFLOW_CONTRIB_TENSORBOARD_DB_SUMMARY_DB_WRITER_H_
+#ifndef TENSORFLOW_CORE_SUMMARY_SUMMARY_DB_WRITER_H_
+#define TENSORFLOW_CORE_SUMMARY_SUMMARY_DB_WRITER_H_
 
 #include "tensorflow/core/kernels/summary_interface.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -39,4 +39,4 @@ Status CreateSummaryDbWriter(Sqlite* db, const string& experiment_name,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_TENSORBOARD_DB_SUMMARY_DB_WRITER_H_
+#endif  // TENSORFLOW_CORE_SUMMARY_SUMMARY_DB_WRITER_H_
