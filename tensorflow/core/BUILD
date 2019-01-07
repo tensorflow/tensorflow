@@ -1750,6 +1750,7 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
@@ -2817,6 +2818,7 @@ tf_cuda_library(
         ":proto_text",
         ":protos_all_cc",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
