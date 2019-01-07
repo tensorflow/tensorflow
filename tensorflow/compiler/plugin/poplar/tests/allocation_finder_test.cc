@@ -714,7 +714,7 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
 
 // Check it goes through repeat instructions
 TEST_F(AllocationFinderTest, FindRepeatTensorAllocations) {
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
 
   Shape counter_shape = ShapeUtil::MakeShape(S32, {});
   Shape input_shape = ShapeUtil::MakeShape(F32, {2});
@@ -756,8 +756,8 @@ TEST_F(AllocationFinderTest, FindRepeatTensorAllocations) {
         HloInstruction::CreateBinary(c->shape(), HloOpcode::kAdd, c, one));
 
     DotDimensionNumbers dot_dnums;
-    dot_dnums.add_lhs_contracting_dimensions(1);
-    dot_dnums.add_rhs_contracting_dimensions(0);
+    dot_dnums.add_lhs_contracting_dimensions(0);
+    dot_dnums.add_rhs_contracting_dimensions(1);
     auto new_in = builder_body.AddInstruction(HloInstruction::CreateDot(
         input_shape, in, w, dot_dnums, DefaultPrecisionConfig(2)));
 
