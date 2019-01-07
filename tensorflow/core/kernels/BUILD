@@ -31,7 +31,6 @@ load(
     "//tensorflow:tensorflow.bzl",
     "cc_header_only_library",
     "if_android",
-    "if_not_v2",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_test",
@@ -6888,11 +6887,10 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core/lib/db:sqlite",
-    ] + if_not_v2([
-        "//tensorflow/contrib/tensorboard/db:schema",
-        "//tensorflow/contrib/tensorboard/db:summary_db_writer",
-        "//tensorflow/contrib/tensorboard/db:summary_file_writer",
-    ]),
+        "//tensorflow/core/summary:schema",
+        "//tensorflow/core/summary:summary_db_writer",
+        "//tensorflow/core/summary:summary_file_writer",
+    ],
 )
 
 tf_kernel_library(
