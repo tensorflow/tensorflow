@@ -28,20 +28,20 @@
 //===----------------------------------------------------------------------===//
 
 // Singular predicate condition.
-class PredAtom<code PredCall, bit Negated = 0> {
+class PredAtom<code call, bit neg = 0> {
   // The function to invoke to compute the predicate.
-  code predCall = PredCall;
+  code predCall = call;
 
   // Whether the predicate result should be negated.
-  bit negated = 0;
+  bit negated = neg;
 }
 
 // Predicate atoms in conjunctive normal form. The inner list consists
 // of PredAtoms, one of which in the list must hold, while all the outer
 // most conditions must hold. Conceptually
 //   all_of(outer_conditions, any_of(inner_conditions)).
-class PredCNF<list<list<PredAtom>> Conditions> {
-  list<list<PredAtom>> conditions = Conditions;
+class PredCNF<list<list<PredAtom>> conds> {
+  list<list<PredAtom>> conditions = conds;
 }
 
 def IsVectorTypePred : PredAtom<"{0}.isa<VectorType>()">;
@@ -84,11 +84,10 @@ def F32 : F<32> {
   let predicate = PredCNF<[[PredAtom<"{0}.isF32()">]]>;
 }
 
-// A container type is a type that has another embedded within it.
-class ContainerType<Type ElementType,
-                    PredCNF ContainerPred> : Type {
+// A container type is a type that has another type embedded within it.
+class ContainerType<Type etype, PredCNF containerPred> : Type {
   // The type of elements in the container.
-  Type elementType = ElementType;
+  Type elementType = etype;
 
   // Call to retrieve.
   code getElementTypeCall = ?;
@@ -96,8 +95,13 @@ class ContainerType<Type ElementType,
   let predicate = PredCNF<
     !foldl(
       // Initialize with the predicate of the container.
-      ContainerPred.conditions,
-      // Add constraints of the element type.
+      containerPred.conditions,
+      // Add constraints of the element type. This uses TableGen foldl (fold
+      // left) to iterate over the rules of the element type's predicates,
+      // expanding '{0}' which correspond to the type of the element to
+      // getElementTypeCall of the container type so that the
+      // predicates of the element type are applied to the elements of
+      // the container.
       elementType.predicate.conditions, a, b,
       !listconcat(a, [!foldl([]<PredAtom>, b, c, d,
         !listconcat(c, [PredAtom<
