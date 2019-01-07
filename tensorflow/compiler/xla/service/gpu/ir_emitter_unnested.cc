@@ -88,6 +88,9 @@ namespace xla {
 namespace gpu {
 
 using llvm_ir::KernelMappingScheme;
+using EmitElementFunction =
+    std::function<void(const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
+                       llvm::Value* x_loc, int64 x_iter_num)>;
 
 namespace {
 
@@ -2133,53 +2136,86 @@ int IrEmitterUnnested::ConstructInputReducedShapeAndCastInputIrArrayToShape(
 
 namespace {
 
-void EmitFullElementalTile(
-    const KernelMappingScheme* mapping_scheme,
-    const IrArray::Index& tile_origin_index, const string& loop_name,
-    KernelSupportLibrary* ksl, llvm::IRBuilder<>* builder, llvm::Value* y,
-    llvm::Value* x, llvm::Type* index_ty,
-    const std::function<void(const IrArray::Index&, llvm::Value*,
-                             llvm::Value*)>& emit_elem_function) {
+std::tuple<llvm::Value*, int64> GetStartOffsetAndStepForX(
+    int64 tile_size_x, int64 num_threads_x,
+    const KernelMappingScheme* mapping_scheme, llvm::IRBuilder<>* builder,
+    llvm::Value* x, llvm::Type* index_ty) {
+  llvm::Value* start_offset_x;
+  int64 step_x;
+  if (mapping_scheme->DilatedX()) {
+    start_offset_x = x;
+    step_x = num_threads_x;
+  } else {
+    start_offset_x = builder->CreateMul(
+        x, llvm::ConstantInt::get(index_ty, tile_size_x / num_threads_x));
+    step_x = 1;
+  }
+  return std::make_tuple(start_offset_x, step_x);
+}
+
+void EmitFullElementalTile(const KernelMappingScheme* mapping_scheme,
+                           const IrArray::Index& tile_origin_index,
+                           const string& loop_name, KernelSupportLibrary* ksl,
+                           llvm::IRBuilder<>* builder, llvm::Value* y,
+                           llvm::Value* x, llvm::Type* index_ty,
+                           const EmitElementFunction& emit_elem_function) {
   int64 num_threads_x = mapping_scheme->GetNumberOfThreadsForDimensionX();
   int64 num_threads_y = mapping_scheme->GetNumberOfThreadsForDimensionY();
   int64 tile_size_x = mapping_scheme->GetTileSizeForDimensionX();
   int64 tile_size_y = mapping_scheme->GetTileSizeForDimensionY();
+
+  llvm::Value* start_offset_x;
+  int64 step_x;
+  std::tie(start_offset_x, step_x) = GetStartOffsetAndStepForX(
+      tile_size_x, num_threads_x, mapping_scheme, builder, x, index_ty);
+  IrArray::Index source_idx =
+      tile_origin_index.AddOffsetToDim(y, KernelMappingScheme::DimY, builder)
+          .AddOffsetToDim(start_offset_x, KernelMappingScheme::DimX, builder);
   ksl->For(loop_name + "_y", /*start=*/llvm::ConstantInt::get(index_ty, 0),
            /*end=*/llvm::ConstantInt::get(index_ty, tile_size_y),
            /*step=*/llvm::ConstantInt::get(index_ty, num_threads_y),
            [&](llvm::Value* y_indvar) {
-             IrArray::Index source_idx_y = tile_origin_index.AddOffsetToDim(
+             IrArray::Index source_idx_y = source_idx.AddOffsetToDim(
                  y_indvar, KernelMappingScheme::DimY, builder);
              llvm::Value* y_loc = builder->CreateAdd(y_indvar, y);
-             for (int64 j = 0; j < tile_size_x; j += num_threads_x) {
-               IrArray::Index source_idx = source_idx_y.AddOffsetToDim(
-                   llvm::ConstantInt::get(index_ty, j),
+
+             for (int64 j = 0; j < tile_size_x / num_threads_x; j++) {
+               IrArray::Index source_idx_y_x = source_idx_y.AddOffsetToDim(
+                   llvm::ConstantInt::get(index_ty, j * step_x),
                    KernelMappingScheme::DimX, builder);
-               llvm::Value* x_loc =
-                   builder->CreateAdd(llvm::ConstantInt::get(index_ty, j), x);
-               emit_elem_function(source_idx, y_loc, x_loc);
+               llvm::Value* x_loc = builder->CreateAdd(
+                   llvm::ConstantInt::get(index_ty, j * step_x),
+                   start_offset_x);
+               emit_elem_function(source_idx_y_x, y_loc, x_loc, j);
              }
            });
 }
 
-void EmitPartialElementalTile(
-    const KernelMappingScheme* mapping_scheme,
-    const IrArray::Index& tile_origin_index, const string& loop_name,
-    KernelSupportLibrary* ksl, llvm::IRBuilder<>* builder, llvm::Value* y,
-    llvm::Value* x, llvm::Value* tile_height, llvm::Value* tile_width,
-    llvm::Type* index_ty,
-    const std::function<void(const IrArray::Index&, llvm::Value*,
-                             llvm::Value*)>& emit_elem_function) {
+void EmitPartialElementalTile(const KernelMappingScheme* mapping_scheme,
+                              const IrArray::Index& tile_origin_index,
+                              const string& loop_name,
+                              KernelSupportLibrary* ksl,
+                              llvm::IRBuilder<>* builder, llvm::Value* y,
+                              llvm::Value* x, llvm::Value* tile_height,
+                              llvm::Value* tile_width, llvm::Type* index_ty,
+                              const EmitElementFunction& emit_elem_function) {
   int64 num_threads_x = mapping_scheme->GetNumberOfThreadsForDimensionX();
   int64 num_threads_y = mapping_scheme->GetNumberOfThreadsForDimensionY();
   int64 tile_size_x = mapping_scheme->GetTileSizeForDimensionX();
 
-  for (int64 j = 0; j < tile_size_x; j += num_threads_x) {
-    IrArray::Index source_idx =
-        tile_origin_index.AddOffsetToDim(llvm::ConstantInt::get(index_ty, j),
-                                         KernelMappingScheme::DimX, builder);
-    llvm::Value* x_loc =
-        builder->CreateAdd(llvm::ConstantInt::get(index_ty, j), x);
+  llvm::Value* start_offset_x;
+  int64 step_x;
+  std::tie(start_offset_x, step_x) = GetStartOffsetAndStepForX(
+      tile_size_x, num_threads_x, mapping_scheme, builder, x, index_ty);
+  IrArray::Index source_idx =
+      tile_origin_index.AddOffsetToDim(y, KernelMappingScheme::DimY, builder)
+          .AddOffsetToDim(start_offset_x, KernelMappingScheme::DimX, builder);
+  for (int64 j = 0; j < tile_size_x / num_threads_x; j++) {
+    IrArray::Index source_idx_x =
+        source_idx.AddOffsetToDim(llvm::ConstantInt::get(index_ty, j * step_x),
+                                  KernelMappingScheme::DimX, builder);
+    llvm::Value* x_loc = builder->CreateAdd(
+        llvm::ConstantInt::get(index_ty, j * step_x), start_offset_x);
 
     ksl->If(
         loop_name + "_x_in_tile", builder->CreateICmpULT(x_loc, tile_width),
@@ -2199,14 +2235,13 @@ void EmitPartialElementalTile(
               /*step=*/llvm::ConstantInt::get(index_ty, num_threads_y),
               [&](llvm::Value* y_indvar) {
                 llvm::Value* y_loc = builder->CreateAdd(y_indvar, y);
-                ksl->If(
-                    loop_name + "_y_in_tile",
-                    builder->CreateICmpULT(y_loc, tile_height), [&] {
-                      emit_elem_function(
-                          source_idx.AddOffsetToDim(
-                              y_indvar, KernelMappingScheme::DimY, builder),
-                          y_loc, x_loc);
-                    });
+                ksl->If(loop_name + "_y_in_tile",
+                        builder->CreateICmpULT(y_loc, tile_height), [&] {
+                          emit_elem_function(
+                              source_idx_x.AddOffsetToDim(
+                                  y_indvar, KernelMappingScheme::DimY, builder),
+                              y_loc, x_loc, j);
+                        });
               });
         });
   }
@@ -2225,8 +2260,7 @@ void EmitTiledElementalCodeWithBoundsCheck(
     const IrArray::Index& tile_origin_index, const string& loop_name,
     KernelSupportLibrary* ksl, llvm::IRBuilder<>* builder, llvm::Value* y,
     llvm::Value* x, llvm::Value* tile_height, llvm::Value* tile_width,
-    const std::function<void(const IrArray::Index&, llvm::Value*,
-                             llvm::Value*)>& emit_elem_function) {
+    const EmitElementFunction& emit_elem_function) {
   int64 tile_size_x = mapping_scheme->GetTileSizeForDimensionX();
   int64 tile_size_y = mapping_scheme->GetTileSizeForDimensionY();
   llvm::Type* index_ty = tile_width->getType();
@@ -2262,7 +2296,7 @@ void EmitTiledElementalCodeWithBoundsCheck(
 void IrEmitterUnnested::EmitTileElementForCopy(
     HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
     const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
-    llvm::Value* x_loc) {
+    llvm::Value* x_loc, int64 /*x_iter_num*/) {
   llvm_ir::TiledParameterInfo* tiled_param_info =
       kernel_info->GetTiledParameterInfo();
   // TODO(jlebar): Add AA metadata to this load.
@@ -2292,7 +2326,7 @@ void IrEmitterUnnested::EmitTileElementForCopy(
 void IrEmitterUnnested::EmitTileElementForFusion(
     HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
     const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
-    llvm::Value* x_loc) {
+    llvm::Value* x_loc, int64 /*x_iter_num*/) {
   llvm_ir::TiledParameterInfo* tiled_param_info =
       kernel_info->GetTiledParameterInfo();
   std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(*hlo);
@@ -2393,6 +2427,23 @@ class ReductionCodegenInfo : public IrEmitterUnnested::KernelCodegenInfo {
                             : llvm_ir::KernelMappingScheme::DimX;
   }
 
+  int GetNumberOfPartialResults() const {
+    if (IsRowReduction()) {
+      return 1;
+    }
+    int64 num_thread = mapping_scheme_->GetNumberOfThreadsForDimensionX();
+    int64 tile_size = mapping_scheme_->GetTileSizeForDimensionX();
+    CHECK_EQ(tile_size % num_thread, 0);
+    return tile_size / num_thread;
+  }
+
+  int GetPartialResultIndex(int64 x_iter_num) const {
+    if (IsRowReduction()) {
+      return 0;
+    }
+    return x_iter_num;
+  }
+
  private:
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
@@ -2452,10 +2503,11 @@ void IrEmitterUnnested::EmitPrologueForOneReduction(
   llvm::AllocaInst* reduction_input_address = Alloca(element_type);
   reduction_input_addresses->push_back(reduction_input_address);
 
+  int num_partial_results = reduction_info->GetNumberOfPartialResults();
   AddressVector* partial_result_addresses =
       reduction_info->GetMutablePartialResultAddresses();
   llvm::AllocaInst* partial_result_address =
-      Alloca(element_type, /*ArraySize=*/nullptr,
+      Alloca(element_type, /*ArraySize=*/b_.getInt32(num_partial_results),
              "partial_reduction_result." + llvm::Twine(reduce_idx));
   partial_result_addresses->push_back(partial_result_address);
 
@@ -2478,7 +2530,9 @@ void IrEmitterUnnested::EmitPrologueForOneReduction(
             .EmitReadArrayElement(IrArray::Index(b_.getInt32Ty()), &b_);
   }
 
-  Store(init_ir_value, partial_result_address);
+  for (int i = 0; i < num_partial_results; ++i) {
+    Store(init_ir_value, InBoundsGEP(partial_result_address, {b_.getInt32(i)}));
+  }
 }
 
 void IrEmitterUnnested::EmitPrologueForReduction(
@@ -2516,10 +2570,14 @@ void IrEmitterUnnested::EmitPrologueForReduction(
                                 std::move(output_shape_index));
   }
 
-  // Allocate stack storage to store the current output linear index and record
-  // the address of the storage.
+  int num_partial_results = reduction_info->GetNumberOfPartialResults();
+
+  // Allocate stack storage to store the linear indices for the current output,
+  // and record the address of the storage.
   reduction_info->SetCurrentOutputLinearIndexAddress(
-      Alloca(reduction_info->GetIndexType()));
+      Alloca(reduction_info->GetIndexType(),
+             /*ArraySize=*/b_.getInt32(num_partial_results),
+             "current_output_linear_index_address"));
 
   if (!reduction_info->IsRowReduction()) {
     llvm::Type* bool_ty = b_.getInt1Ty();
@@ -2589,36 +2647,45 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
     llvm_ir::SetToFirstInsertPoint(if_output_inbound_data.true_block, &b_);
   }
 
+  int num_partial_results = reduction_info->GetNumberOfPartialResults();
+
   // Emit an atomic operation that accumulates the partial reduction to the
   // output element. For row reduction, this is only for lane 0 due to the
   // if-statement emitted above.
   for (int i = 0; i != num_reduces; ++i) {
-    IrArray::Index element_index(
-        /*linear=*/Load(reduction_info->GetCurrentOutputLinearIndexAddress(),
-                        "output_linear_addr"),
-        ShapeUtil::GetSubshape(unnested_hlo->shape(),
-                               reduction_output_shape_indices[i]),
-        &b_);
-    llvm::Value* output_address =
-        GetIrArray(*unnested_hlo, *unnested_hlo,
-                   reduction_output_shape_indices[i])
-            .EmitArrayElementAddress(element_index, &b_,
-                                     "output_element_address");
-    // Do not emit atomic operations if each element in the reduction result is
-    // computed by one block, that is the dimension being reduced has only one
-    // block.
-    const llvm_ir::KernelMappingScheme* mapping_scheme =
-        reduction_info->GetKernelMappingScheme();
-    if (mapping_scheme->GetTileBlockSizeForDimension(
-            llvm_ir::KernelMappingScheme::DimZ) == 1 &&
-        mapping_scheme->GetTileBlockSizeForDimension(
-            reduction_info->GetReducedDimensionEnum()) == 1) {
-      TF_CHECK_OK(EmitCallToNestedComputation(
-          *reducers[i], {output_address, partial_result_addresses[i]},
-          output_address));
-    } else {
-      TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
-          *reducers[i], output_address, partial_result_addresses[i]));
+    for (int j = 0; j < num_partial_results; ++j) {
+      IrArray::Index element_index(
+          /*linear=*/Load(
+              InBoundsGEP(reduction_info->GetCurrentOutputLinearIndexAddress(),
+                          {b_.getInt32(j)}),
+              "output_linear_addr"),
+          ShapeUtil::GetSubshape(unnested_hlo->shape(),
+                                 reduction_output_shape_indices[i]),
+          &b_);
+      llvm::Value* output_address =
+          GetIrArray(*unnested_hlo, *unnested_hlo,
+                     reduction_output_shape_indices[i])
+              .EmitArrayElementAddress(element_index, &b_,
+                                       "output_element_address");
+      // Do not emit atomic operations if each element in the reduction result
+      // is computed by one block, that is the dimension being reduced has only
+      // one block.
+      const llvm_ir::KernelMappingScheme* mapping_scheme =
+          reduction_info->GetKernelMappingScheme();
+      if (mapping_scheme->GetTileBlockSizeForDimension(
+              llvm_ir::KernelMappingScheme::DimZ) == 1 &&
+          mapping_scheme->GetTileBlockSizeForDimension(
+              reduction_info->GetReducedDimensionEnum()) == 1) {
+        TF_CHECK_OK(EmitCallToNestedComputation(
+            *reducers[i],
+            {output_address,
+             InBoundsGEP(partial_result_addresses[i], {b_.getInt32(j)})},
+            output_address));
+      } else {
+        TF_CHECK_OK(EmitAtomicOperationForNestedComputation(
+            *reducers[i], output_address,
+            InBoundsGEP(partial_result_addresses[i], {b_.getInt32(j)})));
+      }
     }
   }
 }
@@ -2626,7 +2693,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
 void IrEmitterUnnested::EmitTileElementForReduction(
     HloInstruction* unnested_hlo, const llvm_ir::IrArray::Index& index,
     const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
-    llvm::Value* x_loc) {
+    llvm::Value* x_loc, int64 x_iter_num) {
   VLOG(10) << "Emit tile element for reduce " << unnested_hlo->ToString();
   HloInstruction* reduce_or_tuple = unnested_hlo->opcode() == HloOpcode::kFusion
                                         ? unnested_hlo->fused_expression_root()
@@ -2639,8 +2706,11 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   // Record the linear address for the current reduction.
   const ReductionCodegenInfo* reduction_info =
       dynamic_cast<const ReductionCodegenInfo*>(kernel_info);
+  int partial_result_index = reduction_info->IsRowReduction() ? 0 : x_iter_num;
+
   Store(index[reduction_info->GetKeptDimensionEnum()],
-        reduction_info->GetCurrentOutputLinearIndexAddress());
+        InBoundsGEP(reduction_info->GetCurrentOutputLinearIndexAddress(),
+                    {b_.getInt32(partial_result_index)}));
   if (!reduction_info->IsRowReduction()) {
     llvm::Type* bool_ty = b_.getInt1Ty();
     llvm::AllocaInst* output_inbound_addr =
@@ -2687,6 +2757,13 @@ void IrEmitterUnnested::EmitTileElementForReduction(
       reduction_info->GetKernelMappingScheme()->GetUnnormalizedIndex(
           index,
           GetFirstReduceInstruction(output_instructions)->operand(0)->shape());
+  int num_partial_results = reduction_info->GetNumberOfPartialResults();
+  if (num_partial_results > 1) {
+    // Clear the linear index field of the IrArray::Index to enable the use of
+    // GetElementPointer with array types. This enables the vectorization of
+    // the computation for different partial results.
+    input_index.ClearLinearIndex();
+  }
   absl::Span<llvm::AllocaInst* const> partial_reduction_result_addresses =
       reduction_info->GetPartialResultAddresses();
   absl::Span<llvm::AllocaInst* const> reduction_input_addresses =
@@ -2699,10 +2776,12 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   for (int i = 0; i != reducers.size(); ++i) {
     llvm::Value* const input_ir_value = input_gens[i](input_index).ValueOrDie();
     Store(input_ir_value, reduction_input_addresses[i]);
+    llvm::Value* partial_result_address =
+        InBoundsGEP(partial_reduction_result_addresses[i],
+                    {b_.getInt32(partial_result_index)});
     TF_CHECK_OK(EmitCallToNestedComputation(
-        *reducers[i],
-        {partial_reduction_result_addresses[i], reduction_input_addresses[i]},
-        partial_reduction_result_addresses[i]));
+        *reducers[i], {partial_result_address, reduction_input_addresses[i]},
+        partial_result_address));
   }
 
   // Emit code to generate the output for the non-reduction instructions in the
@@ -2713,8 +2792,8 @@ void IrEmitterUnnested::EmitTileElementForReduction(
 
 // Emits a kernel for the hlo instruction using the given tiling scheme.
 void IrEmitterUnnested::EmitBlock(const TileGenerator& emit_one_tile,
-                                  const KernelCodegenInfo* kernel_info,
-                                  KernelSupportLibrary& ksl,
+                                  KernelCodegenInfo* kernel_info,
+                                  KernelSupportLibrary* ksl,
                                   llvm::Type* index_ty) {
   KernelMappingScheme* mapping_scheme = kernel_info->GetKernelMappingScheme();
   absl::Span<const int64> dims_in_tile = mapping_scheme->GetDimensionsInTiles();
@@ -2747,15 +2826,14 @@ void IrEmitterUnnested::EmitBlock(const TileGenerator& emit_one_tile,
           llvm::Value* num_tiles_in_block =
               Select(ICmpEQ(last_block_for_dim, block_id_for_dim),
                      last_block_size_for_dim, block_size_for_dim);
-
-          ksl.For(loop_name,
-                  /*start=*/index_typed_constant(0),
-                  /*end=*/num_tiles_in_block,
-                  /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
-                    IrArray::Index tile_index = starting_tile.AddOffsetToDim(
-                        block_dim_induction_var, dim_id, &b_);
-                    emit_next_block_dim(tile_index);
-                  });
+          ksl->For(loop_name,
+                   /*start=*/index_typed_constant(0),
+                   /*end=*/num_tiles_in_block,
+                   /*step=*/1, [&](llvm::Value* block_dim_induction_var) {
+                     IrArray::Index tile_index = starting_tile.AddOffsetToDim(
+                         block_dim_induction_var, dim_id, &b_);
+                     emit_next_block_dim(tile_index);
+                   });
         }
       };
 
@@ -2899,8 +2977,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
   auto emit_tiled_elemental_code_with_bounds_check =
       [&](const IrArray::Index& index, const string& loop_name,
           llvm::Value* tile_height, llvm::Value* tile_width,
-          const std::function<void(const IrArray::Index&, llvm::Value*,
-                                   llvm::Value*)>& emit_elem_function) {
+          const EmitElementFunction& emit_elem_function) {
         EmitTiledElementalCodeWithBoundsCheck(mapping_scheme, index, loop_name,
                                               &ksl, &b_, y, x, tile_height,
                                               tile_width, emit_elem_function);
@@ -2913,10 +2990,6 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     const IrArray::Index input_tile_origin(
         Permute({0, 2, 1}, output_tile_origin.multidim()));
 
-    const IrArray::Index input_index =
-        input_tile_origin.AddOffsetToDim(x, KernelMappingScheme::DimX, &b_)
-            .AddOffsetToDim(y, KernelMappingScheme::DimY, &b_);
-
     // If shared memory transpose is needed, wait for all threads to reach this
     // point, lest we copy a value from tile to output before the other thread
     // copies it from input to tile. This is `__syncthreads` in CUDA.
@@ -2926,9 +2999,10 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
       // Note that tile_width and tile_height are flipped here because we are
       // reading a transposed tile.
       emit_tiled_elemental_code_with_bounds_check(
-          input_index, "input", output_tile_bounds[2], output_tile_bounds[1],
+          input_tile_origin, "input", output_tile_bounds[2],
+          output_tile_bounds[1],
           [&](const IrArray::Index& index, llvm::Value* y_loc,
-              llvm::Value* x_loc) {
+              llvm::Value* x_loc, int64 /*x_iter_num*/) {
             for (int64 id : tiled_param_ids) {
               IrArray& input_in_logical_shape =
                   param_in_reduced_shape_arrays[id];
@@ -2948,18 +3022,15 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     llvm_ir::TiledParameterInfo tiled_param_info(param_shmem_buffers, y, x);
     kernel_info->SetTiledParamInfo(&tiled_param_info);
 
-    const IrArray::Index output_index =
-        output_tile_origin.AddOffsetToDim(x, KernelMappingScheme::DimX, &b_)
-            .AddOffsetToDim(y, KernelMappingScheme::DimY, &b_);
-
     // Write to output[index] by emitting code like normal, except that values
     // for the tiled parameters are read from the shmem buffers.
     emit_tiled_elemental_code_with_bounds_check(
-        output_index, "output", output_tile_bounds[1], output_tile_bounds[2],
-        [&](const IrArray::Index& index, llvm::Value* y_loc,
-            llvm::Value* x_loc) {
-          kernel_generator.GetTileElementGenerator()(unnested_hlo, index,
-                                                     kernel_info, y_loc, x_loc);
+        output_tile_origin, "output", output_tile_bounds[1],
+        output_tile_bounds[2],
+        [&](const IrArray::Index& index, llvm::Value* y_loc, llvm::Value* x_loc,
+            int64 x_iter_num) {
+          kernel_generator.GetTileElementGenerator()(
+              unnested_hlo, index, kernel_info, y_loc, x_loc, x_iter_num);
         });
 
     // If a tile block contains multiple tiles and shared memory buffers are
@@ -2977,7 +3048,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     block_prologue_generator(unnested_hlo, kernel_info);
   }
 
-  EmitBlock(std::move(emit_one_tile), kernel_info, ksl, index_ty);
+  EmitBlock(std::move(emit_one_tile), kernel_info, &ksl, index_ty);
 
   const BlockEpilogueGenerator& block_epilogue_generator =
       kernel_generator.GetBlockEpilogueGenerator();
@@ -3026,17 +3097,19 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
     element_generator = [&](HloInstruction* hlo,
                             const llvm_ir::IrArray::Index& index,
                             const KernelCodegenInfo* kernel_info,
-                            llvm::Value* y_loc, llvm::Value* x_loc) {
-      EmitTileElementForCopy(hlo, index, kernel_info, y_loc, x_loc);
+                            llvm::Value* y_loc, llvm::Value* x_loc,
+                            int64 x_iter_num) {
+      EmitTileElementForCopy(hlo, index, kernel_info, y_loc, x_loc, x_iter_num);
     };
   } else {
     DCHECK_EQ(hlo->opcode(), HloOpcode::kFusion);
-    element_generator = [&](HloInstruction* hlo,
-                            const llvm_ir::IrArray::Index& index,
-                            const KernelCodegenInfo* kernel_info,
-                            llvm::Value* y_loc, llvm::Value* x_loc) {
-      EmitTileElementForFusion(hlo, index, kernel_info, y_loc, x_loc);
-    };
+    element_generator =
+        [&](HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
+            const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
+            llvm::Value* x_loc, int64 x_iter_num) {
+          EmitTileElementForFusion(hlo, index, kernel_info, y_loc, x_loc,
+                                   x_iter_num);
+        };
   }
   KernelCodegenInfo kernel_info(&mapping_scheme);
   KernelCodeGenerator kernel_generator(std::move(element_generator));
@@ -3351,6 +3424,7 @@ IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
   std::tie(num_reduced_major, num_kept, num_reduced_minor) =
       GetReductionToVectorDimensions(input_shape, first_reduce->dimensions());
   CHECK_EQ(num_output_elems, num_kept);
+  bool dilated_x = true;
 
   if (num_kept == 1) {
     // Scalar reduction is a special row reduction with depth = height = 1.
@@ -3363,15 +3437,31 @@ IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
     height = num_reduced_major;
     width = num_kept;
     is_row_reduction = false;
+    // Assume unrolling is beneficial only when we can vectorize the loads
+    // of small data types.
+    auto is_unrolling_beneficial = [&] {
+      // TODO(b/122468062): Need further investigate to see whether we can
+      // remove the constraint on IsPowerOfTwo.
+      return IsPowerOfTwo(static_cast<uint64>(num_kept)) &&
+             primitive_util::BitWidth(
+                 first_reduce->operand(0)->shape().element_type()) <= 16;
+    };
     // Column reduction without transpose doesn't require communication among
     // threads processing elements in the same tile. The current implementation
-    // only support the use of on hardware thread block to process one block of
-    // tiles in the KernelMappingScheme. We try to maximize the values of
+    // only support the use of one hardware thread block to process one block of
+    // tiles in the KernelMappingScheme. We try to use one thread to compute
+    // the partial results for two tensor elements and to maximize the values of
     // num_threads_x and tile_size_x to allow a bigger hardware thread block.
     int64 hw_threads_per_block_limit =
         ThreadsPerBlockLimit(ir_emitter_context_->device_description());
-    tile_size_x = std::min(hw_threads_per_block_limit, num_kept);
-    num_threads_x = tile_size_x;
+    if (is_unrolling_beneficial()) {
+      tile_size_x = std::min(2 * hw_threads_per_block_limit, num_kept);
+      num_threads_x = tile_size_x / 2;
+      dilated_x = false;
+    } else {
+      tile_size_x = std::min(hw_threads_per_block_limit, num_kept);
+      num_threads_x = tile_size_x;
+    }
     int64 kNumElementsPerPartialSum = 128;
     tile_size_y = kNumElementsPerPartialSum;
   } else {
@@ -3400,6 +3490,7 @@ IrEmitterUnnested::ComputeMappingSchemeAndReductionKind(
   llvm_ir::KernelMappingScheme mapping_scheme(
       dims_in_elem, tile_size_y, tile_size_x, req_block_sizes, num_threads_y,
       num_threads_x, &b_);
+  mapping_scheme.SetDilatedX(dilated_x);
   return std::make_tuple(mapping_scheme, is_row_reduction);
 }
 
@@ -3454,8 +3545,9 @@ Status IrEmitterUnnested::EmitReductionToVector(HloInstruction* unnested_hlo) {
       /*tile_element_generator=*/
       [&](HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
           const KernelCodegenInfo* kernel_info, llvm::Value* y_loc,
-          llvm::Value* x_loc) {
-        EmitTileElementForReduction(hlo, index, kernel_info, y_loc, x_loc);
+          llvm::Value* x_loc, int64 x_iter_num) {
+        EmitTileElementForReduction(hlo, index, kernel_info, y_loc, x_loc,
+                                    x_iter_num);
       },
       /*block_prologue_generator=*/
       [&](HloInstruction* hlo, KernelCodegenInfo* kernel_info) {
