@@ -1577,7 +1577,7 @@ ENTRY %top (arg0.78.22: f32[1,4,4,2], arg1.78.23: f32[1,1,2,2], arg2.78.24: f32[
   EXPECT_TRUE(fwd_finder.Run(module0).ValueOrDie());
 
   // We have added one new entry for the bias add
-  EXPECT_EQ(annotations.tensor_allocation_map.size(), 6);
+  ASSERT_EQ(annotations.tensor_allocation_map.size(), 6);
 
   t = annotations.tensor_allocation_map.at(std::make_pair(bn_ip1, 0));
   EXPECT_EQ(t.tgt, bn_tr);
