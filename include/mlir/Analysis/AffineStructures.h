@@ -233,10 +233,16 @@ private:
 ///
 /// The identifiers x_0, x_1, ... appear in the order: dimensional identifiers,
 /// symbolic identifiers, and local identifiers.  The local identifiers
-/// correspond to local/internal variables created temporarily when converting
-/// from tree AffineExpr's that have mod's and div's and are thus needed
-/// to increase representational power.
-//
+/// correspond to local/internal variables created when converting from
+/// AffineExpr's containing mod's and div's; they are thus needed to increase
+/// representational power. Each local identifier is always (by construction) a
+/// floordiv of a pure add/mul affine function of dimensional, symbolic, and
+/// other local identifiers, in a non-mutually recursive way. Hence, every local
+/// identifier can ultimately always be recovered as an affine function of
+/// dimensional and symbolic identifiers (involving floordiv's); note however
+/// that some floordiv combinations are converted to mod's by AffineExpr
+/// construction.
+///
 class FlatAffineConstraints {
 public:
   enum IdKind { Dimension, Symbol, Local };
@@ -259,7 +265,7 @@ public:
     if (idArgs.empty())
       ids.resize(numIds, None);
     else
-      ids.insert(ids.end(), idArgs.begin(), idArgs.end());
+      ids.append(idArgs.begin(), idArgs.end());
   }
 
   /// Constructs a constraint system with the specified number of
@@ -276,7 +282,7 @@ public:
     if (idArgs.empty())
       ids.resize(numIds, None);
     else
-      ids.insert(ids.end(), idArgs.begin(), idArgs.end());
+      ids.append(idArgs.begin(), idArgs.end());
   }
 
   explicit FlatAffineConstraints(const HyperRectangularSet &set);

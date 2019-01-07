@@ -117,7 +117,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
                          opInst->getName());
     state.operands.reserve(opInst->getNumOperands() + extraIndices.size());
     // Insert the non-memref operands.
-    state.operands.insert(state.operands.end(), opInst->operand_begin(),
+    state.operands.append(opInst->operand_begin(),
                           opInst->operand_begin() + memRefOperandPos);
     state.operands.push_back(newMemRef);
 
@@ -138,11 +138,10 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
     // at position memRefOperandPos + 1.
     SmallVector<Value *, 4> remapOperands;
     remapOperands.reserve(oldMemRefRank + extraOperands.size());
-    remapOperands.insert(remapOperands.end(), extraOperands.begin(),
-                         extraOperands.end());
-    remapOperands.insert(
-        remapOperands.end(), opInst->operand_begin() + memRefOperandPos + 1,
-        opInst->operand_begin() + memRefOperandPos + 1 + oldMemRefRank);
+    remapOperands.append(extraOperands.begin(), extraOperands.end());
+    remapOperands.append(opInst->operand_begin() + memRefOperandPos + 1,
+                         opInst->operand_begin() + memRefOperandPos + 1 +
+                             oldMemRefRank);
     if (indexRemap) {
       auto remapOp = builder.create<AffineApplyOp>(opInst->getLoc(), indexRemap,
                                                    remapOperands);
@@ -156,8 +155,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
     }
 
     // Insert the remaining operands unmodified.
-    state.operands.insert(state.operands.end(),
-                          opInst->operand_begin() + memRefOperandPos + 1 +
+    state.operands.append(opInst->operand_begin() + memRefOperandPos + 1 +
                               oldMemRefRank,
                           opInst->operand_end());
 
@@ -167,7 +165,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
       state.types.push_back(result->getType());
 
     // Attributes also do not change.
-    state.attributes.insert(state.attributes.end(), opInst->getAttrs().begin(),
+    state.attributes.append(opInst->getAttrs().begin(),
                             opInst->getAttrs().end());
 
     // Create the new operation.
@@ -206,14 +204,9 @@ mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
   }
   // Compose affine maps from all ancestor AffineApplyOps.
   // Create new AffineApplyOp from 'valueMap'.
-  unsigned numOperands = valueMap.getNumOperands();
-  SmallVector<Value *, 4> outOperands(numOperands);
-  for (unsigned i = 0; i < numOperands; ++i) {
-    outOperands[i] = valueMap.getOperand(i);
-  }
   // Create new AffineApplyOp based on 'valueMap'.
-  auto affineApplyOp =
-      builder->create<AffineApplyOp>(loc, valueMap.getAffineMap(), outOperands);
+  auto affineApplyOp = builder->create<AffineApplyOp>(
+      loc, valueMap.getAffineMap(), valueMap.getOperands());
   results->resize(operands.size());
   for (unsigned i = 0, e = operands.size(); i < e; ++i) {
     (*results)[i] = affineApplyOp->getResult(i);
@@ -340,13 +333,8 @@ void mlir::forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp) {
       valueMap.forwardSubstituteSingle(*affineApplyOp, resultIndex);
 
       // Create new AffineApplyOp from 'valueMap'.
-      unsigned numOperands = valueMap.getNumOperands();
-      SmallVector<Value *, 4> operands(numOperands);
-      for (unsigned i = 0; i < numOperands; ++i) {
-        operands[i] = valueMap.getOperand(i);
-      }
       auto newAffineApplyOp = builder.create<AffineApplyOp>(
-          useOpInst->getLoc(), valueMap.getAffineMap(), operands);
+          useOpInst->getLoc(), valueMap.getAffineMap(), valueMap.getOperands());
 
       // Update all uses to use results from 'newAffineApplyOp'.
       for (unsigned i = 0, e = useOpInst->getNumResults(); i < e; ++i) {

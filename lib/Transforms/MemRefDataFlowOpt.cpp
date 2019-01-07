@@ -128,9 +128,8 @@ void MemRefDataFlowOpt::visitOperationInst(OperationInst *opInst) {
   // post-dominance on these. 'fwdingCandidates' are a subset of depSrcStores.
   SmallVector<OperationInst *, 8> depSrcStores;
   for (auto *storeOpInst : storeOps) {
-    MemRefAccess srcAccess, destAccess;
-    getMemRefAccess(storeOpInst, &srcAccess);
-    getMemRefAccess(loadOpInst, &destAccess);
+    MemRefAccess srcAccess(storeOpInst);
+    MemRefAccess destAccess(loadOpInst);
     FlatAffineConstraints dependenceConstraints;
     unsigned nsLoops = getNumCommonSurroundingLoops(*loadOpInst, *storeOpInst);
     // Dependences at loop depth <= minSurroundingLoops do NOT matter.

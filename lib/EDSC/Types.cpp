@@ -178,7 +178,7 @@ Stmt ForNest(MutableArrayRef<Bindable> indices, ArrayRef<Expr> lbs,
 Expr load(Expr m, llvm::ArrayRef<Expr> indices) {
   SmallVector<Expr, 8> exprs;
   exprs.push_back(m);
-  exprs.insert(exprs.end(), indices.begin(), indices.end());
+  exprs.append(indices.begin(), indices.end());
   return VariadicExpr(ExprKind::Load, exprs);
 }
 
@@ -186,7 +186,7 @@ Expr store(Expr val, Expr m, llvm::ArrayRef<Expr> indices) {
   SmallVector<Expr, 8> exprs;
   exprs.push_back(val);
   exprs.push_back(m);
-  exprs.insert(exprs.end(), indices.begin(), indices.end());
+  exprs.append(indices.begin(), indices.end());
   return VariadicExpr(ExprKind::Store, exprs);
 }
 

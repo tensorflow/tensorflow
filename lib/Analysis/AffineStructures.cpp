@@ -484,7 +484,7 @@ FlatAffineConstraints::FlatAffineConstraints(
 
   auto otherIds = other.getIds();
   ids.reserve(numReservedCols);
-  ids.insert(ids.end(), otherIds.begin(), otherIds.end());
+  ids.append(otherIds.begin(), otherIds.end());
 
   unsigned numReservedEqualities = other.getNumReservedEqualities();
   unsigned numReservedInequalities = other.getNumReservedInequalities();
@@ -562,7 +562,7 @@ void FlatAffineConstraints::reset(unsigned numReservedInequalities,
     ids.resize(numIds, None);
   } else {
     ids.reserve(idArgs.size());
-    ids.insert(ids.end(), idArgs.begin(), idArgs.end());
+    ids.append(idArgs.begin(), idArgs.end());
   }
 }
 
@@ -1817,8 +1817,8 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
 
   SmallVector<Optional<Value *>, 8> newIds;
   newIds.reserve(numIds - 1);
-  newIds.insert(newIds.end(), ids.begin(), ids.begin() + pos);
-  newIds.insert(newIds.end(), ids.begin() + pos + 1, ids.end());
+  newIds.append(ids.begin(), ids.begin() + pos);
+  newIds.append(ids.begin() + pos + 1, ids.end());
 
   /// Create the new system which has one identifier less.
   FlatAffineConstraints newFac(

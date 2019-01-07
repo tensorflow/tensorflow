@@ -87,16 +87,13 @@ struct FusionCandidate {
   MemRefAccess srcAccess;
   // Load or store access within dst loop nest.
   MemRefAccess dstAccess;
+  explicit FusionCandidate(OperationInst *src, OperationInst *dst)
+      : srcAccess(MemRefAccess(src)), dstAccess(MemRefAccess(dst)) {}
 };
 
 static FusionCandidate buildFusionCandidate(OperationInst *srcStoreOpInst,
                                             OperationInst *dstLoadOpInst) {
-  FusionCandidate candidate;
-  // Get store access for src loop nest.
-  getMemRefAccess(srcStoreOpInst, &candidate.srcAccess);
-  // Get load access for dst loop nest.
-  getMemRefAccess(dstLoadOpInst, &candidate.dstAccess);
-  return candidate;
+  return FusionCandidate(srcStoreOpInst, dstLoadOpInst);
 }
 
 namespace {

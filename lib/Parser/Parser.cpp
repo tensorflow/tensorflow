@@ -798,7 +798,7 @@ ParseResult TensorLiteralParser::parseList(llvm::SmallVectorImpl<int> &dims) {
   // Return the sublists' dimensions with 'size' prepended.
   dims.clear();
   dims.push_back(size);
-  dims.insert(dims.end(), newDims.begin(), newDims.end());
+  dims.append(newDims.begin(), newDims.end());
   return ParseSuccess;
 }
 

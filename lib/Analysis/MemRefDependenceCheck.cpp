@@ -62,33 +62,6 @@ FunctionPass *mlir::createMemRefDependenceCheckPass() {
   return new MemRefDependenceCheck();
 }
 
-// Adds memref access indices 'opIndices' from 'memrefType' to 'access'.
-static void addMemRefAccessIndices(
-    llvm::iterator_range<OperationInst::const_operand_iterator> opIndices,
-    MemRefType memrefType, MemRefAccess *access) {
-  access->indices.reserve(memrefType.getRank());
-  for (auto *index : opIndices) {
-    access->indices.push_back(const_cast<mlir::Value *>(index));
-  }
-}
-
-// Populates 'access' with memref, indices and opinst from 'loadOrStoreOpInst'.
-static void getMemRefAccess(const OperationInst *loadOrStoreOpInst,
-                            MemRefAccess *access) {
-  access->opInst = loadOrStoreOpInst;
-  if (auto loadOp = loadOrStoreOpInst->dyn_cast<LoadOp>()) {
-    access->memref = loadOp->getMemRef();
-    addMemRefAccessIndices(loadOp->getIndices(), loadOp->getMemRefType(),
-                           access);
-  } else {
-    assert(loadOrStoreOpInst->isa<StoreOp>());
-    auto storeOp = loadOrStoreOpInst->dyn_cast<StoreOp>();
-    access->memref = storeOp->getMemRef();
-    addMemRefAccessIndices(storeOp->getIndices(), storeOp->getMemRefType(),
-                           access);
-  }
-}
-
 // Returns a result string which represents the direction vector (if there was
 // a dependence), returns the string "false" otherwise.
 static string
@@ -118,12 +91,10 @@ getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
 static void checkDependences(ArrayRef<OperationInst *> loadsAndStores) {
   for (unsigned i = 0, e = loadsAndStores.size(); i < e; ++i) {
     auto *srcOpInst = loadsAndStores[i];
-    MemRefAccess srcAccess;
-    getMemRefAccess(srcOpInst, &srcAccess);
+    MemRefAccess srcAccess(srcOpInst);
     for (unsigned j = 0; j < e; ++j) {
       auto *dstOpInst = loadsAndStores[j];
-      MemRefAccess dstAccess;
-      getMemRefAccess(dstOpInst, &dstAccess);
+      MemRefAccess dstAccess(dstOpInst);
 
       unsigned numCommonLoops =
           getNumCommonSurroundingLoops(*srcOpInst, *dstOpInst);

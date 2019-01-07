@@ -119,16 +119,12 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
 
   if ((loadOp = opInst->dyn_cast<LoadOp>())) {
     rank = loadOp->getMemRefType().getRank();
-    for (auto *index : loadOp->getIndices()) {
-      indices.push_back(index);
-    }
+    indices.append(loadOp->getIndices().begin(), loadOp->getIndices().end());
     region->memref = loadOp->getMemRef();
     region->setWrite(false);
   } else if ((storeOp = opInst->dyn_cast<StoreOp>())) {
     rank = storeOp->getMemRefType().getRank();
-    for (auto *index : storeOp->getIndices()) {
-      indices.push_back(index);
-    }
+    indices.append(storeOp->getIndices().begin(), storeOp->getIndices().end());
     region->memref = storeOp->getMemRef();
     region->setWrite(true);
   } else {
@@ -442,25 +438,26 @@ ForInst *mlir::insertBackwardComputationSlice(MemRefAccess *srcAccess,
   return sliceLoopNest;
 }
 
-void mlir::getMemRefAccess(OperationInst *loadOrStoreOpInst,
-                           MemRefAccess *access) {
+// Constructs  MemRefAccess populating it with the memref, its indices and
+// opinst from 'loadOrStoreOpInst'.
+MemRefAccess::MemRefAccess(OperationInst *loadOrStoreOpInst) {
   if (auto loadOp = loadOrStoreOpInst->dyn_cast<LoadOp>()) {
-    access->memref = loadOp->getMemRef();
-    access->opInst = loadOrStoreOpInst;
+    memref = loadOp->getMemRef();
+    opInst = loadOrStoreOpInst;
     auto loadMemrefType = loadOp->getMemRefType();
-    access->indices.reserve(loadMemrefType.getRank());
+    indices.reserve(loadMemrefType.getRank());
     for (auto *index : loadOp->getIndices()) {
-      access->indices.push_back(index);
+      indices.push_back(index);
     }
   } else {
     assert(loadOrStoreOpInst->isa<StoreOp>() && "load/store op expected");
     auto storeOp = loadOrStoreOpInst->dyn_cast<StoreOp>();
-    access->opInst = loadOrStoreOpInst;
-    access->memref = storeOp->getMemRef();
+    opInst = loadOrStoreOpInst;
+    memref = storeOp->getMemRef();
     auto storeMemrefType = storeOp->getMemRefType();
-    access->indices.reserve(storeMemrefType.getRank());
+    indices.reserve(storeMemrefType.getRank());
     for (auto *index : storeOp->getIndices()) {
-      access->indices.push_back(index);
+      indices.push_back(index);
     }
   }
 }

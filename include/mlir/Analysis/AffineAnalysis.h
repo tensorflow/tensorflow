@@ -121,11 +121,18 @@ bool getFlattenedAffineExprs(
 bool getIndexSet(llvm::ArrayRef<ForInst *> forInsts,
                  FlatAffineConstraints *domain);
 
+/// Encapsulates a memref load or store access information.
 struct MemRefAccess {
   const Value *memref;
   const OperationInst *opInst;
   llvm::SmallVector<Value *, 4> indices;
-  // Populates 'accessMap' with composition of AffineApplyOps reachable from
+
+  /// Constructs a MemRefAccess from a load or store operation instruction.
+  // TODO(b/119949820): add accessors to standard op's load, store, DMA op's to
+  // return MemRefAccess, i.e., loadOp->getAccess(), dmaOp->getRead/WriteAccess.
+  explicit MemRefAccess(OperationInst *opInst);
+
+  /// Populates 'accessMap' with composition of AffineApplyOps reachable from
   // 'indices'.
   void getAccessMap(AffineValueMap *accessMap) const;
 };

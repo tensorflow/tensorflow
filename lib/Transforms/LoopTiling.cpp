@@ -86,8 +86,8 @@ static void constructTiledIndexSetHyperRect(ArrayRef<ForInst *> origLoops,
   for (unsigned i = 0; i < width; i++) {
     auto lbOperands = origLoops[i]->getLowerBoundOperands();
     auto ubOperands = origLoops[i]->getUpperBoundOperands();
-    SmallVector<Value *, 4> newLbOperands(lbOperands.begin(), lbOperands.end());
-    SmallVector<Value *, 4> newUbOperands(ubOperands.begin(), ubOperands.end());
+    SmallVector<Value *, 4> newLbOperands(lbOperands);
+    SmallVector<Value *, 4> newUbOperands(ubOperands);
     newLoops[i]->setLowerBound(newLbOperands, origLoops[i]->getLowerBoundMap());
     newLoops[i]->setUpperBound(newUbOperands, origLoops[i]->getUpperBoundMap());
     newLoops[i]->setStep(tileSizes[i]);
@@ -121,7 +121,7 @@ static void constructTiledIndexSetHyperRect(ArrayRef<ForInst *> origLoops,
       // The new upper bound map is the original one with an additional
       // expression i + tileSize appended.
       boundExprs.push_back(dim + tileSizes[i]);
-      boundExprs.insert(boundExprs.end(), origUbMap.getResults().begin(),
+      boundExprs.append(origUbMap.getResults().begin(),
                         origUbMap.getResults().end());
       auto ubMap =
           b.getAffineMap(origUbMap.getNumInputs() + 1, 0, boundExprs, {});
