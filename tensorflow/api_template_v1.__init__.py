@@ -62,7 +62,8 @@ if '__all__' in vars():
   vars()['__all__'].append('contrib')
 
 from tensorflow.python.platform import flags  # pylint: disable=g-import-not-at-top
-app.flags = flags  # pylint: disable=undefined-variable
+from tensorflow.python.platform import app  # pylint: disable=g-import-not-at-top
+app.flags = flags
 
 # Make sure directory containing top level submodules is in
 # the __path__ so that "from tensorflow.foo import bar" works.
