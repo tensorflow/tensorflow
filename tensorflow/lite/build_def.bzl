@@ -311,6 +311,7 @@ def generated_test_models():
         "topk",
         "transpose",
         "transpose_conv",
+        "unique",
         "unpack",
         "unroll_batch_matmul",
         "where",
