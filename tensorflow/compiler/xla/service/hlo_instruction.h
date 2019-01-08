@@ -556,6 +556,7 @@ class HloInstruction {
   // Creates a slice instruction, where the first operand is sliced by
   // start indices specified in the second operand, and by size specified in
   // 'slice_sizes'.
+  ABSL_DEPRECATED("Use span-of-indices form instead")
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
       HloInstruction* start_indices, absl::Span<const int64> slice_sizes);
@@ -567,6 +568,7 @@ class HloInstruction {
 
   // Creates a dynamic update slice instruction, which updates a slice
   // of 'operand' with 'update' and 'start_indices'.
+  ABSL_DEPRECATED("Use span-of-indices form instead")
   static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
       const Shape& shape, HloInstruction* operand, HloInstruction* update,
       HloInstruction* start_indices);
