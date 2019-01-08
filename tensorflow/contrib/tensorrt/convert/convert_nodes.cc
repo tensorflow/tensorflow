@@ -879,6 +879,8 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     // We need to check the name before setting it. If the input is one of the
     // engine input, setting the name here will overwrite engine input
     // bindings which will cause runtime error.
+    // TODO(tmorris): Remove this work-around once we use TRT's IIdentityLayer
+    // in ConvertIdentity.
     if (output.is_tensor()) {
       const char* tensor_name = output.tensor()->getName();
       if (!tensorflow::str_util::StartsWith(tensor_name, kInputPHName)) {
@@ -938,6 +940,22 @@ Status Converter::RenameAndMarkOutputTensors(
     nvinfer1::ITensor* tensor = tensor_or_weights.tensor();
     if (tensor == nullptr) {
       return errors::NotFound("Output tensor not found: ", output.first);
+    }
+    // Check if this tensor has already been marked as an output.
+    // ConvertIdentity can cause the same tensor to be repeated in
+    // output_tensors, which can cause us to overwrite the name of the output
+    // tensor binding. For example, if we rename OutputPH_0 to OutputPH_1 then
+    // we won't be able to locate OutputPH_0 during runtime. To fix this,
+    // duplicate the tensor using no-op shuffle.
+    // TODO(tmorris): Remove this work-around once we use TRT's IIdentityLayer
+    // in ConvertIdentity.
+    if (tensorflow::str_util::StartsWith(tensor->getName(), kOutputPHName)) {
+      // Using shuffle layer for identity by not setting reshape or transpose.
+      nvinfer1::IShuffleLayer* layer = network()->addShuffle(*tensor);
+      TFTRT_RETURN_ERROR_IF_NULLPTR(
+          layer, StrCat("Output Copy for ", tensor->getName()));
+      MarkQuantizationRangesAsInferrable(tensor, layer->getOutput(0));
+      tensor = layer->getOutput(0);
     }
     tensor->setName(output.second.c_str());
     VLOG(1) << "Marking output tensor " << output.first << ", as output tensor "
@@ -1538,6 +1556,11 @@ enum class ConvolutionType { DEFAULT, DEPTHWISE_CONV };
 tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  if (inputs.size() != 2) {
+    return tensorflow::errors::InvalidArgument("Two inputs are expected for ",
+                                               node_def.op(), ", at ",
+                                               node_def.name());
+  }
   if (inputs.at(0).is_weights()) {
     return tensorflow::errors::Unimplemented(
         node_def.op(), " is only implemented for tensors, not weights, at ",
@@ -1549,39 +1572,61 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
                                              node_def.name());
   }
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
-  VLOG(2) << "weight shape: " << weights_rsck.DebugString();
   if (weights_rsck.shape_.nbDims != 4) {
-    return tensorflow::errors::Internal(
-        "Conv2D expects kernel of dimension 4, at: " + node_def.name());
+    return tensorflow::errors::InvalidArgument(
+        "Conv2D expects kernel of dimension 4, at " + node_def.name());
   }
+  TFAttrs attrs(node_def);
+  auto data_format = attrs.get<string>("data_format");
+  int c_index = (data_format == "NHWC") ? 3 : 1;
+  int h_index = (data_format == "NHWC") ? 1 : 2;
+  int w_index = (data_format == "NHWC") ? 2 : 3;
+  auto tf_dilations = attrs.get<std::vector<int>>("dilations");
+  if (tf_dilations.size() != 4) {
+    return tensorflow::errors::InvalidArgument(
+        "Convolution dilations field must specify 4 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_dilations[0] != 1 || tf_dilations[c_index] != 1) {
+    return tensorflow::errors::Unimplemented(
+        "Dilation rate must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  const nvinfer1::DimsHW dilation(tf_dilations[h_index], tf_dilations[w_index]);
+
+  const auto tf_stride = attrs.get<std::vector<int>>("strides");
+  if (tf_stride.size() != 4) {
+    return tensorflow::errors::InvalidArgument(
+        "Convolution strides field must specify 4 dimensions, at ",
+        node_def.name());
+  }
+  if (tf_stride[0] != 1 || tf_stride[c_index] != 1) {
+    return tensorflow::errors::Unimplemented(
+        "Stride must be 1 for batch and channel dimensions, at ",
+        node_def.name());
+  }
+  const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
   if (params->validation_only) return tensorflow::Status::OK();
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  TFAttrs attrs(node_def);
 
-  int h_index = 2;
-  int w_index = 3;
-  auto data_format = attrs.get<string>("data_format");
-  if (data_format == "NHWC") {
+  // Transpose to NCHW (NCHW is required for IConvLayer).
+  const bool need_transpose = (data_format == "NHWC");
+  if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
         const_cast<nvinfer1::ITensor*>(tensor), {0, 3, 1, 2}, &tensor));
-    h_index = 1;
-    w_index = 2;
-    // TODO(jie): transpose it
   }
-
-  // tensor after transpose (NCHW)
+  // Dimensions of transposed tensor.
   const auto tensor_dim = tensor->getDimensions();
 
-  int num_groups = group;
-  if (num_groups == 0) num_groups = tensor_dim.d[0];  // depthwise convolution
-  VLOG(2) << "groups count: " << num_groups;
+  // For depthwise convolution, group will be 0 so set num_groups to size of
+  // input's channel dim. For a non-depthwise conv, num_groups will be 1.
+  const int num_groups = (group == 0) ? tensor_dim.d[0] : group;
 
   if (params->converter->precision_mode() == FP16MODE) {
     weights_rsck =
         ConvertFP32ToFP16(params->weight_store, inputs.at(1).weights());
   }
-
   TRT_ShapedWeights weights =
       params->weight_store->GetTempWeights(weights_rsck);
   ReorderRSCKToKCRS(weights_rsck, &weights, num_groups);
@@ -1590,35 +1635,22 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
   nvinfer1::DimsHW kernel_size;
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
-  VLOG(2) << "RSCK: " << weights.DebugString();
-  VLOG(2) << "kernel size: " << kernel_size.h() << ", " << kernel_size.w();
 
-  // TODO(jie): stride. (NHWC/NCHW)
-  const auto tf_stride = attrs.get<std::vector<int>>("strides");
-  VLOG(2) << "h_INDEX" << h_index << ", w_index " << w_index;
-  VLOG(2) << "stride: " << tf_stride[0] << tf_stride[1] << tf_stride[2]
-          << tf_stride[3];
-  const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
-
+  // Add padding.
   std::vector<std::pair<int, int>> padding;
-  // TODO(jie): padding.
   if (attrs.get<string>("padding") == "SAME") {
-    // This is NCHW tensor with no batch dimension.
-    //  1 -> h
-    //  2 -> w
+    nvinfer1::DimsHW effective_kernel_size = kernel_size;
+    effective_kernel_size.h() += (kernel_size.h() - 1) * (dilation.h() - 1);
+    effective_kernel_size.w() += (kernel_size.w() - 1) * (dilation.w() - 1);
     padding = CreateSamePadding(
-        stride, kernel_size,
+        stride, effective_kernel_size,
         {static_cast<int>(tensor_dim.d[1]), static_cast<int>(tensor_dim.d[2])});
   } else {
     padding = {{0, 0}, {0, 0}};
   }
-
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
-    // TODO(jie): handle asymmetric padding
-    VLOG(2) << "Padding!!!: " << padding[0].first << padding[0].second
-            << padding[1].first << padding[1].second;
-    VLOG(2) << "TENSOR before: " << DebugString(tensor->getDimensions());
+    // Handle asymmetric padding.
     auto pad_layer = params->converter->network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
         nvinfer1::DimsHW(padding[0].first, padding[1].first),
@@ -1628,24 +1660,23 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
         const_cast<nvinfer1::ITensor*>(tensor), pad_layer->getOutput(0));
     padding = {{0, 0}, {0, 0}};
     tensor = pad_layer->getOutput(0);
-    VLOG(2) << "TENSOR after: " << DebugString(tensor->getDimensions());
   }
 
+  // Add convolution.
   nvinfer1::IConvolutionLayer* layer =
       params->converter->network()->addConvolution(
           *const_cast<nvinfer1::ITensor*>(tensor), noutput, kernel_size,
           weights.GetTrtWeights(), biases.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-
   layer->setStride(stride);
   layer->setPadding({padding[0].first, padding[1].first});
   layer->setName(node_def.name().c_str());
   layer->setNbGroups(num_groups);
+  layer->setDilation(dilation);
   const nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  VLOG(2) << "TENSOR out: " << DebugString(output_tensor->getDimensions());
-  VLOG(2) << "data_format: " << data_format;
-  if (data_format == "NHWC") {
-    // TODO(jie): transpose it back!
+
+  // Restore transpose.
+  if (need_transpose) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
         const_cast<nvinfer1::ITensor*>(output_tensor), {0, 2, 3, 1},
         &output_tensor));

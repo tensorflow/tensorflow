@@ -212,10 +212,16 @@ REGISTER_OP("TensorListConcat")
     .Output("tensor: element_dtype")
     .Output("lengths: int64")
     .Attr("element_dtype: type")
+    .Attr("element_shape: shape = { unknown_rank: true }")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       DataType element_dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &element_dtype));
-      shape_inference::ShapeHandle element_shape = c->UnknownShape();
+      PartialTensorShape raw_element_shape;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_shape", &raw_element_shape));
+      shape_inference::ShapeHandle element_shape;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(raw_element_shape,
+                                                            &element_shape));
+
       auto* handle_data = c->input_handle_shapes_and_types(0);
       if (handle_data != nullptr && handle_data->size() != 1) {
         return errors::InvalidArgument(
@@ -231,10 +237,10 @@ REGISTER_OP("TensorListConcat")
               DataTypeString(list_shape_type.dtype), " but expected type ",
               DataTypeString(element_dtype));
         }
-        shape_inference::ShapeHandle ignored;
+        shape_inference::ShapeHandle merged;
         TF_RETURN_IF_ERROR(
-            c->Merge(element_shape, list_shape_type.shape, &ignored));
-        element_shape = list_shape_type.shape;
+            c->Merge(element_shape, list_shape_type.shape, &merged));
+        element_shape = merged;
       }
       if (c->RankKnown(element_shape)) {
         shape_inference::ShapeHandle result;
@@ -364,6 +370,24 @@ REGISTER_OP("TensorListGetItem")
         }
       }
       c->set_output(0, element_shape);
+      return Status::OK();
+    });
+
+REGISTER_OP("TensorListResize")
+    .Input("input_handle: variant")
+    .Input("size: int32")
+    .Output("output_handle: variant")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // Check that `size` has scalar shape.
+      shape_inference::ShapeHandle size_shape = c->input(1);
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(size_shape, 0, &unused));
+      c->set_output(0, c->Scalar());
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
       return Status::OK();
     });
 

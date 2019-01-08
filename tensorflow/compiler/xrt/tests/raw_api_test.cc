@@ -258,8 +258,102 @@ TEST(RawApiTest, AllocAndRewrite) {
   EXPECT_TRUE(new_response.ParseFromString(outputs[0].scalar<string>()()));
   EXPECT_TRUE(CompareLiteralProtos(new_literal, new_response));
 
-  auto release =
-      ops::XRTReleaseAllocationHandle(root, Input(allocation_handle));
+  Tensor release_tensor(DT_INT64, TensorShape({1}));
+  release_tensor.flat<int64>()(0) = allocation_handle;
+
+  auto release = ops::XRTReleaseAllocationHandle(root, release_tensor);
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
+                           &outputs));
+}
+
+TEST(RawApiTest, AllocReleaseMany) {
+  xrt::XLAAllocation alloc1;
+  *alloc1.mutable_value() =
+      xla::LiteralUtil::CreateR2({{4, 5}, {6, 7}}).ToProto();
+  xrt::XLAAllocation alloc2;
+  *alloc2.mutable_value() =
+      xla::LiteralUtil::CreateR2({{6, 7}, {4, 5}}).ToProto();
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto value1 =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc1.SerializeAsString());
+  auto value2 =
+      ops::Const(root.WithDevice("/device:CPU:0"), alloc2.SerializeAsString());
+  auto handle1 = ops::XRTAllocate(root, value1);
+  auto handle2 = ops::XRTAllocate(root, value2);
+  TF_ASSERT_OK(root.status());
+
+  tensorflow::ClientSession session(root);
+  std::vector<tensorflow::Tensor> outputs;
+  TF_EXPECT_OK(session.Run({handle1, handle2}, &outputs));
+  EXPECT_EQ(outputs.size(), 2);
+
+  int64 allocation_handle1 = outputs[0].scalar<int64>()();
+  int64 allocation_handle2 = outputs[1].scalar<int64>()();
+
+  Tensor release_tensor(DT_INT64, TensorShape({2}));
+  release_tensor.flat<int64>()(0) = allocation_handle1;
+  release_tensor.flat<int64>()(1) = allocation_handle2;
+
+  auto release = ops::XRTReleaseAllocationHandle(root, release_tensor);
+  outputs.clear();
+  TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
+                           &outputs));
+}
+
+TEST(RawApiTest, CompileAndReleaseMany) {
+  xrt::XLAComputation c1;
+  auto config1 = c1.mutable_config();
+  auto shapes1 = config1->mutable_program_shape();
+  *shapes1->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes1->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes1->mutable_result() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  StoreComputationSnapshot(AddAndScale(), c1.mutable_hlo_snapshot());
+
+  xrt::XLAComputation c2;
+  auto config2 = c2.mutable_config();
+  auto shapes2 = config2->mutable_program_shape();
+  *shapes2->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes2->add_parameters() =
+      xla::ShapeUtil::MakeShape(xla::F32, {2}).ToProto();
+  *shapes2->mutable_result() =
+      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::F32, {2})})
+          .ToProto();
+  StoreComputationSnapshot(AddAndTuple(), c2.mutable_hlo_snapshot());
+
+  xrt::XRTExecutionConfig e;
+  e.set_release_input_handles(true);
+  e.set_release_compilation_handle(false);
+
+  Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
+  auto e_config =
+      ops::Const(root.WithDevice("/device:CPU:0"), e.SerializeAsString());
+  auto computation1 =
+      ops::Const(root.WithDevice("/device:CPU:0"), c1.SerializeAsString());
+  auto c_handle1 = ops::XRTCompile(root, computation1);
+  auto computation2 =
+      ops::Const(root.WithDevice("/device:CPU:0"), c2.SerializeAsString());
+  auto c_handle2 = ops::XRTCompile(root, computation2);
+  TF_ASSERT_OK(root.status());
+
+  ClientSession session(root);
+  std::vector<Tensor> outputs;
+  TF_EXPECT_OK(session.Run({c_handle1.handle, c_handle2.handle}, &outputs));
+  EXPECT_EQ(outputs.size(), 2);
+
+  int64 compilation_handle1 = outputs[0].scalar<int64>()();
+  int64 compilation_handle2 = outputs[1].scalar<int64>()();
+
+  Tensor release_tensor(DT_INT64, TensorShape({2}));
+  release_tensor.flat<int64>()(0) = compilation_handle1;
+  release_tensor.flat<int64>()(1) = compilation_handle2;
+
+  auto release = ops::XRTReleaseCompilationHandle(root, release_tensor);
+  outputs.clear();
   TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(), {}, {release},
                            &outputs));
 }
@@ -862,6 +956,7 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   xrt::XRTExecutionConfig e;
   e.set_release_input_handles(true);
   e.set_release_compilation_handle(true);
+  e.set_return_exploded_tuple(true);
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
   auto e_config =

@@ -154,20 +154,17 @@ bool IsReductionToVector(const HloInstruction& reduce) {
   const HloInstruction* input = reduce.operand(0);
   std::vector<int64> dims_to_keep;
   for (int64 dim = 0; dim < input->shape().dimensions().size(); ++dim) {
-    if (!std::count(reduce.dimensions().begin(), reduce.dimensions().end(),
-                    dim)) {
+    if (!absl::c_linear_search(reduce.dimensions(), dim)) {
       dims_to_keep.push_back(dim);
     }
   }
   return LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
                                               dims_to_keep) &&
-         ShapeUtil::Equal(reduce.shape(), ShapeUtil::FilterDimensions(
-                                              [&dims_to_keep](int64 dim) {
-                                                return std::count(
-                                                    dims_to_keep.begin(),
-                                                    dims_to_keep.end(), dim);
-                                              },
-                                              input->shape()));
+         ShapeUtil::Equal(
+             reduce.shape(),
+             ShapeUtil::FilterDimensions(
+                 [&](int64 dim) { return absl::c_count(dims_to_keep, dim); },
+                 input->shape()));
 }
 
 // This emits a device-side call to

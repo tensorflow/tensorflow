@@ -727,7 +727,8 @@ class XlaBuilder {
   // operation such as `RngNormal` or `Infeed`. The visitor walks the
   // computation starting at a given operation and sets is_constant to false iff
   // a parameter or stateful operation is encountered.
-  void IsConstantVisitor(const int64 op_handle, std::set<int64>* visited,
+  void IsConstantVisitor(const int64 op_handle,
+                         absl::flat_hash_set<int64>* visited,
                          bool* is_constant) const;
 
   // Checks bounds for convolution parameters.

@@ -1,4 +1,4 @@
-FROM nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu16.04
 
 LABEL maintainer="Jan Prach <jendap@google.com>"
 
@@ -24,7 +24,7 @@ COPY install/.bazelrc /etc/bazel.bazelrc
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
 # Link NCCL libray and header where the build script expects them.
-RUN mkdir /usr/local/cuda-9.0/lib &&  \
+RUN mkdir /usr/local/cuda/lib &&  \
     ln -s /usr/lib/x86_64-linux-gnu/libnccl.so.2 /usr/local/cuda/lib/libnccl.so.2 && \
     ln -s /usr/include/nccl.h /usr/local/cuda/include/nccl.h
 

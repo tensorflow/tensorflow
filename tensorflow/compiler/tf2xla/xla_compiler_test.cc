@@ -82,7 +82,7 @@ namespace {
 // compiled kernels.
 class DummyResourceForTest : public ResourceBase {
  public:
-  string DebugString() override { return "dummy"; }
+  string DebugString() const override { return "dummy"; }
   void Increment() { ++value_; }
   int Get() { return value_; }
 

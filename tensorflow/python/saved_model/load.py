@@ -58,6 +58,11 @@ class _Loader(object):
           bound_inputs = [
               self._get_tensor_from_node(node_id)
               for node_id in monomorphic_function.bound_inputs]
+          bound_variables = [
+              self._nodes[node_id]
+              for node_id in monomorphic_function.bound_inputs
+              if self._proto.nodes[node_id].WhichOneof("kind") == "variable"
+          ]
           if name in seen_functions:
             if self._functions[name]._captured_inputs != bound_inputs:  # pylint: disable=protected-access
               raise NotImplementedError(
@@ -69,6 +74,7 @@ class _Loader(object):
             # concrete function, note that we did not modify the FuncGraph
             # itself.
             self._functions[name]._captured_inputs = bound_inputs  # pylint: disable=protected-access
+            self._functions[name]._func_graph.variables = bound_variables  # pylint: disable=protected-access
 
   def _get_tensor_from_node(self, node_id):
     obj = self._nodes[node_id]
@@ -123,7 +129,7 @@ class _Loader(object):
   def _recreate_variable(self, proto):
     # TODO(andresp): Can we use the checkpointed value as initializer?
     dummy_value = init_ops.Zeros(dtype=proto.dtype)(shape=proto.shape)
-    return variables.Variable(dummy_value)
+    return variables.Variable(dummy_value, trainable=proto.trainable)
 
 
 def _load_saved_object_graph_proto(filename):

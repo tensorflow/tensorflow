@@ -186,6 +186,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
         Status s = instantiated_captured_func_->Run(ctx, std::move(args),
                                                     &state_and_output);
+        DCHECK(state_and_output.size() <=
+               dataset()->state_types_.size() + output_dtypes().size());
         if (s.ok()) {
           state_.clear();
           size_t i = 0;

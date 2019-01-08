@@ -75,7 +75,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         return distribution.run_steps_on_dataset(
             step_fn, iterator, iterations=2).run_op
 
-      self.evaluate(distribution.initialize())
       if not context.executing_eagerly():
         with self.cached_session() as sess:
           run_step = sess.make_callable(run_step())
@@ -84,11 +83,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       weights, biases = [], []
       for _ in range(5):
         run_step()
-
         weights.append(self.evaluate(layer.kernel))
         biases.append(self.evaluate(layer.bias))
-
-      self.evaluate(distribution.finalize())
 
       error = abs(numpy.add(numpy.squeeze(weights), numpy.squeeze(biases)) - 1)
       is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))
@@ -152,7 +148,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     # `distribution.scope`.
     with variable_scope.variable_creator_scope(
         appending_creator), distribution.scope():
-      model_fn, dataset_fn, layer = minimize_loss_example(
+      model_fn, dataset_fn, _ = minimize_loss_example(
           optimizer_fn,
           use_bias=True,
           use_callable_loss=True,
@@ -169,15 +165,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         return distribution.run_steps_on_dataset(
             step_fn, iterator, iterations=1).run_op
 
-      self.evaluate(distribution.initialize())
       if not context.executing_eagerly():
         with self.cached_session() as sess:
           run_step = sess.make_callable(run_step())
       self.evaluate(variables_lib.global_variables_initializer())
-
       run_step()
-
-      self.evaluate(distribution.finalize())
 
       def get_expected_variables(optimizer_fn, num_parameter_devices):
         variables_map = {
@@ -241,7 +233,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         return distribution.run_steps_on_dataset(
             step_fn, iterator, iterations=1).run_op
 
-      self.evaluate(distribution.initialize())
       if not context.executing_eagerly():
         with self.cached_session() as sess:
           run_step = sess.make_callable(run_step())
@@ -266,8 +257,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           expected_moving_means[i] -= ((
               expected_moving_mean - averaged_batch_mean(i)) * (1.0 - momentum))
           self.assertNear(expected_moving_means[i], moving_means[i], 0.0001)
-
-      self.evaluate(distribution.finalize())
 
   @combinations.generate(
       combinations.times(
@@ -335,7 +324,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         return distribution.run_steps_on_dataset(
             step_fn, iterator, iterations=1).run_op
 
-      self.evaluate(distribution.initialize())
       if not context.executing_eagerly():
         with self.cached_session() as sess:
           run_step = sess.make_callable(run_step())
@@ -369,8 +357,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       else:
         # One of the mean loss reductions.
         self.assertNear(weight, 2 + 10.6, 0.0001)
-
-      self.evaluate(distribution.finalize())
 
   @combinations.generate(
       combinations.times(
@@ -458,7 +444,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             reduced=False, distribution=distribution)
         return (ctx.run_op, ctx.last_step_outputs["replica_loss_reduced"])
 
-      self.evaluate(distribution.initialize())
       if not context.executing_eagerly():
         with self.cached_session() as sess:
           run_step = sess.make_callable(run_step())
@@ -470,8 +455,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         losses.append(loss)
         weights.append(self.evaluate(layer.kernel))
         biases.append(self.evaluate(layer.bias))
-
-      self.evaluate(distribution.finalize())
 
       loss_is_not_increasing = all(y <= x for x, y in zip(losses, losses[1:]))
       self.assertTrue(loss_is_not_increasing)

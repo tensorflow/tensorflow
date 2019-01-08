@@ -59,6 +59,8 @@ def fit_distributed(model,
 
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
+    # TODO(b/122314600): Remove the scope validate.
+    distributed_training_utils.validate_not_in_strategy_scope()
     steps_per_epoch, batch_size = (
         distributed_training_utils.get_input_params(
             model._distribution_strategy, first_x_value, steps_per_epoch,
@@ -139,6 +141,8 @@ def evaluate_distributed(model,
   distributed_training_utils.validate_inputs(x, y, model._distribution_strategy)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
+    # TODO(b/122314600): Remove the scope validate.
+    distributed_training_utils.validate_not_in_strategy_scope()
     steps, batch_size = distributed_training_utils.get_input_params(
         model._distribution_strategy, first_x_value, steps, batch_size)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)
@@ -175,6 +179,8 @@ def predict_distributed(model,
       x, None, model._distribution_strategy)
   first_x_value = nest.flatten(x)[0]
   if isinstance(first_x_value, np.ndarray):
+    # TODO(b/122314600): Remove the scope validate.
+    distributed_training_utils.validate_not_in_strategy_scope()
     steps, batch_size = distributed_training_utils.get_input_params(
         model._distribution_strategy, first_x_value, steps, batch_size)
   batch_size = model._validate_or_infer_batch_size(batch_size, steps, x)

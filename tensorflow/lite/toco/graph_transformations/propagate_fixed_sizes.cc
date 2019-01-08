@@ -1828,6 +1828,20 @@ void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
   output_array.copy_shape(output_shape);
 }
 
+void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
+  const auto& input_array = model->GetArray(op->inputs[0]);
+  // We have 2 outputs, the shape of the index tensor, is the same size
+  // as the input array. The unique values tensor, is unknown until runtime.
+  CHECK_EQ(op->outputs.size(), 2);
+  auto& idx_output_array = model->GetArray(op->outputs[1]);
+
+  // Yield until input dims have been resolved, or output already computed
+  if (!input_array.has_shape() || idx_output_array.has_shape()) {
+    return;
+  }
+  idx_output_array.copy_shape(input_array.shape());
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -2102,6 +2116,9 @@ void ProcessMirrorPadOperator(Model* model, MirrorPadOperator* op) {
       break;
     case OperatorType::kMirrorPad:
       ProcessMirrorPadOperator(model, static_cast<MirrorPadOperator*>(op));
+      break;
+    case OperatorType::kUnique:
+      ProcessUniqueOperator(model, static_cast<UniqueOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

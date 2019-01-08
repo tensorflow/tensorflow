@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -141,11 +140,6 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
-
-class SimpleRNNLayerV1OnlyTest(test.TestCase):
-
-  @test_util.run_v1_only('b/120941292')
-  @test_util.run_in_graph_and_eager_modes
   def test_statefulness_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -164,7 +158,7 @@ class SimpleRNNLayerV1OnlyTest(test.TestCase):
         units, return_sequences=False, stateful=True, weights=None)
     model.add(layer)
     model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
-                  loss='mse')
+                  loss='mse', run_eagerly=testing_utils.should_run_eagerly())
     out1 = model.predict(np.ones((num_samples, timesteps)))
     self.assertEqual(out1.shape, (num_samples, units))
 

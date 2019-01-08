@@ -88,7 +88,8 @@ if [[ ${IS_GPU} == "1" ]]; then
   PIP_TEST_FILTER_TAG="-no_gpu,-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
 fi
 if [[ ${IS_MAC} == "1" ]]; then
-  PIP_TEST_FILTER_TAG="-nomac,${PIP_TEST_FILTER_TAG}"
+  # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+  PIP_TEST_FILTER_TAG="-nomac,-no_mac,${PIP_TEST_FILTER_TAG}"
 fi
 
 # Bazel flags we need for all tests:

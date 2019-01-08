@@ -51,108 +51,222 @@ namespace tflite {
 namespace flex {
 namespace kernel {
 
-// Controls the lifetime of tensor handles in a vector.
-class VectorOfHandles {
+// A list of inputs of a given node of the TensorFlow/Eager graph.
+class OpInputs {
  public:
-  explicit VectorOfHandles(int num_elements) : vector_(num_elements, nullptr) {}
+  explicit OpInputs(const TfLiteIntArray* indexes) {
+    for (int index : TfLiteIntArrayView(indexes)) {
+      inputs_.push_back(index);
+    }
+  }
+  ~OpInputs() {}
 
-  ~VectorOfHandles() {
-    for (auto* handle : vector_) {
-      if (handle) handle->Unref();
+  int Size() const { return inputs_.size(); }
+
+  int TfLiteIndex(int i) const { return inputs_[i]; }
+
+ private:
+  std::vector<int> inputs_;
+};
+
+// A list of outputs of a given node of the TensorFlow/Eager graph, along with
+// the actual outputs of the EagerOperation.
+class OpOutputs {
+ public:
+  explicit OpOutputs(const TfLiteIntArray* indexes) {
+    for (int index : TfLiteIntArrayView(indexes)) {
+      outputs_.push_back(index);
+    }
+    vector_.resize(outputs_.size());
+  }
+  ~OpOutputs() { ResetTensorHandles(); }
+
+  int Size() const { return outputs_.size(); }
+
+  int TfLiteIndex(int i) const { return outputs_[i]; }
+
+  // Carefully unreference all the handles in the eager output vector.
+  void ResetTensorHandles() {
+    for (int i = 0; i < vector_.size(); ++i) {
+      if (vector_[i]) {
+        vector_[i]->Unref();
+        vector_[i] = nullptr;
+      }
     }
   }
 
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>* GetVector() {
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2>*
+  GetTensorHandles() {
     return &vector_;
   }
 
-  tensorflow::TensorHandle* GetHandle(int index) { return vector_[index]; }
+ private:
+  std::vector<int> outputs_;
+  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> vector_;
+};
+
+// A single node within the larger 'op'. Note that this kernel executes many
+// TensorFlow ops within a single TF Lite op.
+class OpNode {
+ public:
+  OpNode(const TfLiteIntArray* inputs, const TfLiteIntArray* outputs)
+      : inputs_(inputs), outputs_(outputs) {}
+  ~OpNode() {}
+
+  const string& name() const { return name_; }
+  void set_name(const string& name) { name_ = name; }
+
+  int index() const { return index_; }
+  void set_index(int index) { index_ = index; }
+
+  const tensorflow::NodeDef& nodedef() const { return nodedef_; }
+
+  const OpInputs& inputs() const { return inputs_; }
+  OpInputs* mutable_inputs() { return &inputs_; }
+
+  const OpOutputs& outputs() const { return outputs_; }
+  OpOutputs* mutable_outputs() { return &outputs_; }
+
+  int NumInputs() const { return inputs_.Size(); }
+  int NumOutputs() const { return outputs_.Size(); }
+
+  tensorflow::Status InitializeNodeDef(const void* custom_initial_data,
+                                       int custom_initial_data_size) {
+    if (!custom_initial_data) {
+      return tensorflow::errors::Internal(
+          "Cannot convert empty data into a valid NodeDef");
+    }
+    // The flexbuffer contains a vector where the first elements is the
+    // op name and the second is a serialized NodeDef.
+    const flexbuffers::Vector& v =
+        flexbuffers::GetRoot(
+            reinterpret_cast<const uint8_t*>(custom_initial_data),
+            custom_initial_data_size)
+            .AsVector();
+
+    name_ = v[0].AsString().str();
+    if (!nodedef_.ParseFromString(v[1].AsString().str())) {
+      nodedef_.Clear();
+      return tensorflow::errors::Internal(
+          "Failed to parse data into a valid NodeDef");
+    }
+
+    // Fill NodeDef with defaults if it's a valid op.
+    const tensorflow::OpRegistrationData* op_reg_data;
+    TF_RETURN_IF_ERROR(
+        tensorflow::OpRegistry::Global()->LookUp(nodedef_.op(), &op_reg_data));
+    AddDefaultsToNodeDef(op_reg_data->op_def, &nodedef_);
+
+    return tensorflow::Status::OK();
+  }
+
+  // Build thew new EagerOperation. In case of error, the returned 'op' is
+  // guaranteed to be 'nullptr'.
+  tensorflow::Status BuildEagerOp(
+      tensorflow::EagerContext* eager_context,
+      std::unique_ptr<tensorflow::EagerOperation>* op) {
+    op->reset();
+
+    const tensorflow::AttrTypeMap* attr_types;
+    bool is_function = false;
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        tensorflow::AttrTypeMapForOp(name_.c_str(), &attr_types, &is_function),
+        " (while processing attributes of '", name_, "')");
+    if (is_function) {
+      return tensorflow::errors::NotFound(
+          "Operation '", name_,
+          "' is not registered.  (while processing attributes of '", name_,
+          "')");
+    }
+
+    op->reset(new tensorflow::EagerOperation(eager_context, name_.c_str(),
+                                             /*is_function=*/false,
+                                             attr_types));
+    for (const auto& attr : nodedef_.attr()) {
+      (*op)->MutableAttrs()->Set(attr.first, attr.second);
+    }
+
+    return tensorflow::Status::OK();
+  }
+
+  tensorflow::Status BuildEagerInputs(BufferMap* buffer_map,
+                                      tensorflow::EagerOperation* op) {
+    for (int i = 0; i < inputs_.Size(); ++i) {
+      int input_index = inputs_.TfLiteIndex(i);
+      if (!buffer_map->HasTensor(input_index)) {
+        return tensorflow::errors::Internal(
+            "Cannot read from invalid tensor index ", input_index);
+      }
+      auto* handle = new tensorflow::TensorHandle(
+          buffer_map->GetTensor(input_index), nullptr, nullptr, nullptr);
+      op->AddInput(handle);
+      handle->Unref();
+
+      if (buffer_map->IsForwardable(input_index)) {
+        // Take it out of the map, so Eager/TF can reuse the buffer for an
+        // output tensor of the op.
+        buffer_map->RemoveTensor(input_index);
+      }
+    }
+    return tensorflow::Status::OK();
+  }
+
+  tensorflow::Status PersistEagerOutputs(BufferMap* buffer_map) {
+    auto* handles = outputs_.GetTensorHandles();
+    for (int i = 0; i < outputs_.Size(); ++i) {
+      const tensorflow::Tensor* tensor = nullptr;
+      TF_RETURN_IF_ERROR(handles->at(i)->Tensor(&tensor));
+      buffer_map->SetFromTensorFlow(outputs_.TfLiteIndex(i), *tensor);
+    }
+    outputs_.ResetTensorHandles();
+    return tensorflow::Status::OK();
+  }
 
  private:
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> vector_;
+  OpNode(const OpNode&) = delete;
+  OpNode& operator=(const OpNode&) = delete;
+
+  // The name of the TensorFlow op to execute.
+  string name_;
+  // Index of this node into TF Lite's operator list.
+  int index_;
+  // The corresponding NodeDef, containing the attributes for the op.
+  tensorflow::NodeDef nodedef_;
+  // List of inputs, as TF Lite tensor indices.
+  OpInputs inputs_;
+  // List of outputs, as TF Lite tensor indices.
+  OpOutputs outputs_;
 };
 
 // Executes the TensorFlow op given by 'op_name', with the attributes specified
 // in 'nodedef'. Inputs and outputs are given as indices into the 'buffer_map'.
 tensorflow::Status ExecuteFlexOp(tensorflow::EagerContext* eager_context,
-                                 BufferMap* buffer_map, const string& op_name,
-                                 const tensorflow::NodeDef& nodedef,
-                                 const std::vector<int>& inputs,
-                                 const std::vector<int>& outputs) {
-  const tensorflow::AttrTypeMap* attr_types;
-  bool is_function = false;
+                                 BufferMap* buffer_map, OpNode* node_data) {
+  std::unique_ptr<tensorflow::EagerOperation> op;
+  TF_RETURN_IF_ERROR(node_data->BuildEagerOp(eager_context, &op));
+  TF_RETURN_IF_ERROR(node_data->BuildEagerInputs(buffer_map, op.get()));
+
+  int num_retvals = node_data->NumOutputs();
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tensorflow::AttrTypeMapForOp(op_name.c_str(), &attr_types, &is_function),
-      " (while processing attributes of '", op_name, "')");
-  if (is_function) {
-    return tensorflow::errors::NotFound(
-        "Operation '", op_name,
-        "' is not registered.  (while processing attributes of '", op_name,
-        "')");
-  }
-  tensorflow::EagerOperation op(eager_context, op_name.c_str(),
-                                /*is_function=*/false, attr_types);
-  for (const auto& attr : nodedef.attr()) {
-    op.MutableAttrs()->Set(attr.first, attr.second);
-  }
+      EagerExecute(op.get(), node_data->mutable_outputs()->GetTensorHandles(),
+                   &num_retvals),
+      " (while executing '", node_data->name(), "' via Eager)");
 
-  for (int input_index : inputs) {
-    if (!buffer_map->HasTensor(input_index)) {
-      return tensorflow::errors::Internal(
-          "Cannot read from invalid tensor index ", input_index);
-    }
-    auto* handle = new tensorflow::TensorHandle(
-        buffer_map->GetTensor(input_index), nullptr, nullptr, nullptr);
-    op.AddInput(handle);
-    handle->Unref();
-
-    if (buffer_map->IsForwardable(input_index)) {
-      // Take it out of the map, so Eager/TF can reuse the buffer for an output
-      // tensor of the op.
-      buffer_map->RemoveTensor(input_index);
-    }
-  }
-
-  int num_retvals = outputs.size();
-  VectorOfHandles retvals(num_retvals);
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      EagerExecute(&op, retvals.GetVector(), &num_retvals),
-      " (while executing '", op_name, "' via Eager)");
-
-  if (num_retvals != outputs.size()) {
+  if (num_retvals != node_data->NumOutputs()) {
     return tensorflow::errors::Internal(
         "Unexpected number of outputs from EagerExecute");
   }
 
-  for (int i = 0; i < num_retvals; ++i) {
-    const tensorflow::Tensor* tensor = nullptr;
-    TF_RETURN_IF_ERROR(retvals.GetHandle(i)->Tensor(&tensor));
-    buffer_map->SetFromTensorFlow(outputs[i], *tensor);
-  }
+  TF_RETURN_IF_ERROR(node_data->PersistEagerOutputs(buffer_map));
 
   return tensorflow::Status::OK();
 }
 
-// A single node within the larger 'op'. Note that this kernel executes many
-// TensorFlow ops within a single TF Lite op.
-struct OpNode {
-  // The name of the TensorFlow op to execute.
-  string name;
-  // Index of this node into TF Lite's operator list.
-  int index;
-  // The corresponding NodeDef, containing the attributes for the op.
-  tensorflow::NodeDef nodedef;
-  // List of inputs, as TF Lite tensor indices.
-  std::vector<int> inputs;
-  // List of outputs, as TF Lite tensor indices.
-  std::vector<int> outputs;
-};
-
-// The Larger 'op', which contains all the nodes in a supported subgraph.
+// The larger 'op', which contains all the nodes in a supported subgraph.
 struct OpData {
   tensorflow::EagerContext* eager_context;
   BufferMap* buffer_map;
-  std::vector<OpNode> nodes;
+  std::vector<std::unique_ptr<OpNode>> nodes;
   std::vector<int> subgraph_inputs;
   std::vector<int> subgraph_outputs;
 };
@@ -181,47 +295,31 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
     op_data->subgraph_inputs.push_back(tensor_index);
   }
 
+  op_data->nodes.reserve(params->nodes_to_replace->size);
+
   CHECK(params->nodes_to_replace);
+  tensorflow::Status status;
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {
     TfLiteNode* node;
     TfLiteRegistration* reg;
     context->GetNodeAndRegistration(context, node_index, &node, &reg);
 
-    op_data->nodes.push_back(OpNode());
-    OpNode& node_data = op_data->nodes.back();
+    op_data->nodes.emplace_back(new OpNode(node->inputs, node->outputs));
+    OpNode& node_data = *op_data->nodes.back();
 
-    node_data.index = node_index;
-    node_data.name = "";
-    if (node->custom_initial_data) {
-      // The flexbuffer contains a vector where the first elements is the
-      // op name and the second is a serialized NodeDef.
-      const flexbuffers::Vector& v =
-          flexbuffers::GetRoot(
-              reinterpret_cast<const uint8_t*>(node->custom_initial_data),
-              node->custom_initial_data_size)
-              .AsVector();
+    node_data.set_index(node_index);
+    node_data.set_name("");
 
-      node_data.name = v[0].AsString().str();
-      if (!node_data.nodedef.ParseFromString(v[1].AsString().str())) {
-        // We will just leave the nodedef empty and error out in Eval().
-        node_data.nodedef.Clear();
-      }
-    }
+    status = node_data.InitializeNodeDef(node->custom_initial_data,
+                                         node->custom_initial_data_size);
+    if (!status.ok()) break;
+  }
 
-    // Fill NodeDef with defaults if it's a valid op.
-    const tensorflow::OpRegistrationData* op_reg_data;
-    auto tf_status = tensorflow::OpRegistry::Global()->LookUp(
-        node_data.nodedef.op(), &op_reg_data);
-    if (tf_status.ok()) {
-      AddDefaultsToNodeDef(op_reg_data->op_def, &node_data.nodedef);
-    }
-
-    for (auto input_index : TfLiteIntArrayView(node->inputs)) {
-      node_data.inputs.push_back(input_index);
-    }
-    for (auto output_index : TfLiteIntArrayView(node->outputs)) {
-      node_data.outputs.push_back(output_index);
-    }
+  if (ConvertStatus(context, status) != kTfLiteOk) {
+    // We can't return an error from this function but ConvertStatus will
+    // report them and we will stop processing in Prepare() if anything went
+    // wrong.
+    return op_data;
   }
 
   return op_data;
@@ -252,7 +350,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         buffer_map->SetFromTfLite(tensor_index, tensor);
       }
     }
-    ++tensor_ref_count[tensor_index];
+
+    // Input tensors should never be forwarded so we increment their ref counts
+    // twice: once for this graph and another for the possibility of them being
+    // used by another subgraph, or being an output of the full graph.
+    tensor_ref_count[tensor_index] += 2;
   }
 
   // All output tensors are allocated by TensorFlow/Eager, so we
@@ -263,11 +365,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   for (const auto& node_data : op_data->nodes) {
-    for (int tensor_index : node_data.inputs) {
-      ++tensor_ref_count[tensor_index];
+    if (node_data->nodedef().op().empty()) {
+      context->ReportError(context, "Invalid NodeDef in Flex op '%s'",
+                           node_data->name().c_str());
+      return kTfLiteError;
+    }
+
+    for (int i = 0; i < node_data->inputs().Size(); ++i) {
+      ++tensor_ref_count[node_data->inputs().TfLiteIndex(i)];
     }
   }
 
+  buffer_map->ClearForwardable();
   for (const auto& x : tensor_ref_count) {
     if (x.second == 1) {
       // This tensor is referenced once by a single op. We can allow the TF
@@ -281,7 +390,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
   BufferMap* buffer_map = op_data->buffer_map;
   tensorflow::EagerContext* eager_context = op_data->eager_context;
 
@@ -300,18 +409,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Execute the TensorFlow Ops sequentially.
-  for (const auto& node_data : op_data->nodes) {
+  for (auto& node_data : op_data->nodes) {
     SCOPED_TAGGED_OPERATOR_PROFILE(
         reinterpret_cast<profiling::Profiler*>(context->profiler),
-        node_data.name.c_str(), node_data.index);
-    if (node_data.nodedef.op().empty()) {
-      context->ReportError(context, "Invalid NodeDef in Flex op '%s'",
-                           node_data.name.c_str());
-      return kTfLiteError;
-    }
-    auto status =
-        ExecuteFlexOp(eager_context, buffer_map, node_data.name,
-                      node_data.nodedef, node_data.inputs, node_data.outputs);
+        node_data->name().c_str(), node_data->index());
+
+    auto status = ExecuteFlexOp(eager_context, buffer_map, node_data.get());
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));
   }
 
@@ -331,10 +434,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // We don't need to keep track of internal TF tensors any longer, so take
-  // them out of the buffer_map, but make sure we keep all the one we might
+  // them out of the buffer_map, but make sure we keep all the ones we might
   // need for other subgraphs, or as final output of inference.
   const auto& outputs = op_data->subgraph_outputs;
   std::set<int> keep(outputs.begin(), outputs.end());
+  const auto& inputs = op_data->subgraph_inputs;
+  keep.insert(inputs.begin(), inputs.end());
   buffer_map->RemoveTensorsNotInSet(keep);
 
   return kTfLiteOk;

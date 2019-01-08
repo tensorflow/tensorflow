@@ -81,9 +81,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
     if (hlo.opcode() == HloOpcode::kParameter) {
       const std::vector<HloInstruction*>& parameter_instructions =
           module_.entry_computation()->parameter_instructions();
-      if (std::find(parameter_instructions.begin(),
-                    parameter_instructions.end(),
-                    &hlo) != parameter_instructions.end()) {
+      if (absl::c_linear_search(parameter_instructions, &hlo)) {
         array->MarkInvariantOverWholeProgram(context_);
       }
     }

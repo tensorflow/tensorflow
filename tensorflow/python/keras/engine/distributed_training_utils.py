@@ -38,8 +38,19 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
+
+
+def validate_not_in_strategy_scope():
+  """Validate fit/eval/predict are not running in DS scope."""
+  if distribution_strategy_context.has_distribution_strategy():
+    if distribution_strategy_context.in_cross_replica_context():
+      raise RuntimeError(
+          'Fit/Eval/Predict should not be run inside the tf.distribute.Strategy'
+          ' scope. Only model creation and compilation should be in '
+          'tf.distribute.Strategy scope.')
 
 
 def set_weights(distribution_strategy, dist_model, weights):
@@ -671,6 +682,12 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
 
 def _custom_compile_for_predict(model):
   """Custom compile for TPU predict mode."""
+  if not model.built:
+    # Model is not compilable because it does not know its number of inputs
+    # and outputs, nor their shapes and names. We will compile after the first
+    # time the model gets called on training data.
+    return
+  model._is_compiled = True
   model.total_loss = None
   model._fit_function = None
   model._eval_function = None

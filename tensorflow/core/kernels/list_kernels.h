@@ -158,6 +158,17 @@ class TensorListConcat : public OpKernel {
       std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>;
   explicit TensorListConcat(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    // TODO(skyewm): the HasAttr check can be removed once the
+    // element_shape_except_first_dim attr has been checked in for 2 weeks
+    // (around 1/14/2019).
+    if (c->HasAttr("element_shape")) {
+      PartialTensorShape element_shape;
+      OP_REQUIRES_OK(c, c->GetAttr("element_shape", &element_shape));
+      if (!element_shape.unknown_rank()) {
+        element_shape_except_first_dim_ = PartialTensorShape(
+            gtl::ArraySlice<int64>(element_shape.dim_sizes()).subspan(1));
+      }
+    }
   }
 
   ~TensorListConcat() {}
@@ -178,29 +189,33 @@ class TensorListConcat : public OpKernel {
             " but list elements ", DataTypeString(tensor_list->element_dtype)));
     // If the TensorList is empty, its element_shape must be fully defined
     // except for the first dimension.
-    PartialTensorShape shape_except_first_dim;
-    if (!tensor_list->element_shape.unknown_rank()) {
-      OP_REQUIRES(c, tensor_list->element_shape.dims() >= 1,
-                  errors::InvalidArgument(
-                      "Concat requires elements to be at least vectors, ",
-                      "found scalars instead."));
-      shape_except_first_dim = PartialTensorShape(
-          gtl::ArraySlice<int64>(tensor_list->element_shape.dim_sizes())
-              .subspan(1));
+    if (!element_shape_except_first_dim_.IsFullyDefined()) {
+      if (!tensor_list->element_shape.unknown_rank()) {
+        OP_REQUIRES(c, tensor_list->element_shape.dims() >= 1,
+                    errors::InvalidArgument(
+                        "Concat requires elements to be at least vectors, ",
+                        "found scalars instead."));
+        PartialTensorShape shape_except_first_dim(
+            gtl::ArraySlice<int64>(tensor_list->element_shape.dim_sizes())
+                .subspan(1));
+        PartialTensorShape tmp = element_shape_except_first_dim_;
+        OP_REQUIRES_OK(c, tmp.MergeWith(shape_except_first_dim,
+                                        &element_shape_except_first_dim_));
+      }
     }
     OP_REQUIRES(c,
                 !tensor_list->tensors.empty() ||
-                    shape_except_first_dim.IsFullyDefined(),
+                    element_shape_except_first_dim_.IsFullyDefined(),
                 errors::InvalidArgument(
                     "All except the first dimension must be fully defined ",
                     "when concating an empty tensor list. element_shape: ",
                     tensor_list->element_shape.DebugString()));
     // 1. Compute the shape of the output tensor.
-    // If `shape_except_first_dim` is fully-defined we just prepend the leading
-    // dim to it. Otherwise we use the shape of the first element tensor and
-    // check to make sure shapes of all tensors are compatible.
+    // If `element_shape_except_first_dim_` is fully-defined we just prepend the
+    // leading dim to it. Otherwise we use the shape of the first element tensor
+    // and check to make sure shapes of all tensors are compatible.
     TensorShape output_shape;
-    if (!shape_except_first_dim.AsTensorShape(&output_shape)) {
+    if (!element_shape_except_first_dim_.AsTensorShape(&output_shape)) {
       const Tensor& element_tensor = tensor_list->tensors[0];
       OP_REQUIRES(
           c, TensorShapeUtils::IsVectorOrHigher(element_tensor.shape()),
@@ -268,6 +283,7 @@ class TensorListConcat : public OpKernel {
 
  private:
   DataType element_dtype_;
+  PartialTensorShape element_shape_except_first_dim_;
 };
 
 template <typename Device, typename T>
@@ -505,14 +521,31 @@ class TensorListScatter : public OpKernel {
                     "Specified a list with shape ", element_shape.DebugString(),
                     " from a tensor with shape ", output_shape.DebugString()));
     output_list.element_shape = element_shape;
-    output_list.tensors.reserve(indices.NumElements());
+
+    OP_REQUIRES(c, indices.NumElements() == input_tensor.shape().dim_size(0),
+                errors::InvalidArgument(
+                    "Invalid number of rows in input tensor. Expected: ",
+                    indices.NumElements(),
+                    " Actual: ", input_tensor.shape().dim_size(0)));
+
+    // Validate indices and resize output_list.tensors to fit the highest index.
+    {
+      size_t list_size = 0;
+      for (int index = 0; index < indices.NumElements(); ++index) {
+        const int i = indices.flat<int32>()(index);
+        OP_REQUIRES(c, i >= 0,
+                    errors::InvalidArgument(
+                        "Indices in TensorListScatter must all be positive."));
+        if (i >= list_size) {
+          list_size = i + 1;
+        }
+      }
+      output_list.tensors.resize(list_size, Tensor(DT_INVALID));
+    }
+
     for (int index = 0; index < indices.NumElements(); ++index) {
       const int i = indices.flat<int32>()(index);
-      OP_REQUIRES(c, i < input_tensor.shape().dim_size(0),
-                  errors::InvalidArgument(
-                      "Trying to scatter index ", i, " from tensor with ",
-                      input_tensor.shape().dim_size(0), " rows."));
-      Tensor tmp = input_tensor.Slice(i, i + 1);
+      Tensor tmp = input_tensor.Slice(index, index + 1);
       TensorShape tmp_shape = tmp.shape();
       tmp_shape.RemoveDim(0);
       OP_REQUIRES(c, tmp.CopyFrom(tmp, tmp_shape),
@@ -525,7 +558,7 @@ class TensorListScatter : public OpKernel {
       // many small ondes.
       aligned.flat<T>().device(c->eigen_device<Device>()) =
           tmp.unaligned_flat<T>();
-      output_list.tensors.push_back(aligned);
+      std::swap(output_list.tensors[i], aligned);
     }
     output_tensor->scalar<Variant>()() = std::move(output_list);
   }

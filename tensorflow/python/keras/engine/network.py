@@ -1382,9 +1382,10 @@ class Network(base_layer.Layer):
             % (optimizer,))
       self._checkpointable_saver.save(filepath, session=session)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
-      checkpoint_management.update_checkpoint_state(
+      checkpoint_management.update_checkpoint_state_internal(
           save_dir=os.path.dirname(filepath),
           model_checkpoint_path=filepath,
+          save_relative_paths=True,
           all_model_checkpoint_paths=[filepath])
 
   def load_weights(self, filepath, by_name=False):

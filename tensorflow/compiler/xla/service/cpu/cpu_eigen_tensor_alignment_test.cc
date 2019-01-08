@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
+#include "tensorflow/compiler/xla/service/cpu/dot_op_emitter_internal.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -22,6 +22,10 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 namespace {
+
+using internal::DotImplementationStrategy;
+using internal::DotInfo;
+using internal::GetDotImplementationStrategy;
 
 // Test that we don't call into Eigen with tensors too small to be aligned
 // reliably.
@@ -47,16 +51,18 @@ ENTRY DotOperation {
   TargetMachineFeaturesWithFakeAlignmentLogic target_machine_with_no_alignment(
       [](int64 size) { return 1; });
 
-  EXPECT_FALSE(
-      PotentiallyImplementedAsEigenDot(*dot, target_machine_with_no_alignment));
+  EXPECT_EQ(GetDotImplementationStrategy(HloModuleConfig{}, DotInfo(*dot),
+                                         target_machine_with_no_alignment),
+            DotImplementationStrategy::kNaiveLlvmIr);
 
   TargetMachineFeaturesWithFakeAlignmentLogic
       target_machine_with_full_alignment([](int64 size) {
         return TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
 
-  EXPECT_TRUE(PotentiallyImplementedAsEigenDot(
-      *dot, target_machine_with_full_alignment));
+  EXPECT_NE(GetDotImplementationStrategy(HloModuleConfig{}, DotInfo(*dot),
+                                         target_machine_with_full_alignment),
+            DotImplementationStrategy::kNaiveLlvmIr);
 }
 
 TEST_F(CpuEigenTensorAlignmentTest, EigenConvAlignment) {

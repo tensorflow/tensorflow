@@ -42,11 +42,9 @@ using absl::StrJoin;
 bool IsInstructionElementwiseOnOperand(const HloInstruction* instruction,
                                        const HloInstruction* operand) {
   std::vector<int64> operand_indices = instruction->OperandIndices(operand);
-  return std::all_of(
-      operand_indices.begin(), operand_indices.end(),
-      [instruction](int64 operand_index) {
-        return instruction->IsElementwiseOnOperand(operand_index);
-      });
+  return absl::c_all_of(operand_indices, [instruction](int64 operand_index) {
+    return instruction->IsElementwiseOnOperand(operand_index);
+  });
 }
 
 string PrecisionConfigToString(const PrecisionConfig& precision_config) {
@@ -814,8 +812,7 @@ std::vector<string> HloSliceInstruction::ExtraAttributesToStringImpl(
   std::vector<string> bounds;
   bounds.reserve(slice_starts_.size());
   const bool omit_stride =
-      std::all_of(slice_strides_.begin(), slice_strides_.end(),
-                  [](int64 stride) { return stride == 1; });
+      absl::c_all_of(slice_strides_, [](int64 stride) { return stride == 1; });
   for (int i = 0; i < slice_starts_.size(); ++i) {
     string stride_str = omit_stride ? "" : StrCat(":", slice_strides_[i]);
     bounds.push_back(
@@ -1051,8 +1048,7 @@ HloInstruction* HloFusionInstruction::AddFusionOperand(
 
 void HloFusionInstruction::MergeFusionInstruction(
     HloFusionInstruction* instruction_to_merge) {
-  CHECK(std::find(operands().begin(), operands().end(), instruction_to_merge) !=
-        operands().end());
+  CHECK(absl::c_linear_search(operands(), instruction_to_merge));
   // Clone the instruction from which to merge fused instructions.
   std::unique_ptr<HloInstruction> cloned = instruction_to_merge->Clone();
   HloFusionInstruction* cloned_fusion =
@@ -1219,8 +1215,8 @@ HloInstruction* HloFusionInstruction::CloneAndFuseInternal(
     // corresponding fused parameter instruction. Renumber parameters as
     // necessary to make parameter numbers consistent with their index in the
     // fused_parameter_ vector.
-    bool in_operand_list = std::find(operands().begin(), operands().end(),
-                                     instruction_to_fuse) != operands().end();
+    bool in_operand_list =
+        absl::c_linear_search(operands(), instruction_to_fuse);
     CHECK(add_output || in_operand_list);
     if (instruction_to_fuse->opcode() == HloOpcode::kTuple) {
       // We assume all uses of a kTuple operation are GTE ops, not another

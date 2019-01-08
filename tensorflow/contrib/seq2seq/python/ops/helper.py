@@ -32,9 +32,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops.distributions import bernoulli
-from tensorflow.python.ops.distributions import categorical
 from tensorflow.python.util import nest
 
 __all__ = [
@@ -49,6 +48,68 @@ __all__ = [
 ]
 
 _transpose_batch_time = decoder._transpose_batch_time  # pylint: disable=protected-access
+
+
+# The following sample functions (_call_sampler, bernoulli_sample,
+# categorical_sample) mimic TensorFlow Probability distribution semantics.
+
+
+def _call_sampler(sample_n_fn, sample_shape, name=None):
+  """Reshapes vector of samples."""
+  with ops.name_scope(name, "call_sampler", values=[sample_shape]):
+    sample_shape = ops.convert_to_tensor(
+        sample_shape, dtype=dtypes.int32, name="sample_shape")
+    # Ensure sample_shape is a vector (vs just a scalar).
+    pad = math_ops.cast(math_ops.equal(array_ops.rank(sample_shape), 0),
+                        dtypes.int32)
+    sample_shape = array_ops.reshape(
+        sample_shape,
+        array_ops.pad(array_ops.shape(sample_shape),
+                      paddings=[[pad, 0]],
+                      constant_values=1))
+    samples = sample_n_fn(math_ops.reduce_prod(sample_shape))
+    batch_event_shape = array_ops.shape(samples)[1:]
+    final_shape = array_ops.concat([sample_shape, batch_event_shape], 0)
+    return array_ops.reshape(samples, final_shape)
+
+
+def bernoulli_sample(probs=None, logits=None, dtype=dtypes.int32,
+                     sample_shape=(), seed=None):
+  """Samples from Bernoulli distribution."""
+  if probs is None:
+    probs = math_ops.sigmoid(logits, name="probs")
+  else:
+    probs = ops.convert_to_tensor(probs, name="probs")
+  batch_shape_tensor = array_ops.shape(probs)
+  def _sample_n(n):
+    """Sample vector of Bernoullis."""
+    new_shape = array_ops.concat([[n], batch_shape_tensor], 0)
+    uniform = random_ops.random_uniform(
+        new_shape, seed=seed, dtype=probs.dtype)
+    return math_ops.cast(math_ops.less(uniform, probs), dtype)
+  return _call_sampler(_sample_n, sample_shape)
+
+
+def categorical_sample(logits, dtype=dtypes.int32,
+                       sample_shape=(), seed=None):
+  """Samples from categorical distribution."""
+  logits = ops.convert_to_tensor(logits, name="logits")
+  event_size = array_ops.shape(logits)[-1]
+  batch_shape_tensor = array_ops.shape(logits)[:-1]
+  def _sample_n(n):
+    """Sample vector of categoricals."""
+    if logits.shape.ndims == 2:
+      logits_2d = logits
+    else:
+      logits_2d = array_ops.reshape(logits, [-1, event_size])
+    sample_dtype = dtypes.int64 if logits.dtype.size > 4 else dtypes.int32
+    draws = random_ops.multinomial(
+        logits_2d, n, seed=seed, output_dtype=sample_dtype)
+    draws = array_ops.reshape(
+        array_ops.transpose(draws),
+        array_ops.concat([[n], batch_shape_tensor], 0))
+    return math_ops.cast(draws, dtype)
+  return _call_sampler(_sample_n, sample_shape)
 
 
 def _unstack_ta(inp):
@@ -307,14 +368,14 @@ class ScheduledEmbeddingTrainingHelper(TrainingHelper):
     with ops.name_scope(name, "ScheduledEmbeddingTrainingHelperSample",
                         [time, outputs, state]):
       # Return -1s where we did not sample, and sample_ids elsewhere
-      select_sampler = bernoulli.Bernoulli(
-          probs=self._sampling_probability, dtype=dtypes.bool)
-      select_sample = select_sampler.sample(
-          sample_shape=self.batch_size, seed=self._scheduling_seed)
-      sample_id_sampler = categorical.Categorical(logits=outputs)
+      select_sample = bernoulli_sample(
+          probs=self._sampling_probability,
+          dtype=dtypes.bool,
+          sample_shape=self.batch_size,
+          seed=self._scheduling_seed)
       return array_ops.where(
           select_sample,
-          sample_id_sampler.sample(seed=self._seed),
+          categorical_sample(logits=outputs, seed=self._seed),
           gen_array_ops.fill([self.batch_size], -1))
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):
@@ -425,8 +486,10 @@ class ScheduledOutputTrainingHelper(TrainingHelper):
   def sample(self, time, outputs, state, name=None):
     with ops.name_scope(name, "ScheduledOutputTrainingHelperSample",
                         [time, outputs, state]):
-      sampler = bernoulli.Bernoulli(probs=self._sampling_probability)
-      return sampler.sample(sample_shape=self.batch_size, seed=self._seed)
+      return bernoulli_sample(
+          probs=self._sampling_probability,
+          sample_shape=self.batch_size,
+          seed=self._seed)
 
   def next_inputs(self, time, outputs, state, sample_ids, name=None):
     with ops.name_scope(name, "ScheduledOutputTrainingHelperNextInputs",
@@ -610,8 +673,7 @@ class SampleEmbeddingHelper(GreedyEmbeddingHelper):
     else:
       logits = outputs / self._softmax_temperature
 
-    sample_id_sampler = categorical.Categorical(logits=logits)
-    sample_ids = sample_id_sampler.sample(seed=self._seed)
+    sample_ids = categorical_sample(logits=logits, seed=self._seed)
 
     return sample_ids
 

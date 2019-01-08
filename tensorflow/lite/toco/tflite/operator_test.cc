@@ -629,6 +629,15 @@ TEST_F(OperatorTest, BuiltinMirrorPad) {
   EXPECT_EQ(op.mode, output_toco_op->mode);
 }
 
+TEST_F(OperatorTest, BuiltinUnique) {
+  UniqueOperator op;
+  op.idx_out_type = ArrayDataType::kInt64;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("UNIQUE", OperatorType::kUnique), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+  EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
+}
+
 }  // namespace
 }  // namespace tflite
 
