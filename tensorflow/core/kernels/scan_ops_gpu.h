@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_SCAN_OPS_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_SCAN_OPS_GPU_H_
+
 #if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
@@ -290,17 +293,8 @@ struct Scan<GPUDevice, Eigen::internal::ProdReducer<T>, T> {
 };
 
 }  // namespace functor
-
-#define DEFINE(REDUCER, T) template struct functor::Scan<GPUDevice, REDUCER, T>;
-
-#define DEFINE_FOR_ALL_REDUCERS(T)           \
-  DEFINE(Eigen::internal::SumReducer<T>, T); \
-  DEFINE(Eigen::internal::ProdReducer<T>, T);
-
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_FOR_ALL_REDUCERS);
-#undef DEFINE_FOR_ALL_REDUCERS
-#undef DEFINE
-
 }  // end namespace tensorflow
 
 #endif  // GOOGLE_CUDA
+
+#endif  // TENSORFLOW_CORE_KERNELS_SCAN_OPS_GPU_H_
