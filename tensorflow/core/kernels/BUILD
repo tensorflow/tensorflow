@@ -2256,6 +2256,7 @@ tf_kernel_library(
     ],
     deps = [
         ":concat_lib",
+        ":fill_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:list_ops_op_lib",
