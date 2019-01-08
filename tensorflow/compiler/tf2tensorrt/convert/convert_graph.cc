@@ -97,6 +97,9 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "AvgPool",
       "BatchMatMul",
       "BiasAdd",
+#if NV_TENSORRT_VERSION >= 5100
+      "CombinedNonMaxSuppression",
+#endif
       "ConcatV2",
       "Const",
       "Conv2D",
