@@ -956,6 +956,7 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   xrt::XRTExecutionConfig e;
   e.set_release_input_handles(true);
   e.set_release_compilation_handle(true);
+  e.set_return_exploded_tuple(true);
 
   Scope root = Scope::NewRootScope().WithDevice(DeviceFromFlag());
   auto e_config =
