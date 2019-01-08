@@ -268,5 +268,51 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
               GmockMatch(m::Pad(m::Constant(), m::Constant())));
 }
 
+TEST_F(HloConstantFoldingTest, DontFoldSubcomputationContainingAfterAll) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  Fn {
+    tok = token[] after-all()
+    ROOT root = f32[10] iota(), iota_dimension=0
+  }
+
+  ENTRY entry {
+    ROOT call = f32[10] call(), to_apply=Fn
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest,
+       DontFoldSubcomputationTransitivelyContainingRng) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  InnerFn {
+    c0 = f32[] constant(0)
+    c1 = f32[] constant(1)
+    ROOT rng = f32[10] rng(c0, c1), distribution=rng_uniform
+  }
+
+  Fn {
+    ROOT fusion = f32[10] fusion(), kind=kLoop, calls=InnerFn
+  }
+
+  ENTRY entry {
+    ROOT call = f32[10] call(), to_apply=Fn
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+}
+
 }  // namespace
 }  // namespace xla
