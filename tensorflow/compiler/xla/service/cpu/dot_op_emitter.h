@@ -30,9 +30,16 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+// Returns true if the two operands and the output of `dot_instr` must have row
+// major layout.
+bool DotOperandsAndResultMustHaveRowMajorLayout(
+    const HloInstruction& dot_instr,
+    const TargetMachineFeatures& target_machine_features);
 
-bool PotentiallyImplementedAsEigenDot(
-    const HloInstruction& hlo,
+// Returns true our lowering strategy for `dot_instr` can fold in transposes to
+// the either of the inputs.
+bool DotImplementationCanHandleTranspose(
+    const HloInstruction& dot_instr,
     const TargetMachineFeatures& target_machine_features);
 
 // Returns the index for an operand to `hlo` that should ideally be column
@@ -40,10 +47,6 @@ bool PotentiallyImplementedAsEigenDot(
 // or a fusion containing a dot.
 absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
-
-// Returns true to indicate that we can generate a tiled LLVM IR implementation
-// for |dot|.
-bool ProfitableToImplementDotInTiledLlvmIr(const HloInstruction& dot);
 
 // Helper class for emitting LLVM IR to perform the dot operation.
 class DotOpEmitter {
@@ -81,10 +84,6 @@ class DotOpEmitter {
   // LHS and RHS) and store the results in the target.
   Status EmitScalarDot();
 
-  // Emit an LLVM IR implementation of the dot operation if we can.  Returns
-  // true if an LLVM IR implementation was emitted.
-  bool EmitLlvmIrDotIfProfitable();
-
   // Emits a call to the CPU runtime to perform the matrix multiply.
   Status EmitCallToRuntime();
 
@@ -121,7 +120,15 @@ class DotOpEmitter {
   // of rank 2 as well).
   MatMultDims GetMatMultDims() const;
 
-  bool EmitSmallGemmIfProfitable(const MatMultDims& mat_mult_dims);
+  // Lowers the dot operation as a tiled Matrix*Vector loop.
+  void EmitTiledLlvmIrGemv();
+
+  // Lowers the dot operation as a tiled Matrix*Matrix loop.
+  void EmitTiledLlvmIrGemm();
+
+  // Lowers the dot operation as a naive nested loop that computes the result
+  // one element at a time.
+  void EmitNaiveLlvmIrGemm();
 
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.
@@ -140,17 +147,6 @@ class DotOpEmitter {
         std::tuple<int64, int64, int64>(11, 9, 1);
     return options::LlvmIrGemmTileSize(hlo_module_config_)
         .value_or(kDefaultTileSize);
-  }
-
-  // Returns true if we should use an experimental implementation of GEMM
-  // (general matrix matrix multiplication) if possible.
-  bool EnableExperimentalLlvmIrGemm() const {
-    return options::EnableExperimentalLlvmIrGemm(hlo_module_config_);
-  }
-
-  // Returns true if we should call into multi-threaded Eigen routines.
-  bool ShouldUseMultiThreadedEigen() {
-    return hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
   }
 
   const HloInstruction& dot_;
