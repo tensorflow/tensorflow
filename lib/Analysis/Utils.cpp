@@ -134,6 +134,15 @@ bool mlir::getMemRefRegion(OperationInst *opInst, unsigned loopDepth,
   // Build the constraints for this region.
   FlatAffineConstraints *regionCst = region->getConstraints();
 
+  if (rank == 0) {
+    // A rank 0 memref has a 0-d region.
+    SmallVector<ForInst *, 4> ivs;
+    getLoopIVs(*opInst, &ivs);
+    SmallVector<Value *, 4> regionSymbols(ivs.begin(), ivs.end());
+    regionCst->reset(0, loopDepth, 0, regionSymbols);
+    return true;
+  }
+
   FuncBuilder b(opInst);
   auto idMap = b.getMultiDimIdentityMap(rank);
 

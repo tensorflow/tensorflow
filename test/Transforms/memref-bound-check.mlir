@@ -160,3 +160,11 @@ func @delinearize_mod_floordiv() {
   }
   return
 }
+
+// CHECK-LABEL: func @zero_d_memref
+func @zero_d_memref(%arg0: memref<i32>) {
+  %c0 = constant 0 : i32
+  // A 0-d memref always has in-bound accesses!
+  store %c0, %arg0[] : memref<i32>
+  return
+}
