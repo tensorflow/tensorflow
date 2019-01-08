@@ -46,7 +46,7 @@ bool CheckMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
 
   Status result = exec->SynchronousMemcpyD2H(gpu_ptr, MASK_BYTES, tmp);
   if (!result.ok()) {
-    LOG(FATAL) << "Could not copy debug mask";
+    LOG(FATAL) << "Could not copy debug mask, " << result.error_message();
   }
 
   bool ok = true;
@@ -66,7 +66,7 @@ void InitMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
   se::DeviceMemory<int64> gpu_ptr{se::DeviceMemoryBase{ptr, MASK_BYTES}};
   Status result = exec->SynchronousMemcpyH2D(mask, MASK_BYTES, &gpu_ptr);
   if (!result.ok()) {
-    LOG(FATAL) << "Could not copy debug mask";
+    LOG(FATAL) << "Could not copy debug mask, " << result.error_message();
   }
 }
 
@@ -176,7 +176,7 @@ void* GPUNanResetAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   Status result = stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size,
                                                      &nan_ptr);
   if (!result.ok()) {
-    LOG(ERROR) << "Could not initialize to NaNs";
+    LOG(ERROR) << "Could not initialize to NaNs, " << result.error_message();
   }
 
   return allocated_ptr;
@@ -192,7 +192,7 @@ void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
     Status result = stream_exec_->SynchronousMemcpyH2D(&nans[0], req_size,
                                                        &nan_ptr);
     if (!result.ok()) {
-      LOG(ERROR) << "Could not initialize to NaNs";
+      LOG(ERROR) << "Could not initialize to NaNs, " << result.error_message();
     }
   }
 
